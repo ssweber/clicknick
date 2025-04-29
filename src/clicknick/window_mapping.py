@@ -1,0 +1,160 @@
+DATA_TYPES = {
+    "X": "BIT",
+    "Y": "BIT",
+    "C": "BIT",
+    "T": "BIT",
+    "CT": "BIT",
+    "SC": "BIT",
+    "DS": "INT",
+    "DD": "INT2",
+    "DH": "HEX",
+    "DF": "FLOAT",
+    "XD": "HEX",
+    "YD": "HEX",
+    "TD": "INT",
+    "CTD": "INT2",
+    "SD": "INT",
+    "TXT": "TXT",
+}
+
+# This file contains the mapping of Click PLC windows to their allowed BIT types and input fields
+CLICK_PLC_WINDOW_MAPPING = {
+    # BIT-only windows
+    "TfrmContactNO": {  # "Contact Normally Open"
+        "TEdit1": ["X", "Y", "C", "T", "CT", "SC"],
+    },
+    "TfrmContactNC": {  # "Contact Normally Closed"
+        "TEdit1": ["X", "Y", "C", "T", "CT", "SC"],
+    },
+    "TfrmEdgeContact": {  # "Edge Contact"
+        "TEdit1": ["X", "Y", "C", "T", "CT", "SC"],
+    },
+    "TfrmOut": {  # "Out"
+        "TEdit1": ["X", "Y", "C", "T", "CT", "SC"],
+    },
+    "TfrmSet": {  # "Set"
+        "TEdit1": ["X", "Y", "C", "T", "CT", "SC"],
+    },
+    "TfrmCoilReset": {  # "Reset"
+        "TEdit1": ["X", "Y", "C", "T", "CT", "SC"],
+    },
+    "TfrmContactCompare": {  # "Compare (A with B)"
+        "TEdit1": ["DS", "TD", "SD", "DD", "CTD", "DF"],
+        "TEdit2": ["DS", "TD", "SD", "DD", "CTD", "DF"],
+    },
+    "TfrmTimer": {  # "Timer"
+        "TEdit3": ["T"],  # Timer BIT address
+        "TEdit2": ["DS"],  # Timer value (DS)
+    },
+    "TfrmCounter": {  # "Counter"
+        "allowed_addresses": {
+            "TEdit4": ["CT"],  # Counter BIT address
+            "TEdit3": ["DS", "DD"],  # Counter value (DS/DD)
+        },
+    },
+    "TfrmMath": {  # "Math"
+        "TEdit1": ["DS", "TD", "SD", "DD", "CTD", "DF"],
+        # "input_fields": ["TEdit1", "TTntRichEdit.UnicodeClass1"],
+    },
+    "TfrmShiftRegister": {  # "Shift"
+        "TEdit1": ["C"],
+        "TEdit2": ["C"],
+    },
+    "TfrmCopy": {  # "Copy instruction"
+        "TEdit1": [
+            "X",
+            "Y",
+            "C",
+            "T",
+            "CT",
+            "SC",
+            "DS",
+            "TD",
+            "SD",
+            "DD",
+            "CTD",
+            "DF",
+            "DH",
+            "XD",
+            "YD",
+            "TXT",
+        ],
+        "TEdit2": [
+            "X",
+            "Y",
+            "C",
+            "T",
+            "CT",
+            "SC",
+            "DS",
+            "TD",
+            "SD",
+            "DD",
+            "CTD",
+            "DF",
+            "DH",
+            "XD",
+            "YD",
+            "TXT",
+        ],
+    },
+    "TfrmSearch": {  # "Search instruction"
+        "TEdit1": ["DS", "TD", "SD", "DD", "CTD", "DF", "DH", "XD", "YD", "TXT"],
+    },
+    "#32770": {  # "Search & Replace"
+        "Edit1": [
+            "X",
+            "Y",
+            "C",
+            "T",
+            "CT",
+            "SC",
+            "DS",
+            "TD",
+            "SD",
+            "DD",
+            "CTD",
+            "DF",
+            "DH",
+            "XD",
+            "YD",
+            "TXT",
+        ],
+        "Edit2": [
+            "X",
+            "Y",
+            "C",
+            "T",
+            "CT",
+            "SC",
+            "DS",
+            "TD",
+            "SD",
+            "DD",
+            "CTD",
+            "DF",
+            "DH",
+            "XD",
+            "YD",
+            "TXT",
+        ],
+        "Edit3": [
+            "X",
+            "Y",
+            "C",
+            "T",
+            "CT",
+            "SC",
+            "DS",
+            "TD",
+            "SD",
+            "DD",
+            "CTD",
+            "DF",
+            "DH",
+            "XD",
+            "YD",
+            "TXT",
+        ],
+    },
+}
