@@ -4,16 +4,21 @@
 
 Context-aware nickname autocomplete for ClickPLC instruction windows.
 
+![assets/clicknick_logo.png](https://github.com/user-attachments/assets/5a90fa58-6b2b-417d-9da9-74dac4c25095)
+
 ## Features
 
 - **Smart Autocomplete**: Shows only relevant nicknames based on instruction type
 - **Multiple Search Modes**: None, Prefix, Contains, and Fuzzy matching
 - **Non-Intrusive**: Works alongside Click PLC without modifications
 
+![ClickNick App](https://github.com/user-attachments/assets/29d8b222-8f22-44fb-bda9-311aaba8c60c)
+
 ## How to Run
 
+(for now you'll need `uv` and `git` installed)
 ```
-uvx --from git+https://github.com/ssweber/clicknick@initial_release clicknick
+uvx --from git+https://github.com/ssweber/clicknick clicknick
 ```
 
 ## Usage
@@ -43,4 +48,5 @@ uvx --from git+https://github.com/ssweber/clicknick@initial_release clicknick
 
 ## Roadmap
 
+- Get feedback and publish to PyPI
 - Add support for inserting Nickname/Address into Math equation
