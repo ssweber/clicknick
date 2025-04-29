@@ -1,6 +1,7 @@
 <p align="center">
   <img src="assets/clicknick_logo.png" alt="ClickNick Logo" width="150"/>
 </p>
+
 # clicknick
 
 Context-aware nickname autocomplete for ClickPLC instruction windows.
