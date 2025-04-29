@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/clicknick_logo.png" alt="ClickNick Logo" width="300"/>
+  <img src="assets/clicknick_logo.png" alt="ClickNick Logo" width="150"/>
 </p>
 # clicknick
 
