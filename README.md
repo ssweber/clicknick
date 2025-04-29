@@ -9,7 +9,7 @@ Context-aware nickname autocomplete for ClickPLC instruction windows.
 ## Features
 
 - **Smart Autocomplete**: Shows only relevant nicknames based on instruction type
-- **Multiple Search Modes**: None, Prefix, Contains, and Fuzzy matching
+- **Multiple Filter Modes**: Prefix, Contains, and Fuzzy matching
 - **Non-Intrusive**: Works alongside Click PLC without modifications
 
 ![ClickNick App](https://github.com/user-attachments/assets/29d8b222-8f22-44fb-bda9-311aaba8c60c)
