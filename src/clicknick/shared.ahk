@@ -1,4 +1,4 @@
-#Include {{LIB_DIRECTORY}}/jxon.ahk
+#Include {{LIB_DIRECTORY}}\jxon.ahk
 
 AutoExec() {
     BlockInput, Mouse
