@@ -1,0 +1,20 @@
+[project]
+name = "clicknick"
+version = "0.1.0"
+description = "Context-aware nickname autocomplete for ClickPLC instruction windows."
+readme = "README.md"
+authors = [
+    { name = "ssweber", email = "57631333+ssweber@users.noreply.github.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "ahkunwrapped>=2.2.1",
+    "rapidfuzz>=3.13.0",
+]
+
+[project.scripts]
+clicknick = "clicknick:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
