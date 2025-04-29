@@ -10,6 +10,12 @@ Context-aware nickname autocomplete for ClickPLC instruction windows.
 - **Multiple Search Modes**: None, Prefix, Contains, and Fuzzy matching
 - **Non-Intrusive**: Works alongside Click PLC without modifications
 
+## How to Run
+
+```
+uvx --from git+https://github.com/ssweber/clicknick@initial_release clicknick
+```
+
 ## Usage
 
 1. Select your ClickPLC nickname CSV file
