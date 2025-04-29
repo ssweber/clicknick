@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="assets/clicknick_logo.png" alt="ClickNick Logo" width="150"/>
-</p>
+# ![ClickNick Logo](assets/clicknick_logo.png)
 
 # clicknick
 
