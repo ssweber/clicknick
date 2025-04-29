@@ -1,4 +1,77 @@
-#Include {{LIB_DIRECTORY}}\jxon.ahk
+Jxon_Dump(obj, indent:="", lvl:=1)
+{
+	static q := Chr(34)
+
+	if IsObject(obj)
+	{
+		static Type := Func("Type")
+		if Type ? (Type.Call(obj) != "Object") : (ObjGetCapacity(obj) == "")
+			throw Exception("Object type not supported.", -1, Format("<Object at 0x{:p}>", &obj))
+
+		is_array := 0
+		for k in obj
+			is_array := k == A_Index
+		until !is_array
+
+		static integer := "integer"
+		if indent is %integer%
+		{
+			if (indent < 0)
+				throw Exception("Indent parameter must be a postive integer.", -1, indent)
+			spaces := indent, indent := ""
+			Loop % spaces
+				indent .= " "
+		}
+		indt := ""
+		Loop, % indent ? lvl : 0
+			indt .= indent
+
+		lvl += 1, out := "" ; Make #Warn happy
+		for k, v in obj
+		{
+			if IsObject(k) || (k == "")
+				throw Exception("Invalid object key.", -1, k ? Format("<Object at 0x{:p}>", &obj) : "<blank>")
+			
+			if !is_array
+				out .= ( ObjGetCapacity([k], 1) ? Jxon_Dump(k) : q . k . q ) ;// key
+				    .  ( indent ? ": " : ":" ) ; token + padding
+			out .= Jxon_Dump(v, indent, lvl) ; value
+			    .  ( indent ? ",`n" . indt : "," ) ; token + indent
+		}
+
+		if (out != "")
+		{
+			out := Trim(out, ",`n" . indent)
+			if (indent != "")
+				out := "`n" . indt . out . "`n" . SubStr(indt, StrLen(indent)+1)
+		}
+		
+		return is_array ? "[" . out . "]" : "{" . out . "}"
+	}
+
+	; Number
+	else if (ObjGetCapacity([obj], 1) == "")
+		return obj
+
+	; String (null -> not supported by AHK)
+	if (obj != "")
+	{
+		  obj := StrReplace(obj,  "\",    "\\")
+		, obj := StrReplace(obj,  "/",    "\/")
+		, obj := StrReplace(obj,    q, "\" . q)
+		, obj := StrReplace(obj, "`b",    "\b")
+		, obj := StrReplace(obj, "`f",    "\f")
+		, obj := StrReplace(obj, "`n",    "\n")
+		, obj := StrReplace(obj, "`r",    "\r")
+		, obj := StrReplace(obj, "`t",    "\t")
+
+		static needle := (A_AhkVersion<"2" ? "O)" : "") . "[^\x20-\x7e]"
+		while RegExMatch(obj, needle, m)
+			obj := StrReplace(obj, m[0], Format("\u{:04X}", Ord(m[0])))
+	}
+	
+	return q . obj . q
+}
 
 AutoExec() {
     BlockInput, Mouse
