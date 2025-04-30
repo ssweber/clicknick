@@ -41,13 +41,10 @@ class ClickWindowDetector:
         allowed_addresses = self.window_mapping.get(self.current_window, {}).get(self.current_field, [])
         return True, allowed_addresses
 
-    def current_field_has_text(self) -> bool:
+    def field_has_text(self, field, window_id) -> bool:
         """Check if the current field already has text in it."""
-        if not self.current_window or not self.current_field:
-            return False
-
         try:
-            field_text = AHK.f_raw("ControlGetText", self.current_field, "A")
+            field_text = AHK.f_raw("ControlGetText", field, f"ahk_id {window_id}")
             return field_text.strip() != ""
         except Exception as e:
             print(f"Error checking field text: {e}")
@@ -78,7 +75,6 @@ class ClickWindowDetector:
 
             # Get focused control
             focused_control = AHK.f("ControlGetFocus", f"ahk_id {active_window_id}")
-            print(focused_control)
             if not focused_control:
                 return None
 
@@ -109,8 +105,6 @@ class ClickWindowDetector:
 
             if not click_windows_json:
                 return click_instances
-
-            print(click_windows_json)
 
             # Parse the JSON response
             try:
