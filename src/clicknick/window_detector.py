@@ -77,8 +77,8 @@ class ClickWindowDetector:
                 return None
 
             # Get focused control
-            print(active_window_id)
             focused_control = AHK.f("ControlGetFocus", f"ahk_id {active_window_id}")
+            print(focused_control)
             if not focused_control:
                 return None
 
