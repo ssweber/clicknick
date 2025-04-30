@@ -361,7 +361,8 @@ class ClickNickApp:
         child_info = self.detector.detect_child_window(self.connected_click_pid)
         if child_info:
             window_id, window_class, edit_control = child_info
-            self._handle_popup_window(window_id, window_class, edit_control)
+            if not self.detector.field_has_text(edit_control, window_id):
+                self._handle_popup_window(window_id, window_class, edit_control)
         else:
             # Hide popup if no valid popup window is detected
             if self.popup:
