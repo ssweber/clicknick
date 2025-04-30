@@ -19,7 +19,6 @@ DATA_TYPES = {
 
 # This file contains the mapping of Click PLC windows to their allowed BIT types and input fields
 CLICK_PLC_WINDOW_MAPPING = {
-    # BIT-only windows
     "TfrmContactNO": {  # "Contact Normally Open"
         "TEdit1": ["X", "Y", "C", "T", "CT", "SC"],
     },
@@ -29,36 +28,37 @@ CLICK_PLC_WINDOW_MAPPING = {
     "TfrmEdgeContact": {  # "Edge Contact"
         "TEdit1": ["X", "Y", "C", "T", "CT", "SC"],
     },
-    "TfrmOut": {  # "Out"
-        "TEdit1": ["X", "Y", "C", "T", "CT", "SC"],
-    },
-    "TfrmSet": {  # "Set"
-        "TEdit1": ["X", "Y", "C", "T", "CT", "SC"],
-    },
-    "TfrmCoilReset": {  # "Reset"
-        "TEdit1": ["X", "Y", "C", "T", "CT", "SC"],
-    },
     "TfrmContactCompare": {  # "Compare (A with B)"
         "TEdit1": ["DS", "TD", "SD", "DD", "CTD", "DF"],
         "TEdit2": ["DS", "TD", "SD", "DD", "CTD", "DF"],
+    },
+    "TfrmOut": {  # "Out"
+        "TEdit2": ["X", "Y", "C", "T", "CT", "SC"],
+        "TEdit1": ["X", "Y", "C", "T", "CT", "SC"],
+    },
+    "TfrmSet": {  # "Set"
+        "TEdit2": ["X", "Y", "C", "T", "CT", "SC"],
+        "TEdit1": ["X", "Y", "C", "T", "CT", "SC"],
+    },
+    "TfrmCoilReset": {  # "Reset"
+        "TEdit2": ["X", "Y", "C", "T", "CT", "SC"],
+        "TEdit1": ["X", "Y", "C", "T", "CT", "SC"],
     },
     "TfrmTimer": {  # "Timer"
         "TEdit3": ["T"],  # Timer BIT address
         "TEdit2": ["DS"],  # Timer value (DS)
     },
     "TfrmCounter": {  # "Counter"
-        "allowed_addresses": {
-            "TEdit4": ["CT"],  # Counter BIT address
-            "TEdit3": ["DS", "DD"],  # Counter value (DS/DD)
-        },
+        "TEdit4": ["CT"],  # Counter BIT address
+        "TEdit3": ["DS", "DD"],  # Counter value (DS/DD)
     },
     "TfrmMath": {  # "Math"
         "TEdit1": ["DS", "TD", "SD", "DD", "CTD", "DF"],
         # "input_fields": ["TEdit1", "TTntRichEdit.UnicodeClass1"],
     },
     "TfrmShiftRegister": {  # "Shift"
-        "TEdit1": ["C"],
         "TEdit2": ["C"],
+        "TEdit1": ["C"],
     },
     "TfrmCopy": {  # "Copy instruction"
         "TEdit1": [
@@ -80,6 +80,42 @@ CLICK_PLC_WINDOW_MAPPING = {
             "TXT",
         ],
         "TEdit2": [
+            "X",
+            "Y",
+            "C",
+            "T",
+            "CT",
+            "SC",
+            "DS",
+            "TD",
+            "SD",
+            "DD",
+            "CTD",
+            "DF",
+            "DH",
+            "XD",
+            "YD",
+            "TXT",
+        ],
+        "TEdit3": [
+            "X",
+            "Y",
+            "C",
+            "T",
+            "CT",
+            "SC",
+            "DS",
+            "TD",
+            "SD",
+            "DD",
+            "CTD",
+            "DF",
+            "DH",
+            "XD",
+            "YD",
+            "TXT",
+        ],
+        "TEdit4": [
             "X",
             "Y",
             "C",
