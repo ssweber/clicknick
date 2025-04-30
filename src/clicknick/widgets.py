@@ -186,7 +186,6 @@ class NicknamePopup(tk.Toplevel):
                 self.target_edit_control,
                 address,
                 f"ahk_id {self.target_window_id}",
-                1,
             )
         except Exception as e:
             print(f"Error inserting address: {e}")

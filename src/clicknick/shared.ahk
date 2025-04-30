@@ -105,13 +105,9 @@ ControlGetText(control, win_title) {
     ControlGetText, response, % control, % win_title
     return response
 }
-ControlSetText(control, new_text, win_title, send_tab) {
+ControlSetText(control, new_text, win_title) {
     ControlSetText, % control, % new_text, % win_title
-    Send, {RIGHT}
-    if send_tab
-    {
-        Send, +{TAB}
-    }
+    Sleep, 100
 }
 Paste(sText,restore := True) {
     If (restore)
