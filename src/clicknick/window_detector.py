@@ -63,12 +63,13 @@ class ClickWindowDetector:
         try:
             # Get the active window PID
             active_window_pid = AHK.f("WinGet", "PID", "A")  # "A" means active window
-            active_window_id = AHK.f("WinGet", "ID", "A")
+
             # Check if active window is our Click.exe instance
             if active_window_pid != click_pid:
                 return None
 
             # Get window class
+            active_window_id = AHK.f("WinGet", "ID", "A")
             window_class = AHK.f("WinGetClass", f"ahk_id {active_window_id}")
 
             # Check if it's a recognized window class
