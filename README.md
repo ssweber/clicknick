@@ -16,9 +16,16 @@ Context-aware nickname autocomplete for ClickPLC instruction windows.
 
 ## How to Run
 
-(for now you'll need `uv` and `git` installed)
+### Option 1: Using uv (recommended)
 ```
-uvx --from git+https://github.com/ssweber/clicknick clicknick
+uvx clicknick
+```
+If you don't have uv installed, you can get it from: https://github.com/astral-sh/uv#installation
+
+### Option 2: Using pip
+```
+pip install clicknick
+python -m clicknick
 ```
 
 ## Usage
