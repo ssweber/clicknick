@@ -1,0 +1,10 @@
+# Changes here will be overwritten by Copier. Do not edit manually.
+_commit: v0.2.7
+_src_path: gh:jlevy/simple-modern-uv
+package_author_email: 57631333+ssweber@users.noreply.github.com
+package_author_name: Sam Weber
+package_description: Context-aware nickname autocomplete for ClickPLC instruction
+    windows.
+package_github_org: ssweber
+package_module: clicknick
+package_name: clicknick

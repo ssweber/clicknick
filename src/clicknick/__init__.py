@@ -1,2 +1,5 @@
-# Import the main function to make it available when importing the package
+__all__ = (  # noqa: F405
+    # TODO: Add all public symbols here.
+)
+
 from .main import main
