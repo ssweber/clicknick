@@ -1,6 +1,5 @@
 import json
 import re
-from typing import Dict, List, Optional, Tuple
 
 from .shared_ahk import AHK
 
@@ -8,12 +7,12 @@ from .shared_ahk import AHK
 class ClickWindowDetector:
     """Detects Click PLC windows and their focused fields."""
 
-    def __init__(self, window_mapping: Dict, clicknick):
+    def __init__(self, window_mapping: dict, clicknick):
         self.window_mapping = window_mapping
-        self.current_window: Optional[str] = None
-        self.current_field: Optional[str] = None
+        self.current_window: str | None = None
+        self.current_field: str | None = None
 
-    def update(self) -> Tuple[bool, List[str]]:
+    def update(self) -> tuple[bool, list[str]]:
         """
         Update window and field detection.
         Returns: Tuple of (is_valid_field, allowed_address_types)
@@ -21,7 +20,7 @@ class ClickWindowDetector:
         # Get the current window and field info
         return self.update_window_info(self.current_window, self.current_field)
 
-    def update_window_info(self, window_class: str, field: str) -> Tuple[bool, List[str]]:
+    def update_window_info(self, window_class: str, field: str) -> tuple[bool, list[str]]:
         """
         Update window and field detection with provided window and field.
         Returns: Tuple of (is_valid_field, allowed_address_types)
@@ -34,11 +33,15 @@ class ClickWindowDetector:
             return False, []
 
         # Return result
-        if not self.current_field or self.current_field not in self.window_mapping.get(self.current_window, {}):
+        if not self.current_field or self.current_field not in self.window_mapping.get(
+            self.current_window, {}
+        ):
             return False, []
 
         # Get allowed address types
-        allowed_addresses = self.window_mapping.get(self.current_window, {}).get(self.current_field, [])
+        allowed_addresses = self.window_mapping.get(self.current_window, {}).get(
+            self.current_field, []
+        )
         return True, allowed_addresses
 
     def field_has_text(self, field, window_id) -> bool:
@@ -50,7 +53,7 @@ class ClickWindowDetector:
             print(f"Error checking field text: {e}")
             return False
 
-    def detect_child_window(self, click_pid: str) -> Optional[Tuple[str, str, str]]:
+    def detect_child_window(self, click_pid: str) -> tuple[str, str, str] | None:
         """
         Detect if the active window is our connected Click.exe instance.
 
@@ -90,10 +93,10 @@ class ClickWindowDetector:
             print(f"Error detecting popup window: {e}")
             return None
 
-    def get_click_instances(self) -> List[Tuple[str, str, str]]:
+    def get_click_instances(self) -> list[tuple[str, str, str]]:
         """
         Get all running Click.exe instances.
-        
+
         Returns:
             List of tuples (pid, title, filename)
         """
@@ -138,10 +141,10 @@ class ClickWindowDetector:
     def check_window_exists(self, window_pid: str) -> bool:
         """
         Check if a window with the given PID still exists.
-        
+
         Args:
             window_pid: The PID of the window to check
-            
+
         Returns:
             bool: True if the window exists, False otherwise
         """

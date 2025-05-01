@@ -5,17 +5,22 @@ from rapidfuzz import fuzz
 
 class FilterBase:
     """Base class for autocomplete strategies"""
+
     def filter_matches(self, completion_list, current_text):
         """Filter completion list based on current text"""
         raise NotImplementedError()
 
+
 class NoneFilter(FilterBase):
     """Simple prefix matching strategy"""
+
     def filter_matches(self, completion_list, current_text):
         return completion_list
 
+
 class PrefixFilter(FilterBase):
     """Simple prefix matching strategy"""
+
     def filter_matches(self, completion_list, current_text):
         if not current_text:
             return completion_list
@@ -23,14 +28,17 @@ class PrefixFilter(FilterBase):
         current_text = current_text.lower()
         return [item for item in completion_list if item.lower().startswith(current_text)]
 
+
 class ContainsFilter(FilterBase):
     """Contains matching strategy"""
+
     def filter_matches(self, completion_list, current_text):
         if not current_text:
             return completion_list
 
         current_text = current_text.lower()
         return [item for item in completion_list if current_text in item.lower()]
+
 
 class FuzzyFilter(FilterBase):
     """Fuzzy matching strategy using rapidfuzz with fallback"""
@@ -73,7 +81,10 @@ class FuzzyFilter(FilterBase):
             matches = difflib.get_close_matches(current_text, candidates, n=10, cutoff=cutoff)
 
             # Add any remaining candidates that contain the search text
-            remaining = [item for item in candidates if item not in matches
-                         and current_text.lower() in item.lower()]
+            remaining = [
+                item
+                for item in candidates
+                if item not in matches and current_text.lower() in item.lower()
+            ]
 
             return matches + remaining

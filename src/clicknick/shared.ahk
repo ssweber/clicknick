@@ -17,7 +17,7 @@ Jxon_Dump(obj, indent:="", lvl:=1)
 		if indent is %integer%
 		{
 			if (indent < 0)
-				throw Exception("Indent parameter must be a postive integer.", -1, indent)
+				throw Exception("Indent parameter must be a positive integer.", -1, indent)
 			spaces := indent, indent := ""
 			Loop % spaces
 				indent .= " "

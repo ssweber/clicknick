@@ -1,6 +1,6 @@
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import ttk
-from typing import Callable, List, Optional, Tuple
 
 from .combobox_autocomplete import PrefixAutocomplete
 from .combobox_filter import ContainsFilter, FuzzyFilter, NoneFilter, PrefixFilter
@@ -51,7 +51,9 @@ class NicknamePopup(tk.Toplevel):
             focused_widget = self.focus_get()
 
             # If focus moved to one of your widgets, don't withdraw
-            if focused_widget and (focused_widget == self or focused_widget.winfo_toplevel() == self.winfo_toplevel()):
+            if focused_widget and (
+                focused_widget == self or focused_widget.winfo_toplevel() == self.winfo_toplevel()
+            ):
                 return
 
             self._debounce_retrigger = True
@@ -112,7 +114,7 @@ class NicknamePopup(tk.Toplevel):
         """Reset the focus-out debounce flag."""
         self._debounce_focusout = False
 
-    def _get_control_position(self) -> Optional[Tuple[int, int, int, int]]:
+    def _get_control_position(self) -> tuple[int, int, int, int] | None:
         """
         Get the screen position of the target input field.
 
@@ -171,13 +173,13 @@ class NicknamePopup(tk.Toplevel):
     def _on_nickname_selected(self, nickname):
         """
         Handle nickname selection.
-        
+
         If the nickname corresponds to an address, insert that address.
         If the nickname is a valid address or numeric value, pass it along directly.
         """
         # First check if it's a known nickname
         address = self.nickname_manager.get_address_for_nickname(nickname)
-        
+
         if address:
             self._insert_address_to_field(address)
         elif self.nickname_manager.is_valid_address_or_numeric(nickname):
@@ -234,7 +236,6 @@ class NicknameCombobox(ttk.Combobox):
         self.bind("<<ComboboxSelected>>", self._on_selection)
         self.bind("<KeyRelease>", self._handle_keyrelease)
 
-
     def set_selection_callback(self, callback: Callable[[str], None]) -> None:
         """Set the callback function for when a selection is made."""
         self.selection_callback = callback
@@ -245,14 +246,14 @@ class NicknameCombobox(ttk.Combobox):
             "none": NoneFilter(),
             "prefix": PrefixFilter(),
             "contains": ContainsFilter(),
-            "fuzzy": FuzzyFilter()
+            "fuzzy": FuzzyFilter(),
         }
 
     def set_search_var(self, search_var):
         """Set the variable that controls the search strategy"""
         self.search_var = search_var
 
-    def update_values(self, values: List[str]) -> None:
+    def update_values(self, values: list[str]) -> None:
         """Update the combobox values and autocomplete list."""
         self.values_list = values
         self["values"] = values
