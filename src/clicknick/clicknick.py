@@ -108,9 +108,7 @@ class ClickNickApp:
 
         # Create list box for instances
         self.instances_listbox = tk.Listbox(instances_frame, height=8)
-        self.instances_listbox.pack(
-            side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5
-        )
+        self.instances_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # Add scrollbar
         scrollbar = ttk.Scrollbar(
@@ -126,9 +124,7 @@ class ClickNickApp:
         refresh_button = ttk.Button(
             buttons_frame, text="Refresh", command=self.refresh_click_instances
         )
-        connect_button = ttk.Button(
-            buttons_frame, text="Connect", command=self.connect_to_selected
-        )
+        connect_button = ttk.Button(buttons_frame, text="Connect", command=self.connect_to_selected)
 
         # Layout buttons
         refresh_button.pack(side=tk.LEFT, padx=5, pady=5)
@@ -213,9 +209,7 @@ class ClickNickApp:
         self.status_label = ttk.Label(
             status_frame, textvariable=self.status_var, style="Status.TLabel"
         )
-        self.start_button = ttk.Button(
-            status_frame, text="Start", command=self.toggle_monitoring
-        )
+        self.start_button = ttk.Button(status_frame, text="Start", command=self.toggle_monitoring)
 
         # Layout widgets
         self.status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -309,9 +303,7 @@ class ClickNickApp:
         self._monitor_task()
 
         # Update UI
-        self._update_status(
-            f"Monitoring active for {self.connected_click_filename}", "connected"
-        )
+        self._update_status(f"Monitoring active for {self.connected_click_filename}", "connected")
         self.start_button.configure(text="Stop")
 
     def stop_monitoring(self):
@@ -380,7 +372,7 @@ class ClickNickApp:
                     self.root,
                     self.nickname_manager,
                     search_var=self.search_var,
-                    fuzzy_threshold_var=self.fuzzy_threshold_var
+                    fuzzy_threshold_var=self.fuzzy_threshold_var,
                 )
                 self.popup.set_target_window(window_id, window_class, edit_control)
             else:
@@ -402,10 +394,12 @@ class ClickNickApp:
             self.stop_monitoring()
         self.root.destroy()
 
+
 def main() -> None:
     """Entry point for the application."""
     app = ClickNickApp()
     app.root.mainloop()
+
 
 if __name__ == "__main__":
     main()  # Call the main function when run directly
