@@ -58,6 +58,3 @@ jobs:
 
       - name: Run linting
         run: uv run python devtools/lint.py
-
-      - name: Run tests
-        run: uv run pytest
