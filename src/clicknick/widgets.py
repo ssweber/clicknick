@@ -169,10 +169,19 @@ class NicknamePopup(tk.Toplevel):
             return
 
     def _on_nickname_selected(self, nickname):
-        """Handle nickname selection."""
+        """
+        Handle nickname selection.
+        
+        If the nickname corresponds to an address, insert that address.
+        If the nickname is a valid address or numeric value, pass it along directly.
+        """
+        # First check if it's a known nickname
         address = self.nickname_manager.get_address_for_nickname(nickname)
+        
         if address:
             self._insert_address_to_field(address)
+        elif self.nickname_manager.is_valid_address_or_numeric(nickname):
+            self._insert_address_to_field(nickname)
 
     def _insert_address_to_field(self, address):
         """Insert the address into the current field using AHK."""

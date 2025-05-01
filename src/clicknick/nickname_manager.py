@@ -2,6 +2,8 @@ from typing import List, Optional, Dict
 import csv
 import re
 
+from .window_mapping import DATA_TYPES
+
 
 class NicknameManager:
     """Manages nicknames loaded from CSV with efficient filtering."""
@@ -128,3 +130,24 @@ class NicknameManager:
                 return item["Address"]
                 
         return None
+    
+    def is_valid_address_or_numeric(self, input_text):
+        """
+        Check if the input is a valid address or a numeric value.
+        
+        Args:
+            input_text (str): The input to check
+            
+        Returns:
+            bool: True if the input is a valid address or numeric value, False otherwise
+        """
+        # Check if the input is a valid address with correct prefix
+        for prefix in DATA_TYPES.keys():
+            if input_text.startswith(prefix) and input_text[len(prefix):].isdigit():
+                return True
+        
+        # Check if the input is just numbers or numbers with a decimal point
+        if re.match(r'^[0-9]+(\.[0-9]+)?$', input_text):
+            return True
+        
+        return False
