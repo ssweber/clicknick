@@ -16,6 +16,19 @@ fork will make it easier to contribute) and
 The `Makefile` simply offers shortcuts to `uv` commands for developer convenience.
 (For clarity, GitHub Actions don't use the Makefile and just call `uv` directly.)
 
+### To Install Make:
+1. Open PowerShell and run:
+```powershell
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+irm get.scoop.sh | iex
+```
+2. Then install Make with Scoop:
+```powershell
+scoop install make
+```
+
+### Running Make:
+
 ```shell
 # First, install all dependencies and set up your virtual environment.
 # This simply runs `uv sync --all-extras --dev` to install all packages,
