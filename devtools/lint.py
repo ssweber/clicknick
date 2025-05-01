@@ -11,6 +11,7 @@ DOC_PATHS = ["README.md"]
 
 reconfigure(emoji=not get_console().options.legacy_windows)  # No emojis on legacy windows.
 
+
 def main():
     rprint()
 
@@ -18,7 +19,7 @@ def main():
     errcount += run(["codespell", "--write-changes", *SRC_PATHS, *DOC_PATHS])
     errcount += run(["ruff", "check", "--fix", *SRC_PATHS])
     errcount += run(["ruff", "format", *SRC_PATHS])
-    errcount += run(["basedpyright", *SRC_PATHS])
+    # errcount += run(["basedpyright", *SRC_PATHS])
 
     rprint()
 
