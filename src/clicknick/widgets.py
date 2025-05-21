@@ -101,9 +101,9 @@ class NicknamePopup(tk.Toplevel):
             self.geometry(f"+{x}+{y + height}")
             self.deiconify()
             self.update()  # Process any pending events
-            
+
             AHK.call("WinActivate", "ahk_class Shell_TrayWnd")
-            
+
             self.combobox.focus_force()
 
             return True
@@ -201,7 +201,7 @@ class NicknamePopup(tk.Toplevel):
                 address,
                 f"ahk_id {self.target_window_id}",
             )
-            AHK.call("WinActivate",f"ahk_id {self.target_window_id}")
+            AHK.call("WinActivate", f"ahk_id {self.target_window_id}")
         except Exception as e:
             print(f"Error inserting address: {e}")
 

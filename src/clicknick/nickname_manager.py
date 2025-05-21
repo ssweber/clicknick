@@ -142,7 +142,7 @@ class NicknameManager:
         """
         # Check if the input is a valid address with correct prefix
         input_text = input_text.lower()
-        
+
         for prefix in DATA_TYPES.keys():
             prefix = prefix.lower()
             if input_text.startswith(prefix) and input_text[len(prefix) :].isdigit():
