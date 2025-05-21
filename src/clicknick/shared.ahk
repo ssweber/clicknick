@@ -123,7 +123,6 @@ Paste(sText,restore := True) {
 }
 WinActivate(title) {
     WinActivate, % title
-    Sleep, 50
 }
 WinGetClass(title) {
     response =
