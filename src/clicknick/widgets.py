@@ -97,14 +97,21 @@ class NicknamePopup(tk.Toplevel):
             # Reset combobox state
             self.combobox._reset()
 
+            # deactivate the ClickPLC window
+            AHK.call("WinActivate", "ahk_class Shell_TrayWnd")
+
             # Position and show combobox
             self.geometry(f"+{x}+{y + height}")
             self.deiconify()
-            self.update()  # Process any pending events
+            self.update_idletasks()  # Process pending geometry-related events
 
-            AHK.call("WinActivate", "ahk_class Shell_TrayWnd")
+            # More robust focus handling
+            self.focus_set()  # First focus the toplevel window
+            self.update()
+            self.combobox.focus_force()  # Then force focus on the combobox
 
-            self.combobox.focus_force()
+            # Additional focus handling for reliability
+            self.after(50, self._ensure_combobox_focus)
 
             return True
 
@@ -112,6 +119,11 @@ class NicknamePopup(tk.Toplevel):
             print(f"Error positioning combobox: {e}")
             self.withdraw()
             return False
+
+    def _ensure_combobox_focus(self):
+        """Additional method to ensure combobox has focus after a slight delay"""
+        if self.winfo_viewable():  # Only if we're still visible
+            self.combobox.focus_force()
 
     def _reset_debounce(self):
         """Reset the focus-out debounce flag."""
