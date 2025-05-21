@@ -76,6 +76,11 @@ class ClickWindowDetector:
             if window_class not in self.window_mapping:
                 return None
 
+            if window_class == "#32770":
+                window_name = AHK.f("WinGetTitle", "ahk_class #32770")
+                if "Replace" not in window_name and "Find" not in window_name:
+                    return None
+
             # Get focused control
             focused_control = AHK.f("ControlGetFocus", f"ahk_id {active_window_id}")
             if not focused_control:

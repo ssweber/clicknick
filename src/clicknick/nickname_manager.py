@@ -1,5 +1,6 @@
 import csv
 import re
+import os
 
 from .window_mapping import DATA_TYPES
 
@@ -10,6 +11,8 @@ class NicknameManager:
     def __init__(self):
         self.nicknames = []  # List of dicts with 'Address' and 'Nickname' keys
         self._address_types_cache = None
+        self._loaded_filepath = None
+        self._last_load_timestamp = None
 
     @property
     def is_loaded(self) -> bool:
@@ -47,12 +50,29 @@ class NicknameManager:
             # Sort the list by Nickname
             self.nicknames.sort(key=lambda x: x["Nickname"])
 
+            # Store filepath and timestamp for future checks
+            self._loaded_filepath = filepath
+            self._last_load_timestamp = os.path.getmtime(filepath)
+
             print(f"Loaded {len(self.nicknames)} nicknames from {filepath}")
             return True
 
         except Exception as e:
             print(f"Error loading CSV: {e}")
             return False
+
+    def _check_for_file_updates(self) -> None:
+        """Check if the loaded CSV file has been modified and reload if necessary."""
+        if not self._loaded_filepath:
+            return
+
+        try:
+            current_timestamp = os.path.getmtime(self._loaded_filepath)
+            if current_timestamp != self._last_load_timestamp:
+                print(f"Detected changes in {self._loaded_filepath}, reloading...")
+                self.load_csv(self._loaded_filepath)
+        except Exception as e:
+            print(f"Error checking for file updates: {e}")
 
     def _extract_address_types(self) -> None:
         """Extract and cache address types from addresses."""
@@ -73,6 +93,7 @@ class NicknameManager:
     ) -> list[str]:
         """
         Get filtered list of nicknames for the combobox.
+        Performs a lazy check to reload data if the source file has changed.
 
         Args:
             address_types: List of allowed address types (X, Y, C, etc.)
@@ -82,6 +103,9 @@ class NicknameManager:
         Returns:
             List of matching nicknames
         """
+        # Lazy check for file updates
+        self._check_for_file_updates()
+
         if not self.is_loaded or not address_types:
             return []
 
