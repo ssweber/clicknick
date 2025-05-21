@@ -50,7 +50,7 @@ class ClickNickApp:
         """Initialize Tkinter variables."""
         self.csv_path_var = tk.StringVar()
         self.status_var = tk.StringVar(value="Not connected")
-        self.search_var = tk.StringVar(value="none")
+        self.search_var = tk.StringVar(value="contains")
         self.fuzzy_threshold_var = tk.IntVar(value=60)  # Default threshold value
         self.threshold_display_var = tk.StringVar(value="60")  # Display value
         self.click_instances = []  # Will store (id, title, filename) tuples
