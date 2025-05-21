@@ -101,6 +101,9 @@ class NicknamePopup(tk.Toplevel):
             self.geometry(f"+{x}+{y + height}")
             self.deiconify()
             self.update()  # Process any pending events
+            
+            AHK.call("WinActivate", "ahk_class Shell_TrayWnd")
+            
             self.combobox.focus_force()
 
             return True

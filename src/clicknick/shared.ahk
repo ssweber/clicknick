@@ -121,6 +121,10 @@ Paste(sText,restore := True) {
         Clipboard := ClipBackup
     }
 }
+WinActivate(title) {
+    WinActivate, % title
+    Sleep, 50
+}
 WinGetClass(title) {
     response =
     WinGetClass, response, % title
