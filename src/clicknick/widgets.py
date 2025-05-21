@@ -201,6 +201,7 @@ class NicknamePopup(tk.Toplevel):
                 address,
                 f"ahk_id {self.target_window_id}",
             )
+            AHK.call("WinActivate",f"ahk_id {self.target_window_id}")
         except Exception as e:
             print(f"Error inserting address: {e}")
 
