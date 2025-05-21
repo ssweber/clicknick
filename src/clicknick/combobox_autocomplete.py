@@ -49,8 +49,9 @@ class PrefixAutocomplete:
             if len(hits) == 1 and closest_match_str.lower() != prefix:
                 # If there is only one hit and it's not equal to the lowercase prefix,
                 # open dropdown
-                self.widget.event_generate("<Down>")
+                # self.widget.event_generate("<Down>")
                 # self.widget.event_generate("<<ComboboxSelected>>")
+                pass
 
         else:
             # If there are no hits, move the cursor to the current position
