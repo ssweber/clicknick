@@ -54,6 +54,7 @@ class ClickNickApp:
         self.fuzzy_threshold_var = tk.IntVar(value=60)  # Default threshold value
         self.threshold_display_var = tk.StringVar(value="60")  # Display value
         self.click_instances = []  # Will store (id, title, filename) tuples
+        self.using_database = False  # Flag to track if database is being used
 
     def setup_styles(self):
         """Configure ttk styles for the application."""
@@ -88,18 +89,19 @@ class ClickNickApp:
     def create_csv_section(self, parent):
         """Create the CSV file selection section."""
         csv_frame = ttk.LabelFrame(parent, text="Alternative Nickname Source")
+        self.csv_frame = csv_frame  # Save reference to frame
 
         # Create widgets
         csv_label = ttk.Label(csv_frame, text="CSV File:")
-        csv_entry = ttk.Entry(csv_frame, textvariable=self.csv_path_var, width=30)
-        csv_button = ttk.Button(csv_frame, text="Browse...", command=self.browse_csv)
-        load_csv_button = ttk.Button(csv_frame, text="Load CSV", command=self.load_csv)
+        self.csv_entry = ttk.Entry(csv_frame, textvariable=self.csv_path_var, width=30)
+        self.csv_button = ttk.Button(csv_frame, text="Browse...", command=self.browse_csv)
+        self.load_csv_button = ttk.Button(csv_frame, text="Load CSV", command=self.load_csv)
 
         # Layout widgets
         csv_label.pack(side=tk.LEFT)
-        csv_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
-        csv_button.pack(side=tk.LEFT)
-        load_csv_button.pack(side=tk.LEFT, padx=5)
+        self.csv_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        self.csv_button.pack(side=tk.LEFT)
+        self.load_csv_button.pack(side=tk.LEFT, padx=5)
 
         # Pack the frame
         csv_frame.pack(fill=tk.X, pady=5)
@@ -113,6 +115,7 @@ class ClickNickApp:
         # Try to load from CSV
         if self.nickname_manager.load_csv(self.csv_path_var.get()):
             self._update_status("Loaded nicknames from CSV", "connected")
+            self.using_database = False
             
             # Auto-start monitoring if connected and not already started
             if self.connected_click_pid and not self.monitoring:
@@ -137,12 +140,25 @@ class ClickNickApp:
         
         if success:
             self._update_status("Loaded nicknames from database", "connected")
+            self.using_database = True
+            
+            # Gray out the CSV controls since we're using the database
+            self._update_csv_controls_state()
             
             # Auto-start monitoring if not already started
             if not self.monitoring:
                 self.start_monitoring()
         else:
             self._update_status("Failed to load from database", "error")
+            self.using_database = False
+            self._update_csv_controls_state()
+
+    def _update_csv_controls_state(self):
+        """Update the state of CSV controls based on database usage."""
+        state = "disabled" if self.using_database else "normal"
+        self.csv_entry.configure(state=state)
+        self.csv_button.configure(state=state)
+        self.load_csv_button.configure(state=state)
 
     def create_click_instances_section(self, parent):
         """Create the Click.exe instances section."""
@@ -311,6 +327,10 @@ class ClickNickApp:
 
         # Update status
         self._update_status(f"Connected to {self.click_instances[idx][2]}", "connected")
+
+        # Reset database usage flag when connecting to a new instance
+        self.using_database = False
+        self._update_csv_controls_state()
 
         # Try to load nicknames from database automatically
         self.load_from_database()
