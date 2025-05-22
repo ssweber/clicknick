@@ -22,7 +22,7 @@ class ClickNickApp:
         # Create main window
         self.root = tk.Tk()
         self.root.title("ClickNick App")
-        self.root.geometry("500x400")
+        self.root.geometry("500x500")
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         # Setup variables
@@ -74,10 +74,10 @@ class ClickNickApp:
         main_frame = ttk.Frame(self.root, padding="10 10 10 10")
 
         # Create all widgets
-        self.create_csv_section(main_frame)
         self.create_click_instances_section(main_frame)
         self.create_options_section(main_frame)
         self.create_status_section(main_frame)
+        self.create_csv_section(main_frame)  # Moved to bottom as auxiliary option
 
         # Pack the main frame
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -87,20 +87,62 @@ class ClickNickApp:
 
     def create_csv_section(self, parent):
         """Create the CSV file selection section."""
-        csv_frame = ttk.Frame(parent)
+        csv_frame = ttk.LabelFrame(parent, text="Alternative Nickname Source")
 
         # Create widgets
-        csv_label = ttk.Label(csv_frame, text="Nickname CSV:")
+        csv_label = ttk.Label(csv_frame, text="CSV File:")
         csv_entry = ttk.Entry(csv_frame, textvariable=self.csv_path_var, width=30)
         csv_button = ttk.Button(csv_frame, text="Browse...", command=self.browse_csv)
+        load_csv_button = ttk.Button(csv_frame, text="Load CSV", command=self.load_csv)
 
         # Layout widgets
         csv_label.pack(side=tk.LEFT)
         csv_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
         csv_button.pack(side=tk.LEFT)
+        load_csv_button.pack(side=tk.LEFT, padx=5)
 
         # Pack the frame
         csv_frame.pack(fill=tk.X, pady=5)
+
+    def load_csv(self):
+        """Load nicknames from CSV file."""
+        if not self.csv_path_var.get():
+            self._update_status("Error: No CSV file selected", "error")
+            return
+            
+        # Try to load from CSV
+        if self.nickname_manager.load_csv(self.csv_path_var.get()):
+            self._update_status("Loaded nicknames from CSV", "connected")
+            
+            # Auto-start monitoring if connected and not already started
+            if self.connected_click_pid and not self.monitoring:
+                self.start_monitoring()
+        else:
+            self._update_status("Failed to load from CSV", "error")
+
+    def load_from_database(self):
+        """Load nicknames directly from the CLICK database."""
+        if not self.connected_click_pid:
+            self._update_status("Error: Not connected to Click instance", "error")
+            return
+            
+        # Clear the CSV path to indicate we're using the database
+        self.csv_path_var.set("")
+        
+        # Try to load from database
+        success = self.nickname_manager.load_from_database(
+            click_pid=self.connected_click_pid,
+            click_hwnd=self.detector.get_window_handle(self.connected_click_pid)
+        )
+        
+        if success:
+            self._update_status("Loaded nicknames from database", "connected")
+            
+            # Auto-start monitoring if not already started
+            if not self.monitoring:
+                self.start_monitoring()
+        else:
+            self._update_status("Failed to load from database", "error")
 
     def create_click_instances_section(self, parent):
         """Create the Click.exe instances section."""
@@ -270,9 +312,8 @@ class ClickNickApp:
         # Update status
         self._update_status(f"Connected to {self.click_instances[idx][2]}", "connected")
 
-        # Auto-start monitoring if CSV is loaded
-        if self.csv_path_var.get() and not self.monitoring:
-            self.start_monitoring()
+        # Try to load nicknames from database automatically
+        self.load_from_database()
 
     def toggle_monitoring(self):
         """Start or stop monitoring."""
@@ -283,19 +324,26 @@ class ClickNickApp:
 
     def start_monitoring(self):
         """Start monitoring for window changes."""
-        # Validate CSV file
-        csv_path = self.csv_path_var.get()
-        if not csv_path:
-            self._update_status("Error: No CSV file selected", "error")
-            return
+        # Check if we have nicknames loaded (either from CSV or database)
+        if not self.nickname_manager.is_loaded:
+            csv_path = self.csv_path_var.get()
+            if csv_path:
+                # Load from CSV
+                if not self.nickname_manager.load_csv(csv_path):
+                    self._update_status("Error: Failed to load CSV", "error")
+                    return
+            else:
+                # Try loading from database
+                if not self.nickname_manager.load_from_database(
+                    click_pid=self.connected_click_pid,
+                    click_hwnd=self.detector.get_window_handle(self.connected_click_pid)
+                ):
+                    self._update_status("Error: No nickname source available", "error")
+                    return
 
         # Validate connection to Click instance
         if not self.connected_click_pid:
             self._update_status("Error: Not connected to Click instance", "error")
-            return
-
-        if not self.nickname_manager.load_csv(csv_path):
-            self._update_status("Error: Failed to load CSV", "error")
             return
 
         # Start monitoring using after

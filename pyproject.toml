@@ -38,6 +38,7 @@ classifiers = [
 
 dependencies = [
     "ahkunwrapped>=2.2.1",
+    "pyodbc>=5.2.0",
     "rapidfuzz>=3.13.0",
 ]
 
