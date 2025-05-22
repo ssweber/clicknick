@@ -183,8 +183,9 @@ class ClickWindowDetector:
                     _, found_pid = win32process.GetWindowThreadProcessId(hwnd)
                     if found_pid == pid:
                         result.append(hwnd)
-                except:
-                    pass
+                except (win32process.error, Exception) as e:
+                    # Catch specific exceptions that might occur during window enumeration
+                    print(f"Error in callback for hwnd {hwnd}: {e}")
                 return True
 
             result = []
