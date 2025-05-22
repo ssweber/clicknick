@@ -122,10 +122,42 @@ class NicknameManager:
             if not db_path:
                 print("Could not locate CLICK database file")
                 return False
+            
+            # Find available Access drivers
+            available_drivers = [driver for driver in pyodbc.drivers() if 'Access' in driver]
+            
+            if not available_drivers:
+                print("No Microsoft Access drivers found on this system")
+                return False
+            
+            # Try different drivers in order of preference
+            access_driver = None
+            driver_errors = []
+            
+            # Preferred driver order
+            preferred_drivers = [
+                "Microsoft Access Driver (*.mdb, *.accdb)",  # First try the most common one
+                "Microsoft Access Driver (*.mdb)",           # Older driver that might be available
+                "Microsoft Access Driver",                   # Generic name that might work
+            ]
+            
+            # Try drivers in order of preference, then try any other available Access drivers
+            for driver in preferred_drivers + [d for d in available_drivers if d not in preferred_drivers]:
+                try:
+                    conn_str = f"DRIVER={{{driver}}};DBQ={db_path};"
+                    conn = pyodbc.connect(conn_str)
+                    access_driver = driver
+                    print(f"Successfully connected using driver: {driver}")
+                    break
+                except pyodbc.Error as e:
+                    driver_errors.append(f"Driver '{driver}' failed: {str(e)}")
+                    continue
+            
+            if not access_driver:
+                error_msg = "Failed to connect with any Access driver:\n" + "\n".join(driver_errors)
+                print(error_msg)
+                return False
                 
-            # Connect to the database
-            conn_str = f"DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={db_path};"
-            conn = pyodbc.connect(conn_str)
             cursor = conn.cursor()
             
             # Execute query to get all nicknames
