@@ -22,7 +22,7 @@ class ClickNickApp:
         # Create main window
         self.root = tk.Tk()
         self.root.title("ClickNick App")
-        self.root.geometry("500x400")
+        self.root.geometry("500x500")
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         # Setup variables
@@ -54,6 +54,10 @@ class ClickNickApp:
         self.fuzzy_threshold_var = tk.IntVar(value=60)  # Default threshold value
         self.threshold_display_var = tk.StringVar(value="60")  # Display value
         self.click_instances = []  # Will store (id, title, filename) tuples
+        self.using_database = False  # Flag to track if database is being used
+
+        self.exclude_sc_sd_var = tk.BooleanVar(value=False)
+        self.exclude_nicknames_var = tk.StringVar(value="")
 
     def setup_styles(self):
         """Configure ttk styles for the application."""
@@ -74,10 +78,11 @@ class ClickNickApp:
         main_frame = ttk.Frame(self.root, padding="10 10 10 10")
 
         # Create all widgets
-        self.create_csv_section(main_frame)
         self.create_click_instances_section(main_frame)
         self.create_options_section(main_frame)
+        self.create_exclude_section(main_frame)  # Add this line
         self.create_status_section(main_frame)
+        self.create_csv_section(main_frame)
 
         # Pack the main frame
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -85,22 +90,124 @@ class ClickNickApp:
         # Initial refresh of Click instances
         self.refresh_click_instances()
 
+    def create_exclude_section(self, parent):
+        """Create the exclude options section."""
+        exclude_frame = ttk.LabelFrame(parent, text="Exclude")
+
+        # SC/SD exclusion checkbox
+        sc_sd_check = ttk.Checkbutton(
+            exclude_frame, text="Exclude SC/SD Addresses", variable=self.exclude_sc_sd_var
+        )
+        sc_sd_check.pack(anchor=tk.W, padx=5, pady=2)
+
+        # Exclude nicknames containing entry
+        exclude_frame_entry = ttk.Frame(exclude_frame)
+        exclude_label = ttk.Label(exclude_frame_entry, text="Exclude nicknames containing:")
+        exclude_entry = ttk.Entry(exclude_frame_entry, textvariable=self.exclude_nicknames_var)
+
+        # Add placeholder text
+        placeholder_text = "name1, name2, name3"
+
+        # Functions to handle placeholder behavior
+        def on_entry_focus_in(event):
+            if exclude_entry.get() == placeholder_text:
+                self.exclude_nicknames_var.set("")
+                exclude_entry.config(foreground="black")
+
+        def on_entry_focus_out(event):
+            if not exclude_entry.get().strip():
+                self.exclude_nicknames_var.set(placeholder_text)
+                exclude_entry.config(foreground="gray")
+
+        # Initialize with placeholder if empty
+        if not self.exclude_nicknames_var.get():
+            self.exclude_nicknames_var.set(placeholder_text)
+            exclude_entry.config(foreground="gray")
+
+        # Bind focus events
+        exclude_entry.bind("<FocusIn>", on_entry_focus_in)
+        exclude_entry.bind("<FocusOut>", on_entry_focus_out)
+
+        exclude_label.pack(side=tk.LEFT, padx=5)
+        exclude_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        exclude_frame_entry.pack(fill=tk.X, padx=5, pady=5)
+
+        # Pack the main frame
+        exclude_frame.pack(fill=tk.X, pady=5)
+
     def create_csv_section(self, parent):
         """Create the CSV file selection section."""
-        csv_frame = ttk.Frame(parent)
+        csv_frame = ttk.LabelFrame(parent, text="Alternative Nickname Source")
+        self.csv_frame = csv_frame  # Save reference to frame
 
         # Create widgets
-        csv_label = ttk.Label(csv_frame, text="Nickname CSV:")
-        csv_entry = ttk.Entry(csv_frame, textvariable=self.csv_path_var, width=30)
-        csv_button = ttk.Button(csv_frame, text="Browse...", command=self.browse_csv)
+        csv_label = ttk.Label(csv_frame, text="CSV File:")
+        self.csv_entry = ttk.Entry(csv_frame, textvariable=self.csv_path_var, width=30)
+        self.csv_button = ttk.Button(csv_frame, text="Browse...", command=self.browse_csv)
+        self.load_csv_button = ttk.Button(csv_frame, text="Load CSV", command=self.load_csv)
 
         # Layout widgets
         csv_label.pack(side=tk.LEFT)
-        csv_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
-        csv_button.pack(side=tk.LEFT)
+        self.csv_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        self.csv_button.pack(side=tk.LEFT)
+        self.load_csv_button.pack(side=tk.LEFT, padx=5)
 
         # Pack the frame
         csv_frame.pack(fill=tk.X, pady=5)
+
+    def load_csv(self):
+        """Load nicknames from CSV file."""
+        if not self.csv_path_var.get():
+            self._update_status("Error: No CSV file selected", "error")
+            return
+
+        # Try to load from CSV
+        if self.nickname_manager.load_csv(self.csv_path_var.get()):
+            self._update_status("Loaded nicknames from CSV", "connected")
+            self.using_database = False
+
+            # Auto-start monitoring if connected and not already started
+            if self.connected_click_pid and not self.monitoring:
+                self.start_monitoring()
+        else:
+            self._update_status("Failed to load from CSV", "error")
+
+    def load_from_database(self):
+        """Load nicknames directly from the CLICK database."""
+        if not self.connected_click_pid:
+            self._update_status("Error: Not connected to Click instance", "error")
+            return
+
+        # Clear the CSV path to indicate we're using the database
+        self.csv_path_var.set("")
+
+        # Try to load from database
+        success = self.nickname_manager.load_from_database(
+            click_pid=self.connected_click_pid,
+            click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
+        )
+
+        if success:
+            self._update_status("Loaded nicknames from database", "connected")
+            self.using_database = True
+
+            # Gray out the CSV controls since we're using the database
+            self._update_csv_controls_state()
+
+            # Auto-start monitoring if not already started
+            if not self.monitoring:
+                self.start_monitoring()
+        else:
+            self._update_status("Failed to load from database", "error")
+            self.using_database = False
+            self._update_csv_controls_state()
+
+    def _update_csv_controls_state(self):
+        """Update the state of CSV controls based on database usage."""
+        state = "disabled" if self.using_database else "normal"
+        self.csv_entry.configure(state=state)
+        self.csv_button.configure(state=state)
+        self.load_csv_button.configure(state=state)
 
     def create_click_instances_section(self, parent):
         """Create the Click.exe instances section."""
@@ -270,9 +377,12 @@ class ClickNickApp:
         # Update status
         self._update_status(f"Connected to {self.click_instances[idx][2]}", "connected")
 
-        # Auto-start monitoring if CSV is loaded
-        if self.csv_path_var.get() and not self.monitoring:
-            self.start_monitoring()
+        # Reset database usage flag when connecting to a new instance
+        self.using_database = False
+        self._update_csv_controls_state()
+
+        # Try to load nicknames from database automatically
+        self.load_from_database()
 
     def toggle_monitoring(self):
         """Start or stop monitoring."""
@@ -283,19 +393,26 @@ class ClickNickApp:
 
     def start_monitoring(self):
         """Start monitoring for window changes."""
-        # Validate CSV file
-        csv_path = self.csv_path_var.get()
-        if not csv_path:
-            self._update_status("Error: No CSV file selected", "error")
-            return
+        # Check if we have nicknames loaded (either from CSV or database)
+        if not self.nickname_manager.is_loaded:
+            csv_path = self.csv_path_var.get()
+            if csv_path:
+                # Load from CSV
+                if not self.nickname_manager.load_csv(csv_path):
+                    self._update_status("Error: Failed to load CSV", "error")
+                    return
+            else:
+                # Try loading from database
+                if not self.nickname_manager.load_from_database(
+                    click_pid=self.connected_click_pid,
+                    click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
+                ):
+                    self._update_status("Error: No nickname source available", "error")
+                    return
 
         # Validate connection to Click instance
         if not self.connected_click_pid:
             self._update_status("Error: Not connected to Click instance", "error")
-            return
-
-        if not self.nickname_manager.load_csv(csv_path):
-            self._update_status("Error: Failed to load CSV", "error")
             return
 
         # Start monitoring using after
@@ -373,6 +490,8 @@ class ClickNickApp:
                     self.nickname_manager,
                     search_var=self.search_var,
                     fuzzy_threshold_var=self.fuzzy_threshold_var,
+                    exclude_sc_sd_var=self.exclude_sc_sd_var,
+                    exclude_nicknames_var=self.exclude_nicknames_var,
                 )
                 self.popup.set_target_window(window_id, window_class, edit_control)
             else:
