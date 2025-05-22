@@ -79,9 +79,9 @@ AutoExec() {
     SetDefaultMouseSpeed, 0
     
     ; Delays
-    SetControlDelay, 150
+    SetControlDelay, 0
     SetMouseDelay, 100
-    SetWinDelay, 200
+    SetWinDelay, 0
 }
 
 !`:: ; Alt + `

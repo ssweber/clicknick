@@ -12,7 +12,7 @@ class NicknamePopup(tk.Toplevel):
 
     def __init__(self, root, nickname_mananger, search_var=None, fuzzy_threshold_var=None):
         super().__init__(root)
-        self.title("ClickNick Popup")
+        self.title("ClickNickPopup")
         self.overrideredirect(True)  # No window decorations
         self.attributes("-topmost", True)  # Stay on top
         self.withdraw()  # Hide initially
@@ -44,6 +44,10 @@ class NicknamePopup(tk.Toplevel):
         self.bind("<FocusOut>", self._on_focus_out)
         self.combobox.bind("<FocusOut>", self._on_focus_out)
 
+        # Initialize after IDs
+        self.focus_out_after_id = None
+        self.debounce_after_id = None
+
     def _on_focus_out(self, event):
         """Handle focus-out event to withdraw the popup."""
         try:
@@ -56,11 +60,15 @@ class NicknamePopup(tk.Toplevel):
             ):
                 return
 
-            self._debounce_retrigger = True
             # Small delay to allow for potential click actions to complete
+            self._debounce_retrigger = True
 
-            self.after(100, self.withdraw)
-            self.after(1000, lambda: setattr(self, "_debounce_retrigger", False))
+            # Set new after calls and store their IDs
+            self.focus_out_after_id = self.after(100, self.withdraw)
+            self.debounce_after_id = self.after(
+                1000, lambda: setattr(self, "_debounce_retrigger", False)
+            )
+
         except KeyError:
             # This catches the 'popdown' KeyError that occurs when the combobox dropdown is involved
             pass
@@ -97,21 +105,18 @@ class NicknamePopup(tk.Toplevel):
             # Reset combobox state
             self.combobox._reset()
 
-            # deactivate the ClickPLC window
-            AHK.call("WinActivate", "ahk_class Shell_TrayWnd")
-
             # Position and show combobox
             self.geometry(f"+{x}+{y + height}")
-            self.deiconify()
             self.update_idletasks()  # Process pending geometry-related events
 
             # More robust focus handling
-            self.focus_set()  # First focus the toplevel window
-            self.update()
-            self.combobox.focus_force()  # Then force focus on the combobox
+            # deactivate the ClickPLC window
+            AHK.call("WinActivate", "ahk_class Shell_TrayWnd")
 
-            # Additional focus handling for reliability
-            self.after(50, self._ensure_combobox_focus)
+            self.deiconify()
+            AHK.call("WinActivate", "ClickNickPopup")
+            self.update()
+            self.combobox.focus_set()  # Then force focus on the combobox
 
             return True
 
@@ -119,15 +124,6 @@ class NicknamePopup(tk.Toplevel):
             print(f"Error positioning combobox: {e}")
             self.withdraw()
             return False
-
-    def _ensure_combobox_focus(self):
-        """Additional method to ensure combobox has focus after a slight delay"""
-        if self.winfo_viewable():  # Only if we're still visible
-            self.combobox.focus_force()
-
-    def _reset_debounce(self):
-        """Reset the focus-out debounce flag."""
-        self._debounce_focusout = False
 
     def _get_control_position(self) -> tuple[int, int, int, int] | None:
         """
@@ -216,6 +212,20 @@ class NicknamePopup(tk.Toplevel):
             AHK.call("WinActivate", f"ahk_id {self.target_window_id}")
         except Exception as e:
             print(f"Error inserting address: {e}")
+
+    def withdraw(self):
+        """Override withdraw to cancel any pending after calls"""
+        # Cancel any pending after calls, safely checking if attributes exist
+        if hasattr(self, "focus_out_after_id") and self.focus_out_after_id:
+            self.after_cancel(self.focus_out_after_id)
+            self.focus_out_after_id = None
+
+        if hasattr(self, "debounce_after_id") and self.debounce_after_id:
+            self.after_cancel(self.debounce_after_id)
+            self.debounce_after_id = None
+
+        # Call the parent class's withdraw method
+        super().withdraw()
 
 
 class NicknameCombobox(ttk.Combobox):
