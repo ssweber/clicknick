@@ -83,9 +83,14 @@ AutoExec() {
     SetMouseDelay, 100
     SetWinDelay, 0
 }
-
-!`:: ; Alt + `
-    Process, Close, {{PYTHON_PID}}
+    
++`:: ; CTRL ALT S
+    IfWinActive, CLICK Programming Software
+    {
+        Send, !f
+        Send, e
+        Send, n
+    }
     return
 
 ControlGetFocus(win_title) {
