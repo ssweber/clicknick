@@ -77,7 +77,7 @@ class NicknameManager:
             current_timestamp = os.path.getmtime(self._loaded_filepath)
             if current_timestamp != self._last_load_timestamp:
                 print(f"Detected changes in {self._loaded_filepath}, reloading...")
-                
+
                 # If we loaded from database, reload using the stored PID and handle
                 if self._click_pid and self._click_hwnd:
                     self.load_from_database(self._click_pid, self._click_hwnd)
@@ -100,15 +100,15 @@ class NicknameManager:
             match = pattern.match(item["Address"])
             address_type = match.group(1) if match else ""
             self._address_types_cache.append(address_type)
-            
+
     def load_from_database(self, click_pid=None, click_hwnd=None):
         """
         Load nicknames directly from the CLICK Programming Software's Access database.
-        
+
         Args:
             click_pid: Process ID of the CLICK software
             click_hwnd: Window handle of the CLICK software
-            
+
         Returns:
             bool: True if loading was successful
         """
@@ -116,33 +116,35 @@ class NicknameManager:
             # Save the Click PID and window handle for future reloads
             self._click_pid = click_pid
             self._click_hwnd = click_hwnd
-            
+
             # Find the database path
             db_path = self._find_click_database(click_pid, click_hwnd)
             if not db_path:
                 print("Could not locate CLICK database file")
                 return False
-            
+
             # Find available Access drivers
-            available_drivers = [driver for driver in pyodbc.drivers() if 'Access' in driver]
-            
+            available_drivers = [driver for driver in pyodbc.drivers() if "Access" in driver]
+
             if not available_drivers:
                 print("No Microsoft Access drivers found on this system")
                 return False
-            
+
             # Try different drivers in order of preference
             access_driver = None
             driver_errors = []
-            
+
             # Preferred driver order
             preferred_drivers = [
                 "Microsoft Access Driver (*.mdb, *.accdb)",  # First try the most common one
-                "Microsoft Access Driver (*.mdb)",           # Older driver that might be available
-                "Microsoft Access Driver",                   # Generic name that might work
+                "Microsoft Access Driver (*.mdb)",  # Older driver that might be available
+                "Microsoft Access Driver",  # Generic name that might work
             ]
-            
+
             # Try drivers in order of preference, then try any other available Access drivers
-            for driver in preferred_drivers + [d for d in available_drivers if d not in preferred_drivers]:
+            for driver in preferred_drivers + [
+                d for d in available_drivers if d not in preferred_drivers
+            ]:
                 try:
                     conn_str = f"DRIVER={{{driver}}};DBQ={db_path};"
                     conn = pyodbc.connect(conn_str)
@@ -152,14 +154,14 @@ class NicknameManager:
                 except pyodbc.Error as e:
                     driver_errors.append(f"Driver '{driver}' failed: {str(e)}")
                     continue
-            
+
             if not access_driver:
                 error_msg = "Failed to connect with any Access driver:\n" + "\n".join(driver_errors)
                 print(error_msg)
                 return False
-                
+
             cursor = conn.cursor()
-            
+
             # Execute query to get all nicknames
             query = """
                 SELECT Nickname, MemoryType & Address AS AddressInfo, MemoryType 
@@ -168,43 +170,41 @@ class NicknameManager:
                 ORDER BY MemoryType, Address;
             """
             cursor.execute(query)
-            
+
             # Process results
             self.nicknames = []
             for row in cursor.fetchall():
                 nickname, address, memory_type = row
-                self.nicknames.append({
-                    'Nickname': nickname,
-                    'Address': address,
-                    'MemoryType': memory_type
-                })
-                
+                self.nicknames.append(
+                    {"Nickname": nickname, "Address": address, "MemoryType": memory_type}
+                )
+
             # Close connection
             cursor.close()
             conn.close()
-            
+
             # Store filepath and timestamp for future checks
             self._loaded_filepath = db_path
             self._last_load_timestamp = os.path.getmtime(db_path)
-            
+
             # Reset address type cache
             self._address_types_cache = None
-            
+
             print(f"Loaded {len(self.nicknames)} nicknames from database at {db_path}")
             return True
-            
+
         except Exception as e:
             print(f"Error loading from database: {e}")
             return False
-    
+
     def _find_click_database(self, click_pid=None, click_hwnd=None):
         """
         Find the CLICK Programming Software's Access database file.
-        
+
         Args:
             click_pid: Process ID of the CLICK software
             click_hwnd: Window handle of the CLICK software
-            
+
         Returns:
             str: Path to the database file or None if not found
         """
@@ -213,32 +213,36 @@ class NicknameManager:
             # similar to what the AutoHotkey script does
             if click_hwnd:
                 # Convert window handle to uppercase hex string without '0x' prefix
-                hwnd_hex = format(click_hwnd, '08X')[-7:]
-                
+                hwnd_hex = format(click_hwnd, "08X")[-7:]
+
                 # Build the expected database path
-                username = os.environ.get('USERNAME')
+                username = os.environ.get("USERNAME")
                 db_path = Path(f"C:/Users/{username}/AppData/Local/Temp/CLICK ({hwnd_hex})/SC_.mdb")
-                
+
                 if db_path.exists():
                     return str(db_path)
-            
+
             # Fallback: search the temp directory for CLICK folders
-            temp_dir = Path(os.environ.get('TEMP', ''))
+            temp_dir = Path(os.environ.get("TEMP", ""))
             if temp_dir.exists():
                 for folder in temp_dir.glob("CLICK (*)/"):
                     mdb_path = folder / "SC_.mdb"
                     if mdb_path.exists():
                         return str(mdb_path)
-            
+
             return None
-            
+
         except Exception as e:
             print(f"Error finding database: {e}")
             return None
 
     def get_nicknames_for_combobox(
-        self, address_types: list[str], prefix: str = "", contains: bool = False,
-        exclude_sc_sd: bool = False, exclude_terms: str = ""
+        self,
+        address_types: list[str],
+        prefix: str = "",
+        contains: bool = False,
+        exclude_sc_sd: bool = False,
+        exclude_terms: str = "",
     ) -> list[str]:
         """
         Get filtered list of nicknames for the combobox.
@@ -265,7 +269,7 @@ class NicknameManager:
 
         # Parse excluded terms
         excluded_terms = [term.strip().lower() for term in exclude_terms.split(",") if term.strip()]
-        
+
         result = []
         prefix = prefix.lower()
 
@@ -274,7 +278,7 @@ class NicknameManager:
             # Check if address type matches
             if self._address_types_cache[i] not in address_types:
                 continue
-                
+
             # Skip SC/SD addresses if requested
             address = item["Address"]
             if exclude_sc_sd and (address.startswith("SC") or address.startswith("SD")):
@@ -282,7 +286,7 @@ class NicknameManager:
 
             nickname = item["Nickname"]
             nickname_lower = nickname.lower()
-            
+
             # Skip if it contains any excluded terms
             if any(excluded_term in nickname_lower for excluded_term in excluded_terms):
                 continue

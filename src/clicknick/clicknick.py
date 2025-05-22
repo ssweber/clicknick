@@ -89,27 +89,25 @@ class ClickNickApp:
 
         # Initial refresh of Click instances
         self.refresh_click_instances()
-        
+
     def create_exclude_section(self, parent):
         """Create the exclude options section."""
         exclude_frame = ttk.LabelFrame(parent, text="Exclude")
-        
+
         # SC/SD exclusion checkbox
         sc_sd_check = ttk.Checkbutton(
-            exclude_frame, 
-            text="Exclude SC/SD Addresses",
-            variable=self.exclude_sc_sd_var
+            exclude_frame, text="Exclude SC/SD Addresses", variable=self.exclude_sc_sd_var
         )
         sc_sd_check.pack(anchor=tk.W, padx=5, pady=2)
-        
+
         # Exclude nicknames containing entry
         exclude_frame_entry = ttk.Frame(exclude_frame)
         exclude_label = ttk.Label(exclude_frame_entry, text="Exclude nicknames containing:")
         exclude_entry = ttk.Entry(exclude_frame_entry, textvariable=self.exclude_nicknames_var)
-        
+
         # Add placeholder text
         placeholder_text = "name1, name2, name3"
-        
+
         # Functions to handle placeholder behavior
         def on_entry_focus_in(event):
             if exclude_entry.get() == placeholder_text:
@@ -120,20 +118,20 @@ class ClickNickApp:
             if not exclude_entry.get().strip():
                 self.exclude_nicknames_var.set(placeholder_text)
                 exclude_entry.config(foreground="gray")
-        
+
         # Initialize with placeholder if empty
         if not self.exclude_nicknames_var.get():
             self.exclude_nicknames_var.set(placeholder_text)
             exclude_entry.config(foreground="gray")
-        
+
         # Bind focus events
         exclude_entry.bind("<FocusIn>", on_entry_focus_in)
         exclude_entry.bind("<FocusOut>", on_entry_focus_out)
-        
+
         exclude_label.pack(side=tk.LEFT, padx=5)
         exclude_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         exclude_frame_entry.pack(fill=tk.X, padx=5, pady=5)
-        
+
         # Pack the main frame
         exclude_frame.pack(fill=tk.X, pady=5)
 
@@ -162,12 +160,12 @@ class ClickNickApp:
         if not self.csv_path_var.get():
             self._update_status("Error: No CSV file selected", "error")
             return
-            
+
         # Try to load from CSV
         if self.nickname_manager.load_csv(self.csv_path_var.get()):
             self._update_status("Loaded nicknames from CSV", "connected")
             self.using_database = False
-            
+
             # Auto-start monitoring if connected and not already started
             if self.connected_click_pid and not self.monitoring:
                 self.start_monitoring()
@@ -179,23 +177,23 @@ class ClickNickApp:
         if not self.connected_click_pid:
             self._update_status("Error: Not connected to Click instance", "error")
             return
-            
+
         # Clear the CSV path to indicate we're using the database
         self.csv_path_var.set("")
-        
+
         # Try to load from database
         success = self.nickname_manager.load_from_database(
             click_pid=self.connected_click_pid,
-            click_hwnd=self.detector.get_window_handle(self.connected_click_pid)
+            click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
         )
-        
+
         if success:
             self._update_status("Loaded nicknames from database", "connected")
             self.using_database = True
-            
+
             # Gray out the CSV controls since we're using the database
             self._update_csv_controls_state()
-            
+
             # Auto-start monitoring if not already started
             if not self.monitoring:
                 self.start_monitoring()
@@ -407,7 +405,7 @@ class ClickNickApp:
                 # Try loading from database
                 if not self.nickname_manager.load_from_database(
                     click_pid=self.connected_click_pid,
-                    click_hwnd=self.detector.get_window_handle(self.connected_click_pid)
+                    click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
                 ):
                     self._update_status("Error: No nickname source available", "error")
                     return
@@ -493,7 +491,7 @@ class ClickNickApp:
                     search_var=self.search_var,
                     fuzzy_threshold_var=self.fuzzy_threshold_var,
                     exclude_sc_sd_var=self.exclude_sc_sd_var,
-                    exclude_nicknames_var=self.exclude_nicknames_var
+                    exclude_nicknames_var=self.exclude_nicknames_var,
                 )
                 self.popup.set_target_window(window_id, window_class, edit_control)
             else:

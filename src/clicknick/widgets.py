@@ -10,8 +10,15 @@ from .shared_ahk import AHK
 class NicknamePopup(tk.Toplevel):
     """Popup window for nickname selection."""
 
-    def __init__(self, root, nickname_mananger, search_var=None, fuzzy_threshold_var=None, 
-                 exclude_sc_sd_var=None, exclude_nicknames_var=None):
+    def __init__(
+        self,
+        root,
+        nickname_mananger,
+        search_var=None,
+        fuzzy_threshold_var=None,
+        exclude_sc_sd_var=None,
+        exclude_nicknames_var=None,
+    ):
         super().__init__(root)
         self.title("ClickNickPopup")
         self.overrideredirect(True)  # No window decorations
@@ -189,17 +196,15 @@ class NicknamePopup(tk.Toplevel):
         # Update the combobox values with filtered nicknames
         exclude_sc_sd = False
         exclude_terms = ""
-        
+
         if self.exclude_sc_sd_var:
             exclude_sc_sd = self.exclude_sc_sd_var.get()
-        
+
         if self.exclude_nicknames_var:
             exclude_terms = self.exclude_nicknames_var.get()
-        
+
         nicknames = self.nickname_manager.get_nicknames_for_combobox(
-            allowed_types,
-            exclude_sc_sd=exclude_sc_sd,
-            exclude_terms=exclude_terms
+            allowed_types, exclude_sc_sd=exclude_sc_sd, exclude_terms=exclude_terms
         )
         self.combobox.update_values(nicknames)
 

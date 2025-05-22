@@ -163,21 +163,21 @@ class ClickWindowDetector:
         except Exception as e:
             print(f"Error checking window existence: {e}")
             return False
-        
+
     def get_window_handle(self, pid):
         """
         Get the window handle for a process ID.
-        
+
         Args:
             pid: Process ID
-            
+
         Returns:
             Window handle (hwnd) or None if not found
         """
         try:
             import win32gui
             import win32process
-            
+
             def callback(hwnd, result):
                 try:
                     _, found_pid = win32process.GetWindowThreadProcessId(hwnd)
@@ -186,10 +186,10 @@ class ClickWindowDetector:
                 except:
                     pass
                 return True
-                
+
             result = []
             win32gui.EnumWindows(callback, result)
-            
+
             return result[0] if result else None
         except Exception as e:
             print(f"Error getting window handle: {e}")
