@@ -18,7 +18,10 @@ class NicknamePopup(tk.Toplevel):
         self.withdraw()  # Hide initially
 
         # Create the combobox
-        self.combobox = NicknameCombobox(self, width=30)
+        # Configure style for wider dropdown
+        style = ttk.Style()
+        style.configure("Wider.TCombobox", postoffset=(0, 0, 150, 0))  # last value extends width
+        self.combobox = NicknameCombobox(self, width=30, style="Wider.TCombobox")
         self.combobox.pack(padx=2, pady=2)
         self.combobox.set_selection_callback(self._on_nickname_selected)
 
@@ -87,7 +90,7 @@ class NicknamePopup(tk.Toplevel):
 
     def position_near_edit_control(self) -> bool:
         """
-        Position the combobox near the currently focused edit control.
+        Position the combobox directly over the currently focused edit control.
 
         Returns:
             bool: True if positioning was successful
@@ -105,8 +108,13 @@ class NicknamePopup(tk.Toplevel):
             # Reset combobox state
             self.combobox._reset()
 
-            # Position and show combobox
-            self.geometry(f"+{x}+{y + height}")
+            # Configure combobox width to match the control width
+            # Convert pixel width to character width (approximate conversion)
+            char_width = width // 7  # Approximate character width in pixels
+            self.combobox.configure(width=char_width)
+
+            # Position window exactly over the control
+            self.geometry(f"{width}x{self.combobox.winfo_reqheight()}+{x}+{y}")
             self.update_idletasks()  # Process pending geometry-related events
 
             # More robust focus handling
