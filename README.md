@@ -1,18 +1,21 @@
-# ![ClickNick Logo](assets/clicknick_logo.png)
+![clicknick_logo](https://github.com/user-attachments/assets/2cb7f411-3174-478c-a6c9-409aaa788376)
 
 # clicknick
 
 Context-aware nickname autocomplete for ClickPLC instruction windows.
 
-![assets/clicknick_logo.png](https://github.com/user-attachments/assets/5a90fa58-6b2b-417d-9da9-74dac4c25095)
+![CLICK_BJVV78ZqMR](https://github.com/user-attachments/assets/b17e364b-1cbe-4a15-ade5-d12fe652789e)
+
 
 ## Features
 
 - **Smart Autocomplete**: Shows only relevant nicknames based on instruction type
 - **Multiple Filter Modes**: Prefix, Contains, and Fuzzy matching
+- **Exclude**: SC/SD addresses or your own
 - **Non-Intrusive**: Works alongside Click PLC without modifications
 
-![ClickNick App](https://github.com/user-attachments/assets/29d8b222-8f22-44fb-bda9-311aaba8c60c)
+![image](https://github.com/user-attachments/assets/d917cc7a-7ed2-4e99-a407-a730c1f4b8b0)
+
 
 ## How to Run
 
@@ -55,7 +58,6 @@ python -m clicknick
 
 ## Roadmap
 
-- Get feedback and publish to PyPI
 - Add support for inserting Nickname/Address into Math equation
 
 * * *
