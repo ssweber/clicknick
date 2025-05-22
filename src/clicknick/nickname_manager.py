@@ -237,7 +237,8 @@ class NicknameManager:
             return None
 
     def get_nicknames_for_combobox(
-        self, address_types: list[str], prefix: str = "", contains: bool = False
+        self, address_types: list[str], prefix: str = "", contains: bool = False,
+        exclude_sc_sd: bool = False, exclude_terms: str = ""
     ) -> list[str]:
         """
         Get filtered list of nicknames for the combobox.
@@ -247,6 +248,8 @@ class NicknameManager:
             address_types: List of allowed address types (X, Y, C, etc.)
             prefix: Optional text to filter nicknames
             contains: If True, match text anywhere in nickname; if False, match prefix only
+            exclude_sc_sd: If True, exclude SC and SD addresses
+            exclude_terms: Comma-separated list of terms to exclude
 
         Returns:
             List of matching nicknames
@@ -260,6 +263,9 @@ class NicknameManager:
         # Extract address types if not already cached
         self._extract_address_types()
 
+        # Parse excluded terms
+        excluded_terms = [term.strip().lower() for term in exclude_terms.split(",") if term.strip()]
+        
         result = []
         prefix = prefix.lower()
 
@@ -268,9 +274,18 @@ class NicknameManager:
             # Check if address type matches
             if self._address_types_cache[i] not in address_types:
                 continue
+                
+            # Skip SC/SD addresses if requested
+            address = item["Address"]
+            if exclude_sc_sd and (address.startswith("SC") or address.startswith("SD")):
+                continue
 
             nickname = item["Nickname"]
             nickname_lower = nickname.lower()
+            
+            # Skip if it contains any excluded terms
+            if any(excluded_term in nickname_lower for excluded_term in excluded_terms):
+                continue
 
             # Apply text filter
             if not prefix:
