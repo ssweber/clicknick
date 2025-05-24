@@ -112,7 +112,9 @@ ControlGetText(control, win_title) {
 }
 ControlSetText(control, new_text, win_title) {
     ControlSetText, % control, % new_text, % win_title
-    Sleep, 100
+}
+ControlEnd(control, win_title) {
+    ControlSend, % control, ^{End}, % win_title
 }
 Paste(sText,restore := True) {
     If (restore)

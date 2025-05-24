@@ -1,11 +1,9 @@
 import csv
-import re
 import os
+import re
 from pathlib import Path
 
 import pyodbc
-
-from .window_mapping import DATA_TYPES
 
 
 class NicknameManager:
@@ -320,27 +318,3 @@ class NicknameManager:
                 return item["Address"]
 
         return None
-
-    def is_valid_address_or_numeric(self, input_text):
-        """
-        Check if the input is a valid address or a numeric value.
-
-        Args:
-            input_text (str): The input to check
-
-        Returns:
-            bool: True if the input is a valid address or numeric value, False otherwise
-        """
-        # Check if the input is a valid address with correct prefix
-        input_text = input_text.lower()
-
-        for prefix in DATA_TYPES.keys():
-            prefix = prefix.lower()
-            if input_text.startswith(prefix) and input_text[len(prefix) :].isdigit():
-                return True
-
-        # Check if the input is just numbers or numbers with a decimal point
-        if re.match(r"^[0-9]+(\.[0-9]+)?$", input_text):
-            return True
-
-        return False
