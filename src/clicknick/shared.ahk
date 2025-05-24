@@ -113,6 +113,9 @@ ControlGetText(control, win_title) {
 ControlSetText(control, new_text, win_title) {
     ControlSetText, % control, % new_text, % win_title
 }
+ControlEnd(control, win_title) {
+    ControlSend, % control, ^{End}, % win_title
+}
 Paste(sText,restore := True) {
     If (restore)
         ClipBackup:= ClipboardAll
