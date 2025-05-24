@@ -3,7 +3,7 @@ from ctypes import windll
 from tkinter import filedialog, ttk
 
 from .nickname_manager import NicknameManager
-from .widgets import NicknamePopup
+from .widgets import ComboboxOverlay
 from .window_detector import ClickWindowDetector
 from .window_mapping import CLICK_PLC_WINDOW_MAPPING
 
@@ -34,8 +34,8 @@ class ClickNickApp:
         # Create UI components
         self.create_widgets()
 
-        # Combobox popup (initialized when needed)
-        self.popup = None
+        # Combobox overlay (initialized when needed)
+        self.overlay = None
 
         # Monitoring state
         self.monitoring = False
@@ -433,9 +433,9 @@ class ClickNickApp:
             self.monitor_task_id = None
 
         # Destroy popup if it exists
-        if self.popup:
-            self.popup.withdraw()
-            self.popup = None
+        if self.overlay:
+            self.overlay.withdraw()
+            self.overlay = None
 
         self._update_status("Monitoring stopped", "status")
         self.start_button.configure(text="Start")
@@ -462,7 +462,7 @@ class ClickNickApp:
             return
 
         # Skip detection if popup is visible and being managed
-        if self.popup and self.popup.is_active():
+        if self.overlay and self.overlay.is_active():
             self.monitor_task_id = self.root.after(100, self._monitor_task)
             return
 
@@ -474,8 +474,8 @@ class ClickNickApp:
                 self._handle_popup_window(window_id, window_class, edit_control)
         else:
             # Hide popup if no valid popup window is detected
-            if self.popup:
-                self.popup.withdraw()
+            if self.overlay:
+                self.overlay.withdraw()
 
         # Schedule next check
         self.monitor_task_id = self.root.after(100, self._monitor_task)
@@ -484,8 +484,8 @@ class ClickNickApp:
         """Handle the detected popup window by showing or updating the nickname popup."""
         try:
             # Create popup if it doesn't exist
-            if not self.popup:
-                self.popup = NicknamePopup(
+            if not self.overlay:
+                self.overlay = ComboboxOverlay(
                     self.root,
                     self.nickname_manager,
                     search_var=self.search_var,
@@ -493,16 +493,16 @@ class ClickNickApp:
                     exclude_sc_sd_var=self.exclude_sc_sd_var,
                     exclude_nicknames_var=self.exclude_nicknames_var,
                 )
-                self.popup.set_target_window(window_id, window_class, edit_control)
+                self.overlay.set_target_window(window_id, window_class, edit_control)
             else:
                 # Update target window info
-                self.popup.set_target_window(window_id, window_class, edit_control)
+                self.overlay.set_target_window(window_id, window_class, edit_control)
 
             # Get allowed types for this window/control
             _, allowed_addresses = self.detector.update_window_info(window_class, edit_control)
 
             # Show the popup with filtered nicknames
-            self.popup.show_combobox(allowed_addresses)
+            self.overlay.show_combobox(allowed_addresses)
 
         except Exception as e:
             print(f"Error showing popup: {e}")
