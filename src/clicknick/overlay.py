@@ -1,8 +1,7 @@
 import tkinter as tk
-from collections.abc import Callable
 from tkinter import ttk
 
-from .components.nickname_combobox import NicknameCombobox
+from .nickname_combobox import NicknameCombobox
 from .shared_ahk import AHK
 
 

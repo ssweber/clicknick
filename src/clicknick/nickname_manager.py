@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pyodbc
 
-from .components.filters import ContainsFilter, FuzzyFilter, NoneFilter, PrefixFilter
+from .filters import ContainsFilter, FuzzyFilter, NoneFilter, PrefixFilter
 
 
 class NicknameManager:
