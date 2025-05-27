@@ -3,7 +3,7 @@ from ctypes import windll
 from tkinter import filedialog, ttk
 
 from .nickname_manager import NicknameManager
-from .widgets import ComboboxOverlay
+from .overlay import Overlay
 from .window_detector import ClickWindowDetector
 from .window_mapping import CLICK_PLC_WINDOW_MAPPING
 
@@ -155,6 +155,16 @@ class ClickNickApp:
         # Pack the frame
         csv_frame.pack(fill=tk.X, pady=5)
 
+    def _update_status(self, message, style="normal"):
+        """Update status message with appropriate style."""
+        self.status_var.set(message)
+        if style == "error":
+            self.status_label.configure(style="Error.TLabel")
+        elif style == "connected":
+            self.status_label.configure(style="Connected.TLabel")
+        else:
+            self.status_label.configure(style="Status.TLabel")
+
     def load_csv(self):
         """Load nicknames from CSV file."""
         if not self.csv_path_var.get():
@@ -171,6 +181,13 @@ class ClickNickApp:
                 self.start_monitoring()
         else:
             self._update_status("Failed to load from CSV", "error")
+
+    def _update_csv_controls_state(self):
+        """Update the state of CSV controls based on database usage."""
+        state = "disabled" if self.using_database else "normal"
+        self.csv_entry.configure(state=state)
+        self.csv_button.configure(state=state)
+        self.load_csv_button.configure(state=state)
 
     def load_from_database(self):
         """Load nicknames directly from the CLICK database."""
@@ -201,13 +218,6 @@ class ClickNickApp:
             self._update_status("Failed to load from database", "error")
             self.using_database = False
             self._update_csv_controls_state()
-
-    def _update_csv_controls_state(self):
-        """Update the state of CSV controls based on database usage."""
-        state = "disabled" if self.using_database else "normal"
-        self.csv_entry.configure(state=state)
-        self.csv_button.configure(state=state)
-        self.load_csv_button.configure(state=state)
 
     def create_click_instances_section(self, parent):
         """Create the Click.exe instances section."""
@@ -242,6 +252,18 @@ class ClickNickApp:
 
         # Pack the main frame
         instances_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+
+    def _update_threshold_display(self, value):
+        """Update the displayed threshold value to an integer."""
+        # Convert to integer (this will round down)
+        int_value = int(float(value))
+
+        # Make sure it's a multiple of 5
+        int_value = round(int_value / 5) * 5
+
+        # Update both the display and the actual variable
+        self.threshold_display_var.set(str(int_value))
+        self.fuzzy_threshold_var.set(int_value)
 
     def create_options_section(self, parent):
         """Create the options section."""
@@ -295,18 +317,6 @@ class ClickNickApp:
 
         # Pack the main frame
         options_frame.pack(fill=tk.X, pady=5)
-
-    def _update_threshold_display(self, value):
-        """Update the displayed threshold value to an integer."""
-        # Convert to integer (this will round down)
-        int_value = int(float(value))
-
-        # Make sure it's a multiple of 5
-        int_value = round(int_value / 5) * 5
-
-        # Update both the display and the actual variable
-        self.threshold_display_var.set(str(int_value))
-        self.fuzzy_threshold_var.set(int_value)
 
     def create_status_section(self, parent):
         """Create the status and control section."""
@@ -391,6 +401,63 @@ class ClickNickApp:
         else:
             self.start_monitoring()
 
+    def _handle_popup_window(self, window_id, window_class, edit_control):
+        """Handle the detected popup window by showing or updating the nickname popup."""
+        try:
+            # Create popup if it doesn't exist
+            if not self.overlay:
+                self.overlay = Overlay(
+                    self.root,
+                    self.nickname_manager,
+                    search_var=self.search_var,
+                    fuzzy_threshold_var=self.fuzzy_threshold_var,
+                    exclude_sc_sd_var=self.exclude_sc_sd_var,
+                    exclude_nicknames_var=self.exclude_nicknames_var,
+                )
+                self.overlay.set_target_window(window_id, window_class, edit_control)
+            else:
+                # Update target window info
+                self.overlay.set_target_window(window_id, window_class, edit_control)
+
+            # Get allowed types for this window/control
+            _, allowed_addresses = self.detector.update_window_info(window_class, edit_control)
+
+            # Show the popup with filtered nicknames
+            self.overlay.show_combobox(allowed_addresses)
+
+        except Exception as e:
+            print(f"Error showing popup: {e}")
+
+    def _monitor_task(self):
+        """Monitor task that runs every 100ms using after."""
+        if not self.monitoring:
+            return
+
+        # Check if connected Click.exe still exists
+        if not self.detector.check_window_exists(self.connected_click_pid):
+            self._update_status("Connected Click instance closed", "error")
+            self.stop_monitoring()
+            return
+
+        # Skip detection if popup is visible and being managed
+        if self.overlay and self.overlay.is_active():
+            self.monitor_task_id = self.root.after(100, self._monitor_task)
+            return
+
+        # Check for popups belonging to our parent Click.exe
+        child_info = self.detector.detect_child_window(self.connected_click_pid)
+        if child_info:
+            window_id, window_class, edit_control = child_info
+            if not self.detector.field_has_text(edit_control, window_id):
+                self._handle_popup_window(window_id, window_class, edit_control)
+        else:
+            # Hide popup if no valid popup window is detected
+            if self.overlay:
+                self.overlay.withdraw()
+
+        # Schedule next check
+        self.monitor_task_id = self.root.after(100, self._monitor_task)
+
     def start_monitoring(self):
         """Start monitoring for window changes."""
         # Check if we have nicknames loaded (either from CSV or database)
@@ -439,73 +506,6 @@ class ClickNickApp:
 
         self._update_status("Monitoring stopped", "status")
         self.start_button.configure(text="Start")
-
-    def _update_status(self, message, style="normal"):
-        """Update status message with appropriate style."""
-        self.status_var.set(message)
-        if style == "error":
-            self.status_label.configure(style="Error.TLabel")
-        elif style == "connected":
-            self.status_label.configure(style="Connected.TLabel")
-        else:
-            self.status_label.configure(style="Status.TLabel")
-
-    def _monitor_task(self):
-        """Monitor task that runs every 100ms using after."""
-        if not self.monitoring:
-            return
-
-        # Check if connected Click.exe still exists
-        if not self.detector.check_window_exists(self.connected_click_pid):
-            self._update_status("Connected Click instance closed", "error")
-            self.stop_monitoring()
-            return
-
-        # Skip detection if popup is visible and being managed
-        if self.overlay and self.overlay.is_active():
-            self.monitor_task_id = self.root.after(100, self._monitor_task)
-            return
-
-        # Check for popups belonging to our parent Click.exe
-        child_info = self.detector.detect_child_window(self.connected_click_pid)
-        if child_info:
-            window_id, window_class, edit_control = child_info
-            if not self.detector.field_has_text(edit_control, window_id):
-                self._handle_popup_window(window_id, window_class, edit_control)
-        else:
-            # Hide popup if no valid popup window is detected
-            if self.overlay:
-                self.overlay.withdraw()
-
-        # Schedule next check
-        self.monitor_task_id = self.root.after(100, self._monitor_task)
-
-    def _handle_popup_window(self, window_id, window_class, edit_control):
-        """Handle the detected popup window by showing or updating the nickname popup."""
-        try:
-            # Create popup if it doesn't exist
-            if not self.overlay:
-                self.overlay = ComboboxOverlay(
-                    self.root,
-                    self.nickname_manager,
-                    search_var=self.search_var,
-                    fuzzy_threshold_var=self.fuzzy_threshold_var,
-                    exclude_sc_sd_var=self.exclude_sc_sd_var,
-                    exclude_nicknames_var=self.exclude_nicknames_var,
-                )
-                self.overlay.set_target_window(window_id, window_class, edit_control)
-            else:
-                # Update target window info
-                self.overlay.set_target_window(window_id, window_class, edit_control)
-
-            # Get allowed types for this window/control
-            _, allowed_addresses = self.detector.update_window_info(window_class, edit_control)
-
-            # Show the popup with filtered nicknames
-            self.overlay.show_combobox(allowed_addresses)
-
-        except Exception as e:
-            print(f"Error showing popup: {e}")
 
     def on_closing(self):
         """Handle application shutdown."""

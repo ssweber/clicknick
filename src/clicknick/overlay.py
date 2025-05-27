@@ -1,0 +1,319 @@
+import tkinter as tk
+from tkinter import ttk
+
+from .nickname_combobox import NicknameCombobox
+from .shared_ahk import AHK
+
+
+class Overlay(tk.Toplevel):
+    """Overlay for nickname selection."""
+
+    def _on_text_change(self, text: str):
+        """Handle text change in combobox - update filtered results"""
+        if not self.allowed_types:
+            return
+
+        # Extract only the un-selected (user-typed) text
+        # If there's a selection, only use the text before the selection
+        current_text = self.combobox.get()
+        if self.combobox.selection_present():
+            sel_start = self.combobox.index("sel.first")
+            search_text = current_text[:sel_start]
+        else:
+            search_text = current_text
+
+        # Get current filter settings
+        search_mode = self.search_var.get() if self.search_var else "none"
+        fuzzy_threshold = self.fuzzy_threshold_var.get() if self.fuzzy_threshold_var else 60
+        exclude_sc_sd = self.exclude_sc_sd_var.get() if self.exclude_sc_sd_var else False
+        exclude_terms = self.exclude_nicknames_var.get() if self.exclude_nicknames_var else ""
+
+        # Handle placeholder text
+        if exclude_terms == "name1, name2, name3":
+            exclude_terms = ""
+
+        # Get filtered nicknames from manager using only the user-typed text
+        filtered_nicknames = self.nickname_manager.get_nicknames_for_combobox(
+            address_types=self.allowed_types,
+            search_text=search_text,  # Use the extracted user-typed text only
+            search_mode=search_mode,
+            fuzzy_threshold=fuzzy_threshold,
+            exclude_sc_sd=exclude_sc_sd,
+            exclude_terms=exclude_terms,
+        )
+
+        # Update combobox values
+        self.combobox.update_values(filtered_nicknames)
+
+    def _input_current_text(self):
+        """Input whatever is currently in the combobox."""
+        current_text = self.combobox.get().strip()
+        if self.combobox.selection_callback:
+            self.combobox.selection_callback(current_text)
+
+    def _on_tab(self, event):
+        """Handle tab key to input current text before withdrawing."""
+        self._input_current_text()
+        self.withdraw()
+
+    def _on_focus_out(self, event):
+        """Handle focus-out event to input current text and withdraw the popup."""
+        try:
+            # Get the widget that now has focus
+            focused_widget = self.focus_get()
+
+            # If focus moved to one of your widgets, don't withdraw
+            if focused_widget and (
+                focused_widget == self or focused_widget.winfo_toplevel() == self.winfo_toplevel()
+            ):
+                return
+
+            # Input current text before withdrawing
+            self._input_current_text()
+
+            # Small delay to allow for potential click actions to complete
+            self._debounce_retrigger = True
+
+            # Set new after calls and store their IDs
+            self.focus_out_after_id = self.after(100, self.withdraw)
+            self.debounce_after_id = self.after(
+                1000, lambda: setattr(self, "_debounce_retrigger", False)
+            )
+
+        except KeyError:
+            # This catches the 'popdown' KeyError that occurs when the combobox dropdown is involved
+            pass
+        except Exception as e:
+            print(f"Focus out error: {e}")
+
+    def _insert_text_to_field(self, text):
+        """Insert the string into the current field using AHK."""
+        if not self.target_window_id or not self.target_edit_control:
+            return
+
+        try:
+            # Use AHK to set the text in the field
+            AHK.f(
+                "ControlSetText",
+                self.target_edit_control,
+                text,
+                f"ahk_id {self.target_window_id}",
+            )
+
+            # Set the text to the end (like you typed it)
+            AHK.call("ControlEnd", self.target_edit_control, f"ahk_id {self.target_window_id}")
+        except Exception as e:
+            print(f"Error inserting text: {e}")
+
+    def _on_nickname_selected(self, nickname):
+        """
+        Handle nickname selection.
+
+        If the nickname corresponds to an address, insert that address.
+        Otherwise, pass on the text.
+        """
+        # First check if it's a known nickname
+        address = self.nickname_manager.get_address_for_nickname(nickname)
+
+        if address:
+            self._insert_text_to_field(address)
+            return
+        else:
+            self._insert_text_to_field(nickname)
+            return
+
+    def __init__(
+        self,
+        root,
+        nickname_mananger,
+        search_var=None,
+        fuzzy_threshold_var=None,
+        exclude_sc_sd_var=None,
+        exclude_nicknames_var=None,
+    ):
+        super().__init__(root)
+        self.title("ClickNickOverlay")
+        self.overrideredirect(True)  # No window decorations
+        self.attributes("-topmost", True)  # Stay on top
+        self.withdraw()  # Hide initially
+
+        # Store exclusion variables
+        self.exclude_sc_sd_var = exclude_sc_sd_var
+        self.exclude_nicknames_var = exclude_nicknames_var
+
+        # Store search variables
+        self.search_var = search_var
+        self.fuzzy_threshold_var = fuzzy_threshold_var
+
+        # Create the combobox
+        # Configure style for wider dropdown
+        style = ttk.Style()
+        style.configure("Wider.TCombobox", postoffset=(0, 0, 150, 0))  # last value extends width
+        self.combobox = NicknameCombobox(self, width=30, style="Wider.TCombobox")
+        self.combobox.pack(padx=2, pady=2)
+        self.combobox.set_selection_callback(self._on_nickname_selected)
+        self.combobox.set_text_change_callback(self._on_text_change)
+
+        # Store dependencies
+        self.nickname_manager = nickname_mananger
+
+        # Target window information
+        self.target_window_id = None
+        self.target_window_class = None
+        self.target_edit_control = None
+        self.allowed_types = []
+
+        self._debounce_retrigger = False
+
+        # Setup focus bindings
+        self.bind("<FocusOut>", self._on_focus_out)
+        self.combobox.bind("<FocusOut>", self._on_focus_out)
+        self.bind("<KeyPress-Tab>", self._on_tab)
+        self.bind("<Control-Shift-KeyPress-Tab>", self._on_tab)  # Shift+Tab
+
+        # Initialize after IDs
+        self.focus_out_after_id = None
+        self.debounce_after_id = None
+
+    def set_target_window(self, window_id, window_class, edit_control):
+        """Set the target window information."""
+        self.target_window_id = window_id
+        self.target_window_class = window_class
+        self.target_edit_control = edit_control
+
+    def is_active(self):
+        """Check if the popup is currently active and managing a window."""
+        return self.target_window_id is not None and self.winfo_viewable()
+
+    def _get_control_position(self) -> tuple[int, int, int, int] | None:
+        """
+        Get the screen position of the target input field.
+
+        Returns:
+            Tuple of (x, y, width, height) or None if position cannot be determined
+        """
+        try:
+            if not self.target_window_id or not self.target_edit_control:
+                return None
+
+            # Get window position
+            window_pos = AHK.f("WinGetPos", f"ahk_id {self.target_window_id}")
+            if not window_pos:
+                print("Could not determine window position")
+                return None
+
+            # Parse positions
+            win_x, win_y, win_width, win_height = map(int, window_pos.split(","))
+
+            # Get control position
+            control_pos = AHK.f(
+                "ControlGetPos",
+                self.target_edit_control,
+                f"ahk_id {self.target_window_id}",
+            )
+            if not control_pos:
+                print("Could not determine control position")
+                return None
+
+            # Parse control position
+            ctrl_x, ctrl_y, ctrl_width, ctrl_height = map(int, control_pos.split(","))
+
+            # Calculate screen coordinates
+            screen_x = win_x + ctrl_x
+            screen_y = win_y + ctrl_y
+
+            return (screen_x, screen_y, ctrl_width, ctrl_height)
+
+        except Exception as e:
+            print(f"Error getting control position: {e}")
+            return None
+
+    def position_near_edit_control(self) -> bool:
+        """
+        Position the combobox directly over the currently focused edit control.
+
+        Returns:
+            bool: True if positioning was successful
+        """
+        try:
+            # Get position of the target control
+            position = self._get_control_position()
+            if not position:
+                self.withdraw()
+                return False
+
+            # Extract position components
+            x, y, width, height = position
+
+            # Reset combobox state
+            self.combobox._reset()
+
+            # Configure combobox width to match the control width
+            # Convert pixel width to character width (approximate conversion)
+            char_width = width // 7  # Approximate character width in pixels
+            self.combobox.configure(width=char_width)
+
+            # Position window exactly over the control
+            self.geometry(f"{width}x{self.combobox.winfo_reqheight()}+{x}+{y}")
+            self.update_idletasks()  # Process pending geometry-related events
+
+            # More robust focus handling
+            # deactivate the ClickPLC window
+            AHK.call("WinActivate", "ahk_class Shell_TrayWnd")
+
+            self.deiconify()
+            AHK.call("WinActivate", "ClickNickOverlay")
+            self.update()
+            self.combobox.focus_set()  # Then force focus on the combobox
+
+            return True
+
+        except Exception as e:
+            print(f"Error positioning combobox: {e}")
+            self.withdraw()
+            return False
+
+    def show_combobox(self, allowed_types):
+        """Show the combobox popup with filtered nicknames."""
+        if not self.combobox or not allowed_types or self._debounce_retrigger:
+            return
+
+        # Store allowed types for text change handling
+        self.allowed_types = allowed_types
+
+        # Get current filter settings
+        exclude_sc_sd = self.exclude_sc_sd_var.get() if self.exclude_sc_sd_var else False
+        exclude_terms = self.exclude_nicknames_var.get() if self.exclude_nicknames_var else ""
+
+        # Handle placeholder text
+        if exclude_terms == "name1, name2, name3":
+            exclude_terms = ""
+
+        # Get initial nicknames (no search text yet)
+        nicknames = self.nickname_manager.get_nicknames_for_combobox(
+            address_types=allowed_types,
+            search_text="",
+            search_mode="none",
+            exclude_sc_sd=exclude_sc_sd,
+            exclude_terms=exclude_terms,
+        )
+        self.combobox.update_values(nicknames)
+
+        # Only show if positioning is successful
+        if not self.position_near_edit_control():
+            return
+
+    def withdraw(self):
+        """Override withdraw to cancel any pending after calls"""
+
+        # Cancel any pending after calls, safely checking if attributes exist
+        if hasattr(self, "focus_out_after_id") and self.focus_out_after_id:
+            self.after_cancel(self.focus_out_after_id)
+            self.focus_out_after_id = None
+
+        if hasattr(self, "debounce_after_id") and self.debounce_after_id:
+            self.after_cancel(self.debounce_after_id)
+            self.debounce_after_id = None
+
+        # Call the parent class's withdraw method
+        super().withdraw()

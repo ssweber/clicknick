@@ -5,9 +5,20 @@ from pathlib import Path
 
 import pyodbc
 
+from .filters import ContainsFilter, FuzzyFilter, NoneFilter, PrefixFilter
+
 
 class NicknameManager:
     """Manages nicknames loaded from CSV with efficient filtering."""
+
+    def _init_filters(self):
+        """Initialize the search filter strategies"""
+        self.filter_strategies = {
+            "none": NoneFilter(),
+            "prefix": PrefixFilter(),
+            "contains": ContainsFilter(),
+            "fuzzy": FuzzyFilter(),
+        }
 
     def __init__(self):
         self.nicknames = []  # List of dicts with 'Address' and 'Nickname' keys
@@ -16,6 +27,9 @@ class NicknameManager:
         self._last_load_timestamp = None
         self._click_pid = None
         self._click_hwnd = None
+
+        # Initialize filter strategies
+        self._init_filters()
 
     @property
     def is_loaded(self) -> bool:
@@ -98,6 +112,45 @@ class NicknameManager:
             match = pattern.match(item["Address"])
             address_type = match.group(1) if match else ""
             self._address_types_cache.append(address_type)
+
+    def _find_click_database(self, click_pid=None, click_hwnd=None):
+        """
+        Find the CLICK Programming Software's Access database file.
+
+        Args:
+            click_pid: Process ID of the CLICK software
+            click_hwnd: Window handle of the CLICK software
+
+        Returns:
+            str: Path to the database file or None if not found
+        """
+        try:
+            # If we have window handle in hex format, convert it to a proper format
+            # similar to what the AutoHotkey script does
+            if click_hwnd:
+                # Convert window handle to uppercase hex string without '0x' prefix
+                hwnd_hex = format(click_hwnd, "08X")[-7:]
+
+                # Build the expected database path
+                username = os.environ.get("USERNAME")
+                db_path = Path(f"C:/Users/{username}/AppData/Local/Temp/CLICK ({hwnd_hex})/SC_.mdb")
+
+                if db_path.exists():
+                    return str(db_path)
+
+            # Fallback: search the temp directory for CLICK folders
+            temp_dir = Path(os.environ.get("TEMP", ""))
+            if temp_dir.exists():
+                for folder in temp_dir.glob("CLICK (*)/"):
+                    mdb_path = folder / "SC_.mdb"
+                    if mdb_path.exists():
+                        return str(mdb_path)
+
+            return None
+
+        except Exception as e:
+            print(f"Error finding database: {e}")
+            return None
 
     def load_from_database(self, click_pid=None, click_hwnd=None):
         """
@@ -195,46 +248,37 @@ class NicknameManager:
             print(f"Error loading from database: {e}")
             return False
 
-    def _find_click_database(self, click_pid=None, click_hwnd=None):
+    def filter_results(
+        self,
+        nicknames: list[str],
+        search_text: str,
+        search_mode: str = "none",
+        fuzzy_threshold: int = 60,
+    ) -> list[str]:
         """
-        Find the CLICK Programming Software's Access database file.
+        Filter nicknames based on search text and mode.
 
         Args:
-            click_pid: Process ID of the CLICK software
-            click_hwnd: Window handle of the CLICK software
+            nicknames: List of nicknames to filter
+            search_text: Text to search for
+            search_mode: Search strategy ("none", "prefix", "contains", "fuzzy")
+            fuzzy_threshold: Threshold for fuzzy matching (0-100)
 
         Returns:
-            str: Path to the database file or None if not found
+            Filtered list of nicknames
         """
-        try:
-            # If we have window handle in hex format, convert it to a proper format
-            # similar to what the AutoHotkey script does
-            if click_hwnd:
-                # Convert window handle to uppercase hex string without '0x' prefix
-                hwnd_hex = format(click_hwnd, "08X")[-7:]
+        if not search_text or search_mode == "none":
+            return nicknames
 
-                # Build the expected database path
-                username = os.environ.get("USERNAME")
-                db_path = Path(f"C:/Users/{username}/AppData/Local/Temp/CLICK ({hwnd_hex})/SC_.mdb")
+        strategy = self.filter_strategies.get(search_mode, self.filter_strategies["none"])
 
-                if db_path.exists():
-                    return str(db_path)
+        # Update fuzzy threshold if using fuzzy search
+        if search_mode == "fuzzy" and isinstance(strategy, FuzzyFilter):
+            strategy.threshold = fuzzy_threshold
 
-            # Fallback: search the temp directory for CLICK folders
-            temp_dir = Path(os.environ.get("TEMP", ""))
-            if temp_dir.exists():
-                for folder in temp_dir.glob("CLICK (*)/"):
-                    mdb_path = folder / "SC_.mdb"
-                    if mdb_path.exists():
-                        return str(mdb_path)
+        return strategy.filter_matches(nicknames, search_text)
 
-            return None
-
-        except Exception as e:
-            print(f"Error finding database: {e}")
-            return None
-
-    def get_nicknames_for_combobox(
+    def get_nicknames(
         self,
         address_types: list[str],
         prefix: str = "",
@@ -298,6 +342,46 @@ class NicknameManager:
                 result.append(nickname)
 
         return result
+
+    def get_nicknames_for_combobox(
+        self,
+        address_types: list[str],
+        search_text: str = "",
+        search_mode: str = "none",
+        fuzzy_threshold: int = 60,
+        exclude_sc_sd: bool = False,
+        exclude_terms: str = "",
+    ) -> list[str]:
+        """
+        Get filtered list of nicknames with search functionality.
+
+        Args:
+            address_types: List of allowed address types (X, Y, C, etc.)
+            search_text: Text to search for in nicknames
+            search_mode: Search strategy ("none", "prefix", "contains", "fuzzy")
+            fuzzy_threshold: Threshold for fuzzy matching (0-100)
+            exclude_sc_sd: If True, exclude SC and SD addresses
+            exclude_terms: Comma-separated list of terms to exclude
+
+        Returns:
+            List of matching nicknames
+        """
+        # Get base nicknames filtered by address type and exclusions ONLY
+        # Don't pass any text filtering to avoid double filtering
+        base_nicknames = self.get_nicknames(
+            address_types=address_types,
+            exclude_sc_sd=exclude_sc_sd,
+            exclude_terms=exclude_terms,
+            # Note: NOT passing prefix or contains parameters
+        )
+
+        # Then apply search filtering
+        return self.filter_results(
+            nicknames=base_nicknames,
+            search_text=search_text,
+            search_mode=search_mode,
+            fuzzy_threshold=fuzzy_threshold,
+        )
 
     def get_address_for_nickname(self, nickname: str) -> str | None:
         """
