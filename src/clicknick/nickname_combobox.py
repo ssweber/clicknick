@@ -114,15 +114,17 @@ class DropdownManager:
                     # Get current text in the entry widget
                     current_text = self.combobox.get()
 
-                    # Find the index of the item that matches the current text
+                    # Clear any existing selection first
+                    self.combobox.tk.call(listbox, "selection", "clear", 0, "end")
+
+                    # Only set selection if current text is found in filtered values
                     try:
                         selection_index = filtered_values.index(current_text)
+                        self.combobox.tk.call(listbox, "selection", "set", selection_index)
+                        self.combobox.tk.call(listbox, "activate", selection_index)
                     except ValueError:
-                        selection_index = 0  # Default to first item if not found
-
-                    self.combobox.tk.call(listbox, "selection", "clear", 0, "end")
-                    self.combobox.tk.call(listbox, "selection", "set", selection_index)
-                    self.combobox.tk.call(listbox, "activate", selection_index)
+                        # Don't select anything if current text isn't found
+                        pass
             except tk.TclError:
                 self.combobox["values"] = filtered_values
 
