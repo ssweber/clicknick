@@ -404,7 +404,7 @@ class ClickNickApp:
     def _handle_popup_window(self, window_id, window_class, edit_control):
         """Handle the detected popup window by showing or updating the nickname popup."""
         try:
-            # Create popup if it doesn't exist
+            # Create overlay if it doesn't exist
             if not self.overlay:
                 self.overlay = Overlay(
                     self.root,
@@ -422,11 +422,11 @@ class ClickNickApp:
             # Get allowed types for this window/control
             _, allowed_addresses = self.detector.update_window_info(window_class, edit_control)
 
-            # Show the popup with filtered nicknames
+            # Show the overlay with filtered nicknames
             self.overlay.show_combobox(allowed_addresses)
 
         except Exception as e:
-            print(f"Error showing popup: {e}")
+            print(f"Error showing overlay: {e}")
 
     def _monitor_task(self):
         """Monitor task that runs every 100ms using after."""
@@ -439,7 +439,7 @@ class ClickNickApp:
             self.stop_monitoring()
             return
 
-        # Skip detection if popup is visible and being managed
+        # Skip detection if overlay is visible and being managed
         if self.overlay and self.overlay.is_active():
             self.monitor_task_id = self.root.after(100, self._monitor_task)
             return
@@ -451,7 +451,7 @@ class ClickNickApp:
             if not self.detector.field_has_text(edit_control, window_id):
                 self._handle_popup_window(window_id, window_class, edit_control)
         else:
-            # Hide popup if no valid popup window is detected
+            # Hide overlay if no valid popup window is detected
             if self.overlay:
                 self.overlay.withdraw()
 
@@ -499,7 +499,7 @@ class ClickNickApp:
             self.root.after_cancel(self.monitor_task_id)
             self.monitor_task_id = None
 
-        # Destroy popup if it exists
+        # Destroy overlay if it exists
         if self.overlay:
             self.overlay.withdraw()
             self.overlay = None
