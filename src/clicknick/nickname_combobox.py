@@ -93,11 +93,30 @@ class DropdownManager:
         if not self.is_dropdown_open():
             self.combobox.event_generate("<Button-1>")
 
-    def transfer_focus_to_listbox(self):
-        """Transfer focus to dropdown listbox."""
+    def transfer_focus_to_listbox(self, direction=None):
+        """
+        Transfer focus to dropdown listbox and optionally send up/down keystroke.
+
+        Args:
+            direction (str, optional): 'up' or 'down' to send corresponding keystroke
+        """
         try:
             listbox = f"{self.combobox._w}.popdown.f.l"
             self.combobox.tk.call("focus", listbox)
+
+            # Check if anything is currently selected
+            current_selection = self.combobox.tk.call(listbox, "curselection")
+
+            if not current_selection:  # If nothing is selected
+                selection_index = 0  # Select first item
+                self.combobox.tk.call(listbox, "selection", "set", selection_index)
+                self.combobox.tk.call(listbox, "activate", selection_index)
+            elif direction:
+                if direction.lower() == "up":
+                    self.combobox.event_generate("<Up>", when="tail")
+                elif direction.lower() == "down":
+                    self.combobox.event_generate("<Down>", when="tail")
+
         except tk.TclError:
             pass
 
@@ -151,9 +170,6 @@ class ComboboxEventHandler:
 
     def on_keypress(self, event):
         """Open dropdown on typing while keeping focus on entry."""
-        if event.keysym in ("Up", "Down", "Left", "Right", "Escape", "Return", "Tab"):
-            return
-
         if event.char and event.char.isprintable():
             if not self.dropdown_manager.is_dropdown_open():
                 self.dropdown_manager.open_dropdown_keep_focus()
@@ -165,13 +181,13 @@ class ComboboxEventHandler:
             return "break"
 
         if self.combobox.focus_get() == self.combobox:
-            self.dropdown_manager.transfer_focus_to_listbox()
+            self.dropdown_manager.transfer_focus_to_listbox("down")
             return "break"
 
     def on_up_key(self, event):
         """Handle Up key - open dropdown and transfer focus to listbox."""
         if self.combobox.focus_get() == self.combobox:
-            self.dropdown_manager.transfer_focus_to_listbox()
+            self.dropdown_manager.transfer_focus_to_listbox("up")
             return "break"
 
     def handle_keyrelease(self, event):
