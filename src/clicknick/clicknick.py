@@ -49,7 +49,16 @@ class ClickNickApp:
         # Create main window
         self.root = tk.Tk()
         self.root.title("ClickNick App")
-        self.root.geometry("500x500")
+        self.root.geometry("500x600")
+
+        # Set the icon
+        try:
+            app_dir = os.path.dirname(os.path.abspath(__file__))
+            icon_path = os.path.join(app_dir, "clicknick_logo.ico")
+            self.root.iconbitmap(icon_path)
+        except tk.TclError:
+            pass  # Continue without icon if it fails
+
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         # Setup variables
