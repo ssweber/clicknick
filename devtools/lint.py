@@ -12,6 +12,20 @@ DOC_PATHS = ["README.md"]
 reconfigure(emoji=not get_console().options.legacy_windows)  # No emojis on legacy windows.
 
 
+@log_calls(level="warning", show_timing_only=True)
+def run(cmd: list[str]) -> int:
+    rprint()
+    rprint(f"[bold green]:arrow_forward: {' '.join(cmd)}[/bold green]")
+    errcount = 0
+    try:
+        subprocess.run(cmd, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        rprint(f"[bold red]Error: {e}[/bold red]")
+        errcount = 1
+
+    return errcount
+
+
 def main():
     rprint()
 
@@ -28,20 +42,6 @@ def main():
     else:
         rprint("[bold green]:white_check_mark: Lint passed![/bold green]")
     rprint()
-
-    return errcount
-
-
-@log_calls(level="warning", show_timing_only=True)
-def run(cmd: list[str]) -> int:
-    rprint()
-    rprint(f"[bold green]:arrow_forward: {' '.join(cmd)}[/bold green]")
-    errcount = 0
-    try:
-        subprocess.run(cmd, text=True, check=True)
-    except subprocess.CalledProcessError as e:
-        rprint(f"[bold red]Error: {e}[/bold red]")
-        errcount = 1
 
     return errcount
 
