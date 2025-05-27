@@ -182,10 +182,8 @@ class ComboboxEventHandler:
             self.combobox._finalize_selection()
             return
 
-        if event.keysym in ("Up", "Down"):
-            return
-
         self.autocomplete.handle_keyrelease(event)
+
         # Notify text change instead of filtering internally
         if self.combobox.text_change_callback:
             self.combobox.text_change_callback(self.combobox.get())
