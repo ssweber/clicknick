@@ -402,3 +402,24 @@ class NicknameManager:
                 return item["Address"]
 
         return None
+
+    def get_available_access_drivers(self) -> list[str]:
+        """
+        Get list of available Microsoft Access ODBC drivers.
+
+        Returns:
+            List of available Access driver names
+        """
+        try:
+            import pyodbc
+
+            return [driver for driver in pyodbc.drivers() if "Access" in driver]
+        except ImportError:
+            return []
+        except Exception as e:
+            print(f"Error checking ODBC drivers: {e}")
+            return []
+
+    def has_access_driver(self) -> bool:
+        """Check if any Microsoft Access ODBC driver is available."""
+        return len(self.get_available_access_drivers()) > 0
