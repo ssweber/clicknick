@@ -1,14 +1,41 @@
+import os
 import tkinter as tk
 from ctypes import windll
 from tkinter import filedialog, ttk
 
+# for Help dialog
+import sys
+import platform
+from datetime import datetime
+
 from .nickname_manager import NicknameManager
 from .overlay import Overlay
+from .shared_ahk import AHK
 from .window_detector import ClickWindowDetector
 from .window_mapping import CLICK_PLC_WINDOW_MAPPING
 
 # Set DPI awareness for better UI rendering
 windll.shcore.SetProcessDpiAwareness(1)
+
+
+def get_version():
+    """Get version from package metadata."""
+    try:
+        from importlib.metadata import version
+
+        return version("clicknick")  # Replace with your actual package name
+    except Exception:
+        return "Development"
+
+
+def open_url(self, url):
+    """Open URL in default browser."""
+    import webbrowser
+
+    try:
+        webbrowser.open(url)
+    except Exception as e:
+        self._update_status(f"Could not open browser: {e}", "error")
 
 
 class ClickNickApp:
@@ -74,6 +101,10 @@ class ClickNickApp:
 
     def create_widgets(self):
         """Create all UI widgets."""
+
+        # Add menu bar first
+        self.create_menu_bar()
+
         # Main frame to contain everything
         main_frame = ttk.Frame(self.root, padding="10 10 10 10")
 
@@ -506,6 +537,132 @@ class ClickNickApp:
 
         self._update_status("Monitoring stopped", "status")
         self.start_button.configure(text="Start")
+
+    def create_menu_bar(self):
+        """Create the application menu bar."""
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+
+        # File menu
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="Exit", command=self.on_closing)
+
+        # Help menu
+        help_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="About ClickNick...", command=self.create_about_dialog)
+        help_menu.add_separator()
+        help_menu.add_command(
+            label="GitHub Repository",
+            command=lambda: open_url("https://github.com/ssweber/clicknick"),
+        )
+        help_menu.add_command(
+            label="Report Issue",
+            command=lambda: open_url("https://github.com/ssweber/clicknick/issues"),
+        )
+
+    def create_about_dialog(self):
+        """Create and show the About dialog."""
+
+        about_window = tk.Toplevel(self.root)
+        about_window.title("About ClickNick")
+        about_window.geometry("450x600")
+        about_window.resizable(False, False)
+        about_window.grab_set()
+        about_window.transient(self.root)
+
+        main_frame = ttk.Frame(about_window, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Get dynamic version
+        app_version = get_version()
+
+        # App info
+        ttk.Label(main_frame, text="ClickNick", font=("Arial", 18, "bold")).pack(pady=(0, 5))
+        ttk.Label(main_frame, text=f"Version {app_version}", font=("Arial", 12)).pack()
+        ttk.Label(
+            main_frame, text="Intelligent nickname overlay for Click PLC", font=("Arial", 10)
+        ).pack(pady=(0, 15))
+
+        # Description
+        desc_text = (
+            "Automatically detects Click PLC popup windows and provides\n"
+            "nickname suggestions with fuzzy matching and filtering."
+        )
+        ttk.Label(main_frame, text=desc_text, justify=tk.CENTER).pack(pady=(0, 15))
+
+        # Technical info
+        tech_frame = ttk.LabelFrame(main_frame, text="System Information", padding="10")
+        ttk.Label(tech_frame, text=f"Python: {sys.version.split()[0]}").pack(anchor=tk.W)
+        ttk.Label(tech_frame, text=f"Platform: {platform.system()} {platform.release()}").pack(
+            anchor=tk.W
+        )
+        ttk.Label(tech_frame, text=f"Tkinter: {tk.TkVersion}").pack(anchor=tk.W)
+        ttk.Label(tech_frame, text=f"Architecture: {platform.machine()}").pack(anchor=tk.W)
+        tech_frame.pack(fill=tk.X, pady=(0, 15))
+
+        # Copy system info button
+        def copy_system_info():
+            """Copy version and system information to clipboard using AHK."""
+            try:
+                system_info = (
+                    f"ClickNick Version: {app_version}\n"
+                    f"Python: {sys.version.split()[0]}\n"
+                    f"Platform: {platform.system()} {platform.release()}\n"
+                    f"Tkinter: {tk.TkVersion}\n"
+                    f"Architecture: {platform.machine()}\n"
+                    f"Python Full Version: {sys.version}\n"
+                    f"Platform Details: {platform.platform()}"
+                )
+
+                # Use AHK to set clipboard
+                AHK.set("Clipboard", system_info)
+
+                # Visual feedback - temporarily change button text
+                copy_btn.config(text="✓ Copied!")
+                about_window.after(2000, lambda: copy_btn.config(text="📋 Copy System Info"))
+
+            except Exception as e:
+                print(f"Error copying system info: {e}")
+                # Fallback to tkinter clipboard if AHK fails
+                about_window.clipboard_clear()
+                about_window.clipboard_append(system_info)
+
+        copy_btn = ttk.Button(main_frame, text="📋 Copy System Info", command=copy_system_info)
+        copy_btn.pack(pady=(0, 15))
+
+        # Links
+        links_frame = ttk.LabelFrame(main_frame, text="Links & Support", padding="10")
+
+        github_btn = ttk.Button(
+            links_frame,
+            text="🔗 GitHub Repository",
+            command=lambda: open_url("https://github.com/ssweber/clicknick"),
+        )
+        github_btn.pack(fill=tk.X, pady=2)
+
+        issues_btn = ttk.Button(
+            links_frame,
+            text="🐛 Report Issues",
+            command=lambda: open_url("https://github.com/ssweber/clicknick/issues"),
+        )
+        issues_btn.pack(fill=tk.X, pady=2)
+
+        links_frame.pack(fill=tk.X, pady=(0, 15))
+
+        # Copyright and license
+        copyright_frame = ttk.Frame(main_frame)
+        ttk.Label(
+            copyright_frame, text=f"© {datetime.now().year} ssweber", font=("Arial", 9)
+        ).pack()
+        ttk.Label(copyright_frame, text="Licensed under AGPL-3.0 License", font=("Arial", 9)).pack()
+        copyright_frame.pack(pady=(0, 15))
+
+        # Close button
+        close_btn = ttk.Button(main_frame, text="Close", command=about_window.destroy)
+        close_btn.pack(pady=10)
+        close_btn.focus_set()
 
     def on_closing(self):
         """Handle application shutdown."""
