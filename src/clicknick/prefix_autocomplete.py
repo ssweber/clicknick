@@ -32,7 +32,6 @@ class PrefixAutocomplete:
                 for element in self._completion_list
                 if str(element).lower().startswith(prefix)
             ]
-            print(f"Hits: {hits}")
 
         if hits:
             closest_match = min(hits, key=lambda x: len(str(x)))
