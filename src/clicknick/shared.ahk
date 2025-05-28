@@ -128,6 +128,9 @@ Paste(sText,restore := True) {
         Clipboard := ClipBackup
     }
 }
+Send(text) {
+    Send, % text
+}
 WinActivate(title) {
     WinActivate, % title
 }

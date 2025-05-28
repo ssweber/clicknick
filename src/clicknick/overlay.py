@@ -1,49 +1,14 @@
+import re
 import tkinter as tk
 from tkinter import ttk
 
 from .nickname_combobox import NicknameCombobox
 from .shared_ahk import AHK
+from .window_mapping import DATA_TYPES
 
 
 class Overlay(tk.Toplevel):
     """Overlay for nickname selection."""
-
-    def _on_text_change(self, text: str):
-        """Handle text change in combobox - update filtered results"""
-        if not self.allowed_types:
-            return
-
-        # Extract only the un-selected (user-typed) text
-        # If there's a selection, only use the text before the selection
-        current_text = self.combobox.get()
-        if self.combobox.selection_present():
-            sel_start = self.combobox.index("sel.first")
-            search_text = current_text[:sel_start]
-        else:
-            search_text = current_text
-
-        # Get current filter settings
-        search_mode = self.search_var.get() if self.search_var else "none"
-        fuzzy_threshold = self.fuzzy_threshold_var.get() if self.fuzzy_threshold_var else 60
-        exclude_sc_sd = self.exclude_sc_sd_var.get() if self.exclude_sc_sd_var else False
-        exclude_terms = self.exclude_nicknames_var.get() if self.exclude_nicknames_var else ""
-
-        # Handle placeholder text
-        if exclude_terms == "name1, name2, name3":
-            exclude_terms = ""
-
-        # Get filtered nicknames from manager using only the user-typed text
-        filtered_nicknames = self.nickname_manager.get_nicknames_for_combobox(
-            address_types=self.allowed_types,
-            search_text=search_text,  # Use the extracted user-typed text only
-            search_mode=search_mode,
-            fuzzy_threshold=fuzzy_threshold,
-            exclude_sc_sd=exclude_sc_sd,
-            exclude_terms=exclude_terms,
-        )
-
-        # Update combobox values
-        self.combobox.update_values(filtered_nicknames)
 
     def _input_current_text(self):
         """Input whatever is currently in the combobox."""
@@ -51,9 +16,33 @@ class Overlay(tk.Toplevel):
         if self.combobox.selection_callback:
             self.combobox.selection_callback(current_text)
 
+    def _get_search_text(self):
+        """Extract the actual search text, accounting for any selection"""
+        current_text = self.combobox.get()
+        if self.combobox.selection_present():
+            sel_start = self.combobox.index("sel.first")
+            return current_text[:sel_start]
+        else:
+            return current_text
+
+    def _input_search_text(self):
+        """Input only user-entered serach text in the combobox."""
+        current_text = self._get_search_text()
+        if self.combobox.selection_callback:
+            self.combobox.selection_callback(current_text)
+
     def _on_tab(self, event):
         """Handle tab key to input current text before withdrawing."""
-        self._input_current_text()
+
+        shift_tab = event.state & 0x1
+
+        if not shift_tab:
+            self._input_current_text()
+            self._processing_selection = True
+            try:
+                AHK.call("Send", "{Tab}")
+            except Exception as e:
+                print(f"Error inserting text: {e}")
         self.withdraw()
 
     def _on_focus_out(self, event):
@@ -69,7 +58,8 @@ class Overlay(tk.Toplevel):
                 return
 
             # Input current text before withdrawing
-            self._input_current_text()
+            if not self._processing_selection:
+                self._input_search_text()
 
             # Small delay to allow for potential click actions to complete
             self._debounce_retrigger = True
@@ -102,6 +92,7 @@ class Overlay(tk.Toplevel):
 
             # Set the text to the end (like you typed it)
             AHK.call("ControlEnd", self.target_edit_control, f"ahk_id {self.target_window_id}")
+            AHK.call("WinActivate", f"ahk_id {self.target_window_id}")
         except Exception as e:
             print(f"Error inserting text: {e}")
 
@@ -112,15 +103,14 @@ class Overlay(tk.Toplevel):
         If the nickname corresponds to an address, insert that address.
         Otherwise, pass on the text.
         """
+        self._processing_selection = True
+
         # First check if it's a known nickname
         address = self.nickname_manager.get_address_for_nickname(nickname)
-
         if address:
             self._insert_text_to_field(address)
-            return
         else:
             self._insert_text_to_field(nickname)
-            return
 
     def __init__(
         self,
@@ -152,8 +142,7 @@ class Overlay(tk.Toplevel):
         self.combobox = NicknameCombobox(self, width=30, style="Wider.TCombobox")
         self.combobox.pack(padx=2, pady=2)
         self.combobox.set_selection_callback(self._on_nickname_selected)
-        self.combobox.set_text_change_callback(self._on_text_change)
-
+        self.combobox.set_text_input_callback(self.on_text_input)
         # Store dependencies
         self.nickname_manager = nickname_mananger
 
@@ -164,16 +153,109 @@ class Overlay(tk.Toplevel):
         self.allowed_types = []
 
         self._debounce_retrigger = False
+        self._processing_selection = False
 
         # Setup focus bindings
         self.bind("<FocusOut>", self._on_focus_out)
         self.combobox.bind("<FocusOut>", self._on_focus_out)
         self.bind("<KeyPress-Tab>", self._on_tab)
-        self.bind("<Control-Shift-KeyPress-Tab>", self._on_tab)  # Shift+Tab
 
         # Initialize after IDs
         self.focus_out_after_id = None
         self.debounce_after_id = None
+
+    def _is_possible_address_or_number(self, search_text):
+        """
+        Check if the input is a valid address or a numeric value.
+
+        Returns True if:
+        1. Input is a prefix of any valid prefix (e.g., "C" or "CT" for prefix "CTD")
+        2. Input is a complete prefix optionally followed by digits (e.g., "CTD" or "CTD123")
+        3. Input is numeric (int or float)
+
+        Args:
+            input_text (str): The input to check
+
+        Returns:
+            bool: True if the input is a valid address or numeric value, False otherwise
+        """
+        if not search_text:
+            return True
+
+        search_text = search_text.lower().strip()
+
+        # Check if the input is just numbers or numbers with a decimal point
+        if re.match(r"^[0-9]+(\.[0-9]*)?$", search_text):
+            return True
+
+        # Check against all prefixes
+        for prefix in DATA_TYPES.keys():
+            prefix = prefix.lower()
+
+            # Case 1: Input is a prefix of the full prefix (e.g., "C" or "CT" for "CTD")
+            if prefix.startswith(search_text):
+                return True
+
+            # Case 2: Input starts with the complete prefix and remainder is digits
+            if (
+                search_text.startswith(prefix)
+                and len(search_text) > len(prefix)
+                and search_text[len(prefix) :].isdigit()
+            ):
+                return True
+
+            # Case 3: Input is exactly the prefix
+            if search_text == prefix:
+                return True
+
+        return False
+
+    def _filter_items(self):
+        """Filter and return items based on input text"""
+        if not self.allowed_types:
+            return []
+
+        # Extract only the un-selected (user-typed) text
+        search_text = self._get_search_text()
+
+        # Get current filter settings
+        search_mode = self.search_var.get() if self.search_var else "none"
+        fuzzy_threshold = self.fuzzy_threshold_var.get() if self.fuzzy_threshold_var else 60
+        exclude_sc_sd = self.exclude_sc_sd_var.get() if self.exclude_sc_sd_var else False
+        exclude_terms = self.exclude_nicknames_var.get() if self.exclude_nicknames_var else ""
+
+        # Handle placeholder text
+        if exclude_terms == "name1, name2, name3":
+            exclude_terms = ""
+
+        # Get and return filtered nicknames
+        return self.nickname_manager.get_nicknames_for_combobox(
+            address_types=self.allowed_types,
+            search_text=search_text,
+            search_mode=search_mode,
+            fuzzy_threshold=fuzzy_threshold,
+            exclude_sc_sd=exclude_sc_sd,
+            exclude_terms=exclude_terms,
+        )
+
+    def _should_show_dropdown(self):
+        """Determine if dropdown should be shown based on input text"""
+        search_text = self._get_search_text()
+        return not self._is_possible_address_or_number(search_text)
+
+    def on_text_input(self):
+        """
+        Process text input, update dropdown content, and determine visibility.
+        Returns: Whether the dropdown should be displayed.
+        """
+        # Do filtering logic and update dropdown
+        filtered_items = self._filter_items()
+        self.combobox.update_values(filtered_items)
+
+        # Determine visibility and return
+        if not filtered_items:
+            return False
+        return self._should_show_dropdown()
 
     def set_target_window(self, window_id, window_class, edit_control):
         """Set the target window information."""
@@ -277,6 +359,8 @@ class Overlay(tk.Toplevel):
         """Show the combobox popup with filtered nicknames."""
         if not self.combobox or not allowed_types or self._debounce_retrigger:
             return
+
+        self._processing_selection = False
 
         # Store allowed types for text change handling
         self.allowed_types = allowed_types

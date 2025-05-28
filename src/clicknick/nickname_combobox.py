@@ -149,7 +149,8 @@ class DropdownManager:
 
     def hide_dropdown(self):
         """Hide the combobox popup."""
-        self.combobox.master.withdraw()
+        if self.is_dropdown_open():
+            self.combobox.event_generate("<Button-1>")
 
 
 class ComboboxEventHandler:
@@ -164,15 +165,8 @@ class ComboboxEventHandler:
         """Bind all events to the combobox."""
         self.combobox.bind("<KeyPress-Down>", self.on_down_key)
         self.combobox.bind("<KeyPress-Up>", self.on_up_key)
-        self.combobox.bind("<KeyPress>", self.on_keypress)
         self.combobox.bind("<<ComboboxSelected>>", self.on_selection)
         self.combobox.bind("<KeyRelease>", self.handle_keyrelease)
-
-    def on_keypress(self, event):
-        """Open dropdown on typing while keeping focus on entry."""
-        if event.char and event.char.isprintable():
-            if not self.dropdown_manager.is_dropdown_open():
-                self.dropdown_manager.open_dropdown_keep_focus()
 
     def on_down_key(self, event):
         """Handle Down key - open dropdown and transfer focus to listbox."""
@@ -193,18 +187,26 @@ class ComboboxEventHandler:
     def handle_keyrelease(self, event):
         """Handle key release events for navigation and selection."""
         if event.keysym == "Escape":
-            self.dropdown_manager.hide_dropdown()
+            self.combobox.master.withdraw()
             return
 
         if event.keysym == "Return":
-            self.combobox._finalize_selection()
+            self.combobox.master.withdraw()
             return
 
         self.autocomplete.handle_keyrelease(event)
 
-        # Notify text change instead of filtering internally
-        if self.combobox.text_change_callback:
-            self.combobox.text_change_callback(self.combobox.get())
+        # Process text input and determine if dropdown should be shown
+        open_dropdown = False
+        if self.combobox.text_input_callback:
+            open_dropdown = self.combobox.text_input_callback()
+
+        # Show dropdown if needed and if a printable character was entered
+        if open_dropdown and event.char and event.char.isprintable():
+            if not self.dropdown_manager.is_dropdown_open():
+                self.dropdown_manager.open_dropdown_keep_focus()
+        elif not open_dropdown:
+            self.dropdown_manager.hide_dropdown()
 
     def on_selection(self, event):
         """Handle combobox selection event."""
@@ -226,7 +228,8 @@ class NicknameCombobox(ttk.Combobox):
 
         """Initialize all component managers."""
         self.selection_callback = None
-        self.text_change_callback = None
+        self.text_input_callback = None
+        self.keypress_callback = None
 
         # Initialize managers
         self.dropdown_manager = DropdownManager(self)
@@ -261,9 +264,9 @@ class NicknameCombobox(ttk.Combobox):
         """Set the callback function for when a selection is made."""
         self.selection_callback = callback
 
-    def set_text_change_callback(self, callback: Callable[[str], None]) -> None:
+    def set_text_input_callback(self, callback: Callable[[str], None]) -> None:
         """Set the callback function for when text changes."""
-        self.text_change_callback = callback
+        self.text_input_callback = callback
 
     def update_values(self, values: list[str]) -> None:
         """Update the combobox values and autocomplete list."""
