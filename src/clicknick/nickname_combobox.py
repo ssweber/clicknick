@@ -186,6 +186,10 @@ class ComboboxEventHandler:
 
     def handle_keyrelease(self, event):
         """Handle key release events for navigation and selection."""
+        # Filter out shift key releases
+        if event.keysym in ("Shift_L", "Shift_R"):
+            return
+
         if event.keysym == "Escape":
             self.combobox.master.withdraw()
             return
