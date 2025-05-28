@@ -18,19 +18,21 @@ Context-aware nickname autocomplete for ClickPLC instruction windows.
 
 
 ## How to Run
-
+> [!NOTE]
+> For live nickname database functionality, you'll need Microsoft Access ODBC drivers installed. If you see an "ODBC drivers not found" warning, see our [installation guide](https://github.com/ssweber/clicknick/issues/17) for help. CSV nickname file loading works without these drivers.
 ### Option 1: Using uv (recommended)
-```
+```cmd
 uvx clicknick
 ```
 If you don't have uv installed, you can get it from: https://github.com/astral-sh/uv#installation
 
-> [!NOTE]
-> For live nickname database functionality, you'll need Microsoft Access ODBC drivers installed. If you see an "ODBC drivers not found" warning, see our [installation guide](https://github.com/ssweber/clicknick/issues/17) for help. CSV nickname file loading works without these drivers.
-
+#### To upgrade to the latest version:
+```cmd
+uvx clicknick@latest
+```
 
 ### Option 2: Using pip
-```
+```cmd
 pip install clicknick
 python -m clicknick
 ```
