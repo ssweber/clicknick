@@ -201,8 +201,10 @@ class ComboboxEventHandler:
         if self.combobox.text_input_callback:
             open_dropdown = self.combobox.text_input_callback()
 
-        # Show dropdown if needed and if a printable character was entered
-        if open_dropdown and event.char and event.char.isprintable():
+        # Show dropdown if needed and if a printable character or backspace was entered
+        if open_dropdown and (
+            (event.char and event.char.isprintable()) or event.keysym == "BackSpace"
+        ):
             if not self.dropdown_manager.is_dropdown_open():
                 self.dropdown_manager.open_dropdown_keep_focus()
         elif not open_dropdown:
