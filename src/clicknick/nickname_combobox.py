@@ -86,18 +86,35 @@ class DropdownManager:
             return False
 
     def _set_unfocused_appearance(self):
-        """Set listbox selection background to light grey (unfocused state)."""
+        """Set listbox selection colors to a disabled/unfocused state."""
         listbox = self.get_listbox_widget()
         if listbox:
             try:
-                # Store original background if not already stored
+                # Store original colors if not already stored
                 if self.original_selectbackground is None:
                     self.original_selectbackground = self.combobox.tk.call(
                         listbox, "cget", "-selectbackground"
                     )
+                    self.original_selectforeground = self.combobox.tk.call(
+                        listbox, "cget", "-selectforeground"
+                    )
 
-                # Set to light grey
-                self.combobox.tk.call(listbox, "configure", "-selectbackground", "#a0a0a0")
+                # Use most reliable lookup with fallback
+                try:
+                    unfocused_bg = self.combobox.tk.eval("ttk::style lookup . -background disabled")
+                    unfocused_fg = self.combobox.tk.eval("ttk::style lookup . -foreground disabled")
+                except tk.TclError:
+                    pass
+
+                # If lookups failed, use fallbacks
+                if not unfocused_bg:
+                    unfocused_bg = "#d9d9d9"  # Light grey
+                if not unfocused_fg:
+                    unfocused_fg = "#717171"  # Muted dark grey
+
+                # Set both background and foreground colors
+                self.combobox.tk.call(listbox, "configure", "-selectbackground", unfocused_bg)
+                self.combobox.tk.call(listbox, "configure", "-selectforeground", unfocused_fg)
                 self.listbox_has_focus = False
             except tk.TclError:
                 pass
@@ -115,13 +132,16 @@ class DropdownManager:
             self.combobox.event_generate("<Button-1>")
 
     def _set_focused_appearance(self):
-        """Restore listbox selection background to normal (focused state)."""
+        """Restore listbox selection colors to normal (focused state)."""
         listbox = self.get_listbox_widget()
         if listbox and self.original_selectbackground is not None:
             try:
-                # Restore original background
+                # Restore original colors
                 self.combobox.tk.call(
                     listbox, "configure", "-selectbackground", self.original_selectbackground
+                )
+                self.combobox.tk.call(
+                    listbox, "configure", "-selectforeground", self.original_selectforeground
                 )
                 self.listbox_has_focus = True
             except tk.TclError:
