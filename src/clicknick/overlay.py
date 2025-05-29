@@ -39,10 +39,6 @@ class Overlay(tk.Toplevel):
         if not shift_tab:
             self._input_current_text()
             self._processing_selection = True
-            try:
-                AHK.call("Send", "{Tab}")
-            except Exception as e:
-                print(f"Error inserting text: {e}")
         self.withdraw()
 
     def _on_focus_out(self, event):
