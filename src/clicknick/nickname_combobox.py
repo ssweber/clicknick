@@ -61,6 +61,8 @@ class DropdownManager:
 
     def __init__(self, combobox):
         self.combobox = combobox
+        self.original_selectbackground = None
+        self.listbox_has_focus = False
 
     def get_listbox_widget(self):
         """Get the listbox widget from the dropdown."""
@@ -83,15 +85,47 @@ class DropdownManager:
         except tk.TclError:
             return False
 
+    def _set_unfocused_appearance(self):
+        """Set listbox selection background to light grey (unfocused state)."""
+        listbox = self.get_listbox_widget()
+        if listbox:
+            try:
+                # Store original background if not already stored
+                if self.original_selectbackground is None:
+                    self.original_selectbackground = self.combobox.tk.call(
+                        listbox, "cget", "-selectbackground"
+                    )
+
+                # Set to light grey
+                self.combobox.tk.call(listbox, "configure", "-selectbackground", "#a0a0a0")
+                self.listbox_has_focus = False
+            except tk.TclError:
+                pass
+
     def open_dropdown_keep_focus(self):
         """Open dropdown while keeping focus on entry."""
         if not self.is_dropdown_open():
             self.combobox.tk.call("ttk::combobox::PostProgrammatic", self.combobox._w)
+            # Set light grey background when opening with focus kept on entry
+            self._set_unfocused_appearance()
 
     def open_dropdown_transfer_focus(self):
         """Open dropdown and transfer focus to listbox."""
         if not self.is_dropdown_open():
             self.combobox.event_generate("<Button-1>")
+
+    def _set_focused_appearance(self):
+        """Restore listbox selection background to normal (focused state)."""
+        listbox = self.get_listbox_widget()
+        if listbox and self.original_selectbackground is not None:
+            try:
+                # Restore original background
+                self.combobox.tk.call(
+                    listbox, "configure", "-selectbackground", self.original_selectbackground
+                )
+                self.listbox_has_focus = True
+            except tk.TclError:
+                pass
 
     def transfer_focus_to_listbox(self, direction=None):
         """
@@ -102,6 +136,10 @@ class DropdownManager:
         """
         try:
             listbox = f"{self.combobox._w}.popdown.f.l"
+
+            # Restore normal appearance before transferring focus
+            self._set_focused_appearance()
+
             self.combobox.tk.call("focus", listbox)
 
             # Check if anything is currently selected
@@ -144,6 +182,11 @@ class DropdownManager:
                     except ValueError:
                         # Don't select anything if current text isn't found
                         pass
+
+                # Maintain unfocused appearance if listbox doesn't have focus
+                if not self.listbox_has_focus:
+                    self._set_unfocused_appearance()
+
             except tk.TclError:
                 self.combobox["values"] = filtered_values
 
@@ -151,6 +194,8 @@ class DropdownManager:
         """Hide the combobox popup."""
         if self.is_dropdown_open():
             self.combobox.event_generate("<Button-1>")
+            # Reset focus state when dropdown closes
+            self.listbox_has_focus = False
 
 
 class ComboboxEventHandler:
@@ -167,6 +212,7 @@ class ComboboxEventHandler:
         self.combobox.bind("<KeyPress-Up>", self.on_up_key)
         self.combobox.bind("<<ComboboxSelected>>", self.on_selection)
         self.combobox.bind("<KeyRelease>", self.handle_keyrelease)
+        self.combobox.configure(postcommand=lambda: self.dropdown_manager._set_focused_appearance())
 
     def on_down_key(self, event):
         """Handle Down key - open dropdown and transfer focus to listbox."""
