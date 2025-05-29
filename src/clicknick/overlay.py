@@ -134,7 +134,7 @@ class Overlay(tk.Toplevel):
         # Create the combobox
         # Configure style for wider dropdown
         style = ttk.Style()
-        style.configure("Wider.TCombobox", postoffset=(0, 0, 150, 0))  # last value extends width
+        style.configure("Wider.TCombobox", postoffset=(0, 0, 90, 0))  # last value extends width
         self.combobox = NicknameCombobox(self, width=30, style="Wider.TCombobox")
         self.combobox.pack(padx=2, pady=2)
         self.combobox.set_selection_callback(self._on_nickname_selected)

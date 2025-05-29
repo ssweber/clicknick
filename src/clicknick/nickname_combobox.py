@@ -63,27 +63,27 @@ class DropdownManager:
         self.combobox = combobox
         self.original_selectbackground = None
         self.listbox_has_focus = False
+        self._bindings_set = False
 
-    def get_listbox_widget(self):
-        """Get the listbox widget from the dropdown."""
-        try:
-            listbox_path = f"{self.combobox._w}.popdown.f.l"
-            if self.combobox.tk.eval(f"winfo exists {listbox_path}") == "1":
-                return listbox_path
-            return None
-        except tk.TclError:
-            return None
+    def _set_focused_appearance(self):
+        """Restore listbox selection colors to normal (focused state)."""
+        listbox = self.get_listbox_widget()
+        if listbox and self.original_selectbackground is not None:
+            try:
+                # Restore original colors
+                self.combobox.tk.call(
+                    listbox, "configure", "-selectbackground", self.original_selectbackground
+                )
+                self.combobox.tk.call(
+                    listbox, "configure", "-selectforeground", self.original_selectforeground
+                )
+                self.listbox_has_focus = True
+            except tk.TclError:
+                pass
 
-    def is_dropdown_open(self):
-        """Check if dropdown is open."""
-        try:
-            popdown_widget = f"{self.combobox._w}.popdown"
-            exists = self.combobox.tk.eval(f"winfo exists {popdown_widget}")
-            if exists == "1":
-                return self.combobox.tk.eval(f"winfo viewable {popdown_widget}") == "1"
-            return False
-        except tk.TclError:
-            return False
+    def _on_listbox_focus_in(self):
+        """Handle listbox focus-in event."""
+        self._set_focused_appearance()
 
     def _set_unfocused_appearance(self):
         """Set listbox selection colors to a disabled/unfocused state."""
@@ -119,33 +119,106 @@ class DropdownManager:
             except tk.TclError:
                 pass
 
+    def _check_focus_state(self):
+        """Check current focus state and update appearance accordingly."""
+        listbox = self.get_listbox_widget()
+        if listbox:
+            try:
+                current_focus = self.combobox.tk.call("focus")
+                if current_focus != listbox:
+                    self._set_unfocused_appearance()
+            except tk.TclError:
+                pass
+
+    def _on_listbox_focus_out(self):
+        """Handle listbox focus-out event."""
+        # Only set unfocused appearance if mouse is not over the listbox
+        # This prevents flickering when clicking on items
+        self.combobox.after_idle(self._check_focus_state)
+
+    def _on_listbox_mouse_enter(self):
+        """Handle mouse entering listbox."""
+        self._set_focused_appearance()
+
+    def _on_listbox_mouse_leave(self):
+        """Handle mouse leaving listbox."""
+        # Check if listbox actually has keyboard focus
+        listbox = self.get_listbox_widget()
+        if listbox:
+            try:
+                current_focus = self.combobox.tk.call("focus")
+                if current_focus != listbox:
+                    self._set_unfocused_appearance()
+            except tk.TclError:
+                pass
+
+    def _setup_listbox_bindings(self):
+        """Set up event bindings for the listbox widget."""
+        listbox = self.get_listbox_widget()
+        if listbox and not self._bindings_set:
+            try:
+                # Bind focus-in events to restore focused appearance
+                self.combobox.tk.call(
+                    "bind", listbox, "<FocusIn>", self.combobox.register(self._on_listbox_focus_in)
+                )
+
+                # Bind focus-out events to set unfocused appearance
+                self.combobox.tk.call(
+                    "bind",
+                    listbox,
+                    "<FocusOut>",
+                    self.combobox.register(self._on_listbox_focus_out),
+                )
+
+                # Also bind mouse enter/leave events for mouse-over behavior
+                self.combobox.tk.call(
+                    "bind", listbox, "<Enter>", self.combobox.register(self._on_listbox_mouse_enter)
+                )
+
+                self.combobox.tk.call(
+                    "bind", listbox, "<Leave>", self.combobox.register(self._on_listbox_mouse_leave)
+                )
+
+                self._bindings_set = True
+            except tk.TclError:
+                pass
+
+    def get_listbox_widget(self):
+        """Get the listbox widget from the dropdown."""
+        try:
+            listbox_path = f"{self.combobox._w}.popdown.f.l"
+            if self.combobox.tk.eval(f"winfo exists {listbox_path}") == "1":
+                return listbox_path
+            return None
+        except tk.TclError:
+            return None
+
+    def is_dropdown_open(self):
+        """Check if dropdown is open."""
+        try:
+            popdown_widget = f"{self.combobox._w}.popdown"
+            exists = self.combobox.tk.eval(f"winfo exists {popdown_widget}")
+            if exists == "1":
+                return self.combobox.tk.eval(f"winfo viewable {popdown_widget}") == "1"
+            return False
+        except tk.TclError:
+            return False
+
     def open_dropdown_keep_focus(self):
         """Open dropdown while keeping focus on entry."""
         if not self.is_dropdown_open():
             self.combobox.tk.call("ttk::combobox::PostProgrammatic", self.combobox._w)
             # Set light grey background when opening with focus kept on entry
             self._set_unfocused_appearance()
+            # Set up bindings after dropdown is open
+            self.combobox.after_idle(self._setup_listbox_bindings)
 
     def open_dropdown_transfer_focus(self):
         """Open dropdown and transfer focus to listbox."""
         if not self.is_dropdown_open():
             self.combobox.event_generate("<Button-1>")
-
-    def _set_focused_appearance(self):
-        """Restore listbox selection colors to normal (focused state)."""
-        listbox = self.get_listbox_widget()
-        if listbox and self.original_selectbackground is not None:
-            try:
-                # Restore original colors
-                self.combobox.tk.call(
-                    listbox, "configure", "-selectbackground", self.original_selectbackground
-                )
-                self.combobox.tk.call(
-                    listbox, "configure", "-selectforeground", self.original_selectforeground
-                )
-                self.listbox_has_focus = True
-            except tk.TclError:
-                pass
+            # Set up bindings after dropdown is open
+            self.combobox.after_idle(self._setup_listbox_bindings)
 
     def transfer_focus_to_listbox(self, direction=None):
         """
@@ -156,6 +229,9 @@ class DropdownManager:
         """
         try:
             listbox = f"{self.combobox._w}.popdown.f.l"
+
+            # Set up bindings first
+            self._setup_listbox_bindings()
 
             # Restore normal appearance before transferring focus
             self._set_focused_appearance()
@@ -207,6 +283,9 @@ class DropdownManager:
                 if not self.listbox_has_focus:
                     self._set_unfocused_appearance()
 
+                # Set up bindings after updating
+                self._setup_listbox_bindings()
+
             except tk.TclError:
                 self.combobox["values"] = filtered_values
 
@@ -216,6 +295,7 @@ class DropdownManager:
             self.combobox.event_generate("<Button-1>")
             # Reset focus state when dropdown closes
             self.listbox_has_focus = False
+            self._bindings_set = False  # Reset bindings flag
 
 
 class ComboboxEventHandler:
