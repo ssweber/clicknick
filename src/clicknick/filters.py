@@ -30,14 +30,30 @@ class PrefixFilter(FilterBase):
 
 
 class ContainsFilter(FilterBase):
-    """Contains matching strategy"""
+    """Contains matching strategy with word boundary prioritization"""
 
     def filter_matches(self, completion_list, current_text):
         if not current_text:
             return completion_list
 
-        current_text = current_text.lower()
-        return [item for item in completion_list if current_text in item.lower()]
+        current_lower = current_text.lower()
+
+        # Split into two groups: matches at word boundaries vs matches anywhere
+        word_start_matches = []
+        other_matches = []
+
+        for item in completion_list:
+            if current_lower not in item.lower():
+                continue
+
+            # Check if match occurs after common word delimiters or before uppercase
+            match_pos = item.lower().find(current_lower)
+            if match_pos == 0 or item[match_pos - 1] in "_- " or item[match_pos].isupper():
+                word_start_matches.append(item)
+            else:
+                other_matches.append(item)
+
+        return word_start_matches + other_matches
 
 
 class FuzzyFilter(FilterBase):
