@@ -26,7 +26,7 @@ class Overlay(tk.Toplevel):
             return current_text
 
     def _input_search_text(self):
-        """Input only user-entered serach text in the combobox."""
+        """Input only user-entered search text in the combobox."""
         current_text = self._get_search_text()
         if self.combobox.selection_callback:
             self.combobox.selection_callback(current_text)
