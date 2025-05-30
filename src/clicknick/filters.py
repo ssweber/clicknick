@@ -65,11 +65,43 @@ class ContainsPlusFilter(FilterBase):
 
     def __init__(self):
         self.contains_filter = ContainsFilter()
+        self.abbrev_mappings = {
+            # Ordinals
+            "first": ["1st"],
+            "second": ["2nd", "ss"],
+            "third": ["3rd"],
+            "fourth": ["4th"],
+            "fifth": ["5th"],
+            "sixth": ["6th"],
+            "seventh": ["7th"],
+            "eighth": ["8th"],
+            "ninth": ["9th"],
+            "tenth": ["10th"],
+            # Time formats (lowercase)
+            "hour": ["hh"],
+            "minute": ["mm"],
+            "millisecond": ["ms"],
+            # Date formats (always uppercase regardless of input case)
+            "year": ["YY", "YYYY"],
+            "month": ["MM"],
+            "day": ["DD"],
+        }
 
     def split_into_words(self, text):
         """Split text into words on underscore, spaces, and camelCase boundaries"""
+
+        # Special handling for time patterns like hhmmss, yyyymmdd, etc.
+        time_patterns = [
+            (r"(\d{4})(\d{2})(\d{2})", r"\1 \2 \3"),  # yyyymmdd -> yyyy mm dd
+            (r"([a-z]{2})([a-z]{2})([a-z]{2})", r"\1 \2 \3"),  # hhmmss -> hh mm ss
+        ]
+
+        processed_text = text
+        for pattern, replacement in time_patterns:
+            processed_text = re.sub(pattern, replacement, processed_text)
+
         # First split on underscore and spaces
-        parts = re.split(r"[_\s]+", text)
+        parts = re.split(r"[_\s]+", processed_text)
 
         # Then split each part on camelCase boundaries
         words = []
@@ -128,7 +160,6 @@ class ContainsPlusFilter(FilterBase):
     def generate_tags(self, text):
         """Generate searchable tags for a nickname"""
         words = self.split_into_words(text)
-
         abbr_set = set()
 
         # Add original words (4+ chars)
@@ -139,7 +170,13 @@ class ContainsPlusFilter(FilterBase):
         # Add full text without underscores
         abbr_set.add(text.lower().replace("_", ""))
 
-        # Add abbreviations (with and without rule 4)
+        # Add predefined abbreviations
+        for word in words:
+            word_lower = word.lower()
+            if word_lower in self.abbrev_mappings:
+                abbr_set.update(self.abbrev_mappings[word_lower])
+
+        # Add computed abbreviations
         for word in words:
             abbr_set.add(self.abbreviate_word(word).lower())
             abbr_set.add(self.abbreviate_word(word, reduce_post_vowel_clusters=False).lower())
@@ -169,7 +206,14 @@ class ContainsPlusFilter(FilterBase):
             needle_abbr = self.abbreviate_word(needle).lower()
             needle_abbr2 = self.abbreviate_word(needle, False).lower()
 
+            # Check if needle matches any abbreviation mappings
+            needle_expansions = []
+            for full_word, abbrevs in self.abbrev_mappings.items():
+                if needle.startswith(full_word):
+                    needle_expansions.extend(abbrevs)
+
             for item in remaining_items:
+                # Check abbreviation tags
                 abbr_tags = getattr(item, "abbr_tags", "")
                 if abbr_tags:
                     abbr_tags_list = abbr_tags.split(",")
@@ -180,6 +224,13 @@ class ContainsPlusFilter(FilterBase):
                             or abbr.startswith(needle_abbr)
                             or abbr.startswith(needle_abbr2)
                         ):
+                            abbreviation_matches.append(item)
+                            break
+
+                # Check if item contains any of the needle's mapped abbreviations
+                if not any(item == match for match in abbreviation_matches):  # Avoid duplicates
+                    for expansion in needle_expansions:
+                        if expansion in str(item):  # This will match the actual case in the tag
                             abbreviation_matches.append(item)
                             break
 
