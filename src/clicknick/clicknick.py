@@ -308,18 +308,6 @@ class ClickNickApp:
         self.threshold_display_var.set(desc)
         self.fuzzy_threshold_var.set(int_value)
 
-    def _update_fuzzy_slider_state(self):
-        """Enable/disable fuzzy slider based on selected search mode."""
-        is_fuzzy_selected = self.search_var.get() == "fuzzy"
-        state = "normal" if is_fuzzy_selected else "disabled"
-
-        # Update slider and label states
-        self.fuzzy_slider.configure(state=state)
-
-        # Optional: Also disable the label to make it visually clear
-        label_style = "TLabel" if is_fuzzy_selected else "Disabled.TLabel"
-        self.fuzzy_value_label.configure(style=label_style)
-
     def create_options_section(self, parent):
         """Create the options section."""
         options_frame = ttk.LabelFrame(parent, text="Search Options")
@@ -328,32 +316,16 @@ class ClickNickApp:
         filter_frame = ttk.Frame(options_frame)
         filter_label = ttk.Label(filter_frame, text="Filter Mode:")
         none_radio = ttk.Radiobutton(
-            filter_frame,
-            text="None",
-            variable=self.search_var,
-            value="none",
-            command=self._update_fuzzy_slider_state,
+            filter_frame, text="None", variable=self.search_var, value="none"
         )
         prefix_radio = ttk.Radiobutton(
-            filter_frame,
-            text="Prefix Only",
-            variable=self.search_var,
-            value="prefix",
-            command=self._update_fuzzy_slider_state,
+            filter_frame, text="Prefix Only", variable=self.search_var, value="prefix"
         )
         contains_radio = ttk.Radiobutton(
-            filter_frame,
-            text="Contains",
-            variable=self.search_var,
-            value="contains",
-            command=self._update_fuzzy_slider_state,
+            filter_frame, text="Contains", variable=self.search_var, value="contains"
         )
         fuzzy_radio = ttk.Radiobutton(
-            filter_frame,
-            text="Fuzzy Match",
-            variable=self.search_var,
-            value="fuzzy",
-            command=self._update_fuzzy_slider_state,
+            filter_frame, text="Fuzzy Match", variable=self.search_var, value="fuzzy"
         )
 
         # Layout filter widgets
@@ -367,34 +339,27 @@ class ClickNickApp:
         # Fuzzy threshold slider
         fuzzy_frame = ttk.Frame(options_frame)
         fuzzy_label = ttk.Label(fuzzy_frame, text="Fuzzy Threshold:")
-        self.fuzzy_slider = ttk.Scale(
+        fuzzy_slider = ttk.Scale(
             fuzzy_frame,
             from_=40,
             to=85,
             orient=tk.HORIZONTAL,
             variable=self.fuzzy_threshold_var,
-            command=self._update_threshold_display,
+            command=self._update_threshold_display,  # Add callback to format the display
         )
 
-        # Create a StringVar for formatted display (fix the circular reference)
-        if not hasattr(self, "threshold_display_var") or not isinstance(
-            self.threshold_display_var, tk.StringVar
-        ):
-            self.threshold_display_var = tk.StringVar(value="60 (Balanced)")
-
-        self.fuzzy_value_label = ttk.Label(fuzzy_frame, textvariable=self.threshold_display_var)
+        # Create a StringVar for formatted display
+        self.threshold_display_var = tk.StringVar(value=str(self.threshold_display_var.get()))
+        fuzzy_value_label = ttk.Label(fuzzy_frame, textvariable=self.threshold_display_var)
 
         # Layout fuzzy threshold widgets
         fuzzy_label.pack(side=tk.LEFT)
-        self.fuzzy_slider.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
-        self.fuzzy_value_label.pack(side=tk.LEFT, padx=5)
+        fuzzy_slider.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        fuzzy_value_label.pack(side=tk.LEFT, padx=5)
         fuzzy_frame.pack(fill=tk.X, pady=5)
 
         # Pack the main frame
         options_frame.pack(fill=tk.X, pady=5)
-
-        # Initialize slider state
-        self._update_fuzzy_slider_state()
 
     def create_status_section(self, parent):
         """Create the status and control section."""
