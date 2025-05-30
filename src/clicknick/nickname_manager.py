@@ -197,7 +197,7 @@ class NicknameManager:
                 return False
 
             # Find available Access drivers
-            available_drivers = [driver for driver in pyodbc.drivers() if "Access" in driver]
+            available_drivers = self.get_available_access_drivers()
 
             if not available_drivers:
                 print("No Microsoft Access drivers found on this system")
