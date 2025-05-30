@@ -79,7 +79,7 @@ class ClickNickApp:
         self.status_var = tk.StringVar(value="Not connected")
         self.search_var = tk.StringVar(value="contains")
         self.fuzzy_threshold_var = tk.IntVar(value=60)  # Default threshold value
-        self.threshold_display_var = tk.StringVar(value="60 (Balanced)")  # Display value
+        self.threshold_display_var = tk.StringVar(value="60")  # Display value
         self.click_instances = []  # Will store (id, title, filename) tuples
         self.using_database = False  # Flag to track if database is being used
 
@@ -291,21 +291,15 @@ class ClickNickApp:
         instances_frame.pack(fill=tk.BOTH, expand=True, pady=10)
 
     def _update_threshold_display(self, value):
-        """Update the displayed threshold value to an integer with descriptive label."""
-        # Convert to integer and snap to multiples of 5
+        """Update the displayed threshold value to an integer."""
+        # Convert to integer (this will round down)
         int_value = int(float(value))
+
+        # Make sure it's a multiple of 5
         int_value = round(int_value / 5) * 5
 
-        # Add descriptive label based on threshold range
-        if int_value >= 75:
-            desc = f"{int_value} (Precise)"
-        elif int_value >= 60:
-            desc = f"{int_value} (Balanced)"
-        else:
-            desc = f"{int_value} (Flexible)"
-
         # Update both the display and the actual variable
-        self.threshold_display_var.set(desc)
+        self.threshold_display_var.set(str(int_value))
         self.fuzzy_threshold_var.set(int_value)
 
     def create_options_section(self, parent):
@@ -341,15 +335,15 @@ class ClickNickApp:
         fuzzy_label = ttk.Label(fuzzy_frame, text="Fuzzy Threshold:")
         fuzzy_slider = ttk.Scale(
             fuzzy_frame,
-            from_=40,
-            to=85,
+            from_=30,
+            to=90,
             orient=tk.HORIZONTAL,
             variable=self.fuzzy_threshold_var,
             command=self._update_threshold_display,  # Add callback to format the display
         )
 
         # Create a StringVar for formatted display
-        self.threshold_display_var = tk.StringVar(value=str(self.threshold_display_var.get()))
+        self.threshold_display_var = tk.StringVar(value=str(self.fuzzy_threshold_var.get()))
         fuzzy_value_label = ttk.Label(fuzzy_frame, textvariable=self.threshold_display_var)
 
         # Layout fuzzy threshold widgets
