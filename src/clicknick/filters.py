@@ -90,10 +90,14 @@ class ContainsPlusFilter(FilterBase):
     def split_into_words(self, text):
         """Split text into words on underscore, spaces, and camelCase boundaries"""
 
-        # Special handling for time patterns like hhmmss, yyyymmdd, etc.
+        # Special handling for specific time/date patterns
         time_patterns = [
-            (r"(\d{4})(\d{2})(\d{2})", r"\1 \2 \3"),  # yyyymmdd -> yyyy mm dd
-            (r"([a-z]{2})([a-z]{2})([a-z]{2})", r"\1 \2 \3"),  # hhmmss -> hh mm ss
+            # Only match if the entire segment looks like a time/date pattern
+            (r"\b(\d{4})(\d{2})(\d{2})\b", r"\1 \2 \3"),  # yyyymmdd -> yyyy mm dd
+            (
+                r"\b([a-z]{2})([a-z]{2})([a-z]{2})\b",
+                r"\1 \2 \3",
+            ),  # hhmmss -> hh mm ss (whole word only)
         ]
 
         processed_text = text
