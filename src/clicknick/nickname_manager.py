@@ -1,15 +1,15 @@
 import csv
 import os
-import re
 from pathlib import Path
 
 import pyodbc
 
-from .filters import ContainsFilter, FuzzyFilter, NoneFilter, PrefixFilter
+from .filters import ContainsFilter, ContainsPlusFilter, NoneFilter, PrefixFilter
+from .nickname import Nickname
 
 
 class NicknameManager:
-    """Manages nicknames loaded from CSV with efficient filtering."""
+    """Manages nicknames loaded from CSV or database with efficient filtering."""
 
     def _init_filters(self):
         """Initialize the search filter strategies"""
@@ -17,16 +17,16 @@ class NicknameManager:
             "none": NoneFilter(),
             "prefix": PrefixFilter(),
             "contains": ContainsFilter(),
-            "fuzzy": FuzzyFilter(),
+            "containsplus": ContainsPlusFilter(),
         }
 
-    def __init__(self):
-        self.nicknames = []  # List of dicts with 'Address' and 'Nickname' keys
-        self._address_types_cache = None
+    def __init__(self, settings=None):
+        self.nicknames: list[Nickname] = []  # List of Nickname objects
         self._loaded_filepath = None
         self._last_load_timestamp = None
         self._click_pid = None
         self._click_hwnd = None
+        self.settings = settings  # Store reference to app settings
 
         # Initialize filter strategies
         self._init_filters()
@@ -36,9 +36,36 @@ class NicknameManager:
         """Check if nicknames data is loaded."""
         return len(self.nicknames) > 0
 
+    def apply_sorting(self, sort_by_nickname: bool = False):
+        """
+        Apply sorting to the loaded nicknames.
+
+        Args:
+            sort_by_nickname: If True, sort by nickname alphabetically.
+                             If False, keep original order (memory type + address).
+        """
+        if not self.is_loaded:
+            return
+
+        if sort_by_nickname:
+            self.nicknames.sort(key=lambda x: x.nickname)
+        # If False, keep the original database/CSV order (MemoryType + Address)
+
+    def _generate_abbreviation_tags(self):
+        """Generate abbreviation tags for containsplus filtering"""
+        if not self.is_loaded:
+            return
+
+        containsplus_filter = self.filter_strategies.get("containsplus")
+        if not containsplus_filter:
+            return
+
+        for nickname_obj in self.nicknames:
+            nickname_obj.abbr_tags = containsplus_filter.generate_tags(nickname_obj.nickname)
+
     def load_csv(self, filepath: str) -> bool:
         """
-        Load nicknames from a CSV file and sort by Nickname.
+        Load nicknames from a CSV file in original order (MemoryType + Address).
 
         Args:
             filepath: Path to the CSV file
@@ -49,7 +76,6 @@ class NicknameManager:
         try:
             # Reset data
             self.nicknames = []
-            self._address_types_cache = None
             self._click_pid = None
             self._click_hwnd = None
 
@@ -63,11 +89,17 @@ class NicknameManager:
                     print(f"CSV missing required columns: {required_columns}")
                     return False
 
-                # Load all rows
-                self.nicknames = list(reader)
+                # Convert to Nickname objects
+                for row in reader:
+                    nickname_obj = Nickname(
+                        nickname=row["Nickname"],
+                        address=row["Address"],
+                        memory_type=row.get("MemoryType", ""),
+                    )
+                    self.nicknames.append(nickname_obj)
 
-            # Sort the list by Nickname
-            self.nicknames.sort(key=lambda x: x["Nickname"])
+            # Generate abbreviation tags
+            self._generate_abbreviation_tags()
 
             # Store filepath and timestamp for future checks
             self._loaded_filepath = filepath
@@ -96,22 +128,12 @@ class NicknameManager:
                 else:
                     # Otherwise reload from CSV
                     self.load_csv(self._loaded_filepath)
+
+                # Reapply sorting preference after reload
+                if self.settings:
+                    self.apply_sorting(self.settings.sort_by_nickname)
         except Exception as e:
             print(f"Error checking for file updates: {e}")
-
-    def _extract_address_types(self) -> None:
-        """Extract and cache address types from addresses."""
-        if not self.is_loaded or self._address_types_cache is not None:
-            return
-
-        # Extract address type from each address (e.g., X, Y, C)
-        self._address_types_cache = []
-        pattern = re.compile(r"^([A-Z]+)")
-
-        for item in self.nicknames:
-            match = pattern.match(item["Address"])
-            address_type = match.group(1) if match else ""
-            self._address_types_cache.append(address_type)
 
     def _find_click_database(self, click_pid=None, click_hwnd=None):
         """
@@ -222,24 +244,23 @@ class NicknameManager:
             """
             cursor.execute(query)
 
-            # Process results
+            # Process results into Nickname objects
             self.nicknames = []
             for row in cursor.fetchall():
                 nickname, address, memory_type = row
-                self.nicknames.append(
-                    {"Nickname": nickname, "Address": address, "MemoryType": memory_type}
-                )
+                nickname_obj = Nickname(nickname=nickname, address=address, memory_type=memory_type)
+                self.nicknames.append(nickname_obj)
 
             # Close connection
             cursor.close()
             conn.close()
 
+            # Generate abbreviation tags
+            self._generate_abbreviation_tags()
+
             # Store filepath and timestamp for future checks
             self._loaded_filepath = db_path
             self._last_load_timestamp = os.path.getmtime(db_path)
-
-            # Reset address type cache
-            self._address_types_cache = None
 
             print(f"Loaded {len(self.nicknames)} nicknames from database at {db_path}")
             return True
@@ -248,57 +269,16 @@ class NicknameManager:
             print(f"Error loading from database: {e}")
             return False
 
-    def filter_results(
-        self,
-        nicknames: list[str],
-        search_text: str,
-        search_mode: str = "none",
-        fuzzy_threshold: int = 60,
-    ) -> list[str]:
+    def get_filtered_nicknames(self, address_types: list[str], search_text: str = "") -> list[str]:
         """
-        Filter nicknames based on search text and mode.
-
-        Args:
-            nicknames: List of nicknames to filter
-            search_text: Text to search for
-            search_mode: Search strategy ("none", "prefix", "contains", "fuzzy")
-            fuzzy_threshold: Threshold for fuzzy matching (0-100)
-
-        Returns:
-            Filtered list of nicknames
-        """
-        if not search_text or search_mode == "none":
-            return nicknames
-
-        strategy = self.filter_strategies.get(search_mode, self.filter_strategies["none"])
-
-        # Update fuzzy threshold if using fuzzy search
-        if search_mode == "fuzzy" and isinstance(strategy, FuzzyFilter):
-            strategy.threshold = fuzzy_threshold
-
-        return strategy.filter_matches(nicknames, search_text)
-
-    def get_nicknames(
-        self,
-        address_types: list[str],
-        prefix: str = "",
-        contains: bool = False,
-        exclude_sc_sd: bool = False,
-        exclude_terms: str = "",
-    ) -> list[str]:
-        """
-        Get filtered list of nicknames for the combobox.
-        Performs a lazy check to reload data if the source file has changed.
+        Get filtered list of nickname strings using current app settings.
 
         Args:
             address_types: List of allowed address types (X, Y, C, etc.)
-            prefix: Optional text to filter nicknames
-            contains: If True, match text anywhere in nickname; if False, match prefix only
-            exclude_sc_sd: If True, exclude SC and SD addresses
-            exclude_terms: Comma-separated list of terms to exclude
+            search_text: Text to search for in nicknames
 
         Returns:
-            List of matching nicknames
+            List of matching nickname strings
         """
         # Lazy check for file updates
         self._check_for_file_updates()
@@ -306,82 +286,48 @@ class NicknameManager:
         if not self.is_loaded or not address_types:
             return []
 
-        # Extract address types if not already cached
-        self._extract_address_types()
+        # Get filtering parameters from settings (with fallbacks)
+        if self.settings:
+            search_mode = self.settings.search_mode
+            exclude_sc_sd = self.settings.exclude_sc_sd
+            exclude_terms = ",".join(self.settings.get_exclude_terms_list())
+        else:
+            # Fallback values if no settings available
+            search_mode = "none"
+            exclude_sc_sd = False
+            exclude_terms = ""
 
         # Parse excluded terms
         excluded_terms = [term.strip().lower() for term in exclude_terms.split(",") if term.strip()]
 
-        result = []
-        prefix = prefix.lower()
-
-        # Filter by address type and text
-        for i, item in enumerate(self.nicknames):
+        # Filter by address type and exclusions
+        filtered_objects = []
+        for nickname_obj in self.nicknames:
             # Check if address type matches
-            if self._address_types_cache[i] not in address_types:
+            if nickname_obj.address_type not in address_types:
                 continue
 
             # Skip SC/SD addresses if requested
-            address = item["Address"]
-            if exclude_sc_sd and (address.startswith("SC") or address.startswith("SD")):
+            if exclude_sc_sd and (
+                nickname_obj.address.startswith("SC") or nickname_obj.address.startswith("SD")
+            ):
                 continue
 
-            nickname = item["Nickname"]
-            nickname_lower = nickname.lower()
-
             # Skip if it contains any excluded terms
+            nickname_lower = nickname_obj.nickname.lower()
             if any(excluded_term in nickname_lower for excluded_term in excluded_terms):
                 continue
 
-            # Apply text filter
-            if not prefix:
-                result.append(nickname)
-            elif contains and prefix in nickname_lower:
-                result.append(nickname)
-            elif not contains and nickname_lower.startswith(prefix):
-                result.append(nickname)
+            filtered_objects.append(nickname_obj)
 
-        return result
+        # Apply search filtering if search text provided
+        if not search_text or search_mode == "none":
+            return [obj.nickname for obj in filtered_objects]
 
-    def get_nicknames_for_combobox(
-        self,
-        address_types: list[str],
-        search_text: str = "",
-        search_mode: str = "none",
-        fuzzy_threshold: int = 60,
-        exclude_sc_sd: bool = False,
-        exclude_terms: str = "",
-    ) -> list[str]:
-        """
-        Get filtered list of nicknames with search functionality.
+        strategy = self.filter_strategies.get(search_mode, self.filter_strategies["none"])
+        search_filtered_objects = strategy.filter_matches(filtered_objects, search_text)
 
-        Args:
-            address_types: List of allowed address types (X, Y, C, etc.)
-            search_text: Text to search for in nicknames
-            search_mode: Search strategy ("none", "prefix", "contains", "fuzzy")
-            fuzzy_threshold: Threshold for fuzzy matching (0-100)
-            exclude_sc_sd: If True, exclude SC and SD addresses
-            exclude_terms: Comma-separated list of terms to exclude
-
-        Returns:
-            List of matching nicknames
-        """
-        # Get base nicknames filtered by address type and exclusions ONLY
-        # Don't pass any text filtering to avoid double filtering
-        base_nicknames = self.get_nicknames(
-            address_types=address_types,
-            exclude_sc_sd=exclude_sc_sd,
-            exclude_terms=exclude_terms,
-            # Note: NOT passing prefix or contains parameters
-        )
-
-        # Then apply search filtering
-        return self.filter_results(
-            nicknames=base_nicknames,
-            search_text=search_text,
-            search_mode=search_mode,
-            fuzzy_threshold=fuzzy_threshold,
-        )
+        return [obj.nickname for obj in search_filtered_objects]
 
     def get_address_for_nickname(self, nickname: str) -> str | None:
         """
@@ -397,9 +343,9 @@ class NicknameManager:
             return None
 
         # Find exact match for the nickname
-        for item in self.nicknames:
-            if item["Nickname"] == nickname:
-                return item["Address"]
+        for nickname_obj in self.nicknames:
+            if nickname_obj.nickname == nickname:
+                return nickname_obj.address
 
         return None
 

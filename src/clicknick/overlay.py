@@ -108,28 +108,12 @@ class Overlay(tk.Toplevel):
         else:
             self._insert_text_to_field(nickname)
 
-    def __init__(
-        self,
-        root,
-        nickname_mananger,
-        search_var=None,
-        fuzzy_threshold_var=None,
-        exclude_sc_sd_var=None,
-        exclude_nicknames_var=None,
-    ):
+    def __init__(self, root, nickname_manager):
         super().__init__(root)
         self.title("ClickNickOverlay")
         self.overrideredirect(True)  # No window decorations
         self.attributes("-topmost", True)  # Stay on top
         self.withdraw()  # Hide initially
-
-        # Store exclusion variables
-        self.exclude_sc_sd_var = exclude_sc_sd_var
-        self.exclude_nicknames_var = exclude_nicknames_var
-
-        # Store search variables
-        self.search_var = search_var
-        self.fuzzy_threshold_var = fuzzy_threshold_var
 
         # Create the combobox
         # Configure style for wider dropdown
@@ -139,8 +123,9 @@ class Overlay(tk.Toplevel):
         self.combobox.pack(padx=2, pady=2)
         self.combobox.set_selection_callback(self._on_nickname_selected)
         self.combobox.set_text_input_callback(self.on_text_input)
-        # Store dependencies
-        self.nickname_manager = nickname_mananger
+
+        # Store dependencies - nickname_manager already has settings
+        self.nickname_manager = nickname_manager
 
         # Target window information
         self.target_window_id = None
@@ -214,25 +199,8 @@ class Overlay(tk.Toplevel):
         # Extract only the un-selected (user-typed) text
         search_text = self._get_search_text()
 
-        # Get current filter settings
-        search_mode = self.search_var.get() if self.search_var else "none"
-        fuzzy_threshold = self.fuzzy_threshold_var.get() if self.fuzzy_threshold_var else 60
-        exclude_sc_sd = self.exclude_sc_sd_var.get() if self.exclude_sc_sd_var else False
-        exclude_terms = self.exclude_nicknames_var.get() if self.exclude_nicknames_var else ""
-
-        # Handle placeholder text
-        if exclude_terms == "name1, name2, name3":
-            exclude_terms = ""
-
-        # Get and return filtered nicknames
-        return self.nickname_manager.get_nicknames_for_combobox(
-            address_types=self.allowed_types,
-            search_text=search_text,
-            search_mode=search_mode,
-            fuzzy_threshold=fuzzy_threshold,
-            exclude_sc_sd=exclude_sc_sd,
-            exclude_terms=exclude_terms,
-        )
+        # Use nickname manager's built-in filtering with app settings
+        return self.nickname_manager.get_filtered_nicknames(self.allowed_types, search_text)
 
     def _should_show_dropdown(self):
         """Determine if dropdown should be shown based on input text"""
@@ -361,22 +329,8 @@ class Overlay(tk.Toplevel):
         # Store allowed types for text change handling
         self.allowed_types = allowed_types
 
-        # Get current filter settings
-        exclude_sc_sd = self.exclude_sc_sd_var.get() if self.exclude_sc_sd_var else False
-        exclude_terms = self.exclude_nicknames_var.get() if self.exclude_nicknames_var else ""
-
-        # Handle placeholder text
-        if exclude_terms == "name1, name2, name3":
-            exclude_terms = ""
-
-        # Get initial nicknames (no search text yet)
-        nicknames = self.nickname_manager.get_nicknames_for_combobox(
-            address_types=allowed_types,
-            search_text="",
-            search_mode="none",
-            exclude_sc_sd=exclude_sc_sd,
-            exclude_terms=exclude_terms,
-        )
+        # Get initial nicknames using the nickname manager's built-in filtering
+        nicknames = self.nickname_manager.get_filtered_nicknames(allowed_types, "")
         self.combobox.update_values(nicknames)
 
         # Only show if positioning is successful

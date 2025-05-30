@@ -8,6 +8,7 @@ from tkinter import filedialog, ttk
 
 from .nickname_manager import NicknameManager
 from .overlay import Overlay
+from .settings import AppSettings
 from .shared_ahk import AHK
 from .window_detector import ClickWindowDetector
 from .window_mapping import CLICK_PLC_WINDOW_MAPPING
@@ -30,14 +31,17 @@ class ClickNickApp:
     """Main application for the ClickNick App."""
 
     def __init__(self):
-        # Initialize core components
-        self.nickname_manager = NicknameManager()
-        self.detector = ClickWindowDetector(CLICK_PLC_WINDOW_MAPPING, self)
-
         # Create main window
         self.root = tk.Tk()
         self.root.title("ClickNick App")
-        self.root.geometry("500x600")
+        self.root.geometry("500x650")
+
+        # Initialize settings first
+        self.settings = AppSettings()
+
+        # Initialize core components
+        self.nickname_manager = NicknameManager(self.settings)
+        self.detector = ClickWindowDetector(CLICK_PLC_WINDOW_MAPPING, self)
 
         # Set the icon
         try:
@@ -77,14 +81,8 @@ class ClickNickApp:
         """Initialize Tkinter variables."""
         self.csv_path_var = tk.StringVar()
         self.status_var = tk.StringVar(value="Not connected")
-        self.search_var = tk.StringVar(value="contains")
-        self.fuzzy_threshold_var = tk.IntVar(value=60)  # Default threshold value
-        self.threshold_display_var = tk.StringVar(value="60")  # Display value
         self.click_instances = []  # Will store (id, title, filename) tuples
         self.using_database = False  # Flag to track if database is being used
-
-        self.exclude_sc_sd_var = tk.BooleanVar(value=False)
-        self.exclude_nicknames_var = tk.StringVar(value="")
 
     def setup_styles(self):
         """Configure ttk styles for the application."""
@@ -111,7 +109,7 @@ class ClickNickApp:
         # Create all widgets
         self.create_click_instances_section(main_frame)
         self.create_options_section(main_frame)
-        self.create_exclude_section(main_frame)  # Add this line
+        self.create_exclude_section(main_frame)
         self.create_status_section(main_frame)
         self.create_csv_section(main_frame)
 
@@ -127,14 +125,16 @@ class ClickNickApp:
 
         # SC/SD exclusion checkbox
         sc_sd_check = ttk.Checkbutton(
-            exclude_frame, text="Exclude SC/SD Addresses", variable=self.exclude_sc_sd_var
+            exclude_frame, text="Exclude SC/SD Addresses", variable=self.settings.exclude_sc_sd_var
         )
         sc_sd_check.pack(anchor=tk.W, padx=5, pady=2)
 
         # Exclude nicknames containing entry
         exclude_frame_entry = ttk.Frame(exclude_frame)
         exclude_label = ttk.Label(exclude_frame_entry, text="Exclude nicknames containing:")
-        exclude_entry = ttk.Entry(exclude_frame_entry, textvariable=self.exclude_nicknames_var)
+        exclude_entry = ttk.Entry(
+            exclude_frame_entry, textvariable=self.settings.exclude_nicknames_var
+        )
 
         # Add placeholder text
         placeholder_text = "name1, name2, name3"
@@ -142,17 +142,17 @@ class ClickNickApp:
         # Functions to handle placeholder behavior
         def on_entry_focus_in(event):
             if exclude_entry.get() == placeholder_text:
-                self.exclude_nicknames_var.set("")
+                self.settings.exclude_nicknames_var.set("")
                 exclude_entry.config(foreground="black")
 
         def on_entry_focus_out(event):
             if not exclude_entry.get().strip():
-                self.exclude_nicknames_var.set(placeholder_text)
+                self.settings.exclude_nicknames_var.set(placeholder_text)
                 exclude_entry.config(foreground="gray")
 
         # Initialize with placeholder if empty
-        if not self.exclude_nicknames_var.get():
-            self.exclude_nicknames_var.set(placeholder_text)
+        if not self.settings.exclude_nicknames_var.get():
+            self.settings.exclude_nicknames_var.set(placeholder_text)
             exclude_entry.config(foreground="gray")
 
         # Bind focus events
@@ -196,6 +196,15 @@ class ClickNickApp:
         else:
             self.status_label.configure(style="Status.TLabel")
 
+    def on_sort_option_changed(self):
+        """Handle changes to the sort option."""
+        if self.nickname_manager.is_loaded:
+            # Apply the new sorting preference
+            self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
+
+            # Regenerate abbreviation tags after sorting
+            self.nickname_manager._generate_abbreviation_tags()
+
     def load_csv(self):
         """Load nicknames from CSV file."""
         if not self.csv_path_var.get():
@@ -204,6 +213,9 @@ class ClickNickApp:
 
         # Try to load from CSV
         if self.nickname_manager.load_csv(self.csv_path_var.get()):
+            # Apply user's sorting preference
+            self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
+
             self._update_status("Loaded nicknames from CSV", "connected")
             self.using_database = False
 
@@ -242,6 +254,9 @@ class ClickNickApp:
         )
 
         if success:
+            # Apply user's sorting preference
+            self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
+
             self._update_status("Loaded nicknames from database", "connected")
             self.using_database = True
 
@@ -290,18 +305,6 @@ class ClickNickApp:
         # Pack the main frame
         instances_frame.pack(fill=tk.BOTH, expand=True, pady=10)
 
-    def _update_threshold_display(self, value):
-        """Update the displayed threshold value to an integer."""
-        # Convert to integer (this will round down)
-        int_value = int(float(value))
-
-        # Make sure it's a multiple of 5
-        int_value = round(int_value / 5) * 5
-
-        # Update both the display and the actual variable
-        self.threshold_display_var.set(str(int_value))
-        self.fuzzy_threshold_var.set(int_value)
-
     def create_options_section(self, parent):
         """Create the options section."""
         options_frame = ttk.LabelFrame(parent, text="Search Options")
@@ -310,16 +313,28 @@ class ClickNickApp:
         filter_frame = ttk.Frame(options_frame)
         filter_label = ttk.Label(filter_frame, text="Filter Mode:")
         none_radio = ttk.Radiobutton(
-            filter_frame, text="None", variable=self.search_var, value="none"
+            filter_frame,
+            text="None",
+            variable=self.settings.search_var,
+            value="none",
         )
         prefix_radio = ttk.Radiobutton(
-            filter_frame, text="Prefix Only", variable=self.search_var, value="prefix"
+            filter_frame,
+            text="Prefix Only",
+            variable=self.settings.search_var,
+            value="prefix",
         )
         contains_radio = ttk.Radiobutton(
-            filter_frame, text="Contains", variable=self.search_var, value="contains"
+            filter_frame,
+            text="Contains",
+            variable=self.settings.search_var,
+            value="contains",
         )
-        fuzzy_radio = ttk.Radiobutton(
-            filter_frame, text="Fuzzy Match", variable=self.search_var, value="fuzzy"
+        contains_plus_radio = ttk.Radiobutton(
+            filter_frame,
+            text="Contains + Abbr.",
+            variable=self.settings.search_var,
+            value="containsplus",
         )
 
         # Layout filter widgets
@@ -327,30 +342,19 @@ class ClickNickApp:
         none_radio.pack(side=tk.LEFT, padx=5)
         prefix_radio.pack(side=tk.LEFT, padx=5)
         contains_radio.pack(side=tk.LEFT, padx=5)
-        fuzzy_radio.pack(side=tk.LEFT, padx=5)
+        contains_plus_radio.pack(side=tk.LEFT, padx=5)
         filter_frame.pack(fill=tk.X, pady=5)
 
-        # Fuzzy threshold slider
-        fuzzy_frame = ttk.Frame(options_frame)
-        fuzzy_label = ttk.Label(fuzzy_frame, text="Fuzzy Threshold:")
-        fuzzy_slider = ttk.Scale(
-            fuzzy_frame,
-            from_=30,
-            to=90,
-            orient=tk.HORIZONTAL,
-            variable=self.fuzzy_threshold_var,
-            command=self._update_threshold_display,  # Add callback to format the display
+        # Add sorting option
+        sort_frame = ttk.Frame(options_frame)
+        sort_check = ttk.Checkbutton(
+            sort_frame,
+            text="Sort by Nickname (alphabetically)",
+            variable=self.settings.sort_by_nickname_var,
+            command=self.on_sort_option_changed,
         )
-
-        # Create a StringVar for formatted display
-        self.threshold_display_var = tk.StringVar(value=str(self.fuzzy_threshold_var.get()))
-        fuzzy_value_label = ttk.Label(fuzzy_frame, textvariable=self.threshold_display_var)
-
-        # Layout fuzzy threshold widgets
-        fuzzy_label.pack(side=tk.LEFT)
-        fuzzy_slider.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
-        fuzzy_value_label.pack(side=tk.LEFT, padx=5)
-        fuzzy_frame.pack(fill=tk.X, pady=5)
+        sort_check.pack(anchor=tk.W)
+        sort_frame.pack(fill=tk.X, pady=5)
 
         # Pack the main frame
         options_frame.pack(fill=tk.X, pady=5)
@@ -449,10 +453,6 @@ class ClickNickApp:
                 self.overlay = Overlay(
                     self.root,
                     self.nickname_manager,
-                    search_var=self.search_var,
-                    fuzzy_threshold_var=self.fuzzy_threshold_var,
-                    exclude_sc_sd_var=self.exclude_sc_sd_var,
-                    exclude_nicknames_var=self.exclude_nicknames_var,
                 )
                 self.overlay.set_target_window(window_id, window_class, edit_control)
             else:
@@ -508,6 +508,8 @@ class ClickNickApp:
                 if not self.nickname_manager.load_csv(csv_path):
                     self._update_status("Error: Failed to load CSV", "error")
                     return
+                # Apply sorting preference
+                self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
             else:
                 # Try loading from database
                 if not self.nickname_manager.load_from_database(
@@ -516,6 +518,8 @@ class ClickNickApp:
                 ):
                     self._update_status("Error: No nickname source available", "error")
                     return
+                # Apply sorting preference
+                self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
         # Validate connection to Click instance
         if not self.connected_click_pid:
@@ -597,7 +601,7 @@ class ClickNickApp:
         # Description
         desc_text = (
             "Automatically detects Click PLC popup windows and provides\n"
-            "nickname suggestions with fuzzy matching and filtering."
+            "nickname suggestions with filtering."
         )
         ttk.Label(main_frame, text=desc_text, justify=tk.CENTER).pack(pady=(0, 15))
 
