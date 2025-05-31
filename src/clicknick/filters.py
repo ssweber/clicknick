@@ -223,7 +223,7 @@ class ContainsPlusFilter(FilterBase):
         return sorted(set(tags))
 
     def filter_matches(self, completion_list, current_text):
-        """Find items that match ALL search words (intersection)"""
+        """Find items that match ALL search words (intersection) with early termination optimization"""
         if not current_text:
             return completion_list
 
@@ -238,35 +238,45 @@ class ContainsPlusFilter(FilterBase):
             word = search_words[0]
             contains_matches = self.contains_filter.filter_matches(completion_list, word)
             contains_matched_ids = {id(item) for item in contains_matches}
-            remaining_items = [item for item in completion_list if id(item) not in contains_matched_ids]
-            
+            remaining_items = [
+                item for item in completion_list if id(item) not in contains_matched_ids
+            ]
+
             needle_variants = self.get_needle_variants(word)
             abbreviation_matches = [
-                item for item in remaining_items 
-                if self.matches_abbreviation(item, needle_variants)
+                item for item in remaining_items if self.matches_abbreviation(item, needle_variants)
             ]
             return contains_matches + abbreviation_matches
 
-        # For multiple words, find intersection (items matching ALL words)
+        # For multiple words, find intersection with early termination
+        # Sort words by length (longer/more specific words first for faster elimination)
+        search_words.sort(key=len, reverse=True)
+
         matching_items = set(completion_list)
-        
+
         for word in search_words:
-            # Get matches for this word (contains + abbreviation)
-            contains_matches = self.contains_filter.filter_matches(completion_list, word)
-            
-            needle_variants = self.get_needle_variants(word)
-            abbreviation_matches = [
-                item for item in completion_list 
-                if self.matches_abbreviation(item, needle_variants)
-            ]
-            
-            word_matches = set(contains_matches + abbreviation_matches)
-            
-            # Keep only items that match this word too
-            matching_items &= word_matches
-            
-            # Early exit if no items match all words so far
+            # Early exit if no items match all previous words
             if not matching_items:
                 break
+
+            # Only search within current candidates (progressively smaller set)
+            current_candidates = list(matching_items)
+
+            # Get contains matches for this word
+            contains_matches = set(self.contains_filter.filter_matches(current_candidates, word))
+
+            # Get abbreviation matches for this word
+            needle_variants = self.get_needle_variants(word)
+            abbreviation_matches = {
+                item
+                for item in current_candidates
+                if self.matches_abbreviation(item, needle_variants)
+            }
+
+            # Combine both types of matches for this word
+            word_matches = contains_matches | abbreviation_matches
+
+            # Keep only items that match this word too (intersection)
+            matching_items &= word_matches
 
         return list(matching_items)
