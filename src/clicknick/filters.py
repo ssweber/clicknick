@@ -80,6 +80,7 @@ class ContainsPlusFilter(FilterBase):
             (self.TIME_PATTERN_3, r"\1\1 \2\2 \3\3"),
             (self.TIME_PATTERN_4, r"\1\1 \2\2"),
         ]
+        self.vowels = frozenset("aeiou")
         self.mapped_shorthand = {
             # Ordinals
             "first": ["1st"],
@@ -119,22 +120,21 @@ class ContainsPlusFilter(FilterBase):
             return word
 
         # short words
-        word = word.lower()
-        if len(word) <= 3:
-            return word
+        word_lower = word.lower()
+        if len(word_lower) <= 3:
+            return word_lower
 
         # all consonants
-        vowels = "aeiou"
-        if not any(vowel in word for vowel in vowels):
-            return word
+        vowels = self.vowels
+        if not vowels & set(word_lower):
+            return word_lower
 
         # Abbreviation logic:
-
-        result = [word[0]]  # Rule 1: Keep first letter
+        result = [word_lower[0]]  # Rule 1: Keep first letter
         second_consonant_kept = False
 
-        for i in range(1, len(word)):
-            char = word[i]
+        for i in range(1, len(word_lower)):
+            char = word_lower[i]
 
             # Rule 2: Discard vowels
             if char in vowels:
@@ -150,9 +150,9 @@ class ContainsPlusFilter(FilterBase):
             if (
                 reduce_post_vowel_clusters  # optional
                 and i > 1
-                and word[i - 1] in vowels
-                and i < len(word) - 1
-                and word[i + 1] not in vowels
+                and word_lower[i - 1] in vowels
+                and i < len(word_lower) - 1
+                and word_lower[i + 1] not in vowels
             ):
                 continue
 
