@@ -96,7 +96,7 @@ class ContainsPlusFilter(FilterBase):
     def split_into_words(self, text):
         """Split text into words on underscore, spaces, and camelCase boundaries"""
         processed_text = text
-        
+
         # split YYYYMMDD, YYMMDD, hhmmss
         for pattern, replacement in self._time_patterns:
             processed_text = pattern.sub(replacement, processed_text)
@@ -118,11 +118,11 @@ class ContainsPlusFilter(FilterBase):
 
     def abbreviate_word(self, word, reduce_post_vowel_clusters=True):
         """Apply abbreviation rules to a word"""
-        
+
         # return all same letter (like YYYY) unmodified case
         if len(set(word)) <= 1:
             return word
-        
+
         # short words
         word = word.lower()
         if len(word) <= 3:
@@ -153,7 +153,7 @@ class ContainsPlusFilter(FilterBase):
 
             # Rule 4: If rule 3 used, discard first of two consonants after vowel
             if (
-                reduce_post_vowel_clusters # optional
+                reduce_post_vowel_clusters  # optional
                 and i > 1
                 and word[i - 1] in vowels
                 and i < len(word) - 1
@@ -174,35 +174,29 @@ class ContainsPlusFilter(FilterBase):
     def get_needle_variants(self, needle):
         """Get all variants of the search needle for matching"""
         needle_lower = needle.lower()
-        variants = {
-            "original": needle_lower,
-            "abbreviated": self.abbreviate_word(needle_lower),
-            "abbreviated_alt": self.abbreviate_word(needle_lower, False),
-            "mapped_shorthand": [],
-        }
+        variants = [needle_lower]
 
-        # Check if needle matches any abbreviation mappings
+        # Add abbreviation variants
+        variants.append(self.abbreviate_word(needle_lower))
+        variants.append(self.abbreviate_word(needle_lower, False))
+
+        # Add mapped shorthand
         for full_word, abbrevs in self.mapped_shorthand.items():
             if needle_lower == full_word:
-                variants["mapped_shorthand"].extend(abbrevs)
+                variants.extend(abbrevs)
 
         return variants
 
-    def matches_abbreviation_tags(self, item, needle_variants):
-        """Check if item matches based on its abbreviation tags"""
-        abbr_tags = getattr(item, "abbr_tags", "")
+    def matches_abbreviation(self, item, needle_variants):
+        """Check if item matches any needle variant"""
+        abbr_tags = getattr(item, "abbr_tags", [])
         if not abbr_tags:
             return False
 
-        # Check against needle variants
-        for abbr in abbr_tags:
-            if (
-                abbr.startswith(needle_variants["original"])
-                or abbr.startswith(needle_variants["abbreviated"])
-                or abbr.startswith(needle_variants["abbreviated_alt"])
-            ):
-                return True
-
+        for tag in abbr_tags:
+            for variant in needle_variants:
+                if tag.startswith(variant):
+                    return True
         return False
 
     def matches_shorthand_in_item(self, item, needle_variants):
@@ -261,18 +255,16 @@ class ContainsPlusFilter(FilterBase):
         if not current_text:
             return completion_list
 
-        # First pass: Use contains filter
+        # First pass: contains filter
         contains_matches = self.contains_filter.filter_matches(completion_list, current_text)
 
-        # Get items that didn't match the contains filter
+        # Second pass: abbreviation matching on remainder
         contains_matched_ids = {id(item) for item in contains_matches}
         remaining_items = [item for item in completion_list if id(item) not in contains_matched_ids]
 
-        # Second pass: Apply abbreviation matching to remaining items
-        abbreviation_matches = []
-        if remaining_items:
-            needle_variants = self.get_needle_variants(current_text)
-            abbreviation_matches = self.get_abbreviation_matches(remaining_items, needle_variants)
+        needle_variants = self.get_needle_variants(current_text)
+        abbreviation_matches = [
+            item for item in remaining_items if self.matches_abbreviation(item, needle_variants)
+        ]
 
-        # Combine results: contains matches first, then abbreviation matches
         return contains_matches + abbreviation_matches
