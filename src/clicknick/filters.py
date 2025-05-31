@@ -63,13 +63,22 @@ class ContainsFilter(FilterBase):
 class ContainsPlusFilter(FilterBase):
     """Enhanced contains matching with abbreviation support"""
 
+    # Class-level regex constants
+    TIME_PATTERN_1 = re.compile(r"([a-zA-Z])\1{3}([a-zA-Z])\2{1}([a-zA-Z])\3{1}")
+    TIME_PATTERN_2 = re.compile(r"([a-zA-Z])\1{3}([a-zA-Z])\2{1}")
+    TIME_PATTERN_3 = re.compile(r"([a-zA-Z])\1{1}([a-zA-Z])\2{1}([a-zA-Z])\3{1}")
+    TIME_PATTERN_4 = re.compile(r"([a-zA-Z])\1{1}([a-zA-Z])\2{1}")
+    
+    WORD_SPLIT_PATTERN = re.compile(r"[_\s]+")
+    CAMEL_CASE_SPLIT_PATTERN = re.compile(r"([a-z])([A-Z])")
+
     def __init__(self):
         self.contains_filter = ContainsFilter()
         self._time_patterns = [
-            (re.compile(r"([a-zA-Z])\1{3}([a-zA-Z])\2{1}([a-zA-Z])\3{1}"), r"\1\1\1\1 \2\2 \3\3"),
-            (re.compile(r"([a-zA-Z])\1{3}([a-zA-Z])\2{1}"), r"\1\1\1\1 \2\2"),
-            (re.compile(r"([a-zA-Z])\1{1}([a-zA-Z])\2{1}([a-zA-Z])\3{1}"), r"\1\1 \2\2 \3\3"),
-            (re.compile(r"([a-zA-Z])\1{1}([a-zA-Z])\2{1}"), r"\1\1 \2\2"),
+            (self.TIME_PATTERN_1, r"\1\1\1\1 \2\2 \3\3"),
+            (self.TIME_PATTERN_2, r"\1\1\1\1 \2\2"),
+            (self.TIME_PATTERN_3, r"\1\1 \2\2 \3\3"),
+            (self.TIME_PATTERN_4, r"\1\1 \2\2"),
         ]
         self.mapped_shorthand = {
             # Ordinals
@@ -102,7 +111,7 @@ class ContainsPlusFilter(FilterBase):
             processed_text = pattern.sub(replacement, processed_text)
 
         # split on underscore and spaces
-        parts = re.split(r"[_\s]+", processed_text)
+        parts = self.WORD_SPLIT_PATTERN.split(processed_text)
 
         # split each part on camelCase boundaries
         words = []
@@ -110,7 +119,7 @@ class ContainsPlusFilter(FilterBase):
             if not part:
                 continue
             # split on camelCase: insert space before uppercase letters that follow lowercase
-            camel_split = re.sub(r"([a-z])([A-Z])", r"\1 \2", part)
+            camel_split = self.CAMEL_CASE_SPLIT_PATTERN.sub(r"\1 \2", part)
             words.extend(camel_split.split())
 
         # don't return single-characters
@@ -238,44 +247,42 @@ class ContainsPlusFilter(FilterBase):
             word = search_words[0]
             contains_matches = self.contains_filter.filter_matches(completion_list, word)
             contains_matched_ids = {id(item) for item in contains_matches}
-            remaining_items = [
-                item for item in completion_list if id(item) not in contains_matched_ids
-            ]
-
+            remaining_items = [item for item in completion_list if id(item) not in contains_matched_ids]
+            
             needle_variants = self.get_needle_variants(word)
             abbreviation_matches = [
-                item for item in remaining_items if self.matches_abbreviation(item, needle_variants)
+                item for item in remaining_items 
+                if self.matches_abbreviation(item, needle_variants)
             ]
             return contains_matches + abbreviation_matches
 
         # For multiple words, find intersection with early termination
         # Sort words by length (longer/more specific words first for faster elimination)
         search_words.sort(key=len, reverse=True)
-
+        
         matching_items = set(completion_list)
-
+        
         for word in search_words:
             # Early exit if no items match all previous words
             if not matching_items:
                 break
-
+                
             # Only search within current candidates (progressively smaller set)
             current_candidates = list(matching_items)
-
+            
             # Get contains matches for this word
             contains_matches = set(self.contains_filter.filter_matches(current_candidates, word))
-
+            
             # Get abbreviation matches for this word
             needle_variants = self.get_needle_variants(word)
             abbreviation_matches = {
-                item
-                for item in current_candidates
+                item for item in current_candidates 
                 if self.matches_abbreviation(item, needle_variants)
             }
-
+            
             # Combine both types of matches for this word
             word_matches = contains_matches | abbreviation_matches
-
+            
             # Keep only items that match this word too (intersection)
             matching_items &= word_matches
 
