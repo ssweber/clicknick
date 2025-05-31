@@ -199,34 +199,6 @@ class ContainsPlusFilter(FilterBase):
                     return True
         return False
 
-    def matches_shorthand_in_item(self, item, needle_variants):
-        """Check if any needle shorthand appears in the item text"""
-        if not needle_variants["mapped_shorthand"]:
-            return False
-
-        abbr_tags = getattr(item, "abbr_tags", "")
-        if not abbr_tags:
-            return False
-
-        for abbr in abbr_tags:
-            for shorthand in needle_variants["mapped_shorthand"]:
-                if abbr.startswith(shorthand):
-                    return True
-
-        return False
-
-    def get_abbreviation_matches(self, items, needle_variants):
-        """Get items that match via abbreviation logic"""
-        matches = []
-
-        for item in items:
-            if self.matches_abbreviation_tags(
-                item, needle_variants
-            ) or self.matches_shorthand_in_item(item, needle_variants):
-                matches.append(item)
-
-        return matches
-
     def generate_tags(self, text):
         """Generate searchable tags for a nickname"""
         words = self.split_into_words(text)
