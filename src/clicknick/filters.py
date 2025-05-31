@@ -65,7 +65,13 @@ class ContainsPlusFilter(FilterBase):
 
     def __init__(self):
         self.contains_filter = ContainsFilter()
-        self.abbrev_mappings = {
+        self._time_patterns = [
+            (re.compile(r"([a-zA-Z])\1{3}([a-zA-Z])\2{1}([a-zA-Z])\3{1}"), r"\1\1\1\1 \2\2 \3\3"),
+            (re.compile(r"([a-zA-Z])\1{3}([a-zA-Z])\2{1}"), r"\1\1\1\1 \2\2"),
+            (re.compile(r"([a-zA-Z])\1{1}([a-zA-Z])\2{1}([a-zA-Z])\3{1}"), r"\1\1 \2\2 \3\3"),
+            (re.compile(r"([a-zA-Z])\1{1}([a-zA-Z])\2{1}"), r"\1\1 \2\2"),
+        ]
+        self.mapped_shorthand = {
             # Ordinals
             "first": ["1st"],
             "second": ["2nd", "ss"],
@@ -89,43 +95,47 @@ class ContainsPlusFilter(FilterBase):
 
     def split_into_words(self, text):
         """Split text into words on underscore, spaces, and camelCase boundaries"""
-
-        # Special handling for specific time/date patterns
-        time_patterns = [
-            # Only match if the entire segment looks like a time/date pattern
-            (r"\b(\d{4})(\d{2})(\d{2})\b", r"\1 \2 \3"),  # yyyymmdd -> yyyy mm dd
-            (
-                r"\b([a-z]{2})([a-z]{2})([a-z]{2})\b",
-                r"\1 \2 \3",
-            ),  # hhmmss -> hh mm ss (whole word only)
-        ]
-
         processed_text = text
-        for pattern, replacement in time_patterns:
-            processed_text = re.sub(pattern, replacement, processed_text)
+        
+        # split YYYYMMDD, YYMMDD, hhmmss
+        for pattern, replacement in self._time_patterns:
+            processed_text = pattern.sub(replacement, processed_text)
 
-        # First split on underscore and spaces
+        # split on underscore and spaces
         parts = re.split(r"[_\s]+", processed_text)
 
-        # Then split each part on camelCase boundaries
+        # split each part on camelCase boundaries
         words = []
         for part in parts:
             if not part:
                 continue
-            # Split on camelCase: insert space before uppercase letters that follow lowercase
+            # split on camelCase: insert space before uppercase letters that follow lowercase
             camel_split = re.sub(r"([a-z])([A-Z])", r"\1 \2", part)
             words.extend(camel_split.split())
 
-        return [word for word in words if word]
+        # don't return single-characters
+        return [word for word in words if len(word) > 1]
 
     def abbreviate_word(self, word, reduce_post_vowel_clusters=True):
         """Apply abbreviation rules to a word"""
+        
+        # return all same letter (like YYYY) unmodified case
+        if len(set(word)) <= 1:
+            return word
+        
+        # short words
         word = word.lower()
-        if len(word) <= 1:
+        if len(word) <= 3:
             return word
 
-        result = [word[0]]  # Rule 1: Keep first letter
+        # all consonants
         vowels = "aeiou"
+        if not any(vowel in word for vowel in vowels):
+            return word
+
+        # Abbreviation logic:
+
+        result = [word[0]]  # Rule 1: Keep first letter
         second_consonant_kept = False
 
         for i in range(1, len(word)):
@@ -143,7 +153,7 @@ class ContainsPlusFilter(FilterBase):
 
             # Rule 4: If rule 3 used, discard first of two consonants after vowel
             if (
-                reduce_post_vowel_clusters
+                reduce_post_vowel_clusters # optional
                 and i > 1
                 and word[i - 1] in vowels
                 and i < len(word) - 1
@@ -161,31 +171,90 @@ class ContainsPlusFilter(FilterBase):
 
         return "".join(final_result)
 
+    def get_needle_variants(self, needle):
+        """Get all variants of the search needle for matching"""
+        needle_lower = needle.lower()
+        variants = {
+            "original": needle_lower,
+            "abbreviated": self.abbreviate_word(needle_lower),
+            "abbreviated_alt": self.abbreviate_word(needle_lower, False),
+            "mapped_shorthand": [],
+        }
+
+        # Check if needle matches any abbreviation mappings
+        for full_word, abbrevs in self.mapped_shorthand.items():
+            if needle_lower == full_word:
+                variants["mapped_shorthand"].extend(abbrevs)
+
+        return variants
+
+    def matches_abbreviation_tags(self, item, needle_variants):
+        """Check if item matches based on its abbreviation tags"""
+        abbr_tags = getattr(item, "abbr_tags", "")
+        if not abbr_tags:
+            return False
+
+        # Check against needle variants
+        for abbr in abbr_tags:
+            if (
+                abbr.startswith(needle_variants["original"])
+                or abbr.startswith(needle_variants["abbreviated"])
+                or abbr.startswith(needle_variants["abbreviated_alt"])
+            ):
+                return True
+
+        return False
+
+    def matches_shorthand_in_item(self, item, needle_variants):
+        """Check if any needle shorthand appears in the item text"""
+        if not needle_variants["mapped_shorthand"]:
+            return False
+
+        abbr_tags = getattr(item, "abbr_tags", "")
+        if not abbr_tags:
+            return False
+
+        for abbr in abbr_tags:
+            for shorthand in needle_variants["mapped_shorthand"]:
+                if abbr.startswith(shorthand):
+                    return True
+
+        return False
+
+    def get_abbreviation_matches(self, items, needle_variants):
+        """Get items that match via abbreviation logic"""
+        matches = []
+
+        for item in items:
+            if self.matches_abbreviation_tags(
+                item, needle_variants
+            ) or self.matches_shorthand_in_item(item, needle_variants):
+                matches.append(item)
+
+        return matches
+
     def generate_tags(self, text):
         """Generate searchable tags for a nickname"""
         words = self.split_into_words(text)
-        abbr_set = set()
+        tags = []
 
         # Add original words (4+ chars)
         for word in words:
             if len(word) >= 4:
-                abbr_set.add(word.lower())
-
-        # Add full text without underscores
-        abbr_set.add(text.lower().replace("_", ""))
+                tags.append(word.lower())
 
         # Add predefined abbreviations
         for word in words:
             word_lower = word.lower()
-            if word_lower in self.abbrev_mappings:
-                abbr_set.update(self.abbrev_mappings[word_lower])
+            if word_lower in self.mapped_shorthand:
+                tags.extend(self.mapped_shorthand[word_lower])
 
         # Add computed abbreviations
         for word in words:
-            abbr_set.add(self.abbreviate_word(word).lower())
-            abbr_set.add(self.abbreviate_word(word, reduce_post_vowel_clusters=False).lower())
+            tags.append(self.abbreviate_word(word))
+            tags.append(self.abbreviate_word(word, reduce_post_vowel_clusters=False))
 
-        return ",".join(sorted(abbr_set))
+        return sorted(set(tags))
 
     def filter_matches(self, completion_list, current_text):
         """Cascade: first ContainsFilter, then abbreviation matching on remainder"""
@@ -195,48 +264,15 @@ class ContainsPlusFilter(FilterBase):
         # First pass: Use contains filter
         contains_matches = self.contains_filter.filter_matches(completion_list, current_text)
 
-        # Create a set of items that were matched by contains filter for quick lookup
-        contains_matched_items = {str(item) for item in contains_matches}
+        # Get items that didn't match the contains filter
+        contains_matched_ids = {id(item) for item in contains_matches}
+        remaining_items = [item for item in completion_list if id(item) not in contains_matched_ids]
 
-        # Get the items that DIDN'T match the contains filter
-        remaining_items = [
-            item for item in completion_list if str(item) not in contains_matched_items
-        ]
-
-        # Second pass: Apply abbreviation matching to remaining items only
+        # Second pass: Apply abbreviation matching to remaining items
         abbreviation_matches = []
         if remaining_items:
-            needle = current_text.lower()
-            needle_abbr = self.abbreviate_word(needle).lower()
-            needle_abbr2 = self.abbreviate_word(needle, False).lower()
-
-            # Check if needle matches any abbreviation mappings
-            needle_expansions = []
-            for full_word, abbrevs in self.abbrev_mappings.items():
-                if needle.startswith(full_word):
-                    needle_expansions.extend(abbrevs)
-
-            for item in remaining_items:
-                # Check abbreviation tags
-                abbr_tags = getattr(item, "abbr_tags", "")
-                if abbr_tags:
-                    abbr_tags_list = abbr_tags.split(",")
-
-                    for abbr in abbr_tags_list:
-                        if (
-                            abbr.startswith(needle)
-                            or abbr.startswith(needle_abbr)
-                            or abbr.startswith(needle_abbr2)
-                        ):
-                            abbreviation_matches.append(item)
-                            break
-
-                # Check if item contains any of the needle's mapped abbreviations
-                if not any(item == match for match in abbreviation_matches):  # Avoid duplicates
-                    for expansion in needle_expansions:
-                        if expansion in str(item):  # This will match the actual case in the tag
-                            abbreviation_matches.append(item)
-                            break
+            needle_variants = self.get_needle_variants(current_text)
+            abbreviation_matches = self.get_abbreviation_matches(remaining_items, needle_variants)
 
         # Combine results: contains matches first, then abbreviation matches
         return contains_matches + abbreviation_matches
