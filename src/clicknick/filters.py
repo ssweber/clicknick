@@ -129,42 +129,31 @@ class ContainsPlusFilter(FilterBase):
         if not vowels & set(word_lower[1:]):
             return word_lower
 
-        # Abbreviation logic:
-        result = [word_lower[0]]  # Rule 1: Keep first letter
-        second_consonant_kept = False
+        # Keep first letter, then process each subsequent character
+        result = [word_lower[0]]
+        prev_was_consonant = False
+        just_popped = False  # Track if we just popped to avoid multiple pops
 
         for i in range(1, len(word_lower)):
             char = word_lower[i]
 
-            # Rule 2: Discard vowels
             if char in vowels:
-                continue
+                prev_was_consonant = False
+                just_popped = False
+            else:
+                # It's a consonant
+                if reduce_post_vowel_clusters and prev_was_consonant and not just_popped:
+                    # We're in a consonant cluster - pop the previous consonant once
+                    result.pop()
+                    just_popped = True
+                else:
+                    just_popped = False
 
-            # Rule 3: Always keep the second consonant
-            if not second_consonant_kept:
                 result.append(char)
-                second_consonant_kept = True
-                continue
+                prev_was_consonant = True
 
-            # Rule 4: If rule 3 used, discard first of two consonants after vowel
-            if (
-                reduce_post_vowel_clusters  # optional
-                and i > 1
-                and word_lower[i - 1] in vowels
-                and i < len(word_lower) - 1
-                and word_lower[i + 1] not in vowels
-            ):
-                continue
-
-            result.append(char)
-
-        # Rule 5: Reduce double consonants to one
-        final_result = []
-        for i, char in enumerate(result):
-            if i == 0 or char != result[i - 1]:
-                final_result.append(char)
-
-        return "".join(final_result)
+        # Remove consecutive duplicates
+        return "".join(char for i, char in enumerate(result) if i == 0 or char != result[i - 1])
 
     def get_needle_variants(self, needle):
         """Get all variants of the search needle for matching"""
@@ -271,8 +260,8 @@ class ContainsPlusFilter(FilterBase):
         # Split input into words for multi-word search
         search_words = self.split_into_words(current_text)
         if not search_words:
-            # Fallback to original text if no words extracted
-            search_words = [current_text]
+            # If no valid words extracted (e.g., whitespace only), return full list
+            return completion_list
 
         # Route to appropriate filtering method
         if len(search_words) == 1:
