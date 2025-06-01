@@ -217,33 +217,20 @@ class ContainsPlusFilter(FilterBase):
 
         return sorted(set(tags))
 
-    def filter_matches(self, completion_list, current_text):
-        """Find items that match ALL search words (intersection) with early termination optimization"""
-        if not current_text:
-            return completion_list
+    def _filter_single_word(self, completion_list, word):
+        """Filter using cascading approach for single word searches"""
+        contains_matches = self.contains_filter.filter_matches(completion_list, word)
+        contains_matched_ids = {id(item) for item in contains_matches}
+        remaining_items = [item for item in completion_list if id(item) not in contains_matched_ids]
 
-        # Split input into words for multi-word search
-        search_words = self.split_into_words(current_text)
-        if not search_words:
-            # Fallback to original text if no words extracted
-            search_words = [current_text]
+        needle_variants = self.get_needle_variants(word)
+        abbreviation_matches = [
+            item for item in remaining_items if self.matches_abbreviation(item, needle_variants)
+        ]
+        return contains_matches + abbreviation_matches
 
-        # If only one word, use the original cascading approach
-        if len(search_words) == 1:
-            word = search_words[0]
-            contains_matches = self.contains_filter.filter_matches(completion_list, word)
-            contains_matched_ids = {id(item) for item in contains_matches}
-            remaining_items = [
-                item for item in completion_list if id(item) not in contains_matched_ids
-            ]
-
-            needle_variants = self.get_needle_variants(word)
-            abbreviation_matches = [
-                item for item in remaining_items if self.matches_abbreviation(item, needle_variants)
-            ]
-            return contains_matches + abbreviation_matches
-
-        # For multiple words, find intersection with early termination
+    def _filter_multiple_words(self, completion_list, search_words):
+        """Filter using intersection approach for multiple word searches"""
         # Sort words by length (longer/more specific words first for faster elimination)
         search_words.sort(key=len, reverse=True)
 
@@ -275,3 +262,20 @@ class ContainsPlusFilter(FilterBase):
             matching_items &= word_matches
 
         return list(matching_items)
+
+    def filter_matches(self, completion_list, current_text):
+        """Find items that match ALL search words (intersection) with early termination optimization"""
+        if not current_text:
+            return completion_list
+
+        # Split input into words for multi-word search
+        search_words = self.split_into_words(current_text)
+        if not search_words:
+            # Fallback to original text if no words extracted
+            search_words = [current_text]
+
+        # Route to appropriate filtering method
+        if len(search_words) == 1:
+            return self._filter_single_word(completion_list, search_words[0])
+        else:
+            return self._filter_multiple_words(completion_list, search_words)
