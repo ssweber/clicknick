@@ -124,9 +124,9 @@ class ContainsPlusFilter(FilterBase):
         if len(word_lower) <= 3:
             return word_lower
 
-        # all consonants
+        # all consonants (excluding first)
         vowels = self.vowels
-        if not vowels & set(word_lower):
+        if not vowels & set(word_lower[1:]):
             return word_lower
 
         # Abbreviation logic:
