@@ -10,12 +10,11 @@ Context-aware nickname autocomplete for ClickPLC instruction windows.
 ## Features
 
 - **Smart Autocomplete**: Shows only relevant nicknames based on instruction type
-- **Multiple Filter Modes**: Prefix, Contains, and Fuzzy matching
+- **Multiple Filter Modes**: Prefix, Contains, and Contains + Abbreviation matching
 - **Exclude**: SC/SD addresses or your own
 - **Non-Intrusive**: Works alongside Click PLC without modifications
 
-![image](https://github.com/user-attachments/assets/d917cc7a-7ed2-4e99-a407-a730c1f4b8b0)
-
+![image](https://github.com/user-attachments/assets/ee627c86-801c-49ab-acff-85b906c34b06)
 
 ## How to Run
 > [!NOTE]
