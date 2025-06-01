@@ -1,4 +1,5 @@
 import re
+from functools import lru_cache
 
 
 class FilterBase:
@@ -61,7 +62,7 @@ class ContainsFilter(FilterBase):
 
 
 class ContainsPlusFilter(FilterBase):
-    """Enhanced contains matching with abbreviation support"""
+    """Enhanced contains matching with abbreviation support - with caching"""
 
     # Class-level regex constants
     TIME_PATTERN_1 = re.compile(r"([a-zA-Z])\1{3}([a-zA-Z])\2{1}([a-zA-Z])\3{1}")
@@ -124,47 +125,36 @@ class ContainsPlusFilter(FilterBase):
         if len(word_lower) <= 3:
             return word_lower
 
-        # all consonants
+        # all consonants (excluding first)
         vowels = self.vowels
-        if not vowels & set(word_lower):
+        if not vowels & set(word_lower[1:]):
             return word_lower
 
-        # Abbreviation logic:
-        result = [word_lower[0]]  # Rule 1: Keep first letter
-        second_consonant_kept = False
+        # Keep first letter, then process each subsequent character
+        result = [word_lower[0]]
+        prev_was_consonant = False
+        just_popped = False  # Track if we just popped to avoid multiple pops
 
         for i in range(1, len(word_lower)):
             char = word_lower[i]
 
-            # Rule 2: Discard vowels
             if char in vowels:
-                continue
+                prev_was_consonant = False
+                just_popped = False
+            else:
+                # It's a consonant
+                if reduce_post_vowel_clusters and prev_was_consonant and not just_popped:
+                    # We're in a consonant cluster - pop the previous consonant once
+                    result.pop()
+                    just_popped = True
+                else:
+                    just_popped = False
 
-            # Rule 3: Always keep the second consonant
-            if not second_consonant_kept:
                 result.append(char)
-                second_consonant_kept = True
-                continue
+                prev_was_consonant = True
 
-            # Rule 4: If rule 3 used, discard first of two consonants after vowel
-            if (
-                reduce_post_vowel_clusters  # optional
-                and i > 1
-                and word_lower[i - 1] in vowels
-                and i < len(word_lower) - 1
-                and word_lower[i + 1] not in vowels
-            ):
-                continue
-
-            result.append(char)
-
-        # Rule 5: Reduce double consonants to one
-        final_result = []
-        for i, char in enumerate(result):
-            if i == 0 or char != result[i - 1]:
-                final_result.append(char)
-
-        return "".join(final_result)
+        # Remove consecutive duplicates
+        return "".join(char for i, char in enumerate(result) if i == 0 or char != result[i - 1])
 
     def get_needle_variants(self, needle):
         """Get all variants of the search needle for matching"""
@@ -194,8 +184,9 @@ class ContainsPlusFilter(FilterBase):
                     return True
         return False
 
-    def generate_tags(self, text):
-        """Generate searchable tags for a nickname"""
+    @lru_cache(maxsize=12000)  # noqa: B019
+    def _generate_tags_cached(self, text):
+        """Internal cached method that returns a tuple"""
         words = self.split_into_words(text)
         tags = []
 
@@ -215,35 +206,26 @@ class ContainsPlusFilter(FilterBase):
             tags.append(self.abbreviate_word(word))
             tags.append(self.abbreviate_word(word, reduce_post_vowel_clusters=False))
 
-        return sorted(set(tags))
+        return tuple(sorted(set(tags)))  # Return tuple for hashability
 
-    def filter_matches(self, completion_list, current_text):
-        """Find items that match ALL search words (intersection) with early termination optimization"""
-        if not current_text:
-            return completion_list
+    def generate_tags(self, text):
+        """Generate searchable tags for a nickname - returns list for compatibility"""
+        return list(self._generate_tags_cached(text))
 
-        # Split input into words for multi-word search
-        search_words = self.split_into_words(current_text)
-        if not search_words:
-            # Fallback to original text if no words extracted
-            search_words = [current_text]
+    def _filter_single_word(self, completion_list, word):
+        """Filter using cascading approach for single word searches"""
+        contains_matches = self.contains_filter.filter_matches(completion_list, word)
+        contains_matched_ids = {id(item) for item in contains_matches}
+        remaining_items = [item for item in completion_list if id(item) not in contains_matched_ids]
 
-        # If only one word, use the original cascading approach
-        if len(search_words) == 1:
-            word = search_words[0]
-            contains_matches = self.contains_filter.filter_matches(completion_list, word)
-            contains_matched_ids = {id(item) for item in contains_matches}
-            remaining_items = [
-                item for item in completion_list if id(item) not in contains_matched_ids
-            ]
+        needle_variants = self.get_needle_variants(word)
+        abbreviation_matches = [
+            item for item in remaining_items if self.matches_abbreviation(item, needle_variants)
+        ]
+        return contains_matches + abbreviation_matches
 
-            needle_variants = self.get_needle_variants(word)
-            abbreviation_matches = [
-                item for item in remaining_items if self.matches_abbreviation(item, needle_variants)
-            ]
-            return contains_matches + abbreviation_matches
-
-        # For multiple words, find intersection with early termination
+    def _filter_multiple_words(self, completion_list, search_words):
+        """Filter using intersection approach for multiple word searches"""
         # Sort words by length (longer/more specific words first for faster elimination)
         search_words.sort(key=len, reverse=True)
 
@@ -275,3 +257,20 @@ class ContainsPlusFilter(FilterBase):
             matching_items &= word_matches
 
         return list(matching_items)
+
+    def filter_matches(self, completion_list, current_text):
+        """Find items that match ALL search words (intersection) with early termination optimization"""
+        if not current_text:
+            return completion_list
+
+        # Split input into words for multi-word search
+        search_words = self.split_into_words(current_text)
+        if not search_words:
+            # If no valid words extracted (e.g., whitespace only), return full list
+            return completion_list
+
+        # Route to appropriate filtering method
+        if len(search_words) == 1:
+            return self._filter_single_word(completion_list, search_words[0])
+        else:
+            return self._filter_multiple_words(completion_list, search_words)
