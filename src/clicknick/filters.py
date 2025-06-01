@@ -1,4 +1,5 @@
 import re
+from functools import lru_cache
 
 
 class FilterBase:
@@ -61,7 +62,7 @@ class ContainsFilter(FilterBase):
 
 
 class ContainsPlusFilter(FilterBase):
-    """Enhanced contains matching with abbreviation support"""
+    """Enhanced contains matching with abbreviation support - with caching"""
 
     # Class-level regex constants
     TIME_PATTERN_1 = re.compile(r"([a-zA-Z])\1{3}([a-zA-Z])\2{1}([a-zA-Z])\3{1}")
@@ -183,8 +184,9 @@ class ContainsPlusFilter(FilterBase):
                     return True
         return False
 
-    def generate_tags(self, text):
-        """Generate searchable tags for a nickname"""
+    @lru_cache(maxsize=12000)  # noqa: B019
+    def _generate_tags_cached(self, text):
+        """Internal cached method that returns a tuple"""
         words = self.split_into_words(text)
         tags = []
 
@@ -204,7 +206,11 @@ class ContainsPlusFilter(FilterBase):
             tags.append(self.abbreviate_word(word))
             tags.append(self.abbreviate_word(word, reduce_post_vowel_clusters=False))
 
-        return sorted(set(tags))
+        return tuple(sorted(set(tags)))  # Return tuple for hashability
+
+    def generate_tags(self, text):
+        """Generate searchable tags for a nickname - returns list for compatibility"""
+        return list(self._generate_tags_cached(text))
 
     def _filter_single_word(self, completion_list, word):
         """Filter using cascading approach for single word searches"""
