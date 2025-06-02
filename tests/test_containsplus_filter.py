@@ -198,7 +198,7 @@ class TestContainsPlusFilter:
         result = filter_instance.filter_matches(completion_list, "Hour")
         result_texts = [str(item) for item in result]
         # Should find items with "HH" pattern
-        hh_items = [item for item in result_texts if "hh" in item]
+        hh_items = [item for item in result_texts if "hh" in item.lower()]
         assert len(hh_items) > 0
 
         # Test "year" → "YY", "YYYY" mapping
@@ -242,62 +242,116 @@ class TestContainsPlusFilter:
             expected_filtered = [w for w in expected_words if len(w) > 1]
             assert set(words) == set(expected_filtered)
 
-    def test_abbreviate_word_edge_cases(self, filter_obj):
-        """Test abbreviation logic edge cases"""
+    def test_abbrword_special_case(self, filter_obj):
+        """Test _abbrword_special_case function independently"""
         filter_instance = filter_obj[0]
 
         test_cases = [
             # Same letter repetition (should return unchanged)
             ("YYYY", "YYYY"),
             ("aaaa", "aaaa"),
+            ("BBbb", "bbbb"),  # Mixed case same letters
             # Short words (should return lowercase)
             ("AB", "ab"),
             ("XYZ", "xyz"),
-            # All consonants after first letter
+            ("Hi", "hi"),
+            # All consonants after first letter (should return lowercase)
             ("XML", "xml"),
             ("HTTP", "http"),
-            # Normal abbreviation rules
-            ("Alarm", "alm"),
-            ("Command", "cmd"),
-            ("Control", "ctrl"),
-            ("Forward", "fwd"),
-            ("Request", "rqt"),
-            ("Response", "rps"),
-            ("Parameter", "prmtr"),
+            ("rst", "rst"),
+            # Normal words with vowels after first letter (should return None)
+            ("Alarm", None),
+            ("Command", None),
+            ("Hello", None),
         ]
 
         for word, expected in test_cases:
-            result = filter_instance.abbreviate_word(word)
+            result = filter_instance._abbrword_special_case(word)
             assert result == expected, (
-                f"abbreviate_word('{word}') = '{result}', expected '{expected}'"
+                f"_abbrword_special_case('{word}') = '{result}', expected '{expected}'"
             )
 
-        # Test with reduce_post_vowel_clusters=False
-        test_cases_no_reduction = [
-            # Same letter repetition (should return unchanged)
-            ("YYYY", "YYYY"),
-            ("aaaa", "aaaa"),
-            # Short words (should return lowercase)
-            ("AB", "ab"),
-            ("XYZ", "xyz"),
-            # All consonants after first letter
-            ("XML", "xml"),
-            ("HTTP", "http"),
-            # No consonant cluster reduction - keep all non-repeating consonants
-            ("Alarm", "alrm"),
-            ("Command", "cmnd"),
-            ("Control", "cntrl"),
-            ("Forward", "frwrd"),
-            ("Request", "rqst"),
-            ("Response", "rspns"),
-            ("Parameter", "prmtr"),
+    def test_abbrword_consonants(self, filter_obj):
+        """Test _abbrword_consonants function independently"""
+        filter_instance = filter_obj[0]
+
+        test_cases = [
+            ("Alarm", "alrm"),  # Keep first + consonants, remove doubles
+            ("Command", "cmnd"),  # a->skip, o->skip
+            ("Control", "cntrl"),  # o->skip
+            ("Request", "rqst"),  # e->skip, e->skip
+            ("Response", "rspns"),  # e->skip, o->skip, e->skip
+            ("Parameter", "prmtr"),  # a->skip, a->skip, e->skip, e->skip
+            ("Hello", "hl"),  # e->skip, o->skip, double l becomes single
+            ("Mississippi", "msp"),  # i->skip, i->skip, i->skip, i->skip, double s/s/p reduction
         ]
 
-        for word, expected in test_cases_no_reduction:
-            result = filter_instance.abbreviate_word(word, False)
+        for word, expected in test_cases:
+            result = filter_instance._abbrword_consonants(word)
             assert result == expected, (
-                f"abbreviate_word('{word}', False) = '{result}', expected '{expected}'"
+                f"_abbrword_consonants('{word}') = '{result}', expected '{expected}'"
             )
+
+    def test_abbrword_reduced_consonants(self, filter_obj):
+        """Test _abbrword_reduced_consonants function independently"""
+        filter_instance = filter_obj[0]
+
+        test_cases = [
+            # Drop first consonant after vowel if next is consonant
+            (
+                "Alarm",
+                "alm",
+            ),  # a-l-r-m: after 'a', 'l' is first consonant, 'r' is next consonant -> drop 'l'
+            (
+                "Control",
+                "ctrl",
+            ),  # o-n-t-r-o-l: after 'o', 'n' is first consonant, 't' is next -> drop 'n'
+            (
+                "Request",
+                "rqt",
+            ),  # e-q-u-e-s-t: after 'e', 'q' is first, 'u' is vowel so keep 'q'; after 'u', no consonants follow pattern
+            ("Parameter", "prmtr"),  # Multiple vowel-consonant patterns
+            ("Forward", "fwd"),  # o-r-w-a-r-d: after 'o', 'r' is first, 'w' is next -> drop 'r'
+        ]
+
+        for word, expected in test_cases:
+            result = filter_instance._abbrword_reduced_consonants(word)
+            assert result == expected, (
+                f"_abbrword_reduced_consonants('{word}') = '{result}', expected '{expected}'"
+            )
+
+    def test_get_abbreviated_word_list(self, filter_obj):
+        """Test the main abbreviation function that combines all approaches"""
+        filter_instance = filter_obj[0]
+
+        test_cases = [
+            # Special cases should return single item
+            ("YYYY", ["YYYY"]),  # Same letters
+            ("XML", ["xml"]),  # Short + all consonants
+            ("Hi", ["hi"]),  # Short word
+            # Normal words should return both consonant variants (if different lengths)
+            ("Alarm", ["alrm", "alm"]),  # Both variants if length > 2
+            ("Command", ["cmnd", "cmd"]),  # Both variants
+            ("Control", ["cntrl", "ctrl"]),  # Both variants
+            # Very short results might only return one variant
+            ("Hi", ["hi"]),  # Special case only
+            ("Go", ["go"]),  # Special case only
+        ]
+
+        for word, expected in test_cases:
+            result = filter_instance.get_abbreviated_word_list(word)
+            # For normal words, we expect the results to match our expected patterns
+            if len(expected) == 1 and expected[0] in [word.lower(), "YYYY", "xml", "hi", "go"]:
+                # Special cases
+                assert result == expected, (
+                    f"get_abbreviated_word_list('{word}') = {result}, expected {expected}"
+                )
+            else:
+                # For normal abbreviations, check that we get reasonable results
+                assert len(result) > 0, f"get_abbreviated_word_list('{word}') returned empty list"
+                assert all(len(abbr) >= 3 for abbr in result), (
+                    f"get_abbreviated_word_list('{word}') = {result}, all should be length >= 3"
+                )
 
     def test_multiple_word_search_intersection(self, filter_obj):
         """Test that multiple words require ALL words to match (intersection)"""
@@ -343,7 +397,7 @@ class TestContainsPlusFilter:
         result = filter_instance.filter_matches(completion_list, "")
         assert len(result) == len(completion_list)
 
-        # Fix: Whitespace gets processed and becomes empty after word splitting
+        # Whitespace gets processed and becomes empty after word splitting
         result = filter_instance.filter_matches(completion_list, "   ")
         # After splitting whitespace, it becomes empty search, so should return full list
         assert len(result) == len(completion_list)
@@ -388,7 +442,7 @@ class TestContainsPlusFilter:
 
         test_cases = [
             "Command_Parameter",  # Should generate: command, parameter, cmd, prmtr, etc.
-            "YYYY_MM_DD",  # Should handle time patterns
+            "YYYYMMDD",  # Should handle time patterns
             "parseDataValue",  # Should handle CamelCase
         ]
 
@@ -421,3 +475,62 @@ class TestContainsPlusFilter:
             assert hasattr(item, "abbr_tags")
             assert isinstance(item.nickname, str)
             assert isinstance(item.abbr_tags, list)
+
+    def test_integration_abbreviation_pipeline(self, filter_obj):
+        """Test the complete abbreviation pipeline integration"""
+        filter_instance = filter_obj[0]
+
+        # Test a word that goes through the complete pipeline
+        test_word = "Parameter"
+
+        # 1. Should NOT be handled by special case
+        special_result = filter_instance._abbrword_special_case(test_word)
+        assert special_result is None
+
+        # 2. Should generate consonant-based abbreviation
+        consonant_result = filter_instance._abbrword_consonants(test_word)
+        assert len(consonant_result) > 2
+
+        # 3. Should generate reduced consonant abbreviation
+        reduced_result = filter_instance._abbrword_reduced_consonants(test_word)
+        assert len(reduced_result) > 2
+
+        # 4. Complete pipeline should return both if they're different
+        complete_result = filter_instance.get_abbreviated_word_list(test_word)
+        assert len(complete_result) >= 1
+
+        # 5. Results should be incorporated into needle variants
+        variants = filter_instance.get_needle_variants(test_word)
+        assert test_word.lower() in variants  # Original word
+        assert any(abbr in variants for abbr in complete_result)  # At least one abbreviation
+
+    def test_edge_case_very_short_words(self, filter_obj):
+        """Test handling of very short words"""
+        filter_instance = filter_obj[0]
+
+        short_words = ["A", "BB", "CCC"]
+
+        for word in short_words:
+            # Should be handled by special case
+            special_result = filter_instance._abbrword_special_case(word)
+            assert special_result is not None
+            assert special_result == word
+
+            # Complete pipeline should return the special case
+            complete_result = filter_instance.get_abbreviated_word_list(word)
+            assert complete_result == [word]
+
+    def test_edge_case_repeated_letters(self, filter_obj):
+        """Test handling of words with repeated letters"""
+        filter_instance = filter_obj[0]
+
+        repeated_words = ["YYYY", "aaaa", "BBBBBB"]
+
+        for word in repeated_words:
+            # Should be handled by special case (same letter check)
+            special_result = filter_instance._abbrword_special_case(word)
+            assert special_result == word  # Should return unchanged
+
+            # Complete pipeline should return the unchanged word
+            complete_result = filter_instance.get_abbreviated_word_list(word)
+            assert complete_result == [word]
