@@ -65,21 +65,21 @@ class ContainsPlusFilter(FilterBase):
     """Enhanced contains matching with abbreviation support - with caching"""
 
     # Class-level regex constants
-    TIME_PATTERN_1 = re.compile(r"([a-zA-Z])\1{3}([a-zA-Z])\2{1}([a-zA-Z])\3{1}")
-    TIME_PATTERN_2 = re.compile(r"([a-zA-Z])\1{3}([a-zA-Z])\2{1}")
-    TIME_PATTERN_3 = re.compile(r"([a-zA-Z])\1{1}([a-zA-Z])\2{1}([a-zA-Z])\3{1}")
-    TIME_PATTERN_4 = re.compile(r"([a-zA-Z])\1{1}([a-zA-Z])\2{1}")
+    DT_PATTERN_1 = re.compile(r"([a-zA-Z])\1{3}([a-zA-Z])\2{1}([a-zA-Z])\3{1}")
+    DT_PATTERN_2 = re.compile(r"([a-zA-Z])\1{3}([a-zA-Z])\2{1}")
+    DT_PATTERN_3 = re.compile(r"([a-zA-Z])\1{1}([a-zA-Z])\2{1}([a-zA-Z])\3{1}")
+    DT_PATTERN_4 = re.compile(r"([a-zA-Z])\1{1}([a-zA-Z])\2{1}")
 
     # underscores, spaces, and CamelCase
     WORD_BOUNDARY_PATTERN = re.compile(r"[_\s]+|(?<=[a-z])(?=[A-Z])")
 
     def __init__(self):
         self.contains_filter = ContainsFilter()
-        self._time_patterns = [
-            (self.TIME_PATTERN_1, r"\1\1\1\1 \2\2 \3\3"),
-            (self.TIME_PATTERN_2, r"\1\1\1\1 \2\2"),
-            (self.TIME_PATTERN_3, r"\1\1 \2\2 \3\3"),
-            (self.TIME_PATTERN_4, r"\1\1 \2\2"),
+        self._DT_PATTERNs = [
+            (self.DT_PATTERN_1, r"\1\1\1\1 \2\2 \3\3"),
+            (self.DT_PATTERN_2, r"\1\1\1\1 \2\2"),
+            (self.DT_PATTERN_3, r"\1\1 \2\2 \3\3"),
+            (self.DT_PATTERN_4, r"\1\1 \2\2"),
         ]
         self.vowels = frozenset("aeiou")
         self.mapped_shorthand = {
@@ -106,16 +106,15 @@ class ContainsPlusFilter(FilterBase):
 
     def split_into_words(self, text):
         # Single regex operation instead of multiple substitutions
-        for pattern, replacement in self._time_patterns:
+        for pattern, replacement in self._DT_PATTERNs:
             text = pattern.sub(replacement, text)
 
         # Single split operation
         words = [word for word in self.WORD_BOUNDARY_PATTERN.split(text) if len(word) > 1]
         return words
 
-    def abbreviate_word(self, word, reduce_post_vowel_clusters=True):
-        """Apply abbreviation rules to a word"""
-
+    def _abbrword_special_case(self, word):
+        """Special Abbreviation Cases"""
         # return all same letter (like YYYY) unmodified case
         if len(set(word)) <= 1:
             return word
@@ -125,36 +124,66 @@ class ContainsPlusFilter(FilterBase):
         if len(word_lower) <= 3:
             return word_lower
 
-        # all consonants (excluding first)
+        # all consonants (excluding first - possibly already abbreviated)
         vowels = self.vowels
         if not vowels & set(word_lower[1:]):
             return word_lower
 
-        # Keep first letter, then process each subsequent character
-        result = [word_lower[0]]
-        prev_was_consonant = False
-        just_popped = False  # Track if we just popped to avoid multiple pops
+    def _abbrword_consonants(self, word):
+        """Keep first letter. Keep all consonants. Delete doubles."""
 
+        vowels = self.vowels
+        word_lower = word.lower()
+        result = [word_lower[0]]  # Always keep first letter
+
+        # Keep all consonants (skip vowels after first letter)
+        for i in range(1, len(word_lower)):
+            char = word_lower[i]
+            if char not in vowels:
+                result.append(char)
+
+        # Remove consecutive duplicates
+        final = [result[0]]
+        for char in result[1:]:
+            if char != final[-1]:
+                final.append(char)
+
+        return "".join(final)
+
+    def _abbrword_reduced_consonants(self, word):
+        """Keep first letter. Drop all vowels. Drop first consonant after vowel if next is consonant. Delete doubles."""
+
+        vowels = self.vowels
+        word_lower = word.lower()
+        result = [word_lower[0]]  # Always keep first letter
+
+        # Process characters starting from index 1 (skip first letter from rule)
         for i in range(1, len(word_lower)):
             char = word_lower[i]
 
             if char in vowels:
-                prev_was_consonant = False
-                just_popped = False
-            else:
-                # It's a consonant
-                if reduce_post_vowel_clusters and prev_was_consonant and not just_popped:
-                    # We're in a consonant cluster - pop the previous consonant once
-                    result.pop()
-                    just_popped = True
-                else:
-                    just_popped = False
+                # Skip all vowels
+                continue
 
-                result.append(char)
-                prev_was_consonant = True
+            # It's a consonant - check if we should drop it
+            if (
+                i > 1  # Don't apply rule to second character (index 1)
+                and word_lower[i - 1] in vowels  # Previous was vowel
+                and i + 1 < len(word_lower)  # There is a next character
+                and word_lower[i + 1] not in vowels
+            ):  # Next is consonant
+                # Skip this consonant (first consonant after vowel when next is consonant)
+                continue
+
+            result.append(char)
 
         # Remove consecutive duplicates
-        return "".join(char for i, char in enumerate(result) if i == 0 or char != result[i - 1])
+        final = [result[0]]
+        for char in result[1:]:
+            if char != final[-1]:
+                final.append(char)
+
+        return "".join(final)
 
     def get_needle_variants(self, needle):
         """Get all variants of the search needle for matching"""
@@ -162,14 +191,33 @@ class ContainsPlusFilter(FilterBase):
         variants = [needle_lower]
 
         # Add abbreviation variants
-        variants.append(self.abbreviate_word(needle_lower))
-        variants.append(self.abbreviate_word(needle_lower, False))
+        variants.extend(self.get_abbreviated_word_list(needle_lower))
 
         # Add mapped shorthand
         for full_word, abbrevs in self.mapped_shorthand.items():
             if needle_lower == full_word:
                 variants.extend(abbrevs)
 
+        return variants
+
+    def get_abbreviated_word_list(self, word):
+        """Generate a list of abbreviated variants for a given word.
+
+        Returns special case abbreviation if available, otherwise generates
+        consonant-based abbreviations of varying lengths.
+        """
+        variants = []
+        abbr = self._abbrword_special_case(word)
+
+        if abbr:
+            return [abbr]
+
+        abbr2 = self._abbrword_consonants(word)
+        if len(abbr2) >= 2:
+            variants.append(abbr2)
+            abbr3 = self._abbrword_reduced_consonants(word)
+            if len(abbr3) >= 2:
+                variants.append(abbr3)
         return variants
 
     def matches_abbreviation(self, item, needle_variants):
@@ -203,8 +251,7 @@ class ContainsPlusFilter(FilterBase):
 
         # Add computed abbreviations
         for word in words:
-            tags.append(self.abbreviate_word(word))
-            tags.append(self.abbreviate_word(word, reduce_post_vowel_clusters=False))
+            tags.extend(self.get_abbreviated_word_list(word))
 
         return tuple(sorted(set(tags)))  # Return tuple for hashability
 
