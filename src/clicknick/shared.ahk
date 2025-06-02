@@ -172,11 +172,6 @@ WinGetClick() {
     response := Jxon_Dump(result)
     return response
 }
-WinGetText(title) {
-    response =
-    WinGetText, response, % title
-    return response
-}
 WinGetTitle(title) {
     response =
     WinGetTitle, response, % title

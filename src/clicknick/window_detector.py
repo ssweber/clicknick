@@ -85,11 +85,6 @@ class ClickWindowDetector:
             focused_control = AHK.f("ControlGetFocus", f"ahk_id {active_window_id}")
             if not focused_control:
                 return None
-            
-            if window_class == "TfrmDataView" and focused_control == "TStringGrid1":
-                window_text = AHK.f("WinGetText", f"ahk_id {active_window_id}")
-                if not window_text.startswith("..."):
-                    return None
 
             # Check if focused control is in our list of edit controls
             allowed_fields = self.window_mapping[window_class]

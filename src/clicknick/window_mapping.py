@@ -194,7 +194,7 @@ CLICK_PLC_WINDOW_MAPPING = {
         ],
     },
     "TfrmDataView": {  # Dataview
-        "TStringGrid1": [
+        "TEdit1": [
             "X",
             "Y",
             "C",
