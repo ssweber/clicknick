@@ -268,6 +268,10 @@ class Overlay(tk.Toplevel):
             screen_x = win_x + ctrl_x
             screen_y = win_y + ctrl_y
 
+            # Quick fix: add buffer for Edit controls
+            if self.target_edit_control.startswith("Edit"):
+                return (screen_x - 5, screen_y - 5, ctrl_width + 28.5, ctrl_height + 10)
+
             return (screen_x, screen_y, ctrl_width, ctrl_height)
 
         except Exception as e:
@@ -296,11 +300,11 @@ class Overlay(tk.Toplevel):
 
             # Configure combobox width to match the control width
             # Convert pixel width to character width (approximate conversion)
-            char_width = width // 7  # Approximate character width in pixels
+            char_width = int(width // 7)  # Approximate character width in pixels
             self.combobox.configure(width=char_width)
 
             # Position window exactly over the control
-            self.geometry(f"{width}x{self.combobox.winfo_reqheight()}+{x}+{y}")
+            self.geometry(f"{int(width)}x{height}+{x}+{y}")
             self.update_idletasks()  # Process pending geometry-related events
 
             # More robust focus handling
