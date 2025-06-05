@@ -158,7 +158,7 @@ class ContainsPlusFilter(FilterBase):
         result = [word_lower[0]]  # Always keep first letter
 
         # Process characters starting from index 1 (skip first letter from rule)
-        for i in range(1, len(word_lower)):
+        for i in range(0, len(word_lower)):
             char = word_lower[i]
 
             if char in vowels:
@@ -167,8 +167,7 @@ class ContainsPlusFilter(FilterBase):
 
             # It's a consonant - check if we should drop it
             if (
-                i > 1  # Don't apply rule to second character (index 1)
-                and word_lower[i - 1] in vowels  # Previous was vowel
+                word_lower[i - 1] in vowels  # Previous was vowel
                 and i + 1 < len(word_lower)  # There is a next character
                 and word_lower[i + 1] not in vowels
             ):  # Next is consonant

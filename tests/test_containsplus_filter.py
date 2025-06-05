@@ -72,6 +72,8 @@ class TestContainsPlusFilter:
             "Index_Position",
             "Array_Idx",
             "Table_Index",
+            "Loop_Idx",
+            "Current_Index",
             "Pos_Actual",
             "Position_Target",
             "Valve_Pos",
@@ -279,6 +281,7 @@ class TestContainsPlusFilter:
             ("Alarm", "alrm"),  # Keep first + consonants, remove doubles
             ("Command", "cmnd"),  # a->skip, o->skip
             ("Control", "cntrl"),  # o->skip
+            ("Index", "indx"),  # codespell:ignore indx
             ("Request", "rqst"),  # e->skip, e->skip
             ("Response", "rspns"),  # e->skip, o->skip, e->skip
             ("Parameter", "prmtr"),  # a->skip, a->skip, e->skip, e->skip
@@ -298,20 +301,12 @@ class TestContainsPlusFilter:
 
         test_cases = [
             # Drop first consonant after vowel if next is consonant
-            (
-                "Alarm",
-                "alm",
-            ),  # a-l-r-m: after 'a', 'l' is first consonant, 'r' is next consonant -> drop 'l'
-            (
-                "Control",
-                "ctrl",
-            ),  # o-n-t-r-o-l: after 'o', 'n' is first consonant, 't' is next -> drop 'n'
-            (
-                "Request",
-                "rqt",
-            ),  # e-q-u-e-s-t: after 'e', 'q' is first, 'u' is vowel so keep 'q'; after 'u', no consonants follow pattern
+            ("Alarm", "alm"),  # after 'a', drop 'l' (first cons), keep 'r'
+            ("Control", "ctrl"),  # after 'o', drop 'n' (first cons), keep 't'
+            ("Index", "idx"),  # after 'i', drop 'n' (first cons), keep 'd'
+            ("Request", "rqt"),  # after 'e', keep 'q', after 'u', drop 's' keep 't'
             ("Parameter", "prmtr"),  # Multiple vowel-consonant patterns
-            ("Forward", "fwd"),  # o-r-w-a-r-d: after 'o', 'r' is first, 'w' is next -> drop 'r'
+            ("Forward", "fwd"),  # after 'o', drop 'r' (first cons), keep 'w'
         ]
 
         for word, expected in test_cases:
