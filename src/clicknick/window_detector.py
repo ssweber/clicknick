@@ -166,7 +166,7 @@ class ClickWindowDetector:
 
     def get_window_handle(self, pid):
         """
-        Get the window handle for a process ID.
+        Get the window handle for a process ID using AHK.
 
         Args:
             pid: Process ID (string or int)
@@ -175,27 +175,11 @@ class ClickWindowDetector:
             Window handle (hwnd) or None if not found
         """
         try:
-            import win32gui
-            import win32process
-
-            # Convert PID to integer if it's a string
-            if isinstance(pid, str):
-                pid = int(pid)
-
-            def callback(hwnd, result):
-                try:
-                    _, found_pid = win32process.GetWindowThreadProcessId(hwnd)
-                    if found_pid == pid:
-                        result.append(hwnd)
-                except (win32process.error, Exception) as e:
-                    # Catch specific exceptions that might occur during window enumeration
-                    print(f"Error in callback for hwnd {hwnd}: {e}")
-                return True
-
-            result = []
-            win32gui.EnumWindows(callback, result)
-
-            return result[0] if result else None
+            # Get window ID using AHK
+            window_id = AHK.f("WinGet", "ID", f"ahk_pid {pid}")
+            if window_id:
+                return int(window_id)
+            return None
         except Exception as e:
             print(f"Error getting window handle: {e}")
             return None

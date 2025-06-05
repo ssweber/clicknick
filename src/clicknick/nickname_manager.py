@@ -147,26 +147,53 @@ class NicknameManager:
             str: Path to the database file or None if not found
         """
         try:
-            # If we have window handle in hex format, convert it to a proper format
-            # similar to what the AutoHotkey script does
+            # Use AHK to get the window handle if we don't have it
+            if click_pid and not click_hwnd:
+                from .shared_ahk import AHK
+                # Get window ID using AHK
+                window_id = AHK.f("WinGet", "ID", f"ahk_pid {click_pid}")
+                if window_id:
+                    click_hwnd = int(window_id)
+
             if click_hwnd:
                 # Convert window handle to uppercase hex string without '0x' prefix
-                hwnd_hex = format(click_hwnd, "08X")[-7:]
-
-                # Build the expected database path
+                hwnd_hex = format(click_hwnd, "08X")
+                
+                # Try different hex formats that Click might use
+                hex_formats = [
+                    hwnd_hex,           # Full hex
+                    hwnd_hex[-8:],      # Last 8 characters
+                    hwnd_hex[-7:],      # Last 7 characters
+                    hwnd_hex[-6:],      # Last 6 characters
+                ]
+                
                 username = os.environ.get("USERNAME")
-                db_path = Path(f"C:/Users/{username}/AppData/Local/Temp/CLICK ({hwnd_hex})/SC_.mdb")
+                temp_dir = Path(f"C:/Users/{username}/AppData/Local/Temp")
+                
+                # Try each hex format
+                for hex_format in hex_formats:
+                    db_path = temp_dir / f"CLICK ({hex_format})" / "SC_.mdb"
+                    if db_path.exists():
+                        print(f"Found database using hex format {hex_format}: {db_path}")
+                        return str(db_path)
 
-                if db_path.exists():
-                    return str(db_path)
-
-            # Fallback: search the temp directory for CLICK folders
+            # Fallback: search the temp directory for CLICK folders and find the most recent
             temp_dir = Path(os.environ.get("TEMP", ""))
             if temp_dir.exists():
+                click_folders = []
                 for folder in temp_dir.glob("CLICK (*)/"):
                     mdb_path = folder / "SC_.mdb"
                     if mdb_path.exists():
-                        return str(mdb_path)
+                        # Get modification time for sorting
+                        mod_time = mdb_path.stat().st_mtime
+                        click_folders.append((folder, mod_time))
+                
+                if click_folders:
+                    # Sort by modification time (most recent first)
+                    click_folders.sort(key=lambda x: x[1], reverse=True)
+                    most_recent = click_folders[0][0] / "SC_.mdb"
+                    print(f"Using most recent CLICK database: {most_recent}")
+                    return str(most_recent)
 
             return None
 
