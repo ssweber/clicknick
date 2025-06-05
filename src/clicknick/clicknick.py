@@ -172,13 +172,6 @@ class ClickNickApp:
         else:
             self._update_status("Failed to load from CSV", "error")
 
-    def _update_csv_controls_state(self):
-        """Update the state of CSV controls based on database usage."""
-        state = "disabled" if self.using_database else "normal"
-        self.csv_entry.configure(state=state)
-        self.csv_button.configure(state=state)
-        self.load_csv_button.configure(state=state)
-
     def load_from_database(self):
         """Load nicknames directly from the CLICK database."""
         if not self.connected_click_pid:
@@ -207,16 +200,12 @@ class ClickNickApp:
             self._update_status("Loaded nicknames from database", "connected")
             self.using_database = True
 
-            # Gray out the CSV controls since we're using the database
-            self._update_csv_controls_state()
-
             # Auto-start monitoring if not already started
             if not self.monitoring:
                 self.start_monitoring()
         else:
             self._update_status("Failed to load from database", "error")
             self.using_database = False
-            self._update_csv_controls_state()
 
     def create_click_instances_section(self, parent):
         """Create the Click.exe instances section."""
@@ -290,19 +279,13 @@ class ClickNickApp:
         filter_frame.pack(fill=tk.X, pady=5)
 
         # Add sorting option
-        sort_frame = ttk.Frame(options_frame)
         sort_check = ttk.Checkbutton(
-            sort_frame,
+            options_frame,
             text="Sort by Nickname (alphabetically)",
             variable=self.settings.sort_by_nickname_var,
             command=self.on_sort_option_changed,
         )
         sort_check.pack(anchor=tk.W)
-        sort_frame.pack(fill=tk.X, pady=5)
-
-        # Add exclude options
-        exclude_separator = ttk.Separator(options_frame, orient='horizontal')
-        exclude_separator.pack(fill=tk.X, pady=(10, 5))
 
         # SC/SD exclusion checkbox
         sc_sd_check = ttk.Checkbutton(
@@ -445,9 +428,6 @@ class ClickNickApp:
         self.connected_click_title = title
         self.connected_click_filename = filename
 
-        # Update CSV controls state
-        self._update_csv_controls_state()
-
         # Update status
         self._update_status(f"Connected to {filename}", "connected")
 
@@ -464,11 +444,10 @@ class ClickNickApp:
                 self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
                 self._update_status(f"Loaded nicknames from {filename} database", "connected")
                 self.using_database = True
-                self._update_csv_controls_state()
             else:
                 self._update_status(f"Connected to {filename} - database load failed", "error")
         else:
-            self._update_status("Connected - CSV loading only (no ODBC drivers)", "connected")
+            self._update_status("Ready. File → Load Nicknames... to begin.", "connected")
 
     def toggle_monitoring(self):
         """Start or stop monitoring."""
