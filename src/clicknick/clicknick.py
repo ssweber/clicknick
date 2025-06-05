@@ -455,7 +455,7 @@ class ClickNickApp:
         # Reset nickname manager
         self.nickname_manager = NicknameManager(self.settings)
         
-        # Store the new connection
+        # Store the new connection FIRST
         self.connected_click_pid = pid
         self.connected_click_title = title
         self.connected_click_filename = filename
@@ -468,7 +468,20 @@ class ClickNickApp:
         
         # Try to load nicknames from database automatically only if ODBC drivers are available
         if self.nickname_manager.has_access_driver():
-            self.load_from_database()
+            # Now load from the NEW instance's database
+            success = self.nickname_manager.load_from_database(
+                click_pid=self.connected_click_pid,
+                click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
+            )
+            
+            if success:
+                # Apply user's sorting preference
+                self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
+                self._update_status(f"Loaded nicknames from {filename} database", "connected")
+                self.using_database = True
+                self._update_csv_controls_state()
+            else:
+                self._update_status(f"Connected to {filename} - database load failed", "error")
         else:
             self._update_status("Connected - CSV loading only (no ODBC drivers)", "connected")
 
