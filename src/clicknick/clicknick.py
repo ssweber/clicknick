@@ -45,8 +45,17 @@ class ClickNickApp:
         self.connected_click_title = None
         self.connected_click_filename = None
 
+        # Initialize filter strategies once (to preserve lru_cache)
+        from .filters import ContainsFilter, ContainsPlusFilter, NoneFilter, PrefixFilter
+        self.filter_strategies = {
+            "none": NoneFilter(),
+            "prefix": PrefixFilter(),
+            "contains": ContainsFilter(),
+            "containsplus": ContainsPlusFilter(),
+        }
+
         # Initialize core components
-        self.nickname_manager = NicknameManager(self.settings)
+        self.nickname_manager = NicknameManager(self.settings, self.filter_strategies)
         self.detector = ClickWindowDetector(CLICK_PLC_WINDOW_MAPPING, self)
         
         # Initialize overlay early (before UI creation)
@@ -452,8 +461,8 @@ class ClickNickApp:
         # Clear CSV path when switching instances
         self.csv_path_var.set("")
         
-        # Reset nickname manager
-        self.nickname_manager = NicknameManager(self.settings)
+        # Reset nickname manager (reuse filter strategies to preserve cache)
+        self.nickname_manager = NicknameManager(self.settings, self.filter_strategies)
         
         # Store the new connection FIRST
         self.connected_click_pid = pid

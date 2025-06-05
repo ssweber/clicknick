@@ -11,16 +11,7 @@ from .nickname import Nickname
 class NicknameManager:
     """Manages nicknames loaded from CSV or database with efficient filtering."""
 
-    def _init_filters(self):
-        """Initialize the search filter strategies"""
-        self.filter_strategies = {
-            "none": NoneFilter(),
-            "prefix": PrefixFilter(),
-            "contains": ContainsFilter(),
-            "containsplus": ContainsPlusFilter(),
-        }
-
-    def __init__(self, settings=None):
+    def __init__(self, settings=None, filter_strategies=None):
         self.nicknames: list[Nickname] = []  # List of Nickname objects
         self._loaded_filepath = None
         self._last_load_timestamp = None
@@ -28,8 +19,16 @@ class NicknameManager:
         self._click_hwnd = None
         self.settings = settings  # Store reference to app settings
 
-        # Initialize filter strategies
-        self._init_filters()
+        # Use provided filter strategies or create default ones
+        if filter_strategies:
+            self.filter_strategies = filter_strategies
+        else:
+            self.filter_strategies = {
+                "none": NoneFilter(),
+                "prefix": PrefixFilter(),
+                "contains": ContainsFilter(),
+                "containsplus": ContainsPlusFilter(),
+            }
 
     @property
     def is_loaded(self) -> bool:
