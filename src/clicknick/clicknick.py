@@ -36,6 +36,15 @@ class ClickNickApp:
         # Initialize settings first
         self.settings = AppSettings()
 
+        # Initialize monitoring state early (before any UI creation)
+        self.monitoring = False
+        self.monitor_task_id = None
+        
+        # Connected Click.exe instance
+        self.connected_click_pid = None
+        self.connected_click_title = None
+        self.connected_click_filename = None
+
         # Initialize core components
         self.nickname_manager = NicknameManager(self.settings)
         self.detector = ClickWindowDetector(CLICK_PLC_WINDOW_MAPPING, self)
@@ -64,15 +73,6 @@ class ClickNickApp:
 
         # Combobox overlay (initialized when needed)
         self.overlay = None
-
-        # Monitoring state
-        self.monitoring = False
-        self.monitor_task_id = None
-
-        # Connected Click.exe instance
-        self.connected_click_pid = None
-        self.connected_click_title = None
-        self.connected_click_filename = None
 
     def setup_variables(self):
         """Initialize Tkinter variables."""
