@@ -157,25 +157,15 @@ class NicknameManager:
 
             if click_hwnd:
                 # Convert window handle to uppercase hex string without '0x' prefix
-                hwnd_hex = format(click_hwnd, "08X")
-                
-                # Try different hex formats that Click might use
-                hex_formats = [
-                    hwnd_hex,           # Full hex
-                    hwnd_hex[-8:],      # Last 8 characters
-                    hwnd_hex[-7:],      # Last 7 characters
-                    hwnd_hex[-6:],      # Last 6 characters
-                ]
-                
+                hwnd_hex = format(click_hwnd, "08X")[-7:]
+
+                # Build the expected database path
                 username = os.environ.get("USERNAME")
-                temp_dir = Path(f"C:/Users/{username}/AppData/Local/Temp")
-                
-                # Try each hex format
-                for hex_format in hex_formats:
-                    db_path = temp_dir / f"CLICK ({hex_format})" / "SC_.mdb"
-                    if db_path.exists():
-                        print(f"Found database using hex format {hex_format}: {db_path}")
-                        return str(db_path)
+                db_path = Path(f"C:/Users/{username}/AppData/Local/Temp/CLICK ({hwnd_hex})/SC_.mdb")
+
+                if db_path.exists():
+                    print(f"Found database: {db_path}")
+                    return str(db_path)
 
             # Fallback: search the temp directory for CLICK folders and find the most recent
             temp_dir = Path(os.environ.get("TEMP", ""))
