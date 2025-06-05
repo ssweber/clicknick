@@ -108,6 +108,7 @@ class ClickNickApp:
 
         # Status label styles
         style.configure("Status.TLabel", foreground="blue")
+        style.configure("Ready.TLabel", foreground="blue")
         style.configure("Error.TLabel", foreground="red")
         style.configure("Connected.TLabel", foreground="green")
 
@@ -162,7 +163,7 @@ class ClickNickApp:
             # Apply user's sorting preference
             self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
-            self._update_status("Loaded nicknames from CSV", "connected")
+            self._update_status("Loaded nicknames from CSV", "ready")
             self.using_database = False
 
             # Auto-start monitoring if connected and not already started
@@ -196,7 +197,7 @@ class ClickNickApp:
             # Apply user's sorting preference
             self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
-            self._update_status("Loaded nicknames from database", "connected")
+            self._update_status("Loaded nicknames from database", "ready")
             self.using_database = True
 
             # Auto-start monitoring if not already started
@@ -441,7 +442,7 @@ class ClickNickApp:
             if success:
                 # Apply user's sorting preference
                 self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
-                self._update_status(f"Loaded nicknames from {filename} database", "connected")
+                self._update_status(f"Loaded nicknames from {filename} database", "ready")
                 self.using_database = True
             else:
                 self._update_status(f"Connected to {filename} - database load failed", "error")
