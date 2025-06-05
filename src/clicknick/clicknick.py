@@ -113,12 +113,11 @@ class ClickNickApp:
 
     def create_widgets(self):
         """Create all UI widgets."""
-
         # Add menu bar first
         self.create_menu_bar()
 
         # Main frame to contain everything with consistent padding
-        main_frame = ttk.Frame(self.root, padding="20")
+        main_frame = ttk.Frame(self.root, padding="15")  # Reduce from 20 to 15
 
         # Create all widgets
         self.create_click_instances_section(main_frame)
@@ -209,7 +208,7 @@ class ClickNickApp:
 
     def create_click_instances_section(self, parent):
         """Create the Click.exe instances section."""
-        instances_frame = ttk.LabelFrame(parent, text="Click PLC Instances", padding="15")
+        instances_frame = ttk.LabelFrame(parent, text="Click PLC Instances", padding="10")  # Reduce from 15 to 10
 
         # Create frame for combobox and refresh button
         selection_frame = ttk.Frame(instances_frame)
@@ -229,18 +228,18 @@ class ClickNickApp:
         self.instances_combobox.bind("<<ComboboxSelected>>", self.on_instance_selected)
 
         # Layout
-        instance_label.pack(side=tk.LEFT, padx=(0, 10))
-        self.instances_combobox.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        instance_label.pack(side=tk.LEFT, padx=(0, 8))  # Reduce from 10 to 8
+        self.instances_combobox.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))  # Reduce from 10 to 8
         refresh_button.pack(side=tk.RIGHT)
 
-        selection_frame.pack(fill=tk.X, pady=(0, 10))
+        selection_frame.pack(fill=tk.X)  # Remove pady
 
         # Pack the main frame
-        instances_frame.pack(fill=tk.X, pady=(0, 15))
+        instances_frame.pack(fill=tk.X, pady=(0, 12))  # Reduce from 15 to 12
 
     def create_options_section(self, parent):
         """Create the options section."""
-        options_frame = ttk.LabelFrame(parent, text="Search Options", padding="15")
+        options_frame = ttk.LabelFrame(parent, text="Search Options", padding="10")  # Reduce from 15 to 10
 
         # Search mode widgets
         filter_frame = ttk.Frame(options_frame)
@@ -271,12 +270,12 @@ class ClickNickApp:
         )
 
         # Layout filter widgets
-        filter_label.pack(side=tk.LEFT)
-        none_radio.pack(side=tk.LEFT, padx=5)
-        prefix_radio.pack(side=tk.LEFT, padx=5)
-        contains_radio.pack(side=tk.LEFT, padx=5)
-        contains_plus_radio.pack(side=tk.LEFT, padx=5)
-        filter_frame.pack(fill=tk.X, pady=5)
+        filter_label.pack(side=tk.LEFT, padx=(0, 8))  # Reduce from no padding to consistent 8
+        none_radio.pack(side=tk.LEFT, padx=(0, 8))  # Reduce from 5 to 8 for consistency
+        prefix_radio.pack(side=tk.LEFT, padx=(0, 8))
+        contains_radio.pack(side=tk.LEFT, padx=(0, 8))
+        contains_plus_radio.pack(side=tk.LEFT)  # Last item doesn't need right padding
+        filter_frame.pack(fill=tk.X, pady=(0, 8))  # Reduce from 5 to 8
 
         # Add sorting option
         sort_check = ttk.Checkbutton(
@@ -285,13 +284,13 @@ class ClickNickApp:
             variable=self.settings.sort_by_nickname_var,
             command=self.on_sort_option_changed,
         )
-        sort_check.pack(anchor=tk.W)
+        sort_check.pack(anchor=tk.W, pady=(0, 6))  # Add consistent spacing
 
         # SC/SD exclusion checkbox
         sc_sd_check = ttk.Checkbutton(
             options_frame, text="Exclude SC/SD Addresses", variable=self.settings.exclude_sc_sd_var
         )
-        sc_sd_check.pack(anchor=tk.W, padx=5, pady=2)
+        sc_sd_check.pack(anchor=tk.W, pady=(0, 6))  # Remove padx, standardize pady
 
         # Exclude nicknames containing entry
         exclude_frame_entry = ttk.Frame(options_frame)
@@ -323,12 +322,12 @@ class ClickNickApp:
         exclude_entry.bind("<FocusIn>", on_entry_focus_in)
         exclude_entry.bind("<FocusOut>", on_entry_focus_out)
 
-        exclude_label.pack(side=tk.LEFT, padx=5)
-        exclude_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        exclude_frame_entry.pack(fill=tk.X, padx=5, pady=5)
+        exclude_label.pack(side=tk.LEFT, padx=(0, 8))  # Reduce from 5 to 8, remove left padding
+        exclude_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)  # Remove padx
+        exclude_frame_entry.pack(fill=tk.X)  # Remove padx and pady
 
         # Pack the main frame
-        options_frame.pack(fill=tk.X, pady=5)
+        options_frame.pack(fill=tk.X, pady=(0, 12))  # Reduce from 5 to 12 for consistency
 
     def create_status_section(self, parent):
         """Create the status and control section."""
@@ -345,7 +344,7 @@ class ClickNickApp:
         self.start_button.pack(side=tk.RIGHT)
 
         # Pack the frame
-        status_frame.pack(fill=tk.X, pady=10)
+        status_frame.pack(fill=tk.X, pady=(8, 0))  # Reduce from 10 to 8, only top padding
 
     def browse_and_load_csv(self):
         """Browse for and load CSV file from menu."""
