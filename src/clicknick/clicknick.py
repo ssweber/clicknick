@@ -78,6 +78,7 @@ class ClickNickApp:
         """Initialize Tkinter variables."""
         self.csv_path_var = tk.StringVar()
         self.status_var = tk.StringVar(value="Not connected")
+        self.selected_instance_var = tk.StringVar()  # Add this line
         self.click_instances = []  # Will store (id, title, filename) tuples
         self.using_database = False  # Flag to track if database is being used
 
@@ -100,8 +101,8 @@ class ClickNickApp:
         # Add menu bar first
         self.create_menu_bar()
 
-        # Main frame to contain everything
-        main_frame = ttk.Frame(self.root, padding="10 10 10 10")
+        # Main frame to contain everything with consistent padding
+        main_frame = ttk.Frame(self.root, padding="20")
 
         # Create all widgets
         self.create_click_instances_section(main_frame)
@@ -118,7 +119,7 @@ class ClickNickApp:
 
     def create_exclude_section(self, parent):
         """Create the exclude options section."""
-        exclude_frame = ttk.LabelFrame(parent, text="Exclude")
+        exclude_frame = ttk.LabelFrame(parent, text="Exclude", padding="15")
 
         # SC/SD exclusion checkbox
         sc_sd_check = ttk.Checkbutton(
@@ -165,7 +166,7 @@ class ClickNickApp:
 
     def create_csv_section(self, parent):
         """Create the CSV file selection section."""
-        csv_frame = ttk.LabelFrame(parent, text="Alternative Nickname Source")
+        csv_frame = ttk.LabelFrame(parent, text="Alternative Nickname Source", padding="15")
         self.csv_frame = csv_frame  # Save reference to frame
 
         # Create widgets
@@ -270,41 +271,44 @@ class ClickNickApp:
 
     def create_click_instances_section(self, parent):
         """Create the Click.exe instances section."""
-        instances_frame = ttk.LabelFrame(parent, text="Click PLC Instances")
+        instances_frame = ttk.LabelFrame(parent, text="Click PLC Instances", padding="15")
 
-        # Create list box for instances
-        self.instances_listbox = tk.Listbox(instances_frame, height=8)
-        self.instances_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # Add scrollbar
-        scrollbar = ttk.Scrollbar(
-            instances_frame, orient="vertical", command=self.instances_listbox.yview
+        # Create frame for combobox and refresh button
+        selection_frame = ttk.Frame(instances_frame)
+        
+        # Instance selection combobox
+        instance_label = ttk.Label(selection_frame, text="Select Instance:")
+        self.instances_combobox = ttk.Combobox(
+            selection_frame, 
+            textvariable=self.selected_instance_var,
+            state="readonly",
+            width=50
         )
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.instances_listbox.configure(yscrollcommand=scrollbar.set)
-
-        # Buttons frame
-        buttons_frame = ttk.Frame(instances_frame)
-
-        # Create buttons
+        
+        # Refresh button with icon-like text
         refresh_button = ttk.Button(
-            buttons_frame, text="Refresh", command=self.refresh_click_instances
+            selection_frame, 
+            text="⟳", 
+            width=3,
+            command=self.refresh_click_instances
         )
-        connect_button = ttk.Button(buttons_frame, text="Connect", command=self.connect_to_selected)
-
-        # Layout buttons
-        refresh_button.pack(side=tk.LEFT, padx=5, pady=5)
-        connect_button.pack(side=tk.LEFT, padx=5, pady=5)
-
-        # Pack buttons frame
-        buttons_frame.pack(fill=tk.X, padx=5, pady=5)
-
+        
+        # Bind combobox selection to auto-connect
+        self.instances_combobox.bind('<<ComboboxSelected>>', self.on_instance_selected)
+        
+        # Layout
+        instance_label.pack(side=tk.LEFT, padx=(0, 10))
+        self.instances_combobox.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        refresh_button.pack(side=tk.RIGHT)
+        
+        selection_frame.pack(fill=tk.X, pady=(0, 10))
+        
         # Pack the main frame
-        instances_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        instances_frame.pack(fill=tk.X, pady=(0, 15))
 
     def create_options_section(self, parent):
         """Create the options section."""
-        options_frame = ttk.LabelFrame(parent, text="Search Options")
+        options_frame = ttk.LabelFrame(parent, text="Search Options", padding="15")
 
         # Search mode widgets
         filter_frame = ttk.Frame(options_frame)
@@ -384,51 +388,81 @@ class ClickNickApp:
 
     def refresh_click_instances(self):
         """Refresh the list of running Click.exe instances."""
-        # Clear current list
-        self.instances_listbox.delete(0, tk.END)
+        # Remember currently selected instance
+        previously_selected = self.selected_instance_var.get()
+        
+        # Clear current data
         self.click_instances = []
-
+        self.instances_combobox['values'] = ()
+        self.selected_instance_var.set("")
+        
         try:
             # Get all Click.exe instances from detector
             click_instances = self.detector.get_click_instances()
-
+            
             if not click_instances:
+                self._update_status("No Click instances found", "error")
                 return
-
-            # Update UI with instances
+            
+            # Update instance data
             self.click_instances = click_instances
-            for _, _, filename in click_instances:
-                self.instances_listbox.insert(tk.END, filename)
-
+            filenames = [filename for _, _, filename in click_instances]
+            self.instances_combobox['values'] = filenames
+            
+            # Try to restore previous selection
+            if previously_selected in filenames:
+                self.selected_instance_var.set(previously_selected)
+            elif filenames:
+                # If previous selection not found, select first item
+                self.selected_instance_var.set(filenames[0])
+                # Auto-connect to first instance
+                self.on_instance_selected()
+                
         except Exception as e:
             print(f"Error refreshing Click instances: {e}")
             self._update_status(f"Error: {e!s}", "error")
 
-    def connect_to_selected(self):
-        """Connect to the selected Click.exe instance."""
-        selected_idx = self.instances_listbox.curselection()
-        if not selected_idx:
-            self._update_status("No Click instance selected", "error")
+    def on_instance_selected(self, event=None):
+        """Handle instance selection from combobox."""
+        selected_text = self.selected_instance_var.get()
+        if not selected_text:
             return
+        
+        # Find the matching instance
+        for i, (pid, title, filename) in enumerate(self.click_instances):
+            if filename == selected_text:
+                self.connect_to_instance(pid, title, filename)
+                break
 
-        # Get the selected instance
-        idx = selected_idx[0]
-        if idx >= len(self.click_instances):
-            self._update_status("Invalid selection", "error")
-            return
-
-        # Store the connected instance
-        self.connected_click_pid = self.click_instances[idx][0]
-        self.connected_click_title = self.click_instances[idx][1]
-        self.connected_click_filename = self.click_instances[idx][2]
-
-        # Update status
-        self._update_status(f"Connected to {self.click_instances[idx][2]}", "connected")
-
-        # Reset database usage flag when connecting to a new instance
+    def connect_to_instance(self, pid, title, filename):
+        """Connect to a specific Click.exe instance."""
+        # Stop monitoring if currently active
+        if self.monitoring:
+            self.stop_monitoring()
+        
+        # Reset connection state
+        self.connected_click_pid = None
+        self.connected_click_title = None
+        self.connected_click_filename = None
         self.using_database = False
+        
+        # Clear CSV path when switching instances
+        self.csv_path_var.set("")
+        
+        # Reset nickname manager
+        self.nickname_manager = NicknameManager(self.settings)
+        
+        # Store the new connection
+        self.connected_click_pid = pid
+        self.connected_click_title = title
+        self.connected_click_filename = filename
+        
+        # Update CSV controls state
         self._update_csv_controls_state()
-
+        
+        # Update status
+        self._update_status(f"Connected to {filename}", "connected")
+        
         # Try to load nicknames from database automatically only if ODBC drivers are available
         if self.nickname_manager.has_access_driver():
             self.load_from_database()
