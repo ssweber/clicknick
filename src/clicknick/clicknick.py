@@ -4,6 +4,12 @@ from ctypes import windll
 from tkinter import filedialog, ttk
 
 from .dialogs import AboutDialog, OdbcWarningDialog
+from .filters import (  # preserve lru_cache
+    ContainsFilter,
+    ContainsPlusFilter,
+    NoneFilter,
+    PrefixFilter,
+)
 from .nickname_manager import NicknameManager
 from .overlay import Overlay
 from .settings import AppSettings
@@ -39,14 +45,12 @@ class ClickNickApp:
         # Initialize monitoring state early (before any UI creation)
         self.monitoring = False
         self.monitor_task_id = None
-        
+
         # Connected Click.exe instance
         self.connected_click_pid = None
         self.connected_click_title = None
         self.connected_click_filename = None
 
-        # Initialize filter strategies once (to preserve lru_cache)
-        from .filters import ContainsFilter, ContainsPlusFilter, NoneFilter, PrefixFilter
         self.filter_strategies = {
             "none": NoneFilter(),
             "prefix": PrefixFilter(),
@@ -57,7 +61,7 @@ class ClickNickApp:
         # Initialize core components
         self.nickname_manager = NicknameManager(self.settings, self.filter_strategies)
         self.detector = ClickWindowDetector(CLICK_PLC_WINDOW_MAPPING, self)
-        
+
         # Initialize overlay early (before UI creation)
         self.overlay = None
 
@@ -287,34 +291,28 @@ class ClickNickApp:
 
         # Create frame for combobox and refresh button
         selection_frame = ttk.Frame(instances_frame)
-        
+
         # Instance selection combobox
         instance_label = ttk.Label(selection_frame, text="Select Instance:")
         self.instances_combobox = ttk.Combobox(
-            selection_frame, 
-            textvariable=self.selected_instance_var,
-            state="readonly",
-            width=50
+            selection_frame, textvariable=self.selected_instance_var, state="readonly", width=50
         )
-        
+
         # Refresh button with icon-like text
         refresh_button = ttk.Button(
-            selection_frame, 
-            text="⟳", 
-            width=3,
-            command=self.refresh_click_instances
+            selection_frame, text="⟳", width=3, command=self.refresh_click_instances
         )
-        
+
         # Bind combobox selection to auto-connect
-        self.instances_combobox.bind('<<ComboboxSelected>>', self.on_instance_selected)
-        
+        self.instances_combobox.bind("<<ComboboxSelected>>", self.on_instance_selected)
+
         # Layout
         instance_label.pack(side=tk.LEFT, padx=(0, 10))
         self.instances_combobox.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
         refresh_button.pack(side=tk.RIGHT)
-        
+
         selection_frame.pack(fill=tk.X, pady=(0, 10))
-        
+
         # Pack the main frame
         instances_frame.pack(fill=tk.X, pady=(0, 15))
 
@@ -402,25 +400,25 @@ class ClickNickApp:
         """Refresh the list of running Click.exe instances."""
         # Remember currently selected instance
         previously_selected = self.selected_instance_var.get()
-        
+
         # Clear current data
         self.click_instances = []
-        self.instances_combobox['values'] = ()
+        self.instances_combobox["values"] = ()
         self.selected_instance_var.set("")
-        
+
         try:
             # Get all Click.exe instances from detector
             click_instances = self.detector.get_click_instances()
-            
+
             if not click_instances:
                 self._update_status("No Click instances found", "error")
                 return
-            
+
             # Update instance data
             self.click_instances = click_instances
             filenames = [filename for _, _, filename in click_instances]
-            self.instances_combobox['values'] = filenames
-            
+            self.instances_combobox["values"] = filenames
+
             # Try to restore previous selection
             if previously_selected in filenames:
                 self.selected_instance_var.set(previously_selected)
@@ -429,7 +427,7 @@ class ClickNickApp:
                 self.selected_instance_var.set(filenames[0])
                 # Auto-connect to first instance
                 self.on_instance_selected()
-                
+
         except Exception as e:
             print(f"Error refreshing Click instances: {e}")
             self._update_status(f"Error: {e!s}", "error")
@@ -439,9 +437,9 @@ class ClickNickApp:
         selected_text = self.selected_instance_var.get()
         if not selected_text:
             return
-        
+
         # Find the matching instance
-        for i, (pid, title, filename) in enumerate(self.click_instances):
+        for _, (pid, title, filename) in enumerate(self.click_instances):
             if filename == selected_text:
                 self.connect_to_instance(pid, title, filename)
                 break
@@ -451,30 +449,30 @@ class ClickNickApp:
         # Stop monitoring if currently active
         if self.monitoring:
             self.stop_monitoring()
-        
+
         # Reset connection state
         self.connected_click_pid = None
         self.connected_click_title = None
         self.connected_click_filename = None
         self.using_database = False
-        
+
         # Clear CSV path when switching instances
         self.csv_path_var.set("")
-        
+
         # Reset nickname manager (reuse filter strategies to preserve cache)
         self.nickname_manager = NicknameManager(self.settings, self.filter_strategies)
-        
+
         # Store the new connection FIRST
         self.connected_click_pid = pid
         self.connected_click_title = title
         self.connected_click_filename = filename
-        
+
         # Update CSV controls state
         self._update_csv_controls_state()
-        
+
         # Update status
         self._update_status(f"Connected to {filename}", "connected")
-        
+
         # Try to load nicknames from database automatically only if ODBC drivers are available
         if self.nickname_manager.has_access_driver():
             # Now load from the NEW instance's database
@@ -482,7 +480,7 @@ class ClickNickApp:
                 click_pid=self.connected_click_pid,
                 click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
             )
-            
+
             if success:
                 # Apply user's sorting preference
                 self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
