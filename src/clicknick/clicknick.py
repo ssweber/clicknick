@@ -37,7 +37,7 @@ class ClickNickApp:
         # Create main window
         self.root = tk.Tk()
         self.root.title("ClickNick App")
-        self.root.geometry("550x650")
+        self.root.geometry("550x450")
 
         # Initialize settings first
         self.settings = AppSettings()
@@ -123,9 +123,7 @@ class ClickNickApp:
         # Create all widgets
         self.create_click_instances_section(main_frame)
         self.create_options_section(main_frame)
-        self.create_exclude_section(main_frame)
         self.create_status_section(main_frame)
-        self.create_csv_section(main_frame)
 
         # Pack the main frame
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -133,72 +131,7 @@ class ClickNickApp:
         # Initial refresh of Click instances
         self.refresh_click_instances()
 
-    def create_exclude_section(self, parent):
-        """Create the exclude options section."""
-        exclude_frame = ttk.LabelFrame(parent, text="Exclude", padding="15")
 
-        # SC/SD exclusion checkbox
-        sc_sd_check = ttk.Checkbutton(
-            exclude_frame, text="Exclude SC/SD Addresses", variable=self.settings.exclude_sc_sd_var
-        )
-        sc_sd_check.pack(anchor=tk.W, padx=5, pady=2)
-
-        # Exclude nicknames containing entry
-        exclude_frame_entry = ttk.Frame(exclude_frame)
-        exclude_label = ttk.Label(exclude_frame_entry, text="Exclude nicknames containing:")
-        exclude_entry = ttk.Entry(
-            exclude_frame_entry, textvariable=self.settings.exclude_nicknames_var
-        )
-
-        # Add placeholder text
-        placeholder_text = "name1, name2, name3"
-
-        # Functions to handle placeholder behavior
-        def on_entry_focus_in(event):
-            if exclude_entry.get() == placeholder_text:
-                self.settings.exclude_nicknames_var.set("")
-                exclude_entry.config(foreground="black")
-
-        def on_entry_focus_out(event):
-            if not exclude_entry.get().strip():
-                self.settings.exclude_nicknames_var.set(placeholder_text)
-                exclude_entry.config(foreground="gray")
-
-        # Initialize with placeholder if empty
-        if not self.settings.exclude_nicknames_var.get():
-            self.settings.exclude_nicknames_var.set(placeholder_text)
-            exclude_entry.config(foreground="gray")
-
-        # Bind focus events
-        exclude_entry.bind("<FocusIn>", on_entry_focus_in)
-        exclude_entry.bind("<FocusOut>", on_entry_focus_out)
-
-        exclude_label.pack(side=tk.LEFT, padx=5)
-        exclude_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        exclude_frame_entry.pack(fill=tk.X, padx=5, pady=5)
-
-        # Pack the main frame
-        exclude_frame.pack(fill=tk.X, pady=5)
-
-    def create_csv_section(self, parent):
-        """Create the CSV file selection section."""
-        csv_frame = ttk.LabelFrame(parent, text="Alternative Nickname Source", padding="15")
-        self.csv_frame = csv_frame  # Save reference to frame
-
-        # Create widgets
-        csv_label = ttk.Label(csv_frame, text="CSV File:")
-        self.csv_entry = ttk.Entry(csv_frame, textvariable=self.csv_path_var, width=30)
-        self.csv_button = ttk.Button(csv_frame, text="Browse...", command=self.browse_csv)
-        self.load_csv_button = ttk.Button(csv_frame, text="Load CSV", command=self.load_csv)
-
-        # Layout widgets
-        csv_label.pack(side=tk.LEFT)
-        self.csv_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
-        self.csv_button.pack(side=tk.LEFT)
-        self.load_csv_button.pack(side=tk.LEFT, padx=5)
-
-        # Pack the frame
-        csv_frame.pack(fill=tk.X, pady=5)
 
     def _update_status(self, message, style="normal"):
         """Update status message with appropriate style."""
@@ -367,6 +300,50 @@ class ClickNickApp:
         sort_check.pack(anchor=tk.W)
         sort_frame.pack(fill=tk.X, pady=5)
 
+        # Add exclude options
+        exclude_separator = ttk.Separator(options_frame, orient='horizontal')
+        exclude_separator.pack(fill=tk.X, pady=(10, 5))
+
+        # SC/SD exclusion checkbox
+        sc_sd_check = ttk.Checkbutton(
+            options_frame, text="Exclude SC/SD Addresses", variable=self.settings.exclude_sc_sd_var
+        )
+        sc_sd_check.pack(anchor=tk.W, padx=5, pady=2)
+
+        # Exclude nicknames containing entry
+        exclude_frame_entry = ttk.Frame(options_frame)
+        exclude_label = ttk.Label(exclude_frame_entry, text="Exclude nicknames containing:")
+        exclude_entry = ttk.Entry(
+            exclude_frame_entry, textvariable=self.settings.exclude_nicknames_var
+        )
+
+        # Add placeholder text
+        placeholder_text = "name1, name2, name3"
+
+        # Functions to handle placeholder behavior
+        def on_entry_focus_in(event):
+            if exclude_entry.get() == placeholder_text:
+                self.settings.exclude_nicknames_var.set("")
+                exclude_entry.config(foreground="black")
+
+        def on_entry_focus_out(event):
+            if not exclude_entry.get().strip():
+                self.settings.exclude_nicknames_var.set(placeholder_text)
+                exclude_entry.config(foreground="gray")
+
+        # Initialize with placeholder if empty
+        if not self.settings.exclude_nicknames_var.get():
+            self.settings.exclude_nicknames_var.set(placeholder_text)
+            exclude_entry.config(foreground="gray")
+
+        # Bind focus events
+        exclude_entry.bind("<FocusIn>", on_entry_focus_in)
+        exclude_entry.bind("<FocusOut>", on_entry_focus_out)
+
+        exclude_label.pack(side=tk.LEFT, padx=5)
+        exclude_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        exclude_frame_entry.pack(fill=tk.X, padx=5, pady=5)
+
         # Pack the main frame
         options_frame.pack(fill=tk.X, pady=5)
 
@@ -387,14 +364,15 @@ class ClickNickApp:
         # Pack the frame
         status_frame.pack(fill=tk.X, pady=10)
 
-    def browse_csv(self):
-        """Open file dialog to select CSV file."""
+    def browse_and_load_csv(self):
+        """Browse for and load CSV file from menu."""
         filepath = filedialog.askopenfilename(
             title="Select Nickname CSV",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
         )
         if filepath:
             self.csv_path_var.set(filepath)
+            self.load_csv()
 
     def refresh_click_instances(self):
         """Refresh the list of running Click.exe instances."""
@@ -614,6 +592,8 @@ class ClickNickApp:
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="Exit", command=self.on_closing)
+        file_menu.add_separator()
+        file_menu.add_command(label="Load Nicknames from CSV...", command=self.browse_and_load_csv)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
