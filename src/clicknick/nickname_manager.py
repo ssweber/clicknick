@@ -11,16 +11,7 @@ from .nickname import Nickname
 class NicknameManager:
     """Manages nicknames loaded from CSV or database with efficient filtering."""
 
-    def _init_filters(self):
-        """Initialize the search filter strategies"""
-        self.filter_strategies = {
-            "none": NoneFilter(),
-            "prefix": PrefixFilter(),
-            "contains": ContainsFilter(),
-            "containsplus": ContainsPlusFilter(),
-        }
-
-    def __init__(self, settings=None):
+    def __init__(self, settings=None, filter_strategies=None):
         self.nicknames: list[Nickname] = []  # List of Nickname objects
         self._loaded_filepath = None
         self._last_load_timestamp = None
@@ -28,8 +19,16 @@ class NicknameManager:
         self._click_hwnd = None
         self.settings = settings  # Store reference to app settings
 
-        # Initialize filter strategies
-        self._init_filters()
+        # Use provided filter strategies or create default ones
+        if filter_strategies:
+            self.filter_strategies = filter_strategies
+        else:
+            self.filter_strategies = {
+                "none": NoneFilter(),
+                "prefix": PrefixFilter(),
+                "contains": ContainsFilter(),
+                "containsplus": ContainsPlusFilter(),
+            }
 
     @property
     def is_loaded(self) -> bool:
@@ -147,26 +146,44 @@ class NicknameManager:
             str: Path to the database file or None if not found
         """
         try:
-            # If we have window handle in hex format, convert it to a proper format
-            # similar to what the AutoHotkey script does
+            # Use AHK to get the window handle if we don't have it
+            if click_pid and not click_hwnd:
+                from .shared_ahk import AHK
+
+                # Get window ID using AHK
+                window_id = AHK.f("WinGet", "ID", f"ahk_pid {click_pid}")
+                if window_id:
+                    click_hwnd = int(window_id)
+
             if click_hwnd:
                 # Convert window handle to uppercase hex string without '0x' prefix
-                hwnd_hex = format(click_hwnd, "08X")[-7:]
+                hwnd_hex = format(click_hwnd, "08X")
 
                 # Build the expected database path
                 username = os.environ.get("USERNAME")
                 db_path = Path(f"C:/Users/{username}/AppData/Local/Temp/CLICK ({hwnd_hex})/SC_.mdb")
 
                 if db_path.exists():
+                    print(f"Found database: {db_path}")
                     return str(db_path)
 
-            # Fallback: search the temp directory for CLICK folders
+            # Fallback: search the temp directory for CLICK folders and find the most recent
             temp_dir = Path(os.environ.get("TEMP", ""))
             if temp_dir.exists():
+                click_folders = []
                 for folder in temp_dir.glob("CLICK (*)/"):
                     mdb_path = folder / "SC_.mdb"
                     if mdb_path.exists():
-                        return str(mdb_path)
+                        # Get modification time for sorting
+                        mod_time = mdb_path.stat().st_mtime
+                        click_folders.append((folder, mod_time))
+
+                if click_folders:
+                    # Sort by modification time (most recent first)
+                    click_folders.sort(key=lambda x: x[1], reverse=True)
+                    most_recent = click_folders[0][0] / "SC_.mdb"
+                    print(f"Using most recent CLICK database: {most_recent}")
+                    return str(most_recent)
 
             return None
 

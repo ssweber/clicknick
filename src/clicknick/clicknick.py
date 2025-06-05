@@ -4,6 +4,12 @@ from ctypes import windll
 from tkinter import filedialog, ttk
 
 from .dialogs import AboutDialog, OdbcWarningDialog
+from .filters import (  # preserve lru_cache
+    ContainsFilter,
+    ContainsPlusFilter,
+    NoneFilter,
+    PrefixFilter,
+)
 from .nickname_manager import NicknameManager
 from .overlay import Overlay
 from .settings import AppSettings
@@ -31,14 +37,33 @@ class ClickNickApp:
         # Create main window
         self.root = tk.Tk()
         self.root.title("ClickNick App")
-        self.root.geometry("550x650")
+        self.root.geometry("550x350")
 
         # Initialize settings first
         self.settings = AppSettings()
 
+        # Initialize monitoring state early (before any UI creation)
+        self.monitoring = False
+        self.monitor_task_id = None
+
+        # Connected Click.exe instance
+        self.connected_click_pid = None
+        self.connected_click_title = None
+        self.connected_click_filename = None
+
+        self.filter_strategies = {
+            "none": NoneFilter(),
+            "prefix": PrefixFilter(),
+            "contains": ContainsFilter(),
+            "containsplus": ContainsPlusFilter(),
+        }
+
         # Initialize core components
-        self.nickname_manager = NicknameManager(self.settings)
+        self.nickname_manager = NicknameManager(self.settings, self.filter_strategies)
         self.detector = ClickWindowDetector(CLICK_PLC_WINDOW_MAPPING, self)
+
+        # Initialize overlay early (before UI creation)
+        self.overlay = None
 
         # Set the icon
         try:
@@ -65,19 +90,11 @@ class ClickNickApp:
         # Combobox overlay (initialized when needed)
         self.overlay = None
 
-        # Monitoring state
-        self.monitoring = False
-        self.monitor_task_id = None
-
-        # Connected Click.exe instance
-        self.connected_click_pid = None
-        self.connected_click_title = None
-        self.connected_click_filename = None
-
     def setup_variables(self):
         """Initialize Tkinter variables."""
         self.csv_path_var = tk.StringVar()
         self.status_var = tk.StringVar(value="Not connected")
+        self.selected_instance_var = tk.StringVar()  # Add this line
         self.click_instances = []  # Will store (id, title, filename) tuples
         self.using_database = False  # Flag to track if database is being used
 
@@ -91,97 +108,28 @@ class ClickNickApp:
 
         # Status label styles
         style.configure("Status.TLabel", foreground="blue")
+        style.configure("Ready.TLabel", foreground="blue")
         style.configure("Error.TLabel", foreground="red")
         style.configure("Connected.TLabel", foreground="green")
 
     def create_widgets(self):
         """Create all UI widgets."""
-
         # Add menu bar first
         self.create_menu_bar()
 
-        # Main frame to contain everything
-        main_frame = ttk.Frame(self.root, padding="10 10 10 10")
+        # Main frame to contain everything with consistent padding
+        main_frame = ttk.Frame(self.root, padding="15")  # Reduce from 20 to 15
 
         # Create all widgets
         self.create_click_instances_section(main_frame)
         self.create_options_section(main_frame)
-        self.create_exclude_section(main_frame)
         self.create_status_section(main_frame)
-        self.create_csv_section(main_frame)
 
         # Pack the main frame
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Initial refresh of Click instances
         self.refresh_click_instances()
-
-    def create_exclude_section(self, parent):
-        """Create the exclude options section."""
-        exclude_frame = ttk.LabelFrame(parent, text="Exclude")
-
-        # SC/SD exclusion checkbox
-        sc_sd_check = ttk.Checkbutton(
-            exclude_frame, text="Exclude SC/SD Addresses", variable=self.settings.exclude_sc_sd_var
-        )
-        sc_sd_check.pack(anchor=tk.W, padx=5, pady=2)
-
-        # Exclude nicknames containing entry
-        exclude_frame_entry = ttk.Frame(exclude_frame)
-        exclude_label = ttk.Label(exclude_frame_entry, text="Exclude nicknames containing:")
-        exclude_entry = ttk.Entry(
-            exclude_frame_entry, textvariable=self.settings.exclude_nicknames_var
-        )
-
-        # Add placeholder text
-        placeholder_text = "name1, name2, name3"
-
-        # Functions to handle placeholder behavior
-        def on_entry_focus_in(event):
-            if exclude_entry.get() == placeholder_text:
-                self.settings.exclude_nicknames_var.set("")
-                exclude_entry.config(foreground="black")
-
-        def on_entry_focus_out(event):
-            if not exclude_entry.get().strip():
-                self.settings.exclude_nicknames_var.set(placeholder_text)
-                exclude_entry.config(foreground="gray")
-
-        # Initialize with placeholder if empty
-        if not self.settings.exclude_nicknames_var.get():
-            self.settings.exclude_nicknames_var.set(placeholder_text)
-            exclude_entry.config(foreground="gray")
-
-        # Bind focus events
-        exclude_entry.bind("<FocusIn>", on_entry_focus_in)
-        exclude_entry.bind("<FocusOut>", on_entry_focus_out)
-
-        exclude_label.pack(side=tk.LEFT, padx=5)
-        exclude_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        exclude_frame_entry.pack(fill=tk.X, padx=5, pady=5)
-
-        # Pack the main frame
-        exclude_frame.pack(fill=tk.X, pady=5)
-
-    def create_csv_section(self, parent):
-        """Create the CSV file selection section."""
-        csv_frame = ttk.LabelFrame(parent, text="Alternative Nickname Source")
-        self.csv_frame = csv_frame  # Save reference to frame
-
-        # Create widgets
-        csv_label = ttk.Label(csv_frame, text="CSV File:")
-        self.csv_entry = ttk.Entry(csv_frame, textvariable=self.csv_path_var, width=30)
-        self.csv_button = ttk.Button(csv_frame, text="Browse...", command=self.browse_csv)
-        self.load_csv_button = ttk.Button(csv_frame, text="Load CSV", command=self.load_csv)
-
-        # Layout widgets
-        csv_label.pack(side=tk.LEFT)
-        self.csv_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
-        self.csv_button.pack(side=tk.LEFT)
-        self.load_csv_button.pack(side=tk.LEFT, padx=5)
-
-        # Pack the frame
-        csv_frame.pack(fill=tk.X, pady=5)
 
     def _update_status(self, message, style="normal"):
         """Update status message with appropriate style."""
@@ -213,7 +161,7 @@ class ClickNickApp:
             # Apply user's sorting preference
             self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
-            self._update_status("Loaded nicknames from CSV", "connected")
+            self._update_status("Loaded nicknames from CSV", "ready")
             self.using_database = False
 
             # Auto-start monitoring if connected and not already started
@@ -221,13 +169,6 @@ class ClickNickApp:
                 self.start_monitoring()
         else:
             self._update_status("Failed to load from CSV", "error")
-
-    def _update_csv_controls_state(self):
-        """Update the state of CSV controls based on database usage."""
-        state = "disabled" if self.using_database else "normal"
-        self.csv_entry.configure(state=state)
-        self.csv_button.configure(state=state)
-        self.load_csv_button.configure(state=state)
 
     def load_from_database(self):
         """Load nicknames directly from the CLICK database."""
@@ -254,11 +195,8 @@ class ClickNickApp:
             # Apply user's sorting preference
             self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
-            self._update_status("Loaded nicknames from database", "connected")
+            self._update_status("Loaded nicknames from database", "ready")
             self.using_database = True
-
-            # Gray out the CSV controls since we're using the database
-            self._update_csv_controls_state()
 
             # Auto-start monitoring if not already started
             if not self.monitoring:
@@ -266,45 +204,47 @@ class ClickNickApp:
         else:
             self._update_status("Failed to load from database", "error")
             self.using_database = False
-            self._update_csv_controls_state()
 
     def create_click_instances_section(self, parent):
         """Create the Click.exe instances section."""
-        instances_frame = ttk.LabelFrame(parent, text="Click PLC Instances")
+        instances_frame = ttk.LabelFrame(
+            parent, text="Click PLC Instances", padding="10"
+        )  # Reduce from 15 to 10
 
-        # Create list box for instances
-        self.instances_listbox = tk.Listbox(instances_frame, height=8)
-        self.instances_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # Create frame for combobox and refresh button
+        selection_frame = ttk.Frame(instances_frame)
 
-        # Add scrollbar
-        scrollbar = ttk.Scrollbar(
-            instances_frame, orient="vertical", command=self.instances_listbox.yview
+        # Instance selection combobox
+        instance_label = ttk.Label(selection_frame, text="Select Instance:")
+        self.instances_combobox = ttk.Combobox(
+            selection_frame, textvariable=self.selected_instance_var, state="readonly", width=50
         )
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.instances_listbox.configure(yscrollcommand=scrollbar.set)
 
-        # Buttons frame
-        buttons_frame = ttk.Frame(instances_frame)
-
-        # Create buttons
+        # Refresh button with icon-like text
         refresh_button = ttk.Button(
-            buttons_frame, text="Refresh", command=self.refresh_click_instances
+            selection_frame, text="⟳", width=3, command=self.refresh_click_instances
         )
-        connect_button = ttk.Button(buttons_frame, text="Connect", command=self.connect_to_selected)
 
-        # Layout buttons
-        refresh_button.pack(side=tk.LEFT, padx=5, pady=5)
-        connect_button.pack(side=tk.LEFT, padx=5, pady=5)
+        # Bind combobox selection to auto-connect
+        self.instances_combobox.bind("<<ComboboxSelected>>", self.on_instance_selected)
 
-        # Pack buttons frame
-        buttons_frame.pack(fill=tk.X, padx=5, pady=5)
+        # Layout
+        instance_label.pack(side=tk.LEFT, padx=(0, 8))  # Reduce from 10 to 8
+        self.instances_combobox.pack(
+            side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8)
+        )  # Reduce from 10 to 8
+        refresh_button.pack(side=tk.RIGHT)
+
+        selection_frame.pack(fill=tk.X)  # Remove pady
 
         # Pack the main frame
-        instances_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        instances_frame.pack(fill=tk.X, pady=(0, 12))  # Reduce from 15 to 12
 
     def create_options_section(self, parent):
         """Create the options section."""
-        options_frame = ttk.LabelFrame(parent, text="Search Options")
+        options_frame = ttk.LabelFrame(
+            parent, text="Search Options", padding="10"
+        )  # Reduce from 15 to 10
 
         # Search mode widgets
         filter_frame = ttk.Frame(options_frame)
@@ -335,26 +275,64 @@ class ClickNickApp:
         )
 
         # Layout filter widgets
-        filter_label.pack(side=tk.LEFT)
-        none_radio.pack(side=tk.LEFT, padx=5)
-        prefix_radio.pack(side=tk.LEFT, padx=5)
-        contains_radio.pack(side=tk.LEFT, padx=5)
-        contains_plus_radio.pack(side=tk.LEFT, padx=5)
-        filter_frame.pack(fill=tk.X, pady=5)
+        filter_label.pack(side=tk.LEFT, padx=(0, 8))  # Reduce from no padding to consistent 8
+        none_radio.pack(side=tk.LEFT, padx=(0, 8))  # Reduce from 5 to 8 for consistency
+        prefix_radio.pack(side=tk.LEFT, padx=(0, 8))
+        contains_radio.pack(side=tk.LEFT, padx=(0, 8))
+        contains_plus_radio.pack(side=tk.LEFT)  # Last item doesn't need right padding
+        filter_frame.pack(fill=tk.X, pady=(0, 8))  # Reduce from 5 to 8
 
         # Add sorting option
-        sort_frame = ttk.Frame(options_frame)
         sort_check = ttk.Checkbutton(
-            sort_frame,
+            options_frame,
             text="Sort by Nickname (alphabetically)",
             variable=self.settings.sort_by_nickname_var,
             command=self.on_sort_option_changed,
         )
-        sort_check.pack(anchor=tk.W)
-        sort_frame.pack(fill=tk.X, pady=5)
+        sort_check.pack(anchor=tk.W, pady=(0, 6))  # Add consistent spacing
+
+        # SC/SD exclusion checkbox
+        sc_sd_check = ttk.Checkbutton(
+            options_frame, text="Exclude SC/SD Addresses", variable=self.settings.exclude_sc_sd_var
+        )
+        sc_sd_check.pack(anchor=tk.W, pady=(0, 6))  # Remove padx, standardize pady
+
+        # Exclude nicknames containing entry
+        exclude_frame_entry = ttk.Frame(options_frame)
+        exclude_label = ttk.Label(exclude_frame_entry, text="Exclude nicknames containing:")
+        exclude_entry = ttk.Entry(
+            exclude_frame_entry, textvariable=self.settings.exclude_nicknames_var
+        )
+
+        # Add placeholder text
+        placeholder_text = "name1, name2, name3"
+
+        # Functions to handle placeholder behavior
+        def on_entry_focus_in(event):
+            if exclude_entry.get() == placeholder_text:
+                self.settings.exclude_nicknames_var.set("")
+                exclude_entry.config(foreground="black")
+
+        def on_entry_focus_out(event):
+            if not exclude_entry.get().strip():
+                self.settings.exclude_nicknames_var.set(placeholder_text)
+                exclude_entry.config(foreground="gray")
+
+        # Initialize with placeholder if empty
+        if not self.settings.exclude_nicknames_var.get():
+            self.settings.exclude_nicknames_var.set(placeholder_text)
+            exclude_entry.config(foreground="gray")
+
+        # Bind focus events
+        exclude_entry.bind("<FocusIn>", on_entry_focus_in)
+        exclude_entry.bind("<FocusOut>", on_entry_focus_out)
+
+        exclude_label.pack(side=tk.LEFT, padx=(0, 8))  # Reduce from 5 to 8, remove left padding
+        exclude_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)  # Remove padx
+        exclude_frame_entry.pack(fill=tk.X)  # Remove padx and pady
 
         # Pack the main frame
-        options_frame.pack(fill=tk.X, pady=5)
+        options_frame.pack(fill=tk.X, pady=(0, 12))  # Reduce from 5 to 12 for consistency
 
     def create_status_section(self, parent):
         """Create the status and control section."""
@@ -371,69 +349,109 @@ class ClickNickApp:
         self.start_button.pack(side=tk.RIGHT)
 
         # Pack the frame
-        status_frame.pack(fill=tk.X, pady=10)
+        status_frame.pack(fill=tk.X, pady=(8, 0))  # Reduce from 10 to 8, only top padding
 
-    def browse_csv(self):
-        """Open file dialog to select CSV file."""
+    def browse_and_load_csv(self):
+        """Browse for and load CSV file from menu."""
         filepath = filedialog.askopenfilename(
             title="Select Nickname CSV",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
         )
         if filepath:
             self.csv_path_var.set(filepath)
+            self.load_csv()
 
     def refresh_click_instances(self):
         """Refresh the list of running Click.exe instances."""
-        # Clear current list
-        self.instances_listbox.delete(0, tk.END)
+        # Remember currently selected instance
+        previously_selected = self.selected_instance_var.get()
+
+        # Clear current data
         self.click_instances = []
+        self.instances_combobox["values"] = ()
+        self.selected_instance_var.set("")
 
         try:
             # Get all Click.exe instances from detector
             click_instances = self.detector.get_click_instances()
 
             if not click_instances:
+                self._update_status("No Click instances found", "error")
                 return
 
-            # Update UI with instances
+            # Update instance data
             self.click_instances = click_instances
-            for _, _, filename in click_instances:
-                self.instances_listbox.insert(tk.END, filename)
+            filenames = [filename for _, _, filename in click_instances]
+            self.instances_combobox["values"] = filenames
+
+            # Try to restore previous selection
+            if previously_selected in filenames:
+                self.selected_instance_var.set(previously_selected)
+            elif filenames:
+                # If previous selection not found, select first item
+                self.selected_instance_var.set(filenames[0])
+                # Auto-connect to first instance
+                self.on_instance_selected()
 
         except Exception as e:
             print(f"Error refreshing Click instances: {e}")
             self._update_status(f"Error: {e!s}", "error")
 
-    def connect_to_selected(self):
-        """Connect to the selected Click.exe instance."""
-        selected_idx = self.instances_listbox.curselection()
-        if not selected_idx:
-            self._update_status("No Click instance selected", "error")
+    def on_instance_selected(self, event=None):
+        """Handle instance selection from combobox."""
+        selected_text = self.selected_instance_var.get()
+        if not selected_text:
             return
 
-        # Get the selected instance
-        idx = selected_idx[0]
-        if idx >= len(self.click_instances):
-            self._update_status("Invalid selection", "error")
-            return
+        # Find the matching instance
+        for _, (pid, title, filename) in enumerate(self.click_instances):
+            if filename == selected_text:
+                self.connect_to_instance(pid, title, filename)
+                break
 
-        # Store the connected instance
-        self.connected_click_pid = self.click_instances[idx][0]
-        self.connected_click_title = self.click_instances[idx][1]
-        self.connected_click_filename = self.click_instances[idx][2]
+    def connect_to_instance(self, pid, title, filename):
+        """Connect to a specific Click.exe instance."""
+        # Stop monitoring if currently active
+        if self.monitoring:
+            self.stop_monitoring()
+
+        # Reset connection state
+        self.connected_click_pid = None
+        self.connected_click_title = None
+        self.connected_click_filename = None
+        self.using_database = False
+
+        # Clear CSV path when switching instances
+        self.csv_path_var.set("")
+
+        # Reset nickname manager (reuse filter strategies to preserve cache)
+        self.nickname_manager = NicknameManager(self.settings, self.filter_strategies)
+
+        # Store the new connection FIRST
+        self.connected_click_pid = pid
+        self.connected_click_title = title
+        self.connected_click_filename = filename
 
         # Update status
-        self._update_status(f"Connected to {self.click_instances[idx][2]}", "connected")
-
-        # Reset database usage flag when connecting to a new instance
-        self.using_database = False
-        self._update_csv_controls_state()
+        self._update_status(f"Connected to {filename}", "connected")
 
         # Try to load nicknames from database automatically only if ODBC drivers are available
         if self.nickname_manager.has_access_driver():
-            self.load_from_database()
+            # Now load from the NEW instance's database
+            success = self.nickname_manager.load_from_database(
+                click_pid=self.connected_click_pid,
+                click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
+            )
+
+            if success:
+                # Apply user's sorting preference
+                self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
+                self._update_status(f"Loaded nicknames from {filename} database", "ready")
+                self.using_database = True
+            else:
+                self._update_status(f"Connected to {filename} - database load failed", "error")
         else:
-            self._update_status("Connected - CSV loading only (no ODBC drivers)", "connected")
+            self._update_status("Ready. File → Load Nicknames... to begin.", "connected")
 
     def toggle_monitoring(self):
         """Start or stop monitoring."""
@@ -557,6 +575,8 @@ class ClickNickApp:
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="Exit", command=self.on_closing)
+        file_menu.add_separator()
+        file_menu.add_command(label="Load Nicknames from CSV...", command=self.browse_and_load_csv)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)

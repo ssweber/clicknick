@@ -9,12 +9,14 @@ Context-aware nickname autocomplete for ClickPLC instruction windows.
 
 ## Features
 
+- **Live Nicknames**: Immediate access to Nicknames in your CLICK Programming Software, via ODBC connection.
 - **Smart Autocomplete**: Shows only relevant nicknames based on instruction type
 - **Multiple Filter Modes**: Prefix, Contains, and Contains + Abbreviation matching
 - **Exclude**: SC/SD addresses or your own
 - **Non-Intrusive**: Works alongside Click PLC without modifications
 
-![image](https://github.com/user-attachments/assets/ee627c86-801c-49ab-acff-85b906c34b06)
+![pythonw3 12_svIGUB2PMY](https://github.com/user-attachments/assets/33c54b20-107f-4fed-83d5-e526bb96e66d)
+
 
 ## How to Run
 > [!NOTE]
@@ -62,16 +64,14 @@ python -m clicknick
 - Shift Register
 - Copy instruction
 - Search instruction
-- Search & Replace dialog
+- Search & Replace dialogs
+- Data Views
+- Address Picker `Find`
 
 ## Requirements
 
 - Windows 10/11
 - Click PLC Software
-
-## Roadmap
-
-- Add support for inserting Nickname/Address into Math equation
 
 * * *
 
