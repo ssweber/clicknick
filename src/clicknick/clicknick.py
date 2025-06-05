@@ -48,6 +48,9 @@ class ClickNickApp:
         # Initialize core components
         self.nickname_manager = NicknameManager(self.settings)
         self.detector = ClickWindowDetector(CLICK_PLC_WINDOW_MAPPING, self)
+        
+        # Initialize overlay early (before UI creation)
+        self.overlay = None
 
         # Set the icon
         try:
