@@ -169,7 +169,7 @@ class ClickWindowDetector:
         Get the window handle for a process ID.
 
         Args:
-            pid: Process ID
+            pid: Process ID (string or int)
 
         Returns:
             Window handle (hwnd) or None if not found
@@ -177,6 +177,10 @@ class ClickWindowDetector:
         try:
             import win32gui
             import win32process
+
+            # Convert PID to integer if it's a string
+            if isinstance(pid, str):
+                pid = int(pid)
 
             def callback(hwnd, result):
                 try:
