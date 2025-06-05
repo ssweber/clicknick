@@ -149,6 +149,7 @@ class NicknameManager:
             # Use AHK to get the window handle if we don't have it
             if click_pid and not click_hwnd:
                 from .shared_ahk import AHK
+
                 # Get window ID using AHK
                 window_id = AHK.f("WinGet", "ID", f"ahk_pid {click_pid}")
                 if window_id:
@@ -156,7 +157,7 @@ class NicknameManager:
 
             if click_hwnd:
                 # Convert window handle to uppercase hex string without '0x' prefix
-                hwnd_hex = format(click_hwnd, "08X")[-7:]
+                hwnd_hex = format(click_hwnd, "08X")
 
                 # Build the expected database path
                 username = os.environ.get("USERNAME")
@@ -176,7 +177,7 @@ class NicknameManager:
                         # Get modification time for sorting
                         mod_time = mdb_path.stat().st_mtime
                         click_folders.append((folder, mod_time))
-                
+
                 if click_folders:
                     # Sort by modification time (most recent first)
                     click_folders.sort(key=lambda x: x[1], reverse=True)
