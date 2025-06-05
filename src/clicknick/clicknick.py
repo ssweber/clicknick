@@ -131,8 +131,6 @@ class ClickNickApp:
         # Initial refresh of Click instances
         self.refresh_click_instances()
 
-
-
     def _update_status(self, message, style="normal"):
         """Update status message with appropriate style."""
         self.status_var.set(message)
@@ -209,7 +207,9 @@ class ClickNickApp:
 
     def create_click_instances_section(self, parent):
         """Create the Click.exe instances section."""
-        instances_frame = ttk.LabelFrame(parent, text="Click PLC Instances", padding="10")  # Reduce from 15 to 10
+        instances_frame = ttk.LabelFrame(
+            parent, text="Click PLC Instances", padding="10"
+        )  # Reduce from 15 to 10
 
         # Create frame for combobox and refresh button
         selection_frame = ttk.Frame(instances_frame)
@@ -230,7 +230,9 @@ class ClickNickApp:
 
         # Layout
         instance_label.pack(side=tk.LEFT, padx=(0, 8))  # Reduce from 10 to 8
-        self.instances_combobox.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))  # Reduce from 10 to 8
+        self.instances_combobox.pack(
+            side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8)
+        )  # Reduce from 10 to 8
         refresh_button.pack(side=tk.RIGHT)
 
         selection_frame.pack(fill=tk.X)  # Remove pady
@@ -240,7 +242,9 @@ class ClickNickApp:
 
     def create_options_section(self, parent):
         """Create the options section."""
-        options_frame = ttk.LabelFrame(parent, text="Search Options", padding="10")  # Reduce from 15 to 10
+        options_frame = ttk.LabelFrame(
+            parent, text="Search Options", padding="10"
+        )  # Reduce from 15 to 10
 
         # Search mode widgets
         filter_frame = ttk.Frame(options_frame)
