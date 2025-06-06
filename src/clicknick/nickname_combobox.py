@@ -330,6 +330,10 @@ class DropdownManager:
             # Reset focus state when dropdown closes
             self.listbox_has_focus = False
             self._bindings_set = False  # Reset bindings flag
+            
+            # Close tooltip when dropdown closes
+            if hasattr(self.combobox, 'master') and hasattr(self.combobox.master, 'tooltip'):
+                self.combobox.master.tooltip.hide_tooltip()
 
     def get_highlighted_item(self):
         """Get the currently highlighted item in the dropdown."""
