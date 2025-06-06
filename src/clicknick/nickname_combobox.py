@@ -396,7 +396,7 @@ class ComboboxEventHandler:
     def _on_postcommand(self):
         """Handle postcommand event - set appearance and show tooltip."""
         self.dropdown_manager._set_focused_appearance()
-        # Remove after_idle delay - trigger immediately
+        self.combobox.after_idle(self.dropdown_manager._setup_listbox_bindings)
         self._trigger_navigation_callback()
 
     def bind_events(self):
@@ -411,13 +411,11 @@ class ComboboxEventHandler:
         """Handle Down key - open dropdown and transfer focus to listbox."""
         if not self.dropdown_manager.is_dropdown_open():
             self.dropdown_manager.open_dropdown_transfer_focus()
-            # Remove the after_idle delay - trigger immediately
             self._trigger_navigation_callback()
             return "break"
 
         if self.combobox.focus_get() == self.combobox:
             self.dropdown_manager.transfer_focus_to_listbox("down")
-            # Remove the after_idle delay - trigger immediately
             self._trigger_navigation_callback()
             return "break"
 
@@ -425,8 +423,7 @@ class ComboboxEventHandler:
         """Handle Up key - open dropdown and transfer focus to listbox."""
         if self.combobox.focus_get() == self.combobox:
             self.dropdown_manager.transfer_focus_to_listbox("up")
-            # Trigger navigation callback after focus transfer
-            self.combobox.after_idle(self._trigger_navigation_callback)
+            self._trigger_navigation_callback()
             return "break"
 
     def handle_keyrelease(self, event):
