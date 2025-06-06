@@ -81,9 +81,15 @@ class NicknameManager:
             # Load the CSV file
             with open(filepath, newline="") as csvfile:
                 reader = csv.DictReader(csvfile)
-
                 # Verify required columns exist
-                required_columns = ["Address", "Nickname"]
+                required_columns = [
+                    "Address",
+                    "Nickname",
+                    "Data Type",
+                    "Initial Value",
+                    "Retentive",
+                    "Address Comment",
+                ]
                 if not all(col in reader.fieldnames for col in required_columns):
                     print(f"CSV missing required columns: {required_columns}")
                     return False
@@ -93,7 +99,10 @@ class NicknameManager:
                     nickname_obj = Nickname(
                         nickname=row["Nickname"],
                         address=row["Address"],
-                        memory_type=row.get("MemoryType", ""),
+                        data_type=row["Data Type"],
+                        initial_value=row["Initial Value"],
+                        retentive=row["Retentive"] == "Yes",
+                        comment=row["Address Comment"],
                     )
                     self.nicknames.append(nickname_obj)
 
@@ -191,6 +200,10 @@ class NicknameManager:
             print(f"Error finding database: {e}")
             return None
 
+    def _convert_database_data_type(self, text: str) -> str:
+        type_mapping = {0: "BIT", 1: "INT", 2: "INT2", 3: "FLOAT", 4: "HEX", 6: "TEXT"}
+        return type_mapping.get(text, "")
+
     def load_from_database(self, click_pid=None, click_hwnd=None):
         """
         Load nicknames directly from the CLICK Programming Software's Access database.
@@ -254,7 +267,7 @@ class NicknameManager:
 
             # Execute query to get all nicknames
             query = """
-                SELECT Nickname, MemoryType & Address AS AddressInfo, MemoryType 
+                SELECT Nickname, MemoryType & Address AS AddressInfo, MemoryType, DataType, Use as Used, InitialValue, Retentive, Comment
                 FROM address 
                 WHERE Nickname <> ''
                 ORDER BY MemoryType, Address;
@@ -264,8 +277,26 @@ class NicknameManager:
             # Process results into Nickname objects
             self.nicknames = []
             for row in cursor.fetchall():
-                nickname, address, memory_type = row
-                nickname_obj = Nickname(nickname=nickname, address=address, memory_type=memory_type)
+                (
+                    nickname,
+                    address,
+                    memory_type,
+                    data_type,
+                    used,
+                    initial_value,
+                    retentive,
+                    comment,
+                ) = row
+                nickname_obj = Nickname(
+                    nickname=nickname,
+                    address=address,
+                    data_type=self._convert_database_data_type(data_type),
+                    initial_value=initial_value,
+                    retentive=retentive,
+                    comment=comment,
+                    memory_type=memory_type,
+                    used=used,
+                )
                 self.nicknames.append(nickname_obj)
 
             # Close connection
@@ -383,3 +414,23 @@ class NicknameManager:
     def has_access_driver(self) -> bool:
         """Check if any Microsoft Access ODBC driver is available."""
         return len(self.get_available_access_drivers()) > 0
+
+    def get_nickname_details(self, nickname: str) -> str:
+        """
+        Get detailed information for a given nickname.
+
+        Args:
+            nickname: The exact nickname to look up
+
+        Returns:
+            Detailed string with address, data type, initial value, and comment
+        """
+        if not self.is_loaded:
+            return ""
+
+        # Find exact match for the nickname
+        for nickname_obj in self.nicknames:
+            if nickname_obj.nickname == nickname:
+                return repr(nickname_obj)
+
+        return ""

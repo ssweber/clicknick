@@ -37,7 +37,7 @@ class ClickNickApp:
         # Create main window
         self.root = tk.Tk()
         self.root.title("ClickNick App")
-        self.root.geometry("550x350")
+        self.root.geometry("550x375")
 
         # Initialize settings first
         self.settings = AppSettings()
@@ -290,6 +290,14 @@ class ClickNickApp:
             command=self.on_sort_option_changed,
         )
         sort_check.pack(anchor=tk.W, pady=(0, 6))  # Add consistent spacing
+
+        # Info tooltip checkbox
+        tooltip_check = ttk.Checkbutton(
+            options_frame,
+            text="Show Nickname tooltips",
+            variable=self.settings.show_info_tooltip_var,
+        )
+        tooltip_check.pack(anchor=tk.W, pady=(0, 6))
 
         # SC/SD exclusion checkbox
         sc_sd_check = ttk.Checkbutton(
