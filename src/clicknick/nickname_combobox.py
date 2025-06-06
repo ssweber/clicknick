@@ -152,31 +152,13 @@ class DropdownManager:
             except tk.TclError:
                 pass
 
-    def _monitor_listbox_focus(self):
-        """Monitor listbox focus and hide tooltip when focus is lost."""
-        listbox = self.get_listbox_widget()
-        if listbox:
-            try:
-                # Bind to focus out event to detect when listbox loses focus
-                self.combobox.tk.call(
-                    "bind",
-                    listbox,
-                    "<FocusOut>",
-                    self.combobox.register(self._on_listbox_focus_lost),
-                )
-            except tk.TclError:
-                pass
-
-    def _on_listbox_focus_lost(self):
-        """Handle when listbox loses focus - hide tooltip if dropdown is closing."""
-        # Use after_idle to check if listbox still exists after focus change
-        self.combobox.after_idle(self._check_listbox_existence)
-
-    def _check_listbox_existence(self):
-        """Check if listbox still exists and hide tooltip if it doesn't."""
-        listbox = self.get_listbox_widget()
-        if not listbox:
-            # Listbox no longer exists, hide tooltip
+    def _monitor_dropdown_visibility(self):
+        """Monitor dropdown visibility and hide tooltip when it closes."""
+        if self.is_dropdown_open():
+            # Dropdown is still open, check again soon
+            self.combobox.after(100, self._monitor_dropdown_visibility)
+        else:
+            # Dropdown has closed, hide tooltip
             if (
                 hasattr(self.combobox, "item_navigation_callback")
                 and self.combobox.item_navigation_callback
@@ -212,8 +194,8 @@ class DropdownManager:
                 ):
                     self.bind_listbox_navigation_events(self.combobox.item_navigation_callback)
 
-                # Monitor listbox focus for tooltip management
-                self._monitor_listbox_focus()
+                # Start monitoring dropdown visibility for tooltip management
+                self._monitor_dropdown_visibility()
 
                 self._bindings_set = True
             except tk.TclError:
