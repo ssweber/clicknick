@@ -50,7 +50,6 @@ class FloatingTooltip(tk.Toplevel):
 
         # Adjust position to avoid screen edges
         screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
 
         # Position above the input - subtract tooltip height from y coordinate
         y = y - tooltip_height
