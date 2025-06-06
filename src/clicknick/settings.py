@@ -11,7 +11,7 @@ class AppSettings:
         self.sort_by_nickname_var = tk.BooleanVar(value=False)
         self.exclude_sc_sd_var = tk.BooleanVar(value=False)
         self.exclude_nicknames_var = tk.StringVar(value="")
-        self.show_info_tooltip_var = tk.BooleanVar(value=True)
+        self.show_info_tooltip_var = tk.BooleanVar(value=False)
 
     @property
     def search_mode(self) -> str:

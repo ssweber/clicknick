@@ -29,8 +29,8 @@ CLICK_PLC_WINDOW_MAPPING = {
         "TEdit1": ["X", "Y", "C", "T", "CT", "SC"],
     },
     "TfrmContactCompare": {  # "Compare (A with B)"
-        "TEdit1": ["DS", "TD", "SD", "DD", "CTD", "DF"],
-        "TEdit2": ["DS", "TD", "SD", "DD", "CTD", "DF"],
+        "TEdit1": ["DS", "TD", "SD", "DD", "DH", "CTD", "DF"],
+        "TEdit2": ["DS", "TD", "SD", "DD", "DH", "CTD", "DF"],
     },
     "TfrmOut": {  # "Out"
         "TEdit2": ["X", "Y", "C", "T", "CT", "SC"],

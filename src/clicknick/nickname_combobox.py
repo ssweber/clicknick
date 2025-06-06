@@ -81,6 +81,16 @@ class DropdownManager:
             except tk.TclError:
                 pass
 
+    def _show_tooltip_for_current_item(self):
+        """Show tooltip for the currently highlighted item."""
+        if (
+            hasattr(self.combobox, "item_navigation_callback")
+            and self.combobox.item_navigation_callback
+        ):
+            highlighted_item = self.get_highlighted_item()
+            if highlighted_item:
+                self.combobox.item_navigation_callback(highlighted_item)
+
     def _on_listbox_focus_in(self):
         """Handle listbox focus-in event."""
         self._set_focused_appearance()
@@ -130,6 +140,14 @@ class DropdownManager:
                     self._set_unfocused_appearance()
             except tk.TclError:
                 pass
+
+    def _hide_tooltip(self):
+        """Hide the tooltip."""
+        if (
+            hasattr(self.combobox, "item_navigation_callback")
+            and self.combobox.item_navigation_callback
+        ):
+            self.combobox.item_navigation_callback("")
 
     def _on_listbox_focus_out(self):
         """Handle listbox focus-out event."""
@@ -342,24 +360,6 @@ class DropdownManager:
         # Use after_idle to ensure the selection has been updated
         self.combobox.after_idle(lambda: self._trigger_navigation_callback(navigation_callback))
 
-    def _show_tooltip_for_current_item(self):
-        """Show tooltip for the currently highlighted item."""
-        if (
-            hasattr(self.combobox, "item_navigation_callback")
-            and self.combobox.item_navigation_callback
-        ):
-            highlighted_item = self.get_highlighted_item()
-            if highlighted_item:
-                self.combobox.item_navigation_callback(highlighted_item)
-
-    def _hide_tooltip(self):
-        """Hide the tooltip."""
-        if (
-            hasattr(self.combobox, "item_navigation_callback")
-            and self.combobox.item_navigation_callback
-        ):
-            self.combobox.item_navigation_callback("")
-
     def bind_listbox_navigation_events(self, navigation_callback):
         """Bind navigation events to the listbox to track highlighting changes."""
         listbox = self.get_listbox_widget()
@@ -411,19 +411,12 @@ class ComboboxEventHandler:
             if highlighted_item:
                 self.combobox.item_navigation_callback(highlighted_item)
             else:
-                # Fallback to current combobox value
-                current_value = self.combobox.get()
-                if current_value:
-                    self.combobox.item_navigation_callback(current_value)
-                else:
-                    # If no value, call with empty string to hide tooltip
-                    self.combobox.item_navigation_callback("")
+                self.combobox.item_navigation_callback("")
 
     def _on_postcommand(self):
         """Handle postcommand event - set appearance and show tooltip."""
         self.dropdown_manager._set_focused_appearance()
         self.combobox.after_idle(self.dropdown_manager._setup_listbox_bindings)
-        self._trigger_navigation_callback()
 
     def bind_events(self):
         """Bind all events to the combobox."""

@@ -56,7 +56,7 @@ class FloatingTooltip(tk.Toplevel):
         if x + tooltip_width > screen_width:
             x = x - tooltip_width - 10
         else:
-            x = x + 10  # Small gap from the dropdown
+            x = x + 50  # Small gap from the dropdown
 
         # Adjust vertical position if needed
         if y + tooltip_height > screen_height:

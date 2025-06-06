@@ -47,29 +47,29 @@ class Nickname:
 
     def __repr__(self):
         lines = [self.nickname]
-        
+
         # Second line: data_type : Address
         if self.data_type:
             lines.append(f"{self.data_type} : {self.address}")
         else:
             lines.append(self.address)
-        
+
         # Third line: Comment (if present)
         if self.comment:
             lines.append(self.comment)
-        
+
         # Fourth line: Additional details (if any)
         details = []
-        
+
         if self.used is False:
             details.append("Used: No")
-        
+
         if self.initial_value and self.initial_value != "0":
             details.append(f"Initial Value: {self.initial_value}")
-        
+
         if details:
             lines.append(", ".join(details))
-        
+
         return "\n".join(lines)
 
     def __str__(self):
