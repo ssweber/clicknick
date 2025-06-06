@@ -307,15 +307,12 @@ class NicknameManager:
         if self.settings:
             search_mode = self.settings.search_mode
             exclude_sc_sd = self.settings.exclude_sc_sd
-            exclude_terms = ",".join(self.settings.get_exclude_terms_list())
+            excluded_terms = self.settings.get_exclude_terms_list()
         else:
             # Fallback values if no settings available
             search_mode = "none"
             exclude_sc_sd = False
-            exclude_terms = ""
-
-        # Parse excluded terms
-        excluded_terms = [term.strip().lower() for term in exclude_terms.split(",") if term.strip()]
+            excluded_terms = []
 
         # Filter by address type and exclusions
         filtered_objects = []
