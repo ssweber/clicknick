@@ -278,15 +278,15 @@ class TestContainsPlusFilter:
         filter_instance = filter_obj[0]
 
         test_cases = [
-            ("Alarm", "alrm"),  # Keep first + consonants, remove doubles
-            ("Command", "cmnd"),  # a->skip, o->skip
-            ("Control", "cntrl"),  # o->skip
+            ("Alarm", "alrm"),
+            ("Command", "cmnd"),
+            ("Control", "cntrl"),
             ("Index", "indx"),  # codespell:ignore indx
-            ("Request", "rqst"),  # e->skip, e->skip
-            ("Response", "rspns"),  # e->skip, o->skip, e->skip
-            ("Parameter", "prmtr"),  # a->skip, a->skip, e->skip, e->skip
-            ("Hello", "hl"),  # e->skip, o->skip, double l becomes single
-            ("Mississippi", "msp"),  # i->skip, i->skip, i->skip, i->skip, double s/s/p reduction
+            ("Request", "rqst"),
+            ("Response", "rspns"),
+            ("Parameter", "prmtr"),
+            ("Hello", "hl"),
+            ("Mississippi", "msp"),
         ]
 
         for word, expected in test_cases:
@@ -301,12 +301,12 @@ class TestContainsPlusFilter:
 
         test_cases = [
             # Drop first consonant after vowel if next is consonant
-            ("Alarm", "alm"),  # after 'a', drop 'l' (first cons), keep 'r'
-            ("Control", "ctrl"),  # after 'o', drop 'n' (first cons), keep 't'
-            ("Index", "idx"),  # after 'i', drop 'n' (first cons), keep 'd'
-            ("Request", "rqt"),  # after 'e', keep 'q', after 'u', drop 's' keep 't'
-            ("Parameter", "prmtr"),  # Multiple vowel-consonant patterns
-            ("Forward", "fwd"),  # after 'o', drop 'r' (first cons), keep 'w'
+            ("Alarm", "alm"),
+            ("Control", "ctrl"),
+            ("Index", "idx"),
+            ("Request", "rqt"),
+            ("Parameter", "prmtr"),
+            ("Forward", "fwd"),
         ]
 
         for word, expected in test_cases:
