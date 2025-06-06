@@ -168,6 +168,11 @@ class Overlay(tk.Toplevel):
             self.tooltip.hide_tooltip()
             return
 
+        # Hide tooltip if dropdown is not open
+        if not self.combobox.dropdown_manager.is_dropdown_open():
+            self.tooltip.hide_tooltip()
+            return
+
         if nickname and self.nickname_manager:
             details = self.nickname_manager.get_nickname_details(nickname)
             if details:
