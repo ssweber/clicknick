@@ -84,6 +84,7 @@ class DropdownManager:
     def _on_listbox_focus_in(self):
         """Handle listbox focus-in event."""
         self._set_focused_appearance()
+        self._show_tooltip_for_current_item()
 
     def _set_unfocused_appearance(self):
         """Set listbox selection colors to a disabled/unfocused state."""
@@ -135,10 +136,12 @@ class DropdownManager:
         # Only set unfocused appearance if mouse is not over the listbox
         # This prevents flickering when clicking on items
         self.combobox.after_idle(self._check_focus_state)
+        self._hide_tooltip()
 
     def _on_listbox_mouse_enter(self):
         """Handle mouse entering listbox."""
         self._set_focused_appearance()
+        self._show_tooltip_for_current_item()
 
     def _on_listbox_mouse_leave(self):
         """Handle mouse leaving listbox."""
@@ -151,6 +154,7 @@ class DropdownManager:
                     self._set_unfocused_appearance()
             except tk.TclError:
                 pass
+        self._hide_tooltip()
 
     def _setup_listbox_bindings(self):
         """Set up event bindings for the listbox widget."""
@@ -337,6 +341,24 @@ class DropdownManager:
         """Handle listbox navigation events."""
         # Use after_idle to ensure the selection has been updated
         self.combobox.after_idle(lambda: self._trigger_navigation_callback(navigation_callback))
+
+    def _show_tooltip_for_current_item(self):
+        """Show tooltip for the currently highlighted item."""
+        if (
+            hasattr(self.combobox, "item_navigation_callback")
+            and self.combobox.item_navigation_callback
+        ):
+            highlighted_item = self.get_highlighted_item()
+            if highlighted_item:
+                self.combobox.item_navigation_callback(highlighted_item)
+
+    def _hide_tooltip(self):
+        """Hide the tooltip."""
+        if (
+            hasattr(self.combobox, "item_navigation_callback")
+            and self.combobox.item_navigation_callback
+        ):
+            self.combobox.item_navigation_callback("")
 
     def bind_listbox_navigation_events(self, navigation_callback):
         """Bind navigation events to the listbox to track highlighting changes."""
