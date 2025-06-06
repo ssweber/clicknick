@@ -367,13 +367,19 @@ class ComboboxEventHandler:
         self.dropdown_manager = dropdown_manager
         self.autocomplete = autocomplete
 
+    def _on_postcommand(self):
+        """Handle postcommand event - set appearance and show tooltip."""
+        self.dropdown_manager._set_focused_appearance()
+        # Trigger navigation callback to show tooltip for first/selected item
+        self.combobox.after_idle(self._trigger_navigation_callback)
+
     def bind_events(self):
         """Bind all events to the combobox."""
         self.combobox.bind("<KeyPress-Down>", self.on_down_key)
         self.combobox.bind("<KeyPress-Up>", self.on_up_key)
         self.combobox.bind("<<ComboboxSelected>>", self.on_selection)
         self.combobox.bind("<KeyRelease>", self.handle_keyrelease)
-        self.combobox.configure(postcommand=lambda: self.dropdown_manager._set_focused_appearance())
+        self.combobox.configure(postcommand=self._on_postcommand)
 
     def _trigger_navigation_callback(self):
         """Trigger the navigation callback with current selection."""
