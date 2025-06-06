@@ -8,6 +8,7 @@ class Nickname:
         self,
         nickname: str,
         address: str,
+        data_type: str,
         initial_value: str,
         retentive: bool,
         comment: str = "",
@@ -17,6 +18,7 @@ class Nickname:
     ):
         self.nickname = nickname
         self.address = address
+        self.data_type = data_type
         self.initial_value = initial_value
         self.retentive = retentive
         self.comment = comment

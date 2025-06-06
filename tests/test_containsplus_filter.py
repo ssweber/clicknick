@@ -134,7 +134,7 @@ class TestContainsPlusFilter:
         ]
 
         # Convert to Nickname objects and generate tags
-        nicknames = [Nickname(text, "mock", "0", False, "") for text in completion_texts]
+        nicknames = [Nickname(text, "mock", "", "0", False, "") for text in completion_texts]
         for nickname in nicknames:
             nickname.abbr_tags = filter_obj.generate_tags(nickname.nickname)
 

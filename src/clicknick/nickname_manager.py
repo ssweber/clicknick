@@ -85,6 +85,7 @@ class NicknameManager:
                 required_columns = [
                     "Address",
                     "Nickname",
+                    "Data Type",
                     "Initial Value",
                     "Retentive",
                     "Address Comment",
@@ -98,6 +99,7 @@ class NicknameManager:
                     nickname_obj = Nickname(
                         nickname=row["Nickname"],
                         address=row["Address"],
+                        data_type=row["Data Type"],
                         initial_value=row["Initial Value"],
                         retentive=row["Retentive"] == "Yes",
                         comment=row["Address Comment"],
@@ -198,6 +200,10 @@ class NicknameManager:
             print(f"Error finding database: {e}")
             return None
 
+    def _convert_database_data_type(self, text: str) -> str:
+        type_mapping = {"0": "BIT", "1": "INT", "2": "INT2", "3": "FLOAT", "4": "HEX", "6": "TEXT"}
+        return type_mapping.get(text, "")
+
     def load_from_database(self, click_pid=None, click_hwnd=None):
         """
         Load nicknames directly from the CLICK Programming Software's Access database.
@@ -261,7 +267,7 @@ class NicknameManager:
 
             # Execute query to get all nicknames
             query = """
-                SELECT Nickname, MemoryType & Address AS AddressInfo, MemoryType, Use as Used, InitialValue, Retentive, Comment
+                SELECT Nickname, MemoryType & Address AS AddressInfo, MemoryType, DataType, Use as Used, InitialValue, Retentive, Comment
                 FROM address 
                 WHERE Nickname <> ''
                 ORDER BY MemoryType, Address;
@@ -271,10 +277,20 @@ class NicknameManager:
             # Process results into Nickname objects
             self.nicknames = []
             for row in cursor.fetchall():
-                nickname, address, memory_type, used, initial_value, retentive, comment = row
+                (
+                    nickname,
+                    address,
+                    memory_type,
+                    data_type,
+                    used,
+                    initial_value,
+                    retentive,
+                    comment,
+                ) = row
                 nickname_obj = Nickname(
                     nickname=nickname,
                     address=address,
+                    data_type=self._convert_database_data_type(data_type),
                     initial_value=initial_value,
                     retentive=retentive,
                     comment=comment,
