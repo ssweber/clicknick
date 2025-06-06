@@ -46,22 +46,37 @@ class Nickname:
         return self.memory_type
 
     def __repr__(self):
-        # Build the representation with address and comment
-        parts = [self.address]
+        # First line: Address/Data_Type - Comment
+        first_line_parts = []
         
-        # Add data type if available
+        # Add address and data type
         if self.data_type:
-            parts.append(f"({self.data_type})")
-        
-        # Add initial value if it's not '0' or empty
-        if self.initial_value and self.initial_value != '0':
-            parts.append(f"= {self.initial_value}")
+            first_line_parts.append(f"{self.address}/{self.data_type}")
+        else:
+            first_line_parts.append(self.address)
         
         # Add comment if available
         if self.comment:
-            parts.append(f"- {self.comment}")
+            first_line_parts.append(f"- {self.comment}")
         
-        return " ".join(parts)
+        first_line = " ".join(first_line_parts)
+        
+        # Second line: Additional details (if any)
+        second_line_parts = []
+        
+        # Add "Used: No" only if used is False
+        if self.used is False:
+            second_line_parts.append("Used: No")
+        
+        # Add initial value if it's not '0' or empty
+        if self.initial_value and self.initial_value != '0':
+            second_line_parts.append(f"Initial Value: {self.initial_value}")
+        
+        # Combine lines
+        if second_line_parts:
+            return first_line + "\n" + ", ".join(second_line_parts)
+        else:
+            return first_line
 
     def __str__(self):
         return self.nickname
