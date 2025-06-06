@@ -81,9 +81,14 @@ class NicknameManager:
             # Load the CSV file
             with open(filepath, newline="") as csvfile:
                 reader = csv.DictReader(csvfile)
-
                 # Verify required columns exist
-                required_columns = ["Address", "Nickname"]
+                required_columns = [
+                    "Address",
+                    "Nickname",
+                    "Initial Value",
+                    "Retentive",
+                    "Address Comment",
+                ]
                 if not all(col in reader.fieldnames for col in required_columns):
                     print(f"CSV missing required columns: {required_columns}")
                     return False
@@ -93,7 +98,9 @@ class NicknameManager:
                     nickname_obj = Nickname(
                         nickname=row["Nickname"],
                         address=row["Address"],
-                        memory_type=row.get("MemoryType", ""),
+                        initial_value=row["Initial Value"],
+                        retentive=row["Retentive"] == "Yes",
+                        comment=row["Address Comment"],
                     )
                     self.nicknames.append(nickname_obj)
 
@@ -254,7 +261,7 @@ class NicknameManager:
 
             # Execute query to get all nicknames
             query = """
-                SELECT Nickname, MemoryType & Address AS AddressInfo, MemoryType 
+                SELECT Nickname, MemoryType & Address AS AddressInfo, MemoryType, Use as Used, InitialValue, Retentive, Comment
                 FROM address 
                 WHERE Nickname <> ''
                 ORDER BY MemoryType, Address;
@@ -264,8 +271,16 @@ class NicknameManager:
             # Process results into Nickname objects
             self.nicknames = []
             for row in cursor.fetchall():
-                nickname, address, memory_type = row
-                nickname_obj = Nickname(nickname=nickname, address=address, memory_type=memory_type)
+                nickname, address, memory_type, used, initial_value, retentive, comment = row
+                nickname_obj = Nickname(
+                    nickname=nickname,
+                    address=address,
+                    initial_value=initial_value,
+                    retentive=retentive,
+                    comment=comment,
+                    memory_type=memory_type,
+                    used=used,
+                )
                 self.nicknames.append(nickname_obj)
 
             # Close connection
