@@ -50,13 +50,13 @@ class Nickname:
 
         # Second line: data_type : Address
         if self.data_type:
-            lines.append(f"{self.data_type} : {self.address}")
+            lines[0] += f" - {self.data_type} : {self.address}"
         else:
-            lines.append(self.address)
+            lines[0] += f" - {self.address})"
 
         # Third line: Comment (if present)
         if self.comment:
-            lines.append(self.comment)
+            lines.append(f"'{self.comment}'")
 
         # Fourth line: Additional details (if any)
         details = []

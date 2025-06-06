@@ -44,7 +44,7 @@ class FloatingTooltip(tk.Toplevel):
         self.label.config(text=text)
         self.update_idletasks()  # Update to get accurate size
 
-        # Position tooltip to the right of the given coordinates
+        # Get tooltip dimensions
         tooltip_width = self.winfo_reqwidth()
         tooltip_height = self.winfo_reqheight()
 
@@ -52,15 +52,16 @@ class FloatingTooltip(tk.Toplevel):
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
 
-        # If tooltip would go off right edge, show it to the left instead
-        if x + tooltip_width > screen_width:
-            x = x - tooltip_width - 10
-        else:
-            x = x + 50  # Small gap from the dropdown
+        # Position above the input - subtract tooltip height from y coordinate
+        y = y - tooltip_height
 
-        # Adjust vertical position if needed
-        if y + tooltip_height > screen_height:
-            y = screen_height - tooltip_height - 10
+        # Adjust horizontal position if needed
+        if x + tooltip_width > screen_width:
+            x = screen_width - tooltip_width - 10
+
+        # If tooltip would go off top of screen, show it below instead
+        if y < 0:
+            y = self.winfo_rooty() + self.winfo_height() + 10  # Below the combobox
 
         self.geometry(f"+{x}+{y}")
         self.deiconify()
@@ -171,8 +172,8 @@ class Overlay(tk.Toplevel):
         if nickname and self.nickname_manager:
             details = self.nickname_manager.get_nickname_details(nickname)
             if details:
-                # Get position to the right of the combobox dropdown
-                x = self.winfo_rootx() + self.winfo_width()
+                # Get position above the combobox
+                x = self.winfo_rootx()
                 y = self.winfo_rooty()
                 self.tooltip.show_tooltip(details, x, y)
             else:

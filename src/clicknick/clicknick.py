@@ -294,7 +294,7 @@ class ClickNickApp:
         # Info tooltip checkbox
         tooltip_check = ttk.Checkbutton(
             options_frame,
-            text="Show info tooltip when navigating",
+            text="Show Nickname tooltips",
             variable=self.settings.show_info_tooltip_var,
         )
         tooltip_check.pack(anchor=tk.W, pady=(0, 6))
