@@ -112,9 +112,9 @@ class Overlay(tk.Toplevel):
 
             # If focus moved to one of your widgets or the tooltip, don't withdraw
             if focused_widget and (
-                focused_widget == self or 
-                focused_widget.winfo_toplevel() == self.winfo_toplevel() or
-                focused_widget.winfo_toplevel() == self.tooltip
+                focused_widget == self
+                or focused_widget.winfo_toplevel() == self.winfo_toplevel()
+                or focused_widget.winfo_toplevel() == self.tooltip
             ):
                 return
 

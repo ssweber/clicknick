@@ -152,19 +152,6 @@ class DropdownManager:
             except tk.TclError:
                 pass
 
-    def _monitor_dropdown_visibility(self):
-        """Monitor dropdown visibility and hide tooltip when it closes."""
-        if self.is_dropdown_open():
-            # Dropdown is still open, check again soon
-            self.combobox.after(100, self._monitor_dropdown_visibility)
-        else:
-            # Dropdown has closed, hide tooltip
-            if (
-                hasattr(self.combobox, "item_navigation_callback")
-                and self.combobox.item_navigation_callback
-            ):
-                self.combobox.item_navigation_callback("")
-
     def _setup_listbox_bindings(self):
         """Set up event bindings for the listbox widget."""
         listbox = self.get_listbox_widget()
@@ -193,9 +180,6 @@ class DropdownManager:
                     and self.combobox.item_navigation_callback
                 ):
                     self.bind_listbox_navigation_events(self.combobox.item_navigation_callback)
-
-                # Start monitoring dropdown visibility for tooltip management
-                self._monitor_dropdown_visibility()
 
                 self._bindings_set = True
             except tk.TclError:
@@ -330,9 +314,9 @@ class DropdownManager:
             # Reset focus state when dropdown closes
             self.listbox_has_focus = False
             self._bindings_set = False  # Reset bindings flag
-            
+
             # Close tooltip when dropdown closes
-            if hasattr(self.combobox, 'master') and hasattr(self.combobox.master, 'tooltip'):
+            if hasattr(self.combobox, "master") and hasattr(self.combobox.master, "tooltip"):
                 self.combobox.master.tooltip.hide_tooltip()
 
     def get_highlighted_item(self):
