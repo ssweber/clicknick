@@ -163,16 +163,40 @@ class DropdownManager:
 
     def _on_listbox_mouse_leave(self):
         """Handle mouse leaving listbox."""
-        # Check if listbox actually has keyboard focus
-        listbox = self.get_listbox_widget()
-        if listbox:
-            try:
+        # Schedule a delayed check to see if mouse is really outside the dropdown area
+        self.combobox.after(50, self._check_mouse_outside_dropdown)
+
+    def _check_mouse_outside_dropdown(self):
+        """Check if mouse is actually outside the entire dropdown area."""
+        try:
+            # Get mouse position relative to the listbox
+            listbox = self.get_listbox_widget()
+            if not listbox:
+                self._hide_tooltip()
+                return
+                
+            # Get mouse coordinates
+            mouse_x = self.combobox.winfo_pointerx()
+            mouse_y = self.combobox.winfo_pointery()
+            
+            # Get listbox geometry
+            listbox_x = self.combobox.tk.call("winfo", "rootx", listbox)
+            listbox_y = self.combobox.tk.call("winfo", "rooty", listbox)
+            listbox_width = self.combobox.tk.call("winfo", "width", listbox)
+            listbox_height = self.combobox.tk.call("winfo", "height", listbox)
+            
+            # Check if mouse is outside the listbox area (including scrollbar)
+            if (mouse_x < listbox_x or mouse_x > listbox_x + listbox_width or
+                mouse_y < listbox_y or mouse_y > listbox_y + listbox_height):
+                
+                # Check if listbox actually has keyboard focus
                 current_focus = self.combobox.tk.call("focus")
                 if current_focus != listbox:
                     self._set_unfocused_appearance()
-            except tk.TclError:
-                pass
-        self._hide_tooltip()
+                self._hide_tooltip()
+                
+        except tk.TclError:
+            self._hide_tooltip()
 
     def _setup_listbox_bindings(self):
         """Set up event bindings for the listbox widget."""
@@ -195,6 +219,13 @@ class DropdownManager:
                 self.combobox.tk.call(
                     "bind", listbox, "<Leave>", self.combobox.register(self._on_listbox_mouse_leave)
                 )
+
+                # Also bind to the scrollbar if it exists
+                scrollbar_path = f"{self.combobox._w}.popdown.f.sb"
+                if self.combobox.tk.eval(f"winfo exists {scrollbar_path}") == "1":
+                    self.combobox.tk.call(
+                        "bind", scrollbar_path, "<Leave>", self.combobox.register(self._on_listbox_mouse_leave)
+                    )
 
                 # Add navigation bindings if callback is set
                 if (
