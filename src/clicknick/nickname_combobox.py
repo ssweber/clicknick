@@ -363,27 +363,36 @@ class ComboboxEventHandler:
     def _trigger_navigation_callback(self):
         """Trigger the navigation callback with current selection."""
         if self.combobox.item_navigation_callback:
-            current_value = self.combobox.get()
-            if current_value:
-                self.combobox.item_navigation_callback(current_value)
+            # Try to get highlighted item from dropdown first
+            highlighted_item = self.dropdown_manager.get_highlighted_item()
+            if highlighted_item:
+                self.combobox.item_navigation_callback(highlighted_item)
+            else:
+                # Fallback to current combobox value
+                current_value = self.combobox.get()
+                if current_value:
+                    self.combobox.item_navigation_callback(current_value)
 
     def on_down_key(self, event):
         """Handle Down key - open dropdown and transfer focus to listbox."""
         if not self.dropdown_manager.is_dropdown_open():
             self.dropdown_manager.open_dropdown_transfer_focus()
-            self._trigger_navigation_callback()
+            # Trigger navigation callback after dropdown opens
+            self.combobox.after_idle(self._trigger_navigation_callback)
             return "break"
 
         if self.combobox.focus_get() == self.combobox:
             self.dropdown_manager.transfer_focus_to_listbox("down")
-            self._trigger_navigation_callback()
+            # Trigger navigation callback after focus transfer
+            self.combobox.after_idle(self._trigger_navigation_callback)
             return "break"
 
     def on_up_key(self, event):
         """Handle Up key - open dropdown and transfer focus to listbox."""
         if self.combobox.focus_get() == self.combobox:
             self.dropdown_manager.transfer_focus_to_listbox("up")
-            self._trigger_navigation_callback()
+            # Trigger navigation callback after focus transfer
+            self.combobox.after_idle(self._trigger_navigation_callback)
             return "break"
 
     def handle_keyrelease(self, event):
