@@ -46,32 +46,30 @@ class Nickname:
         return self.memory_type
 
     def __repr__(self):
-        # First line: data_type : Address
+        lines = [self.nickname]
+        
+        # Second line: data_type : Address
         if self.data_type:
-            first_line = f"{self.data_type} : {self.address}"
+            lines.append(f"{self.data_type} : {self.address}")
         else:
-            first_line = self.address
-
-        # Second line: Comment (if any)
-        lines = [first_line]
+            lines.append(self.address)
+        
+        # Third line: Comment (if present)
         if self.comment:
             lines.append(self.comment)
-
-        # Third line: Additional details (if any)
-        third_line_parts = []
-
-        # Add "Used: No" only if used is False
+        
+        # Fourth line: Additional details (if any)
+        details = []
+        
         if self.used is False:
-            third_line_parts.append("Used: No")
-
-        # Add initial value if it's not '0' or empty
+            details.append("Used: No")
+        
         if self.initial_value and self.initial_value != "0":
-            third_line_parts.append(f"Initial Value: {self.initial_value}")
-
-        # Add third line if there are any details
-        if third_line_parts:
-            lines.append(", ".join(third_line_parts))
-
+            details.append(f"Initial Value: {self.initial_value}")
+        
+        if details:
+            lines.append(", ".join(details))
+        
         return "\n".join(lines)
 
     def __str__(self):
