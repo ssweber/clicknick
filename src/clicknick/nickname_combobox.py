@@ -288,6 +288,15 @@ class DropdownManager:
                 # Set up bindings after updating (including navigation bindings)
                 self._setup_listbox_bindings()
 
+                # Trigger navigation callback to update tooltip after list update
+                if (
+                    hasattr(self.combobox, "item_navigation_callback")
+                    and self.combobox.item_navigation_callback
+                ):
+                    self.combobox.after_idle(
+                        lambda: self._trigger_navigation_callback(self.combobox.item_navigation_callback)
+                    )
+
             except tk.TclError:
                 self.combobox["values"] = filtered_values
 
@@ -318,6 +327,9 @@ class DropdownManager:
         highlighted_item = self.get_highlighted_item()
         if highlighted_item:
             navigation_callback(highlighted_item)
+        else:
+            # Call with empty string to ensure tooltip is hidden when no item is highlighted
+            navigation_callback("")
 
     def _on_listbox_navigation(self, navigation_callback):
         """Handle listbox navigation events."""
@@ -393,6 +405,9 @@ class ComboboxEventHandler:
                 current_value = self.combobox.get()
                 if current_value:
                     self.combobox.item_navigation_callback(current_value)
+                else:
+                    # If no value, call with empty string to hide tooltip
+                    self.combobox.item_navigation_callback("")
 
     def on_down_key(self, event):
         """Handle Down key - open dropdown and transfer focus to listbox."""
