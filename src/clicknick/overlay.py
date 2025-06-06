@@ -14,6 +14,8 @@ class FloatingTooltip(tk.Toplevel):
         super().__init__(parent)
         self.overrideredirect(True)
         self.attributes("-topmost", True)
+        # Add this line to prevent the tooltip from taking focus
+        self.attributes("-disabled", True)
         self.withdraw()
 
         # Configure appearance
@@ -108,9 +110,11 @@ class Overlay(tk.Toplevel):
             # Get the widget that now has focus
             focused_widget = self.focus_get()
 
-            # If focus moved to one of your widgets, don't withdraw
+            # If focus moved to one of your widgets or the tooltip, don't withdraw
             if focused_widget and (
-                focused_widget == self or focused_widget.winfo_toplevel() == self.winfo_toplevel()
+                focused_widget == self or 
+                focused_widget.winfo_toplevel() == self.winfo_toplevel() or
+                focused_widget.winfo_toplevel() == self.tooltip
             ):
                 return
 
