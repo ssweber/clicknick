@@ -152,6 +152,21 @@ class DropdownManager:
             except tk.TclError:
                 pass
 
+    def _monitor_listbox_existence(self):
+        """Monitor listbox existence and hide tooltip when it's destroyed."""
+        listbox = self.get_listbox_widget()
+        if not listbox:
+            # Listbox no longer exists, hide tooltip
+            if (
+                hasattr(self.combobox, "item_navigation_callback")
+                and self.combobox.item_navigation_callback
+            ):
+                self.combobox.item_navigation_callback("")
+            return  # Stop monitoring
+        
+        # Continue monitoring
+        self.combobox.after(50, self._monitor_listbox_existence)
+
     def _setup_listbox_bindings(self):
         """Set up event bindings for the listbox widget."""
         listbox = self.get_listbox_widget()
@@ -180,6 +195,9 @@ class DropdownManager:
                     and self.combobox.item_navigation_callback
                 ):
                     self.bind_listbox_navigation_events(self.combobox.item_navigation_callback)
+
+                # Start monitoring listbox existence for tooltip management
+                self._monitor_listbox_existence()
 
                 self._bindings_set = True
             except tk.TclError:
