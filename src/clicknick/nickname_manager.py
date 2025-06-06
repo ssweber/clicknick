@@ -201,7 +201,7 @@ class NicknameManager:
             return None
 
     def _convert_database_data_type(self, text: str) -> str:
-        type_mapping = {"0": "BIT", "1": "INT", "2": "INT2", "3": "FLOAT", "4": "HEX", "6": "TEXT"}
+        type_mapping = {0: "BIT", 1: "INT", 2: "INT2", 3: "FLOAT", 4: "HEX", 6: "TEXT"}
         return type_mapping.get(text, "")
 
     def load_from_database(self, click_pid=None, click_hwnd=None):
