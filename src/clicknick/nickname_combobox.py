@@ -256,6 +256,15 @@ class DropdownManager:
         except tk.TclError:
             pass
 
+    def _trigger_navigation_callback(self, navigation_callback):
+        """Trigger the navigation callback with the currently highlighted item."""
+        highlighted_item = self.get_highlighted_item()
+        if highlighted_item:
+            navigation_callback(highlighted_item)
+        else:
+            # Call with empty string to ensure tooltip is hidden when no item is highlighted
+            navigation_callback("")
+
     def update_listbox_directly(self, filtered_values):
         """Directly update the listbox contents without closing/reopening dropdown."""
         listbox = self.get_listbox_widget()
@@ -320,15 +329,6 @@ class DropdownManager:
                 pass
         return None
 
-    def _trigger_navigation_callback(self, navigation_callback):
-        """Trigger the navigation callback with the currently highlighted item."""
-        highlighted_item = self.get_highlighted_item()
-        if highlighted_item:
-            navigation_callback(highlighted_item)
-        else:
-            # Call with empty string to ensure tooltip is hidden when no item is highlighted
-            navigation_callback("")
-
     def _on_listbox_navigation(self, navigation_callback):
         """Handle listbox navigation events."""
         # Use after_idle to ensure the selection has been updated
@@ -377,20 +377,6 @@ class ComboboxEventHandler:
         self.dropdown_manager = dropdown_manager
         self.autocomplete = autocomplete
 
-    def _on_postcommand(self):
-        """Handle postcommand event - set appearance and show tooltip."""
-        self.dropdown_manager._set_focused_appearance()
-        # Remove after_idle delay - trigger immediately
-        self._trigger_navigation_callback()
-
-    def bind_events(self):
-        """Bind all events to the combobox."""
-        self.combobox.bind("<KeyPress-Down>", self.on_down_key)
-        self.combobox.bind("<KeyPress-Up>", self.on_up_key)
-        self.combobox.bind("<<ComboboxSelected>>", self.on_selection)
-        self.combobox.bind("<KeyRelease>", self.handle_keyrelease)
-        self.combobox.configure(postcommand=self._on_postcommand)
-
     def _trigger_navigation_callback(self):
         """Trigger the navigation callback with current selection."""
         if self.combobox.item_navigation_callback:
@@ -406,6 +392,20 @@ class ComboboxEventHandler:
                 else:
                     # If no value, call with empty string to hide tooltip
                     self.combobox.item_navigation_callback("")
+
+    def _on_postcommand(self):
+        """Handle postcommand event - set appearance and show tooltip."""
+        self.dropdown_manager._set_focused_appearance()
+        # Remove after_idle delay - trigger immediately
+        self._trigger_navigation_callback()
+
+    def bind_events(self):
+        """Bind all events to the combobox."""
+        self.combobox.bind("<KeyPress-Down>", self.on_down_key)
+        self.combobox.bind("<KeyPress-Up>", self.on_up_key)
+        self.combobox.bind("<<ComboboxSelected>>", self.on_selection)
+        self.combobox.bind("<KeyRelease>", self.handle_keyrelease)
+        self.combobox.configure(postcommand=self._on_postcommand)
 
     def on_down_key(self, event):
         """Handle Down key - open dropdown and transfer focus to listbox."""
