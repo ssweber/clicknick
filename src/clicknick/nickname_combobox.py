@@ -314,20 +314,30 @@ class ComboboxEventHandler:
         self.combobox.bind("<KeyRelease>", self.handle_keyrelease)
         self.combobox.configure(postcommand=lambda: self.dropdown_manager._set_focused_appearance())
 
+    def _trigger_navigation_callback(self):
+        """Trigger the navigation callback with current selection."""
+        if self.combobox.item_navigation_callback:
+            current_value = self.combobox.get()
+            if current_value:
+                self.combobox.item_navigation_callback(current_value)
+
     def on_down_key(self, event):
         """Handle Down key - open dropdown and transfer focus to listbox."""
         if not self.dropdown_manager.is_dropdown_open():
             self.dropdown_manager.open_dropdown_transfer_focus()
+            self._trigger_navigation_callback()
             return "break"
 
         if self.combobox.focus_get() == self.combobox:
             self.dropdown_manager.transfer_focus_to_listbox("down")
+            self._trigger_navigation_callback()
             return "break"
 
     def on_up_key(self, event):
         """Handle Up key - open dropdown and transfer focus to listbox."""
         if self.combobox.focus_get() == self.combobox:
             self.dropdown_manager.transfer_focus_to_listbox("up")
+            self._trigger_navigation_callback()
             return "break"
 
     def handle_keyrelease(self, event):
@@ -398,6 +408,11 @@ class NicknameCombobox(ttk.Combobox):
         self.event_handler.bind_events()
 
         # Event handler will be initialized after autocomplete is set up
+        self.item_navigation_callback = None
+
+    def set_item_navigation_callback(self, callback: Callable[[str], None]) -> None:
+        """Set the callback function for when navigating through items."""
+        self.item_navigation_callback = callback
 
     def _finalize_selection(self):
         """Process the selected item and notify via callback."""

@@ -46,7 +46,22 @@ class Nickname:
         return self.memory_type
 
     def __repr__(self):
-        return f"Nickname('{self.nickname}', '{self.address}')"
+        # Build the representation with address and comment
+        parts = [self.address]
+        
+        # Add data type if available
+        if self.data_type:
+            parts.append(f"({self.data_type})")
+        
+        # Add initial value if it's not '0' or empty
+        if self.initial_value and self.initial_value != '0':
+            parts.append(f"= {self.initial_value}")
+        
+        # Add comment if available
+        if self.comment:
+            parts.append(f"- {self.comment}")
+        
+        return " ".join(parts)
 
     def __str__(self):
         return self.nickname
