@@ -155,6 +155,13 @@ class Overlay(tk.Toplevel):
 
     def _on_nickname_navigation(self, nickname):
         """Handle navigation through nickname items to show details in tooltip."""
+        # Check if tooltips are enabled in settings
+        if not (hasattr(self.nickname_manager, 'settings') and 
+                self.nickname_manager.settings and 
+                self.nickname_manager.settings.show_info_tooltip):
+            self.tooltip.hide_tooltip()
+            return
+            
         if nickname and self.nickname_manager:
             details = self.nickname_manager.get_nickname_details(nickname)
             if details:

@@ -331,6 +331,14 @@ class ClickNickApp:
         exclude_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)  # Remove padx
         exclude_frame_entry.pack(fill=tk.X)  # Remove padx and pady
 
+        # Info tooltip checkbox
+        tooltip_check = ttk.Checkbutton(
+            options_frame,
+            text="Show info tooltip when navigating",
+            variable=self.settings.show_info_tooltip_var
+        )
+        tooltip_check.pack(anchor=tk.W, pady=(0, 6))
+
         # Pack the main frame
         options_frame.pack(fill=tk.X, pady=(0, 12))  # Reduce from 5 to 12 for consistency
 
