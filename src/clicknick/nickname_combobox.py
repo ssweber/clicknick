@@ -288,14 +288,12 @@ class DropdownManager:
                 # Set up bindings after updating (including navigation bindings)
                 self._setup_listbox_bindings()
 
-                # Trigger navigation callback to update tooltip after list update
+                # Trigger navigation callback immediately instead of using after_idle
                 if (
                     hasattr(self.combobox, "item_navigation_callback")
                     and self.combobox.item_navigation_callback
                 ):
-                    self.combobox.after_idle(
-                        lambda: self._trigger_navigation_callback(self.combobox.item_navigation_callback)
-                    )
+                    self._trigger_navigation_callback(self.combobox.item_navigation_callback)
 
             except tk.TclError:
                 self.combobox["values"] = filtered_values
@@ -382,8 +380,8 @@ class ComboboxEventHandler:
     def _on_postcommand(self):
         """Handle postcommand event - set appearance and show tooltip."""
         self.dropdown_manager._set_focused_appearance()
-        # Trigger navigation callback to show tooltip for first/selected item
-        self.combobox.after_idle(self._trigger_navigation_callback)
+        # Remove after_idle delay - trigger immediately
+        self._trigger_navigation_callback()
 
     def bind_events(self):
         """Bind all events to the combobox."""
@@ -413,14 +411,14 @@ class ComboboxEventHandler:
         """Handle Down key - open dropdown and transfer focus to listbox."""
         if not self.dropdown_manager.is_dropdown_open():
             self.dropdown_manager.open_dropdown_transfer_focus()
-            # Trigger navigation callback after dropdown opens
-            self.combobox.after_idle(self._trigger_navigation_callback)
+            # Remove the after_idle delay - trigger immediately
+            self._trigger_navigation_callback()
             return "break"
 
         if self.combobox.focus_get() == self.combobox:
             self.dropdown_manager.transfer_focus_to_listbox("down")
-            # Trigger navigation callback after focus transfer
-            self.combobox.after_idle(self._trigger_navigation_callback)
+            # Remove the after_idle delay - trigger immediately
+            self._trigger_navigation_callback()
             return "break"
 
     def on_up_key(self, event):
