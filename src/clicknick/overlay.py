@@ -9,16 +9,16 @@ from .window_mapping import DATA_TYPES
 
 class FloatingTooltip(tk.Toplevel):
     """A floating tooltip window that appears to the right of the combobox."""
-    
+
     def __init__(self, parent):
         super().__init__(parent)
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.withdraw()
-        
+
         # Configure appearance
         self.configure(bg="#ffffe0", relief="solid", borderwidth=1)  # Light yellow background
-        
+
         # Create label for tooltip text
         self.label = tk.Label(
             self,
@@ -29,40 +29,40 @@ class FloatingTooltip(tk.Toplevel):
             justify="left",
             wraplength=300,
             padx=8,
-            pady=4
+            pady=4,
         )
         self.label.pack()
-        
+
     def show_tooltip(self, text, x, y):
         """Show tooltip with given text at specified position."""
         if not text:
             self.hide_tooltip()
             return
-            
+
         self.label.config(text=text)
         self.update_idletasks()  # Update to get accurate size
-        
+
         # Position tooltip to the right of the given coordinates
         tooltip_width = self.winfo_reqwidth()
         tooltip_height = self.winfo_reqheight()
-        
+
         # Adjust position to avoid screen edges
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
-        
+
         # If tooltip would go off right edge, show it to the left instead
         if x + tooltip_width > screen_width:
             x = x - tooltip_width - 10
         else:
             x = x + 10  # Small gap from the dropdown
-            
+
         # Adjust vertical position if needed
         if y + tooltip_height > screen_height:
             y = screen_height - tooltip_height - 10
-            
+
         self.geometry(f"+{x}+{y}")
         self.deiconify()
-        
+
     def hide_tooltip(self):
         """Hide the tooltip."""
         self.withdraw()
@@ -156,12 +156,14 @@ class Overlay(tk.Toplevel):
     def _on_nickname_navigation(self, nickname):
         """Handle navigation through nickname items to show details in tooltip."""
         # Check if tooltips are enabled in settings
-        if not (hasattr(self.nickname_manager, 'settings') and 
-                self.nickname_manager.settings and 
-                self.nickname_manager.settings.show_info_tooltip):
+        if not (
+            hasattr(self.nickname_manager, "settings")
+            and self.nickname_manager.settings
+            and self.nickname_manager.settings.show_info_tooltip
+        ):
             self.tooltip.hide_tooltip()
             return
-            
+
         if nickname and self.nickname_manager:
             details = self.nickname_manager.get_nickname_details(nickname)
             if details:
@@ -433,9 +435,9 @@ class Overlay(tk.Toplevel):
     def withdraw(self):
         """Override withdraw to cancel any pending after calls and hide tooltip"""
         # Hide the tooltip
-        if hasattr(self, 'tooltip'):
+        if hasattr(self, "tooltip"):
             self.tooltip.hide_tooltip()
-        
+
         # Cancel any pending after calls, safely checking if attributes exist
         if hasattr(self, "focus_out_after_id") and self.focus_out_after_id:
             self.after_cancel(self.focus_out_after_id)

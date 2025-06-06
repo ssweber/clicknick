@@ -48,30 +48,29 @@ class Nickname:
     def __repr__(self):
         # First line: Address/Data_Type - Comment
         first_line_parts = []
-        
         # Add address and data type
         if self.data_type:
-            first_line_parts.append(f"{self.address}/{self.data_type}")
+            first_line_parts.append(f"{self.data_type} : {self.address}")
         else:
             first_line_parts.append(self.address)
-        
+
         # Add comment if available
         if self.comment:
             first_line_parts.append(f"- {self.comment}")
-        
+
         first_line = " ".join(first_line_parts)
-        
+
         # Second line: Additional details (if any)
         second_line_parts = []
-        
+
         # Add "Used: No" only if used is False
         if self.used is False:
             second_line_parts.append("Used: No")
-        
+
         # Add initial value if it's not '0' or empty
-        if self.initial_value and self.initial_value != '0':
+        if self.initial_value and self.initial_value != "0":
             second_line_parts.append(f"Initial Value: {self.initial_value}")
-        
+
         # Combine lines
         if second_line_parts:
             return first_line + "\n" + ", ".join(second_line_parts)

@@ -175,7 +175,10 @@ class DropdownManager:
                 )
 
                 # Add navigation bindings if callback is set
-                if hasattr(self.combobox, 'item_navigation_callback') and self.combobox.item_navigation_callback:
+                if (
+                    hasattr(self.combobox, "item_navigation_callback")
+                    and self.combobox.item_navigation_callback
+                ):
                     self.bind_listbox_navigation_events(self.combobox.item_navigation_callback)
 
                 self._bindings_set = True
@@ -310,6 +313,17 @@ class DropdownManager:
                 pass
         return None
 
+    def _trigger_navigation_callback(self, navigation_callback):
+        """Trigger the navigation callback with the currently highlighted item."""
+        highlighted_item = self.get_highlighted_item()
+        if highlighted_item:
+            navigation_callback(highlighted_item)
+
+    def _on_listbox_navigation(self, navigation_callback):
+        """Handle listbox navigation events."""
+        # Use after_idle to ensure the selection has been updated
+        self.combobox.after_idle(lambda: self._trigger_navigation_callback(navigation_callback))
+
     def bind_listbox_navigation_events(self, navigation_callback):
         """Bind navigation events to the listbox to track highlighting changes."""
         listbox = self.get_listbox_widget()
@@ -317,31 +331,32 @@ class DropdownManager:
             try:
                 # Bind arrow key events
                 self.combobox.tk.call(
-                    "bind", listbox, "<KeyPress-Up>", 
-                    self.combobox.register(lambda: self._on_listbox_navigation(navigation_callback))
+                    "bind",
+                    listbox,
+                    "<KeyPress-Up>",
+                    self.combobox.register(
+                        lambda: self._on_listbox_navigation(navigation_callback)
+                    ),
                 )
                 self.combobox.tk.call(
-                    "bind", listbox, "<KeyPress-Down>", 
-                    self.combobox.register(lambda: self._on_listbox_navigation(navigation_callback))
+                    "bind",
+                    listbox,
+                    "<KeyPress-Down>",
+                    self.combobox.register(
+                        lambda: self._on_listbox_navigation(navigation_callback)
+                    ),
                 )
                 # Bind mouse motion for hover
                 self.combobox.tk.call(
-                    "bind", listbox, "<Motion>", 
-                    self.combobox.register(lambda: self._on_listbox_navigation(navigation_callback))
+                    "bind",
+                    listbox,
+                    "<Motion>",
+                    self.combobox.register(
+                        lambda: self._on_listbox_navigation(navigation_callback)
+                    ),
                 )
             except tk.TclError:
                 pass
-
-    def _on_listbox_navigation(self, navigation_callback):
-        """Handle listbox navigation events."""
-        # Use after_idle to ensure the selection has been updated
-        self.combobox.after_idle(lambda: self._trigger_navigation_callback(navigation_callback))
-
-    def _trigger_navigation_callback(self, navigation_callback):
-        """Trigger the navigation callback with the currently highlighted item."""
-        highlighted_item = self.get_highlighted_item()
-        if highlighted_item:
-            navigation_callback(highlighted_item)
 
 
 class ComboboxEventHandler:

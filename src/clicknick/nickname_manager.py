@@ -418,19 +418,19 @@ class NicknameManager:
     def get_nickname_details(self, nickname: str) -> str:
         """
         Get detailed information for a given nickname.
-        
+
         Args:
             nickname: The exact nickname to look up
-            
+
         Returns:
             Detailed string with address, data type, initial value, and comment
         """
         if not self.is_loaded:
             return ""
-        
+
         # Find exact match for the nickname
         for nickname_obj in self.nicknames:
             if nickname_obj.nickname == nickname:
                 return repr(nickname_obj)
-        
+
         return ""

@@ -37,7 +37,7 @@ class ClickNickApp:
         # Create main window
         self.root = tk.Tk()
         self.root.title("ClickNick App")
-        self.root.geometry("550x350")
+        self.root.geometry("550x375")
 
         # Initialize settings first
         self.settings = AppSettings()
@@ -291,6 +291,14 @@ class ClickNickApp:
         )
         sort_check.pack(anchor=tk.W, pady=(0, 6))  # Add consistent spacing
 
+        # Info tooltip checkbox
+        tooltip_check = ttk.Checkbutton(
+            options_frame,
+            text="Show info tooltip when navigating",
+            variable=self.settings.show_info_tooltip_var,
+        )
+        tooltip_check.pack(anchor=tk.W, pady=(0, 6))
+
         # SC/SD exclusion checkbox
         sc_sd_check = ttk.Checkbutton(
             options_frame, text="Exclude SC/SD Addresses", variable=self.settings.exclude_sc_sd_var
@@ -330,14 +338,6 @@ class ClickNickApp:
         exclude_label.pack(side=tk.LEFT, padx=(0, 8))  # Reduce from 5 to 8, remove left padding
         exclude_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)  # Remove padx
         exclude_frame_entry.pack(fill=tk.X)  # Remove padx and pady
-
-        # Info tooltip checkbox
-        tooltip_check = ttk.Checkbutton(
-            options_frame,
-            text="Show info tooltip when navigating",
-            variable=self.settings.show_info_tooltip_var
-        )
-        tooltip_check.pack(anchor=tk.W, pady=(0, 6))
 
         # Pack the main frame
         options_frame.pack(fill=tk.X, pady=(0, 12))  # Reduce from 5 to 12 for consistency
