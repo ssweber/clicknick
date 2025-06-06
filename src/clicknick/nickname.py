@@ -46,36 +46,33 @@ class Nickname:
         return self.memory_type
 
     def __repr__(self):
-        # First line: Address/Data_Type - Comment
-        first_line_parts = []
-        # Add address and data type
+        # First line: data_type : Address
         if self.data_type:
-            first_line_parts.append(f"{self.data_type} : {self.address}")
+            first_line = f"{self.data_type} : {self.address}"
         else:
-            first_line_parts.append(self.address)
+            first_line = self.address
 
-        # Add comment if available
+        # Second line: Comment (if any)
+        lines = [first_line]
         if self.comment:
-            first_line_parts.append(f"- {self.comment}")
+            lines.append(self.comment)
 
-        first_line = " ".join(first_line_parts)
-
-        # Second line: Additional details (if any)
-        second_line_parts = []
+        # Third line: Additional details (if any)
+        third_line_parts = []
 
         # Add "Used: No" only if used is False
         if self.used is False:
-            second_line_parts.append("Used: No")
+            third_line_parts.append("Used: No")
 
         # Add initial value if it's not '0' or empty
         if self.initial_value and self.initial_value != "0":
-            second_line_parts.append(f"Initial Value: {self.initial_value}")
+            third_line_parts.append(f"Initial Value: {self.initial_value}")
 
-        # Combine lines
-        if second_line_parts:
-            return first_line + "\n" + ", ".join(second_line_parts)
-        else:
-            return first_line
+        # Add third line if there are any details
+        if third_line_parts:
+            lines.append(", ".join(third_line_parts))
+
+        return "\n".join(lines)
 
     def __str__(self):
         return self.nickname
