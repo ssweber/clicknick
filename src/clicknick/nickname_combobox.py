@@ -394,7 +394,6 @@ class DropdownManager:
     def update_listbox_directly(self, filtered_values):
         """Directly update the listbox contents without closing/reopening dropdown."""
         listbox = self.get_listbox_widget()
-        selection_index = None
         if listbox:
             try:
                 self.combobox.tk.call(listbox, "delete", 0, "end")
@@ -424,17 +423,15 @@ class DropdownManager:
                 # Set up bindings after updating (including navigation bindings)
                 self.setup_listbox_bindings()
 
-                # Trigger navigation callback immediately instead of using after_idle
-                # only if something is selected
-                if (
-                    hasattr(self.combobox, "item_navigation_callback")
-                    and self.combobox.item_navigation_callback
-                    and selection_index is not None
-                ):
-                    self._trigger_navigation_callback(self.combobox.item_navigation_callback)
-
             except tk.TclError:
                 self.combobox["values"] = filtered_values
+
+        # Trigger navigation callback only if something is selected
+        if (
+            hasattr(self.combobox, "item_navigation_callback")
+            and self.combobox.item_navigation_callback
+        ):
+            self.combobox.after_idle(self._trigger_navigation_callback)
 
 
 class ComboboxEventHandler:
