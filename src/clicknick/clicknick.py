@@ -37,6 +37,9 @@ class ClickNickApp:
         # Create main window
         self.root = tk.Tk()
         self.root.title("ClickNick App")
+        
+        # Hide the window immediately
+        self.root.withdraw()
 
         # Initialize settings first
         self.settings = AppSettings()
@@ -82,6 +85,9 @@ class ClickNickApp:
 
         # Create UI components
         self.create_widgets()
+        
+        # Show the window after everything is created
+        self.root.deiconify()
 
         # Check for ODBC drivers and warn if missing
         self.root.after(1000, self.check_odbc_drivers_and_warn)  # Delay to show after UI loads
