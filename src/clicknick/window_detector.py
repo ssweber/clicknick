@@ -12,45 +12,25 @@ class ClickWindowDetector:
         self.current_window: str | None = None
         self.current_field: str | None = None
 
-    def update(self) -> tuple[bool, list[str]]:
+    def check_window_exists(self, window_pid: str) -> bool:
         """
-        Update window and field detection.
-        Returns: Tuple of (is_valid_field, allowed_address_types)
+        Check if a window with the given PID still exists.
+
+        Args:
+            window_pid: The PID of the window to check
+
+        Returns:
+            bool: True if the window exists, False otherwise
         """
-        # Get the current window and field info
-        return self.update_window_info(self.current_window, self.current_field)
-
-    def update_window_info(self, window_class: str, field: str) -> tuple[bool, list[str]]:
-        """
-        Update window and field detection with provided window and field.
-        Returns: Tuple of (is_valid_field, allowed_address_types)
-        """
-        self.current_window = window_class
-        self.current_field = field
-
-        # Early return if no valid window
-        if not self.current_window or self.current_window not in self.window_mapping:
-            return False, []
-
-        # Return result
-        if not self.current_field or self.current_field not in self.window_mapping.get(
-            self.current_window, {}
-        ):
-            return False, []
-
-        # Get allowed address types
-        allowed_addresses = self.window_mapping.get(self.current_window, {}).get(
-            self.current_field, []
-        )
-        return True, allowed_addresses
-
-    def field_has_text(self, field, window_id) -> bool:
-        """Check if the current field already has text in it."""
         try:
-            field_text = AHK.f_raw("ControlGetText", field, f"ahk_id {window_id}")
-            return field_text.strip() != ""
+            if not window_pid:
+                return False
+
+            # Check if window still exists
+            result = AHK.f("WinExist", f"ahk_pid {window_pid}")
+            return bool(result)
         except Exception as e:
-            print(f"Error checking field text: {e}")
+            print(f"Error checking window existence: {e}")
             return False
 
     def detect_child_window(self, click_pid: str) -> tuple[str, str, str] | None:
@@ -98,6 +78,15 @@ class ClickWindowDetector:
             print(f"Error detecting popup window: {e}")
             return None
 
+    def field_has_text(self, field, window_id) -> bool:
+        """Check if the current field already has text in it."""
+        try:
+            field_text = AHK.f_raw("ControlGetText", field, f"ahk_id {window_id}")
+            return field_text.strip() != ""
+        except Exception as e:
+            print(f"Error checking field text: {e}")
+            return False
+
     def get_click_instances(self) -> list[tuple[str, str, str]]:
         """
         Get all running Click.exe instances.
@@ -143,27 +132,6 @@ class ClickWindowDetector:
             print(f"Error getting Click instances: {e}")
             return click_instances
 
-    def check_window_exists(self, window_pid: str) -> bool:
-        """
-        Check if a window with the given PID still exists.
-
-        Args:
-            window_pid: The PID of the window to check
-
-        Returns:
-            bool: True if the window exists, False otherwise
-        """
-        try:
-            if not window_pid:
-                return False
-
-            # Check if window still exists
-            result = AHK.f("WinExist", f"ahk_pid {window_pid}")
-            return bool(result)
-        except Exception as e:
-            print(f"Error checking window existence: {e}")
-            return False
-
     def get_window_handle(self, pid):
         """
         Get the window handle for a process ID using AHK.
@@ -183,3 +151,35 @@ class ClickWindowDetector:
         except Exception as e:
             print(f"Error getting window handle: {e}")
             return None
+
+    def update(self) -> tuple[bool, list[str]]:
+        """
+        Update window and field detection.
+        Returns: Tuple of (is_valid_field, allowed_address_types)
+        """
+        # Get the current window and field info
+        return self.update_window_info(self.current_window, self.current_field)
+
+    def update_window_info(self, window_class: str, field: str) -> tuple[bool, list[str]]:
+        """
+        Update window and field detection with provided window and field.
+        Returns: Tuple of (is_valid_field, allowed_address_types)
+        """
+        self.current_window = window_class
+        self.current_field = field
+
+        # Early return if no valid window
+        if not self.current_window or self.current_window not in self.window_mapping:
+            return False, []
+
+        # Return result
+        if not self.current_field or self.current_field not in self.window_mapping.get(
+            self.current_window, {}
+        ):
+            return False, []
+
+        # Get allowed address types
+        allowed_addresses = self.window_mapping.get(self.current_window, {}).get(
+            self.current_field, []
+        )
+        return True, allowed_addresses

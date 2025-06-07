@@ -12,6 +12,26 @@ class PrefixAutocomplete:
         self.position = 0
         self.finalized = False
 
+    def handle_keyrelease(self, event) -> None:
+        """Handle key release event for autocompletion and navigation."""
+        if event.keysym == "BackSpace":
+            self.widget.delete(self.position, tk.END)
+            # Position stays the same
+        elif event.keysym == "Left":
+            if self.position < self.widget.index(tk.END):
+                self.widget.delete(self.position, tk.END)
+            else:
+                self.position -= 1
+                self.widget.delete(self.position, tk.END)
+        elif event.keysym == "Right":
+            self.position = self.widget.index(tk.END)
+        elif event.keysym == "Return":
+            self.widget.icursor(tk.END)
+            self.widget.selection_clear()
+            return
+        elif len(event.keysym) == 1 or event.char == "_":
+            self.autocomplete()
+
     def set_completion_list(self, completion_list):
         """Set the list of completion options."""
         self._completion_list = completion_list
@@ -69,23 +89,3 @@ class PrefixAutocomplete:
         self._hit_index = 0
         self.position = 0
         self.finalized = False
-
-    def handle_keyrelease(self, event) -> None:
-        """Handle key release event for autocompletion and navigation."""
-        if event.keysym == "BackSpace":
-            self.widget.delete(self.position, tk.END)
-            # Position stays the same
-        elif event.keysym == "Left":
-            if self.position < self.widget.index(tk.END):
-                self.widget.delete(self.position, tk.END)
-            else:
-                self.position -= 1
-                self.widget.delete(self.position, tk.END)
-        elif event.keysym == "Right":
-            self.position = self.widget.index(tk.END)
-        elif event.keysym == "Return":
-            self.widget.icursor(tk.END)
-            self.widget.selection_clear()
-            return
-        elif len(event.keysym) == 1 or event.char == "_":
-            self.autocomplete()

@@ -50,6 +50,126 @@ class NicknameManager:
             self.nicknames.sort(key=lambda x: x.nickname)
         # If False, keep the original database/CSV order (MemoryType + Address)
 
+    def get_address_for_nickname(self, nickname: str) -> str | None:
+        """
+        Get the address for a given nickname.
+
+        Args:
+            nickname: The exact nickname to look up
+
+        Returns:
+            The corresponding address or None if not found
+        """
+        if not self.is_loaded:
+            return None
+
+        # Find exact match for the nickname
+        for nickname_obj in self.nicknames:
+            if nickname_obj.nickname == nickname:
+                return nickname_obj.address
+
+        return None
+
+    def get_nickname_details(self, nickname: str) -> str:
+        """
+        Get detailed information for a given nickname.
+
+        Args:
+            nickname: The exact nickname to look up
+
+        Returns:
+            Detailed string with address, data type, initial value, and comment
+        """
+        if not self.is_loaded:
+            return ""
+
+        # Find exact match for the nickname
+        for nickname_obj in self.nicknames:
+            if nickname_obj.nickname == nickname:
+                return nickname_obj.details()
+
+        return ""
+
+    def _check_for_file_updates(self) -> None:
+        """Check if the loaded file has been modified and reload if necessary."""
+        if not self._loaded_filepath:
+            return
+
+        try:
+            current_timestamp = os.path.getmtime(self._loaded_filepath)
+            if current_timestamp != self._last_load_timestamp:
+                print(f"Detected changes in {self._loaded_filepath}, reloading...")
+
+                # If we loaded from database, reload using the stored PID and handle
+                if self._click_pid and self._click_hwnd:
+                    self.load_from_database(self._click_pid, self._click_hwnd)
+                else:
+                    # Otherwise reload from CSV
+                    self.load_csv(self._loaded_filepath)
+
+                # Reapply sorting preference after reload
+                if self.settings:
+                    self.apply_sorting(self.settings.sort_by_nickname)
+        except Exception as e:
+            print(f"Error checking for file updates: {e}")
+
+    def get_filtered_nicknames(self, address_types: list[str], search_text: str = "") -> list[str]:
+        """
+        Get filtered list of nickname strings using current app settings.
+
+        Args:
+            address_types: List of allowed address types (X, Y, C, etc.)
+            search_text: Text to search for in nicknames
+
+        Returns:
+            List of matching nickname strings
+        """
+        # Lazy check for file updates
+        self._check_for_file_updates()
+
+        if not self.is_loaded or not address_types:
+            return []
+
+        # Get filtering parameters from settings (with fallbacks)
+        if self.settings:
+            search_mode = self.settings.search_mode
+            exclude_sc_sd = self.settings.exclude_sc_sd
+            excluded_terms = self.settings.get_exclude_terms_list()
+        else:
+            # Fallback values if no settings available
+            search_mode = "none"
+            exclude_sc_sd = False
+            excluded_terms = []
+
+        # Filter by address type and exclusions
+        filtered_objects = []
+        for nickname_obj in self.nicknames:
+            # Check if address type matches
+            if nickname_obj.address_type not in address_types:
+                continue
+
+            # Skip SC/SD addresses if requested
+            if exclude_sc_sd and (
+                nickname_obj.address.startswith("SC") or nickname_obj.address.startswith("SD")
+            ):
+                continue
+
+            # Skip if it contains any excluded terms
+            nickname_lower = nickname_obj.nickname.lower()
+            if any(excluded_term in nickname_lower for excluded_term in excluded_terms):
+                continue
+
+            filtered_objects.append(nickname_obj)
+
+        # Apply search filtering if search text provided
+        if not search_text or search_mode == "none":
+            return [obj.nickname for obj in filtered_objects]
+
+        strategy = self.filter_strategies.get(search_mode, self.filter_strategies["none"])
+        search_filtered_objects = strategy.filter_matches(filtered_objects, search_text)
+
+        return [obj.nickname for obj in search_filtered_objects]
+
     def _generate_abbreviation_tags(self):
         """Generate abbreviation tags for containsplus filtering"""
         if not self.is_loaded:
@@ -121,28 +241,26 @@ class NicknameManager:
             print(f"Error loading CSV: {e}")
             return False
 
-    def _check_for_file_updates(self) -> None:
-        """Check if the loaded file has been modified and reload if necessary."""
-        if not self._loaded_filepath:
-            return
+    def get_available_access_drivers(self) -> list[str]:
+        """
+        Get list of available Microsoft Access ODBC drivers.
 
+        Returns:
+            List of available Access driver names
+        """
         try:
-            current_timestamp = os.path.getmtime(self._loaded_filepath)
-            if current_timestamp != self._last_load_timestamp:
-                print(f"Detected changes in {self._loaded_filepath}, reloading...")
+            import pyodbc
 
-                # If we loaded from database, reload using the stored PID and handle
-                if self._click_pid and self._click_hwnd:
-                    self.load_from_database(self._click_pid, self._click_hwnd)
-                else:
-                    # Otherwise reload from CSV
-                    self.load_csv(self._loaded_filepath)
-
-                # Reapply sorting preference after reload
-                if self.settings:
-                    self.apply_sorting(self.settings.sort_by_nickname)
+            return [driver for driver in pyodbc.drivers() if "Access" in driver]
+        except ImportError:
+            return []
         except Exception as e:
-            print(f"Error checking for file updates: {e}")
+            print(f"Error checking ODBC drivers: {e}")
+            return []
+
+    def has_access_driver(self) -> bool:
+        """Check if any Microsoft Access ODBC driver is available."""
+        return len(self.get_available_access_drivers()) > 0
 
     def _find_click_database(self, click_pid=None, click_hwnd=None):
         """
@@ -317,121 +435,3 @@ class NicknameManager:
         except Exception as e:
             print(f"Error loading from database: {e}")
             return False
-
-    def get_filtered_nicknames(self, address_types: list[str], search_text: str = "") -> list[str]:
-        """
-        Get filtered list of nickname strings using current app settings.
-
-        Args:
-            address_types: List of allowed address types (X, Y, C, etc.)
-            search_text: Text to search for in nicknames
-
-        Returns:
-            List of matching nickname strings
-        """
-        # Lazy check for file updates
-        self._check_for_file_updates()
-
-        if not self.is_loaded or not address_types:
-            return []
-
-        # Get filtering parameters from settings (with fallbacks)
-        if self.settings:
-            search_mode = self.settings.search_mode
-            exclude_sc_sd = self.settings.exclude_sc_sd
-            excluded_terms = self.settings.get_exclude_terms_list()
-        else:
-            # Fallback values if no settings available
-            search_mode = "none"
-            exclude_sc_sd = False
-            excluded_terms = []
-
-        # Filter by address type and exclusions
-        filtered_objects = []
-        for nickname_obj in self.nicknames:
-            # Check if address type matches
-            if nickname_obj.address_type not in address_types:
-                continue
-
-            # Skip SC/SD addresses if requested
-            if exclude_sc_sd and (
-                nickname_obj.address.startswith("SC") or nickname_obj.address.startswith("SD")
-            ):
-                continue
-
-            # Skip if it contains any excluded terms
-            nickname_lower = nickname_obj.nickname.lower()
-            if any(excluded_term in nickname_lower for excluded_term in excluded_terms):
-                continue
-
-            filtered_objects.append(nickname_obj)
-
-        # Apply search filtering if search text provided
-        if not search_text or search_mode == "none":
-            return [obj.nickname for obj in filtered_objects]
-
-        strategy = self.filter_strategies.get(search_mode, self.filter_strategies["none"])
-        search_filtered_objects = strategy.filter_matches(filtered_objects, search_text)
-
-        return [obj.nickname for obj in search_filtered_objects]
-
-    def get_address_for_nickname(self, nickname: str) -> str | None:
-        """
-        Get the address for a given nickname.
-
-        Args:
-            nickname: The exact nickname to look up
-
-        Returns:
-            The corresponding address or None if not found
-        """
-        if not self.is_loaded:
-            return None
-
-        # Find exact match for the nickname
-        for nickname_obj in self.nicknames:
-            if nickname_obj.nickname == nickname:
-                return nickname_obj.address
-
-        return None
-
-    def get_available_access_drivers(self) -> list[str]:
-        """
-        Get list of available Microsoft Access ODBC drivers.
-
-        Returns:
-            List of available Access driver names
-        """
-        try:
-            import pyodbc
-
-            return [driver for driver in pyodbc.drivers() if "Access" in driver]
-        except ImportError:
-            return []
-        except Exception as e:
-            print(f"Error checking ODBC drivers: {e}")
-            return []
-
-    def has_access_driver(self) -> bool:
-        """Check if any Microsoft Access ODBC driver is available."""
-        return len(self.get_available_access_drivers()) > 0
-
-    def get_nickname_details(self, nickname: str) -> str:
-        """
-        Get detailed information for a given nickname.
-
-        Args:
-            nickname: The exact nickname to look up
-
-        Returns:
-            Detailed string with address, data type, initial value, and comment
-        """
-        if not self.is_loaded:
-            return ""
-
-        # Find exact match for the nickname
-        for nickname_obj in self.nicknames:
-            if nickname_obj.nickname == nickname:
-                return nickname_obj.details()
-
-        return ""

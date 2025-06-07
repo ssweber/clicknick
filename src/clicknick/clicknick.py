@@ -33,69 +33,7 @@ def get_version():
 class ClickNickApp:
     """Main application for the ClickNick App."""
 
-    def __init__(self):
-        # Create main window
-        self.root = tk.Tk()
-        self.root.title("ClickNick App")
-
-        # Hide the window immediately
-        self.root.withdraw()
-
-        # Initialize settings first
-        self.settings = AppSettings()
-
-        # Initialize monitoring state early (before any UI creation)
-        self.monitoring = False
-        self.monitor_task_id = None
-
-        # Connected Click.exe instance
-        self.connected_click_pid = None
-        self.connected_click_title = None
-        self.connected_click_filename = None
-
-        self.filter_strategies = {
-            "none": NoneFilter(),
-            "prefix": PrefixFilter(),
-            "contains": ContainsFilter(),
-            "containsplus": ContainsPlusFilter(),
-        }
-
-        # Initialize core components
-        self.nickname_manager = NicknameManager(self.settings, self.filter_strategies)
-        self.detector = ClickWindowDetector(CLICK_PLC_WINDOW_MAPPING, self)
-
-        # Initialize overlay early (before UI creation)
-        self.overlay = None
-
-        # Set the icon
-        try:
-            app_dir = os.path.dirname(os.path.abspath(__file__))
-            icon_path = os.path.join(app_dir, "clicknick_logo.ico")
-            self.root.iconbitmap(icon_path)
-        except tk.TclError:
-            pass  # Continue without icon if it fails
-
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
-
-        # Setup variables
-        self.setup_variables()
-
-        # Setup UI styles
-        self.setup_styles()
-
-        # Create UI components
-        self.create_widgets()
-
-        # Show the window after everything is created
-        self.root.deiconify()
-
-        # Check for ODBC drivers and warn if missing
-        self.root.after(1000, self.check_odbc_drivers_and_warn)  # Delay to show after UI loads
-
-        # Combobox overlay (initialized when needed)
-        self.overlay = None
-
-    def setup_variables(self):
+    def _setup_variables(self):
         """Initialize Tkinter variables."""
         self.csv_path_var = tk.StringVar()
         self.status_var = tk.StringVar(value="Not connected")
@@ -103,7 +41,7 @@ class ClickNickApp:
         self.click_instances = []  # Will store (id, title, filename) tuples
         self.using_database = False  # Flag to track if database is being used
 
-    def setup_styles(self):
+    def _setup_styles(self):
         """Configure ttk styles for the application."""
         style = ttk.Style()
 
@@ -117,100 +55,19 @@ class ClickNickApp:
         style.configure("Error.TLabel", foreground="red")
         style.configure("Connected.TLabel", foreground="green")
 
-    def create_widgets(self):
-        """Create all UI widgets."""
-        # Add menu bar first
-        self.create_menu_bar()
-
-        # Main frame to contain everything with consistent padding
-        main_frame = ttk.Frame(self.root, padding="15")  # Reduce from 20 to 15
-
-        # Create all widgets
-        self.create_click_instances_section(main_frame)
-        self.create_options_section(main_frame)
-        self.create_status_section(main_frame)
-
-        # Pack the main frame
-        main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Initial refresh of Click instances
-        self.refresh_click_instances()
-
-    def _update_status(self, message, style="normal"):
-        """Update status message with appropriate style."""
-        self.status_var.set(message)
-        if style == "error":
-            self.status_label.configure(style="Error.TLabel")
-        elif style == "connected":
-            self.status_label.configure(style="Connected.TLabel")
-        else:
-            self.status_label.configure(style="Status.TLabel")
-
-    def on_sort_option_changed(self):
-        """Handle changes to the sort option."""
-        if self.nickname_manager.is_loaded:
-            # Apply the new sorting preference
-            self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
-
-            # Regenerate abbreviation tags after sorting
-            self.nickname_manager._generate_abbreviation_tags()
-
-    def load_csv(self):
-        """Load nicknames from CSV file."""
-        if not self.csv_path_var.get():
-            self._update_status("Error: No CSV file selected", "error")
+    def _on_instance_selected(self, event=None):
+        """Handle instance selection from combobox."""
+        selected_text = self.selected_instance_var.get()
+        if not selected_text:
             return
 
-        # Try to load from CSV
-        if self.nickname_manager.load_csv(self.csv_path_var.get()):
-            # Apply user's sorting preference
-            self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
+        # Find the matching instance
+        for _, (pid, title, filename) in enumerate(self.click_instances):
+            if filename == selected_text:
+                self.connect_to_instance(pid, title, filename)
+                break
 
-            self._update_status("Loaded nicknames from CSV", "ready")
-            self.using_database = False
-
-            # Auto-start monitoring if connected and not already started
-            if self.connected_click_pid and not self.monitoring:
-                self.start_monitoring()
-        else:
-            self._update_status("Failed to load from CSV", "error")
-
-    def load_from_database(self):
-        """Load nicknames directly from the CLICK database."""
-        if not self.connected_click_pid:
-            self._update_status("Error: Not connected to Click instance", "error")
-            return
-
-        # Check if ODBC drivers are available
-        if not self.nickname_manager.has_access_driver():
-            self._update_status("Error: No Microsoft Access ODBC drivers installed", "error")
-            self.show_odbc_warning()
-            return
-
-        # Clear the CSV path to indicate we're using the database
-        self.csv_path_var.set("")
-
-        # Try to load from database
-        success = self.nickname_manager.load_from_database(
-            click_pid=self.connected_click_pid,
-            click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
-        )
-
-        if success:
-            # Apply user's sorting preference
-            self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
-
-            self._update_status("Loaded nicknames from database", "ready")
-            self.using_database = True
-
-            # Auto-start monitoring if not already started
-            if not self.monitoring:
-                self.start_monitoring()
-        else:
-            self._update_status("Failed to load from database", "error")
-            self.using_database = False
-
-    def create_click_instances_section(self, parent):
+    def _create_click_instances_section(self, parent):
         """Create the Click.exe instances section."""
         instances_frame = ttk.LabelFrame(
             parent, text="Click PLC Instances", padding="10"
@@ -231,7 +88,7 @@ class ClickNickApp:
         )
 
         # Bind combobox selection to auto-connect
-        self.instances_combobox.bind("<<ComboboxSelected>>", self.on_instance_selected)
+        self.instances_combobox.bind("<<ComboboxSelected>>", self._on_instance_selected)
 
         # Layout
         instance_label.pack(side=tk.LEFT, padx=(0, 8))  # Reduce from 10 to 8
@@ -245,7 +102,16 @@ class ClickNickApp:
         # Pack the main frame
         instances_frame.pack(fill=tk.X, pady=(0, 12))  # Reduce from 15 to 12
 
-    def create_options_section(self, parent):
+    def _on_sort_option_changed(self):
+        """Handle changes to the sort option."""
+        if self.nickname_manager.is_loaded:
+            # Apply the new sorting preference
+            self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
+
+            # Regenerate abbreviation tags after sorting
+            self.nickname_manager._generate_abbreviation_tags()
+
+    def _create_options_section(self, parent):
         """Create the options section."""
         options_frame = ttk.LabelFrame(
             parent, text="Search Options", padding="10"
@@ -292,7 +158,7 @@ class ClickNickApp:
             options_frame,
             text="Sort by Nickname (alphabetically)",
             variable=self.settings.sort_by_nickname_var,
-            command=self.on_sort_option_changed,
+            command=self._on_sort_option_changed,
         )
         sort_check.pack(anchor=tk.W, pady=(0, 6))  # Add consistent spacing
 
@@ -347,7 +213,7 @@ class ClickNickApp:
         # Pack the main frame
         options_frame.pack(fill=tk.X, pady=(0, 12))  # Reduce from 5 to 12 for consistency
 
-    def create_status_section(self, parent):
+    def _create_status_section(self, parent):
         """Create the status and control section."""
         status_frame = ttk.Frame(parent)
 
@@ -364,15 +230,137 @@ class ClickNickApp:
         # Pack the frame
         status_frame.pack(fill=tk.X, pady=(8, 0))  # Reduce from 10 to 8, only top padding
 
-    def browse_and_load_csv(self):
-        """Browse for and load CSV file from menu."""
-        filepath = filedialog.askopenfilename(
-            title="Select Nickname CSV",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+    def _create_about_dialog(self):
+        """Create and show the About dialog."""
+        AboutDialog(self.root, get_version(), self.nickname_manager)
+
+    def _create_menu_bar(self):
+        """Create the application menu bar."""
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+
+        # File menu
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="Exit", command=self.on_closing)
+        file_menu.add_separator()
+        file_menu.add_command(label="Load Nicknames from CSV...", command=self.browse_and_load_csv)
+
+        # Help menu
+        help_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="About ClickNick...", command=self._create_about_dialog)
+        help_menu.add_separator()
+        help_menu.add_command(
+            label="GitHub Repository",
+            command=lambda: self.open_url("https://github.com/ssweber/clicknick"),
         )
-        if filepath:
-            self.csv_path_var.set(filepath)
-            self.load_csv()
+        help_menu.add_command(
+            label="Report Issue",
+            command=lambda: self.open_url("https://github.com/ssweber/clicknick/issues"),
+        )
+
+    def _create_widgets(self):
+        """Create all UI widgets."""
+        # Add menu bar first
+        self._create_menu_bar()
+
+        # Main frame to contain everything with consistent padding
+        main_frame = ttk.Frame(self.root, padding="15")  # Reduce from 20 to 15
+
+        # Create all widgets
+        self._create_click_instances_section(main_frame)
+        self._create_options_section(main_frame)
+        self._create_status_section(main_frame)
+
+        # Pack the main frame
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Initial refresh of Click instances
+        self.refresh_click_instances()
+
+    def _show_odbc_warning(self):
+        """Show a warning dialog about missing ODBC drivers."""
+        OdbcWarningDialog(self.root)
+
+    def _check_odbc_drivers_and_warn(self):
+        """Check for ODBC drivers and show warning if none available."""
+        if not self.nickname_manager.has_access_driver():
+            self._show_odbc_warning()
+            return False
+        return True
+
+    def __init__(self):
+        # Create main window
+        self.root = tk.Tk()
+        self.root.title("ClickNick App")
+
+        # Hide the window immediately
+        self.root.withdraw()
+
+        # Initialize settings first
+        self.settings = AppSettings()
+
+        # Initialize monitoring state early (before any UI creation)
+        self.monitoring = False
+        self.monitor_task_id = None
+
+        # Connected Click.exe instance
+        self.connected_click_pid = None
+        self.connected_click_title = None
+        self.connected_click_filename = None
+
+        self.filter_strategies = {
+            "none": NoneFilter(),
+            "prefix": PrefixFilter(),
+            "contains": ContainsFilter(),
+            "containsplus": ContainsPlusFilter(),
+        }
+
+        # Initialize core components
+        self.nickname_manager = NicknameManager(self.settings, self.filter_strategies)
+        self.detector = ClickWindowDetector(CLICK_PLC_WINDOW_MAPPING, self)
+
+        # Initialize overlay early (before UI creation)
+        self.overlay = None
+
+        # Set the icon
+        try:
+            app_dir = os.path.dirname(os.path.abspath(__file__))
+            icon_path = os.path.join(app_dir, "clicknick_logo.ico")
+            self.root.iconbitmap(icon_path)
+        except tk.TclError:
+            pass  # Continue without icon if it fails
+
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+        # Setup variables
+        self._setup_variables()
+
+        # Setup UI styles
+        self._setup_styles()
+
+        # Create UI components
+        self._create_widgets()
+
+        # Show the window after everything is created
+        self.root.deiconify()
+
+        # Check for ODBC drivers and warn if missing
+        self.root.after(1000, self._check_odbc_drivers_and_warn)  # Delay to show after UI loads
+
+        # Combobox overlay (initialized when needed)
+        self.overlay = None
+
+    def _update_status(self, message, style="normal"):
+        """Update status message with appropriate style."""
+        self.status_var.set(message)
+        if style == "error":
+            self.status_label.configure(style="Error.TLabel")
+        elif style == "connected":
+            self.status_label.configure(style="Connected.TLabel")
+        else:
+            self.status_label.configure(style="Status.TLabel")
 
     def refresh_click_instances(self):
         """Refresh the list of running Click.exe instances."""
@@ -404,23 +392,76 @@ class ClickNickApp:
                 # If previous selection not found, select first item
                 self.selected_instance_var.set(filenames[0])
                 # Auto-connect to first instance
-                self.on_instance_selected()
+                self._on_instance_selected()
 
         except Exception as e:
             print(f"Error refreshing Click instances: {e}")
             self._update_status(f"Error: {e!s}", "error")
 
-    def on_instance_selected(self, event=None):
-        """Handle instance selection from combobox."""
-        selected_text = self.selected_instance_var.get()
-        if not selected_text:
+    def load_csv(self):
+        """Load nicknames from CSV file."""
+        if not self.csv_path_var.get():
+            self._update_status("Error: No CSV file selected", "error")
             return
 
-        # Find the matching instance
-        for _, (pid, title, filename) in enumerate(self.click_instances):
-            if filename == selected_text:
-                self.connect_to_instance(pid, title, filename)
-                break
+        # Try to load from CSV
+        if self.nickname_manager.load_csv(self.csv_path_var.get()):
+            # Apply user's sorting preference
+            self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
+
+            self._update_status("Loaded nicknames from CSV", "ready")
+            self.using_database = False
+
+            # Auto-start monitoring if connected and not already started
+            if self.connected_click_pid and not self.monitoring:
+                self.start_monitoring()
+        else:
+            self._update_status("Failed to load from CSV", "error")
+
+    def browse_and_load_csv(self):
+        """Browse for and load CSV file from menu."""
+        filepath = filedialog.askopenfilename(
+            title="Select Nickname CSV",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+        if filepath:
+            self.csv_path_var.set(filepath)
+            self.load_csv()
+
+    def load_from_database(self):
+        """Load nicknames directly from the CLICK database."""
+        if not self.connected_click_pid:
+            self._update_status("Error: Not connected to Click instance", "error")
+            return
+
+        # Check if ODBC drivers are available
+        if not self.nickname_manager.has_access_driver():
+            self._update_status("Error: No Microsoft Access ODBC drivers installed", "error")
+            self._show_odbc_warning()
+            return
+
+        # Clear the CSV path to indicate we're using the database
+        self.csv_path_var.set("")
+
+        # Try to load from database
+        success = self.nickname_manager.load_from_database(
+            click_pid=self.connected_click_pid,
+            click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
+        )
+
+        if success:
+            # Apply user's sorting preference
+            self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
+
+            self._update_status("Loaded nicknames from database", "ready")
+            self.using_database = True
+
+            # Auto-start monitoring if not already started
+            if not self.monitoring:
+                self.start_monitoring()
+        else:
+            self._update_status("Failed to load from database", "error")
+            self.using_database = False
 
     def connect_to_instance(self, pid, title, filename):
         """Connect to a specific Click.exe instance."""
@@ -465,13 +506,6 @@ class ClickNickApp:
                 self._update_status(f"Connected to {filename} - database load failed", "error")
         else:
             self._update_status("Ready. File → Load Nicknames... to begin.", "connected")
-
-    def toggle_monitoring(self):
-        """Start or stop monitoring."""
-        if self.monitoring:
-            self.stop_monitoring()
-        else:
-            self.start_monitoring()
 
     def _handle_popup_window(self, window_id, window_class, edit_control):
         """Handle the detected popup window by showing or updating the nickname popup."""
@@ -579,46 +613,12 @@ class ClickNickApp:
         self._update_status("Monitoring stopped", "status")
         self.start_button.configure(text="Start")
 
-    def create_menu_bar(self):
-        """Create the application menu bar."""
-        menubar = tk.Menu(self.root)
-        self.root.config(menu=menubar)
-
-        # File menu
-        file_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Exit", command=self.on_closing)
-        file_menu.add_separator()
-        file_menu.add_command(label="Load Nicknames from CSV...", command=self.browse_and_load_csv)
-
-        # Help menu
-        help_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Help", menu=help_menu)
-        help_menu.add_command(label="About ClickNick...", command=self.create_about_dialog)
-        help_menu.add_separator()
-        help_menu.add_command(
-            label="GitHub Repository",
-            command=lambda: self.open_url("https://github.com/ssweber/clicknick"),
-        )
-        help_menu.add_command(
-            label="Report Issue",
-            command=lambda: self.open_url("https://github.com/ssweber/clicknick/issues"),
-        )
-
-    def create_about_dialog(self):
-        """Create and show the About dialog."""
-        AboutDialog(self.root, get_version(), self.nickname_manager)
-
-    def check_odbc_drivers_and_warn(self):
-        """Check for ODBC drivers and show warning if none available."""
-        if not self.nickname_manager.has_access_driver():
-            self.show_odbc_warning()
-            return False
-        return True
-
-    def show_odbc_warning(self):
-        """Show a warning dialog about missing ODBC drivers."""
-        OdbcWarningDialog(self.root)
+    def toggle_monitoring(self):
+        """Start or stop monitoring."""
+        if self.monitoring:
+            self.stop_monitoring()
+        else:
+            self.start_monitoring()
 
     def open_url(self, url):
         """Open URL in default browser."""
