@@ -7,7 +7,7 @@ class AppSettings:
     """Application settings and configuration."""
 
     def __init__(self):
-        self.search_var = tk.StringVar(value="containsplus")
+        self.search_var = tk.StringVar(value="contains")
         self.sort_by_nickname_var = tk.BooleanVar(value=False)
         self.exclude_sc_sd_var = tk.BooleanVar(value=False)
         self.exclude_nicknames_var = tk.StringVar(value="")
@@ -16,7 +16,7 @@ class AppSettings:
     @property
     def search_mode(self) -> str:
         """Get current search mode."""
-        return self.search_var.get() if self.search_var else "containsplus"
+        return self.search_var.get() if self.search_var else "contains"
 
     @property
     def sort_by_nickname(self) -> bool:
