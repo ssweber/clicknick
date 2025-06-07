@@ -1,44 +1,19 @@
-import re
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
 class Nickname:
     """Represents a nickname with its address and metadata"""
-    
+
     nickname: str
     address: str
     data_type: str
     initial_value: str
     retentive: bool
     comment: str = ""
-    memory_type: str = ""
-    used: Optional[bool] = None
+    address_type: str = ""
+    used: bool | None = None
     abbr_tags: str = ""
-    
-    def __post_init__(self):
-        """Store the original memory_type value for lazy evaluation"""
-        self._memory_type = self.memory_type
-    
-    @property
-    def memory_type(self) -> str:
-        """Get memory type from stored value or extract from address"""
-        if not self._memory_type:
-            pattern = re.compile(r"^([A-Z]+)")
-            match = pattern.match(self.address)
-            self._memory_type = match.group(1) if match else ""
-        return self._memory_type
-
-    @memory_type.setter
-    def memory_type(self, value: str):
-        """Set memory type"""
-        self._memory_type = value
-
-    @property
-    def address_type(self) -> str:
-        """Alias for memory_type for backward compatibility"""
-        return self.memory_type
 
     def details(self) -> str:
         """Generate a tooltip string for this nickname"""
@@ -67,6 +42,16 @@ class Nickname:
             lines.append(", ".join(details))
 
         return "\n".join(lines)
+
+    def __eq__(self, other):
+        """Two nicknames are equal if they have the same nickname and address"""
+        if not isinstance(other, Nickname):
+            return False
+        return self.nickname == other.nickname and self.address == other.address
+
+    def __hash__(self):
+        """Make the object hashable based on nickname and address"""
+        return hash((self.nickname, self.address))
 
     def __str__(self):
         return self.nickname

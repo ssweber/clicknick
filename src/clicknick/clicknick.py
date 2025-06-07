@@ -37,7 +37,7 @@ class ClickNickApp:
         # Create main window
         self.root = tk.Tk()
         self.root.title("ClickNick App")
-        
+
         # Hide the window immediately
         self.root.withdraw()
 
@@ -85,7 +85,7 @@ class ClickNickApp:
 
         # Create UI components
         self.create_widgets()
-        
+
         # Show the window after everything is created
         self.root.deiconify()
 

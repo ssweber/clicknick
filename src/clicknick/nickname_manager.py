@@ -103,6 +103,7 @@ class NicknameManager:
                         initial_value=row["Initial Value"],
                         retentive=row["Retentive"] == "Yes",
                         comment=row["Address Comment"],
+                        address_type="".join(c for c in row["Address"] if c.isupper()),
                     )
                     self.nicknames.append(nickname_obj)
 
@@ -294,7 +295,7 @@ class NicknameManager:
                     initial_value=initial_value,
                     retentive=retentive,
                     comment=comment,
-                    memory_type=memory_type,
+                    address_type=memory_type,
                     used=used,
                 )
                 self.nicknames.append(nickname_obj)
