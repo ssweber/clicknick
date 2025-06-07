@@ -27,7 +27,6 @@ class AboutDialog:
     def create_window(self):
         self.window = tk.Toplevel(self.parent)
         self.window.title("About ClickNick")
-        self.window.geometry("500x750")
         self.window.resizable(False, False)
         self.window.grab_set()
         self.window.transient(self.parent)
@@ -187,7 +186,6 @@ class OdbcWarningDialog:
     def create_window(self):
         self.window = tk.Toplevel(self.parent)
         self.window.title("ODBC Drivers Not Found")
-        self.window.geometry("500x300")
         self.window.resizable(False, False)
         self.window.grab_set()
         self.window.transient(self.parent)

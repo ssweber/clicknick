@@ -37,7 +37,6 @@ class ClickNickApp:
         # Create main window
         self.root = tk.Tk()
         self.root.title("ClickNick App")
-        self.root.geometry("550x375")
 
         # Initialize settings first
         self.settings = AppSettings()
