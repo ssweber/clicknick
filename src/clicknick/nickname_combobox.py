@@ -429,7 +429,7 @@ class DropdownManager:
                 if (
                     hasattr(self.combobox, "item_navigation_callback")
                     and self.combobox.item_navigation_callback
-#                     and selection_index is not None
+                    and selection_index is not None
                 ):
                     self._trigger_navigation_callback(self.combobox.item_navigation_callback)
 
