@@ -1,31 +1,26 @@
 import re
+from dataclasses import dataclass
+from typing import Optional
 
 
+@dataclass
 class Nickname:
     """Represents a nickname with its address and metadata"""
-
-    def __init__(
-        self,
-        nickname: str,
-        address: str,
-        data_type: str,
-        initial_value: str,
-        retentive: bool,
-        comment: str = "",
-        memory_type: str = "",
-        used: bool = None,
-        abbr_tags: str = "",
-    ):
-        self.nickname = nickname
-        self.address = address
-        self.data_type = data_type
-        self.initial_value = initial_value
-        self.retentive = retentive
-        self.comment = comment
-        self._memory_type = memory_type
-        self.used = used
-        self.abbr_tags = abbr_tags
-
+    
+    nickname: str
+    address: str
+    data_type: str
+    initial_value: str
+    retentive: bool
+    comment: str = ""
+    memory_type: str = ""
+    used: Optional[bool] = None
+    abbr_tags: str = ""
+    
+    def __post_init__(self):
+        """Store the original memory_type value for lazy evaluation"""
+        self._memory_type = self.memory_type
+    
     @property
     def memory_type(self) -> str:
         """Get memory type from stored value or extract from address"""
@@ -45,14 +40,15 @@ class Nickname:
         """Alias for memory_type for backward compatibility"""
         return self.memory_type
 
-    def __repr__(self):
+    def details(self) -> str:
+        """Generate a tooltip string for this nickname"""
         lines = [self.nickname]
 
         # Second line: data_type : Address
         if self.data_type:
             lines[0] += f" - {self.data_type} : {self.address}"
         else:
-            lines[0] += f" - {self.address})"
+            lines[0] += f" - {self.address}"
 
         # Third line: Comment (if present)
         if self.comment:

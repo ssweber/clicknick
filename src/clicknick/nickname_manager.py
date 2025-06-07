@@ -431,6 +431,6 @@ class NicknameManager:
         # Find exact match for the nickname
         for nickname_obj in self.nicknames:
             if nickname_obj.nickname == nickname:
-                return repr(nickname_obj)
+                return nickname_obj.details()
 
         return ""
