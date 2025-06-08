@@ -412,6 +412,7 @@ class DropdownManager:
                         selection_index = filtered_values.index(current_text)
                         self.combobox.tk.call(listbox, "selection", "set", selection_index)
                         self.combobox.tk.call(listbox, "activate", selection_index)
+                        self.combobox.tk.call(listbox, "see", selection_index)
                     except ValueError:
                         # Don't select anything if current text isn't found
                         pass
@@ -425,13 +426,6 @@ class DropdownManager:
 
             except tk.TclError:
                 self.combobox["values"] = filtered_values
-
-        # Trigger navigation callback only if something is selected
-        if (
-            hasattr(self.combobox, "item_navigation_callback")
-            and self.combobox.item_navigation_callback
-        ):
-            self.combobox.after_idle(self._trigger_navigation_callback)
 
 
 class ComboboxEventHandler:
