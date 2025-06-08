@@ -4,19 +4,23 @@
 
 Context-aware nickname autocomplete for ClickPLC instruction windows.
 
-![CLICK_BJVV78ZqMR](https://github.com/user-attachments/assets/b17e364b-1cbe-4a15-ade5-d12fe652789e)
-
+![ClickNick demo](https://github.com/user-attachments/assets/0275dcf4-6d79-4775-8763-18b13e8fd3a3)
 
 ## Features
 
 - **Live Nicknames**: Immediate access to Nicknames in your CLICK Programming Software, via ODBC connection.
-- **Smart Autocomplete**: Shows only relevant nicknames based on instruction type
-- **Multiple Filter Modes**: Prefix, Contains, and Contains + Abbreviation matching
-- **Exclude**: SC/SD addresses or your own
+- **Smart Autocomplete**: Shows only relevant nicknames based on the open instruction window.
+- **Multiple Filter Modes**: Flexible search options:  
+  - **Prefix**: Match starting characters (e.g., `"Val"` → `"Valve_1"`).  
+  - **Contains**: Find nicknames with any part of the text (e.g., `"Run"` → `"Motor_Run"`).  
+  - **Abbreviation**: Supports **two-way shorthand** and **multi-word matching** (e.g., `"Motor Speed"` → `"Mtr_Spd"` or `"MtrSpd"` → `"MotorSpeed"`).
+- **Helpful Tooltips**: Displays address comments on hover for quick reference.
+- **Exclusion Filters**:  
+  - Hide system addresses (SC/SD) to reduce clutter.  
+  - Exclude addresses based on custom naming conventions (e.g., omit nicknames containing double underscores `__` if you use them for private or internal variables).  
 - **Non-Intrusive**: Works alongside Click PLC without modifications
 
-![pythonw3 12_svIGUB2PMY](https://github.com/user-attachments/assets/33c54b20-107f-4fed-83d5-e526bb96e66d)
-
+![ClickNick App Main Window](https://github.com/user-attachments/assets/06325e08-d302-483c-9376-e29a07992f97)
 
 ## How to Run
 > [!NOTE]
@@ -71,7 +75,7 @@ python -m clicknick
 ## Requirements
 
 - Windows 10/11
-- Click PLC Software
+- CLICK Programming Software (tested on version 3.70)
 
 * * *
 
