@@ -530,14 +530,14 @@ class ComboboxEventHandler:
             return "break"
 
         if self.combobox.focus_get() == self.combobox:
-            self.dropdown_manager.transfer_focus_to_listbox("down")
+            self.dropdown_manager.transfer_focus_to_listbox()
             self._trigger_navigation_callback()
             return "break"
 
     def _on_up_key(self, event):
         """Handle Up key - open dropdown and transfer focus to listbox."""
         if self.combobox.focus_get() == self.combobox:
-            self.dropdown_manager.transfer_focus_to_listbox("up")
+            self.dropdown_manager.transfer_focus_to_listbox()
             self._trigger_navigation_callback()
             return "break"
 
