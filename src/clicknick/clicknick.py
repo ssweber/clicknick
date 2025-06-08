@@ -140,7 +140,7 @@ class ClickNickApp:
         )
         contains_plus_radio = ttk.Radiobutton(
             filter_frame,
-            text="Contains + Abbr.",
+            text="Abbreviations",
             variable=self.settings.search_var,
             value="containsplus",
         )
