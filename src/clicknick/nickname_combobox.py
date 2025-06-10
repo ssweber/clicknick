@@ -436,59 +436,13 @@ class ComboboxEventHandler:
         self.dropdown_manager = dropdown_manager
         self.autocomplete = autocomplete
 
-    def _is_possible_address_or_number(self, search_text):
-        """
-        Check if the input is a valid address or a numeric value.
-
-        Returns True if:
-        1. Input is a prefix of any valid prefix (e.g., "C" or "CT" for prefix "CTD")
-        2. Input is a complete prefix optionally followed by digits (e.g., "CTD" or "CTD123")
-        3. Input is numeric (int or float)
-
-        Args:
-            input_text (str): The input to check
-
-        Returns:
-            bool: True if the input is a valid address or numeric value, False otherwise
-        """
-        if not search_text:
-            return True
-
-        search_text = search_text.lower().strip()
-
-        # Check if the input is just numbers or numbers with a decimal point
-        if re.match(r"^[0-9]+(\.[0-9]*)?$", search_text):
-            return True
-
-        # Check against all prefixes
-        for prefix in DATA_TYPES.keys():
-            prefix = prefix.lower()
-
-            # Case 1: Input is a prefix of the full prefix (e.g., "C" or "CT" for "CTD")
-            if prefix.startswith(search_text):
-                return True
-
-            # Case 2: Input starts with the complete prefix and remainder is digits
-            if (
-                search_text.startswith(prefix)
-                and len(search_text) > len(prefix)
-                and search_text[len(prefix) :].isdigit()
-            ):
-                return True
-
-            # Case 3: Input is exactly the prefix
-            if search_text == prefix:
-                return True
-
-        return False
-
     def _handle_data_provider_update(self, event):
         """Handle data provider updates and dropdown visibility."""
         if not (hasattr(self.combobox, "data_provider") and self.combobox.data_provider):
             return
 
         search_text = self.combobox.get_search_text()
-        should_show_dropdown = not self._is_possible_address_or_number(search_text)
+        should_show_dropdown = not self.combobox.is_possible_address_or_literal(search_text)
         filtered_values = self.combobox.data_provider(search_text)
 
         # Update the combobox values
@@ -619,6 +573,57 @@ class NicknameCombobox(ttk.Combobox):
             return current_text[:sel_start]
         else:
             return current_text
+
+    def is_possible_address_or_literal(self, search_text):
+        """
+        Check if the input is a valid address or a supported literal value.
+
+        Returns True if:
+        1. Input is a prefix of any valid prefix (e.g., "C" or "CT" for prefix "CTD")
+        2. Input is a complete prefix optionally followed by digits (e.g., "CTD" or "CTD123")
+        3. Input starts with a single-quote
+        4. Input is numeric (int or float)
+
+
+        Args:
+            input_text (str): The input to check
+
+        Returns:
+            bool: True if the input is a valid address or numeric value, False otherwise
+        """
+        if not search_text:
+            return True
+
+        search_text = search_text.lower().strip()
+
+        # Check if the input is just numbers or numbers with a decimal point
+        if re.match(r"^[0-9]+(\.[0-9]*)?$", search_text):
+            return True
+
+        if search_text.startswith("'"):
+            return True
+
+        # Check against all prefixes
+        for prefix in DATA_TYPES.keys():
+            prefix = prefix.lower()
+
+            # Case 1: Input is a prefix of the full prefix (e.g., "C" or "CT" for "CTD")
+            if prefix.startswith(search_text):
+                return True
+
+            # Case 2: Input starts with the complete prefix and remainder is digits
+            if (
+                search_text.startswith(prefix)
+                and len(search_text) > len(prefix)
+                and search_text[len(prefix) :].isdigit()
+            ):
+                return True
+
+            # Case 3: Input is exactly the prefix
+            if search_text == prefix:
+                return True
+
+        return False
 
     def set_data_provider(self, provider_func: Callable[[str], tuple[list[str], bool]]) -> None:
         """
