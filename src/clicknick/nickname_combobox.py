@@ -495,13 +495,24 @@ class ComboboxEventHandler:
             self._trigger_navigation_callback()
             return "break"
 
+    def _on_tab(self, event):
+        """Handle tab key to input current text before withdrawing."""
+
+        shift_tab = event.state & 0x1
+
+        if not shift_tab:
+            self.combobox.finalize_entry()
+
     def _handle_keyrelease(self, event):
         """Handle key release events for navigation and selection."""
         # Filter out shift key releases
         if event.keysym in ("Shift_L", "Shift_R"):
             return
 
-        if event.keysym in ("Escape", "Return"):
+        elif event.keysym == "Return":
+            self.combobox.finalize_entry()
+            return
+        elif event.keysym == "Escape":
             self.combobox.master.withdraw()
             return
 
@@ -517,6 +528,7 @@ class ComboboxEventHandler:
         self.combobox.configure(postcommand=self._on_postcommand)
         self.combobox.bind("<KeyPress-Down>", self._on_down_key)
         self.combobox.bind("<KeyPress-Up>", self._on_up_key)
+        self.combobox.bind("<KeyPress-Tab>", self._on_tab)
         self.combobox.bind("<KeyRelease>", self._handle_keyrelease)
         self.combobox.bind("<<ComboboxSelected>>", self._on_selection)
 
@@ -556,6 +568,8 @@ class NicknameCombobox(ttk.Combobox):
         # Event handler will be initialized after autocomplete is set up
         self.item_navigation_callback = None
 
+        self.finalizing = False
+
     # Public API methods
 
     def finalize_selection(self):
@@ -574,7 +588,7 @@ class NicknameCombobox(ttk.Combobox):
         else:
             return current_text
 
-    def is_possible_address_or_literal(self, search_text):
+    def is_possible_address_or_literal(self, search_text, strict=False):
         """
         Check if the input is a valid address or a supported literal value.
 
@@ -587,6 +601,7 @@ class NicknameCombobox(ttk.Combobox):
 
         Args:
             input_text (str): The input to check
+            strict: Only return True if a valid address or literal (eg C1, not just C)
 
         Returns:
             bool: True if the input is a valid address or numeric value, False otherwise
@@ -603,27 +618,63 @@ class NicknameCombobox(ttk.Combobox):
         if search_text.startswith("'"):
             return True
 
-        # Check against all prefixes
         for prefix in DATA_TYPES.keys():
             prefix = prefix.lower()
+            prefix_len = len(prefix)
+            search_len = len(search_text)
+            search_text_lower = search_text.lower()
 
             # Case 1: Input is a prefix of the full prefix (e.g., "C" or "CT" for "CTD")
-            if prefix.startswith(search_text):
+            if not strict and prefix_len >= search_len and prefix[:search_len] == search_text:
                 return True
 
             # Case 2: Input starts with the complete prefix and remainder is digits
             if (
-                search_text.startswith(prefix)
-                and len(search_text) > len(prefix)
-                and search_text[len(prefix) :].isdigit()
+                search_len > prefix_len
+                and search_text_lower[:prefix_len] == prefix
+                and search_text_lower[prefix_len:].isdigit()
             ):
                 return True
 
-            # Case 3: Input is exactly the prefix
-            if search_text == prefix:
-                return True
-
         return False
+
+    def finalize_entry(self):
+        """Finalize the entry selection and notify the callback.
+
+        Processes the current selection or input text in the following priority order:
+        1. If the search text is a valid address/literal (strict check)
+        2. If there's only one result
+        3. If an item is selected but not focussed yet from the list
+        4. Falls back to the raw input text if none of the above apply
+
+        After processing, hides the master window.
+        """
+        self.finalizing = True
+        search_text = self.get_search_text()
+        values = self["values"]
+        selection = self.current()
+        selected = selection != -1
+
+        if not self.selection_callback:
+            return
+
+        # Priority 1: Valid address/literal takes precedence
+        if self.is_possible_address_or_literal(search_text, strict=True):
+            self.selection_callback(search_text)
+
+        # Priority 2: Single result with no explicit selection
+        elif not selected and len(values) == 1:
+            self.selection_callback(values[0])
+
+        # Priority 3: Highlighted but not focussed from dropdown (since entry has focus)
+        elif selected:
+            self.selection_callback(values[selection])
+
+        # Fallback: Use raw input text
+        else:
+            self.selection_callback(self.get())
+
+        self.master.withdraw()
 
     def set_data_provider(self, provider_func: Callable[[str], tuple[list[str], bool]]) -> None:
         """

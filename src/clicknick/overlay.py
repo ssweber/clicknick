@@ -9,12 +9,6 @@ from .shared_ahk import AHK
 class Overlay(tk.Toplevel):
     """Overlay for nickname selection."""
 
-    def _input_current_text(self):
-        """Input whatever is currently in the combobox."""
-        current_text = self.combobox.get().strip()
-        if self.combobox.selection_callback:
-            self.combobox.selection_callback(current_text)
-
     def _get_search_text(self):
         """Extract the actual search text, accounting for any selection"""
         current_text = self.combobox.get()
@@ -100,7 +94,7 @@ class Overlay(tk.Toplevel):
         If the nickname corresponds to an address, insert that address.
         Otherwise, pass on the text.
         """
-        self._processing_selection = True
+        self.combobox.finalizing = True
 
         # First check if it's a known nickname
         address = self.nickname_manager.get_address_for_nickname(nickname)
@@ -122,16 +116,6 @@ class Overlay(tk.Toplevel):
         self.combobox.set_item_navigation_callback(self._on_nickname_navigation)
         self.combobox.set_selection_callback(self._on_nickname_selected)
 
-    def _on_tab(self, event):
-        """Handle tab key to input current text before withdrawing."""
-
-        shift_tab = event.state & 0x1
-
-        if not shift_tab:
-            self._input_current_text()
-            self._processing_selection = True
-        self.withdraw()
-
     def _on_focus_out(self, event):
         """Handle focus-out event to input current text and withdraw the popup."""
         try:
@@ -147,7 +131,7 @@ class Overlay(tk.Toplevel):
                 return
 
             # Input current text before withdrawing
-            if not self._processing_selection:
+            if not self.combobox.finalizing:
                 self._input_search_text()
 
             # Small delay to allow for potential click actions to complete
@@ -169,7 +153,6 @@ class Overlay(tk.Toplevel):
         # Setup focus bindings
         self.bind("<FocusOut>", self._on_focus_out)
         self.combobox.bind("<FocusOut>", self._on_focus_out)
-        self.bind("<KeyPress-Tab>", self._on_tab)
 
     def __init__(self, root, nickname_manager):
         super().__init__(root)
@@ -193,7 +176,7 @@ class Overlay(tk.Toplevel):
         self.allowed_types = []
 
         self._debounce_retrigger = False
-        self._processing_selection = False
+        self.combobox.finalizing = False
 
         self._setup_bindings()
 
@@ -309,7 +292,7 @@ class Overlay(tk.Toplevel):
         if not self.combobox or not allowed_types or self._debounce_retrigger:
             return
 
-        self._processing_selection = False
+        self.combobox.finalizing = False
 
         # Store allowed types for the data provider
         self.allowed_types = allowed_types
