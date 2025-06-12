@@ -524,7 +524,7 @@ class ClickNickApp:
             else:
                 self._update_status(f"✗ {filename} - DB failed", "error")
         else:
-            self._update_status("✓ Ready ⏳ Waiting for Start", "waiting")
+            self._update_status("✓ Ready ⏳ File → Load Nicknames to Start", "waiting")
 
     def _handle_popup_window(self, window_id, window_class, edit_control):
         """Handle the detected popup window by showing or updating the nickname popup."""
