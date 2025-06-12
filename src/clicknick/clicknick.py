@@ -84,7 +84,7 @@ class ClickNickApp:
 
         # Refresh button with icon-like text
         refresh_button = ttk.Button(
-            selection_frame, text="🔄", width=3, command=self.refresh_click_instances
+            selection_frame, text="⟳", width=3, command=self.refresh_click_instances
         )
         self.start_button = ttk.Button(
             selection_frame, text="▶ Start", command=self.toggle_monitoring
@@ -197,7 +197,7 @@ class ClickNickApp:
         )
 
         # Placeholder text logic
-        placeholder_text = "Separate terms with commas (e.g., test, temp)"
+        placeholder_text = AppSettings.EXCLUDE_PLACEHOLDER_TEXT
 
         def on_entry_focus_in(event):
             if exclude_entry.get() == placeholder_text:

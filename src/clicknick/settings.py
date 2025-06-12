@@ -5,6 +5,8 @@ from dataclasses import dataclass
 @dataclass
 class AppSettings:
     """Application settings and configuration."""
+    
+    EXCLUDE_PLACEHOLDER_TEXT = "txt1, txt2, txt3"
 
     def __init__(self):
         self.search_var = tk.StringVar(value="contains")
@@ -26,7 +28,7 @@ class AppSettings:
     def get_exclude_terms_list(self) -> list[str]:
         """Parse exclude terms, handling placeholder text."""
         exclude_terms = self.exclude_terms
-        if exclude_terms == "name1, name2, name3":
+        if exclude_terms == AppSettings.EXCLUDE_PLACEHOLDER_TEXT:
             return []
         return [term.strip().lower() for term in exclude_terms.split(",") if term.strip()]
 
