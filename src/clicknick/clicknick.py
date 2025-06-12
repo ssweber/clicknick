@@ -40,6 +40,7 @@ class ClickNickApp:
         self.selected_instance_var = tk.StringVar()  # Add this line
         self.click_instances = []  # Will store (id, title, filename) tuples
         self.using_database = False  # Flag to track if database is being used
+        self._odbc_warning_shown = False
 
     def _setup_styles(self):
         """Configure ttk styles for the application."""
@@ -287,17 +288,6 @@ class ClickNickApp:
         # Initial refresh of Click instances
         self.refresh_click_instances()
 
-    def _show_odbc_warning(self):
-        """Show a warning dialog about missing ODBC drivers."""
-        OdbcWarningDialog(self.root)
-
-    def _check_odbc_drivers_and_warn(self):
-        """Check for ODBC drivers and show warning if none available."""
-        if not self.nickname_manager.has_access_driver():
-            self._show_odbc_warning()
-            return False
-        return True
-
     def __init__(self):
         # Create main window
         self.root = tk.Tk()
@@ -365,11 +355,19 @@ class ClickNickApp:
         # Show the window after everything is created
         self.root.deiconify()
 
-        # Check for ODBC drivers and warn if missing
-        self.root.after(1000, self._check_odbc_drivers_and_warn)  # Delay to show after UI loads
-
         # Combobox overlay (initialized when needed)
         self.overlay = None
+
+    def _show_odbc_warning(self):
+        """Show a warning dialog about missing ODBC drivers."""
+        OdbcWarningDialog(self.root)
+
+    def _check_odbc_drivers_and_warn(self):
+        """Check for ODBC drivers and show warning if none available."""
+        if not self.nickname_manager.has_access_driver():
+            self._show_odbc_warning()
+            return False
+        return True
 
     def _update_status(self, message, style="normal"):
         """Update status message with appropriate style."""
@@ -452,8 +450,10 @@ class ClickNickApp:
 
         # Check if ODBC drivers are available
         if not self.nickname_manager.has_access_driver():
-            self._update_status("✗ Error: No Microsoft Access ODBC drivers installed", "error")
-            self._show_odbc_warning()
+            self._update_status("⏹ Stopped - Use File → Load Nicknames... to Start", "status")
+            if not self._odbc_warning_shown:
+                self._show_odbc_warning()
+                self._odbc_warning_shown = True
             return
 
         # Clear the CSV path to indicate we're using the database
@@ -593,7 +593,7 @@ class ClickNickApp:
         except Exception as e:
             self._update_status(f"✗ Monitoring failed: {str(e)}", "error")
             return False
-        
+
     def _update_status_monitoring(self):
         """Update Status and Button to reflect Monitoring"""
         self._update_status(f"⚡ Monitoring {self.connected_click_filename}", "connected")
