@@ -66,12 +66,6 @@ class ClickNickApp:
         )
 
         style.configure(
-            "Waiting.TLabel",
-            foreground="#E64A19",  # Deep Orange 700
-            font=bold_font,
-        )
-
-        style.configure(
             "Error.TLabel",
             foreground="#D32F2F",  # Red 700 (Material error color)
             font=bold_font,
@@ -384,8 +378,6 @@ class ClickNickApp:
             self.status_label.configure(style="Error.TLabel")
         elif style == "connected":
             self.status_label.configure(style="Connected.TLabel")
-        elif style == "waiting":
-            self.status_label.configure(style="Waiting.TLabel")
         else:
             self.status_label.configure(style="Status.TLabel")
 
