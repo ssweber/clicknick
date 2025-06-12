@@ -70,21 +70,24 @@ class ClickNickApp:
     def _create_click_instances_section(self, parent):
         """Create the Click.exe instances section."""
         instances_frame = ttk.LabelFrame(
-            parent, text="Click PLC Instances", padding="10"
+            parent, text="ClickPLC Windows", padding="10"
         )  # Reduce from 15 to 10
 
         # Create frame for combobox and refresh button
         selection_frame = ttk.Frame(instances_frame)
 
         # Instance selection combobox
-        instance_label = ttk.Label(selection_frame, text="Select Instance:")
+        instance_label = ttk.Label(selection_frame, text="Select Window:")
         self.instances_combobox = ttk.Combobox(
-            selection_frame, textvariable=self.selected_instance_var, state="readonly", width=50
+            selection_frame, textvariable=self.selected_instance_var, state="readonly", width=30
         )
 
         # Refresh button with icon-like text
         refresh_button = ttk.Button(
             selection_frame, text="⟳", width=3, command=self.refresh_click_instances
+        )
+        self.start_button = ttk.Button(
+            selection_frame, text="Start ▶", command=self.toggle_monitoring
         )
 
         # Bind combobox selection to auto-connect
@@ -96,8 +99,16 @@ class ClickNickApp:
             side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8)
         )  # Reduce from 10 to 8
         refresh_button.pack(side=tk.RIGHT)
+        self.start_button.pack(side=tk.RIGHT)
 
         selection_frame.pack(fill=tk.X)  # Remove pady
+
+        self.status_label = ttk.Label(
+            instances_frame, textvariable=self.status_var, style="Status.TLabel"
+        )
+
+        # Layout widgets
+        self.status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # Pack the main frame
         instances_frame.pack(fill=tk.X, pady=(0, 12))  # Reduce from 15 to 12
@@ -113,9 +124,7 @@ class ClickNickApp:
 
     def _create_options_section(self, parent):
         """Create the options section."""
-        options_frame = ttk.LabelFrame(
-            parent, text="Search Options", padding="10"
-        )  # Reduce from 15 to 10
+        options_frame = ttk.LabelFrame(parent, text="Search Options", padding=10)
 
         # Search mode widgets
         filter_frame = ttk.Frame(options_frame)
@@ -146,35 +155,39 @@ class ClickNickApp:
         )
 
         # Layout filter widgets
-        filter_label.pack(side=tk.LEFT, padx=(0, 8))  # Reduce from no padding to consistent 8
-        none_radio.pack(side=tk.LEFT, padx=(0, 8))  # Reduce from 5 to 8 for consistency
+        filter_label.pack(side=tk.LEFT, padx=(0, 8))
+        none_radio.pack(side=tk.LEFT, padx=(0, 8))
         prefix_radio.pack(side=tk.LEFT, padx=(0, 8))
         contains_radio.pack(side=tk.LEFT, padx=(0, 8))
-        contains_plus_radio.pack(side=tk.LEFT)  # Last item doesn't need right padding
-        filter_frame.pack(fill=tk.X, pady=(0, 8))  # Reduce from 5 to 8
+        contains_plus_radio.pack(side=tk.LEFT)
+        filter_frame.pack(fill=tk.X, pady=(0, 8))
 
-        # Add sorting option
+        # Checkbox row (Sort, Tooltips, SC/SD)
+        checkbox_frame = ttk.Frame(options_frame)  # New frame to hold checkboxes in one row
+        checkbox_frame.pack(fill=tk.X, pady=(0, 6))
+
+        # Sort A-Z checkbox
         sort_check = ttk.Checkbutton(
-            options_frame,
-            text="Sort by Nickname (alphabetically)",
+            checkbox_frame,
+            text="Sort A→Z",
             variable=self.settings.sort_by_nickname_var,
             command=self._on_sort_option_changed,
         )
-        sort_check.pack(anchor=tk.W, pady=(0, 6))  # Add consistent spacing
+        sort_check.pack(side=tk.LEFT, padx=(0, 8))
 
-        # Info tooltip checkbox
+        # Tooltip checkbox
         tooltip_check = ttk.Checkbutton(
-            options_frame,
-            text="Show Nickname tooltips",
+            checkbox_frame,
+            text="Show Tooltips",
             variable=self.settings.show_info_tooltip_var,
         )
-        tooltip_check.pack(anchor=tk.W, pady=(0, 6))
+        tooltip_check.pack(side=tk.LEFT, padx=(0, 8))
 
         # SC/SD exclusion checkbox
         sc_sd_check = ttk.Checkbutton(
-            options_frame, text="Exclude SC/SD Addresses", variable=self.settings.exclude_sc_sd_var
+            checkbox_frame, text="Exclude SC/SD Addresses", variable=self.settings.exclude_sc_sd_var
         )
-        sc_sd_check.pack(anchor=tk.W, pady=(0, 6))  # Remove padx, standardize pady
+        sc_sd_check.pack(side=tk.LEFT)
 
         # Exclude nicknames containing entry
         exclude_frame_entry = ttk.Frame(options_frame)
@@ -183,10 +196,9 @@ class ClickNickApp:
             exclude_frame_entry, textvariable=self.settings.exclude_nicknames_var
         )
 
-        # Add placeholder text
+        # Placeholder text logic
         placeholder_text = "name1, name2, name3"
 
-        # Functions to handle placeholder behavior
         def on_entry_focus_in(event):
             if exclude_entry.get() == placeholder_text:
                 self.settings.exclude_nicknames_var.set("")
@@ -197,38 +209,19 @@ class ClickNickApp:
                 self.settings.exclude_nicknames_var.set(placeholder_text)
                 exclude_entry.config(foreground="gray")
 
-        # Initialize with placeholder if empty
         if not self.settings.exclude_nicknames_var.get():
             self.settings.exclude_nicknames_var.set(placeholder_text)
             exclude_entry.config(foreground="gray")
 
-        # Bind focus events
         exclude_entry.bind("<FocusIn>", on_entry_focus_in)
         exclude_entry.bind("<FocusOut>", on_entry_focus_out)
 
-        exclude_label.pack(side=tk.LEFT, padx=(0, 8))  # Reduce from 5 to 8, remove left padding
-        exclude_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)  # Remove padx
-        exclude_frame_entry.pack(fill=tk.X)  # Remove padx and pady
+        exclude_label.pack(side=tk.LEFT, padx=(0, 8))
+        exclude_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        exclude_frame_entry.pack(fill=tk.X, pady=(0, 6))
 
         # Pack the main frame
-        options_frame.pack(fill=tk.X, pady=(0, 12))  # Reduce from 5 to 12 for consistency
-
-    def _create_status_section(self, parent):
-        """Create the status and control section."""
-        status_frame = ttk.Frame(parent)
-
-        # Create widgets
-        self.status_label = ttk.Label(
-            status_frame, textvariable=self.status_var, style="Status.TLabel"
-        )
-        self.start_button = ttk.Button(status_frame, text="Start", command=self.toggle_monitoring)
-
-        # Layout widgets
-        self.status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.start_button.pack(side=tk.RIGHT)
-
-        # Pack the frame
-        status_frame.pack(fill=tk.X, pady=(8, 0))  # Reduce from 10 to 8, only top padding
+        options_frame.pack(fill=tk.X, pady=(0, 12))
 
     def _create_about_dialog(self):
         """Create and show the About dialog."""
@@ -271,7 +264,6 @@ class ClickNickApp:
         # Create all widgets
         self._create_click_instances_section(main_frame)
         self._create_options_section(main_frame)
-        self._create_status_section(main_frame)
 
         # Pack the main frame
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -377,7 +369,7 @@ class ClickNickApp:
             click_instances = self.detector.get_click_instances()
 
             if not click_instances:
-                self._update_status("No Click instances found", "error")
+                self._update_status("No ClickPLC windows found", "error")
                 return
 
             # Update instance data
@@ -431,7 +423,7 @@ class ClickNickApp:
     def load_from_database(self):
         """Load nicknames directly from the CLICK database."""
         if not self.connected_click_pid:
-            self._update_status("Error: Not connected to Click instance", "error")
+            self._update_status("Error: Not connected to ClickPLC window", "error")
             return
 
         # Check if ODBC drivers are available
@@ -537,7 +529,7 @@ class ClickNickApp:
 
         # Check if connected Click.exe still exists
         if not self.detector.check_window_exists(self.connected_click_pid):
-            self._update_status("Connected Click instance closed", "error")
+            self._update_status("Connected ClickPLC window closed", "error")
             self.stop_monitoring()
             return
 
@@ -585,7 +577,7 @@ class ClickNickApp:
 
         # Validate connection to Click instance
         if not self.connected_click_pid:
-            self._update_status("Error: Not connected to Click instance", "error")
+            self._update_status("Error: Not connected to ClickPLC window", "error")
             return
 
         # Start monitoring using after
@@ -594,7 +586,7 @@ class ClickNickApp:
 
         # Update UI
         self._update_status(f"Monitoring active for {self.connected_click_filename}", "connected")
-        self.start_button.configure(text="Stop")
+        self.start_button.configure(text="Stop ■")
 
     def stop_monitoring(self):
         """Stop monitoring."""
@@ -611,7 +603,7 @@ class ClickNickApp:
             self.overlay = None
 
         self._update_status("Monitoring stopped", "status")
-        self.start_button.configure(text="Start")
+        self.start_button.configure(text="Start ▶")
 
     def toggle_monitoring(self):
         """Start or stop monitoring."""
