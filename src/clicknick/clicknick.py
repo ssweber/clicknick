@@ -51,9 +51,9 @@ class ClickNickApp:
 
         # Status label styles
         style.configure("Status.TLabel", foreground="blue")
-        style.configure("Ready.TLabel", foreground="blue")
-        style.configure("Error.TLabel", foreground="red")
-        style.configure("Connected.TLabel", foreground="green")
+        style.configure("Ready.TLabel", foreground="#2E7D32")  # Green
+        style.configure("Error.TLabel", foreground="#C62828")  # Red
+        style.configure("Connected.TLabel", foreground="#1565C0")  # Blue
 
     def _on_instance_selected(self, event=None):
         """Handle instance selection from combobox."""
@@ -84,10 +84,10 @@ class ClickNickApp:
 
         # Refresh button with icon-like text
         refresh_button = ttk.Button(
-            selection_frame, text="⟳", width=3, command=self.refresh_click_instances
+            selection_frame, text="🔄", width=3, command=self.refresh_click_instances
         )
         self.start_button = ttk.Button(
-            selection_frame, text="Start ▶", command=self.toggle_monitoring
+            selection_frame, text="▶ Start", command=self.toggle_monitoring
         )
 
         # Bind combobox selection to auto-connect
@@ -197,7 +197,7 @@ class ClickNickApp:
         )
 
         # Placeholder text logic
-        placeholder_text = "name1, name2, name3"
+        placeholder_text = "Separate terms with commas (e.g., test, temp)"
 
         def on_entry_focus_in(event):
             if exclude_entry.get() == placeholder_text:
@@ -586,7 +586,7 @@ class ClickNickApp:
 
         # Update UI
         self._update_status(f"Monitoring active for {self.connected_click_filename}", "connected")
-        self.start_button.configure(text="Stop ■")
+        self.start_button.configure(text="⏹ Stop")
 
     def stop_monitoring(self):
         """Stop monitoring."""
@@ -603,7 +603,7 @@ class ClickNickApp:
             self.overlay = None
 
         self._update_status("Monitoring stopped", "status")
-        self.start_button.configure(text="Start ▶")
+        self.start_button.configure(text="▶ Start")
 
     def toggle_monitoring(self):
         """Start or stop monitoring."""
