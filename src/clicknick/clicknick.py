@@ -573,8 +573,8 @@ class ClickNickApp:
         # Schedule next check
         self.monitor_task_id = self.root.after(100, self._monitor_task)
 
-    def start_monitoring(self):
-        """Start monitoring for window changes."""
+    def _start_monitoring_internal(self):
+        """Internal method to start monitoring without status updates."""
         # Check if we have nicknames loaded (either from CSV or database)
         if not self.nickname_manager.is_loaded:
             csv_path = self.csv_path_var.get()
@@ -605,7 +605,19 @@ class ClickNickApp:
         self.monitoring = True
         self._monitor_task()
 
-        # Update UI
+    def start_monitoring(self):
+        """Start monitoring with delayed status update."""
+        self._start_monitoring_internal()
+        # Schedule status update after 1 second
+        self.root.after(1000, lambda: self._update_status(
+            f"⚡ Monitoring {self.connected_click_filename}", 
+            "connected"
+        ))
+
+    def button_start_monitoring(self):
+        """Start monitoring with immediate status update."""
+        self._start_monitoring_internal()
+        # Immediate status update
         self._update_status(f"⚡ Monitoring {self.connected_click_filename}", "connected")
         self.start_button.configure(text="⏹ Stop")
 
@@ -631,7 +643,7 @@ class ClickNickApp:
         if self.monitoring:
             self.stop_monitoring()
         else:
-            self.start_monitoring()
+            self.button_start_monitoring()
 
     def open_url(self, url):
         """Open URL in default browser."""
