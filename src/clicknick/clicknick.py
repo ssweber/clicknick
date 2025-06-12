@@ -428,7 +428,7 @@ class ClickNickApp:
             # Apply user's sorting preference
             self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
-            self._update_status("✓ CSV loaded | Waiting for Start", "waiting")
+            self._update_status("✓ CSV loaded ⏳ Waiting for Start", "waiting")
             self.using_database = False
 
             # Auto-start monitoring if connected and not already started
@@ -472,7 +472,7 @@ class ClickNickApp:
             # Apply user's sorting preference
             self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
-            self._update_status("✓ DB loaded | Waiting for Start", "waiting")
+            self._update_status("✓ DB loaded ⏳ Waiting for Start", "waiting")
             self.using_database = True
 
             # Auto-start monitoring if not already started
@@ -519,12 +519,12 @@ class ClickNickApp:
             if success:
                 # Apply user's sorting preference
                 self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
-                self._update_status(f"✓ {filename} | Waiting for Start", "waiting")
+                self._update_status(f"✓ {filename} ⏳ Waiting for Start", "waiting")
                 self.using_database = True
             else:
                 self._update_status(f"✗ {filename} - DB failed", "error")
         else:
-            self._update_status("✓ Ready | Waiting for Start", "waiting")
+            self._update_status("✓ Ready ⏳ Waiting for Start", "waiting")
 
     def _handle_popup_window(self, window_id, window_class, edit_control):
         """Handle the detected popup window by showing or updating the nickname popup."""
