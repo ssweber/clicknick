@@ -500,8 +500,9 @@ class ClickNickApp:
         self.connected_click_title = title
         self.connected_click_filename = filename
 
-        # Update status
-        self._update_status(f"⚡ {filename}", "connected")
+#         # Update status
+#         'here'
+#         self._update_status(f"⚡ {filename}", "connected")
 
         # Try to load nicknames from database automatically only if ODBC drivers are available
         if self.nickname_manager.has_access_driver():
@@ -610,22 +611,23 @@ class ClickNickApp:
         except Exception as e:
             self._update_status(f"✗ Monitoring failed: {str(e)}", "error")
             return False
+        
+    def _update_status_monitoring(self):
+        """Update Status and Button to reflect Monitoring"""
+        self._update_status(f"⚡ Monitoring {self.connected_click_filename}", "connected")
+        self.start_button.configure(text="⏹ Stop")
 
     def start_monitoring(self):
         """Start monitoring with delayed status update."""
         if self._start_monitoring_internal():
             # Only schedule status update if successful
-            self.root.after(1000, lambda: self._update_status(
-                f"⚡ Monitoring {self.connected_click_filename}", 
-                "connected"
-            ))
+            self.root.after(1000, lambda: self._update_status_monitoring())
 
     def button_start_monitoring(self):
         """Start monitoring with immediate status update."""
         if self._start_monitoring_internal():
             # Only update UI if successful
-            self._update_status(f"⚡ Monitoring {self.connected_click_filename}", "connected")
-            self.start_button.configure(text="⏹ Stop")
+            self._update_status_monitoring()
 
     def stop_monitoring(self):
         """Stop monitoring."""
