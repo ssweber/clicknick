@@ -500,26 +500,8 @@ class ClickNickApp:
         self.connected_click_title = title
         self.connected_click_filename = filename
 
-#         # Update status
-#         'here'
-#         self._update_status(f"⚡ {filename}", "connected")
-
-        # Try to load nicknames from database automatically only if ODBC drivers are available
-        if self.nickname_manager.has_access_driver():
-            # Now load from the NEW instance's database
-            success = self.nickname_manager.load_from_database(
-                click_pid=self.connected_click_pid,
-                click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
-            )
-
-            if success:
-                self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
-                self.using_database = True
-                self.start_monitoring()
-            else:
-                self._update_status(f"✗ {filename} - DB failed", "error")
-        else:
-            self._update_status("⏹ Stopped - Use File → Load Nicknames... to Start", "status")
+        # Use centralized database loading method
+        self.load_from_database()
 
     def _handle_popup_window(self, window_id, window_class, edit_control):
         """Handle the detected popup window by showing or updating the nickname popup."""
