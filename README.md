@@ -20,7 +20,9 @@ Context-aware nickname autocomplete for ClickPLC instruction windows.
   - Exclude addresses based on custom naming conventions (e.g., omit nicknames containing double underscores `__` if you use them for private or internal variables).  
 - **Non-Intrusive**: Works alongside Click PLC without modifications
 
-![ClickNick App Main Window](https://github.com/user-attachments/assets/06325e08-d302-483c-9376-e29a07992f97)
+![ClickNick App Main Window](https://github.com/user-attachments/assets/5d40e719-5aa8-4bfd-a2f7-56b255ff0a04)
+
+
 
 ## How to Run
 > [!NOTE]
