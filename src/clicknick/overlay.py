@@ -41,6 +41,8 @@ class Overlay(tk.Toplevel):
             # Set the text to the end (like you typed it)
             AHK.call("ControlEnd", self.target_edit_control, f"ahk_id {self.target_window_id}")
             AHK.call("WinActivate", f"ahk_id {self.target_window_id}")
+            if self.target_window_class == "TfrmTagDB":
+                AHK.call("Send","{Enter}")
         except Exception as e:
             print(f"Error inserting text: {e}")
 
