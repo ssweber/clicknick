@@ -5,7 +5,7 @@ from dataclasses import dataclass
 @dataclass
 class AppSettings:
     """Application settings and configuration."""
-    
+
     EXCLUDE_PLACEHOLDER_TEXT = "txt1, txt2, txt3"
 
     def __init__(self):

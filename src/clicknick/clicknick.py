@@ -1,7 +1,7 @@
 import os
 import tkinter as tk
 from ctypes import windll
-from tkinter import filedialog, ttk, font
+from tkinter import filedialog, font, ttk
 
 from .dialogs import AboutDialog, OdbcWarningDialog
 from .filters import (  # preserve lru_cache
@@ -53,21 +53,29 @@ class ClickNickApp:
         bold_font = (self._default_family, self._default_size, "bold")  # Only add 'bold'
 
         # Configure all label styles with icons and consistent font
-        style.configure("Status.TLabel", 
-                        foreground="#64B5F6",  # Blue 300 (lighter than Connected)
-                        font=bold_font,)
+        style.configure(
+            "Status.TLabel",
+            foreground="#64B5F6",  # Blue 300 (lighter than Connected)
+            font=bold_font,
+        )
 
-        style.configure("Connected.TLabel", 
-                        foreground="#1976D2",  # Blue 700 (standard "connected" in Material)
-                        font=bold_font,)
+        style.configure(
+            "Connected.TLabel",
+            foreground="#1976D2",  # Blue 700 (standard "connected" in Material)
+            font=bold_font,
+        )
 
-        style.configure("Waiting.TLabel", 
-                        foreground="#E64A19",  # Deep Orange 700
-                        font=bold_font)
+        style.configure(
+            "Waiting.TLabel",
+            foreground="#E64A19",  # Deep Orange 700
+            font=bold_font,
+        )
 
-        style.configure("Error.TLabel", 
-                        foreground="#D32F2F",  # Red 700 (Material error color)
-                        font=bold_font,)
+        style.configure(
+            "Error.TLabel",
+            foreground="#D32F2F",  # Red 700 (Material error color)
+            font=bold_font,
+        )
 
     def _on_instance_selected(self, event=None):
         """Handle instance selection from combobox."""
@@ -300,7 +308,7 @@ class ClickNickApp:
         # Create main window
         self.root = tk.Tk()
         self.root.title("ClickNick App")
-        
+
         # Define your base font (family, size, weight)
         self._default_font = font.nametofont("TkDefaultFont")
         self._default_family = self._default_font.cget("family")
