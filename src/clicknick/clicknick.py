@@ -40,6 +40,7 @@ class ClickNickApp:
         self.selected_instance_var = tk.StringVar()  # Add this line
         self.click_instances = []  # Will store (id, title, filename) tuples
         self.using_database = False  # Flag to track if database is being used
+        self._odbc_warning_shown = False
 
     def _setup_styles(self):
         """Configure ttk styles for the application."""
@@ -62,12 +63,6 @@ class ClickNickApp:
         style.configure(
             "Connected.TLabel",
             foreground="#1976D2",  # Blue 700 (standard "connected" in Material)
-            font=bold_font,
-        )
-
-        style.configure(
-            "Waiting.TLabel",
-            foreground="#E64A19",  # Deep Orange 700
             font=bold_font,
         )
 
@@ -293,17 +288,6 @@ class ClickNickApp:
         # Initial refresh of Click instances
         self.refresh_click_instances()
 
-    def _show_odbc_warning(self):
-        """Show a warning dialog about missing ODBC drivers."""
-        OdbcWarningDialog(self.root)
-
-    def _check_odbc_drivers_and_warn(self):
-        """Check for ODBC drivers and show warning if none available."""
-        if not self.nickname_manager.has_access_driver():
-            self._show_odbc_warning()
-            return False
-        return True
-
     def __init__(self):
         # Create main window
         self.root = tk.Tk()
@@ -371,11 +355,19 @@ class ClickNickApp:
         # Show the window after everything is created
         self.root.deiconify()
 
-        # Check for ODBC drivers and warn if missing
-        self.root.after(1000, self._check_odbc_drivers_and_warn)  # Delay to show after UI loads
-
         # Combobox overlay (initialized when needed)
         self.overlay = None
+
+    def _show_odbc_warning(self):
+        """Show a warning dialog about missing ODBC drivers."""
+        OdbcWarningDialog(self.root)
+
+    def _check_odbc_drivers_and_warn(self):
+        """Check for ODBC drivers and show warning if none available."""
+        if not self.nickname_manager.has_access_driver():
+            self._show_odbc_warning()
+            return False
+        return True
 
     def _update_status(self, message, style="normal"):
         """Update status message with appropriate style."""
@@ -384,8 +376,6 @@ class ClickNickApp:
             self.status_label.configure(style="Error.TLabel")
         elif style == "connected":
             self.status_label.configure(style="Connected.TLabel")
-        elif style == "waiting":
-            self.status_label.configure(style="Waiting.TLabel")
         else:
             self.status_label.configure(style="Status.TLabel")
 
@@ -436,12 +426,9 @@ class ClickNickApp:
             # Apply user's sorting preference
             self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
-            self._update_status("✓ CSV loaded ⏳ Waiting for Start", "waiting")
+            self._update_status("✓ CSV loaded", "connected")
             self.using_database = False
-
-            # Auto-start monitoring if connected and not already started
-            if self.connected_click_pid and not self.monitoring:
-                self.start_monitoring()
+            self.start_monitoring()
         else:
             self._update_status("✗ CSV load failed", "error")
 
@@ -463,8 +450,10 @@ class ClickNickApp:
 
         # Check if ODBC drivers are available
         if not self.nickname_manager.has_access_driver():
-            self._update_status("✗ Error: No Microsoft Access ODBC drivers installed", "error")
-            self._show_odbc_warning()
+            self._update_status("⏹ Stopped - Use File → Load Nicknames... to Start", "status")
+            if not self._odbc_warning_shown:
+                self._show_odbc_warning()
+                self._odbc_warning_shown = True
             return
 
         # Clear the CSV path to indicate we're using the database
@@ -480,12 +469,10 @@ class ClickNickApp:
             # Apply user's sorting preference
             self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
-            self._update_status("✓ DB loaded ⏳ Waiting for Start", "waiting")
+            self._update_status("✓ DB loaded", "connected")
             self.using_database = True
 
-            # Auto-start monitoring if not already started
-            if not self.monitoring:
-                self.start_monitoring()
+            self.start_monitoring()
         else:
             self._update_status("✗ DB load failed", "error")
             self.using_database = False
@@ -513,26 +500,8 @@ class ClickNickApp:
         self.connected_click_title = title
         self.connected_click_filename = filename
 
-        # Update status
-        self._update_status(f"⚡ {filename}", "connected")
-
-        # Try to load nicknames from database automatically only if ODBC drivers are available
-        if self.nickname_manager.has_access_driver():
-            # Now load from the NEW instance's database
-            success = self.nickname_manager.load_from_database(
-                click_pid=self.connected_click_pid,
-                click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
-            )
-
-            if success:
-                # Apply user's sorting preference
-                self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
-                self._update_status(f"✓ {filename} ⏳ Waiting for Start", "waiting")
-                self.using_database = True
-            else:
-                self._update_status(f"✗ {filename} - DB failed", "error")
-        else:
-            self._update_status("✓ Ready ⏳ File → Load Nicknames to Start", "waiting")
+        # Use centralized database loading method
+        self.load_from_database()
 
     def _handle_popup_window(self, window_id, window_class, edit_control):
         """Handle the detected popup window by showing or updating the nickname popup."""
@@ -587,8 +556,9 @@ class ClickNickApp:
         # Schedule next check
         self.monitor_task_id = self.root.after(100, self._monitor_task)
 
-    def start_monitoring(self):
-        """Start monitoring for window changes."""
+    def _start_monitoring_internal(self) -> bool:
+        """Internal method to start monitoring without status updates.
+        Returns True if successful, False otherwise."""
         # Check if we have nicknames loaded (either from CSV or database)
         if not self.nickname_manager.is_loaded:
             csv_path = self.csv_path_var.get()
@@ -596,7 +566,7 @@ class ClickNickApp:
                 # Load from CSV
                 if not self.nickname_manager.load_csv(csv_path):
                     self._update_status("✗ Error: Failed to load CSV", "error")
-                    return
+                    return False
                 # Apply sorting preference
                 self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
             else:
@@ -605,23 +575,41 @@ class ClickNickApp:
                     click_pid=self.connected_click_pid,
                     click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
                 ):
-                    self._update_status("✗ No nicknames", "error")
-                    return
+                    self._update_status("✗ No nicknames loaded", "error")
+                    return False
                 # Apply sorting preference
                 self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
         # Validate connection to Click instance
         if not self.connected_click_pid:
             self._update_status("✗ Error: Not connected to ClickPLC window", "error")
-            return
+            return False
 
         # Start monitoring using after
-        self.monitoring = True
-        self._monitor_task()
+        try:
+            self.monitoring = True
+            self._monitor_task()
+            return True
+        except Exception as e:
+            self._update_status(f"✗ Monitoring failed: {str(e)}", "error")
+            return False
 
-        # Update UI
+    def _update_status_monitoring(self):
+        """Update Status and Button to reflect Monitoring"""
         self._update_status(f"⚡ Monitoring {self.connected_click_filename}", "connected")
         self.start_button.configure(text="⏹ Stop")
+
+    def start_monitoring(self):
+        """Start monitoring with delayed status update."""
+        if self._start_monitoring_internal():
+            # Only schedule status update if successful
+            self.root.after(1000, lambda: self._update_status_monitoring())
+
+    def button_start_monitoring(self):
+        """Start monitoring with immediate status update."""
+        if self._start_monitoring_internal():
+            # Only update UI if successful
+            self._update_status_monitoring()
 
     def stop_monitoring(self):
         """Stop monitoring."""
@@ -645,7 +633,9 @@ class ClickNickApp:
         if self.monitoring:
             self.stop_monitoring()
         else:
-            self.start_monitoring()
+            # Only update button if start was successful
+            if self.button_start_monitoring():
+                self.start_button.configure(text="⏹ Stop")
 
     def open_url(self, url):
         """Open URL in default browser."""
