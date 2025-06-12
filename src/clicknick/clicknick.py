@@ -1,7 +1,7 @@
 import os
 import tkinter as tk
 from ctypes import windll
-from tkinter import filedialog, ttk
+from tkinter import filedialog, ttk, font
 
 from .dialogs import AboutDialog, OdbcWarningDialog
 from .filters import (  # preserve lru_cache
@@ -50,10 +50,24 @@ class ClickNickApp:
         style.configure("TLabel", padding=2)
 
         # Status label styles
-        style.configure("Status.TLabel", foreground="blue")
-        style.configure("Ready.TLabel", foreground="#2E7D32")  # Green
-        style.configure("Error.TLabel", foreground="#C62828")  # Red
-        style.configure("Connected.TLabel", foreground="#1565C0")  # Blue
+        bold_font = (self._default_family, self._default_size, "bold")  # Only add 'bold'
+
+        # Configure all label styles with icons and consistent font
+        style.configure("Status.TLabel", 
+                        foreground="#64B5F6",  # Blue 300 (lighter than Connected)
+                        font=bold_font,)
+
+        style.configure("Connected.TLabel", 
+                        foreground="#1976D2",  # Blue 700 (standard "connected" in Material)
+                        font=bold_font,)
+
+        style.configure("Waiting.TLabel", 
+                        foreground="#E64A19",  # Deep Orange 700
+                        font=bold_font)
+
+        style.configure("Error.TLabel", 
+                        foreground="#D32F2F",  # Red 700 (Material error color)
+                        font=bold_font,)
 
     def _on_instance_selected(self, event=None):
         """Handle instance selection from combobox."""
@@ -286,6 +300,17 @@ class ClickNickApp:
         # Create main window
         self.root = tk.Tk()
         self.root.title("ClickNick App")
+        
+        # Define your base font (family, size, weight)
+        self._default_font = font.nametofont("TkDefaultFont")
+        self._default_family = self._default_font.cget("family")
+        self._default_size = self._default_font.cget("size")
+
+        # Create a style object
+        style = ttk.Style(self.root)
+
+        # Set the default font for all ttk widgets
+        style.configure(".", font=self._default_font)  # Applies to all widgets
 
         # Hide the window immediately
         self.root.withdraw()
@@ -351,6 +376,8 @@ class ClickNickApp:
             self.status_label.configure(style="Error.TLabel")
         elif style == "connected":
             self.status_label.configure(style="Connected.TLabel")
+        elif style == "waiting":
+            self.status_label.configure(style="Waiting.TLabel")
         else:
             self.status_label.configure(style="Status.TLabel")
 
@@ -369,7 +396,7 @@ class ClickNickApp:
             click_instances = self.detector.get_click_instances()
 
             if not click_instances:
-                self._update_status("No ClickPLC windows found", "error")
+                self._update_status("✗ No ClickPLC windows found", "error")
                 return
 
             # Update instance data
@@ -388,12 +415,12 @@ class ClickNickApp:
 
         except Exception as e:
             print(f"Error refreshing Click instances: {e}")
-            self._update_status(f"Error: {e!s}", "error")
+            self._update_status(f"✗ Error: {e!s}", "error")
 
     def load_csv(self):
         """Load nicknames from CSV file."""
         if not self.csv_path_var.get():
-            self._update_status("Error: No CSV file selected", "error")
+            self._update_status("✗ Error: No CSV file selected", "error")
             return
 
         # Try to load from CSV
@@ -401,14 +428,14 @@ class ClickNickApp:
             # Apply user's sorting preference
             self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
-            self._update_status("Loaded nicknames from CSV", "ready")
+            self._update_status("✓ Loaded nicknames from CSV | ⏳ Waiting to Start", "waiting")
             self.using_database = False
 
             # Auto-start monitoring if connected and not already started
             if self.connected_click_pid and not self.monitoring:
                 self.start_monitoring()
         else:
-            self._update_status("Failed to load from CSV", "error")
+            self._update_status("✗ Failed to load from CSV", "error")
 
     def browse_and_load_csv(self):
         """Browse for and load CSV file from menu."""
@@ -423,12 +450,12 @@ class ClickNickApp:
     def load_from_database(self):
         """Load nicknames directly from the CLICK database."""
         if not self.connected_click_pid:
-            self._update_status("Error: Not connected to ClickPLC window", "error")
+            self._update_status("✗ Error: Not connected to ClickPLC window", "error")
             return
 
         # Check if ODBC drivers are available
         if not self.nickname_manager.has_access_driver():
-            self._update_status("Error: No Microsoft Access ODBC drivers installed", "error")
+            self._update_status("✗ Error: No Microsoft Access ODBC drivers installed", "error")
             self._show_odbc_warning()
             return
 
@@ -445,14 +472,14 @@ class ClickNickApp:
             # Apply user's sorting preference
             self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
-            self._update_status("Loaded nicknames from database", "ready")
+            self._update_status("✓ Loaded from database | ⏳ Waiting to Start", "waiting")
             self.using_database = True
 
             # Auto-start monitoring if not already started
             if not self.monitoring:
                 self.start_monitoring()
         else:
-            self._update_status("Failed to load from database", "error")
+            self._update_status("✗ Failed to load from database", "error")
             self.using_database = False
 
     def connect_to_instance(self, pid, title, filename):
@@ -479,7 +506,7 @@ class ClickNickApp:
         self.connected_click_filename = filename
 
         # Update status
-        self._update_status(f"Connected to {filename}", "connected")
+        self._update_status(f"⚡Connected to {filename}", "connected")
 
         # Try to load nicknames from database automatically only if ODBC drivers are available
         if self.nickname_manager.has_access_driver():
@@ -492,12 +519,12 @@ class ClickNickApp:
             if success:
                 # Apply user's sorting preference
                 self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
-                self._update_status(f"Loaded nicknames from {filename} database", "ready")
+                self._update_status(f"✓ Loaded {filename} database | ⏳ Waiting to Start", "waiting")
                 self.using_database = True
             else:
-                self._update_status(f"Connected to {filename} - database load failed", "error")
+                self._update_status(f"✗ Connected to {filename} - database load failed", "error")
         else:
-            self._update_status("Ready. File → Load Nicknames... to begin.", "connected")
+            self._update_status("✓ Ready. | ⏳ File → Load Nicknames... to begin.", "waiting")
 
     def _handle_popup_window(self, window_id, window_class, edit_control):
         """Handle the detected popup window by showing or updating the nickname popup."""
@@ -529,7 +556,7 @@ class ClickNickApp:
 
         # Check if connected Click.exe still exists
         if not self.detector.check_window_exists(self.connected_click_pid):
-            self._update_status("Connected ClickPLC window closed", "error")
+            self._update_status("✗ Connected ClickPLC window closed", "error")
             self.stop_monitoring()
             return
 
@@ -560,7 +587,7 @@ class ClickNickApp:
             if csv_path:
                 # Load from CSV
                 if not self.nickname_manager.load_csv(csv_path):
-                    self._update_status("Error: Failed to load CSV", "error")
+                    self._update_status("✗ Error: Failed to load CSV", "error")
                     return
                 # Apply sorting preference
                 self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
@@ -570,14 +597,14 @@ class ClickNickApp:
                     click_pid=self.connected_click_pid,
                     click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
                 ):
-                    self._update_status("Error: No nickname source available", "error")
+                    self._update_status("✗ Error: No nickname source available", "error")
                     return
                 # Apply sorting preference
                 self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
         # Validate connection to Click instance
         if not self.connected_click_pid:
-            self._update_status("Error: Not connected to ClickPLC window", "error")
+            self._update_status("✗ Error: Not connected to ClickPLC window", "error")
             return
 
         # Start monitoring using after
@@ -585,7 +612,7 @@ class ClickNickApp:
         self._monitor_task()
 
         # Update UI
-        self._update_status(f"Monitoring active for {self.connected_click_filename}", "connected")
+        self._update_status(f"⚡ Monitoring active for {self.connected_click_filename}", "connected")
         self.start_button.configure(text="⏹ Stop")
 
     def stop_monitoring(self):
@@ -602,7 +629,7 @@ class ClickNickApp:
             self.overlay.withdraw()
             self.overlay = None
 
-        self._update_status("Monitoring stopped", "status")
+        self._update_status("⏹ Monitoring stopped", "status")
         self.start_button.configure(text="▶ Start")
 
     def toggle_monitoring(self):
@@ -619,7 +646,7 @@ class ClickNickApp:
         try:
             webbrowser.open(url)
         except Exception as e:
-            self._update_status(f"Could not open browser: {e}", "error")
+            self._update_status(f"✗ Could not open browser: {e}", "error")
 
     def on_closing(self):
         """Handle application shutdown."""
