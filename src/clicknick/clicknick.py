@@ -396,7 +396,7 @@ class ClickNickApp:
             click_instances = self.detector.get_click_instances()
 
             if not click_instances:
-                self._update_status("✗ No ClickPLC windows found", "error")
+                self._update_status("✗ No ClickPLC windows", "error")
                 return
 
             # Update instance data
@@ -428,14 +428,14 @@ class ClickNickApp:
             # Apply user's sorting preference
             self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
-            self._update_status("✓ Loaded nicknames from CSV | ⏳ Waiting to Start", "waiting")
+            self._update_status("✓ CSV loaded | ⏳", "waiting")
             self.using_database = False
 
             # Auto-start monitoring if connected and not already started
             if self.connected_click_pid and not self.monitoring:
                 self.start_monitoring()
         else:
-            self._update_status("✗ Failed to load from CSV", "error")
+            self._update_status("✗ CSV load failed", "error")
 
     def browse_and_load_csv(self):
         """Browse for and load CSV file from menu."""
@@ -450,7 +450,7 @@ class ClickNickApp:
     def load_from_database(self):
         """Load nicknames directly from the CLICK database."""
         if not self.connected_click_pid:
-            self._update_status("✗ Error: Not connected to ClickPLC window", "error")
+            self._update_status("✗ Not connected", "error")
             return
 
         # Check if ODBC drivers are available
@@ -472,14 +472,14 @@ class ClickNickApp:
             # Apply user's sorting preference
             self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
-            self._update_status("✓ Loaded from database | ⏳ Waiting to Start", "waiting")
+            self._update_status("✓ DB loaded | ⏳", "waiting")
             self.using_database = True
 
             # Auto-start monitoring if not already started
             if not self.monitoring:
                 self.start_monitoring()
         else:
-            self._update_status("✗ Failed to load from database", "error")
+            self._update_status("✗ DB load failed", "error")
             self.using_database = False
 
     def connect_to_instance(self, pid, title, filename):
@@ -506,7 +506,7 @@ class ClickNickApp:
         self.connected_click_filename = filename
 
         # Update status
-        self._update_status(f"⚡Connected to {filename}", "connected")
+        self._update_status(f"⚡ {filename}", "connected")
 
         # Try to load nicknames from database automatically only if ODBC drivers are available
         if self.nickname_manager.has_access_driver():
@@ -519,10 +519,10 @@ class ClickNickApp:
             if success:
                 # Apply user's sorting preference
                 self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
-                self._update_status(f"✓ Loaded {filename} database | ⏳ Waiting to Start", "waiting")
+                self._update_status(f"✓ {filename} | ⏳", "waiting")
                 self.using_database = True
             else:
-                self._update_status(f"✗ Connected to {filename} - database load failed", "error")
+                self._update_status(f"✗ {filename} - DB failed", "error")
         else:
             self._update_status("✓ Ready. | ⏳ File → Load Nicknames... to begin.", "waiting")
 
@@ -597,7 +597,7 @@ class ClickNickApp:
                     click_pid=self.connected_click_pid,
                     click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
                 ):
-                    self._update_status("✗ Error: No nickname source available", "error")
+                    self._update_status("✗ No nicknames", "error")
                     return
                 # Apply sorting preference
                 self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
@@ -612,7 +612,7 @@ class ClickNickApp:
         self._monitor_task()
 
         # Update UI
-        self._update_status(f"⚡ Monitoring active for {self.connected_click_filename}", "connected")
+        self._update_status(f"⚡ Monitoring {self.connected_click_filename}", "connected")
         self.start_button.configure(text="⏹ Stop")
 
     def stop_monitoring(self):
@@ -629,7 +629,7 @@ class ClickNickApp:
             self.overlay.withdraw()
             self.overlay = None
 
-        self._update_status("⏹ Monitoring stopped", "status")
+        self._update_status("⏹ Stopped", "status")
         self.start_button.configure(text="▶ Start")
 
     def toggle_monitoring(self):
