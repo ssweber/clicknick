@@ -573,8 +573,9 @@ class ClickNickApp:
         # Schedule next check
         self.monitor_task_id = self.root.after(100, self._monitor_task)
 
-    def _start_monitoring_internal(self):
-        """Internal method to start monitoring without status updates."""
+    def _start_monitoring_internal(self) -> bool:
+        """Internal method to start monitoring without status updates.
+        Returns True if successful, False otherwise."""
         # Check if we have nicknames loaded (either from CSV or database)
         if not self.nickname_manager.is_loaded:
             csv_path = self.csv_path_var.get()
@@ -582,7 +583,7 @@ class ClickNickApp:
                 # Load from CSV
                 if not self.nickname_manager.load_csv(csv_path):
                     self._update_status("✗ Error: Failed to load CSV", "error")
-                    return
+                    return False
                 # Apply sorting preference
                 self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
             else:
@@ -592,34 +593,39 @@ class ClickNickApp:
                     click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
                 ):
                     self._update_status("✗ No nicknames loaded", "error")
-                    return
+                    return False
                 # Apply sorting preference
                 self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
         # Validate connection to Click instance
         if not self.connected_click_pid:
             self._update_status("✗ Error: Not connected to ClickPLC window", "error")
-            return
+            return False
 
         # Start monitoring using after
-        self.monitoring = True
-        self._monitor_task()
+        try:
+            self.monitoring = True
+            self._monitor_task()
+            return True
+        except Exception as e:
+            self._update_status(f"✗ Monitoring failed: {str(e)}", "error")
+            return False
 
     def start_monitoring(self):
         """Start monitoring with delayed status update."""
-        self._start_monitoring_internal()
-        # Schedule status update after 1 second
-        self.root.after(1000, lambda: self._update_status(
-            f"⚡ Monitoring {self.connected_click_filename}", 
-            "connected"
-        ))
+        if self._start_monitoring_internal():
+            # Only schedule status update if successful
+            self.root.after(1000, lambda: self._update_status(
+                f"⚡ Monitoring {self.connected_click_filename}", 
+                "connected"
+            ))
 
     def button_start_monitoring(self):
         """Start monitoring with immediate status update."""
-        self._start_monitoring_internal()
-        # Immediate status update
-        self._update_status(f"⚡ Monitoring {self.connected_click_filename}", "connected")
-        self.start_button.configure(text="⏹ Stop")
+        if self._start_monitoring_internal():
+            # Only update UI if successful
+            self._update_status(f"⚡ Monitoring {self.connected_click_filename}", "connected")
+            self.start_button.configure(text="⏹ Stop")
 
     def stop_monitoring(self):
         """Stop monitoring."""
@@ -643,7 +649,9 @@ class ClickNickApp:
         if self.monitoring:
             self.stop_monitoring()
         else:
-            self.button_start_monitoring()
+            # Only update button if start was successful
+            if self.button_start_monitoring():
+                self.start_button.configure(text="⏹ Stop")
 
     def open_url(self, url):
         """Open URL in default browser."""
