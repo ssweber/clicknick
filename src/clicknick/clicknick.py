@@ -285,9 +285,6 @@ class ClickNickApp:
         # Pack the main frame
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Initial refresh of Click instances
-        self.refresh_click_instances()
-
     def __init__(self):
         # Create main window
         self.root = tk.Tk()
@@ -353,6 +350,7 @@ class ClickNickApp:
         self._create_widgets()
 
         # Show the window after everything is created
+        self.root.update_idletasks()
         self.root.deiconify()
 
         # Combobox overlay (initialized when needed)
@@ -534,7 +532,8 @@ class ClickNickApp:
         # Check if connected Click.exe still exists
         if not self.detector.check_window_exists(self.connected_click_pid):
             self._update_status("✗ Connected ClickPLC window closed", "error")
-            self.stop_monitoring()
+            self.stop_monitoring(update_status=False)
+            self.root.after(2000, self.refresh_click_instances)
             return
 
         # Skip detection if overlay is visible and being managed
@@ -611,7 +610,7 @@ class ClickNickApp:
             # Only update UI if successful
             self._update_status_monitoring()
 
-    def stop_monitoring(self):
+    def stop_monitoring(self, update_status=True):
         """Stop monitoring."""
         self.monitoring = False
 
@@ -625,7 +624,8 @@ class ClickNickApp:
             self.overlay.withdraw()
             self.overlay = None
 
-        self._update_status("⏹ Stopped", "status")
+        if update_status:
+            self._update_status("⏹ Stopped", "status")
         self.start_button.configure(text="▶ Start")
 
     def toggle_monitoring(self):
@@ -652,11 +652,16 @@ class ClickNickApp:
             self.stop_monitoring()
         self.root.destroy()
 
+    def run(self):
+        """Run the ClickNick Application"""
+        self.refresh_click_instances()
+        self.root.mainloop()
+
 
 def main() -> None:
     """Entry point for the application."""
     app = ClickNickApp()
-    app.root.mainloop()
+    app.run()
 
 
 if __name__ == "__main__":
