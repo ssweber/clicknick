@@ -528,33 +528,41 @@ class ClickNickApp:
         except Exception as e:
             print(f"Error showing overlay: {e}")
 
+    def _parse_filename_from_title(self, title):
+        """Extract filename from window title."""
+        if not title:
+            return None
+        # Example title: "Click - [C:\path\to\file.clp]"
+        match = re.search(r'\[(.*?)\]', title)
+        return os.path.basename(match.group(1)) if match else None
+
+    def _handle_window_closed(self):
+        """Handle when connected window is no longer available."""
+        self._update_status("✗ Connected ClickPLC window closed", "error")
+        self.stop_monitoring(update_status=False)
+        self.root.after(2000, self.refresh_click_instances)
+
     def _monitor_task(self):
         """Monitor task that runs every 100ms using after."""
         if not self.monitoring:
             return
 
-        # Check if connected Click.exe still exists
-        if not self.detector.check_window_exists(self.connected_click_pid):
-            self._update_status("✗ Connected ClickPLC window closed", "error")
-            self.stop_monitoring(update_status=False)
-            self.root.after(2000, self.refresh_click_instances)
+        # Get the actual HWND we stored during connection
+        window_id = self.detector.get_window_handle(self.connected_click_pid)
+        
+        # First verify window still exists
+        if not window_id or not self.detector.check_window_exists(self.connected_click_pid):
+            self._handle_window_closed()
             return
 
-        # Check for filename changes
-        current_instances = self.detector.get_click_instances()
-        current_instance = next(
-            (inst for inst in current_instances if inst[0] == self.connected_click_pid),
-            None,
-        )
-        if current_instance:
-            _, _, new_filename = current_instance
-            if new_filename != self.connected_click_filename:
-                # Update connected filename and UI
-                self.connected_click_filename = new_filename
-                self.click_instances = current_instances
-                self.instances_combobox["values"] = [f for _, _, f in current_instances]
-                self.selected_instance_var.set(new_filename)
-                self._update_status(f"⚡ Monitoring {new_filename}", "connected")
+        # Direct title check - no list scanning
+        current_title = self.detector.get_window_title(window_id)
+        new_filename = self._parse_filename_from_title(current_title)
+        
+        if new_filename and new_filename != self.connected_click_filename:
+            self.connected_click_filename = new_filename
+            self.selected_instance_var.set(new_filename)
+            self._update_status(f"⚡ Monitoring {new_filename}", "connected")
 
         # Skip detection if overlay is visible and being managed
         if self.overlay and self.overlay.is_active():
