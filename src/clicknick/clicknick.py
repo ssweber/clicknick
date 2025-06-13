@@ -539,6 +539,22 @@ class ClickNickApp:
             self.root.after(2000, self.refresh_click_instances)
             return
 
+        # Check for filename changes
+        current_instances = self.detector.get_click_instances()
+        current_instance = next(
+            (inst for inst in current_instances if inst[0] == self.connected_click_pid),
+            None,
+        )
+        if current_instance:
+            _, _, new_filename = current_instance
+            if new_filename != self.connected_click_filename:
+                # Update connected filename and UI
+                self.connected_click_filename = new_filename
+                self.click_instances = current_instances
+                self.instances_combobox["values"] = [f for _, _, f in current_instances]
+                self.selected_instance_var.set(new_filename)
+                self._update_status(f"⚡ Monitoring {new_filename}", "connected")
+
         # Skip detection if overlay is visible and being managed
         if self.overlay and self.overlay.is_active():
             self.monitor_task_id = self.root.after(100, self._monitor_task)
