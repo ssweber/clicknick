@@ -393,12 +393,14 @@ class ClickNickApp:
 
             if not click_instances:
                 self._update_status("✗ No ClickPLC windows", "error")
+                self.start_button.state(["disabled"])  # Disable when no instances
                 return
 
             # Update instance data
             self.click_instances = click_instances
             filenames = [filename for _, _, filename in click_instances]
             self.instances_combobox["values"] = filenames
+            self.start_button.state(["!disabled"])  # Enable when instances found
 
             # Try to restore previous selection
             if previously_selected in filenames:
@@ -412,6 +414,7 @@ class ClickNickApp:
         except Exception as e:
             print(f"Error refreshing Click instances: {e}")
             self._update_status(f"✗ Error: {e!s}", "error")
+            self.start_button.state(["disabled"])  # Disable on error
 
     def load_csv(self):
         """Load nicknames from CSV file."""
