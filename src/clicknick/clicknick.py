@@ -529,12 +529,8 @@ class ClickNickApp:
             print(f"Error showing overlay: {e}")
 
     def _parse_filename_from_title(self, title):
-        """Extract filename from window title with more precise matching."""
-        if not title:
-            return None
-        # Match filename in brackets at end of title (e.g. "Click - [C:\\path\\file.ckp]")
-        match = re.search(r'\[([^\\]+\.ckp)\]$', title)
-        return match.group(1) if match else None
+        """Extract filename from window title using centralized parser."""
+        return ClickWindowDetector.parse_click_filename(title)
 
     def _handle_window_closed(self):
         """Handle when connected window is no longer available."""
