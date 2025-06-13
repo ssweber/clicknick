@@ -92,7 +92,7 @@ class ClickWindowDetector:
         """Extract Click filename from window title."""
         if not title:
             return None
-        match = re.search(r"\[([^\\]+\.ckp)\]$", title)
+        match = re.search(r"- ([^\\]+\.ckp)", title)
         return match.group(1) if match else None
 
     def get_click_instances(self) -> list[tuple[str, str, str]]:
