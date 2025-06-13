@@ -13,6 +13,7 @@ from .filters import (  # preserve lru_cache
 from .nickname_manager import NicknameManager
 from .overlay import Overlay
 from .settings import AppSettings
+from .shared_ahk import AHK
 from .window_detector import ClickWindowDetector
 from .window_mapping import CLICK_PLC_WINDOW_MAPPING
 
@@ -285,9 +286,6 @@ class ClickNickApp:
         # Pack the main frame
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Initial refresh of Click instances
-        self.refresh_click_instances()
-
     def __init__(self):
         # Create main window
         self.root = tk.Tk()
@@ -353,6 +351,7 @@ class ClickNickApp:
         self._create_widgets()
 
         # Show the window after everything is created
+        self.root.update_idletasks()
         self.root.deiconify()
 
         # Combobox overlay (initialized when needed)
@@ -394,13 +393,15 @@ class ClickNickApp:
             click_instances = self.detector.get_click_instances()
 
             if not click_instances:
-                self._update_status("✗ No ClickPLC windows", "error")
+                self._update_status("⚠ No ClickPLC windows", "error")
+                self.start_button.state(["disabled"])  # Disable when no instances
                 return
 
             # Update instance data
             self.click_instances = click_instances
             filenames = [filename for _, _, filename in click_instances]
             self.instances_combobox["values"] = filenames
+            self.start_button.state(["!disabled"])  # Enable when instances found
 
             # Try to restore previous selection
             if previously_selected in filenames:
@@ -413,12 +414,13 @@ class ClickNickApp:
 
         except Exception as e:
             print(f"Error refreshing Click instances: {e}")
-            self._update_status(f"✗ Error: {e!s}", "error")
+            self._update_status(f"⚠ Error: {e!s}", "error")
+            self.start_button.state(["disabled"])  # Disable on error
 
     def load_csv(self):
         """Load nicknames from CSV file."""
         if not self.csv_path_var.get():
-            self._update_status("✗ Error: No CSV file selected", "error")
+            self._update_status("⚠ No CSV file selected", "error")
             return
 
         # Try to load from CSV
@@ -430,7 +432,7 @@ class ClickNickApp:
             self.using_database = False
             self.start_monitoring()
         else:
-            self._update_status("✗ CSV load failed", "error")
+            self._update_status("⚠ CSV load failed", "error")
 
     def browse_and_load_csv(self):
         """Browse for and load CSV file from menu."""
@@ -445,7 +447,7 @@ class ClickNickApp:
     def load_from_database(self):
         """Load nicknames directly from the CLICK database."""
         if not self.connected_click_pid:
-            self._update_status("✗ Not connected", "error")
+            self._update_status("⚠ Not connected", "error")
             return
 
         # Check if ODBC drivers are available
@@ -474,7 +476,7 @@ class ClickNickApp:
 
             self.start_monitoring()
         else:
-            self._update_status("✗ DB load failed", "error")
+            self._update_status("⚠ DB load failed", "error")
             self.using_database = False
 
     def connect_to_instance(self, pid, title, filename):
@@ -526,16 +528,55 @@ class ClickNickApp:
         except Exception as e:
             print(f"Error showing overlay: {e}")
 
+    def _parse_filename_from_title(self, title):
+        """Extract filename from window title using centralized parser."""
+        return ClickWindowDetector.parse_click_filename(title)
+
+    def _handle_window_closed(self):
+        """Handle when connected window is no longer available."""
+        self._update_status("⚠ Connected ClickPLC window closed", "error")
+        self.stop_monitoring(update_status=False)
+        self.root.after(2000, self.refresh_click_instances)
+
     def _monitor_task(self):
         """Monitor task that runs every 100ms using after."""
         if not self.monitoring:
             return
 
-        # Check if connected Click.exe still exists
-        if not self.detector.check_window_exists(self.connected_click_pid):
-            self._update_status("✗ Connected ClickPLC window closed", "error")
-            self.stop_monitoring()
+        # Get the actual HWND we stored during connection
+        window_id = self.detector.get_window_handle(self.connected_click_pid)
+
+        # First verify window still exists
+        if not window_id or not self.detector.check_window_exists(self.connected_click_pid):
+            self._handle_window_closed()
             return
+
+        # Direct title check - no list scanning
+        current_title = self.detector.get_window_title(window_id)
+        new_filename = self._parse_filename_from_title(current_title)
+
+        csv_unloaded = False
+        if new_filename and new_filename != self.connected_click_filename:
+            # Clear CSV path if it was set
+            if self.csv_path_var.get():
+                self.csv_path_var.set("")
+                self._update_status("⚠ CSV unloaded - filename changed", "error")
+                csv_unloaded = True
+
+            # Update instances list with new filename
+            for i, (pid, _, _) in enumerate(self.click_instances):
+                if pid == self.connected_click_pid:
+                    self.click_instances[i] = (pid, current_title, new_filename)
+                    break
+
+            # Update combobox values and selection
+            self.instances_combobox["values"] = [f for _, _, f in self.click_instances]
+            self.connected_click_filename = new_filename
+            self.selected_instance_var.set(new_filename)
+            if csv_unloaded:
+                self.stop_monitoring(update_status=False)
+            if not csv_unloaded:
+                self._update_status(f"⚡ Monitoring {new_filename}", "connected")
 
         # Skip detection if overlay is visible and being managed
         if self.overlay and self.overlay.is_active():
@@ -565,7 +606,7 @@ class ClickNickApp:
             if csv_path:
                 # Load from CSV
                 if not self.nickname_manager.load_csv(csv_path):
-                    self._update_status("✗ Error: Failed to load CSV", "error")
+                    self._update_status("⚠ Failed to load CSV", "error")
                     return False
                 # Apply sorting preference
                 self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
@@ -575,14 +616,14 @@ class ClickNickApp:
                     click_pid=self.connected_click_pid,
                     click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
                 ):
-                    self._update_status("✗ No nicknames loaded", "error")
+                    self._update_status("⚠ No nicknames loaded", "error")
                     return False
                 # Apply sorting preference
                 self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
         # Validate connection to Click instance
         if not self.connected_click_pid:
-            self._update_status("✗ Error: Not connected to ClickPLC window", "error")
+            self._update_status("⚠ Not connected to ClickPLC window", "error")
             return False
 
         # Start monitoring using after
@@ -591,7 +632,7 @@ class ClickNickApp:
             self._monitor_task()
             return True
         except Exception as e:
-            self._update_status(f"✗ Monitoring failed: {str(e)}", "error")
+            self._update_status(f"⚠ Monitoring failed: {str(e)}", "error")
             return False
 
     def _update_status_monitoring(self):
@@ -611,7 +652,7 @@ class ClickNickApp:
             # Only update UI if successful
             self._update_status_monitoring()
 
-    def stop_monitoring(self):
+    def stop_monitoring(self, update_status=True):
         """Stop monitoring."""
         self.monitoring = False
 
@@ -625,7 +666,8 @@ class ClickNickApp:
             self.overlay.withdraw()
             self.overlay = None
 
-        self._update_status("⏹ Stopped", "status")
+        if update_status:
+            self._update_status("⏹ Stopped", "status")
         self.start_button.configure(text="▶ Start")
 
     def toggle_monitoring(self):
@@ -644,19 +686,25 @@ class ClickNickApp:
         try:
             webbrowser.open(url)
         except Exception as e:
-            self._update_status(f"✗ Could not open browser: {e}", "error")
+            self._update_status(f"⚠ Could not open browser: {e}", "error")
 
     def on_closing(self):
         """Handle application shutdown."""
         if self.monitoring:
             self.stop_monitoring()
         self.root.destroy()
+        AHK.exit()
+
+    def run(self):
+        """Run the ClickNick Application"""
+        self.refresh_click_instances()
+        self.root.mainloop()
 
 
 def main() -> None:
     """Entry point for the application."""
     app = ClickNickApp()
-    app.root.mainloop()
+    app.run()
 
 
 if __name__ == "__main__":

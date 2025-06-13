@@ -87,6 +87,14 @@ class ClickWindowDetector:
             print(f"Error checking field text: {e}")
             return False
 
+    @staticmethod
+    def parse_click_filename(title: str) -> str | None:
+        """Extract Click filename from window title."""
+        if not title:
+            return None
+        match = re.search(r"- ([^\\]+\.ckp)", title)
+        return match.group(1) if match else None
+
     def get_click_instances(self) -> list[tuple[str, str, str]]:
         """
         Get all running Click.exe instances.
@@ -120,10 +128,9 @@ class ClickWindowDetector:
 
                 window_pid = AHK.f("WinGet", "PID", f"ahk_id {window_id}")
 
-                # Extract .ckp filename using regex
-                match = re.search(r"- ([^\\]+\.ckp)", window_title)
-                if match:
-                    filename = match.group(1)
+                # Extract .ckp filename using centralized parser
+                filename = ClickWindowDetector.parse_click_filename(window_title)
+                if filename:
                     click_instances.append((window_pid, window_title, filename))
 
             return click_instances
@@ -159,6 +166,13 @@ class ClickWindowDetector:
         """
         # Get the current window and field info
         return self.update_window_info(self.current_window, self.current_field)
+
+    def get_window_title(self, window_id: str) -> str | None:
+        """Get current title of a specific window using AHK."""
+        try:
+            return AHK.f("WinGetTitle", f"ahk_id {window_id}")
+        except Exception:
+            return None
 
     def update_window_info(self, window_class: str, field: str) -> tuple[bool, list[str]]:
         """
