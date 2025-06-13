@@ -529,12 +529,12 @@ class ClickNickApp:
             print(f"Error showing overlay: {e}")
 
     def _parse_filename_from_title(self, title):
-        """Extract filename from window title."""
+        """Extract filename from window title with more precise matching."""
         if not title:
             return None
-        # Example title: "Click - [C:\path\to\file.clp]"
-        match = re.search(r'\[(.*?)\]', title)
-        return os.path.basename(match.group(1)) if match else None
+        # Match filename in brackets at end of title (e.g. "Click - [C:\\path\\file.ckp]")
+        match = re.search(r'\[([^\\]+\.ckp)\]$', title)
+        return match.group(1) if match else None
 
     def _handle_window_closed(self):
         """Handle when connected window is no longer available."""
@@ -560,6 +560,14 @@ class ClickNickApp:
         new_filename = self._parse_filename_from_title(current_title)
         
         if new_filename and new_filename != self.connected_click_filename:
+            # Update instances list with new filename
+            for i, (pid, _, filename) in enumerate(self.click_instances):
+                if pid == self.connected_click_pid:
+                    self.click_instances[i] = (pid, current_title, new_filename)
+                    break
+            
+            # Update combobox values and selection
+            self.instances_combobox["values"] = [f for _, _, f in self.click_instances]
             self.connected_click_filename = new_filename
             self.selected_instance_var.set(new_filename)
             self._update_status(f"⚡ Monitoring {new_filename}", "connected")

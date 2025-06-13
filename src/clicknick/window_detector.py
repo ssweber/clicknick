@@ -160,6 +160,13 @@ class ClickWindowDetector:
         # Get the current window and field info
         return self.update_window_info(self.current_window, self.current_field)
 
+    def get_window_title(self, window_id: str) -> str | None:
+        """Get current title of a specific window using AHK."""
+        try:
+            return AHK.f("WinGetTitle", f"ahk_id {window_id}")
+        except Exception:
+            return None
+
     def update_window_info(self, window_class: str, field: str) -> tuple[bool, list[str]]:
         """
         Update window and field detection with provided window and field.
