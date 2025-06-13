@@ -556,6 +556,11 @@ class ClickNickApp:
         new_filename = self._parse_filename_from_title(current_title)
         
         if new_filename and new_filename != self.connected_click_filename:
+            # Clear CSV path if it was set
+            if self.csv_path_var.get():
+                self.csv_path_var.set("")
+                self._update_status("⚠ CSV unloaded - filename changed", "error")
+
             # Update instances list with new filename
             for i, (pid, _, filename) in enumerate(self.click_instances):
                 if pid == self.connected_click_pid:
