@@ -76,8 +76,8 @@ python -m clicknick
 
 ## Requirements
 
-- Windows 10/11
-- CLICK Programming Software (tested on version 3.70)
+- Windows 10 or 11
+- CLICK Programming Software (v2.60 – v3.71).
 
 * * *
 
