@@ -233,4 +233,58 @@ CLICK_PLC_WINDOW_MAPPING = {
             "TXT",
         ],
     },
+    "TfrmRD": {  # Receive
+        "TEdit20": [  # Local
+            "X",
+            "Y",
+            "C",
+            "T",
+            "CT",
+            "SC",
+            "DS",
+            "TD",
+            "SD",
+        ],
+        "TEdit6": [  # Receiving
+            "C",
+        ],
+        "TEdit7": [  # Success
+            "C",
+        ],
+        "TEdit5": [  # Error
+            "C",
+        ],
+        "TEdit4": [  # Exception Code
+            "DS",
+            "DD",
+        ],
+    },
+    "TfrmSD": {  # Send
+        "TEdit16": [  # Local
+            "Y",
+            "C",
+            "DS",
+            "TD",
+            "SD",
+            "DD",
+            "CTD",
+            "DF",
+            "DH",
+            "YD",
+            "TXT",
+        ],
+        "TEdit4": [  # Receiving
+            "C",
+        ],
+        "TEdit3": [  # Success
+            "C",
+        ],
+        "TEdit2": [  # Error
+            "C",
+        ],
+        "TEdit1": [  # Exception Code
+            "DS",
+            "DD",
+        ],
+    },
 }
