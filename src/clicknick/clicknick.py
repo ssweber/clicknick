@@ -1,7 +1,6 @@
-import os
 import tkinter as tk
 from ctypes import windll
-from tkinter import filedialog, font, ttk
+from tkinter import PhotoImage, filedialog, font, ttk
 
 from .dialogs import AboutDialog, OdbcWarningDialog
 from .filters import (  # preserve lru_cache
@@ -10,6 +9,7 @@ from .filters import (  # preserve lru_cache
     NoneFilter,
     PrefixFilter,
 )
+from .icon_data import ICON_PNG_BASE64
 from .nickname_manager import NicknameManager
 from .overlay import Overlay
 from .settings import AppSettings
@@ -333,9 +333,10 @@ class ClickNickApp:
 
         # Set the icon
         try:
-            app_dir = os.path.dirname(os.path.abspath(__file__))
-            icon_path = os.path.join(app_dir, "clicknick_logo.ico")
-            self.root.iconbitmap(icon_path)
+            icon = PhotoImage(data=ICON_PNG_BASE64)
+            self.root.iconphoto(True, icon)
+            # Keep a reference to prevent garbage collection
+            self.root._icon = icon
         except tk.TclError:
             pass  # Continue without icon if it fails
 
