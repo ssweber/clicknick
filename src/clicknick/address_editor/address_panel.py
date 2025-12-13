@@ -557,6 +557,8 @@ class AddressPanel(ttk.Frame):
 
         # Enable standard bindings for editing, but disable unwanted ones
         self.sheet.enable_bindings()
+        # Change Find/Replace binding from Ctrl+H to Ctrl+R
+        self.sheet.set_options(toggle_replace_bindings=["<Control-r>", "<Control-R>"])
         # Disable column header right-click menu and sorting options
         self.sheet.disable_bindings(
             # "column_select",
