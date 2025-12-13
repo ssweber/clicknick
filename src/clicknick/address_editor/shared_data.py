@@ -6,10 +6,14 @@ with changes in one window automatically reflected in others.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 
 from .address_model import AddressRow
-from .mdb_operations import MdbConnection, load_all_nicknames, save_changes
+from .mdb_operations import MdbConnection, load_all_nicknames, load_nicknames_for_type, save_changes
+
+# File monitoring interval in milliseconds
+FILE_MONITOR_INTERVAL_MS = 2000
 
 
 class SharedAddressData:
@@ -54,9 +58,18 @@ class SharedAddressData:
         # Track if initial data has been loaded
         self._initialized = False
 
+        # File monitoring state
+        self._mdb_path: str | None = None
+        self._last_mtime: float = 0.0
+        self._monitor_after_id: str | None = None
+        self._monitoring_active = False
+
     def _get_connection(self) -> MdbConnection:
         """Create a fresh database connection."""
         conn = MdbConnection.from_click_window(self.click_pid, self.click_hwnd)
+        # Store the mdb path for file monitoring
+        if self._mdb_path is None:
+            self._mdb_path = conn.db_path
         conn.connect()
         return conn
 
@@ -122,6 +135,9 @@ class SharedAddressData:
                     )
                     return False
 
+        # Stop file monitoring
+        self.stop_file_monitoring()
+
         # Close all windows (make a copy since list will be modified)
         for window in self._windows[:]:
             try:
@@ -137,6 +153,9 @@ class SharedAddressData:
 
         Use this when the database is no longer available (e.g., Click software closed).
         """
+        # Stop file monitoring
+        self.stop_file_monitoring()
+
         for window in self._windows[:]:
             try:
                 window.destroy()
@@ -163,9 +182,135 @@ class SharedAddressData:
             self.all_nicknames = load_all_nicknames(conn)
         self._initialized = True
 
+        # Store initial file modification time for monitoring
+        if self._mdb_path and os.path.exists(self._mdb_path):
+            self._last_mtime = os.path.getmtime(self._mdb_path)
+
     def is_initialized(self) -> bool:
         """Check if initial data has been loaded."""
         return self._initialized
+
+    def _schedule_file_check(self) -> None:
+        """Schedule the next file modification check."""
+        if not self._monitoring_active or not hasattr(self, "_tk_root"):
+            return
+        self._monitor_after_id = self._tk_root.after(
+            FILE_MONITOR_INTERVAL_MS, self._check_file_modified
+        )
+
+    def start_file_monitoring(self, tk_root) -> None:
+        """Start monitoring the mdb file for external changes.
+
+        Args:
+            tk_root: Tkinter root window (needed for after() scheduling)
+        """
+        if self._monitoring_active:
+            return
+
+        self._tk_root = tk_root
+        self._monitoring_active = True
+        self._schedule_file_check()
+
+    def stop_file_monitoring(self) -> None:
+        """Stop file monitoring."""
+        self._monitoring_active = False
+        if self._monitor_after_id and hasattr(self, "_tk_root"):
+            try:
+                self._tk_root.after_cancel(self._monitor_after_id)
+            except Exception:
+                pass
+        self._monitor_after_id = None
+
+    def _reload_from_db(self) -> None:
+        """Reload data from database, updating non-dirty cells."""
+        if not self.rows_by_type:
+            return
+
+        any_changes = False
+
+        try:
+            with self._get_connection() as conn:
+                # Reload all_nicknames
+                new_nicknames = load_all_nicknames(conn)
+
+                # Update each loaded type
+                for type_name, rows in self.rows_by_type.items():
+                    # Handle combined types (T/TD, CT/CTD)
+                    if "/" in type_name:
+                        sub_types = type_name.split("/")
+                        existing_by_type = {}
+                        for sub_type in sub_types:
+                            existing_by_type[sub_type] = load_nicknames_for_type(conn, sub_type)
+
+                        # Update rows
+                        for row in rows:
+                            db_data = existing_by_type.get(row.memory_type, {}).get(row.address)
+                            if db_data:
+                                if row.update_from_db(db_data):
+                                    any_changes = True
+                            elif not row.is_dirty:
+                                # Row was deleted externally, reset to empty
+                                if row.used:
+                                    row.used = False
+                                    any_changes = True
+                    else:
+                        # Single type
+                        existing = load_nicknames_for_type(conn, type_name)
+
+                        for row in rows:
+                            db_data = existing.get(row.address)
+                            if db_data:
+                                if row.update_from_db(db_data):
+                                    any_changes = True
+                            elif not row.is_dirty:
+                                # Row was deleted externally, reset used flag
+                                if row.used:
+                                    row.used = False
+                                    any_changes = True
+
+                # Update nickname registry (for non-dirty entries)
+                for addr_key, new_nick in new_nicknames.items():
+                    if addr_key not in self.all_nicknames:
+                        self.all_nicknames[addr_key] = new_nick
+                        any_changes = True
+                    elif self.all_nicknames[addr_key] != new_nick:
+                        # Check if this nickname is dirty in any row
+                        is_dirty = False
+                        for rows in self.rows_by_type.values():
+                            for row in rows:
+                                if row.addr_key == addr_key and row.is_nickname_dirty:
+                                    is_dirty = True
+                                    break
+                            if is_dirty:
+                                break
+                        if not is_dirty:
+                            self.all_nicknames[addr_key] = new_nick
+                            any_changes = True
+
+        except Exception:
+            # Connection error, skip this reload
+            return
+
+        if any_changes:
+            self.notify_data_changed()
+
+    def _check_file_modified(self) -> None:
+        """Check if the mdb file has been modified and reload if so."""
+        if not self._monitoring_active:
+            return
+
+        try:
+            if self._mdb_path and os.path.exists(self._mdb_path):
+                current_mtime = os.path.getmtime(self._mdb_path)
+                if current_mtime > self._last_mtime:
+                    self._last_mtime = current_mtime
+                    self._reload_from_db()
+        except Exception:
+            # File might be locked during write, skip this check
+            pass
+
+        # Schedule next check
+        self._schedule_file_check()
 
     def get_rows(self, memory_type: str) -> list[AddressRow] | None:
         """Get rows for a memory type if already loaded.

@@ -506,3 +506,61 @@ class AddressRow:
         self.original_comment = self.comment
         self.original_initial_value = self.initial_value
         self.original_retentive = self.retentive
+
+    def update_from_db(self, db_data: dict) -> bool:
+        """Update non-dirty fields from database data.
+
+        Used when external changes are detected in the mdb file.
+        Only updates fields that haven't been modified by the user.
+
+        Args:
+            db_data: Dict with keys: nickname, comment, used, data_type,
+                    initial_value, retentive
+
+        Returns:
+            True if any field was updated
+        """
+        changed = False
+
+        # Always update 'used' since it's read-only in the editor
+        new_used = db_data.get("used", False)
+        if self.used != new_used:
+            self.used = new_used
+            changed = True
+
+        # Update nickname only if not dirty
+        if not self.is_nickname_dirty:
+            new_nickname = db_data.get("nickname", "")
+            if self.nickname != new_nickname:
+                self.nickname = new_nickname
+                self.original_nickname = new_nickname
+                changed = True
+
+        # Update comment only if not dirty
+        if not self.is_comment_dirty:
+            new_comment = db_data.get("comment", "")
+            if self.comment != new_comment:
+                self.comment = new_comment
+                self.original_comment = new_comment
+                changed = True
+
+        # Update initial_value only if not dirty
+        if not self.is_initial_value_dirty:
+            new_initial_value = db_data.get("initial_value", "")
+            if self.initial_value != new_initial_value:
+                self.initial_value = new_initial_value
+                self.original_initial_value = new_initial_value
+                changed = True
+
+        # Update retentive only if not dirty
+        if not self.is_retentive_dirty:
+            new_retentive = db_data.get("retentive", False)
+            if self.retentive != new_retentive:
+                self.retentive = new_retentive
+                self.original_retentive = new_retentive
+                changed = True
+
+        # Update exists_in_mdb flag
+        self.exists_in_mdb = True
+
+        return changed

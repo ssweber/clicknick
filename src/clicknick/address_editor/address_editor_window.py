@@ -57,15 +57,6 @@ ADDRESS_JUMPS = {
 class TypeButton(ttk.Frame):
     """A button for selecting a memory type, with optional submenu for address jumps."""
 
-    def _on_click(self) -> None:
-        """Handle main button click - select panel and show jump menu if applicable."""
-        # Always select this type first
-        self.on_select(self.type_name)
-
-        # Show jump menu if this type has jumps (XD and YD don't)
-        if self.jump_addresses or self.get_headers_callback:
-            self._show_jump_menu()
-
     def _on_jump_selected(self, address: int) -> None:
         """Handle jump address selection."""
         # Panel is already selected, just jump to address
@@ -177,6 +168,15 @@ class TypeButton(ttk.Frame):
         x = self.button.winfo_rootx() + self.button.winfo_width()
         y = self.button.winfo_rooty()
         menu.post(x, y)
+
+    def _on_click(self) -> None:
+        """Handle main button click - select panel and show jump menu if applicable."""
+        # Always select this type first
+        self.on_select(self.type_name)
+
+        # Show jump menu if this type has jumps (XD and YD don't)
+        if self.jump_addresses or self.get_headers_callback:
+            self._show_jump_menu()
 
     def __init__(
         self,
@@ -613,6 +613,9 @@ class AddressEditorWindow(tk.Toplevel):
             # Load initial data if not already loaded
             if not self.shared_data.is_initialized():
                 self.shared_data.load_initial_data()
+
+            # Start file monitoring (uses master window for after() calls)
+            self.shared_data.start_file_monitoring(self.master)
 
             # Get reference to shared nicknames
             self.all_nicknames = self.shared_data.all_nicknames
