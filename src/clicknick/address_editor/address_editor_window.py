@@ -92,11 +92,11 @@ class TypeButton(ttk.Frame):
 
         menu.add_cascade(label=f"{display_type}{start_addr}", menu=submenu)
 
-    def _add_tags_menu(self, menu: tk.Menu, display_type: str) -> None:
-        """Add Tags entry to menu if there are headers.
+    def _add_blocks_menu(self, menu: tk.Menu, display_type: str) -> None:
+        """Add Blocks entry to menu if there are headers.
 
         Args:
-            menu: Menu to add tags to
+            menu: Menu to add blocks to
             display_type: Type prefix for labels (e.g., "DS", "C")
         """
         if not self.get_headers_callback:
@@ -113,7 +113,7 @@ class TypeButton(ttk.Frame):
 
         if len(headers) <= 5:
             # Add directly to menu
-            menu.add_command(label="Tags", state="disabled")
+            menu.add_command(label="Blocks", state="disabled")
             for addr, header_name in headers:
                 label = f"  {header_name} ({display_type}{addr})"
                 menu.add_command(
@@ -121,15 +121,15 @@ class TypeButton(ttk.Frame):
                     command=lambda a=addr: self._on_jump_selected(a),
                 )
         else:
-            # Use submenu for >5 tags
-            tags_submenu = tk.Menu(menu, tearoff=0)
+            # Use submenu for >5 blocks
+            blocks_submenu = tk.Menu(menu, tearoff=0)
             for addr, header_name in headers:
                 label = f"{header_name} ({display_type}{addr})"
-                tags_submenu.add_command(
+                blocks_submenu.add_command(
                     label=label,
                     command=lambda a=addr: self._on_jump_selected(a),
                 )
-            menu.add_cascade(label="Tags", menu=tags_submenu)
+            menu.add_cascade(label="Blocks", menu=blocks_submenu)
 
     def _show_jump_menu(self) -> None:
         """Show submenu for address jumps, including headers."""
@@ -150,8 +150,8 @@ class TypeButton(ttk.Frame):
 
                 self._build_nested_submenu(menu, display_type, start_addr, end_addr)
 
-            # Add tags at the bottom
-            self._add_tags_menu(menu, display_type)
+            # Add blocks at the bottom
+            self._add_blocks_menu(menu, display_type)
         else:
             # Standard handling for other types - flat list
             for addr in self.jump_addresses:
@@ -161,8 +161,8 @@ class TypeButton(ttk.Frame):
                     command=lambda a=addr: self._on_jump_selected(a),
                 )
 
-            # Add tags at the bottom
-            self._add_tags_menu(menu, display_type)
+            # Add blocks at the bottom
+            self._add_blocks_menu(menu, display_type)
 
         # Position menu next to the button
         x = self.button.winfo_rootx() + self.button.winfo_width()
