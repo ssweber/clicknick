@@ -95,12 +95,12 @@ class ClickWindowDetector:
         match = re.search(r"- ([^\\]+\.ckp)", title)
         return match.group(1) if match else None
 
-    def get_click_instances(self) -> list[tuple[str, str, str]]:
+    def get_click_instances(self) -> list[tuple[str, str, str, int]]:
         """
         Get all running Click.exe instances.
 
         Returns:
-            List of tuples (pid, title, filename)
+            List of tuples (pid, title, filename, hwnd)
         """
         click_instances = []
 
@@ -131,7 +131,9 @@ class ClickWindowDetector:
                 # Extract .ckp filename using centralized parser
                 filename = ClickWindowDetector.parse_click_filename(window_title)
                 if filename:
-                    click_instances.append((window_pid, window_title, filename))
+                    # Store the hwnd (window_id) to avoid lookup issues with multiple windows
+                    hwnd = int(window_id, 16) if isinstance(window_id, str) else int(window_id)
+                    click_instances.append((window_pid, window_title, filename, hwnd))
 
             return click_instances
 

@@ -32,6 +32,7 @@ source = { editable = "." }
 dependencies = [
     { name = "ahkunwrapped" },
     { name = "pyodbc" },
+    { name = "tksheet" },
 ]
 
 [package.dev-dependencies]
@@ -49,6 +50,7 @@ dev = [
 requires-dist = [
     { name = "ahkunwrapped", specifier = ">=2.2.1" },
     { name = "pyodbc", specifier = ">=5.2.0" },
+    { name = "tksheet", specifier = ">=7.0.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -308,4 +310,13 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/13/ab/9e5c4611163ec244991b0278873bd8df4b2e33841a6d58f113485cef5fd5/ssort-0.15.0.tar.gz", hash = "sha256:a31cd7de39b14cefa4b0b2c2eeb27bf85925c656ad6ea2ed6d6ada75abd4c6c1", size = 23154, upload-time = "2025-07-06T20:35:38.883Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/51/d9/afaf63ca1cc7c7e5bb3284cbac04da59d1ce94f4b74cfd28dc2973e34a15/ssort-0.15.0-py3-none-any.whl", hash = "sha256:a1ed5d7f393e392841c6da7417f9f9831ae6741839cbcbf7dd82a4effa848ad5", size = 27572, upload-time = "2025-07-06T20:35:37.598Z" },
+]
+
+[[package]]
+name = "tksheet"
+version = "7.5.19"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a9/8e/18d5ef90b778318e0be20ea6f5165dda08002085b94cdbf98542cc4c82eb/tksheet-7.5.19.tar.gz", hash = "sha256:df5294b08910f51a1d6055c5ce257a37824262ffec7527ff1562a5479a1ce0dd", size = 198998, upload-time = "2025-11-19T18:41:16.883Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/50/8ac1d4a9a8e12b1ad8a9b92a810cc12d2e59ef4411df2d82bd6c7dee2f7d/tksheet-7.5.19-py3-none-any.whl", hash = "sha256:a1a92b65b01f75b0e079a53e660da251ec47c8369e655ba54ae0bee7173a2e99", size = 202582, upload-time = "2025-11-19T18:41:15.024Z" },
 ]

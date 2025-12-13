@@ -2,7 +2,7 @@
 
 # clicknick
 
-Context-aware nickname autocomplete for ClickPLC instruction windows.
+Nickname autocomplete for ClickPLC instruction windows and modern Address Editor tool.
 
 ![ClickNick demo](https://github.com/user-attachments/assets/0275dcf4-6d79-4775-8763-18b13e8fd3a3)
 
@@ -17,12 +17,19 @@ Context-aware nickname autocomplete for ClickPLC instruction windows.
 - **Helpful Tooltips**: Displays address comments on hover for quick reference.
 - **Exclusion Filters**:  
   - Hide system addresses (SC/SD) to reduce clutter.  
-  - Exclude addresses based on custom naming conventions (e.g., omit nicknames containing double underscores `__` if you use them for private or internal variables).  
-- **Non-Intrusive**: Works alongside Click PLC without modifications
+  - Exclude addresses based on custom naming conventions (e.g., omit nicknames containing double underscores `__` if you use them for private or internal variables).
+## Address Editor  
 
-![ClickNick App Main Window](https://github.com/user-attachments/assets/5d40e719-5aa8-4bfd-a2f7-56b255ff0a04)
+A powerful alternative to ClickPLC's built-in Address Picker, bringing modern editing capabilities to tag management.
 
+- **Multiple Windows**: Edit different tag sections simultaneously.
+- **Bulk Editing**: Work on addresses before saving, with live duplicate and validation error highlighting.
+- **Copy/Paste Multiple Rungs**
+- **Search & Replace**:Search (Ctrl+F) and Replace (Ctrl+H) with 'In Selection' support.
+- **Smart Filtering**
+- **Organized Navigation**: Add `<Tags>` in address comments to create hierarchical headers in address jump-to lists.
 
+![Address Editor](https://github.com/user-attachments/assets/REPLACE_WITH_ACTUAL_SCREENSHOT)  
 
 ## How to Run
 > [!NOTE]
@@ -54,12 +61,17 @@ python -m clicknick
 
 ## Usage
 
-1. Select your ClickPLC nickname CSV file
-2. Connect to your Click PLC instance
-3. Start monitoring
-4. Open ClickPLC Instruction window and Type in added Combobox-Input to see autocomplete suggestions
+1. Open CLICK Programming Software project.
+2. Launch ClickNick to add Auto-Complete to where you typically enter Memory Addresses.
+3. Open Tools -> Address Editor for advanced tag management with full search, filtering, and bulk editing capabilities
 
-## Supported Windows
+## Requirements
+
+- Windows 10 or 11
+- CLICK Programming Software (v2.60 – v3.71).
+- Address Editor requires Microsoft Access ODBC drivers
+
+## Auto-Complete Supported Windows
 
 - Contact Normally Open/Closed
 - Edge Contact
@@ -73,11 +85,7 @@ python -m clicknick
 - Search & Replace dialogs
 - Data Views
 - Address Picker `Find`
-
-## Requirements
-
-- Windows 10 or 11
-- CLICK Programming Software (v2.60 – v3.71).
+- Modbus Send/Receive
 
 * * *
 

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pyodbc
 
+from .address_editor.address_model import strip_header_tag
 from .filters import ContainsFilter, ContainsPlusFilter, NoneFilter, PrefixFilter
 from .nickname import Nickname
 
@@ -222,7 +223,7 @@ class NicknameManager:
                         data_type=row["Data Type"],
                         initial_value=row["Initial Value"],
                         retentive=row["Retentive"] == "Yes",
-                        comment=row["Address Comment"],
+                        comment=strip_header_tag(row["Address Comment"]),
                         address_type="".join(c for c in row["Address"] if c.isupper()),
                     )
                     self.nicknames.append(nickname_obj)
@@ -412,7 +413,7 @@ class NicknameManager:
                     data_type=self._convert_database_data_type(data_type),
                     initial_value=initial_value,
                     retentive=retentive,
-                    comment=comment,
+                    comment=strip_header_tag(comment),
                     address_type=memory_type,
                     used=used,
                 )
