@@ -634,11 +634,15 @@ class AddressPanel(ttk.Frame):
         self.sheet.set_options(toggle_replace_bindings=["<Control-r>", "<Control-R>"])
         # Disable column header right-click menu and sorting options
         self.sheet.disable_bindings(
-            # "column_select",
             "column_drag_and_drop",
-            # "column_width_resize",
             "rc_select_column",
-            "sort",
+            "rc_insert_row",
+            "rc_delete_row",
+            "sort_cells",
+            "sort_row",
+            "sort_column",
+            "sort_rows",
+            "sort_columns",
         )
 
         # Enable checkboxes in retentive column with edit_data=True
