@@ -332,20 +332,24 @@ class SharedAddressData:
         """
         self.rows_by_type[memory_type] = rows
 
-    def get_header_addresses(self, memory_type: str) -> list[tuple[int, int | None, str]]:
+    def get_header_addresses(
+        self, memory_type: str
+    ) -> list[tuple[int, int | None, str, str | None]]:
         """Get block definitions for a memory type.
 
         Block tags mark sections for navigation in the Address Editor.
         - Opening tags (<BlockName>) paired with closing tags (</BlockName>) form ranges
         - Self-closing tags (<BlockName />) mark singular points
         - Blocks can be nested
+        - Tags can have bg attribute for background color: <BlockName bg="#color">
 
         Args:
             memory_type: The memory type (X, Y, C, etc.)
 
         Returns:
-            List of (start_addr, end_addr, block_name) tuples sorted by start address.
+            List of (start_addr, end_addr, block_name, bg_color) tuples sorted by start address.
             end_addr is None for self-closing (singular) blocks.
+            bg_color is None if not specified in the tag.
         """
         from .address_model import parse_block_tag
 
@@ -354,32 +358,33 @@ class SharedAddressData:
             return []
 
         # Collect all block tags
-        open_tags: dict[str, list[int]] = {}  # name -> [addresses] (stack for nesting)
-        blocks: list[tuple[int, int | None, str]] = []
+        # Stack stores (address, bg_color) tuples for each block name
+        open_tags: dict[str, list[tuple[int, str | None]]] = {}
+        blocks: list[tuple[int, int | None, str, str | None]] = []
 
         for row in rows:
-            block_name, tag_type, _ = parse_block_tag(row.comment)
+            block_name, tag_type, _, bg_color = parse_block_tag(row.comment)
             if not block_name:
                 continue
 
             if tag_type == "self-closing":
                 # Singular point - no end address
-                blocks.append((row.address, None, block_name))
+                blocks.append((row.address, None, block_name, bg_color))
             elif tag_type == "open":
-                # Push to stack for this block name
+                # Push to stack for this block name (with bg color)
                 if block_name not in open_tags:
                     open_tags[block_name] = []
-                open_tags[block_name].append(row.address)
+                open_tags[block_name].append((row.address, bg_color))
             elif tag_type == "close":
                 # Pop from stack and create range
                 if block_name in open_tags and open_tags[block_name]:
-                    start_addr = open_tags[block_name].pop()
-                    blocks.append((start_addr, row.address, block_name))
+                    start_addr, start_bg_color = open_tags[block_name].pop()
+                    blocks.append((start_addr, row.address, block_name, start_bg_color))
 
         # Any unclosed opening tags become singular points
-        for block_name, addresses in open_tags.items():
-            for addr in addresses:
-                blocks.append((addr, None, block_name))
+        for block_name, addr_color_pairs in open_tags.items():
+            for addr, bg_color in addr_color_pairs:
+                blocks.append((addr, None, block_name, bg_color))
 
         return sorted(blocks, key=lambda x: x[0])
 

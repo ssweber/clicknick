@@ -6,12 +6,187 @@ Mimics the Click PLC Address Picker UI with sidebar navigation.
 
 from __future__ import annotations
 
+import random
 import tkinter as tk
-from tkinter import messagebox, simpledialog, ttk
+from tkinter import messagebox, ttk
 
 from .address_panel import AddressPanel
 from .mdb_operations import MdbConnection, load_all_nicknames
 from .shared_data import SharedAddressData
+
+# Light Material Design colors for block highlighting
+# Maps friendly color names to hex codes
+BLOCK_COLORS: dict[str, str] = {
+    "Red": "#FFCDD2",
+    "Pink": "#F8BBD9",
+    "Purple": "#E1BEE7",
+    "Deep Purple": "#D1C4E9",
+    "Indigo": "#C5CAE9",
+    "Blue": "#BBDEFB",
+    "Light Blue": "#B3E5FC",
+    "Cyan": "#B2EBF2",
+    "Teal": "#B2DFDB",
+    "Green": "#C8E6C9",
+    "Light Green": "#DCEDC8",
+    "Lime": "#F0F4C3",
+    "Yellow": "#FFF9C4",
+    "Amber": "#FFECB3",
+    "Orange": "#FFE0B2",
+    "Deep Orange": "#FFCCBC",
+    "Brown": "#D7CCC8",
+    "Blue Grey": "#CFD8DC",
+}
+
+# List of color names for iteration
+BLOCK_COLOR_NAMES = list(BLOCK_COLORS.keys())
+
+
+def get_block_color_hex(color_name: str) -> str | None:
+    """Convert a block color name to its hex code.
+
+    Args:
+        color_name: Color name like "Red" or hex code like "#FFCDD2"
+
+    Returns:
+        Hex color code, or None if not found
+    """
+    # If it's already a hex code, return it
+    if color_name.startswith("#"):
+        return color_name
+    # Look up by name (case-insensitive)
+    for name, hex_code in BLOCK_COLORS.items():
+        if name.lower() == color_name.lower():
+            return hex_code
+    return None
+
+
+class AddBlockDialog(tk.Toplevel):
+    """Dialog for adding a block with name and optional color."""
+
+    def _select_color(self, color: str | None) -> None:
+        """Select a color and update button states."""
+        self._selected_color = color
+
+        # Update button relief to show selection
+        for c, btn in self._color_buttons.items():
+            if c == color:
+                btn.configure(relief="sunken")
+            else:
+                btn.configure(relief="raised")
+
+    def _select_random_color(self) -> None:
+        """Select a random color from the palette."""
+        color_name = random.choice(BLOCK_COLOR_NAMES)
+        self._select_color(color_name)
+
+    def _on_ok(self) -> None:
+        """Handle OK button click."""
+        name = self.name_var.get().strip()
+
+        # Clean up name (remove special characters)
+        name = name.replace("<", "").replace(">", "").replace("/", "")
+
+        if not name:
+            messagebox.showerror("Error", "Please enter a block name.", parent=self)
+            return
+
+        self.result = (name, self._selected_color)
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        """Handle Cancel button click."""
+        self.result = None
+        self.destroy()
+
+    def _create_widgets(self) -> None:
+        """Create dialog widgets."""
+        main_frame = ttk.Frame(self, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Block name entry
+        ttk.Label(main_frame, text="Block Name:").pack(anchor=tk.W)
+        self.name_var = tk.StringVar()
+        self.name_entry = ttk.Entry(main_frame, textvariable=self.name_var, width=30)
+        self.name_entry.pack(fill=tk.X, pady=(2, 10))
+
+        # Color selection
+        ttk.Label(main_frame, text="Background Color (optional):").pack(anchor=tk.W)
+
+        # Color grid frame
+        color_frame = ttk.Frame(main_frame)
+        color_frame.pack(fill=tk.X, pady=(2, 5))
+
+        # "None" button first
+        none_btn = tk.Button(
+            color_frame,
+            text="None",
+            width=6,
+            relief="sunken",  # Default selected
+            command=lambda: self._select_color(None),
+        )
+        none_btn.grid(row=0, column=0, padx=1, pady=1)
+        self._color_buttons[None] = none_btn
+
+        # Color swatches in grid (6 per row)
+        colors_per_row = 6
+        for i, color_name in enumerate(BLOCK_COLOR_NAMES):
+            row = (i // colors_per_row) + 1
+            col = i % colors_per_row
+            hex_color = BLOCK_COLORS[color_name]
+            btn = tk.Button(
+                color_frame,
+                bg=hex_color,
+                width=3,
+                height=1,
+                relief="raised",
+                command=lambda cn=color_name: self._select_color(cn),
+            )
+            btn.grid(row=row, column=col, padx=1, pady=1)
+            self._color_buttons[color_name] = btn
+
+        # Random color button
+        random_btn = ttk.Button(
+            main_frame,
+            text="🎲 Random Color",
+            command=self._select_random_color,
+        )
+        random_btn.pack(pady=(5, 10))
+
+        # Buttons frame
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill=tk.X)
+
+        ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(
+            side=tk.RIGHT, padx=(5, 0)
+        )
+        ttk.Button(btn_frame, text="Cancel", command=self._on_cancel, width=10).pack(side=tk.RIGHT)
+
+    def __init__(self, parent: tk.Widget):
+        super().__init__(parent)
+        self.title("Add Block")
+        self.resizable(False, False)
+        self.transient(parent)
+        self.grab_set()
+
+        self.result: tuple[str, str | None] | None = None  # (name, color) or None if cancelled
+        self._selected_color: str | None = None
+        self._color_buttons: dict[str, tk.Button] = {}
+
+        self._create_widgets()
+
+        # Center on parent
+        self.update_idletasks()
+        x = parent.winfo_rootx() + (parent.winfo_width() - self.winfo_width()) // 2
+        y = parent.winfo_rooty() + (parent.winfo_height() - self.winfo_height()) // 2
+        self.geometry(f"+{x}+{y}")
+
+        # Focus on name entry
+        self.name_entry.focus_set()
+
+        # Bind Enter key to OK
+        self.bind("<Return>", lambda e: self._on_ok())
+        self.bind("<Escape>", lambda e: self._on_cancel())
+
 
 # Define panel types available in sidebar
 SIDEBAR_TYPES = [
@@ -120,7 +295,7 @@ class TypeButton(ttk.Frame):
         if len(blocks) <= 5:
             # Add directly to menu
             menu.add_command(label="Blocks", state="disabled")
-            for start_addr, end_addr, block_name in blocks:
+            for start_addr, end_addr, block_name, _bg_color in blocks:
                 label = f"  {format_block_label(start_addr, end_addr, block_name)}"
                 menu.add_command(
                     label=label,
@@ -129,7 +304,7 @@ class TypeButton(ttk.Frame):
         else:
             # Use submenu for >5 blocks
             blocks_submenu = tk.Menu(menu, tearoff=0)
-            for start_addr, end_addr, block_name in blocks:
+            for start_addr, end_addr, block_name, _bg_color in blocks:
                 label = format_block_label(start_addr, end_addr, block_name)
                 blocks_submenu.add_command(
                     label=label,
@@ -248,15 +423,18 @@ class TypeButton(ttk.Frame):
 class TypeSidebar(ttk.Frame):
     """Sidebar with type selection buttons."""
 
-    def _get_headers_for_type(self, type_name: str) -> list[tuple[int, int | None, str]]:
+    def _get_headers_for_type(
+        self, type_name: str
+    ) -> list[tuple[int, int | None, str, str | None]]:
         """Get block definitions for a type from shared data.
 
         Args:
             type_name: The type name (may be combined like "T/TD")
 
         Returns:
-            List of (start_addr, end_addr, block_name) tuples.
+            List of (start_addr, end_addr, block_name, bg_color) tuples.
             end_addr is None for self-closing (singular) blocks.
+            bg_color is None if not specified.
         """
         if not self.shared_data:
             return []
@@ -651,20 +829,14 @@ class AddressEditorWindow(tk.Toplevel):
 
         panel = self.panels[self.current_type]
 
-        # Ask for block name
-        block_name = simpledialog.askstring(
-            "Add Block",
-            "Block Name:",
-            parent=self,
-        )
-        if not block_name:
+        # Show the Add Block dialog
+        dialog = AddBlockDialog(self)
+        self.wait_window(dialog)
+
+        if dialog.result is None:
             return
 
-        # Clean up the block name (remove any < > characters)
-        block_name = block_name.strip().replace("<", "").replace(">", "").replace("/", "")
-        if not block_name:
-            messagebox.showerror("Error", "Invalid block name.", parent=self)
-            return
+        block_name, color = dialog.result
 
         # Map display rows to actual rows
         first_display_idx = selected_display_rows[0]
@@ -681,9 +853,15 @@ class AddressEditorWindow(tk.Toplevel):
         first_row = panel.rows[first_row_idx]
         last_row = panel.rows[last_row_idx]
 
+        # Format tags with optional bg attribute
+        if color:
+            bg_attr = f' bg="{color}"'
+        else:
+            bg_attr = ""
+
         if first_row_idx == last_row_idx:
             # Single row - self-closing tag
-            tag = f"<{block_name} />"
+            tag = f"<{block_name}{bg_attr} />"
             existing_comment = first_row.comment
             if existing_comment:
                 first_row.comment = f"{tag} {existing_comment}"
@@ -691,7 +869,7 @@ class AddressEditorWindow(tk.Toplevel):
                 first_row.comment = tag
         else:
             # Range - opening and closing tags
-            open_tag = f"<{block_name}>"
+            open_tag = f"<{block_name}{bg_attr}>"
             close_tag = f"</{block_name}>"
 
             # Add opening tag to first row

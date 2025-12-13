@@ -932,21 +932,65 @@ class TestBlockTags:
         """Test parse_block_tag function directly."""
         from clicknick.address_editor.address_model import parse_block_tag
 
-        # Opening tags
-        assert parse_block_tag("<Motor>") == ("Motor", "open", "")
-        assert parse_block_tag("<Motor>Valve 1") == ("Motor", "open", "Valve 1")
-        assert parse_block_tag("<Section 1>Details here") == ("Section 1", "open", "Details here")
+        # Opening tags (4th element is bg_color, None when not specified)
+        assert parse_block_tag("<Motor>") == ("Motor", "open", "", None)
+        assert parse_block_tag("<Motor>Valve 1") == ("Motor", "open", "Valve 1", None)
+        assert parse_block_tag("<Section 1>Details here") == (
+            "Section 1",
+            "open",
+            "Details here",
+            None,
+        )
 
-        # Closing tags
-        assert parse_block_tag("</Motor>") == ("Motor", "close", "")
-        assert parse_block_tag("</Motor>End section") == ("Motor", "close", "End section")
+        # Closing tags (no bg attribute on closing tags)
+        assert parse_block_tag("</Motor>") == ("Motor", "close", "", None)
+        assert parse_block_tag("</Motor>End section") == ("Motor", "close", "End section", None)
 
         # Self-closing tags
-        assert parse_block_tag("<Spare />") == ("Spare", "self-closing", "")
-        assert parse_block_tag("<Reserved />") == ("Reserved", "self-closing", "")
+        assert parse_block_tag("<Spare />") == ("Spare", "self-closing", "", None)
+        assert parse_block_tag("<Reserved />") == ("Reserved", "self-closing", "", None)
 
         # Invalid - returns original comment
-        assert parse_block_tag("Regular text") == (None, None, "Regular text")
-        assert parse_block_tag("<>") == (None, None, "<>")
-        assert parse_block_tag("") == (None, None, "")
-        assert parse_block_tag("<partial") == (None, None, "<partial")
+        assert parse_block_tag("Regular text") == (None, None, "Regular text", None)
+        assert parse_block_tag("<>") == (None, None, "<>", None)
+        assert parse_block_tag("") == (None, None, "", None)
+        assert parse_block_tag("<partial") == (None, None, "<partial", None)
+
+    def test_parse_block_tag_with_bg_attribute(self):
+        """Test parse_block_tag with bg attribute for colors."""
+        from clicknick.address_editor.address_model import parse_block_tag
+
+        # Opening tags with bg attribute
+        assert parse_block_tag('<Motor bg="#FFCDD2">') == ("Motor", "open", "", "#FFCDD2")
+        assert parse_block_tag('<Motor bg="#FFCDD2">Valve 1') == (
+            "Motor",
+            "open",
+            "Valve 1",
+            "#FFCDD2",
+        )
+        assert parse_block_tag("<Section bg='#B3E5FC'>Details") == (
+            "Section",
+            "open",
+            "Details",
+            "#B3E5FC",
+        )
+
+        # Self-closing tags with bg attribute
+        assert parse_block_tag('<Spare bg="#C8E6C9" />') == ("Spare", "self-closing", "", "#C8E6C9")
+        assert parse_block_tag('<Reserved bg="#FFF9C4" />') == (
+            "Reserved",
+            "self-closing",
+            "",
+            "#FFF9C4",
+        )
+
+        # Closing tags never have bg attribute (color is on opening tag)
+        assert parse_block_tag("</Motor>") == ("Motor", "close", "", None)
+
+        # Mixed case - bg attribute should be extracted regardless of position
+        assert parse_block_tag('<Name With Spaces bg="#FFCCBC">') == (
+            "Name With Spaces",
+            "open",
+            "",
+            "#FFCCBC",
+        )

@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(make)",
-      "Bash(make test:*)"
+      "Bash(make test:*)",
+      "Bash(make lint:*)"
     ]
   }
 }

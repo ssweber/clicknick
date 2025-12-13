@@ -77,13 +77,86 @@ class AddressPanel(ttk.Frame):
         if self.on_close:
             self.on_close(self)
 
+    def _get_block_colors_for_rows(self) -> dict[int, str]:
+        """Compute block background colors for each row address.
+
+        Parses block tags from row comments to determine which rows
+        should have colored row indices. Nested blocks override outer blocks.
+
+        Returns:
+            Dict mapping row index (in self.rows) to bg color string.
+        """
+        from .address_model import parse_block_tag
+
+        # Build list of colored blocks: (start_idx, end_idx, bg_color)
+        # We use row indices not addresses for easier lookup
+        colored_blocks: list[tuple[int, int | None, str]] = []
+
+        # Stack for tracking open tags: name -> [(start_idx, bg_color), ...]
+        open_tags: dict[str, list[tuple[int, str | None]]] = {}
+
+        for row_idx, row in enumerate(self.rows):
+            block_name, tag_type, _, bg_color = parse_block_tag(row.comment)
+            if not block_name:
+                continue
+
+            if tag_type == "self-closing":
+                if bg_color:
+                    colored_blocks.append((row_idx, row_idx, bg_color))
+            elif tag_type == "open":
+                if block_name not in open_tags:
+                    open_tags[block_name] = []
+                open_tags[block_name].append((row_idx, bg_color))
+            elif tag_type == "close":
+                if block_name in open_tags and open_tags[block_name]:
+                    start_idx, start_bg_color = open_tags[block_name].pop()
+                    if start_bg_color:
+                        colored_blocks.append((start_idx, row_idx, start_bg_color))
+
+        # Handle unclosed tags as singular points
+        for stack in open_tags.values():
+            for start_idx, bg_color in stack:
+                if bg_color:
+                    colored_blocks.append((start_idx, start_idx, bg_color))
+
+        # Build row_idx -> color map, with inner blocks overriding outer
+        # Sort by range size descending (larger ranges first), then by start index
+        # This ensures inner (smaller) blocks are processed last and override
+        colored_blocks.sort(key=lambda b: (-(b[1] - b[0]) if b[1] else 0, b[0]))
+
+        row_colors: dict[int, str] = {}
+        for start_idx, end_idx, bg_color in colored_blocks:
+            if end_idx is None:
+                end_idx = start_idx
+            for idx in range(start_idx, end_idx + 1):
+                row_colors[idx] = bg_color
+
+        return row_colors
+
     def _apply_row_styling(self) -> None:
         """Apply visual styling to rows based on state."""
         # Clear all existing highlights first
         self.sheet.dehighlight_all()
 
+        # Get block colors for row indices
+        block_colors = self._get_block_colors_for_rows()
+
         for display_idx, row_idx in enumerate(self._filtered_indices):
             row = self.rows[row_idx]
+
+            # Apply block color to row index only (not data cells)
+            if row_idx in block_colors:
+                # Import here to avoid circular imports
+                from .address_editor_window import get_block_color_hex
+
+                # Convert color name to hex (supports both names and hex codes)
+                hex_color = get_block_color_hex(block_colors[row_idx])
+                if hex_color:
+                    self.sheet.highlight_cells(
+                        row=display_idx,
+                        bg=hex_color,
+                        canvas="row_index",
+                    )
 
             # Alternate row colors for combined types to distinguish between types
             if self.combined_types and len(self.combined_types) > 1:
