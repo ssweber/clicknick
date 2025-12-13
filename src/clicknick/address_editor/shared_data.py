@@ -332,32 +332,56 @@ class SharedAddressData:
         """
         self.rows_by_type[memory_type] = rows
 
-    def get_header_addresses(self, memory_type: str) -> list[tuple[int, str]]:
-        """Get addresses that have header tags for a memory type.
+    def get_header_addresses(self, memory_type: str) -> list[tuple[int, int | None, str]]:
+        """Get block definitions for a memory type.
 
-        Header tags are comments formatted as <HeaderName> that act as
-        section markers for navigation in the Address Editor.
+        Block tags mark sections for navigation in the Address Editor.
+        - Opening tags (<BlockName>) paired with closing tags (</BlockName>) form ranges
+        - Self-closing tags (<BlockName />) mark singular points
+        - Blocks can be nested
 
         Args:
             memory_type: The memory type (X, Y, C, etc.)
 
         Returns:
-            List of (address, header_name) tuples for rows with header tags,
-            sorted by address.
+            List of (start_addr, end_addr, block_name) tuples sorted by start address.
+            end_addr is None for self-closing (singular) blocks.
         """
-        from .address_model import extract_header_name
+        from .address_model import parse_block_tag
 
         rows = self.rows_by_type.get(memory_type)
         if not rows:
             return []
 
-        headers = []
-        for row in rows:
-            header_name = extract_header_name(row.comment)
-            if header_name:
-                headers.append((row.address, header_name))
+        # Collect all block tags
+        open_tags: dict[str, list[int]] = {}  # name -> [addresses] (stack for nesting)
+        blocks: list[tuple[int, int | None, str]] = []
 
-        return sorted(headers, key=lambda x: x[0])
+        for row in rows:
+            block_name, tag_type, _ = parse_block_tag(row.comment)
+            if not block_name:
+                continue
+
+            if tag_type == "self-closing":
+                # Singular point - no end address
+                blocks.append((row.address, None, block_name))
+            elif tag_type == "open":
+                # Push to stack for this block name
+                if block_name not in open_tags:
+                    open_tags[block_name] = []
+                open_tags[block_name].append(row.address)
+            elif tag_type == "close":
+                # Pop from stack and create range
+                if block_name in open_tags and open_tags[block_name]:
+                    start_addr = open_tags[block_name].pop()
+                    blocks.append((start_addr, row.address, block_name))
+
+        # Any unclosed opening tags become singular points
+        for block_name, addresses in open_tags.items():
+            for addr in addresses:
+                blocks.append((addr, None, block_name))
+
+        return sorted(blocks, key=lambda x: x[0])
 
     def update_nickname(self, addr_key: int, old_nickname: str, new_nickname: str) -> None:
         """Update a nickname in the global registry.

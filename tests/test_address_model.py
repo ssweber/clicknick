@@ -12,7 +12,6 @@ from clicknick.address_editor.address_model import (
     DATA_TYPE_TXT,
     DEFAULT_RETENTIVE,
     FORBIDDEN_CHARS,
-    HEADER_TAG_PATTERN,
     MEMORY_TYPE_BASES,
     MEMORY_TYPE_TO_DATA_TYPE,
     NICKNAME_MAX_LENGTH,
@@ -809,41 +808,75 @@ class TestAddressRowInitialValueRetentive:
         assert row.needs_full_delete is False
 
 
-class TestHeaderTags:
-    """Tests for header tag detection functions."""
+class TestBlockTags:
+    """Tests for block tag detection functions.
 
-    def test_is_header_tag_valid(self):
-        """Test is_header_tag with valid header tags."""
+    Block tags support three formats:
+    - Opening tag: <BlockName> - marks start of a range block (can have text after)
+    - Closing tag: </BlockName> - marks end of a range block (can have text after)
+    - Self-closing tag: <BlockName /> - marks a singular point
+    """
+
+    def test_is_header_tag_opening(self):
+        """Test is_header_tag with opening block tags."""
         assert is_header_tag("<Motor Control>") is True
         assert is_header_tag("<A>") is True
         assert is_header_tag("<Section 1>") is True
         assert is_header_tag("<Custom Coils>") is True
         assert is_header_tag("  <Header>  ") is True  # Whitespace trimmed
-        # Header tag with additional text after is valid
+        # Opening tags can have text after
         assert is_header_tag("<Header>Some additional text") is True
-        assert is_header_tag("<Start Custom Coils>Valve 1 is located") is True
+        assert is_header_tag("<Start>Valve info") is True
+
+    def test_is_header_tag_closing(self):
+        """Test is_header_tag with closing block tags."""
+        assert is_header_tag("</Motor Control>") is True
+        assert is_header_tag("</A>") is True
+        assert is_header_tag("</Section 1>") is True
+        assert is_header_tag("  </Header>  ") is True  # Whitespace trimmed
+        # Closing tags can have text after
+        assert is_header_tag("</Header>End of section") is True
+
+    def test_is_header_tag_self_closing(self):
+        """Test is_header_tag with self-closing block tags."""
+        assert is_header_tag("<Motor Control />") is True
+        assert is_header_tag("<A />") is True
+        assert is_header_tag("<Spare />") is True
+        assert is_header_tag("  <Header />  ") is True  # Whitespace trimmed
 
     def test_is_header_tag_invalid(self):
         """Test is_header_tag with invalid inputs."""
         assert is_header_tag("") is False
         assert is_header_tag(None) is False
         assert is_header_tag("<>") is False  # Empty header name
-        assert is_header_tag("<<nested>>") is False  # Nested brackets
         assert is_header_tag("text <header>") is False  # Text before (must start with <)
         assert is_header_tag("<partial") is False  # Missing close bracket
         assert is_header_tag("partial>") is False  # Missing open bracket
         assert is_header_tag("no brackets") is False  # No brackets
-        assert is_header_tag("<header<nested>") is False  # Nested open bracket
 
-    def test_extract_header_name_valid(self):
-        """Test extract_header_name with valid header tags."""
+    def test_extract_header_name_opening(self):
+        """Test extract_header_name with opening block tags."""
         assert extract_header_name("<Motor Control>") == "Motor Control"
         assert extract_header_name("<A>") == "A"
         assert extract_header_name("<Section 1>") == "Section 1"
         assert extract_header_name("  <Header>  ") == "Header"  # Whitespace trimmed
-        # Header tag with additional text - extracts just the header name
+        # Opening tags with text after - extracts just the name
         assert extract_header_name("<Header>Some text") == "Header"
         assert extract_header_name("<Start Custom Coils>Valve info") == "Start Custom Coils"
+
+    def test_extract_header_name_closing(self):
+        """Test extract_header_name with closing block tags."""
+        assert extract_header_name("</Motor Control>") == "Motor Control"
+        assert extract_header_name("</A>") == "A"
+        assert extract_header_name("</Section 1>") == "Section 1"
+        # Closing tags with text after
+        assert extract_header_name("</Header>End note") == "Header"
+
+    def test_extract_header_name_self_closing(self):
+        """Test extract_header_name with self-closing block tags."""
+        assert extract_header_name("<Motor Control />") == "Motor Control"
+        assert extract_header_name("<A />") == "A"
+        assert extract_header_name("<Spare />") == "Spare"
 
     def test_extract_header_name_invalid(self):
         """Test extract_header_name with invalid inputs."""
@@ -853,31 +886,67 @@ class TestHeaderTags:
         assert extract_header_name("not a header") is None
         assert extract_header_name("<partial") is None
 
-    def test_strip_header_tag_with_header(self):
-        """Test strip_header_tag with comments containing header tags."""
-        # Header tag only - returns empty string
+    def test_strip_header_tag_with_block_tags(self):
+        """Test strip_header_tag with block tags."""
+        # Block tags only - returns empty string
         assert strip_header_tag("<Motor Control>") == ""
         assert strip_header_tag("  <Header>  ") == ""
-        # Header tag with additional text - returns the text
+        assert strip_header_tag("</Motor Control>") == ""
+        assert strip_header_tag("<Spare />") == ""
+        # Block tags with text after - returns the text
         assert strip_header_tag("<Header>Some additional text") == "Some additional text"
         assert strip_header_tag("<Start Custom Coils>Valve 1 is located") == "Valve 1 is located"
-        assert strip_header_tag("<Section>  Spaced text  ") == "Spaced text"
+        assert strip_header_tag("</Section>End of section") == "End of section"
 
     def test_strip_header_tag_without_header(self):
-        """Test strip_header_tag with comments that don't have header tags."""
+        """Test strip_header_tag with comments that don't have block tags."""
         # No header - returns original comment
         assert strip_header_tag("Regular comment") == "Regular comment"
         assert strip_header_tag("text <header>") == "text <header>"  # Tag not at start
         assert strip_header_tag("") == ""
         assert strip_header_tag(None) == ""
 
-    def test_header_tag_pattern_regex(self):
-        """Test HEADER_TAG_PATTERN regex directly."""
-        # Valid matches (at start of string)
-        assert HEADER_TAG_PATTERN.match("<Test>") is not None
-        assert HEADER_TAG_PATTERN.match("<Test Header>") is not None
-        assert HEADER_TAG_PATTERN.match("<Test>with more text") is not None
+    def test_get_block_type(self):
+        """Test get_block_type function."""
+        from clicknick.address_editor.address_model import get_block_type
 
-        # Invalid - should not match
-        assert HEADER_TAG_PATTERN.match("<>") is None
-        assert HEADER_TAG_PATTERN.match("text <header>") is None
+        # Opening tags
+        assert get_block_type("<Motor Control>") == "open"
+        assert get_block_type("<A>") == "open"
+        assert get_block_type("<Header>with text") == "open"
+
+        # Closing tags
+        assert get_block_type("</Motor Control>") == "close"
+        assert get_block_type("</A>") == "close"
+        assert get_block_type("</Header>with text") == "close"
+
+        # Self-closing tags
+        assert get_block_type("<Motor Control />") == "self-closing"
+        assert get_block_type("<Spare />") == "self-closing"
+
+        # Invalid
+        assert get_block_type("") is None
+        assert get_block_type("Regular text") is None
+
+    def test_parse_block_tag(self):
+        """Test parse_block_tag function directly."""
+        from clicknick.address_editor.address_model import parse_block_tag
+
+        # Opening tags
+        assert parse_block_tag("<Motor>") == ("Motor", "open", "")
+        assert parse_block_tag("<Motor>Valve 1") == ("Motor", "open", "Valve 1")
+        assert parse_block_tag("<Section 1>Details here") == ("Section 1", "open", "Details here")
+
+        # Closing tags
+        assert parse_block_tag("</Motor>") == ("Motor", "close", "")
+        assert parse_block_tag("</Motor>End section") == ("Motor", "close", "End section")
+
+        # Self-closing tags
+        assert parse_block_tag("<Spare />") == ("Spare", "self-closing", "")
+        assert parse_block_tag("<Reserved />") == ("Reserved", "self-closing", "")
+
+        # Invalid - returns original comment
+        assert parse_block_tag("Regular text") == (None, None, "Regular text")
+        assert parse_block_tag("<>") == (None, None, "<>")
+        assert parse_block_tag("") == (None, None, "")
+        assert parse_block_tag("<partial") == (None, None, "<partial")

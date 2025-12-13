@@ -7,7 +7,7 @@ Mimics the Click PLC Address Picker UI with sidebar navigation.
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, simpledialog, ttk
 
 from .address_panel import AddressPanel
 from .mdb_operations import MdbConnection, load_all_nicknames
@@ -93,7 +93,7 @@ class TypeButton(ttk.Frame):
         menu.add_cascade(label=f"{display_type}{start_addr}", menu=submenu)
 
     def _add_blocks_menu(self, menu: tk.Menu, display_type: str) -> None:
-        """Add Blocks entry to menu if there are headers.
+        """Add Blocks entry to menu if there are blocks defined.
 
         Args:
             menu: Menu to add blocks to
@@ -102,32 +102,38 @@ class TypeButton(ttk.Frame):
         if not self.get_headers_callback:
             return
 
-        headers = self.get_headers_callback()
-        if not headers:
+        blocks = self.get_headers_callback()
+        if not blocks:
             return
 
-        # Sort headers by address
-        headers = sorted(headers, key=lambda x: x[0])
+        # Sort blocks by start address
+        blocks = sorted(blocks, key=lambda x: x[0])
 
         menu.add_separator()
 
-        if len(headers) <= 5:
+        def format_block_label(start_addr: int, end_addr: int | None, name: str) -> str:
+            """Format a block label for display."""
+            if end_addr is not None:
+                return f"{name} ({display_type}{start_addr}-{display_type}{end_addr})"
+            return f"{name} ({display_type}{start_addr})"
+
+        if len(blocks) <= 5:
             # Add directly to menu
             menu.add_command(label="Blocks", state="disabled")
-            for addr, header_name in headers:
-                label = f"  {header_name} ({display_type}{addr})"
+            for start_addr, end_addr, block_name in blocks:
+                label = f"  {format_block_label(start_addr, end_addr, block_name)}"
                 menu.add_command(
                     label=label,
-                    command=lambda a=addr: self._on_jump_selected(a),
+                    command=lambda a=start_addr: self._on_jump_selected(a),
                 )
         else:
             # Use submenu for >5 blocks
             blocks_submenu = tk.Menu(menu, tearoff=0)
-            for addr, header_name in headers:
-                label = f"{header_name} ({display_type}{addr})"
+            for start_addr, end_addr, block_name in blocks:
+                label = format_block_label(start_addr, end_addr, block_name)
                 blocks_submenu.add_command(
                     label=label,
-                    command=lambda a=addr: self._on_jump_selected(a),
+                    command=lambda a=start_addr: self._on_jump_selected(a),
                 )
             menu.add_cascade(label="Blocks", menu=blocks_submenu)
 
@@ -242,24 +248,25 @@ class TypeButton(ttk.Frame):
 class TypeSidebar(ttk.Frame):
     """Sidebar with type selection buttons."""
 
-    def _get_headers_for_type(self, type_name: str) -> list[tuple[int, str]]:
-        """Get header addresses for a type from shared data.
+    def _get_headers_for_type(self, type_name: str) -> list[tuple[int, int | None, str]]:
+        """Get block definitions for a type from shared data.
 
         Args:
             type_name: The type name (may be combined like "T/TD")
 
         Returns:
-            List of (address, header_name) tuples
+            List of (start_addr, end_addr, block_name) tuples.
+            end_addr is None for self-closing (singular) blocks.
         """
         if not self.shared_data:
             return []
 
         # Handle combined types (T/TD, CT/CTD)
         if type_name in COMBINED_TYPES:
-            headers = []
+            blocks = []
             for sub_type in COMBINED_TYPES[type_name]:
-                headers.extend(self.shared_data.get_header_addresses(sub_type))
-            return sorted(headers, key=lambda x: x[0])
+                blocks.extend(self.shared_data.get_header_addresses(sub_type))
+            return sorted(blocks, key=lambda x: x[0])
 
         return self.shared_data.get_header_addresses(type_name)
 
@@ -381,6 +388,42 @@ class AddressEditorWindow(tk.Toplevel):
         for panel in self.panels.values():
             panel.pack_forget()
 
+    def _get_selected_row_indices(self) -> list[int]:
+        """Get selected row indices from the current panel.
+
+        Returns:
+            List of display row indices that are selected (sorted).
+        """
+        if not self.current_type or self.current_type not in self.panels:
+            return []
+
+        panel = self.panels[self.current_type]
+        sheet = panel.sheet
+
+        # Get selected rows from tksheet (returns set of row indices)
+        selected = sheet.get_selected_rows()
+        if not selected:
+            return []
+
+        return sorted(selected)
+
+    def _update_add_block_button_state(self) -> None:
+        """Update the Add Block button enabled state based on row selection."""
+        selected = self._get_selected_row_indices()
+        if selected:
+            self.add_block_btn.configure(state="normal")
+        else:
+            self.add_block_btn.configure(state="disabled")
+
+    def _bind_panel_selection(self, panel: AddressPanel) -> None:
+        """Bind selection change events on a panel's sheet.
+
+        Args:
+            panel: The AddressPanel to bind events on
+        """
+        # Bind to selection events to update Add Block button state
+        panel.sheet.bind("<<SheetSelect>>", lambda e: self._update_add_block_button_state())
+
     def _create_panel(self, type_name: str) -> bool:
         """Create a panel for the given type.
 
@@ -423,6 +466,10 @@ class AddressEditorWindow(tk.Toplevel):
                 self.shared_data.set_rows(type_name, panel.rows)
 
             self.panels[type_name] = panel
+
+            # Bind selection events to update Add Block button state
+            self._bind_panel_selection(panel)
+
             return True
 
         except Exception as e:
@@ -444,6 +491,9 @@ class AddressEditorWindow(tk.Toplevel):
         # Show the panel using pack
         self.panels[type_name].pack(fill=tk.BOTH, expand=True)
         self._update_status()
+
+        # Reset Add Block button state (selection cleared on panel switch)
+        self._update_add_block_button_state()
 
     def _on_type_selected(self, type_name: str) -> None:
         """Handle type button click - show/create panel for this type."""
@@ -563,6 +613,111 @@ class AddressEditorWindow(tk.Toplevel):
         except Exception as e:
             messagebox.showerror("Error", str(e), parent=self)
 
+    def _create_tooltip(self, widget: tk.Widget, text: str) -> None:
+        """Create a simple tooltip for a widget.
+
+        Args:
+            widget: The widget to attach the tooltip to
+            text: The tooltip text
+        """
+        tooltip = None
+
+        def show_tooltip(event):
+            nonlocal tooltip
+            x = widget.winfo_rootx() + 20
+            y = widget.winfo_rooty() + widget.winfo_height() + 5
+            tooltip = tk.Toplevel(widget)
+            tooltip.wm_overrideredirect(True)
+            tooltip.wm_geometry(f"+{x}+{y}")
+            label = ttk.Label(
+                tooltip, text=text, background="#ffffe0", relief="solid", borderwidth=1
+            )
+            label.pack()
+
+        def hide_tooltip(event):
+            nonlocal tooltip
+            if tooltip:
+                tooltip.destroy()
+                tooltip = None
+
+        widget.bind("<Enter>", show_tooltip)
+        widget.bind("<Leave>", hide_tooltip)
+
+    def _on_add_block_clicked(self) -> None:
+        """Handle Add Block button click."""
+        selected_display_rows = self._get_selected_row_indices()
+        if not selected_display_rows:
+            return
+
+        panel = self.panels[self.current_type]
+
+        # Ask for block name
+        block_name = simpledialog.askstring(
+            "Add Block",
+            "Block Name:",
+            parent=self,
+        )
+        if not block_name:
+            return
+
+        # Clean up the block name (remove any < > characters)
+        block_name = block_name.strip().replace("<", "").replace(">", "").replace("/", "")
+        if not block_name:
+            messagebox.showerror("Error", "Invalid block name.", parent=self)
+            return
+
+        # Map display rows to actual rows
+        first_display_idx = selected_display_rows[0]
+        last_display_idx = selected_display_rows[-1]
+
+        if first_display_idx >= len(panel._filtered_indices):
+            return
+        if last_display_idx >= len(panel._filtered_indices):
+            return
+
+        first_row_idx = panel._filtered_indices[first_display_idx]
+        last_row_idx = panel._filtered_indices[last_display_idx]
+
+        first_row = panel.rows[first_row_idx]
+        last_row = panel.rows[last_row_idx]
+
+        if first_row_idx == last_row_idx:
+            # Single row - self-closing tag
+            tag = f"<{block_name} />"
+            existing_comment = first_row.comment
+            if existing_comment:
+                first_row.comment = f"{tag} {existing_comment}"
+            else:
+                first_row.comment = tag
+        else:
+            # Range - opening and closing tags
+            open_tag = f"<{block_name}>"
+            close_tag = f"</{block_name}>"
+
+            # Add opening tag to first row
+            existing_first = first_row.comment
+            if existing_first:
+                first_row.comment = f"{open_tag} {existing_first}"
+            else:
+                first_row.comment = open_tag
+
+            # Add closing tag to last row
+            existing_last = last_row.comment
+            if existing_last:
+                last_row.comment = f"{close_tag} {existing_last}"
+            else:
+                last_row.comment = close_tag
+
+        # Refresh the panel
+        panel._refresh_sheet()
+
+        # Notify data changed
+        if panel.on_data_changed:
+            panel.on_data_changed()
+
+        # Update status
+        self._update_status()
+
     def _create_widgets(self) -> None:
         """Create all window widgets."""
         # Main container
@@ -597,6 +752,17 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Refresh button
         ttk.Button(footer, text="⟳ Refresh", command=self._refresh_all).pack(side=tk.LEFT)
+
+        # Add Block button (right of Refresh)
+        self.add_block_btn = ttk.Button(
+            footer,
+            text="+ Add Block",
+            command=self._on_add_block_clicked,
+            state="disabled",
+        )
+        self.add_block_btn.pack(side=tk.LEFT, padx=(5, 0))
+        # Create tooltip for the button
+        self._create_tooltip(self.add_block_btn, "Select row(s) first")
 
         # Save button
         self.save_btn = ttk.Button(footer, text="💾 Save All", command=self._save_all)

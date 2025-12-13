@@ -3,7 +3,6 @@
 Contains AddressRow dataclass, validation functions, and AddrKey calculations.
 """
 
-import re
 from dataclasses import dataclass, field
 
 # Address ranges by memory type (start, end inclusive)
@@ -74,61 +73,122 @@ NON_EDITABLE_TYPES: frozenset[str] = frozenset({"SC", "SD", "XD", "YD"})
 # Retentive edits on these types update the paired type instead
 PAIRED_RETENTIVE_TYPES: dict[str, str] = {"TD": "T", "CTD": "CT"}
 
-# Header tag pattern: matches <HeaderName> at the START of a comment
-# Used for section markers in the Address Editor
-# The header tag portion is stripped from overlay popup display
-HEADER_TAG_PATTERN = re.compile(r"^<([^<>]+)>")
+
+def parse_block_tag(comment: str) -> tuple[str | None, str | None, str]:
+    """Parse block tag from the start of a comment.
+
+    Block tags mark sections in the Address Editor:
+    - <BlockName> - opening tag for a range (can have text after)
+    - </BlockName> - closing tag for a range (can have text after)
+    - <BlockName /> - self-closing tag for a singular point
+
+    Args:
+        comment: The comment string to parse
+
+    Returns:
+        Tuple of (block_name, tag_type, remaining_text)
+        - block_name: The name inside the tag, or None if not a block tag
+        - tag_type: 'open', 'close', 'self-closing', or None
+        - remaining_text: Text after the tag, or original comment if no tag
+    """
+    if not comment:
+        return None, None, ""
+
+    s = comment.strip()
+    if not s.startswith("<"):
+        return None, None, comment
+
+    end = s.find(">")
+    if end == -1:
+        return None, None, comment
+
+    tag_content = s[1:end]  # content between < and >
+    remaining = s[end + 1 :].strip()
+
+    # Empty tag <> is invalid
+    if not tag_content or not tag_content.strip():
+        return None, None, comment
+
+    # Self-closing: <Name />
+    if tag_content.rstrip().endswith("/"):
+        name = tag_content.rstrip()[:-1].strip()
+        if name:
+            return name, "self-closing", remaining
+        return None, None, comment
+
+    # Closing: </Name>
+    if tag_content.startswith("/"):
+        name = tag_content[1:].strip()
+        if name:
+            return name, "close", remaining
+        return None, None, comment
+
+    # Opening: <Name>
+    name = tag_content.strip()
+    if name:
+        return name, "open", remaining
+
+    return None, None, comment
 
 
-def is_header_tag(comment: str) -> bool:
-    """Check if a comment starts with a header tag.
-
-    Header tags are formatted as <HeaderName> at the start of a comment and act
-    as section markers in the Address Editor. The header portion is stripped
-    from the overlay popup, but any text after the tag is preserved.
+def get_block_type(comment: str) -> str | None:
+    """Determine the type of block tag in a comment.
 
     Args:
         comment: The comment string to check
 
     Returns:
-        True if the comment starts with <HeaderName> pattern
+        'open' for <BlockName>, 'close' for </BlockName>,
+        'self-closing' for <BlockName />, or None if not a block tag
     """
-    if not comment:
-        return False
-    return bool(HEADER_TAG_PATTERN.match(comment.strip()))
+    _, tag_type, _ = parse_block_tag(comment)
+    return tag_type
+
+
+def is_header_tag(comment: str) -> bool:
+    """Check if a comment starts with a block tag (any type).
+
+    Block tags mark sections in the Address Editor:
+    - <BlockName> - opening tag for a range
+    - </BlockName> - closing tag for a range
+    - <BlockName /> - self-closing tag for a singular point
+
+    Args:
+        comment: The comment string to check
+
+    Returns:
+        True if the comment starts with any type of block tag
+    """
+    return get_block_type(comment) is not None
 
 
 def extract_header_name(comment: str) -> str | None:
-    """Extract header name from a comment that starts with a header tag.
+    """Extract block name from a comment that starts with a block tag.
 
     Args:
-        comment: The comment string (e.g., "<Motor Control>Valve info")
+        comment: The comment string (e.g., "<Motor>Valve info", "</Motor>", "<Spare />")
 
     Returns:
-        The header name without brackets (e.g., "Motor Control"), or None if no header
+        The block name (e.g., "Motor", "Spare"), or None if no tag
     """
-    if not comment:
-        return None
-    match = HEADER_TAG_PATTERN.match(comment.strip())
-    return match.group(1) if match else None
+    name, _, _ = parse_block_tag(comment)
+    return name
 
 
 def strip_header_tag(comment: str) -> str:
-    """Strip header tag from a comment, preserving any text after it.
+    """Strip block tag from a comment, returning any text after the tag.
 
     Args:
-        comment: The comment string (e.g., "<Motor Control>Valve info")
+        comment: The comment string (e.g., "<Motor>Valve info")
 
     Returns:
-        The comment without the header tag (e.g., "Valve info"), or original if no header
+        Text after the tag (e.g., "Valve info"), or original if no tag
     """
     if not comment:
         return ""
-    stripped = comment.strip()
-    match = HEADER_TAG_PATTERN.match(stripped)
-    if match:
-        # Return everything after the header tag
-        return stripped[match.end() :].strip()
+    _, tag_type, remaining = parse_block_tag(comment)
+    if tag_type is not None:
+        return remaining
     return comment
 
 
