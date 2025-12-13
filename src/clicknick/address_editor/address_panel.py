@@ -35,15 +35,14 @@ class AddressPanel(ttk.Frame):
     Supports combined types (e.g., T+TD interleaved) via combined_types parameter.
     """
 
-    # Column indices
-    COL_ADDRESS = 0
-    COL_NICKNAME = 1
-    COL_USED = 2
-    COL_INIT_VALUE = 3
-    COL_RETENTIVE = 4
-    COL_COMMENT = 5
-    COL_VALID = 6
-    COL_ISSUE = 7
+    # Column indices (Address is now in row index, not a data column)
+    COL_NICKNAME = 0
+    COL_USED = 1
+    COL_INIT_VALUE = 2
+    COL_RETENTIVE = 3
+    COL_COMMENT = 4
+    COL_VALID = 5
+    COL_ISSUE = 6
 
     def _is_bit_type_panel(self) -> bool:
         """Check if this panel displays a single BIT-type memory (X, Y, C, SC).
@@ -94,7 +93,7 @@ class AddressPanel(ttk.Frame):
                     type_idx = 0
 
                 if type_idx == 1:  # Second type gets slight background tint
-                    for col in range(8):
+                    for col in range(7):  # 7 data columns (address is in row index)
                         self.sheet.highlight_cells(
                             row=display_idx,
                             column=col,
@@ -179,9 +178,9 @@ class AddressPanel(ttk.Frame):
                     fg="#666666",
                 )
 
-            # Empty rows get gray text (except editable columns)
+            # Empty rows get gray text on validation columns
             if row.is_empty and row.comment == "" and row.initial_value == "":
-                for col in [self.COL_ADDRESS, self.COL_VALID, self.COL_ISSUE]:
+                for col in [self.COL_VALID, self.COL_ISSUE]:
                     self.sheet.highlight_cells(
                         row=display_idx,
                         column=col,
@@ -227,10 +226,14 @@ class AddressPanel(ttk.Frame):
         is_bit_panel = self._is_bit_type_panel()
         is_combined_panel = self.combined_types and len(self.combined_types) > 1
 
-        # Build display data
+        # Build display data and row index values
         data = []
+        row_index_values = []
         for idx in self._filtered_indices:
             row = self.rows[idx]
+
+            # Add address to row index
+            row_index_values.append(row.display_address)
 
             # Determine validity display
             if row.is_empty and row.initial_value == "":
@@ -264,7 +267,6 @@ class AddressPanel(ttk.Frame):
 
             data.append(
                 [
-                    row.display_address,
                     row.nickname,
                     used_display,
                     init_value_display,
@@ -275,8 +277,9 @@ class AddressPanel(ttk.Frame):
                 ]
             )
 
-        # Update sheet
+        # Update sheet with data and row index
         self.sheet.set_sheet_data(data, reset_col_positions=False)
+        self.sheet.set_index_data(row_index_values)
 
         # Re-enable checkboxes for retentive column after data update
         # Using edit_data=True ensures the checkbox updates cell data to True/False
@@ -541,11 +544,12 @@ class AddressPanel(ttk.Frame):
             command=self._toggle_init_ret_columns,
         ).pack(side=tk.LEFT, padx=(5, 0))
 
-        # Table (tksheet)
+        # Table (tksheet) - Address is shown in row index for row selection
         self.sheet = tksheet.Sheet(
             self,
-            headers=["Address", "Nickname", "Used", "Init Value", "Ret", "Comment", "Ok", "Issue"],
-            show_row_index=False,
+            headers=["Nickname", "Used", "Init Value", "Ret", "Comment", "Ok", "Issue"],
+            show_row_index=True,
+            index_align="w",  # Left-align the row index
             height=400,
             width=800,
         )
@@ -572,10 +576,10 @@ class AddressPanel(ttk.Frame):
                 edit_data=True, checked=None
             )
 
-        self.sheet.set_column_widths([70, 200, 40, 90, 30, 400, 30, 100])
-        self.sheet.readonly_columns(
-            [self.COL_ADDRESS, self.COL_USED, self.COL_VALID, self.COL_ISSUE]
-        )
+        # Set column widths (address is in row index now)
+        self.sheet.set_column_widths([200, 40, 90, 30, 400, 30, 100])
+        self.sheet.row_index(70)  # Set row index width
+        self.sheet.readonly_columns([self.COL_USED, self.COL_VALID, self.COL_ISSUE])
 
         # Bind edit events
         self.sheet.bind("<<SheetModified>>", self._on_sheet_modified)
@@ -838,7 +842,7 @@ class AddressPanel(ttk.Frame):
 
         try:
             display_idx = self._filtered_indices.index(row_idx)
-            self.sheet.see(display_idx, self.COL_ADDRESS)
+            self.sheet.see(display_idx, self.COL_NICKNAME)
             return True
         except ValueError:
             return False
