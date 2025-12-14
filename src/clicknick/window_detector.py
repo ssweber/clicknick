@@ -1,7 +1,35 @@
 import json
 import re
+from dataclasses import dataclass
 
-from .shared_ahk import AHK
+from .win32_utils import WIN32
+
+
+@dataclass
+class ChildWindowInfo:
+    """Information about a detected Click.exe child window."""
+
+    window_id: int  # HWND as integer
+    window_class: str
+    edit_control: str
+
+
+@dataclass
+class ClickInstance:
+    """Information about a running Click.exe instance."""
+
+    pid: str
+    title: str
+    filename: str
+    hwnd: int
+
+
+@dataclass
+class WindowFieldInfo:
+    """Result of window/field detection."""
+
+    is_valid: bool
+    allowed_address_types: list[str]
 
 
 class ClickWindowDetector:
@@ -25,44 +53,43 @@ class ClickWindowDetector:
         try:
             if not window_pid:
                 return False
-
-            # Check if window still exists
-            result = AHK.f("WinExist", f"ahk_pid {window_pid}")
-            return bool(result)
+            return WIN32.win_exist(pid=window_pid)
         except Exception as e:
             print(f"Error checking window existence: {e}")
             return False
 
-    def detect_child_window(self, click_pid: str) -> tuple[str, str, str] | None:
+    def detect_child_window(self, click_pid: str) -> ChildWindowInfo | None:
         """
         Detect if the active window is our connected Click.exe instance.
 
         Returns:
-            tuple: (window_id, window_class, edit_control) or None if not valid
+            ChildWindowInfo or None if not valid
         """
         try:
             # Get the active window PID
-            active_window_pid = AHK.f("WinGet", "PID", "A")  # "A" means active window
+            active_window_pid = WIN32.get_foreground_pid()
 
             # Check if active window is our Click.exe instance
             if active_window_pid != click_pid:
                 return None
 
-            # Get window class
-            active_window_id = AHK.f("WinGet", "ID", "A")
-            window_class = AHK.f("WinGetClass", f"ahk_id {active_window_id}")
+            # Get window handle and class
+            active_window_hwnd = WIN32.get_foreground_hwnd()
+            window_class = WIN32.get_class(active_window_hwnd)
 
             # Check if it's a recognized window class
             if window_class not in self.window_mapping:
                 return None
 
             if window_class == "#32770":
-                window_name = AHK.f("WinGetTitle", "ahk_class #32770")
+                window_name = WIN32.get_title_by_class("#32770")
                 if "Replace" not in window_name and "Find" not in window_name:
                     return None
 
             # Get focused control
-            focused_control = AHK.f("ControlGetFocus", f"ahk_id {active_window_id}")
+            # TfrmDataView creates inline edit controls dynamically, requiring GetGUIThreadInfo
+            use_gui_thread_info = window_class == "TfrmDataView"
+            focused_control = WIN32.get_focused_control(active_window_hwnd, use_gui_thread_info)
             if not focused_control:
                 return None
 
@@ -72,16 +99,16 @@ class ClickWindowDetector:
                 return None
 
             # We found a valid popup with a focused edit control
-            return (active_window_id, window_class, focused_control)
+            return ChildWindowInfo(active_window_hwnd, window_class, focused_control)
 
         except Exception as e:
             print(f"Error detecting popup window: {e}")
             return None
 
-    def field_has_text(self, field, window_id) -> bool:
+    def field_has_text(self, field: str, window_id: int) -> bool:
         """Check if the current field already has text in it."""
         try:
-            field_text = AHK.f_raw("ControlGetText", field, f"ahk_id {window_id}")
+            field_text = WIN32.get_control_text(window_id, field)
             return field_text.strip() != ""
         except Exception as e:
             print(f"Error checking field text: {e}")
@@ -95,18 +122,18 @@ class ClickWindowDetector:
         match = re.search(r"- ([^\\]+\.ckp)", title)
         return match.group(1) if match else None
 
-    def get_click_instances(self) -> list[tuple[str, str, str]]:
+    def get_click_instances(self) -> list[ClickInstance]:
         """
         Get all running Click.exe instances.
 
         Returns:
-            List of tuples (pid, title, filename)
+            List of ClickInstance objects
         """
-        click_instances = []
+        click_instances: list[ClickInstance] = []
 
         try:
             # Get all Click.exe windows
-            click_windows_json = AHK.f("WinGetClick")
+            click_windows_json = WIN32.get_click_windows()
 
             if not click_windows_json:
                 return click_instances
@@ -126,12 +153,14 @@ class ClickWindowDetector:
                 if not window_id or not window_title:
                     continue
 
-                window_pid = AHK.f("WinGet", "PID", f"ahk_id {window_id}")
+                # Convert hex string to int
+                hwnd = int(window_id, 16) if isinstance(window_id, str) else int(window_id)
+                window_pid = WIN32.get_pid(hwnd)
 
                 # Extract .ckp filename using centralized parser
                 filename = ClickWindowDetector.parse_click_filename(window_title)
                 if filename:
-                    click_instances.append((window_pid, window_title, filename))
+                    click_instances.append(ClickInstance(window_pid, window_title, filename, hwnd))
 
             return click_instances
 
@@ -139,9 +168,9 @@ class ClickWindowDetector:
             print(f"Error getting Click instances: {e}")
             return click_instances
 
-    def get_window_handle(self, pid):
+    def get_window_handle(self, pid) -> int | None:
         """
-        Get the window handle for a process ID using AHK.
+        Get the window handle for a process ID.
 
         Args:
             pid: Process ID (string or int)
@@ -150,50 +179,46 @@ class ClickWindowDetector:
             Window handle (hwnd) or None if not found
         """
         try:
-            # Get window ID using AHK
-            window_id = AHK.f("WinGet", "ID", f"ahk_pid {pid}")
-            if window_id:
-                return int(window_id)
-            return None
+            return WIN32.get_hwnd_by_pid(pid)
         except Exception as e:
             print(f"Error getting window handle: {e}")
             return None
 
-    def update(self) -> tuple[bool, list[str]]:
+    def update(self) -> WindowFieldInfo:
         """
         Update window and field detection.
-        Returns: Tuple of (is_valid_field, allowed_address_types)
+        Returns: WindowFieldInfo with validity and allowed address types
         """
         # Get the current window and field info
         return self.update_window_info(self.current_window, self.current_field)
 
-    def get_window_title(self, window_id: str) -> str | None:
-        """Get current title of a specific window using AHK."""
+    def get_window_title(self, window_id: int) -> str | None:
+        """Get current title of a specific window."""
         try:
-            return AHK.f("WinGetTitle", f"ahk_id {window_id}")
+            return WIN32.get_title(window_id)
         except Exception:
             return None
 
-    def update_window_info(self, window_class: str, field: str) -> tuple[bool, list[str]]:
+    def update_window_info(self, window_class: str, field: str) -> WindowFieldInfo:
         """
         Update window and field detection with provided window and field.
-        Returns: Tuple of (is_valid_field, allowed_address_types)
+        Returns: WindowFieldInfo with validity and allowed address types
         """
         self.current_window = window_class
         self.current_field = field
 
         # Early return if no valid window
         if not self.current_window or self.current_window not in self.window_mapping:
-            return False, []
+            return WindowFieldInfo(False, [])
 
         # Return result
         if not self.current_field or self.current_field not in self.window_mapping.get(
             self.current_window, {}
         ):
-            return False, []
+            return WindowFieldInfo(False, [])
 
         # Get allowed address types
         allowed_addresses = self.window_mapping.get(self.current_window, {}).get(
             self.current_field, []
         )
-        return True, allowed_addresses
+        return WindowFieldInfo(True, allowed_addresses)

@@ -13,7 +13,6 @@ from .icon_data import ICON_PNG_BASE64
 from .nickname_manager import NicknameManager
 from .overlay import Overlay
 from .settings import AppSettings
-from .shared_ahk import AHK
 from .window_detector import ClickWindowDetector
 from .window_mapping import CLICK_PLC_WINDOW_MAPPING
 
@@ -39,7 +38,7 @@ class ClickNickApp:
         self.csv_path_var = tk.StringVar()
         self.status_var = tk.StringVar(value="Not connected")
         self.selected_instance_var = tk.StringVar()  # Add this line
-        self.click_instances = []  # Will store (id, title, filename) tuples
+        self.click_instances = []  # Will store ClickInstance objects
         self.using_database = False  # Flag to track if database is being used
         self._odbc_warning_shown = False
 
@@ -80,9 +79,11 @@ class ClickNickApp:
             return
 
         # Find the matching instance
-        for _, (pid, title, filename) in enumerate(self.click_instances):
-            if filename == selected_text:
-                self.connect_to_instance(pid, title, filename)
+        for instance in self.click_instances:
+            if instance.filename == selected_text:
+                self.connect_to_instance(
+                    instance.pid, instance.title, instance.filename, instance.hwnd
+                )
                 break
 
     def _create_click_instances_section(self, parent):
@@ -245,6 +246,64 @@ class ClickNickApp:
         """Create and show the About dialog."""
         AboutDialog(self.root, get_version(), self.nickname_manager)
 
+    def _show_odbc_warning(self):
+        """Show a warning dialog about missing ODBC drivers."""
+        OdbcWarningDialog(self.root)
+
+    def _update_status(self, message, style="normal"):
+        """Update status message with appropriate style."""
+        self.status_var.set(message)
+        if style == "error":
+            self.status_label.configure(style="Error.TLabel")
+        elif style == "connected":
+            self.status_label.configure(style="Connected.TLabel")
+        else:
+            self.status_label.configure(style="Status.TLabel")
+
+    def _open_address_editor(self):
+        """Open the Address Editor window.
+
+        Multiple windows can be opened and they will share the same data.
+        Changes made in one window are automatically reflected in others.
+        """
+        if not self.connected_click_pid:
+            self._update_status("Connect to a ClickPLC window first", "error")
+            return
+
+        # Check for ODBC drivers
+        if not self.nickname_manager.has_access_driver():
+            self._show_odbc_warning()
+            return
+
+        try:
+            from .address_editor import AddressEditorWindow, SharedAddressData
+
+            # Use stored hwnd to avoid lookup issues with multiple windows
+            click_hwnd = self.connected_click_hwnd
+
+            # Create or reuse shared data for this PLC connection
+            if not hasattr(self, "_address_editor_shared_data"):
+                self._address_editor_shared_data = None
+
+            # Create new shared data if none exists or if PID changed
+            if (
+                self._address_editor_shared_data is None
+                or self._address_editor_shared_data.click_pid != self.connected_click_pid
+            ):
+                self._address_editor_shared_data = SharedAddressData(
+                    self.connected_click_pid, click_hwnd
+                )
+
+            AddressEditorWindow(
+                self.root,
+                self.connected_click_pid,
+                click_hwnd,
+                shared_data=self._address_editor_shared_data,
+            )
+
+        except Exception as e:
+            self._update_status(f"Error opening editor: {e}", "error")
+
     def _create_menu_bar(self):
         """Create the application menu bar."""
         menubar = tk.Menu(self.root)
@@ -256,6 +315,15 @@ class ClickNickApp:
         file_menu.add_command(label="Exit", command=self.on_closing)
         file_menu.add_separator()
         file_menu.add_command(label="Load Nicknames from CSV...", command=self.browse_and_load_csv)
+
+        # Tools menu
+        tools_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Tools", menu=tools_menu)
+        tools_menu.add_command(label="Address Editor...", command=self._open_address_editor)
+
+        # Disable Address Editor if ODBC drivers are not available
+        if not self.nickname_manager.has_access_driver():
+            tools_menu.entryconfigure("Address Editor...", state="disabled")
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -316,6 +384,7 @@ class ClickNickApp:
         self.connected_click_pid = None
         self.connected_click_title = None
         self.connected_click_filename = None
+        self.connected_click_hwnd = None
 
         self.filter_strategies = {
             "none": NoneFilter(),
@@ -358,26 +427,12 @@ class ClickNickApp:
         # Combobox overlay (initialized when needed)
         self.overlay = None
 
-    def _show_odbc_warning(self):
-        """Show a warning dialog about missing ODBC drivers."""
-        OdbcWarningDialog(self.root)
-
     def _check_odbc_drivers_and_warn(self):
         """Check for ODBC drivers and show warning if none available."""
         if not self.nickname_manager.has_access_driver():
             self._show_odbc_warning()
             return False
         return True
-
-    def _update_status(self, message, style="normal"):
-        """Update status message with appropriate style."""
-        self.status_var.set(message)
-        if style == "error":
-            self.status_label.configure(style="Error.TLabel")
-        elif style == "connected":
-            self.status_label.configure(style="Connected.TLabel")
-        else:
-            self.status_label.configure(style="Status.TLabel")
 
     def refresh_click_instances(self):
         """Refresh the list of running Click.exe instances."""
@@ -400,7 +455,7 @@ class ClickNickApp:
 
             # Update instance data
             self.click_instances = click_instances
-            filenames = [filename for _, _, filename in click_instances]
+            filenames = [instance.filename for instance in click_instances]
             self.instances_combobox["values"] = filenames
             self.start_button.state(["!disabled"])  # Enable when instances found
 
@@ -462,10 +517,10 @@ class ClickNickApp:
         # Clear the CSV path to indicate we're using the database
         self.csv_path_var.set("")
 
-        # Try to load from database
+        # Try to load from database (use stored hwnd to avoid lookup issues with multiple windows)
         success = self.nickname_manager.load_from_database(
             click_pid=self.connected_click_pid,
-            click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
+            click_hwnd=self.connected_click_hwnd,
         )
 
         if success:
@@ -480,8 +535,18 @@ class ClickNickApp:
             self._update_status("⚠ DB load failed", "error")
             self.using_database = False
 
-    def connect_to_instance(self, pid, title, filename):
+    def connect_to_instance(self, pid, title, filename, hwnd):
         """Connect to a specific Click.exe instance."""
+        # Close any open editor windows first (prompt to save if needed)
+        if hasattr(self, "_address_editor_shared_data") and self._address_editor_shared_data:
+            if not self._address_editor_shared_data.close_all_windows(prompt_save=True):
+                # User cancelled - don't switch instances
+                # Restore combobox selection to current instance
+                if self.connected_click_filename:
+                    self.selected_instance_var.set(self.connected_click_filename)
+                return
+            self._address_editor_shared_data = None
+
         # Stop monitoring if currently active
         if self.monitoring:
             self.stop_monitoring()
@@ -490,6 +555,7 @@ class ClickNickApp:
         self.connected_click_pid = None
         self.connected_click_title = None
         self.connected_click_filename = None
+        self.connected_click_hwnd = None
         self.using_database = False
 
         # Clear CSV path when switching instances
@@ -498,10 +564,11 @@ class ClickNickApp:
         # Reset nickname manager (reuse filter strategies to preserve cache)
         self.nickname_manager = NicknameManager(self.settings, self.filter_strategies)
 
-        # Store the new connection FIRST
+        # Store the new connection FIRST (including hwnd to avoid lookup issues)
         self.connected_click_pid = pid
         self.connected_click_title = title
         self.connected_click_filename = filename
+        self.connected_click_hwnd = hwnd
 
         # Use centralized database loading method
         self.load_from_database()
@@ -521,10 +588,10 @@ class ClickNickApp:
                 self.overlay.set_target_window(window_id, window_class, edit_control)
 
             # Get allowed types for this window/control
-            _, allowed_addresses = self.detector.update_window_info(window_class, edit_control)
+            field_info = self.detector.update_window_info(window_class, edit_control)
 
             # Show the overlay with filtered nicknames
-            self.overlay.show_combobox(allowed_addresses)
+            self.overlay.show_combobox(field_info.allowed_address_types)
 
         except Exception as e:
             print(f"Error showing overlay: {e}")
@@ -537,6 +604,12 @@ class ClickNickApp:
         """Handle when connected window is no longer available."""
         self._update_status("⚠ Connected ClickPLC window closed", "error")
         self.stop_monitoring(update_status=False)
+
+        # Force close any open editor windows (can't save - DB is gone)
+        if hasattr(self, "_address_editor_shared_data") and self._address_editor_shared_data:
+            self._address_editor_shared_data.force_close_all_windows()
+            self._address_editor_shared_data = None
+
         self.root.after(2000, self.refresh_click_instances)
 
     def _monitor_task(self):
@@ -544,8 +617,8 @@ class ClickNickApp:
         if not self.monitoring:
             return
 
-        # Get the actual HWND we stored during connection
-        window_id = self.detector.get_window_handle(self.connected_click_pid)
+        # Use the stored HWND from connection time
+        window_id = self.connected_click_hwnd
 
         # First verify window still exists
         if not window_id or not self.detector.check_window_exists(self.connected_click_pid):
@@ -565,13 +638,14 @@ class ClickNickApp:
                 csv_unloaded = True
 
             # Update instances list with new filename
-            for i, (pid, _, _) in enumerate(self.click_instances):
-                if pid == self.connected_click_pid:
-                    self.click_instances[i] = (pid, current_title, new_filename)
+            for instance in self.click_instances:
+                if instance.pid == self.connected_click_pid:
+                    instance.title = current_title
+                    instance.filename = new_filename
                     break
 
             # Update combobox values and selection
-            self.instances_combobox["values"] = [f for _, _, f in self.click_instances]
+            self.instances_combobox["values"] = [inst.filename for inst in self.click_instances]
             self.connected_click_filename = new_filename
             self.selected_instance_var.set(new_filename)
             if csv_unloaded:
@@ -587,9 +661,10 @@ class ClickNickApp:
         # Check for popups belonging to our parent Click.exe
         child_info = self.detector.detect_child_window(self.connected_click_pid)
         if child_info:
-            window_id, window_class, edit_control = child_info
-            if not self.detector.field_has_text(edit_control, window_id):
-                self._handle_popup_window(window_id, window_class, edit_control)
+            if not self.detector.field_has_text(child_info.edit_control, child_info.window_id):
+                self._handle_popup_window(
+                    child_info.window_id, child_info.window_class, child_info.edit_control
+                )
         else:
             # Hide overlay if no valid popup window is detected
             if self.overlay:
@@ -612,10 +687,10 @@ class ClickNickApp:
                 # Apply sorting preference
                 self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
             else:
-                # Try loading from database
+                # Try loading from database (use stored hwnd)
                 if not self.nickname_manager.load_from_database(
                     click_pid=self.connected_click_pid,
-                    click_hwnd=self.detector.get_window_handle(self.connected_click_pid),
+                    click_hwnd=self.connected_click_hwnd,
                 ):
                     self._update_status("⚠ No nicknames loaded", "error")
                     return False
@@ -694,7 +769,6 @@ class ClickNickApp:
         if self.monitoring:
             self.stop_monitoring()
         self.root.destroy()
-        AHK.exit()
 
     def run(self):
         """Run the ClickNick Application"""
