@@ -8,3 +8,7 @@
 4. Ask user to test
 5. Commit (short message)
 6. Next
+
+### Todo
+- Replace returned tuples in window_detector.py with dataclasses
+- Replace blocks tuple in address_model.py with dataclass
