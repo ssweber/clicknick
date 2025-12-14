@@ -363,23 +363,23 @@ class SharedAddressData:
         blocks: list[tuple[int, int | None, str, str | None]] = []
 
         for row in rows:
-            block_name, tag_type, _, bg_color = parse_block_tag(row.comment)
-            if not block_name:
+            block_tag = parse_block_tag(row.comment)
+            if not block_tag.name:
                 continue
 
-            if tag_type == "self-closing":
+            if block_tag.tag_type == "self-closing":
                 # Singular point - no end address
-                blocks.append((row.address, None, block_name, bg_color))
-            elif tag_type == "open":
+                blocks.append((row.address, None, block_tag.name, block_tag.bg_color))
+            elif block_tag.tag_type == "open":
                 # Push to stack for this block name (with bg color)
-                if block_name not in open_tags:
-                    open_tags[block_name] = []
-                open_tags[block_name].append((row.address, bg_color))
-            elif tag_type == "close":
+                if block_tag.name not in open_tags:
+                    open_tags[block_tag.name] = []
+                open_tags[block_tag.name].append((row.address, block_tag.bg_color))
+            elif block_tag.tag_type == "close":
                 # Pop from stack and create range
-                if block_name in open_tags and open_tags[block_name]:
-                    start_addr, start_bg_color = open_tags[block_name].pop()
-                    blocks.append((start_addr, row.address, block_name, start_bg_color))
+                if block_tag.name in open_tags and open_tags[block_tag.name]:
+                    start_addr, start_bg_color = open_tags[block_tag.name].pop()
+                    blocks.append((start_addr, row.address, block_tag.name, start_bg_color))
 
         # Any unclosed opening tags become singular points
         for block_name, addr_color_pairs in open_tags.items():

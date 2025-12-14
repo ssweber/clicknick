@@ -4,6 +4,25 @@ Contains AddressRow dataclass, validation functions, and AddrKey calculations.
 """
 
 from dataclasses import dataclass, field
+from typing import Literal
+
+
+@dataclass
+class BlockTag:
+    """Result of parsing a block tag from a comment.
+
+    Block tags mark sections in the Address Editor:
+    - <BlockName> - opening tag for a range
+    - </BlockName> - closing tag for a range
+    - <BlockName /> - self-closing tag for a singular point
+    - <BlockName bg="#color"> - opening tag with background color
+    """
+
+    name: str | None
+    tag_type: Literal["open", "close", "self-closing"] | None
+    remaining_text: str
+    bg_color: str | None
+
 
 # Address ranges by memory type (start, end inclusive)
 ADDRESS_RANGES: dict[str, tuple[int, int]] = {
@@ -97,7 +116,7 @@ def _extract_bg_attribute(tag_content: str) -> tuple[str, str | None]:
     return tag_content, None
 
 
-def parse_block_tag(comment: str) -> tuple[str | None, str | None, str, str | None]:
+def parse_block_tag(comment: str) -> BlockTag:
     """Parse block tag from the start of a comment.
 
     Block tags mark sections in the Address Editor:
@@ -111,29 +130,25 @@ def parse_block_tag(comment: str) -> tuple[str | None, str | None, str, str | No
         comment: The comment string to parse
 
     Returns:
-        Tuple of (block_name, tag_type, remaining_text, bg_color)
-        - block_name: The name inside the tag, or None if not a block tag
-        - tag_type: 'open', 'close', 'self-closing', or None
-        - remaining_text: Text after the tag, or original comment if no tag
-        - bg_color: Background color from bg attribute, or None
+        BlockTag with name, tag_type, remaining_text, and bg_color
     """
     if not comment:
-        return None, None, "", None
+        return BlockTag(None, None, "", None)
 
     s = comment.strip()
     if not s.startswith("<"):
-        return None, None, comment, None
+        return BlockTag(None, None, comment, None)
 
     end = s.find(">")
     if end == -1:
-        return None, None, comment, None
+        return BlockTag(None, None, comment, None)
 
     tag_content = s[1:end]  # content between < and >
     remaining = s[end + 1 :].strip()
 
     # Empty tag <> is invalid
     if not tag_content or not tag_content.strip():
-        return None, None, comment, None
+        return BlockTag(None, None, comment, None)
 
     # Self-closing: <Name /> or <Name bg="..." />
     if tag_content.rstrip().endswith("/"):
@@ -141,23 +156,23 @@ def parse_block_tag(comment: str) -> tuple[str | None, str | None, str, str | No
         name_part, bg_color = _extract_bg_attribute(content_without_slash)
         name = name_part.strip()
         if name:
-            return name, "self-closing", remaining, bg_color
-        return None, None, comment, None
+            return BlockTag(name, "self-closing", remaining, bg_color)
+        return BlockTag(None, None, comment, None)
 
     # Closing: </Name> (no bg attribute on closing tags)
     if tag_content.startswith("/"):
         name = tag_content[1:].strip()
         if name:
-            return name, "close", remaining, None
-        return None, None, comment, None
+            return BlockTag(name, "close", remaining, None)
+        return BlockTag(None, None, comment, None)
 
     # Opening: <Name> or <Name bg="...">
     name_part, bg_color = _extract_bg_attribute(tag_content)
     name = name_part.strip()
     if name:
-        return name, "open", remaining, bg_color
+        return BlockTag(name, "open", remaining, bg_color)
 
-    return None, None, comment, None
+    return BlockTag(None, None, comment, None)
 
 
 def get_block_type(comment: str) -> str | None:
@@ -170,8 +185,7 @@ def get_block_type(comment: str) -> str | None:
         'open' for <BlockName>, 'close' for </BlockName>,
         'self-closing' for <BlockName />, or None if not a block tag
     """
-    _, tag_type, _, _ = parse_block_tag(comment)
-    return tag_type
+    return parse_block_tag(comment).tag_type
 
 
 def is_header_tag(comment: str) -> bool:
@@ -200,8 +214,7 @@ def extract_header_name(comment: str) -> str | None:
     Returns:
         The block name (e.g., "Motor", "Spare"), or None if no tag
     """
-    name, _, _, _ = parse_block_tag(comment)
-    return name
+    return parse_block_tag(comment).name
 
 
 def strip_header_tag(comment: str) -> str:
@@ -215,9 +228,9 @@ def strip_header_tag(comment: str) -> str:
     """
     if not comment:
         return ""
-    _, tag_type, remaining, _ = parse_block_tag(comment)
-    if tag_type is not None:
-        return remaining
+    block_tag = parse_block_tag(comment)
+    if block_tag.tag_type is not None:
+        return block_tag.remaining_text
     return comment
 
 

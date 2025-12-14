@@ -1,7 +1,35 @@
 import json
 import re
+from dataclasses import dataclass
 
 from .shared_ahk import AHK
+
+
+@dataclass
+class ChildWindowInfo:
+    """Information about a detected Click.exe child window."""
+
+    window_id: str
+    window_class: str
+    edit_control: str
+
+
+@dataclass
+class ClickInstance:
+    """Information about a running Click.exe instance."""
+
+    pid: str
+    title: str
+    filename: str
+    hwnd: int
+
+
+@dataclass
+class WindowFieldInfo:
+    """Result of window/field detection."""
+
+    is_valid: bool
+    allowed_address_types: list[str]
 
 
 class ClickWindowDetector:
@@ -33,12 +61,12 @@ class ClickWindowDetector:
             print(f"Error checking window existence: {e}")
             return False
 
-    def detect_child_window(self, click_pid: str) -> tuple[str, str, str] | None:
+    def detect_child_window(self, click_pid: str) -> ChildWindowInfo | None:
         """
         Detect if the active window is our connected Click.exe instance.
 
         Returns:
-            tuple: (window_id, window_class, edit_control) or None if not valid
+            ChildWindowInfo or None if not valid
         """
         try:
             # Get the active window PID
@@ -72,7 +100,7 @@ class ClickWindowDetector:
                 return None
 
             # We found a valid popup with a focused edit control
-            return (active_window_id, window_class, focused_control)
+            return ChildWindowInfo(active_window_id, window_class, focused_control)
 
         except Exception as e:
             print(f"Error detecting popup window: {e}")
@@ -95,14 +123,14 @@ class ClickWindowDetector:
         match = re.search(r"- ([^\\]+\.ckp)", title)
         return match.group(1) if match else None
 
-    def get_click_instances(self) -> list[tuple[str, str, str, int]]:
+    def get_click_instances(self) -> list[ClickInstance]:
         """
         Get all running Click.exe instances.
 
         Returns:
-            List of tuples (pid, title, filename, hwnd)
+            List of ClickInstance objects
         """
-        click_instances = []
+        click_instances: list[ClickInstance] = []
 
         try:
             # Get all Click.exe windows
@@ -133,7 +161,7 @@ class ClickWindowDetector:
                 if filename:
                     # Store the hwnd (window_id) to avoid lookup issues with multiple windows
                     hwnd = int(window_id, 16) if isinstance(window_id, str) else int(window_id)
-                    click_instances.append((window_pid, window_title, filename, hwnd))
+                    click_instances.append(ClickInstance(window_pid, window_title, filename, hwnd))
 
             return click_instances
 
@@ -161,10 +189,10 @@ class ClickWindowDetector:
             print(f"Error getting window handle: {e}")
             return None
 
-    def update(self) -> tuple[bool, list[str]]:
+    def update(self) -> WindowFieldInfo:
         """
         Update window and field detection.
-        Returns: Tuple of (is_valid_field, allowed_address_types)
+        Returns: WindowFieldInfo with validity and allowed address types
         """
         # Get the current window and field info
         return self.update_window_info(self.current_window, self.current_field)
@@ -176,26 +204,26 @@ class ClickWindowDetector:
         except Exception:
             return None
 
-    def update_window_info(self, window_class: str, field: str) -> tuple[bool, list[str]]:
+    def update_window_info(self, window_class: str, field: str) -> WindowFieldInfo:
         """
         Update window and field detection with provided window and field.
-        Returns: Tuple of (is_valid_field, allowed_address_types)
+        Returns: WindowFieldInfo with validity and allowed address types
         """
         self.current_window = window_class
         self.current_field = field
 
         # Early return if no valid window
         if not self.current_window or self.current_window not in self.window_mapping:
-            return False, []
+            return WindowFieldInfo(False, [])
 
         # Return result
         if not self.current_field or self.current_field not in self.window_mapping.get(
             self.current_window, {}
         ):
-            return False, []
+            return WindowFieldInfo(False, [])
 
         # Get allowed address types
         allowed_addresses = self.window_mapping.get(self.current_window, {}).get(
             self.current_field, []
         )
-        return True, allowed_addresses
+        return WindowFieldInfo(True, allowed_addresses)

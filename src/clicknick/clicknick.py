@@ -39,7 +39,7 @@ class ClickNickApp:
         self.csv_path_var = tk.StringVar()
         self.status_var = tk.StringVar(value="Not connected")
         self.selected_instance_var = tk.StringVar()  # Add this line
-        self.click_instances = []  # Will store (id, title, filename) tuples
+        self.click_instances = []  # Will store ClickInstance objects
         self.using_database = False  # Flag to track if database is being used
         self._odbc_warning_shown = False
 
@@ -80,9 +80,11 @@ class ClickNickApp:
             return
 
         # Find the matching instance
-        for pid, title, filename, hwnd in self.click_instances:
-            if filename == selected_text:
-                self.connect_to_instance(pid, title, filename, hwnd)
+        for instance in self.click_instances:
+            if instance.filename == selected_text:
+                self.connect_to_instance(
+                    instance.pid, instance.title, instance.filename, instance.hwnd
+                )
                 break
 
     def _create_click_instances_section(self, parent):
@@ -454,7 +456,7 @@ class ClickNickApp:
 
             # Update instance data
             self.click_instances = click_instances
-            filenames = [filename for _, _, filename, _ in click_instances]
+            filenames = [instance.filename for instance in click_instances]
             self.instances_combobox["values"] = filenames
             self.start_button.state(["!disabled"])  # Enable when instances found
 
@@ -587,10 +589,10 @@ class ClickNickApp:
                 self.overlay.set_target_window(window_id, window_class, edit_control)
 
             # Get allowed types for this window/control
-            _, allowed_addresses = self.detector.update_window_info(window_class, edit_control)
+            field_info = self.detector.update_window_info(window_class, edit_control)
 
             # Show the overlay with filtered nicknames
-            self.overlay.show_combobox(allowed_addresses)
+            self.overlay.show_combobox(field_info.allowed_address_types)
 
         except Exception as e:
             print(f"Error showing overlay: {e}")
@@ -636,14 +638,15 @@ class ClickNickApp:
                 self._update_status("⚠ CSV unloaded - filename changed", "error")
                 csv_unloaded = True
 
-            # Update instances list with new filename (preserve hwnd)
-            for i, (pid, _, _, hwnd) in enumerate(self.click_instances):
-                if pid == self.connected_click_pid:
-                    self.click_instances[i] = (pid, current_title, new_filename, hwnd)
+            # Update instances list with new filename
+            for instance in self.click_instances:
+                if instance.pid == self.connected_click_pid:
+                    instance.title = current_title
+                    instance.filename = new_filename
                     break
 
             # Update combobox values and selection
-            self.instances_combobox["values"] = [f for _, _, f, _ in self.click_instances]
+            self.instances_combobox["values"] = [inst.filename for inst in self.click_instances]
             self.connected_click_filename = new_filename
             self.selected_instance_var.set(new_filename)
             if csv_unloaded:
@@ -659,9 +662,10 @@ class ClickNickApp:
         # Check for popups belonging to our parent Click.exe
         child_info = self.detector.detect_child_window(self.connected_click_pid)
         if child_info:
-            window_id, window_class, edit_control = child_info
-            if not self.detector.field_has_text(edit_control, window_id):
-                self._handle_popup_window(window_id, window_class, edit_control)
+            if not self.detector.field_has_text(child_info.edit_control, child_info.window_id):
+                self._handle_popup_window(
+                    child_info.window_id, child_info.window_class, child_info.edit_control
+                )
         else:
             # Hide overlay if no valid popup window is detected
             if self.overlay:

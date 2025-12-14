@@ -930,12 +930,12 @@ class TestBlockTags:
 
     def test_parse_block_tag(self):
         """Test parse_block_tag function directly."""
-        from clicknick.address_editor.address_model import parse_block_tag
+        from clicknick.address_editor.address_model import BlockTag, parse_block_tag
 
-        # Opening tags (4th element is bg_color, None when not specified)
-        assert parse_block_tag("<Motor>") == ("Motor", "open", "", None)
-        assert parse_block_tag("<Motor>Valve 1") == ("Motor", "open", "Valve 1", None)
-        assert parse_block_tag("<Section 1>Details here") == (
+        # Opening tags (bg_color is None when not specified)
+        assert parse_block_tag("<Motor>") == BlockTag("Motor", "open", "", None)
+        assert parse_block_tag("<Motor>Valve 1") == BlockTag("Motor", "open", "Valve 1", None)
+        assert parse_block_tag("<Section 1>Details here") == BlockTag(
             "Section 1",
             "open",
             "Details here",
@@ -943,32 +943,34 @@ class TestBlockTags:
         )
 
         # Closing tags (no bg attribute on closing tags)
-        assert parse_block_tag("</Motor>") == ("Motor", "close", "", None)
-        assert parse_block_tag("</Motor>End section") == ("Motor", "close", "End section", None)
+        assert parse_block_tag("</Motor>") == BlockTag("Motor", "close", "", None)
+        assert parse_block_tag("</Motor>End section") == BlockTag(
+            "Motor", "close", "End section", None
+        )
 
         # Self-closing tags
-        assert parse_block_tag("<Spare />") == ("Spare", "self-closing", "", None)
-        assert parse_block_tag("<Reserved />") == ("Reserved", "self-closing", "", None)
+        assert parse_block_tag("<Spare />") == BlockTag("Spare", "self-closing", "", None)
+        assert parse_block_tag("<Reserved />") == BlockTag("Reserved", "self-closing", "", None)
 
         # Invalid - returns original comment
-        assert parse_block_tag("Regular text") == (None, None, "Regular text", None)
-        assert parse_block_tag("<>") == (None, None, "<>", None)
-        assert parse_block_tag("") == (None, None, "", None)
-        assert parse_block_tag("<partial") == (None, None, "<partial", None)
+        assert parse_block_tag("Regular text") == BlockTag(None, None, "Regular text", None)
+        assert parse_block_tag("<>") == BlockTag(None, None, "<>", None)
+        assert parse_block_tag("") == BlockTag(None, None, "", None)
+        assert parse_block_tag("<partial") == BlockTag(None, None, "<partial", None)
 
     def test_parse_block_tag_with_bg_attribute(self):
         """Test parse_block_tag with bg attribute for colors."""
-        from clicknick.address_editor.address_model import parse_block_tag
+        from clicknick.address_editor.address_model import BlockTag, parse_block_tag
 
         # Opening tags with bg attribute
-        assert parse_block_tag('<Motor bg="#FFCDD2">') == ("Motor", "open", "", "#FFCDD2")
-        assert parse_block_tag('<Motor bg="#FFCDD2">Valve 1') == (
+        assert parse_block_tag('<Motor bg="#FFCDD2">') == BlockTag("Motor", "open", "", "#FFCDD2")
+        assert parse_block_tag('<Motor bg="#FFCDD2">Valve 1') == BlockTag(
             "Motor",
             "open",
             "Valve 1",
             "#FFCDD2",
         )
-        assert parse_block_tag("<Section bg='#B3E5FC'>Details") == (
+        assert parse_block_tag("<Section bg='#B3E5FC'>Details") == BlockTag(
             "Section",
             "open",
             "Details",
@@ -976,8 +978,10 @@ class TestBlockTags:
         )
 
         # Self-closing tags with bg attribute
-        assert parse_block_tag('<Spare bg="#C8E6C9" />') == ("Spare", "self-closing", "", "#C8E6C9")
-        assert parse_block_tag('<Reserved bg="#FFF9C4" />') == (
+        assert parse_block_tag('<Spare bg="#C8E6C9" />') == BlockTag(
+            "Spare", "self-closing", "", "#C8E6C9"
+        )
+        assert parse_block_tag('<Reserved bg="#FFF9C4" />') == BlockTag(
             "Reserved",
             "self-closing",
             "",
@@ -985,10 +989,10 @@ class TestBlockTags:
         )
 
         # Closing tags never have bg attribute (color is on opening tag)
-        assert parse_block_tag("</Motor>") == ("Motor", "close", "", None)
+        assert parse_block_tag("</Motor>") == BlockTag("Motor", "close", "", None)
 
         # Mixed case - bg attribute should be extracted regardless of position
-        assert parse_block_tag('<Name With Spaces bg="#FFCCBC">') == (
+        assert parse_block_tag('<Name With Spaces bg="#FFCCBC">') == BlockTag(
             "Name With Spaces",
             "open",
             "",

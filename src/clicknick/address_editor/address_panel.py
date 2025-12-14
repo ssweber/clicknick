@@ -96,20 +96,20 @@ class AddressPanel(ttk.Frame):
         open_tags: dict[str, list[tuple[int, str | None]]] = {}
 
         for row_idx, row in enumerate(self.rows):
-            block_name, tag_type, _, bg_color = parse_block_tag(row.comment)
-            if not block_name:
+            block_tag = parse_block_tag(row.comment)
+            if not block_tag.name:
                 continue
 
-            if tag_type == "self-closing":
-                if bg_color:
-                    colored_blocks.append((row_idx, row_idx, bg_color))
-            elif tag_type == "open":
-                if block_name not in open_tags:
-                    open_tags[block_name] = []
-                open_tags[block_name].append((row_idx, bg_color))
-            elif tag_type == "close":
-                if block_name in open_tags and open_tags[block_name]:
-                    start_idx, start_bg_color = open_tags[block_name].pop()
+            if block_tag.tag_type == "self-closing":
+                if block_tag.bg_color:
+                    colored_blocks.append((row_idx, row_idx, block_tag.bg_color))
+            elif block_tag.tag_type == "open":
+                if block_tag.name not in open_tags:
+                    open_tags[block_tag.name] = []
+                open_tags[block_tag.name].append((row_idx, block_tag.bg_color))
+            elif block_tag.tag_type == "close":
+                if block_tag.name in open_tags and open_tags[block_tag.name]:
+                    start_idx, start_bg_color = open_tags[block_tag.name].pop()
                     if start_bg_color:
                         colored_blocks.append((start_idx, row_idx, start_bg_color))
 
