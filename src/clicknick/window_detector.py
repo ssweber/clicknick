@@ -87,7 +87,9 @@ class ClickWindowDetector:
                     return None
 
             # Get focused control
-            focused_control = WIN32.get_focused_control(active_window_hwnd)
+            # TfrmDataView creates inline edit controls dynamically, requiring GetGUIThreadInfo
+            use_gui_thread_info = window_class == "TfrmDataView"
+            focused_control = WIN32.get_focused_control(active_window_hwnd, use_gui_thread_info)
             if not focused_control:
                 return None
 

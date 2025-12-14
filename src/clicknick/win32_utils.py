@@ -279,18 +279,46 @@ class Win32API:
             return f"{class_name}{count[0]}"
         return ""
 
-    def get_focused_control(self, hwnd: int) -> str:
+    def get_focused_control(self, hwnd: int, use_gui_thread_info: bool = False) -> str:
         """
         Get the AHK-style name of the focused control (e.g., 'Edit1').
 
-        Requires thread attachment to get focus from another process.
+        Args:
+            hwnd: Parent window handle
+            use_gui_thread_info: If True, use GetGUIThreadInfo (better for dynamically
+                created controls like TfrmDataView's inline edit). If False, use
+                thread attachment method (faster for most windows).
         """
         if not hwnd or not win32gui.IsWindow(hwnd):
             return ""
 
         target_thread_id, _ = win32process.GetWindowThreadProcessId(hwnd)
-        current_thread_id = win32api.GetCurrentThreadId()
 
+        if use_gui_thread_info:
+            # Use GetGUIThreadInfo - more reliable for dynamically created controls
+            class GUITHREADINFO(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize", ctypes.c_ulong),
+                    ("flags", ctypes.c_ulong),
+                    ("hwndActive", ctypes.c_void_p),
+                    ("hwndFocus", ctypes.c_void_p),
+                    ("hwndCapture", ctypes.c_void_p),
+                    ("hwndMenuOwner", ctypes.c_void_p),
+                    ("hwndMoveSize", ctypes.c_void_p),
+                    ("hwndCaret", ctypes.c_void_p),
+                    ("rcCaret", ctypes.c_ulong * 4),
+                ]
+
+            gui_info = GUITHREADINFO()
+            gui_info.cbSize = ctypes.sizeof(GUITHREADINFO)
+
+            if ctypes.windll.user32.GetGUIThreadInfo(target_thread_id, ctypes.byref(gui_info)):
+                focus_hwnd = gui_info.hwndFocus
+                if focus_hwnd:
+                    return self._hwnd_to_control_name(hwnd, focus_hwnd)
+
+        # Thread attachment method - faster for most windows
+        current_thread_id = win32api.GetCurrentThreadId()
         attached = False
         if target_thread_id != current_thread_id:
             attached = ctypes.windll.user32.AttachThreadInput(

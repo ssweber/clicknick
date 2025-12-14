@@ -230,6 +230,18 @@ class Overlay(tk.Toplevel):
 
     def set_target_window(self, window_id, window_class, edit_control):
         """Set the target window information."""
+        # Reset debounce if targeting a different edit control, or if TfrmDataView
+        # (TfrmDataView reuses the same TEdit1 for all grid cells)
+        if (
+            edit_control != self.target_edit_control
+            or window_id != self.target_window_id
+            or window_class == "TfrmDataView"
+        ):
+            self._debounce_retrigger = False
+            if self.debounce_after_id:
+                self.after_cancel(self.debounce_after_id)
+                self.debounce_after_id = None
+
         self.target_window_id = window_id
         self.target_window_class = window_class
         self.target_edit_control = edit_control
