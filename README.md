@@ -25,15 +25,15 @@ Add **nickname autocomplete** to CLICK Programming Software and a **modern Addre
 
 > [!NOTE]  
 > Nicknames edited in the Address Editor appear immediately in autocomplete. Existing ladder logic refreshes after editing via the built-in Address Picker (Ctrl+T) or reopening the project.  
-  
+
+### **Connectivity**  
+- 🔌 Live ODBC database connection  
+- 📄 CSV nickname import  
+
 ## **Why ClickNick?**    
 ✔ **Work faster** – Less time on manual address lookup  
 ✔ **Fewer mistakes** – Autocomplete reduces typos  
 ✔ **Stay organized** – Better tag management for complex projects  
-
-## **Connectivity**  
-- 🔌 Live ODBC database connection  
-- 📄 CSV nickname import  
 
 ---
 
@@ -94,12 +94,13 @@ Autocomplete works in:
 | Contact (NO/NC) | Search & Replace |
 | Edge Contact | Data Views |
 | Out, Set, Reset | Address Picker Find |
-| Compare (A with B) | Modbus Send/Receive |
+| Compare (A with B) | 
 | Timer, Counter | |
 | Math | |
 | Shift Register | |
 | Copy | |
 | Search | |
+| Modbus Send/Receive | |
 
 ---
 
@@ -108,6 +109,16 @@ Autocomplete works in:
 - [Installation Guide](installation.md) – Python and uv setup  
 - [Development](development.md) – Contributing workflows  
 - [Publishing](publishing.md) – PyPI release instructions  
+
+---
+
+## **Motivation**
+
+CLICK PLCs were my first controller, and I've built numerous projects with them. But as projects grew, remembering memory addresses instead of nicknames added overhead. Productivity and Do-More have autocomplete nicknames as I type, why can't CLICK? **ClickNick was born**.
+
+The built-in Address Picker was equally frustrating: either edit one at a time or export to Excel and re-import. Project templates required me to remember where I could add custom tags versus reserved areas. **The Address Editor solves this**—plus adds **Custom Blocks** to define distinct memory regions visually.
+
+I hope ClickNick helps new programmers choosing CLICK for its simplicity, as well as those maintaining legacy equipment—and serves as an example of how CLICK software can be extended.
 
 ---
 
