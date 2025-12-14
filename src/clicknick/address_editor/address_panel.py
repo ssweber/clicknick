@@ -425,9 +425,70 @@ class AddressPanel(ttk.Frame):
         for row in self.rows:
             row.validate(self._all_nicknames)
 
+    def _bulk_validate(self, event) -> object:
+        """Bulk validation handler for paste and multi-cell edits.
+
+        This is called BEFORE changes are applied to the sheet.
+        We can modify event.data to filter out invalid changes,
+        or return the event to accept all changes.
+
+        Args:
+            event: EventDataDict containing proposed changes
+
+        Returns:
+            The (possibly modified) event to apply changes, or None to reject all.
+        """
+        # For now, accept all changes - validation happens after in _on_sheet_modified
+        # We could add pre-validation here if needed (e.g., reject non-editable cells)
+
+        # Get the proposed changes
+        if not hasattr(event, "data") or not event.data:
+            return event
+
+        table_data = event.data.get("table", {})
+        if not table_data:
+            return event
+        # Filter out changes to non-editable cells
+        filtered_table = {}
+        for (display_row, col), value in table_data.items():
+            # Skip if row is out of range
+            if display_row >= len(self._filtered_indices):
+                continue
+
+            row_idx = self._filtered_indices[display_row]
+            address_row = self.rows[row_idx]
+
+            # Check if this column is editable for this row
+            if col == self.COL_USED or col == self.COL_VALID or col == self.COL_ISSUE:
+                # Read-only columns - skip
+                continue
+            elif col == self.COL_INIT_VALUE and not address_row.can_edit_initial_value:
+                # Non-editable init value - skip
+                continue
+            elif col == self.COL_RETENTIVE and not address_row.can_edit_retentive:
+                # Non-editable retentive - skip
+                continue
+            else:
+                # Accept this change
+                filtered_table[(display_row, col)] = value
+
+        # Update event data with filtered changes
+        event.data["table"] = filtered_table
+
+        return event
+
     def _on_sheet_modified(self, event) -> None:
-        """Handle cell edit completion."""
-        # Get edit info from event - tksheet v7 uses EventDataDict
+        """Handle sheet modification events (called AFTER changes are applied).
+
+        This handles all types of modifications including single cell edits,
+        paste operations, and bulk edits. The changes have already been
+        applied to the sheet at this point.
+        """
+        # Skip processing if notifications are suppressed (e.g., during load)
+        if self._suppress_notifications:
+            return
+
+        # Get modified cells from event
         cells = getattr(event, "cells", None)
         if not cells:
             return
@@ -441,8 +502,11 @@ class AddressPanel(ttk.Frame):
         data_changed = False
         needs_revalidate = False
 
+        # Track old nicknames for cross-panel notification
+        nickname_changes: list[tuple[int, str, str]] = []  # (addr_key, old, new)
+
         # Process each modified cell
-        for (display_row, col), _old_value in table_cells.items():
+        for (display_row, col), old_value in table_cells.items():
             # Map display row to actual row
             if display_row >= len(self._filtered_indices):
                 continue
@@ -454,41 +518,37 @@ class AddressPanel(ttk.Frame):
             new_value = self.sheet.get_cell_data(display_row, col)
 
             if col == self.COL_NICKNAME:
-                old_nickname = address_row.nickname
+                old_nickname = old_value if old_value else ""
+                new_nickname = new_value if new_value else ""
 
                 # Skip if no change
-                if new_value == old_nickname:
+                if new_nickname == address_row.nickname:
                     continue
 
                 # Update the row
-                address_row.nickname = new_value
+                address_row.nickname = new_nickname
 
                 # Update global nickname registry
                 if old_nickname and address_row.addr_key in self._all_nicknames:
                     del self._all_nicknames[address_row.addr_key]
-                if new_value:
-                    self._all_nicknames[address_row.addr_key] = new_value
+                if new_nickname:
+                    self._all_nicknames[address_row.addr_key] = new_nickname
 
                 nickname_changed = True
                 data_changed = True
 
-                # Notify parent for cross-panel validation
-                if self.on_nickname_changed:
-                    self.on_nickname_changed(
-                        address_row.addr_key,
-                        old_nickname,
-                        new_value,
-                    )
+                # Queue notification for parent
+                nickname_changes.append((address_row.addr_key, old_nickname, new_nickname))
 
             elif col == self.COL_COMMENT:
-                old_comment = address_row.comment
+                new_comment = new_value if new_value else ""
 
                 # Skip if no change
-                if new_value == old_comment:
+                if new_comment == address_row.comment:
                     continue
 
                 # Update the row
-                address_row.comment = new_value
+                address_row.comment = new_comment
                 data_changed = True
 
             elif col == self.COL_INIT_VALUE:
@@ -497,18 +557,17 @@ class AddressPanel(ttk.Frame):
                     continue
 
                 # For BIT-type rows, checkbox returns bool - convert to "0"/"1"
-                # This applies to both single-type BIT panels and BIT rows in combined panels
                 if address_row.data_type == DATA_TYPE_BIT:
-                    new_value = "1" if bool(new_value) else "0"
-
-                old_init_value = address_row.initial_value
+                    new_init = "1" if bool(new_value) else "0"
+                else:
+                    new_init = new_value if new_value else ""
 
                 # Skip if no change
-                if new_value == old_init_value:
+                if new_init == address_row.initial_value:
                     continue
 
                 # Update the row
-                address_row.initial_value = new_value
+                address_row.initial_value = new_init
                 data_changed = True
                 needs_revalidate = True
 
@@ -521,7 +580,6 @@ class AddressPanel(ttk.Frame):
                 new_retentive = bool(new_value)
 
                 # For TD/CTD rows, update the paired T/CT row instead
-                # (TD/CTD retentive mirrors T/CT and isn't stored separately in MDB)
                 paired_row = self._find_paired_row(address_row)
                 target_row = paired_row if paired_row else address_row
 
@@ -529,7 +587,7 @@ class AddressPanel(ttk.Frame):
                 if new_retentive == target_row.retentive:
                     continue
 
-                # Update the target row (T/CT for paired, or the row itself)
+                # Update the target row
                 target_row.retentive = new_retentive
                 data_changed = True
 
@@ -539,6 +597,11 @@ class AddressPanel(ttk.Frame):
 
         # Refresh display
         self._refresh_sheet()
+
+        # Notify parent of nickname changes for cross-panel validation
+        if nickname_changes and self.on_nickname_changed:
+            for addr_key, old_nick, new_nick in nickname_changes:
+                self.on_nickname_changed(addr_key, old_nick, new_nick)
 
         # Notify parent of data change (for multi-window sync)
         if data_changed and self.on_data_changed:
@@ -646,7 +709,6 @@ class AddressPanel(ttk.Frame):
         )
 
         # Enable checkboxes in retentive column with edit_data=True
-        # This ensures clicking the checkbox updates the cell's actual data to True/False
         self.sheet[tksheet.num2alpha(self.COL_RETENTIVE)].checkbox(edit_data=True, checked=None)
 
         # Enable checkboxes in init value column for single-type BIT panels (X, Y, C, SC)
@@ -660,7 +722,12 @@ class AddressPanel(ttk.Frame):
         self.sheet.row_index(70)  # Set row index width
         self.sheet.readonly_columns([self.COL_USED, self.COL_VALID, self.COL_ISSUE])
 
-        # Bind edit events
+        # === KEY CHANGE: Use bulk_table_edit_validation for paste operations ===
+        # This ensures the entire paste completes before validation runs
+        self.sheet.bulk_table_edit_validation(self._bulk_validate)
+
+        # === KEY CHANGE: Bind to <<SheetModified>> for post-edit processing ===
+        # This fires AFTER the sheet has been modified, not during
         self.sheet.bind("<<SheetModified>>", self._on_sheet_modified)
 
         # Apply initial column visibility (hidden by default)
@@ -704,6 +771,9 @@ class AddressPanel(ttk.Frame):
         self.rows: list[AddressRow] = []
         self._all_nicknames: dict[int, str] = {}
         self._filtered_indices: list[int] = []
+
+        # Flag to suppress change notifications during programmatic updates
+        self._suppress_notifications = False
 
         self._create_widgets()
 
@@ -792,7 +862,6 @@ class AddressPanel(ttk.Frame):
             existing_by_type[mem_type] = load_nicknames_for_type(mdb_conn, mem_type)
 
         # Find the common address range
-        # T and TD both go 1-250, CT and CTD both go 1-250
         all_starts = []
         all_ends = []
         for mem_type in types:
@@ -849,15 +918,93 @@ class AddressPanel(ttk.Frame):
             mdb_conn: Active database connection
             all_nicknames: Global dict of all nicknames for validation
         """
-        # Check if this is a combined type panel
-        if self.combined_types and len(self.combined_types) > 1:
-            self.rows = self._build_interleaved_rows(mdb_conn, self.combined_types, all_nicknames)
-        else:
-            self.rows = self._build_single_type_rows(mdb_conn, self.memory_type, all_nicknames)
+        # Suppress notifications during load to avoid triggering sync logic
+        self._suppress_notifications = True
 
-        self._all_nicknames = all_nicknames
-        self._validate_all()
-        self._apply_filters()
+        try:
+            # Check if this is a combined type panel
+            if self.combined_types and len(self.combined_types) > 1:
+                self.rows = self._build_interleaved_rows(
+                    mdb_conn, self.combined_types, all_nicknames
+                )
+            else:
+                self.rows = self._build_single_type_rows(mdb_conn, self.memory_type, all_nicknames)
+
+            self._all_nicknames = all_nicknames
+            self._validate_all()
+            self._apply_filters()
+        finally:
+            self._suppress_notifications = False
+
+    def update_from_external(
+        self,
+        mdb_conn: MdbConnection,
+        all_nicknames: dict[int, str],
+    ) -> None:
+        """Update data from external source (e.g., MDB file changed).
+
+        Only updates non-dirty rows to preserve user edits.
+
+        Args:
+            mdb_conn: Active database connection
+            all_nicknames: Global dict of all nicknames
+        """
+        # Suppress notifications during external update
+        self._suppress_notifications = True
+
+        try:
+            from .mdb_operations import load_nicknames_for_type
+
+            # Load fresh data from database
+            if self.combined_types and len(self.combined_types) > 1:
+                existing_by_type = {}
+                for mem_type in self.combined_types:
+                    existing_by_type[mem_type] = load_nicknames_for_type(mdb_conn, mem_type)
+            else:
+                existing_data = load_nicknames_for_type(mdb_conn, self.memory_type)
+
+            # Update non-dirty rows
+            for row in self.rows:
+                if row.is_dirty:
+                    # Skip dirty rows - preserve user edits
+                    continue
+
+                # Get fresh data for this row
+                if self.combined_types and len(self.combined_types) > 1:
+                    data = existing_by_type.get(row.memory_type, {}).get(row.address)
+                else:
+                    data = existing_data.get(row.address)
+
+                if data:
+                    # Update from database
+                    row.nickname = data.get("nickname", "")
+                    row.original_nickname = row.nickname
+                    row.comment = data.get("comment", "")
+                    row.original_comment = row.comment
+                    row.used = data.get("used", False)
+                    row.initial_value = data.get("initial_value", "")
+                    row.original_initial_value = row.initial_value
+                    row.retentive = data.get("retentive", row.retentive)
+                    row.original_retentive = row.retentive
+                    row.exists_in_mdb = True
+                else:
+                    # Row no longer exists in database - reset to defaults
+                    row.nickname = ""
+                    row.original_nickname = ""
+                    row.comment = ""
+                    row.original_comment = ""
+                    row.used = False
+                    row.initial_value = ""
+                    row.original_initial_value = ""
+                    row.exists_in_mdb = False
+
+            # Update nickname registry and revalidate
+            self._all_nicknames = all_nicknames
+            self._validate_all()
+            self._refresh_sheet()
+
+        finally:
+            self._suppress_notifications = False
 
     def revalidate(self) -> None:
         """Re-validate all rows (called when global nicknames change)."""

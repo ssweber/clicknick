@@ -3,7 +3,8 @@
     "allow": [
       "Bash(make)",
       "Bash(make test:*)",
-      "Bash(make lint:*)"
+      "Bash(make lint:*)",
+      "WebFetch(domain:ragardner.github.io)"
     ]
   }
 }
