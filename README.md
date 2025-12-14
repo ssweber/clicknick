@@ -1,34 +1,34 @@
 ![clicknick_logo](https://github.com/user-attachments/assets/2cb7f411-3174-478c-a6c9-409aaa788376)
 
-# clicknick
+# **ClickNick**  
+*Enhanced Productivity for CLICK PLC Programming*    
+  
+Add **nickname autocomplete** to CLICK Programming Software and a **modern Address Editor**.  
+  
+![ClickNick demo](https://github.com/user-attachments/assets/0275dcf4-6d79-4775-8763-18b13e8fd3a3)  
+  
+## **Features**    
+  
+### ✨ Nickname Autocomplete    
+- **Skip the addresses** – Select `Valve5` instead of typing `C123`    
+- **Flexible search** – Prefix, partial match, or abbreviation (e.g., `Motor Speed` ↔ `Mtr_Spd`)    
+- **Hover tooltips** – View address comments at a glance    
+- **Exclusion filters** – Hide system or internal addresses (e.g., `SC/SD`, `__private__`)    
+  
+### 🛠️ Modern Address Editor    
+- **Multi-window** – Edit different address sections simultaneously    
+- **Bulk editing** – Edit before saving, copy/paste multiple cells, live duplicate detection and validation    
+- **Search & Replace** – With in-selection support (Ctrl+F / Ctrl+R)    
+- **Custom blocks** – Drag to create color-coded groups for organization and quick navigation  
+  
+## **Why ClickNick?**    
+✔ **Work faster** – Less time on manual address lookup  
+✔ **Fewer mistakes** – Autocomplete reduces typos  
+✔ **Stay organized** – Better tag management for complex projects  
 
-Nickname autocomplete for ClickPLC instruction windows and modern Address Editor tool.
-
-![ClickNick demo](https://github.com/user-attachments/assets/0275dcf4-6d79-4775-8763-18b13e8fd3a3)
-
-## Features
-
-- **Live Nicknames**: Immediate access to Nicknames in your CLICK Programming Software, via ODBC connection.
-- **Smart Autocomplete**: Shows only relevant nicknames based on the open instruction window.
-- **Multiple Filter Modes**: Flexible search options:  
-  - **Prefix**: Match starting characters (e.g., `"Val"` → `"Valve_1"`).  
-  - **Contains**: Find nicknames with any part of the text (e.g., `"Run"` → `"Motor_Run"`).  
-  - **Abbreviation**: Supports **two-way shorthand** and **multi-word matching** (e.g., `"Motor Speed"` → `"Mtr_Spd"` or `"MtrSpd"` → `"MotorSpeed"`).
-- **Helpful Tooltips**: Displays address comments on hover for quick reference.
-- **Exclusion Filters**:  
-  - Hide system addresses (SC/SD) to reduce clutter.  
-  - Exclude addresses based on custom naming conventions (e.g., omit nicknames containing double underscores `__` if you use them for private or internal variables).
-
-## Address Editor  
-
-A powerful alternative to ClickPLC's built-in Address Picker.
-
-- **Multiple Windows**: Edit different tag sections simultaneously.
-- **Bulk Editing**: Work on addresses before saving, with live duplicate and validation error highlighting.
-- **Copy/Paste Multiple Rungs**
-- **Search & Replace**:Search (Ctrl+F) and Replace (Ctrl+R) with 'In Selection' support.
-- **Smart Filtering**
-- **Custom Blocks**: Click & drag memory addresses to create color-coded blocks for organizing tags and quick navigation via menus.
+🔌 **Connectivity Options:**  
+- Live ODBC database connection  
+- CSV nickname file import  
 
 > [!NOTE]  
 > Nicknames edited via the `Address Editor` appear immediately in ClickNick autocomplete and newly placed instructions. Existing ladder will refresh after editing a nickname via the built-in `Address Picker : Edit Mode` (Ctrl+T) or reopening the project.
