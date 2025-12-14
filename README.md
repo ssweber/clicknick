@@ -19,89 +19,97 @@ Add **nickname autocomplete** to CLICK Programming Software and a **modern Addre
 - **Multi-window** – Edit different address sections simultaneously    
 - **Bulk editing** – Edit before saving, copy/paste multiple cells, live duplicate detection and validation    
 - **Search & Replace** – With in-selection support (Ctrl+F / Ctrl+R)    
-- **Custom blocks** – Drag to create color-coded groups for organization and quick navigation  
+- **Custom blocks** – Drag to create color-coded groups for organization and quick navigation
+
+![Address Editor](https://github.com/user-attachments/assets/REPLACE_WITH_ACTUAL_SCREENSHOT)  
+
+> [!NOTE]  
+> Nicknames edited in the Address Editor appear immediately in autocomplete. Existing ladder logic refreshes after editing via the built-in Address Picker (Ctrl+T) or reopening the project.  
   
 ## **Why ClickNick?**    
 ✔ **Work faster** – Less time on manual address lookup  
 ✔ **Fewer mistakes** – Autocomplete reduces typos  
 ✔ **Stay organized** – Better tag management for complex projects  
 
-🔌 **Connectivity Options:**  
-- Live ODBC database connection  
-- CSV nickname file import  
+## **Connectivity**  
+- 🔌 Live ODBC database connection  
+- 📄 CSV nickname import  
+
+---
+
+## **Installation**  
 
 > [!NOTE]  
-> Nicknames edited via the `Address Editor` appear immediately in ClickNick autocomplete and newly placed instructions. Existing ladder will refresh after editing a nickname via the built-in `Address Picker : Edit Mode` (Ctrl+T) or reopening the project.
+> Live database connectivity requires Microsoft Access ODBC drivers. See our [installation guide](https://github.com/ssweber/clicknick/issues/17) if you encounter driver issues. CSV import works without additional drivers.  
 
-![Address Editor](https://github.com/user-attachments/assets/REPLACE_WITH_ACTUAL_SCREENSHOT)  
+### Option 1: uv (recommended)  
 
-## How to Run
-> [!NOTE]
-> For live nickname database functionality, you'll need Microsoft Access ODBC drivers installed. If you see an "ODBC drivers not found" warning, see our [installation guide](https://github.com/ssweber/clicknick/issues/17) for help. CSV nickname file loading works without these drivers.
+**Try it:**  
+```cmd  
+uvx clicknick@latest  
+```  
 
-### Option 1: Using uv (recommended)
-**Try it out:**
-```cmd
-uvx clicknick@latest
-```
+**Install for offline use:**  
+```cmd  
+uv tool install clicknick  
+```  
 
-**Install for offline use:**
-```cmd
-uv tool install clicknick
-```
-
-**Run:** `clicknick` (from command line or Start Menu)
-
+**Run:** `clicknick` (command line or Start Menu)  
+**Upgrade:** `uv tool upgrade clicknick`  
 **Uninstall:** `uv tool uninstall clicknick`  
-**Upgrade:** `uv tool upgrade clicknick`
 
-If you don't have uv: https://github.com/astral-sh/uv#installation
+New to uv? See [installation instructions](https://github.com/astral-sh/uv#installation).  
 
-### Option 2: Using pip
-```cmd
-pip install clicknick
-python -m clicknick
-```
+### Option 2: pip  
 
-## Usage
+```cmd  
+pip install clicknick  
+python -m clicknick  
+```  
 
-1. Open CLICK Programming Software project.
-2. Launch ClickNick to add Auto-Complete to where you typically enter Memory Addresses.
-3. Open Tools -> Address Editor for advanced tag management with full search, filtering, and bulk editing capabilities
+---
 
-## Requirements
+## **Usage**  
 
-- Windows 10 or 11
-- CLICK Programming Software (v2.60 – v3.71).
-- Address Editor requires Microsoft Access ODBC drivers
+1. Open your CLICK Programming Software project  
+2. Launch ClickNick to enable autocomplete in address input fields  
+3. Use **Tools → Address Editor** for advanced tag management  
 
-## Auto-Complete Supported Windows
+---
 
-- Contact Normally Open/Closed
-- Edge Contact
-- Out, Set, Reset
-- Compare (A with B)
-- Timer, Counter
-- Math instructions
-- Shift Register
-- Copy instruction
-- Search instruction
-- Search & Replace dialogs
-- Data Views
-- Address Picker `Find`
-- Modbus Send/Receive
+## **Requirements**  
 
-* * *
+- Windows 10/11  
+- CLICK Programming Software (v2.60–v3.71)  
+- Microsoft Access ODBC drivers (for Address Editor)  
 
-## Project Docs
+---
 
-For how to install uv and Python, see [installation.md](installation.md).
+## **Supported Windows**  
 
-For development workflows, see [development.md](development.md).
+Autocomplete works in:  
 
-For instructions on publishing to PyPI, see [publishing.md](publishing.md).
+| Instructions | Dialogs & Tools |
+|--------------|-----------------|
+| Contact (NO/NC) | Search & Replace |
+| Edge Contact | Data Views |
+| Out, Set, Reset | Address Picker Find |
+| Compare (A with B) | Modbus Send/Receive |
+| Timer, Counter | |
+| Math | |
+| Shift Register | |
+| Copy | |
+| Search | |
 
-* * *
+---
+
+## **Documentation**  
+
+- [Installation Guide](installation.md) – Python and uv setup  
+- [Development](development.md) – Contributing workflows  
+- [Publishing](publishing.md) – PyPI release instructions  
+
+---
 
 *This project was built from
 [simple-modern-uv](https://github.com/jlevy/simple-modern-uv).*
