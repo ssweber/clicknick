@@ -3,7 +3,7 @@ from tkinter import ttk
 
 from .floating_tooltip import FloatingTooltip
 from .nickname_combobox import NicknameCombobox
-from .shared_ahk import AHK
+from .win32_utils import WIN32
 
 
 class Overlay(tk.Toplevel):
@@ -25,24 +25,19 @@ class Overlay(tk.Toplevel):
             self.combobox.selection_callback(current_text)
 
     def _insert_text_to_field(self, text):
-        """Insert the string into the current field using AHK."""
+        """Insert the string into the current field."""
         if not self.target_window_id or not self.target_edit_control:
             return
 
         try:
-            # Use AHK to set the text in the field
-            AHK.f(
-                "ControlSetText",
-                self.target_edit_control,
-                text,
-                f"ahk_id {self.target_window_id}",
-            )
+            # Set the text in the field
+            WIN32.set_control_text(self.target_window_id, self.target_edit_control, text)
 
-            # Set the text to the end (like you typed it)
-            AHK.call("ControlEnd", self.target_edit_control, f"ahk_id {self.target_window_id}")
-            AHK.call("WinActivate", f"ahk_id {self.target_window_id}")
+            # Move cursor to end of text
+            WIN32.control_send_end(self.target_window_id, self.target_edit_control)
+            WIN32.activate(self.target_window_id)
             if self.target_window_class == "TfrmTagDB":
-                AHK.call("Send", "{Enter}")
+                WIN32.send_key("{Enter}")
         except Exception as e:
             print(f"Error inserting text: {e}")
 
@@ -198,7 +193,7 @@ class Overlay(tk.Toplevel):
                 return None
 
             # Get window position
-            window_pos = AHK.f("WinGetPos", f"ahk_id {self.target_window_id}")
+            window_pos = WIN32.get_pos(self.target_window_id)
             if not window_pos:
                 print("Could not determine window position")
                 return None
@@ -207,11 +202,7 @@ class Overlay(tk.Toplevel):
             win_x, win_y, win_width, win_height = map(int, window_pos.split(","))
 
             # Get control position
-            control_pos = AHK.f(
-                "ControlGetPos",
-                self.target_edit_control,
-                f"ahk_id {self.target_window_id}",
-            )
+            control_pos = WIN32.get_control_pos(self.target_window_id, self.target_edit_control)
             if not control_pos:
                 print("Could not determine control position")
                 return None
@@ -275,10 +266,10 @@ class Overlay(tk.Toplevel):
 
             # More robust focus handling
             # deactivate the ClickPLC window
-            AHK.call("WinActivate", "ahk_class Shell_TrayWnd")
+            WIN32.activate(class_name="Shell_TrayWnd")
 
             self.deiconify()
-            AHK.call("WinActivate", "ClickNickOverlay")
+            WIN32.activate(title="ClickNickOverlay")
             self.update()
             self.combobox.focus_set()  # Then force focus on the combobox
 

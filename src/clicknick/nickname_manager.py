@@ -275,14 +275,11 @@ class NicknameManager:
             str: Path to the database file or None if not found
         """
         try:
-            # Use AHK to get the window handle if we don't have it
+            # Get the window handle if we don't have it
             if click_pid and not click_hwnd:
-                from .shared_ahk import AHK
+                from .win32_utils import WIN32
 
-                # Get window ID using AHK
-                window_id = AHK.f("WinGet", "ID", f"ahk_pid {click_pid}")
-                if window_id:
-                    click_hwnd = int(window_id)
+                click_hwnd = WIN32.get_hwnd_by_pid(click_pid)
 
             if click_hwnd:
                 # Convert window handle to uppercase hex string without '0x' prefix

@@ -37,7 +37,7 @@ classifiers = [
 # ---- Main dependencies ----
 
 dependencies = [
-    "ahkunwrapped>=2.2.1",
+    "pywin32>=306",
     "pyodbc>=5.2.0",
     "tksheet>=7.0.0",
 ]

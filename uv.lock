@@ -3,18 +3,6 @@ revision = 3
 requires-python = ">=3.11, <4.0"
 
 [[package]]
-name = "ahkunwrapped"
-version = "2.2.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pywin32", marker = "sys_platform == 'win32'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/14/51/53daee32bd33c103ef77b8ace4022fdcdc644758722eafa92cc3a51c6e65/ahkunwrapped-2.2.1.tar.gz", hash = "sha256:8e5e63543f62f459864c01d752b135c2ec94a25dead1a5901f84e3cb278b094b", size = 663129, upload-time = "2022-11-05T22:03:25.329Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ad/34/540a5041b27d545bf3edf88783ab1a11d04bb22b42d40cfda762410caf05/ahkunwrapped-2.2.1-py3-none-any.whl", hash = "sha256:9d4eef97092b133fca6e1ec6d72475aacfeb538707b8512ef25d1627fb74a2b4", size = 661660, upload-time = "2022-11-05T22:03:23.262Z" },
-]
-
-[[package]]
 name = "basedpyright"
 version = "1.35.0"
 source = { registry = "https://pypi.org/simple" }
@@ -30,8 +18,8 @@ wheels = [
 name = "clicknick"
 source = { editable = "." }
 dependencies = [
-    { name = "ahkunwrapped" },
     { name = "pyodbc" },
+    { name = "pywin32" },
     { name = "tksheet" },
 ]
 
@@ -48,8 +36,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ahkunwrapped", specifier = ">=2.2.1" },
     { name = "pyodbc", specifier = ">=5.2.0" },
+    { name = "pywin32", specifier = ">=306" },
     { name = "tksheet", specifier = ">=7.0.0" },
 ]
 

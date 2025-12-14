@@ -13,7 +13,6 @@ from .icon_data import ICON_PNG_BASE64
 from .nickname_manager import NicknameManager
 from .overlay import Overlay
 from .settings import AppSettings
-from .shared_ahk import AHK
 from .window_detector import ClickWindowDetector
 from .window_mapping import CLICK_PLC_WINDOW_MAPPING
 
@@ -770,7 +769,6 @@ class ClickNickApp:
         if self.monitoring:
             self.stop_monitoring()
         self.root.destroy()
-        AHK.exit()
 
     def run(self):
         """Run the ClickNick Application"""

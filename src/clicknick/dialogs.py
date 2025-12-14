@@ -4,7 +4,7 @@ import tkinter as tk
 from datetime import datetime
 from tkinter import ttk
 
-from .shared_ahk import AHK
+from .win32_utils import WIN32
 
 
 def open_url(url):
@@ -100,7 +100,7 @@ class AboutDialog:
 
         # Copy system info button
         def copy_system_info():
-            """Copy version and system information to clipboard using AHK."""
+            """Copy version and system information to clipboard."""
             try:
                 # Get ODBC driver information
                 access_drivers = self.nickname_manager.get_available_access_drivers()
@@ -120,8 +120,8 @@ class AboutDialog:
                     f"Platform Details: {platform.platform()}"
                 )
 
-                # Use AHK to set clipboard
-                AHK.set("Clipboard", system_info)
+                # Set clipboard
+                WIN32.set_clipboard(system_info)
 
                 # Visual feedback - temporarily change button text
                 copy_btn.config(text="✓ Copied!")
@@ -129,7 +129,7 @@ class AboutDialog:
 
             except Exception as e:
                 print(f"Error copying system info: {e}")
-                # Fallback to tkinter clipboard if AHK fails
+                # Fallback to tkinter clipboard if pywin32 fails
                 self.window.clipboard_clear()
                 self.window.clipboard_append(system_info)
 
