@@ -802,15 +802,17 @@ class AddressEditorWindow(tk.Toplevel):
 
         def show_tooltip(event):
             nonlocal tooltip
-            x = widget.winfo_rootx() + 20
-            y = widget.winfo_rooty() + widget.winfo_height() + 5
-            tooltip = tk.Toplevel(widget)
-            tooltip.wm_overrideredirect(True)
-            tooltip.wm_geometry(f"+{x}+{y}")
-            label = ttk.Label(
-                tooltip, text=text, background="#ffffe0", relief="solid", borderwidth=1
-            )
-            label.pack()
+            # Only show when disabled
+            if str(widget.cget("state")) == "disabled":
+                x = widget.winfo_rootx() + 20
+                y = widget.winfo_rooty() + widget.winfo_height() + 5
+                tooltip = tk.Toplevel(widget)
+                tooltip.wm_overrideredirect(True)
+                tooltip.wm_geometry(f"+{x}+{y}")
+                label = ttk.Label(
+                    tooltip, text=text, background="#ffffe0", relief="solid", borderwidth=1
+                )
+                label.pack()
 
         def hide_tooltip(event):
             nonlocal tooltip
@@ -940,7 +942,7 @@ class AddressEditorWindow(tk.Toplevel):
         )
         self.add_block_btn.pack(side=tk.LEFT, padx=(5, 0))
         # Create tooltip for the button
-        self._create_tooltip(self.add_block_btn, "Select row(s) first")
+        self._create_tooltip(self.add_block_btn, "Click & drag memory addresses to define block")
 
         # Save button
         self.save_btn = ttk.Button(footer, text="💾 Save All", command=self._save_all)

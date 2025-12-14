@@ -18,16 +18,20 @@ Nickname autocomplete for ClickPLC instruction windows and modern Address Editor
 - **Exclusion Filters**:  
   - Hide system addresses (SC/SD) to reduce clutter.  
   - Exclude addresses based on custom naming conventions (e.g., omit nicknames containing double underscores `__` if you use them for private or internal variables).
+
 ## Address Editor  
 
-A powerful alternative to ClickPLC's built-in Address Picker, bringing modern editing capabilities to tag management.
+A powerful alternative to ClickPLC's built-in Address Picker.
 
 - **Multiple Windows**: Edit different tag sections simultaneously.
 - **Bulk Editing**: Work on addresses before saving, with live duplicate and validation error highlighting.
 - **Copy/Paste Multiple Rungs**
-- **Search & Replace**:Search (Ctrl+F) and Replace (Ctrl+H) with 'In Selection' support.
+- **Search & Replace**:Search (Ctrl+F) and Replace (Ctrl+R) with 'In Selection' support.
 - **Smart Filtering**
-- **Organized Navigation**: Add `<Tags>` in address comments to create hierarchical headers in address jump-to lists.
+- **Custom Blocks**: Click & drag memory addresses to create color-coded blocks for organizing tags and quick navigation via menus.
+
+> [!NOTE]  
+> Nicknames edited via the `Address Editor` appear immediately in ClickNick autocomplete and newly placed instructions. Existing ladder will refresh after editing a nickname via the built-in `Address Picker : Edit Mode` (Ctrl+T) or reopening the project.
 
 ![Address Editor](https://github.com/user-attachments/assets/REPLACE_WITH_ACTUAL_SCREENSHOT)  
 
