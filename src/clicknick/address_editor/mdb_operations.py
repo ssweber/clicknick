@@ -1,7 +1,6 @@
 """Database operations for the Address Editor.
 
 Provides connection management and CRUD operations for the MDB database.
-Reuses connection logic from NicknameManager.
 """
 
 from __future__ import annotations
@@ -10,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import pyodbc
 
+from ..mdb_shared import create_access_connection, find_click_database
 from .address_model import DEFAULT_RETENTIVE, MEMORY_TYPE_TO_DATA_TYPE, AddressRow
 
 if TYPE_CHECKING:
@@ -30,7 +30,7 @@ class MdbConnection:
 
     @classmethod
     def from_click_window(cls, click_pid: int, click_hwnd: int) -> MdbConnection:
-        """Create connection using existing NicknameManager logic.
+        """Create connection from Click window info.
 
         Args:
             click_pid: Process ID of the CLICK software
@@ -42,12 +42,7 @@ class MdbConnection:
         Raises:
             FileNotFoundError: If the database cannot be located
         """
-        # Import here to avoid circular dependency
-        from ..nickname_manager import NicknameManager
-
-        # Reuse the existing database finder
-        temp_manager = NicknameManager()
-        db_path = temp_manager._find_click_database(click_pid, click_hwnd)
+        db_path = find_click_database(click_pid, click_hwnd)
         if not db_path:
             raise FileNotFoundError("Could not locate CLICK database")
         return cls(db_path)
@@ -58,36 +53,7 @@ class MdbConnection:
         Raises:
             RuntimeError: If no Access drivers are available or connection fails
         """
-        # Import here to avoid circular dependency
-        from ..nickname_manager import NicknameManager
-
-        # Reuse driver detection logic from NicknameManager
-        temp_manager = NicknameManager()
-        drivers = temp_manager.get_available_access_drivers()
-
-        if not drivers:
-            raise RuntimeError("No Microsoft Access ODBC drivers available")
-
-        # Preferred driver order
-        preferred_drivers = [
-            "Microsoft Access Driver (*.mdb, *.accdb)",
-            "Microsoft Access Driver (*.mdb)",
-            "Microsoft Access Driver",
-        ]
-
-        # Try drivers in order of preference
-        driver_errors = []
-        for driver in preferred_drivers + [d for d in drivers if d not in preferred_drivers]:
-            try:
-                conn_str = f"DRIVER={{{driver}}};DBQ={self.db_path};"
-                self._conn = pyodbc.connect(conn_str)
-                return
-            except pyodbc.Error as e:
-                driver_errors.append(f"Driver '{driver}' failed: {e}")
-                continue
-
-        error_msg = "Failed to connect with any Access driver:\n" + "\n".join(driver_errors)
-        raise RuntimeError(error_msg)
+        self._conn = create_access_connection(self.db_path)
 
     def close(self) -> None:
         """Close the database connection."""

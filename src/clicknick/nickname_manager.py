@@ -1,11 +1,13 @@
 import csv
 import os
-from pathlib import Path
-
-import pyodbc
 
 from .address_editor.address_model import strip_header_tag
 from .filters import ContainsFilter, ContainsPlusFilter, NoneFilter, PrefixFilter
+from .mdb_shared import (
+    create_access_connection,
+    find_click_database,
+    get_available_access_drivers,
+)
 from .nickname import Nickname
 
 
@@ -242,80 +244,9 @@ class NicknameManager:
             print(f"Error loading CSV: {e}")
             return False
 
-    def get_available_access_drivers(self) -> list[str]:
-        """
-        Get list of available Microsoft Access ODBC drivers.
-
-        Returns:
-            List of available Access driver names
-        """
-        try:
-            import pyodbc
-
-            return [driver for driver in pyodbc.drivers() if "Access" in driver]
-        except ImportError:
-            return []
-        except Exception as e:
-            print(f"Error checking ODBC drivers: {e}")
-            return []
-
     def has_access_driver(self) -> bool:
         """Check if any Microsoft Access ODBC driver is available."""
-        return len(self.get_available_access_drivers()) > 0
-
-    def _find_click_database(self, click_pid=None, click_hwnd=None):
-        """
-        Find the CLICK Programming Software's Access database file.
-
-        Args:
-            click_pid: Process ID of the CLICK software
-            click_hwnd: Window handle of the CLICK software
-
-        Returns:
-            str: Path to the database file or None if not found
-        """
-        try:
-            # Get the window handle if we don't have it
-            if click_pid and not click_hwnd:
-                from .win32_utils import WIN32
-
-                click_hwnd = WIN32.get_hwnd_by_pid(click_pid)
-
-            if click_hwnd:
-                # Convert window handle to uppercase hex string without '0x' prefix
-                hwnd_hex = format(click_hwnd, "08X")
-
-                # Build the expected database path
-                username = os.environ.get("USERNAME")
-                db_path = Path(f"C:/Users/{username}/AppData/Local/Temp/CLICK ({hwnd_hex})/SC_.mdb")
-
-                if db_path.exists():
-                    print(f"Found database: {db_path}")
-                    return str(db_path)
-
-            # Fallback: search the temp directory for CLICK folders and find the most recent
-            temp_dir = Path(os.environ.get("TEMP", ""))
-            if temp_dir.exists():
-                click_folders = []
-                for folder in temp_dir.glob("CLICK (*)/"):
-                    mdb_path = folder / "SC_.mdb"
-                    if mdb_path.exists():
-                        # Get modification time for sorting
-                        mod_time = mdb_path.stat().st_mtime
-                        click_folders.append((folder, mod_time))
-
-                if click_folders:
-                    # Sort by modification time (most recent first)
-                    click_folders.sort(key=lambda x: x[1], reverse=True)
-                    most_recent = click_folders[0][0] / "SC_.mdb"
-                    print(f"Using most recent CLICK database: {most_recent}")
-                    return str(most_recent)
-
-            return None
-
-        except Exception as e:
-            print(f"Error finding database: {e}")
-            return None
+        return len(get_available_access_drivers()) > 0
 
     def _convert_database_data_type(self, text: str) -> str:
         type_mapping = {0: "BIT", 1: "INT", 2: "INT2", 3: "FLOAT", 4: "HEX", 6: "TEXT"}
@@ -338,46 +269,16 @@ class NicknameManager:
             self._click_hwnd = click_hwnd
 
             # Find the database path
-            db_path = self._find_click_database(click_pid, click_hwnd)
+            db_path = find_click_database(click_pid, click_hwnd)
             if not db_path:
                 print("Could not locate CLICK database file")
                 return False
 
-            # Find available Access drivers
-            available_drivers = self.get_available_access_drivers()
-
-            if not available_drivers:
-                print("No Microsoft Access drivers found on this system")
-                return False
-
-            # Try different drivers in order of preference
-            access_driver = None
-            driver_errors = []
-
-            # Preferred driver order
-            preferred_drivers = [
-                "Microsoft Access Driver (*.mdb, *.accdb)",  # First try the most common one
-                "Microsoft Access Driver (*.mdb)",  # Older driver that might be available
-                "Microsoft Access Driver",  # Generic name that might work
-            ]
-
-            # Try drivers in order of preference, then try any other available Access drivers
-            for driver in preferred_drivers + [
-                d for d in available_drivers if d not in preferred_drivers
-            ]:
-                try:
-                    conn_str = f"DRIVER={{{driver}}};DBQ={db_path};"
-                    conn = pyodbc.connect(conn_str)
-                    access_driver = driver
-                    print(f"Successfully connected using driver: {driver}")
-                    break
-                except pyodbc.Error as e:
-                    driver_errors.append(f"Driver '{driver}' failed: {str(e)}")
-                    continue
-
-            if not access_driver:
-                error_msg = "Failed to connect with any Access driver:\n" + "\n".join(driver_errors)
-                print(error_msg)
+            # Connect to the database
+            try:
+                conn = create_access_connection(db_path)
+            except RuntimeError as e:
+                print(str(e))
                 return False
 
             cursor = conn.cursor()
