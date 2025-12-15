@@ -141,16 +141,16 @@ class AddressPanel(ttk.Frame):
         # Get block colors for row indices
         block_colors = self._get_block_colors_for_rows()
 
-        for display_idx, row_idx in enumerate(self._filtered_indices):
-            row = self.rows[row_idx]
+        for display_idx, data_idx in enumerate(self._displayed_rows):
+            row = self.rows[data_idx]
 
             # Apply block color to row index only (not data cells)
-            if row_idx in block_colors:
+            if data_idx in block_colors:
                 # Import here to avoid circular imports
                 from .address_editor_window import get_block_color_hex
 
                 # Convert color name to hex (supports both names and hex codes)
-                hex_color = get_block_color_hex(block_colors[row_idx])
+                hex_color = get_block_color_hex(block_colors[data_idx])
                 if hex_color:
                     self.sheet.highlight_cells(
                         row=display_idx,
@@ -279,151 +279,185 @@ class AddressPanel(ttk.Frame):
 
     def _update_status(self) -> None:
         """Update the status label with current counts."""
-        total_visible = len(self._filtered_indices)
+        total_visible = len(self._displayed_rows)
         error_count = sum(
             1
-            for idx in self._filtered_indices
+            for idx in self._displayed_rows
             if not self.rows[idx].is_valid
             and not self.rows[idx].is_empty
             and not self.rows[idx].should_ignore_validation_error
         )
-        modified_count = sum(1 for idx in self._filtered_indices if self.rows[idx].is_dirty)
+        modified_count = sum(1 for idx in self._displayed_rows if self.rows[idx].is_dirty)
 
         self.status_label.config(
             text=f"Rows: {total_visible} | Errors: {error_count} | Modified: {modified_count}"
         )
 
-    def _refresh_sheet(self) -> None:
-        """Refresh the sheet display with current filtered data."""
-        # Check if this is a BIT-type panel for init value checkbox handling
-        is_bit_panel = self._is_bit_type_panel()
-        is_combined_panel = self.combined_types and len(self.combined_types) > 1
+    def _update_row_computed_columns(self, data_idx: int) -> None:
+        """Update only the computed columns (Ok, Issue) for a single row.
 
-        # Build display data and row index values
-        data = []
-        row_index_values = []
-        for idx in self._filtered_indices:
-            row = self.rows[idx]
+        Args:
+            data_idx: Index into self.rows (data index, not display index)
+        """
+        row = self.rows[data_idx]
 
-            # Add address to row index
-            row_index_values.append(row.display_address)
-
-            # Determine validity display
-            if row.is_empty and row.initial_value == "":
-                valid_display = "--"
-                issue_display = "(empty)"
-            elif row.is_valid and row.initial_value_valid:
-                valid_display = "\u2713"  # checkmark
-                issue_display = ""
+        # Determine validity display
+        if row.is_empty and row.initial_value == "":
+            valid_display = "--"
+            issue_display = "(empty)"
+        elif row.is_valid and row.initial_value_valid:
+            valid_display = "\u2713"  # checkmark
+            issue_display = ""
+        else:
+            valid_display = "\u2717"  # X mark
+            if not row.is_valid:
+                issue_display = row.validation_error
             else:
-                valid_display = "\u2717"  # X mark
-                # Show nickname error first, then initial value error
-                if not row.is_valid:
-                    issue_display = row.validation_error
-                else:
-                    issue_display = row.initial_value_error
+                issue_display = row.initial_value_error
 
-            # Used column display
-            used_display = "\u2713" if row.used else ""
+        self.sheet.set_cell_data(data_idx, self.COL_VALID, valid_display)
+        self.sheet.set_cell_data(data_idx, self.COL_ISSUE, issue_display)
 
-            # Init value: convert "0"/"1" to bool for BIT-type rows (checkbox)
-            # For single-type BIT panels: all rows are BIT
-            # For combined panels: check each row's data_type
-            if is_bit_panel or (is_combined_panel and row.data_type == DATA_TYPE_BIT):
-                init_value_display = row.initial_value == "1"
-            else:
-                init_value_display = row.initial_value
+    def _update_computed_columns(self) -> None:
+        """Update computed columns (Ok, Issue) for all rows."""
+        for data_idx in range(len(self.rows)):
+            self._update_row_computed_columns(data_idx)
 
-            # Retentive: TD/CTD rows share retentive with their paired T/CT row
-            paired_row = self._find_paired_row(row)
-            retentive_display = paired_row.retentive if paired_row else row.retentive
-
-            data.append(
-                [
-                    row.nickname,
-                    used_display,
-                    init_value_display,
-                    retentive_display,  # Boolean for checkbox
-                    row.comment,
-                    valid_display,
-                    issue_display,
-                ]
-            )
-
-        # Update sheet with data and row index
-        self.sheet.set_sheet_data(data, reset_col_positions=False)
-        self.sheet.set_index_data(row_index_values)
-
-        # Re-enable checkboxes for retentive column after data update
-        # Using edit_data=True ensures the checkbox updates cell data to True/False
-        self.sheet[tksheet.num2alpha(self.COL_RETENTIVE)].checkbox(edit_data=True, checked=None)
-
-        # Re-enable checkboxes for init value column on BIT-type panels
-        if is_bit_panel:
-            self.sheet[tksheet.num2alpha(self.COL_INIT_VALUE)].checkbox(
-                edit_data=True, checked=None
-            )
-
-        # For combined panels (T/TD, CT/CTD), create per-row checkboxes for BIT-type rows
-        if is_combined_panel:
-            for display_idx, row_idx in enumerate(self._filtered_indices):
-                row = self.rows[row_idx]
-                if row.data_type == DATA_TYPE_BIT:
-                    is_checked = row.initial_value == "1"
-                    # Use "normal" for editable, "disabled" for non-editable
-                    state = "normal" if row.can_edit_initial_value else "disabled"
-                    self.sheet.create_checkbox(
-                        r=display_idx,
-                        c=self.COL_INIT_VALUE,
-                        checked=is_checked,
-                        state=state,
-                        text="",
-                    )
-
-        # Apply styling for invalid/dirty rows
+    def _refresh_display(self) -> None:
+        """Refresh styling and status (lightweight, no data rebuild)."""
         self._apply_row_styling()
-
-        # Update status
         self._update_status()
+        self.sheet.redraw()
+
+    def _get_data_index(self, display_idx: int) -> int | None:
+        """Convert display row index to data row index.
+
+        Args:
+            display_idx: The row index as displayed in the sheet
+
+        Returns:
+            The corresponding index in self.rows, or None if invalid
+        """
+        try:
+            return self.sheet.displayed_row_index_to_data(display_idx)
+        except (IndexError, KeyError):
+            return None
+
+    def _save_selection(self) -> None:
+        """Save the currently selected row index (in self.rows) before filter changes."""
+        selected = self.sheet.get_selected_rows()
+        if selected:
+            # Get the first selected display row and map to actual row index
+            display_idx = min(selected)
+            self._selected_row_idx = self._get_data_index(display_idx)
+        else:
+            self._selected_row_idx = None
+
+    def _restore_selection(self) -> None:
+        """Restore selection to the previously selected row after filter changes."""
+        if self._selected_row_idx is None:
+            return
+
+        # Find the display index for the saved row in currently displayed rows
+        try:
+            display_idx = self._displayed_rows.index(self._selected_row_idx)
+            # Clear existing selection and select the row
+            self.sheet.deselect()
+            self.sheet.select_row(display_idx)
+            self.sheet.see(display_idx, self.COL_NICKNAME)
+        except ValueError:
+            # Row is not visible in current filter - clear saved selection
+            pass
+
+        # Clear the saved selection
+        self._selected_row_idx = None
 
     def _apply_filters(self) -> None:
-        """Apply current filter settings and refresh display."""
+        """Apply current filter settings using tksheet's display_rows()."""
+        # Save current selection before changing filter
+        self._save_selection()
+
         filter_text = self.filter_var.get().lower()
         hide_empty = self.hide_empty_var.get()
         hide_assigned = self.hide_assigned_var.get()
         show_unsaved_only = self.show_unsaved_only_var.get()
 
-        self._filtered_indices = []
-        for i, row in enumerate(self.rows):
-            # Filter by text (matches address, nickname, or comment)
-            if filter_text:
-                if (
-                    filter_text not in row.display_address.lower()
-                    and filter_text not in row.nickname.lower()
-                    and filter_text not in row.comment.lower()
-                ):
+        # Check if any filters are active
+        no_filters = (
+            not filter_text and not hide_empty and not hide_assigned and not show_unsaved_only
+        )
+
+        if no_filters:
+            # Show all rows
+            self._displayed_rows = list(range(len(self.rows)))
+            self.sheet.display_rows("all")
+        else:
+            # Build list of rows to display
+            self._displayed_rows = []
+            for i, row in enumerate(self.rows):
+                # Filter by text (matches address, nickname, or comment)
+                if filter_text:
+                    if (
+                        filter_text not in row.display_address.lower()
+                        and filter_text not in row.nickname.lower()
+                        and filter_text not in row.comment.lower()
+                    ):
+                        continue
+
+                # Hide empty rows (no nickname)
+                if hide_empty and row.is_empty:
                     continue
 
-            # Hide empty rows (no nickname)
-            if hide_empty and row.is_empty:
-                continue
+                # Hide assigned rows (has nickname)
+                if hide_assigned and not row.is_empty:
+                    continue
 
-            # Hide assigned rows (has nickname)
-            if hide_assigned and not row.is_empty:
-                continue
+                # Show only unsaved (dirty) rows
+                if show_unsaved_only and not row.is_dirty:
+                    continue
 
-            # Show only unsaved (dirty) rows
-            if show_unsaved_only and not row.is_dirty:
-                continue
+                self._displayed_rows.append(i)
 
-            self._filtered_indices.append(i)
+            self.sheet.display_rows(rows=self._displayed_rows, all_displayed=False)
 
-        self._refresh_sheet()
+        # Refresh styling and status
+        self._refresh_display()
+
+        # Restore selection after filter change
+        self._restore_selection()
 
     def _validate_all(self) -> None:
         """Validate all rows against current nickname registry."""
         for row in self.rows:
             row.validate(self._all_nicknames)
+
+    def _fire_batched_notifications(self) -> None:
+        """Fire batched notifications for all pending changes."""
+        self._notification_timer = None
+
+        # Fire nickname changes (batched)
+        if self._pending_nickname_changes and self.on_nickname_changed:
+            for addr_key, old_nick, new_nick in self._pending_nickname_changes:
+                self.on_nickname_changed(addr_key, old_nick, new_nick)
+        self._pending_nickname_changes = []
+
+        # Fire data change notification once
+        if self._pending_data_changed and self.on_data_changed:
+            self.on_data_changed()
+        self._pending_data_changed = False
+
+    def _schedule_notifications(self) -> None:
+        """Schedule batched notifications after a short delay.
+
+        This debounces rapid changes (like Replace All) to avoid
+        triggering expensive cross-panel validation for each cell.
+        """
+        # Cancel any existing timer
+        if self._notification_timer is not None:
+            self.after_cancel(self._notification_timer)
+
+        # Schedule notification after 50ms idle
+        self._notification_timer = self.after(50, self._fire_batched_notifications)
 
     def _bulk_validate(self, event) -> object:
         """Bulk validation handler for paste and multi-cell edits.
@@ -451,12 +485,12 @@ class AddressPanel(ttk.Frame):
         # Filter out changes to non-editable cells
         filtered_table = {}
         for (display_row, col), value in table_data.items():
-            # Skip if row is out of range
-            if display_row >= len(self._filtered_indices):
+            # Map display row to data row
+            data_idx = self._get_data_index(display_row)
+            if data_idx is None:
                 continue
 
-            row_idx = self._filtered_indices[display_row]
-            address_row = self.rows[row_idx]
+            address_row = self.rows[data_idx]
 
             # Check if this column is editable for this row
             if col == self.COL_USED or col == self.COL_VALID or col == self.COL_ISSUE:
@@ -505,14 +539,17 @@ class AddressPanel(ttk.Frame):
         # Track old nicknames for cross-panel notification
         nickname_changes: list[tuple[int, str, str]] = []  # (addr_key, old, new)
 
+        # Track which data rows were modified for display update
+        modified_data_indices: set[int] = set()
+
         # Process each modified cell
         for (display_row, col), old_value in table_cells.items():
-            # Map display row to actual row
-            if display_row >= len(self._filtered_indices):
+            # Map display row to data row
+            data_idx = self._get_data_index(display_row)
+            if data_idx is None:
                 continue
 
-            row_idx = self._filtered_indices[display_row]
-            address_row = self.rows[row_idx]
+            address_row = self.rows[data_idx]
 
             # Get the NEW value from the sheet (event contains old value)
             new_value = self.sheet.get_cell_data(display_row, col)
@@ -527,6 +564,7 @@ class AddressPanel(ttk.Frame):
 
                 # Update the row
                 address_row.nickname = new_nickname
+                modified_data_indices.add(data_idx)
 
                 # Update global nickname registry
                 if old_nickname and address_row.addr_key in self._all_nicknames:
@@ -549,6 +587,7 @@ class AddressPanel(ttk.Frame):
 
                 # Update the row
                 address_row.comment = new_comment
+                modified_data_indices.add(data_idx)
                 data_changed = True
 
             elif col == self.COL_INIT_VALUE:
@@ -568,6 +607,7 @@ class AddressPanel(ttk.Frame):
 
                 # Update the row
                 address_row.initial_value = new_init
+                modified_data_indices.add(data_idx)
                 data_changed = True
                 needs_revalidate = True
 
@@ -589,23 +629,33 @@ class AddressPanel(ttk.Frame):
 
                 # Update the target row
                 target_row.retentive = new_retentive
+                modified_data_indices.add(data_idx)
                 data_changed = True
 
         # Revalidate ALL rows if nickname changed (fixing a duplicate affects both rows)
         if nickname_changed or needs_revalidate:
             self._validate_all()
+            # Validation can affect any row, so update computed columns for all rows
+            self._update_computed_columns()
+        elif modified_data_indices:
+            # Only update computed columns for modified rows
+            for data_idx in modified_data_indices:
+                self._update_row_computed_columns(data_idx)
 
-        # Refresh display
-        self._refresh_sheet()
+        # Refresh styling and status
+        self._refresh_display()
 
-        # Notify parent of nickname changes for cross-panel validation
-        if nickname_changes and self.on_nickname_changed:
-            for addr_key, old_nick, new_nick in nickname_changes:
-                self.on_nickname_changed(addr_key, old_nick, new_nick)
+        # Queue notifications for batched delivery (debounced)
+        # This prevents expensive cross-panel validation for each cell in bulk operations
+        if nickname_changes:
+            self._pending_nickname_changes.extend(nickname_changes)
 
-        # Notify parent of data change (for multi-window sync)
-        if data_changed and self.on_data_changed:
-            self.on_data_changed()
+        if data_changed:
+            self._pending_data_changed = True
+
+        # Schedule batched notification delivery
+        if nickname_changes or data_changed:
+            self._schedule_notifications()
 
     def _create_widgets(self) -> None:
         """Create all panel widgets."""
@@ -770,12 +820,125 @@ class AddressPanel(ttk.Frame):
 
         self.rows: list[AddressRow] = []
         self._all_nicknames: dict[int, str] = {}
-        self._filtered_indices: list[int] = []
+        self._displayed_rows: list[int] = []  # Data indices of currently displayed rows
 
         # Flag to suppress change notifications during programmatic updates
         self._suppress_notifications = False
 
+        # Track selected row for filter changes (actual row index in self.rows)
+        self._selected_row_idx: int | None = None
+
+        # Debounce timer for batching notifications
+        self._notification_timer: str | None = None
+        self._pending_nickname_changes: list[tuple[int, str, str]] = []
+        self._pending_data_changed: bool = False
+
         self._create_widgets()
+
+    def _build_row_display_data(self, row: AddressRow) -> list:
+        """Build display data array for a single row.
+
+        Args:
+            row: The AddressRow to build display data for
+
+        Returns:
+            List of display values for the row's columns
+        """
+        is_bit_panel = self._is_bit_type_panel()
+        is_combined_panel = self.combined_types and len(self.combined_types) > 1
+
+        # Determine validity display
+        if row.is_empty and row.initial_value == "":
+            valid_display = "--"
+            issue_display = "(empty)"
+        elif row.is_valid and row.initial_value_valid:
+            valid_display = "\u2713"  # checkmark
+            issue_display = ""
+        else:
+            valid_display = "\u2717"  # X mark
+            # Show nickname error first, then initial value error
+            if not row.is_valid:
+                issue_display = row.validation_error
+            else:
+                issue_display = row.initial_value_error
+
+        # Used column display
+        used_display = "\u2713" if row.used else ""
+
+        # Init value: convert "0"/"1" to bool for BIT-type rows (checkbox)
+        if is_bit_panel or (is_combined_panel and row.data_type == DATA_TYPE_BIT):
+            init_value_display = row.initial_value == "1"
+        else:
+            init_value_display = row.initial_value
+
+        # Retentive: TD/CTD rows share retentive with their paired T/CT row
+        paired_row = self._find_paired_row(row)
+        retentive_display = paired_row.retentive if paired_row else row.retentive
+
+        return [
+            row.nickname,
+            used_display,
+            init_value_display,
+            retentive_display,  # Boolean for checkbox
+            row.comment,
+            valid_display,
+            issue_display,
+        ]
+
+    def _populate_sheet_data(self) -> None:
+        """Populate sheet with ALL row data (called once at load time).
+
+        This sets up the full dataset. Use display_rows() for filtering.
+        """
+        is_bit_panel = self._is_bit_type_panel()
+        is_combined_panel = self.combined_types and len(self.combined_types) > 1
+
+        # Build data for ALL rows
+        data = []
+        row_index_values = []
+        for row in self.rows:
+            row_index_values.append(row.display_address)
+            data.append(self._build_row_display_data(row))
+
+        # Set all data at once
+        self.sheet.set_sheet_data(data, reset_col_positions=False)
+        self.sheet.set_index_data(row_index_values)
+
+        # Set up checkboxes for retentive column (whole column)
+        self.sheet[tksheet.num2alpha(self.COL_RETENTIVE)].checkbox(edit_data=True, checked=None)
+
+        # Set up checkboxes for init value column on BIT-type panels
+        if is_bit_panel:
+            self.sheet[tksheet.num2alpha(self.COL_INIT_VALUE)].checkbox(
+                edit_data=True, checked=None
+            )
+
+        # For combined panels, create per-row checkboxes for BIT-type rows
+        if is_combined_panel:
+            for data_idx, row in enumerate(self.rows):
+                if row.data_type == DATA_TYPE_BIT:
+                    is_checked = row.initial_value == "1"
+                    state = "normal" if row.can_edit_initial_value else "disabled"
+                    self.sheet.create_checkbox(
+                        r=data_idx,
+                        c=self.COL_INIT_VALUE,
+                        checked=is_checked,
+                        state=state,
+                        text="",
+                    )
+
+    def _update_row_display(self, data_idx: int) -> None:
+        """Update display data for a single row after changes.
+
+        Args:
+            data_idx: Index into self.rows (data index, not display index)
+        """
+        row = self.rows[data_idx]
+        display_data = self._build_row_display_data(row)
+
+        # Update each cell in the row
+        for col, value in enumerate(display_data):
+            self.sheet.set_cell_data(data_idx, col, value)
 
     def _validate_row(self, row: AddressRow) -> None:
         """Validate a single row."""
@@ -932,6 +1095,11 @@ class AddressPanel(ttk.Frame):
 
             self._all_nicknames = all_nicknames
             self._validate_all()
+
+            # Populate sheet with ALL data once (use display_rows for filtering)
+            self._populate_sheet_data()
+
+            # Apply initial filters (uses display_rows internally)
             self._apply_filters()
         finally:
             self._suppress_notifications = False
@@ -1001,7 +1169,13 @@ class AddressPanel(ttk.Frame):
             # Update nickname registry and revalidate
             self._all_nicknames = all_nicknames
             self._validate_all()
-            self._refresh_sheet()
+
+            # Update all row displays with new data
+            for data_idx in range(len(self.rows)):
+                self._update_row_display(data_idx)
+
+            # Refresh styling and status
+            self._refresh_display()
 
         finally:
             self._suppress_notifications = False
@@ -1009,7 +1183,8 @@ class AddressPanel(ttk.Frame):
     def revalidate(self) -> None:
         """Re-validate all rows (called when global nicknames change)."""
         self._validate_all()
-        self._refresh_sheet()
+        self._update_computed_columns()
+        self._refresh_display()
 
     def get_dirty_rows(self) -> list[AddressRow]:
         """Get all rows that have been modified."""
@@ -1060,14 +1235,14 @@ class AddressPanel(ttk.Frame):
             return False
 
         # Check if it's visible in current filter
-        if row_idx not in self._filtered_indices:
+        if row_idx not in self._displayed_rows:
             self.filter_var.set("")
             self.hide_empty_var.set(False)
             self.hide_assigned_var.set(False)
             self._apply_filters()
 
         try:
-            display_idx = self._filtered_indices.index(row_idx)
+            display_idx = self._displayed_rows.index(row_idx)
             self.sheet.see(display_idx, self.COL_NICKNAME)
             return True
         except ValueError:

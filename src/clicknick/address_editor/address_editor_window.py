@@ -538,10 +538,14 @@ class AddressEditorWindow(tk.Toplevel):
         # Update sidebar button indicators
         self.sidebar.update_all_indicators()
 
-    def _handle_nickname_changed(self, addr_key: int, old_nick: str, new_nick: str) -> None:
-        """Handle nickname change from any panel."""
-        # Update shared data registry
-        self.shared_data.update_nickname(addr_key, old_nick, new_nick)
+    def _do_revalidation(self) -> None:
+        """Perform the actual revalidation (called after debounce delay)."""
+        self._revalidate_timer = None
+
+        if not self._pending_revalidate:
+            return
+
+        self._pending_revalidate = False
 
         # Revalidate all local panels
         for panel in self.panels.values():
@@ -552,6 +556,28 @@ class AddressEditorWindow(tk.Toplevel):
         # Set flag to avoid double-processing when we get notified back
         self._ignore_next_notification = True
         self.shared_data.notify_data_changed()
+
+    def _schedule_revalidation(self) -> None:
+        """Schedule a debounced revalidation of all panels."""
+        # Cancel any existing timer
+        if self._revalidate_timer is not None:
+            self.after_cancel(self._revalidate_timer)
+
+        # Schedule revalidation after 50ms idle
+        self._revalidate_timer = self.after(50, self._do_revalidation)
+
+    def _handle_nickname_changed(self, addr_key: int, old_nick: str, new_nick: str) -> None:
+        """Handle nickname change from any panel.
+
+        Uses debouncing to batch rapid changes (like Replace All) and avoid
+        expensive revalidation for each individual cell change.
+        """
+        # Update shared data registry immediately
+        self.shared_data.update_nickname(addr_key, old_nick, new_nick)
+
+        # Schedule debounced revalidation
+        self._pending_revalidate = True
+        self._schedule_revalidation()
 
     def _handle_data_changed(self) -> None:
         """Handle any data change from any panel (comment, init value, retentive)."""
@@ -1054,6 +1080,10 @@ class AddressEditorWindow(tk.Toplevel):
         self.all_nicknames: dict[int, str] = {}
         self.current_type: str = ""
         self._ignore_next_notification = False  # Flag to prevent double-processing
+
+        # Debounce timer for batching nickname changes (e.g., from Replace All)
+        self._revalidate_timer: str | None = None
+        self._pending_revalidate: bool = False
 
         self._create_widgets()
         self._load_initial_data()
