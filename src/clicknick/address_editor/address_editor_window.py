@@ -868,13 +868,13 @@ class AddressEditorWindow(tk.Toplevel):
         first_display_idx = selected_display_rows[0]
         last_display_idx = selected_display_rows[-1]
 
-        if first_display_idx >= len(panel._filtered_indices):
+        if first_display_idx >= len(panel._displayed_rows):
             return
-        if last_display_idx >= len(panel._filtered_indices):
+        if last_display_idx >= len(panel._displayed_rows):
             return
 
-        first_row_idx = panel._filtered_indices[first_display_idx]
-        last_row_idx = panel._filtered_indices[last_display_idx]
+        first_row_idx = panel._displayed_rows[first_display_idx]
+        last_row_idx = panel._displayed_rows[last_display_idx]
 
         first_row = panel.rows[first_row_idx]
         last_row = panel.rows[last_row_idx]
