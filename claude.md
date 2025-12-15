@@ -41,12 +41,13 @@ uv tool install --editable .
 **Window Detection & Integration**
 - `window_detector.py` - Detects Click.exe child windows, validates controls using AHK
 - `window_mapping.py` - Maps window classes to edit controls and their allowed address types
-- `shared_ahk.py` - Singleton wrapper for AutoHotkey interop (via `ahkunwrapped`)
+- `win32_utils.py` - Singleton wrapper for Windows API utilities using pywin32
 
 **Nickname Management**
 - `nickname_manager.py` - Loads nicknames from CSV or ODBC (Access .mdb), manages filtering
 - `nickname.py` - `Nickname` dataclass with address, type, comment, abbreviation tags
 - `filters.py` - Filter strategies: `NoneFilter`, `PrefixFilter`, `ContainsFilter`, `ContainsPlusFilter`
+- `mdb_shared.py` - Shared MDB/Access database utilities (used both by NicknameManager and the Address Editor)
 
 **UI Components**
 - `overlay.py` - `tk.Toplevel` overlay positioned over target edit controls
@@ -76,7 +77,7 @@ Filters implement `FilterBase.filter_matches(completion_list, current_text)`:
 - Abbreviation tags are pre-generated per nickname via `_generate_abbreviation_tags()`
 
 ## Key Dependencies
-- `ahkunwrapped` - AutoHotkey v2 bindings for window manipulation
+- `pywin32` - Python for Win32 (pywin32) extensions
 - `pyodbc` - ODBC connection to Access database
 - `tksheet` - Spreadsheet widget for Address Editor
 - `tkinter` - GUI framework (stdlib)
