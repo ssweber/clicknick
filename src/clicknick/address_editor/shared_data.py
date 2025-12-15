@@ -65,12 +65,11 @@ class SharedAddressData:
         self._monitoring_active = False
 
     def _get_connection(self) -> MdbConnection:
-        """Create a fresh database connection."""
+        """Create a database connection (use as context manager)."""
         conn = MdbConnection.from_click_window(self.click_pid, self.click_hwnd)
         # Store the mdb path for file monitoring
         if self._mdb_path is None:
             self._mdb_path = conn.db_path
-        conn.connect()
         return conn
 
     def add_observer(self, callback: Callable[[], None]) -> None:

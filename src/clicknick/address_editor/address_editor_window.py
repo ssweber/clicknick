@@ -510,17 +510,15 @@ class AddressEditorWindow(tk.Toplevel):
     """Main window for the Address Editor."""
 
     def _get_connection(self) -> MdbConnection:
-        """Create a fresh database connection.
+        """Create a database connection (use as context manager).
 
         Returns:
-            Connected MdbConnection instance
+            MdbConnection instance (connects when entering context)
 
         Raises:
             Exception: If connection fails
         """
-        conn = MdbConnection.from_click_window(self.click_pid, self.click_hwnd)
-        conn.connect()
-        return conn
+        return MdbConnection.from_click_window(self.click_pid, self.click_hwnd)
 
     def _update_status(self) -> None:
         """Update the status bar with current state."""
