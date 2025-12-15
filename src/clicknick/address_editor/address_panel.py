@@ -134,14 +134,18 @@ class AddressPanel(ttk.Frame):
         return row_colors
 
     def _apply_row_styling(self) -> None:
-        """Apply visual styling to rows based on state."""
+        """Apply visual styling to rows based on state.
+
+        Note: highlight_cells() uses DATA row indices, not display indices.
+        This ensures highlights persist correctly when rows are filtered.
+        """
         # Clear all existing highlights first
         self.sheet.dehighlight_all()
 
         # Get block colors for row indices
         block_colors = self._get_block_colors_for_rows()
 
-        for display_idx, data_idx in enumerate(self._displayed_rows):
+        for data_idx in self._displayed_rows:
             row = self.rows[data_idx]
 
             # Apply block color to row index only (not data cells)
@@ -153,7 +157,7 @@ class AddressPanel(ttk.Frame):
                 hex_color = get_block_color_hex(block_colors[data_idx])
                 if hex_color:
                     self.sheet.highlight_cells(
-                        row=display_idx,
+                        row=data_idx,
                         bg=hex_color,
                         canvas="row_index",
                     )
@@ -168,7 +172,7 @@ class AddressPanel(ttk.Frame):
                 if type_idx == 1:  # Second type gets slight background tint
                     for col in range(7):  # 7 data columns (address is in row index)
                         self.sheet.highlight_cells(
-                            row=display_idx,
+                            row=data_idx,
                             column=col,
                             bg="#f0f8ff",  # Light blue tint for TD/CTD rows
                         )
@@ -178,7 +182,7 @@ class AddressPanel(ttk.Frame):
                 if row.should_ignore_validation_error:
                     # Light orange for ignored SC/SD system preset errors
                     self.sheet.highlight_cells(
-                        row=display_idx,
+                        row=data_idx,
                         column=self.COL_NICKNAME,
                         bg="#ffe4b3",  # Light orange
                         fg="#666666",  # Gray text
@@ -186,7 +190,7 @@ class AddressPanel(ttk.Frame):
                 else:
                     # Red for real errors
                     self.sheet.highlight_cells(
-                        row=display_idx,
+                        row=data_idx,
                         column=self.COL_NICKNAME,
                         bg="#ffcccc",
                         fg="black",
@@ -194,7 +198,7 @@ class AddressPanel(ttk.Frame):
             # Dirty nickname gets light yellow background
             elif row.is_nickname_dirty:
                 self.sheet.highlight_cells(
-                    row=display_idx,
+                    row=data_idx,
                     column=self.COL_NICKNAME,
                     bg="#ffffcc",
                     fg="black",
@@ -203,7 +207,7 @@ class AddressPanel(ttk.Frame):
             # Dirty comment gets light yellow background
             if row.is_comment_dirty:
                 self.sheet.highlight_cells(
-                    row=display_idx,
+                    row=data_idx,
                     column=self.COL_COMMENT,
                     bg="#ffffcc",
                     fg="black",
@@ -212,7 +216,7 @@ class AddressPanel(ttk.Frame):
             # Dirty initial value gets light yellow background
             if row.is_initial_value_dirty:
                 self.sheet.highlight_cells(
-                    row=display_idx,
+                    row=data_idx,
                     column=self.COL_INIT_VALUE,
                     bg="#ffffcc",
                     fg="black",
@@ -221,7 +225,7 @@ class AddressPanel(ttk.Frame):
             # Dirty retentive gets light yellow background
             if row.is_retentive_dirty:
                 self.sheet.highlight_cells(
-                    row=display_idx,
+                    row=data_idx,
                     column=self.COL_RETENTIVE,
                     bg="#ffffcc",
                     fg="black",
@@ -230,7 +234,7 @@ class AddressPanel(ttk.Frame):
             # Invalid initial value gets red background
             if not row.initial_value_valid and row.initial_value != "":
                 self.sheet.highlight_cells(
-                    row=display_idx,
+                    row=data_idx,
                     column=self.COL_INIT_VALUE,
                     bg="#ffcccc",
                     fg="black",
@@ -239,13 +243,13 @@ class AddressPanel(ttk.Frame):
             # Non-editable types get gray background on init/retentive columns
             if not row.can_edit_initial_value:
                 self.sheet.highlight_cells(
-                    row=display_idx,
+                    row=data_idx,
                     column=self.COL_INIT_VALUE,
                     bg="#e0e0e0",
                     fg="#666666",
                 )
                 self.sheet.highlight_cells(
-                    row=display_idx,
+                    row=data_idx,
                     column=self.COL_RETENTIVE,
                     bg="#e0e0e0",
                     fg="#666666",
@@ -255,7 +259,7 @@ class AddressPanel(ttk.Frame):
             if row.is_empty and row.comment == "" and row.initial_value == "":
                 for col in [self.COL_VALID, self.COL_ISSUE]:
                     self.sheet.highlight_cells(
-                        row=display_idx,
+                        row=data_idx,
                         column=col,
                         fg="#999999",
                     )
@@ -412,7 +416,7 @@ class AddressPanel(ttk.Frame):
         if no_filters:
             # Show all rows
             self._displayed_rows = list(range(len(self.rows)))
-            self.sheet.display_rows("all")
+            self.sheet.display_rows("all", redraw=True)
         else:
             # Build list of rows to display
             self._displayed_rows = []
@@ -440,10 +444,7 @@ class AddressPanel(ttk.Frame):
 
                 self._displayed_rows.append(i)
 
-            self.sheet.display_rows(rows=self._displayed_rows, all_displayed=False)
-
-        # Refresh styling and status
-        self._refresh_display()
+            self.sheet.display_rows(rows=self._displayed_rows, all_displayed=False, redraw=True)
 
         # Restore selection after filter change
         self._restore_selection()
