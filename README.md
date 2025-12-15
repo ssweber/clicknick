@@ -18,13 +18,16 @@ Add **nickname autocomplete** to CLICK Programming Software and a **modern Addre
 ### 🛠️ Modern Address Editor    
 - **Multi-window** – Edit different address sections simultaneously    
 - **Bulk editing** – Edit before saving, copy/paste multiple cells, live duplicate detection and validation    
-- **Search & Replace** – With in-selection support (Ctrl+F / Ctrl+R)    
+- **Search & Replace** (Ctrl+F / Ctrl+R) - With `Find in Selection` toggle   
 - **Custom blocks** – Drag to create color-coded groups for organization and quick navigation
 
 ![Address Editor demo](https://github.com/user-attachments/assets/6fced9f5-2325-4867-ba23-d3b14ef8e866)  
 
 > [!NOTE]  
 > Nicknames edited in the Address Editor appear immediately in autocomplete. Existing ladder logic refreshes after editing via the built-in Address Picker (Ctrl+T) or reopening the project.  
+
+> [!WARNING]    
+> Replace works on all visible editable columns. Hidden columns like Initial Value and Retentive can be shown, but use caution with numerical replacements—changing 1→2 (e.g., Alm1→Alm2) would also change 101 to 202. Consider using 'Find in Selection' to avoid unintended changes.
 
 ### **Connectivity**  
 - 🔌 Live ODBC database connection  
