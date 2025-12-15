@@ -4,16 +4,16 @@
 *Enhanced Productivity for CLICK PLC Programming*    
   
 Add **nickname autocomplete** to CLICK Programming Software and a **modern Address Editor**.  
-  
-![ClickNick demo](https://github.com/user-attachments/assets/0275dcf4-6d79-4775-8763-18b13e8fd3a3)  
-  
+ 
 ## **Features**    
   
 ### ✨ Nickname Autocomplete    
 - **Skip the addresses** – Select `Valve5` instead of typing `C123`    
 - **Flexible search** – Prefix, partial match, or abbreviation (e.g., `Motor Speed` ↔ `Mtr_Spd`)    
 - **Hover tooltips** – View address comments at a glance    
-- **Exclusion filters** – Hide system or internal addresses (e.g., `SC/SD`, `__private__`)    
+- **Exclusion filters** – Hide system or internal addresses (e.g., `SC/SD`, `__private__`)
+
+![ClickNick autocomplete demo](https://github.com/user-attachments/assets/0275dcf4-6d79-4775-8763-18b13e8fd3a3)  
   
 ### 🛠️ Modern Address Editor    
 - **Multi-window** – Edit different address sections simultaneously    
@@ -21,7 +21,7 @@ Add **nickname autocomplete** to CLICK Programming Software and a **modern Addre
 - **Search & Replace** – With in-selection support (Ctrl+F / Ctrl+R)    
 - **Custom blocks** – Drag to create color-coded groups for organization and quick navigation
 
-![Address Editor](https://github.com/user-attachments/assets/REPLACE_WITH_ACTUAL_SCREENSHOT)  
+![Address Editor demo](https://github.com/user-attachments/assets/6fced9f5-2325-4867-ba23-d3b14ef8e866)  
 
 > [!NOTE]  
 > Nicknames edited in the Address Editor appear immediately in autocomplete. Existing ladder logic refreshes after editing via the built-in Address Picker (Ctrl+T) or reopening the project.  
@@ -114,7 +114,7 @@ Autocomplete works in:
 
 ## **Motivation**
 
-CLICK PLCs were my first controller, and I've built numerous projects with them. But as projects grew, remembering memory addresses instead of nicknames added overhead. Productivity and Do-More have autocomplete nicknames as I type, why can't CLICK? **ClickNick was born**.
+CLICK PLCs were my first controller, and I've built numerous projects with them. But as projects grew, remembering memory addresses instead of nicknames added overhead. Productivity and Do-More autocompleted nicknames as I type, why can't CLICK? **ClickNick was born**.
 
 The built-in Address Picker was equally frustrating: either edit one at a time or export to Excel and re-import. Project templates required me to remember where I could add custom tags versus reserved areas. **The Address Editor solves this**—plus adds **Custom Blocks** to define distinct memory regions visually.
 
