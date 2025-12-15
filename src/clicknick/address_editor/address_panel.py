@@ -344,7 +344,7 @@ class AddressPanel(ttk.Frame):
             return None
 
     def _save_selection(self) -> None:
-        """Save the currently selected row index (in self.rows) before filter changes."""
+        """Save the currently selected row index (in self.rows) and its visual position before filter changes."""
         selected = self.sheet.get_selected_rows()
         if selected:
             # Get the first selected display row and map to actual row index
@@ -352,13 +352,21 @@ class AddressPanel(ttk.Frame):
             # Use our _displayed_rows list for consistent conversion
             if display_idx < len(self._displayed_rows):
                 self._selected_row_idx = self._displayed_rows[display_idx]
+                # Save the visual position (row offset from top of visible area)
+                try:
+                    start_row, end_row = self.sheet.visible_rows
+                    self._selected_row_visual_offset = display_idx - start_row
+                except (ValueError, TypeError):
+                    self._selected_row_visual_offset = 0
             else:
                 self._selected_row_idx = None
+                self._selected_row_visual_offset = None
         else:
             self._selected_row_idx = None
+            self._selected_row_visual_offset = None
 
     def _restore_selection(self) -> None:
-        """Restore selection to the previously selected row after filter changes."""
+        """Restore selection to the previously selected row at the same visual position after filter changes."""
         if self._selected_row_idx is None:
             return
 
@@ -368,13 +376,21 @@ class AddressPanel(ttk.Frame):
             # Clear existing selection and select the row
             self.sheet.deselect()
             self.sheet.select_row(display_idx)
-            self.sheet.see(display_idx, self.COL_NICKNAME)
+            
+            # Calculate the target top row to maintain visual position
+            if self._selected_row_visual_offset is not None:
+                target_top_row = max(0, display_idx - self._selected_row_visual_offset)
+                # Scroll so target_top_row is at the top of visible area
+                total_rows = len(self._displayed_rows)
+                if total_rows > 0:
+                    self.sheet.yview_moveto(target_top_row / total_rows)
+                else:
+                    self.sheet.see(display_idx, self.COL_NICKNAME)
+            else:
+                self.sheet.see(display_idx, self.COL_NICKNAME)
         except ValueError:
             # Row is not visible in current filter - clear saved selection
             pass
-
-        # Clear the saved selection
-        self._selected_row_idx = None
 
     def _apply_filters(self) -> None:
         """Apply current filter settings using tksheet's display_rows()."""
@@ -831,6 +847,7 @@ class AddressPanel(ttk.Frame):
 
         # Track selected row for filter changes (actual row index in self.rows)
         self._selected_row_idx: int | None = None
+        self._selected_row_visual_offset = None
 
         # Debounce timer for batching notifications
         self._notification_timer: str | None = None
