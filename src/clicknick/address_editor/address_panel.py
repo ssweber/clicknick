@@ -566,16 +566,31 @@ class AddressPanel(ttk.Frame):
         modified_data_indices: set[int] = set()
 
         # Process each modified cell
-        for (display_row, col), old_value in table_cells.items():
-            # Map display row to data row
-            data_idx = self._get_data_index(display_row)
-            if data_idx is None:
+        for (event_row, col), old_value in table_cells.items():
+            print(f"DEBUG: event_row={event_row}, "
+                  f"displayed_rows={self._displayed_rows[:5]}..., "
+                  f"filter_active={len(self._displayed_rows) != len(self.rows)}")
+
+            # When filtering is active, tksheet event indices are already data indices
+            # When no filter, display index == data index
+            filter_active = len(self._displayed_rows) != len(self.rows)
+            if filter_active:
+                # Event gives data indices when rows are filtered
+                data_idx = event_row
+            else:
+                # No filter: display == data, use directly
+                data_idx = event_row
+
+            if data_idx is None or data_idx >= len(self.rows):
+                print(f"DEBUG: Skipping invalid data_idx={data_idx}")
                 continue
 
             address_row = self.rows[data_idx]
+            print(f"DEBUG: address_row.display_address={address_row.display_address}, nickname={address_row.nickname}")
 
-            # Get the NEW value from the sheet (event contains old value)
-            new_value = self.sheet.get_cell_data(display_row, col)
+            # Get the NEW value from the sheet using data index
+            new_value = self.sheet.get_cell_data(data_idx, col)
+            print(f"DEBUG: new_value from sheet={new_value}, old_value from event={old_value}")
 
             if col == self.COL_NICKNAME:
                 old_nickname = old_value if old_value else ""
