@@ -1069,7 +1069,7 @@ class AddressEditorWindow(tk.Toplevel):
         super().__init__(parent)
 
         self.title("ClickNick Address Editor")
-        self.geometry("1000x700")
+        self.geometry("1025x700")
 
         self.click_pid = click_pid
         self.click_hwnd = click_hwnd
