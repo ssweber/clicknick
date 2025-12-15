@@ -718,7 +718,7 @@ class AddressPanel(ttk.Frame):
             command=self._apply_filters,
         ).pack(side=tk.LEFT, padx=(5, 0))
 
-        self.hide_used_var = tk.BooleanVar(value=True)  # Hidden by default
+        self.hide_used_var = tk.BooleanVar(value=False)  # Hidden by default
         ttk.Checkbutton(
             filter_frame,
             text="Hide Used",
@@ -784,9 +784,9 @@ class AddressPanel(ttk.Frame):
         # This fires AFTER the sheet has been modified, not during
         self.sheet.bind("<<SheetModified>>", self._on_sheet_modified)
 
-        # Apply initial column visibility (hidden by default)
+        # Apply initial column visibility
         self._toggle_used_column()
-        self._toggle_init_ret_columns()
+        self._toggle_init_ret_columns() # hidden by default
 
         # Footer with status
         footer = ttk.Frame(self)
