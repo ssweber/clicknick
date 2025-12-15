@@ -339,7 +339,7 @@ class AddressPanel(ttk.Frame):
             The corresponding index in self.rows, or None if invalid
         """
         try:
-            return self.sheet.displayed_row_index_to_data(display_idx)
+            return self.sheet.displayed_row_to_data(display_idx)
         except (IndexError, KeyError):
             return None
 

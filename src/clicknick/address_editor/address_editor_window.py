@@ -738,7 +738,7 @@ class AddressEditorWindow(tk.Toplevel):
 
             # Refresh local panels
             for panel in self.panels.values():
-                panel._refresh_sheet()
+                panel._refresh_display()
 
             self.status_var.set(f"Saved {count} changes")
             messagebox.showinfo("Save", f"Successfully saved {count} changes.", parent=self)
@@ -913,7 +913,7 @@ class AddressEditorWindow(tk.Toplevel):
                 last_row.comment = close_tag
 
         # Refresh the panel
-        panel._refresh_sheet()
+        panel._refresh_display()
 
         # Notify data changed
         if panel.on_data_changed:
