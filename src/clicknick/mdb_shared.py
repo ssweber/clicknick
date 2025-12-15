@@ -65,24 +65,6 @@ def find_click_database(click_pid: int | None = None, click_hwnd: int | None = N
                 print(f"Found database: {db_path}")
                 return str(db_path)
 
-        # Fallback: search the temp directory for CLICK folders and find the most recent
-        temp_dir = Path(os.environ.get("TEMP", ""))
-        if temp_dir.exists():
-            click_folders = []
-            for folder in temp_dir.glob("CLICK (*)/"):
-                mdb_path = folder / "SC_.mdb"
-                if mdb_path.exists():
-                    # Get modification time for sorting
-                    mod_time = mdb_path.stat().st_mtime
-                    click_folders.append((folder, mod_time))
-
-            if click_folders:
-                # Sort by modification time (most recent first)
-                click_folders.sort(key=lambda x: x[1], reverse=True)
-                most_recent = click_folders[0][0] / "SC_.mdb"
-                print(f"Using most recent CLICK database: {most_recent}")
-                return str(most_recent)
-
         return None
 
     except Exception as e:
