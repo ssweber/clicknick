@@ -349,7 +349,11 @@ class AddressPanel(ttk.Frame):
         if selected:
             # Get the first selected display row and map to actual row index
             display_idx = min(selected)
-            self._selected_row_idx = self._get_data_index(display_idx)
+            # Use our _displayed_rows list for consistent conversion
+            if display_idx < len(self._displayed_rows):
+                self._selected_row_idx = self._displayed_rows[display_idx]
+            else:
+                self._selected_row_idx = None
         else:
             self._selected_row_idx = None
 
