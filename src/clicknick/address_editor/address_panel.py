@@ -327,7 +327,9 @@ class AddressPanel(ttk.Frame):
         """Refresh styling and status (lightweight, no data rebuild)."""
         self._apply_row_styling()
         self._update_status()
-        self.sheet.redraw()
+        # Use set_refresh_timer() instead of redraw() to prevent multiple redraws
+        # and ensure proper refresh after set_cell_data() calls
+        self.sheet.set_refresh_timer()
 
     def _get_data_index(self, display_idx: int) -> int | None:
         """Convert display row index to data row index.
@@ -376,7 +378,7 @@ class AddressPanel(ttk.Frame):
             # Clear existing selection and select the row
             self.sheet.deselect()
             self.sheet.select_row(display_idx)
-            
+
             # Calculate the target top row to maintain visual position
             if self._selected_row_visual_offset is not None:
                 target_top_row = max(0, display_idx - self._selected_row_visual_offset)
@@ -802,7 +804,7 @@ class AddressPanel(ttk.Frame):
 
         # Apply initial column visibility
         self._toggle_used_column()
-        self._toggle_init_ret_columns() # hidden by default
+        self._toggle_init_ret_columns()  # hidden by default
 
         # Footer with status
         footer = ttk.Frame(self)
@@ -1203,6 +1205,21 @@ class AddressPanel(ttk.Frame):
 
     def revalidate(self) -> None:
         """Re-validate all rows (called when global nicknames change)."""
+        self._validate_all()
+        self._update_computed_columns()
+        self._refresh_display()
+
+    def refresh_from_external(self) -> None:
+        """Refresh all row displays after external data changes.
+
+        Call this when AddressRow objects have been updated externally
+        (e.g., via row.update_from_db()) to sync the sheet's cell data.
+        """
+        # Update all row displays to sync AddressRow data to sheet cells
+        for data_idx in range(len(self.rows)):
+            self._update_row_display(data_idx)
+
+        # Revalidate and refresh styling
         self._validate_all()
         self._update_computed_columns()
         self._refresh_display()

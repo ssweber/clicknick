@@ -654,6 +654,7 @@ class AddressEditorWindow(tk.Toplevel):
                 panel.rows = existing_rows
                 panel._all_nicknames = self.shared_data.all_nicknames
                 panel._validate_all()
+                panel._populate_sheet_data()
                 panel._apply_filters()
             else:
                 # Load from database and store in shared data
@@ -692,6 +693,7 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Show the panel using pack
         self.panels[type_name].pack(fill=tk.BOTH, expand=True)
+
         self._update_status()
 
         # Reset Add Block button state (selection cleared on panel switch)
@@ -912,7 +914,12 @@ class AddressEditorWindow(tk.Toplevel):
             else:
                 last_row.comment = close_tag
 
-        # Refresh the panel
+        # Update the sheet's cell data for modified rows
+        panel._update_row_display(first_row_idx)
+        if first_row_idx != last_row_idx:
+            panel._update_row_display(last_row_idx)
+
+        # Refresh the panel styling
         panel._refresh_display()
 
         # Notify data changed
@@ -1002,7 +1009,8 @@ class AddressEditorWindow(tk.Toplevel):
     def _on_shared_data_changed(self) -> None:
         """Handle notification that shared data has changed.
 
-        Called when another window modifies the shared data.
+        Called when another window modifies the shared data, or when
+        external changes are detected in the MDB file.
         Refreshes all panels to show the updated data.
         """
         # Skip if this notification was triggered by our own change
@@ -1013,10 +1021,10 @@ class AddressEditorWindow(tk.Toplevel):
         # Update local reference to nicknames
         self.all_nicknames = self.shared_data.all_nicknames
 
-        # Refresh all panels
+        # Refresh all panels - use refresh_from_external to sync sheet cell data
         for panel in self.panels.values():
             panel._all_nicknames = self.all_nicknames
-            panel.revalidate()
+            panel.refresh_from_external()
 
         self._update_status()
 
