@@ -808,6 +808,163 @@ class TestAddressRowInitialValueRetentive:
         assert row.needs_full_delete is False
 
 
+class TestUpdateFromDb:
+    """Tests for AddressRow.update_from_db() method."""
+
+    def test_update_from_db_updates_non_dirty_nickname(self):
+        """Non-dirty nickname should be updated from db."""
+        row = AddressRow(
+            memory_type="X",
+            address=1,
+            nickname="OldName",
+            original_nickname="OldName",
+            exists_in_mdb=True,
+        )
+        assert row.is_nickname_dirty is False
+
+        changed = row.update_from_db({"nickname": "NewName", "comment": "", "used": False})
+
+        assert changed is True
+        assert row.nickname == "NewName"
+        assert row.original_nickname == "NewName"
+
+    def test_update_from_db_preserves_dirty_nickname(self):
+        """Dirty nickname should NOT be overwritten from db."""
+        row = AddressRow(
+            memory_type="X",
+            address=1,
+            nickname="UserEdit",
+            original_nickname="OldName",
+            exists_in_mdb=True,
+        )
+        assert row.is_nickname_dirty is True
+
+        changed = row.update_from_db({"nickname": "DbChange", "comment": "", "used": False})
+
+        # Nickname should NOT be changed since it was dirty
+        assert changed is False
+        assert row.nickname == "UserEdit"
+        assert row.original_nickname == "OldName"
+
+    def test_update_from_db_updates_non_dirty_comment(self):
+        """Non-dirty comment should be updated from db."""
+        row = AddressRow(
+            memory_type="X",
+            address=1,
+            comment="Old comment",
+            original_comment="Old comment",
+            exists_in_mdb=True,
+        )
+        assert row.is_comment_dirty is False
+
+        changed = row.update_from_db({"nickname": "", "comment": "New comment", "used": False})
+
+        assert changed is True
+        assert row.comment == "New comment"
+        assert row.original_comment == "New comment"
+
+    def test_update_from_db_preserves_dirty_comment(self):
+        """Dirty comment should NOT be overwritten from db."""
+        row = AddressRow(
+            memory_type="X",
+            address=1,
+            comment="User edit",
+            original_comment="Old comment",
+            exists_in_mdb=True,
+        )
+        assert row.is_comment_dirty is True
+
+        row.update_from_db({"nickname": "", "comment": "Db change", "used": False})
+
+        # Comment should NOT be changed since it was dirty
+        assert row.comment == "User edit"
+        assert row.original_comment == "Old comment"
+
+    def test_update_from_db_always_updates_used(self):
+        """Used flag is read-only in editor, so always update from db."""
+        row = AddressRow(
+            memory_type="X",
+            address=1,
+            used=False,
+            exists_in_mdb=True,
+        )
+
+        changed = row.update_from_db({"nickname": "", "comment": "", "used": True})
+
+        assert changed is True
+        assert row.used is True
+
+    def test_update_from_db_updates_initial_value_when_not_dirty(self):
+        """Non-dirty initial value should be updated from db."""
+        row = AddressRow(
+            memory_type="DS",
+            address=1,
+            initial_value="100",
+            original_initial_value="100",
+            exists_in_mdb=True,
+        )
+        assert row.is_initial_value_dirty is False
+
+        changed = row.update_from_db(
+            {
+                "nickname": "",
+                "comment": "",
+                "used": False,
+                "initial_value": "200",
+            }
+        )
+
+        assert changed is True
+        assert row.initial_value == "200"
+        assert row.original_initial_value == "200"
+
+    def test_update_from_db_preserves_dirty_initial_value(self):
+        """Dirty initial value should NOT be overwritten from db."""
+        row = AddressRow(
+            memory_type="DS",
+            address=1,
+            initial_value="999",
+            original_initial_value="100",
+            exists_in_mdb=True,
+        )
+        assert row.is_initial_value_dirty is True
+
+        row.update_from_db(
+            {
+                "nickname": "",
+                "comment": "",
+                "used": False,
+                "initial_value": "200",
+            }
+        )
+
+        # Initial value should NOT be changed since it was dirty
+        assert row.initial_value == "999"
+
+    def test_update_from_db_returns_false_when_no_changes(self):
+        """Should return False when db data matches current data."""
+        row = AddressRow(
+            memory_type="X",
+            address=1,
+            nickname="SameName",
+            original_nickname="SameName",
+            comment="Same comment",
+            original_comment="Same comment",
+            used=True,
+            exists_in_mdb=True,
+        )
+
+        changed = row.update_from_db(
+            {
+                "nickname": "SameName",
+                "comment": "Same comment",
+                "used": True,
+            }
+        )
+
+        assert changed is False
+
+
 class TestBlockTags:
     """Tests for block tag detection functions.
 
