@@ -97,14 +97,14 @@ def load_nicknames_for_type(
 
     cursor = conn._conn.cursor()
 
-    # Query ALL rows for this memory type (don't filter - rows may exist for "used" tracking)
-    # Include DataType, InitialValue, and Retentive fields
+    # Query rows for this specific memory type
     query = """
-        SELECT MemoryType, Address, Nickname, Comment, Use, DataType, InitialValue, Retentive
+        SELECT Address, Nickname, Comment, Use, DataType, InitialValue, Retentive
         FROM address
+        WHERE MemoryType = ?
         ORDER BY Address
     """
-    cursor.execute(query)
+    cursor.execute(query, (memory_type,))
 
     # Get default values for this memory type
     default_data_type = MEMORY_TYPE_TO_DATA_TYPE.get(memory_type, 0)
@@ -112,16 +112,15 @@ def load_nicknames_for_type(
 
     result: dict[int, dict[str, str | bool | int]] = {}
     for row in cursor.fetchall():
-        mem_type, address, nickname, comment, used, data_type, initial_value, retentive = row
-        if mem_type == memory_type:
-            result[int(address)] = {
-                "nickname": nickname or "",
-                "comment": comment or "",
-                "used": bool(used),
-                "data_type": data_type if data_type is not None else default_data_type,
-                "initial_value": initial_value or "",
-                "retentive": bool(retentive) if retentive is not None else default_retentive,
-            }
+        address, nickname, comment, used, data_type, initial_value, retentive = row
+        result[int(address)] = {
+            "nickname": nickname or "",
+            "comment": comment or "",
+            "used": bool(used),
+            "data_type": data_type if data_type is not None else default_data_type,
+            "initial_value": initial_value or "",
+            "retentive": bool(retentive) if retentive is not None else default_retentive,
+        }
 
     cursor.close()
     return result
