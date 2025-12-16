@@ -18,13 +18,18 @@ from clicknick.address_editor.address_model import (
     NON_EDITABLE_TYPES,
     PAIRED_RETENTIVE_TYPES,
     AddressRow,
-    extract_header_name,
     get_addr_key,
-    is_header_tag,
     parse_addr_key,
-    strip_header_tag,
     validate_initial_value,
     validate_nickname,
+)
+from clicknick.address_editor.blocktag_model import (
+    BlockTag,
+    extract_block_name,
+    get_block_type,
+    is_block_tag,
+    parse_block_tag,
+    strip_block_tag,
 )
 
 
@@ -974,98 +979,97 @@ class TestBlockTags:
     - Self-closing tag: <BlockName /> - marks a singular point
     """
 
-    def test_is_header_tag_opening(self):
-        """Test is_header_tag with opening block tags."""
-        assert is_header_tag("<Motor Control>") is True
-        assert is_header_tag("<A>") is True
-        assert is_header_tag("<Section 1>") is True
-        assert is_header_tag("<Custom Coils>") is True
-        assert is_header_tag("  <Header>  ") is True  # Whitespace trimmed
+    def test_is_block_tag_opening(self):
+        """Test is_block_tag with opening block tags."""
+        assert is_block_tag("<Motor Control>") is True
+        assert is_block_tag("<A>") is True
+        assert is_block_tag("<Section 1>") is True
+        assert is_block_tag("<Custom Coils>") is True
+        assert is_block_tag("  <Header>  ") is True  # Whitespace trimmed
         # Opening tags can have text after
-        assert is_header_tag("<Header>Some additional text") is True
-        assert is_header_tag("<Start>Valve info") is True
+        assert is_block_tag("<Header>Some additional text") is True
+        assert is_block_tag("<Start>Valve info") is True
 
-    def test_is_header_tag_closing(self):
-        """Test is_header_tag with closing block tags."""
-        assert is_header_tag("</Motor Control>") is True
-        assert is_header_tag("</A>") is True
-        assert is_header_tag("</Section 1>") is True
-        assert is_header_tag("  </Header>  ") is True  # Whitespace trimmed
+    def test_is_block_tag_closing(self):
+        """Test is_block_tag with closing block tags."""
+        assert is_block_tag("</Motor Control>") is True
+        assert is_block_tag("</A>") is True
+        assert is_block_tag("</Section 1>") is True
+        assert is_block_tag("  </Header>  ") is True  # Whitespace trimmed
         # Closing tags can have text after
-        assert is_header_tag("</Header>End of section") is True
+        assert is_block_tag("</Header>End of section") is True
 
-    def test_is_header_tag_self_closing(self):
-        """Test is_header_tag with self-closing block tags."""
-        assert is_header_tag("<Motor Control />") is True
-        assert is_header_tag("<A />") is True
-        assert is_header_tag("<Spare />") is True
-        assert is_header_tag("  <Header />  ") is True  # Whitespace trimmed
+    def test_is_block_tag_self_closing(self):
+        """Test is_block_tag with self-closing block tags."""
+        assert is_block_tag("<Motor Control />") is True
+        assert is_block_tag("<A />") is True
+        assert is_block_tag("<Spare />") is True
+        assert is_block_tag("  <Header />  ") is True  # Whitespace trimmed
 
-    def test_is_header_tag_invalid(self):
-        """Test is_header_tag with invalid inputs."""
-        assert is_header_tag("") is False
-        assert is_header_tag(None) is False
-        assert is_header_tag("<>") is False  # Empty header name
-        assert is_header_tag("text <header>") is False  # Text before (must start with <)
-        assert is_header_tag("<partial") is False  # Missing close bracket
-        assert is_header_tag("partial>") is False  # Missing open bracket
-        assert is_header_tag("no brackets") is False  # No brackets
+    def test_is_block_tag_invalid(self):
+        """Test is_block_tag with invalid inputs."""
+        assert is_block_tag("") is False
+        assert is_block_tag(None) is False
+        assert is_block_tag("<>") is False  # Empty header name
+        assert is_block_tag("text <header>") is False  # Text before (must start with <)
+        assert is_block_tag("<partial") is False  # Missing close bracket
+        assert is_block_tag("partial>") is False  # Missing open bracket
+        assert is_block_tag("no brackets") is False  # No brackets
 
-    def test_extract_header_name_opening(self):
-        """Test extract_header_name with opening block tags."""
-        assert extract_header_name("<Motor Control>") == "Motor Control"
-        assert extract_header_name("<A>") == "A"
-        assert extract_header_name("<Section 1>") == "Section 1"
-        assert extract_header_name("  <Header>  ") == "Header"  # Whitespace trimmed
+    def test_extract_block_name_opening(self):
+        """Test extract_block_name with opening block tags."""
+        assert extract_block_name("<Motor Control>") == "Motor Control"
+        assert extract_block_name("<A>") == "A"
+        assert extract_block_name("<Section 1>") == "Section 1"
+        assert extract_block_name("  <Header>  ") == "Header"  # Whitespace trimmed
         # Opening tags with text after - extracts just the name
-        assert extract_header_name("<Header>Some text") == "Header"
-        assert extract_header_name("<Start Custom Coils>Valve info") == "Start Custom Coils"
+        assert extract_block_name("<Header>Some text") == "Header"
+        assert extract_block_name("<Start Custom Coils>Valve info") == "Start Custom Coils"
 
-    def test_extract_header_name_closing(self):
-        """Test extract_header_name with closing block tags."""
-        assert extract_header_name("</Motor Control>") == "Motor Control"
-        assert extract_header_name("</A>") == "A"
-        assert extract_header_name("</Section 1>") == "Section 1"
+    def test_extract_block_name_closing(self):
+        """Test extract_block_name with closing block tags."""
+        assert extract_block_name("</Motor Control>") == "Motor Control"
+        assert extract_block_name("</A>") == "A"
+        assert extract_block_name("</Section 1>") == "Section 1"
         # Closing tags with text after
-        assert extract_header_name("</Header>End note") == "Header"
+        assert extract_block_name("</Header>End note") == "Header"
 
-    def test_extract_header_name_self_closing(self):
-        """Test extract_header_name with self-closing block tags."""
-        assert extract_header_name("<Motor Control />") == "Motor Control"
-        assert extract_header_name("<A />") == "A"
-        assert extract_header_name("<Spare />") == "Spare"
+    def test_extract_block_name_self_closing(self):
+        """Test extract_block_name with self-closing block tags."""
+        assert extract_block_name("<Motor Control />") == "Motor Control"
+        assert extract_block_name("<A />") == "A"
+        assert extract_block_name("<Spare />") == "Spare"
 
-    def test_extract_header_name_invalid(self):
-        """Test extract_header_name with invalid inputs."""
-        assert extract_header_name("") is None
-        assert extract_header_name(None) is None
-        assert extract_header_name("<>") is None
-        assert extract_header_name("not a header") is None
-        assert extract_header_name("<partial") is None
+    def test_extract_block_name_invalid(self):
+        """Test extract_block_name with invalid inputs."""
+        assert extract_block_name("") is None
+        assert extract_block_name(None) is None
+        assert extract_block_name("<>") is None
+        assert extract_block_name("not a header") is None
+        assert extract_block_name("<partial") is None
 
-    def test_strip_header_tag_with_block_tags(self):
-        """Test strip_header_tag with block tags."""
+    def test_strip_block_tag_with_block_tags(self):
+        """Test strip_block_tag with block tags."""
         # Block tags only - returns empty string
-        assert strip_header_tag("<Motor Control>") == ""
-        assert strip_header_tag("  <Header>  ") == ""
-        assert strip_header_tag("</Motor Control>") == ""
-        assert strip_header_tag("<Spare />") == ""
+        assert strip_block_tag("<Motor Control>") == ""
+        assert strip_block_tag("  <Header>  ") == ""
+        assert strip_block_tag("</Motor Control>") == ""
+        assert strip_block_tag("<Spare />") == ""
         # Block tags with text after - returns the text
-        assert strip_header_tag("<Header>Some additional text") == "Some additional text"
-        assert strip_header_tag("<Start Custom Coils>Valve 1 is located") == "Valve 1 is located"
-        assert strip_header_tag("</Section>End of section") == "End of section"
+        assert strip_block_tag("<Header>Some additional text") == "Some additional text"
+        assert strip_block_tag("<Start Custom Coils>Valve 1 is located") == "Valve 1 is located"
+        assert strip_block_tag("</Section>End of section") == "End of section"
 
-    def test_strip_header_tag_without_header(self):
-        """Test strip_header_tag with comments that don't have block tags."""
+    def test_strip_block_tag_without_header(self):
+        """Test strip_block_tag with comments that don't have block tags."""
         # No header - returns original comment
-        assert strip_header_tag("Regular comment") == "Regular comment"
-        assert strip_header_tag("text <header>") == "text <header>"  # Tag not at start
-        assert strip_header_tag("") == ""
-        assert strip_header_tag(None) == ""
+        assert strip_block_tag("Regular comment") == "Regular comment"
+        assert strip_block_tag("text <header>") == "text <header>"  # Tag not at start
+        assert strip_block_tag("") == ""
+        assert strip_block_tag(None) == ""
 
     def test_get_block_type(self):
         """Test get_block_type function."""
-        from clicknick.address_editor.address_model import get_block_type
 
         # Opening tags
         assert get_block_type("<Motor Control>") == "open"
@@ -1087,7 +1091,6 @@ class TestBlockTags:
 
     def test_parse_block_tag(self):
         """Test parse_block_tag function directly."""
-        from clicknick.address_editor.address_model import BlockTag, parse_block_tag
 
         # Opening tags (bg_color is None when not specified)
         assert parse_block_tag("<Motor>") == BlockTag("Motor", "open", "", None)
@@ -1117,8 +1120,6 @@ class TestBlockTags:
 
     def test_parse_block_tag_with_bg_attribute(self):
         """Test parse_block_tag with bg attribute for colors."""
-        from clicknick.address_editor.address_model import BlockTag, parse_block_tag
-
         # Opening tags with bg attribute
         assert parse_block_tag('<Motor bg="#FFCDD2">') == BlockTag("Motor", "open", "", "#FFCDD2")
         assert parse_block_tag('<Motor bg="#FFCDD2">Valve 1') == BlockTag(

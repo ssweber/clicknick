@@ -1,7 +1,7 @@
 import csv
 import os
 
-from .address_editor.address_model import strip_header_tag
+from .address_editor.blocktag_model import strip_block_tag
 from .filters import ContainsFilter, ContainsPlusFilter, NoneFilter, PrefixFilter
 from .mdb_shared import (
     create_access_connection,
@@ -225,7 +225,7 @@ class NicknameManager:
                         data_type=row["Data Type"],
                         initial_value=row["Initial Value"],
                         retentive=row["Retentive"] == "Yes",
-                        comment=strip_header_tag(row["Address Comment"]),
+                        comment=strip_block_tag(row["Address Comment"]),
                         address_type="".join(c for c in row["Address"] if c.isupper()),
                     )
                     self.nicknames.append(nickname_obj)
@@ -311,7 +311,7 @@ class NicknameManager:
                     data_type=self._convert_database_data_type(data_type),
                     initial_value=initial_value,
                     retentive=retentive,
-                    comment=strip_header_tag(comment),
+                    comment=strip_block_tag(comment),
                     address_type=memory_type,
                     used=used,
                 )

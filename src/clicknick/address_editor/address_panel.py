@@ -21,6 +21,7 @@ from .address_model import (
     AddressRow,
     validate_nickname,
 )
+from .blocktag_model import parse_block_tag
 
 if TYPE_CHECKING:
     from .mdb_operations import MdbConnection
@@ -86,7 +87,6 @@ class AddressPanel(ttk.Frame):
         Returns:
             Dict mapping row index (in self.rows) to bg color string.
         """
-        from .address_model import parse_block_tag
 
         # Build list of colored blocks: (start_idx, end_idx, bg_color)
         # We use row indices not addresses for easier lookup
@@ -151,7 +151,7 @@ class AddressPanel(ttk.Frame):
             # Apply block color to row index only (not data cells)
             if data_idx in block_colors:
                 # Import here to avoid circular imports
-                from .address_editor_window import get_block_color_hex
+                from .colors import get_block_color_hex
 
                 # Convert color name to hex (supports both names and hex codes)
                 hex_color = get_block_color_hex(block_colors[data_idx])
@@ -567,9 +567,11 @@ class AddressPanel(ttk.Frame):
 
         # Process each modified cell
         for (event_row, col), old_value in table_cells.items():
-            print(f"DEBUG: event_row={event_row}, "
-                  f"displayed_rows={self._displayed_rows[:5]}..., "
-                  f"filter_active={len(self._displayed_rows) != len(self.rows)}")
+            print(
+                f"DEBUG: event_row={event_row}, "
+                f"displayed_rows={self._displayed_rows[:5]}..., "
+                f"filter_active={len(self._displayed_rows) != len(self.rows)}"
+            )
 
             # When filtering is active, tksheet event indices are already data indices
             # When no filter, display index == data index
@@ -586,7 +588,9 @@ class AddressPanel(ttk.Frame):
                 continue
 
             address_row = self.rows[data_idx]
-            print(f"DEBUG: address_row.display_address={address_row.display_address}, nickname={address_row.nickname}")
+            print(
+                f"DEBUG: address_row.display_address={address_row.display_address}, nickname={address_row.nickname}"
+            )
 
             # Get the NEW value from the sheet using data index
             new_value = self.sheet.get_cell_data(data_idx, col)

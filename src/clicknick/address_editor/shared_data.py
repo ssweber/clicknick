@@ -10,6 +10,7 @@ import os
 from collections.abc import Callable
 
 from .address_model import AddressRow
+from .blocktag_model import parse_block_tag
 from .mdb_operations import MdbConnection, load_all_nicknames, load_nicknames_for_type, save_changes
 
 # File monitoring interval in milliseconds
@@ -331,7 +332,7 @@ class SharedAddressData:
         """
         self.rows_by_type[memory_type] = rows
 
-    def get_header_addresses(
+    def get_block_addresses(
         self, memory_type: str
     ) -> list[tuple[int, int | None, str, str | None]]:
         """Get block definitions for a memory type.
@@ -350,7 +351,6 @@ class SharedAddressData:
             end_addr is None for self-closing (singular) blocks.
             bg_color is None if not specified in the tag.
         """
-        from .address_model import parse_block_tag
 
         rows = self.rows_by_type.get(memory_type)
         if not rows:
