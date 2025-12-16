@@ -621,7 +621,7 @@ class AddressEditorWindow(tk.Toplevel):
         self.outline_btn = ttk.Button(
             footer, text="Outline >>", command=self._toggle_outline
         )
-        self.outline_btn.pack(side=tk.LEFT, padx=(5, 0))
+        self.outline_btn.pack(side=tk.RIGHT, padx=(5, 0))
 
         # Save button
         self.save_btn = ttk.Button(footer, text="💾 Save All", command=self._save_all)

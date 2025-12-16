@@ -181,7 +181,7 @@ class OutlineSidebar(ttk.Frame):
     def _render_node(self, node: TreeNode, parent_iid: str) -> None:
         """Render a tree node and its children to the treeview."""
         for name, child in node.children.items():
-            display = f"{name}[]" if child.is_array else name
+            display = f"{name}[#]" if child.is_array else name
 
             # Rule 3: collapse array index with single leaf child
             if name.isdigit():
@@ -205,7 +205,7 @@ class OutlineSidebar(ttk.Frame):
                 current_path.append(segment)
                 collapse_node = only_child
 
-            text = " - ".join(current_path)
+            text = "_".join(current_path)
             is_pure_leaf = collapse_node.leaf is not None and not collapse_node.children
 
             if is_pure_leaf:
