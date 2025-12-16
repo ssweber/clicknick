@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from .add_block_dialog import AddBlockDialog
+from .address_outline import AddressOutline
 from .address_panel import AddressPanel
 from .jump_sidebar import COMBINED_TYPES, JumpSidebar
 from .mdb_operations import MdbConnection, load_all_nicknames
@@ -46,6 +47,10 @@ class AddressEditorWindow(tk.Toplevel):
         # Update sidebar button indicators
         self.sidebar.update_all_indicators()
 
+    def _refresh_outline(self) -> None:
+        """Refresh the outline tree with current data."""
+        self.outline.build_tree(self.shared_data.all_nicknames)
+
     def _do_revalidation(self) -> None:
         """Perform the actual revalidation (called after debounce delay)."""
         self._revalidate_timer = None
@@ -59,6 +64,10 @@ class AddressEditorWindow(tk.Toplevel):
         for panel in self.panels.values():
             panel.revalidate()
         self._update_status()
+
+        # Refresh outline if visible (live update)
+        if self.outline.winfo_viewable():
+            self._refresh_outline()
 
         # Notify other windows
         # Set flag to avoid double-processing when we get notified back
@@ -439,6 +448,39 @@ class AddressEditorWindow(tk.Toplevel):
         # Update status
         self._update_status()
 
+    def _toggle_outline(self) -> None:
+        """Toggle the outline sidebar visibility."""
+        if self.outline.winfo_viewable():
+            self.outline.pack_forget()
+            self.outline_btn.configure(text="Outline")
+        else:
+            self._refresh_outline()
+            self.outline.pack(side=tk.RIGHT, fill=tk.Y, padx=(5, 0), pady=5)
+            self.outline_btn.configure(text="Outline <<")
+
+    def _on_outline_address_select(self, memory_type: str, address: int) -> None:
+        """Handle address selection from outline tree.
+
+        Args:
+            memory_type: The memory type (X, Y, C, etc.)
+            address: The address number
+        """
+        # Determine which panel type to show
+        # Handle combined types (T/TD, CT/CTD)
+        panel_type = memory_type
+        for combined, sub_types in COMBINED_TYPES.items():
+            if memory_type in sub_types:
+                panel_type = combined
+                break
+
+        # Switch to the correct panel
+        if panel_type != self.current_type:
+            self._on_type_selected(panel_type)
+
+        # Scroll to the address
+        if panel_type in self.panels:
+            self.panels[panel_type].scroll_to_address(address, memory_type)
+
     def _create_widgets(self) -> None:
         """Create all window widgets."""
         # Main container
@@ -459,16 +501,23 @@ class AddressEditorWindow(tk.Toplevel):
         )
         self.sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(5, 0), pady=5)
 
-        # Right side container
-        right_frame = ttk.Frame(main_frame)
-        right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # Outline sidebar on right (initially hidden)
+        self.outline = AddressOutline(
+            main_frame,
+            on_address_select=self._on_outline_address_select,
+        )
+        # Don't pack yet - starts hidden
 
-        # Panel container (where address panels go) - now at top
-        self.panel_container = ttk.Frame(right_frame)
+        # Center container (between sidebars)
+        center_frame = ttk.Frame(main_frame)
+        center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Panel container (where address panels go)
+        self.panel_container = ttk.Frame(center_frame)
         self.panel_container.pack(fill=tk.BOTH, expand=True)
 
-        # Footer toolbar at bottom of right side
-        footer = ttk.Frame(right_frame)
+        # Footer toolbar at bottom of center
+        footer = ttk.Frame(center_frame)
         footer.pack(fill=tk.X, pady=(5, 0))
 
         # Refresh button
@@ -484,6 +533,10 @@ class AddressEditorWindow(tk.Toplevel):
         self.add_block_btn.pack(side=tk.LEFT, padx=(5, 0))
         # Create tooltip for the button
         self._create_tooltip(self.add_block_btn, "Click & drag memory addresses to define block")
+
+        # Outline toggle button
+        self.outline_btn = ttk.Button(footer, text="Outline", command=self._toggle_outline)
+        self.outline_btn.pack(side=tk.LEFT, padx=(5, 0))
 
         # Save button
         self.save_btn = ttk.Button(footer, text="💾 Save All", command=self._save_all)
@@ -535,6 +588,10 @@ class AddressEditorWindow(tk.Toplevel):
         for panel in self.panels.values():
             panel._all_nicknames = self.all_nicknames
             panel.refresh_from_external()
+
+        # Refresh outline if visible
+        if self.outline.winfo_viewable():
+            self._refresh_outline()
 
         self._update_status()
 

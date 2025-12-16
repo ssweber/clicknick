@@ -62,6 +62,7 @@ uv tool install --editable .
 - `address_editor_window.py` - Main editor window
 - `address_panel.py` - Tab panel for each memory type
 - `address_model.py` - Data model, validation, constants (ADDRESS_RANGES, MEMORY_TYPE_BASES)
+- `address_outline.py` - Hierarchical treeview of nicknames (toggleable right sidebar)
 - `blocktag_model.py` - BlockTag model for block-level tagging
 - `add_block_dialog.py` - Dialog for adding address blocks
 - `jump_sidebar.py` - JumpSidebar and JumpButton for quick navigation
