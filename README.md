@@ -3,8 +3,8 @@
 # **ClickNick**  
 *Enhanced Productivity for CLICK PLC Programming*    
   
-Add **nickname autocomplete** to CLICK Programming Software and a **modern Address Editor**.  
- 
+Bolts nickname autocomplete onto CLICK Programming Software. Additional tools include a standalone Address Editor and Outline.
+
 ## **Features**    
   
 ### ✨ Nickname Autocomplete    
