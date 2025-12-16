@@ -62,6 +62,10 @@ uv tool install --editable .
 - `address_editor_window.py` - Main editor window
 - `address_panel.py` - Tab panel for each memory type
 - `address_model.py` - Data model, validation, constants (ADDRESS_RANGES, MEMORY_TYPE_BASES)
+- `blocktag_model.py` - BlockTag model for block-level tagging
+- `add_block_dialog.py` - Dialog for adding address blocks
+- `jump_sidebar.py` - JumpSidebar and JumpButton for quick navigation
+- `colors.py` - Color constants and functions for the editor UI
 - `mdb_operations.py` - ODBC read/write to Access database
 - `shared_data.py` - `SharedAddressData` for cross-window synchronization
 
