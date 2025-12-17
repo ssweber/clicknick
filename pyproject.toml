@@ -7,7 +7,7 @@ Repository = "https://github.com/ssweber/clicknick"
 
 [project]
 name = "clicknick"
-description = "Context-aware nickname autocomplete for ClickPLC instruction windows."
+description = "Bolts nickname autocomplete onto CLICK Programming Software. Includes Address Editor & Outline "
 authors = [
     { name = "ssweber", email = "57631333+ssweber@users.noreply.github.com" }
 ]
