@@ -5,8 +5,10 @@ with array detection. Allows navigation to addresses via double-click.
 
 Display Rules:
 --------------
-1. Nicknames are split by underscore into path segments.
+1. Nicknames are split by single underscore into path segments.
+   Double underscores escape a literal underscore in the segment name.
    Example: "Admin_Alarm_Reset" -> Admin -> Alarm -> Reset
+   Example: "Modbus__x" -> Modbus -> _x (double underscore preserves literal _)
 
 2. Trailing numbers on segments are detected as array indices, shown with [].
    Example: "Motor1_Speed" -> Motor[#] -> 1 -> Speed
@@ -86,10 +88,20 @@ def parse_segments(nickname: str) -> list[tuple[str, int | None]]:
     """Parse nickname into segments with optional array indices.
 
     Returns list of (name, index) tuples. Index is None for non-array segments.
+
+    Single underscores split segments. Double underscores also split, but preserve
+    a leading underscore on the following segment.
     Example: "Motor1_Speed" -> [("Motor", 1), ("Speed", None)]
+    Example: "Modbus__x" -> [("Modbus", None), ("_x", None)]
     """
+    # Replace __ with _<placeholder> so it splits but preserves _ on next segment
+    placeholder = "\x00"
+    escaped = nickname.replace("__", "_" + placeholder)
+
     segments = []
-    for part in nickname.split("_"):
+    for part in escaped.split("_"):
+        # Restore underscores from placeholder
+        part = part.replace(placeholder, "_")
         if not part:
             continue
         if match := _ARRAY_PATTERN.match(part):
