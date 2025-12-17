@@ -10,11 +10,11 @@ Display Rules:
    Example: "Admin_Alarm_Reset" -> Admin -> Alarm -> Reset
    Example: "Modbus__x" -> Modbus -> _x (double underscore preserves literal _)
 
-2. Trailing numbers on segments are detected as array indices, shown with [].
-   Example: "Motor1_Speed" -> Motor[#] -> 1 -> Speed
+2. Trailing numbers on segments are detected as array indices, shown with [min-max].
+   Example: "Motor1_Speed", "Motor2_Speed" -> Motor[1-2] -> 1 -> Speed
 
 3. Array indices with a single leaf child are collapsed into "# Name" format.
-   Example: "Setpoint1_Reached", "Setpoint2_Reached" -> Setpoint[#] -> 1 Reached, 2 Reached
+   Example: "Setpoint1_Reached", "Setpoint2_Reached" -> Setpoint[1-2] -> 1 Reached, 2 Reached
 
 4. If both array items (Motor1_X) and non-array items (Motor_Status) share
    the same base name, they are pulled together under the same parent node
@@ -22,7 +22,7 @@ Display Rules:
    Example: Command_Alarm, Admin_Tag1, Command_Alarm1_id, Command_Alarm2_id, Admin_Tag2, Command_Alarm_Status ->
    + Command
        - Alarm
-       + Alarm[#]
+       + Alarm[1-2]
            - 1 id
            - 2 id
        - Alarm Status
@@ -168,6 +168,19 @@ def build_tree(entries: list[tuple[str, int, str, int]]) -> TreeNode:
     return root
 
 
+def _get_array_range(node: TreeNode) -> str:
+    """Get the array range string for an array node's numeric children.
+
+    Returns format like '[1-3]' for ranges or '[5]' for single items.
+    """
+    indices = sorted(int(k) for k in node.children if k.isdigit())
+    if not indices:
+        return "[#]"  # fallback
+    if len(indices) == 1:
+        return f"[{indices[0]}]"
+    return f"[{indices[0]}-{indices[-1]}]"
+
+
 def _get_collapsible_leaf(node: TreeNode) -> tuple[str, TreeNode] | None:
     """Check if an array index node should collapse with its single leaf child.
 
@@ -196,7 +209,7 @@ def _flatten_node(node: TreeNode, depth: int, items: list[DisplayItem]) -> None:
     """Recursively flatten a node and its children."""
     for name in node.child_order:
         child = node.children[name]
-        display = f"{name}[#]" if child.is_array else name
+        display = f"{name}{_get_array_range(child)}" if child.is_array else name
 
         # Rule 3: collapse array index with single leaf child
         if name.isdigit():
@@ -223,7 +236,9 @@ def _flatten_node(node: TreeNode, depth: int, items: list[DisplayItem]) -> None:
             only_child = collapse_node.children[only_name]
             if only_name.isdigit():
                 break
-            segment = f"{only_name}[#]" if only_child.is_array else only_name
+            segment = (
+                f"{only_name}{_get_array_range(only_child)}" if only_child.is_array else only_name
+            )
             current_path.append(segment)
             collapse_node = only_child
 

@@ -59,7 +59,7 @@ uv tool install --editable .
 
 **Address Editor** (`src/clicknick/address_editor/`)
 - Multi-window editor for PLC addresses with sync between instances
-- `address_editor_window.py` - Main editor window
+- `address_editor_window.py` - Main editor window & Outline window
 - `address_panel.py` - Tab panel for each memory type
 - `address_model.py` - Data model, validation, constants (ADDRESS_RANGES, MEMORY_TYPE_BASES)
 - `address_outline.py` - Hierarchical treeview of nicknames (toggleable right sidebar)
@@ -69,12 +69,14 @@ uv tool install --editable .
 - `colors.py` - Color constants and functions for the editor UI
 - `mdb_operations.py` - ODBC read/write to Access database
 - `shared_data.py` - `SharedAddressData` for cross-window synchronization
+- `outline_panel.py` - OutlinePanel displays a tkinter treeview of nicknames, parsed hierarchically by underscore segments. Double-click navigates to the address in the main panel.
+- `outline_logic.py` - Tree building logic for the outline. Parses nicknames into segments (single _ splits, double __ preserves literal underscore), detects array indices from trailing numbers, collapses single-child chains. Entry order is memory type (per MEMORY_TYPE_ORDER) then address.
 
 ### Data Flow
 1. `ClickWindowDetector` polls for Click.exe child windows (instruction dialogs)
 2. When detected, `Overlay` positions over the target edit control
 3. `NicknameManager.get_filtered_nicknames()` filters by address type + search text
-4. Selection inserts address via AHK `ControlSetText`
+4. Selection inserts address via Win32 `set_control_text`
 
 ### Filter System
 Filters implement `FilterBase.filter_matches(completion_list, current_text)`:

@@ -216,7 +216,7 @@ class TestFlattenTree:
         assert items[0].text == "• Timer Ts"
 
     def test_array_display(self):
-        """Array nodes show [#] suffix."""
+        """Array nodes show [min-max] suffix."""
         entries = [
             ("X", 1, "Motor1_Speed", 1001),
             ("X", 2, "Motor2_Speed", 1002),
@@ -224,9 +224,9 @@ class TestFlattenTree:
         root = build_tree(entries)
         items = flatten_tree(root)
 
-        # Find the Motor[#] node
-        motor_item = next(i for i in items if "Motor" in i.text and "[#]" in i.text)
-        assert motor_item.text == "Motor[#]"
+        # Find the Motor[1-2] node
+        motor_item = next(i for i in items if "Motor" in i.text and "[" in i.text)
+        assert motor_item.text == "Motor[1-2]"
 
     def test_array_index_collapse(self):
         """Array indices with single leaf child are collapsed."""
@@ -237,9 +237,9 @@ class TestFlattenTree:
         root = build_tree(entries)
         items = flatten_tree(root)
 
-        # Should have Setpoint[#] parent with "1 Reached", "2 Reached" children
+        # Should have Setpoint[1-2] parent with "1 Reached", "2 Reached" children
         texts = [i.text for i in items]
-        assert "Setpoint[#]" in texts
+        assert "Setpoint[1-2]" in texts
         assert "• 1 Reached" in texts
         assert "• 2 Reached" in texts
 
