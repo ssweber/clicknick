@@ -31,6 +31,9 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
 
 
 ### 📑 Outline Dock
+
+![Outline dock screenshot](https://github.com/user-attachments/assets/352d9f6e-b9f2-43e7-b82e-81a92065c45a)
+
 - **Navigate large projects** – See all your nicknames in an organized tree view  
 - **Spot patterns** – Arrays and related items grouped automatically  
   - **Single underscores** create hierarchy:
@@ -50,8 +53,6 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
                                                        └── value
     ```
 - **One-click access** – Double-click to edit any address
-
-![Outline dock screenshot](https://github.com/user-attachments/assets/352d9f6e-b9f2-43e7-b82e-81a92065c45a)
 
 ### **Connectivity**  
 - 🔌 Live ODBC database connection  
