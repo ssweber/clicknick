@@ -308,6 +308,12 @@ class AddressRow:
     def display_address(self) -> str:
         """Get the display string for this address (e.g., 'X001', 'C150')."""
         return f"{self.memory_type}{self.address}"
+    
+    @property
+    def is_default_retentive(self) -> bool:
+        """Return True if retentive matches the default for this data_type"""
+        default = DEFAULT_RETENTIVE.get(self.data_type, False)
+        return self.retentive == default
 
     @property
     def is_dirty(self) -> bool:

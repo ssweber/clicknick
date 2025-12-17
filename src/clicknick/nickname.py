@@ -1,5 +1,24 @@
 from dataclasses import dataclass
 
+# Default retentive values by memory type (from CLICK documentation)
+DEFAULT_RETENTIVE: dict[str, bool] = {
+    "X": False,
+    "Y": False,
+    "C": False,
+    "T": False,
+    "CT": True,  # Counters are retentive by default
+    "SC": False,  # Can't change
+    "DS": True,  # Data registers are retentive by default
+    "DD": True,
+    "DH": True,
+    "DF": True,
+    "XD": False,  # Can't change
+    "YD": False,  # Can't change
+    "TD": False,  # Can't change (stored elsewhere)
+    "CTD": True,  # Can't change (stored elsewhere)
+    "SD": False,  # Can't change
+    "TXT": True,
+}
 
 @dataclass
 class Nickname:
@@ -14,6 +33,12 @@ class Nickname:
     address_type: str = ""
     used: bool | None = None
     abbr_tags: str = ""
+    
+    @property
+    def is_default_retentive(self) -> bool:
+        """Return True if retentive matches the default for this data_type"""
+        default = DEFAULT_RETENTIVE.get(self.data_type, False)
+        return self.retentive == default
 
     def details(self) -> str:
         """Generate a tooltip string for this nickname"""
@@ -37,6 +62,9 @@ class Nickname:
 
         if self.initial_value and self.initial_value != "0":
             details.append(f"Initial Value: {self.initial_value}")
+            
+        if not self.is_default_retentive:
+            details.append(f"Retentive: {self.retentive}")  
 
         if details:
             lines.append(", ".join(details))
