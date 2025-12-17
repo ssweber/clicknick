@@ -144,7 +144,7 @@ Autocomplete works in:
 
 CLICK PLCs were my first controller, and I've built numerous projects with them. But as projects grew, remembering memory addresses instead of nicknames added overhead. Productivity and Do-More autocompleted nicknames as I type, why can't CLICK? **ClickNick was born**.
 
-The built-in Address Picker was equally frustrating: either edit one at a time or export to Excel and re-import. Project templates required me to remember where I could add custom tags versus reserved areas. **The Address Editor solves this**—plus adds **Custom Blocks** to define distinct memory regions visually.
+The built-in Address Picker was equally frustrating: either edit one at a time or export to Excel and re-import. Project templates required me to remember where I could add custom tags versus reserved areas. **The Address Editor solves this**—plus adds **Custom Blocks** to define distinct memory regions visually. The **Outline** dock gives you a high-level view of your project structure as a Treeview.
 
 I hope ClickNick helps new programmers choosing CLICK for its simplicity, as well as those maintaining legacy equipment—and serves as an example of how CLICK software can be extended.
 
