@@ -1265,6 +1265,47 @@ class AddressPanel(ttk.Frame):
             if not row.is_valid and not row.is_empty and not row.should_ignore_validation_error
         )
 
+    def _clear_row_highlight(self, data_idx: int) -> None:
+        """Clear the temporary highlight from a row and restore normal styling.
+
+        Args:
+            data_idx: The data index of the row to clear
+        """
+        # Dehighlight the row
+        for col in range(7):
+            self.sheet.dehighlight_cells(row=data_idx, column=col)
+        self.sheet.dehighlight_cells(row=data_idx, canvas="row_index")
+
+        # Re-apply normal styling (this will restore any state-based highlights)
+        self._apply_row_styling()
+        self.sheet.set_refresh_timer()
+
+    def _highlight_row(self, data_idx: int, duration_ms: int = 1500) -> None:
+        """Temporarily highlight a row to draw user attention.
+
+        Args:
+            data_idx: The data index of the row to highlight
+            duration_ms: How long to show the highlight in milliseconds
+        """
+        # Highlight all visible columns with a distinct color
+        highlight_color = "#90EE90"  # Light green
+        for col in range(7):  # 7 data columns
+            self.sheet.highlight_cells(
+                row=data_idx,
+                column=col,
+                bg=highlight_color,
+            )
+        # Also highlight the row index
+        self.sheet.highlight_cells(
+            row=data_idx,
+            bg=highlight_color,
+            canvas="row_index",
+        )
+        self.sheet.set_refresh_timer()
+
+        # Schedule removal of highlight
+        self.after(duration_ms, lambda: self._clear_row_highlight(data_idx))
+
     def scroll_to_address(self, address: int, memory_type: str | None = None) -> bool:
         """Scroll to show a specific address.
 
@@ -1304,6 +1345,8 @@ class AddressPanel(ttk.Frame):
         try:
             display_idx = self._displayed_rows.index(row_idx)
             self.sheet.see(display_idx, self.COL_NICKNAME)
+            # Highlight the row briefly to show the user where it is
+            self._highlight_row(row_idx)
             return True
         except ValueError:
             return False
