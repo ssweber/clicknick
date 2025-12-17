@@ -747,6 +747,12 @@ class AddressPanel(ttk.Frame):
             variable=self.hide_assigned_var,
             command=self._apply_filters,
         ).pack(side=tk.LEFT)
+        
+        ttk.Label(
+            filter_frame, 
+            text="Columns:", 
+            font=("TkDefaultFont", 10, "bold")
+        ).pack(side=tk.LEFT, padx=(20, 5))
 
         self.show_unsaved_only_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
@@ -756,7 +762,7 @@ class AddressPanel(ttk.Frame):
             command=self._apply_filters,
         ).pack(side=tk.LEFT, padx=(5, 0))
 
-        self.hide_used_var = tk.BooleanVar(value=False)  # Hidden by default
+        self.hide_used_var = tk.BooleanVar(value=False)  # shown by default
         ttk.Checkbutton(
             filter_frame,
             text="Hide Used",
@@ -767,7 +773,7 @@ class AddressPanel(ttk.Frame):
         self.hide_init_ret_var = tk.BooleanVar(value=True)  # Hidden by default
         ttk.Checkbutton(
             filter_frame,
-            text="Hide Init/Ret",
+            text="Hide Initial Value/Retentive",
             variable=self.hide_init_ret_var,
             command=self._toggle_init_ret_columns,
         ).pack(side=tk.LEFT, padx=(5, 0))
