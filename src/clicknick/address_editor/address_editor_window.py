@@ -11,9 +11,10 @@ from collections.abc import Callable
 from tkinter import messagebox, ttk
 
 from .add_block_dialog import AddBlockDialog
+from .address_model import AddressRow
 from .address_panel import AddressPanel
 from .jump_sidebar import COMBINED_TYPES, JumpSidebar
-from .mdb_operations import MdbConnection, load_all_nicknames
+from .mdb_operations import MdbConnection, load_all_addresses
 from .outline_panel import OutlinePanel
 from .shared_data import SharedAddressData
 
@@ -68,13 +69,13 @@ class OutlineWindow(tk.Toplevel):
         parent.bind("<Configure>", self._on_parent_configure, add=True)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
-    def build_tree(self, all_nicknames: dict[int, str]) -> None:
-        """Rebuild the tree from nickname data.
+    def build_tree(self, all_rows: dict[int, AddressRow]) -> None:
+        """Rebuild the tree from address row data.
 
         Args:
-            all_nicknames: Dict mapping address key to nickname string
+            all_rows: Dict mapping address key to AddressRow
         """
-        self.outline.build_tree(all_nicknames)
+        self.outline.build_tree(all_rows)
 
 
 class AddressEditorWindow(tk.Toplevel):
@@ -110,7 +111,7 @@ class AddressEditorWindow(tk.Toplevel):
     def _refresh_outline(self) -> None:
         """Refresh the outline tree with current data."""
         if self._outline_window is not None:
-            self._outline_window.build_tree(self.shared_data.all_nicknames)
+            self._outline_window.build_tree(self.shared_data.all_rows)
 
     def _do_revalidation(self) -> None:
         """Perform the actual revalidation (called after debounce delay)."""
@@ -237,13 +238,17 @@ class AddressEditorWindow(tk.Toplevel):
                 panel._populate_sheet_data()
                 panel._apply_filters()
             else:
-                # Load from database and store in shared data
-                with self._get_connection() as conn:
-                    # Refresh nicknames
-                    self.all_nicknames = load_all_nicknames(conn)
-                    self.shared_data.all_nicknames = self.all_nicknames
+                # Load from database if not initialized
+                if not self.shared_data.is_initialized():
+                    with self._get_connection() as conn:
+                        self.shared_data.all_rows = load_all_addresses(conn)
+                    self.shared_data._initialized = True
 
-                    panel.load_data(conn, self.all_nicknames)
+                # Get nicknames from shared data (derived property)
+                self.all_nicknames = self.shared_data.all_nicknames
+
+                # Load panel data from preloaded all_rows
+                panel.load_data(self.shared_data.all_rows, self.all_nicknames)
 
                 # Store rows in shared data for other windows
                 self.shared_data.set_rows(type_name, panel.rows)

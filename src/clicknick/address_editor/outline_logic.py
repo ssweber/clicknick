@@ -67,7 +67,7 @@ class TreeNode:
 
     children: dict[str, TreeNode] = field(default_factory=dict)
     child_order: list[str] = field(default_factory=list)
-    leaf: tuple[str, int] | None = None
+    leaf: tuple[str, int, int] | None = None  # (memory_type, address, addr_key)
     is_array: bool = False
 
 
@@ -77,8 +77,9 @@ class DisplayItem:
 
     text: str
     depth: int
-    leaf: tuple[str, int] | None
+    leaf: tuple[str, int] | None  # (memory_type, address) for leaf nodes
     has_children: bool
+    addr_key: int | None = None  # AddrKey for leaf nodes, for looking up full row data
 
 
 def parse_segments(nickname: str) -> list[tuple[str, int | None]]:
@@ -103,6 +104,7 @@ def _insert_path(
     path: list[tuple[str, int | None]],
     memory_type: str,
     address: int,
+    addr_key: int,
 ) -> None:
     """Insert a path into the tree, tracking insertion order."""
     for name, index in path:
@@ -119,7 +121,7 @@ def _insert_path(
             node.child_order.append(name)
         node = node.children[name]
 
-    node.leaf = (memory_type, address)
+    node.leaf = (memory_type, address, addr_key)
 
 
 def _mark_array_nodes(node: TreeNode) -> None:
@@ -130,11 +132,11 @@ def _mark_array_nodes(node: TreeNode) -> None:
             child.is_array = True
 
 
-def build_tree(entries: list[tuple[str, int, str]]) -> TreeNode:
+def build_tree(entries: list[tuple[str, int, str, int]]) -> TreeNode:
     """Build tree structure from nickname entries.
 
     Args:
-        entries: List of (memory_type, address, nickname) tuples,
+        entries: List of (memory_type, address, nickname, addr_key) tuples,
                  in the order they should appear.
 
     Returns:
@@ -142,13 +144,13 @@ def build_tree(entries: list[tuple[str, int, str]]) -> TreeNode:
     """
     root = TreeNode()
 
-    for memory_type, address, nickname in entries:
+    for memory_type, address, nickname, addr_key in entries:
         if not nickname:
             continue
         path = parse_segments(nickname)
         if not path:
             continue
-        _insert_path(root, path, memory_type, address)
+        _insert_path(root, path, memory_type, address, addr_key)
 
     _mark_array_nodes(root)
     return root
@@ -168,6 +170,16 @@ def _get_collapsible_leaf(node: TreeNode) -> tuple[str, TreeNode] | None:
     return None
 
 
+def _extract_leaf_info(
+    leaf: tuple[str, int, int] | None,
+) -> tuple[tuple[str, int] | None, int | None]:
+    """Extract (memory_type, address) tuple and addr_key from leaf data."""
+    if leaf is None:
+        return None, None
+    memory_type, address, addr_key = leaf
+    return (memory_type, address), addr_key
+
+
 def _flatten_node(node: TreeNode, depth: int, items: list[DisplayItem]) -> None:
     """Recursively flatten a node and its children."""
     for name in node.child_order:
@@ -178,12 +190,14 @@ def _flatten_node(node: TreeNode, depth: int, items: list[DisplayItem]) -> None:
         if name.isdigit():
             if collapse_info := _get_collapsible_leaf(child):
                 child_name, leaf_child = collapse_info
+                leaf_tuple, addr_key = _extract_leaf_info(leaf_child.leaf)
                 items.append(
                     DisplayItem(
                         text=f"• {name} {child_name}",
                         depth=depth,
-                        leaf=leaf_child.leaf,
+                        leaf=leaf_tuple,
                         has_children=False,
+                        addr_key=addr_key,
                     )
                 )
                 continue
@@ -203,14 +217,16 @@ def _flatten_node(node: TreeNode, depth: int, items: list[DisplayItem]) -> None:
 
         text = " ".join(current_path)
         is_pure_leaf = collapse_node.leaf is not None and not collapse_node.children
+        leaf_tuple, addr_key = _extract_leaf_info(collapse_node.leaf)
 
         if is_pure_leaf:
             items.append(
                 DisplayItem(
                     text=f"• {text}",
                     depth=depth,
-                    leaf=collapse_node.leaf,
+                    leaf=leaf_tuple,
                     has_children=False,
+                    addr_key=addr_key,
                 )
             )
         else:
@@ -218,8 +234,9 @@ def _flatten_node(node: TreeNode, depth: int, items: list[DisplayItem]) -> None:
                 DisplayItem(
                     text=text,
                     depth=depth,
-                    leaf=collapse_node.leaf,
+                    leaf=leaf_tuple,
                     has_children=True,
+                    addr_key=addr_key,
                 )
             )
             _flatten_node(collapse_node, depth + 1, items)

@@ -10,7 +10,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from tkinter import ttk
 
-from .address_model import MEMORY_TYPE_BASES
+from .address_model import AddressRow
 from .outline_logic import (
     FLAT_MEMORY_TYPES,
     MEMORY_TYPE_ORDER,
@@ -18,16 +18,6 @@ from .outline_logic import (
     build_tree,
     flatten_tree,
 )
-
-# Reverse mapping: type_index -> memory_type
-_INDEX_TO_TYPE: dict[int, str] = {v >> 24: k for k, v in MEMORY_TYPE_BASES.items()}
-
-
-def parse_addr_key(addr_key: int) -> tuple[str, int]:
-    """Parse an address key into (memory_type, address)."""
-    type_index = addr_key >> 24
-    address = addr_key & 0xFFFFFF
-    return _INDEX_TO_TYPE.get(type_index, ""), address
 
 
 class OutlinePanel(ttk.Frame):
@@ -84,7 +74,7 @@ class OutlinePanel(ttk.Frame):
 
         self._create_widgets()
 
-    def _render_items(self, items: list[DisplayItem]) -> None:
+    def _render_items(self, items: list[DisplayItem], all_rows: dict[int, AddressRow]) -> None:
         """Render pre-flattened items to treeview."""
         parent_stack: list[str] = [""]
 
@@ -93,7 +83,14 @@ class OutlinePanel(ttk.Frame):
                 parent_stack.pop()
             parent_iid = parent_stack[-1]
 
-            iid = self.tree.insert(parent_iid, tk.END, text=item.text)
+            # For leaf items with addr_key, append outline_suffix from the AddressRow
+            display_text = item.text
+            if item.addr_key is not None and item.addr_key in all_rows:
+                row = all_rows[item.addr_key]
+                # Append type/init/retentive suffix to the nickname text
+                display_text = f"{item.text} {row.outline_suffix}"
+
+            iid = self.tree.insert(parent_iid, tk.END, text=display_text)
 
             if item.leaf:
                 self._leaf_data[iid] = item.leaf
@@ -101,59 +98,58 @@ class OutlinePanel(ttk.Frame):
             if item.has_children:
                 parent_stack.append(iid)
 
-    def _prepare_entries(self, all_nicknames: dict[int, str]) -> list[tuple[str, int, str]]:
+    def _prepare_entries(self, all_rows: dict[int, AddressRow]) -> list[tuple[str, int, str, int]]:
         """Prepare sorted entries for tree building."""
-        by_type: dict[str, list[tuple[int, str]]] = defaultdict(list)
-        for addr_key, nickname in all_nicknames.items():
-            memory_type, address = parse_addr_key(addr_key)
-            if memory_type:
-                by_type[memory_type].append((address, nickname))
+        by_type: dict[str, list[tuple[int, str, int]]] = defaultdict(list)
+        for addr_key, row in all_rows.items():
+            if row.nickname and row.memory_type not in FLAT_MEMORY_TYPES:
+                by_type[row.memory_type].append((row.address, row.nickname, addr_key))
 
-        entries: list[tuple[str, int, str]] = []
+        entries: list[tuple[str, int, str, int]] = []
         for memory_type in MEMORY_TYPE_ORDER:
             if memory_type in FLAT_MEMORY_TYPES:
                 continue
-            for address, nickname in sorted(by_type.get(memory_type, [])):
-                entries.append((memory_type, address, nickname))
+            for address, nickname, addr_key in sorted(by_type.get(memory_type, [])):
+                entries.append((memory_type, address, nickname, addr_key))
 
         return entries
 
-    def _render_flat_types(self, all_nicknames: dict[int, str]) -> None:
+    def _render_flat_types(self, all_rows: dict[int, AddressRow]) -> None:
         """Render SC/SD as flat lists."""
-        by_type: dict[str, list[tuple[int, str]]] = defaultdict(list)
-        for addr_key, nickname in all_nicknames.items():
-            memory_type, address = parse_addr_key(addr_key)
-            if memory_type in FLAT_MEMORY_TYPES:
-                by_type[memory_type].append((address, nickname))
+        by_type: dict[str, list[tuple[int, AddressRow]]] = defaultdict(list)
+        for row in all_rows.values():
+            if row.memory_type in FLAT_MEMORY_TYPES and row.nickname:
+                by_type[row.memory_type].append((row.address, row))
 
         for memory_type in MEMORY_TYPE_ORDER:
             if memory_type not in FLAT_MEMORY_TYPES:
                 continue
-            if type_entries := sorted(by_type.get(memory_type, [])):
+            if type_entries := sorted(by_type.get(memory_type, []), key=lambda x: x[0]):
                 parent_iid = self.tree.insert("", tk.END, text=memory_type)
-                for address, nickname in type_entries:
-                    if nickname:
-                        iid = self.tree.insert(parent_iid, tk.END, text=f"• {nickname}")
-                        self._leaf_data[iid] = (memory_type, address)
+                for address, row in type_entries:
+                    iid = self.tree.insert(
+                        parent_iid, tk.END, text=f"• {row.nickname} {row.outline_suffix}"
+                    )
+                    self._leaf_data[iid] = (memory_type, address)
 
-    def build_tree(self, all_nicknames: dict[int, str]) -> None:
-        """Rebuild the tree from nickname data.
+    def build_tree(self, all_rows: dict[int, AddressRow]) -> None:
+        """Rebuild the tree from address row data.
 
         Args:
-            all_nicknames: Dict mapping address key to nickname string
+            all_rows: Dict mapping address key to AddressRow
         """
         self._leaf_data.clear()
 
         for item in self.tree.get_children():
             self.tree.delete(item)
 
-        entries = self._prepare_entries(all_nicknames)
+        entries = self._prepare_entries(all_rows)
         root = build_tree(entries)
         items = flatten_tree(root)
-        self._render_items(items)
+        self._render_items(items, all_rows)
 
-        self._render_flat_types(all_nicknames)
+        self._render_flat_types(all_rows)
 
-    def refresh(self, all_nicknames: dict[int, str]) -> None:
+    def refresh(self, all_rows: dict[int, AddressRow]) -> None:
         """Refresh the tree with updated data."""
-        self.build_tree(all_nicknames)
+        self.build_tree(all_rows)

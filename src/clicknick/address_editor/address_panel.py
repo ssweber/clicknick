@@ -24,7 +24,7 @@ from .address_model import (
 from .blocktag_model import parse_block_tag
 
 if TYPE_CHECKING:
-    from .mdb_operations import MdbConnection
+    pass
 
 
 class AddressPanel(ttk.Frame):
@@ -1053,7 +1053,7 @@ class AddressPanel(ttk.Frame):
 
     def _build_interleaved_rows(
         self,
-        mdb_conn: MdbConnection,
+        all_rows: dict[int, AddressRow],
         types: list[str],
         all_nicknames: dict[int, str],
     ) -> list[AddressRow]:
@@ -1062,12 +1062,12 @@ class AddressPanel(ttk.Frame):
         For T+TD: T1, TD1, T2, TD2, ...
         For CT+CTD: CT1, CTD1, CT2, CTD2, ...
         """
-        from .mdb_operations import load_nicknames_for_type
+        from .mdb_operations import get_data_for_type
 
-        # Load existing data for all types
+        # Get existing data for all types from preloaded data
         existing_by_type = {}
         for mem_type in types:
-            existing_by_type[mem_type] = load_nicknames_for_type(mdb_conn, mem_type)
+            existing_by_type[mem_type] = get_data_for_type(all_rows, mem_type)
 
         # Find the common address range
         all_starts = []
@@ -1097,15 +1097,15 @@ class AddressPanel(ttk.Frame):
 
     def _build_single_type_rows(
         self,
-        mdb_conn: MdbConnection,
+        all_rows: dict[int, AddressRow],
         mem_type: str,
         all_nicknames: dict[int, str],
     ) -> list[AddressRow]:
         """Build rows for a single memory type."""
-        from .mdb_operations import load_nicknames_for_type
+        from .mdb_operations import get_data_for_type
 
         start, end = ADDRESS_RANGES[mem_type]
-        existing = load_nicknames_for_type(mdb_conn, mem_type)
+        existing = get_data_for_type(all_rows, mem_type)
 
         rows = []
         for addr in range(start, end + 1):
@@ -1117,13 +1117,13 @@ class AddressPanel(ttk.Frame):
 
     def load_data(
         self,
-        mdb_conn: MdbConnection,
+        all_rows: dict[int, AddressRow],
         all_nicknames: dict[int, str],
     ) -> None:
         """Load all addresses for this memory type.
 
         Args:
-            mdb_conn: Active database connection
+            all_rows: Dict mapping AddrKey to AddressRow (preloaded data)
             all_nicknames: Global dict of all nicknames for validation
         """
         # Suppress notifications during load to avoid triggering sync logic
@@ -1133,10 +1133,10 @@ class AddressPanel(ttk.Frame):
             # Check if this is a combined type panel
             if self.combined_types and len(self.combined_types) > 1:
                 self.rows = self._build_interleaved_rows(
-                    mdb_conn, self.combined_types, all_nicknames
+                    all_rows, self.combined_types, all_nicknames
                 )
             else:
-                self.rows = self._build_single_type_rows(mdb_conn, self.memory_type, all_nicknames)
+                self.rows = self._build_single_type_rows(all_rows, self.memory_type, all_nicknames)
 
             self._all_nicknames = all_nicknames
             self._validate_all()
@@ -1151,7 +1151,7 @@ class AddressPanel(ttk.Frame):
 
     def update_from_external(
         self,
-        mdb_conn: MdbConnection,
+        all_rows: dict[int, AddressRow],
         all_nicknames: dict[int, str],
     ) -> None:
         """Update data from external source (e.g., MDB file changed).
@@ -1159,22 +1159,22 @@ class AddressPanel(ttk.Frame):
         Only updates non-dirty rows to preserve user edits.
 
         Args:
-            mdb_conn: Active database connection
+            all_rows: Dict mapping AddrKey to AddressRow (preloaded data)
             all_nicknames: Global dict of all nicknames
         """
         # Suppress notifications during external update
         self._suppress_notifications = True
 
         try:
-            from .mdb_operations import load_nicknames_for_type
+            from .mdb_operations import get_data_for_type
 
-            # Load fresh data from database
+            # Get fresh data from preloaded rows
             if self.combined_types and len(self.combined_types) > 1:
                 existing_by_type = {}
                 for mem_type in self.combined_types:
-                    existing_by_type[mem_type] = load_nicknames_for_type(mdb_conn, mem_type)
+                    existing_by_type[mem_type] = get_data_for_type(all_rows, mem_type)
             else:
-                existing_data = load_nicknames_for_type(mdb_conn, self.memory_type)
+                existing_data = get_data_for_type(all_rows, self.memory_type)
 
             # Update non-dirty rows
             for row in self.rows:

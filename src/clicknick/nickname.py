@@ -20,6 +20,7 @@ DEFAULT_RETENTIVE: dict[str, bool] = {
     "TXT": True,
 }
 
+
 @dataclass
 class Nickname:
     """Represents a nickname with its address and metadata"""
@@ -33,7 +34,7 @@ class Nickname:
     address_type: str = ""
     used: bool | None = None
     abbr_tags: str = ""
-    
+
     @property
     def is_default_retentive(self) -> bool:
         """Return True if retentive matches the default for this data_type"""
@@ -62,9 +63,9 @@ class Nickname:
 
         if self.initial_value and self.initial_value != "0":
             details.append(f"Initial Value: {self.initial_value}")
-            
+
         if not self.is_default_retentive:
-            details.append(f"Retentive: {self.retentive}")  
+            details.append(f"Retentive: {self.retentive}")
 
         if details:
             lines.append(", ".join(details))
