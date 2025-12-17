@@ -29,7 +29,6 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
 > [!WARNING]    
 > Replace works on all visible editable columns. Hidden columns like Initial Value and Retentive can be shown, but use caution with numerical replacements—changing 1→2 (e.g., Alm1→Alm2) would also change 101 to 202. Consider using 'Find in Selection' to avoid unintended changes.
 
-
 ### 📑 Outline Dock
 
 ![Outline dock screenshot](https://github.com/user-attachments/assets/352d9f6e-b9f2-43e7-b82e-81a92065c45a)
@@ -53,6 +52,16 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
                                                        └── value
     ```
 - **One-click access** – Double-click to edit any address
+
+> [!IMPORTANT]
+> **BETA SOFTWARE DISCLAIMER**
+>
+> ClickNick is currently **beta software**. While designed for stability, interacting with active engineering software carries inherent risks.
+>
+> *   **SAFEGUARDS:** Always back up your CLICK project file (`.ckp`) before using the **Address Editor**.
+> *   **HOW TO RECOVER:** The Address Editor modifies the temporary "scratchpad" database loaded by the CLICK software. If you encounter errors or data sync issues, simply **close the CLICK software WITHOUT saving**. This will discard all changes made by ClickNick and revert to your last saved state.
+> *   **READ-ONLY:** The **Nickname Autocomplete** feature is passive; it reads project data to assist you but **never modifies** your logic or project files.
+> *   **LIABILITY:** Use at your own risk. The developers are not liable for data loss, project corruption, or process interruptions.
 
 ### **Connectivity**  
 - 🔌 Live ODBC database connection  
@@ -94,16 +103,6 @@ New to uv? See [installation instructions](https://github.com/astral-sh/uv#insta
 pip install clicknick  
 python -m clicknick  
 ```  
-
----
-
-## **Usage**  
-
-1. Open your CLICK Programming Software project  
-2. Launch ClickNick to enable autocomplete in address input fields  
-3. Use **Tools → Address Editor** for advanced tag management  
-
----
 
 ## **Requirements**  
 
