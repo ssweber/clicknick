@@ -24,7 +24,7 @@ from .address_model import (
 from .blocktag_model import parse_block_tag
 
 if TYPE_CHECKING:
-    from .mdb_operations import MdbConnection
+    pass
 
 
 class AddressPanel(ttk.Frame):
@@ -1053,7 +1053,7 @@ class AddressPanel(ttk.Frame):
 
     def _build_interleaved_rows(
         self,
-        mdb_conn: MdbConnection,
+        all_rows: dict[int, AddressRow],
         types: list[str],
         all_nicknames: dict[int, str],
     ) -> list[AddressRow]:
@@ -1062,12 +1062,12 @@ class AddressPanel(ttk.Frame):
         For T+TD: T1, TD1, T2, TD2, ...
         For CT+CTD: CT1, CTD1, CT2, CTD2, ...
         """
-        from .mdb_operations import load_nicknames_for_type
+        from .mdb_operations import get_data_for_type
 
-        # Load existing data for all types
+        # Get existing data for all types from preloaded data
         existing_by_type = {}
         for mem_type in types:
-            existing_by_type[mem_type] = load_nicknames_for_type(mdb_conn, mem_type)
+            existing_by_type[mem_type] = get_data_for_type(all_rows, mem_type)
 
         # Find the common address range
         all_starts = []
@@ -1097,15 +1097,15 @@ class AddressPanel(ttk.Frame):
 
     def _build_single_type_rows(
         self,
-        mdb_conn: MdbConnection,
+        all_rows: dict[int, AddressRow],
         mem_type: str,
         all_nicknames: dict[int, str],
     ) -> list[AddressRow]:
         """Build rows for a single memory type."""
-        from .mdb_operations import load_nicknames_for_type
+        from .mdb_operations import get_data_for_type
 
         start, end = ADDRESS_RANGES[mem_type]
-        existing = load_nicknames_for_type(mdb_conn, mem_type)
+        existing = get_data_for_type(all_rows, mem_type)
 
         rows = []
         for addr in range(start, end + 1):
@@ -1117,13 +1117,13 @@ class AddressPanel(ttk.Frame):
 
     def load_data(
         self,
-        mdb_conn: MdbConnection,
+        all_rows: dict[int, AddressRow],
         all_nicknames: dict[int, str],
     ) -> None:
         """Load all addresses for this memory type.
 
         Args:
-            mdb_conn: Active database connection
+            all_rows: Dict mapping AddrKey to AddressRow (preloaded data)
             all_nicknames: Global dict of all nicknames for validation
         """
         # Suppress notifications during load to avoid triggering sync logic
@@ -1133,10 +1133,10 @@ class AddressPanel(ttk.Frame):
             # Check if this is a combined type panel
             if self.combined_types and len(self.combined_types) > 1:
                 self.rows = self._build_interleaved_rows(
-                    mdb_conn, self.combined_types, all_nicknames
+                    all_rows, self.combined_types, all_nicknames
                 )
             else:
-                self.rows = self._build_single_type_rows(mdb_conn, self.memory_type, all_nicknames)
+                self.rows = self._build_single_type_rows(all_rows, self.memory_type, all_nicknames)
 
             self._all_nicknames = all_nicknames
             self._validate_all()
@@ -1151,7 +1151,7 @@ class AddressPanel(ttk.Frame):
 
     def update_from_external(
         self,
-        mdb_conn: MdbConnection,
+        all_rows: dict[int, AddressRow],
         all_nicknames: dict[int, str],
     ) -> None:
         """Update data from external source (e.g., MDB file changed).
@@ -1159,22 +1159,22 @@ class AddressPanel(ttk.Frame):
         Only updates non-dirty rows to preserve user edits.
 
         Args:
-            mdb_conn: Active database connection
+            all_rows: Dict mapping AddrKey to AddressRow (preloaded data)
             all_nicknames: Global dict of all nicknames
         """
         # Suppress notifications during external update
         self._suppress_notifications = True
 
         try:
-            from .mdb_operations import load_nicknames_for_type
+            from .mdb_operations import get_data_for_type
 
-            # Load fresh data from database
+            # Get fresh data from preloaded rows
             if self.combined_types and len(self.combined_types) > 1:
                 existing_by_type = {}
                 for mem_type in self.combined_types:
-                    existing_by_type[mem_type] = load_nicknames_for_type(mdb_conn, mem_type)
+                    existing_by_type[mem_type] = get_data_for_type(all_rows, mem_type)
             else:
-                existing_data = load_nicknames_for_type(mdb_conn, self.memory_type)
+                existing_data = get_data_for_type(all_rows, self.memory_type)
 
             # Update non-dirty rows
             for row in self.rows:
@@ -1265,6 +1265,47 @@ class AddressPanel(ttk.Frame):
             if not row.is_valid and not row.is_empty and not row.should_ignore_validation_error
         )
 
+    def _clear_row_highlight(self, data_idx: int) -> None:
+        """Clear the temporary highlight from a row and restore normal styling.
+
+        Args:
+            data_idx: The data index of the row to clear
+        """
+        # Dehighlight the row
+        for col in range(7):
+            self.sheet.dehighlight_cells(row=data_idx, column=col)
+        self.sheet.dehighlight_cells(row=data_idx, canvas="row_index")
+
+        # Re-apply normal styling (this will restore any state-based highlights)
+        self._apply_row_styling()
+        self.sheet.set_refresh_timer()
+
+    def _highlight_row(self, data_idx: int, duration_ms: int = 1500) -> None:
+        """Temporarily highlight a row to draw user attention.
+
+        Args:
+            data_idx: The data index of the row to highlight
+            duration_ms: How long to show the highlight in milliseconds
+        """
+        # Highlight all visible columns with a distinct color
+        highlight_color = "#90EE90"  # Light green
+        for col in range(7):  # 7 data columns
+            self.sheet.highlight_cells(
+                row=data_idx,
+                column=col,
+                bg=highlight_color,
+            )
+        # Also highlight the row index
+        self.sheet.highlight_cells(
+            row=data_idx,
+            bg=highlight_color,
+            canvas="row_index",
+        )
+        self.sheet.set_refresh_timer()
+
+        # Schedule removal of highlight
+        self.after(duration_ms, lambda: self._clear_row_highlight(data_idx))
+
     def scroll_to_address(self, address: int, memory_type: str | None = None) -> bool:
         """Scroll to show a specific address.
 
@@ -1304,6 +1345,8 @@ class AddressPanel(ttk.Frame):
         try:
             display_idx = self._displayed_rows.index(row_idx)
             self.sheet.see(display_idx, self.COL_NICKNAME)
+            # Highlight the row briefly to show the user where it is
+            self._highlight_row(row_idx)
             return True
         except ValueError:
             return False

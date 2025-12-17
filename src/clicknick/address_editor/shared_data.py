@@ -11,7 +11,7 @@ from collections.abc import Callable
 
 from .address_model import AddressRow
 from .blocktag_model import parse_block_tag
-from .mdb_operations import MdbConnection, load_all_nicknames, load_nicknames_for_type, save_changes
+from .mdb_operations import MdbConnection, load_all_addresses, save_changes
 
 # File monitoring interval in milliseconds
 FILE_MONITOR_INTERVAL_MS = 2000
@@ -47,7 +47,7 @@ class SharedAddressData:
         self.click_hwnd = click_hwnd
 
         # Data storage - shared across all windows
-        self.all_nicknames: dict[int, str] = {}
+        self.all_rows: dict[int, AddressRow] = {}  # AddrKey -> AddressRow
         self.rows_by_type: dict[str, list[AddressRow]] = {}
 
         # Observer callbacks - called when data changes
@@ -176,10 +176,15 @@ class SharedAddressData:
             except Exception:
                 pass  # Don't let one observer's error break others
 
+    @property
+    def all_nicknames(self) -> dict[int, str]:
+        """Get dict mapping AddrKey to nickname (derived from all_rows)."""
+        return {addr_key: row.nickname for addr_key, row in self.all_rows.items() if row.nickname}
+
     def load_initial_data(self) -> None:
-        """Load initial nickname registry from database."""
+        """Load all address data from database."""
         with self._get_connection() as conn:
-            self.all_nicknames = load_all_nicknames(conn)
+            self.all_rows = load_all_addresses(conn)
         self._initialized = True
 
         # Store initial file modification time for monitoring
@@ -223,69 +228,56 @@ class SharedAddressData:
 
     def _reload_from_db(self) -> None:
         """Reload data from database, updating non-dirty cells."""
-        if not self.rows_by_type:
-            return
-
         any_changes = False
 
         try:
             with self._get_connection() as conn:
-                # Reload all_nicknames
-                new_nicknames = load_all_nicknames(conn)
+                # Reload all addresses
+                new_rows = load_all_addresses(conn)
 
-                # Update each loaded type
-                for type_name, rows in self.rows_by_type.items():
-                    # Handle combined types (T/TD, CT/CTD)
-                    if "/" in type_name:
-                        sub_types = type_name.split("/")
-                        existing_by_type = {}
-                        for sub_type in sub_types:
-                            existing_by_type[sub_type] = load_nicknames_for_type(conn, sub_type)
-
-                        # Update rows
-                        for row in rows:
-                            db_data = existing_by_type.get(row.memory_type, {}).get(row.address)
-                            if db_data:
-                                if row.update_from_db(db_data):
-                                    any_changes = True
-                            elif not row.is_dirty:
-                                # Row was deleted externally, reset to empty
-                                if row.used:
-                                    row.used = False
-                                    any_changes = True
-                    else:
-                        # Single type
-                        existing = load_nicknames_for_type(conn, type_name)
-
-                        for row in rows:
-                            db_data = existing.get(row.address)
-                            if db_data:
-                                if row.update_from_db(db_data):
-                                    any_changes = True
-                            elif not row.is_dirty:
-                                # Row was deleted externally, reset used flag
-                                if row.used:
-                                    row.used = False
-                                    any_changes = True
-
-                # Update nickname registry (for non-dirty entries)
-                for addr_key, new_nick in new_nicknames.items():
-                    if addr_key not in self.all_nicknames:
-                        self.all_nicknames[addr_key] = new_nick
-                        any_changes = True
-                    elif self.all_nicknames[addr_key] != new_nick:
-                        # Check if this nickname is dirty in any row
-                        is_dirty = False
-                        for rows in self.rows_by_type.values():
-                            for row in rows:
-                                if row.addr_key == addr_key and row.is_nickname_dirty:
-                                    is_dirty = True
-                                    break
-                            if is_dirty:
-                                break
-                        if not is_dirty:
-                            self.all_nicknames[addr_key] = new_nick
+                # Update existing rows from new data
+                for addr_key, new_row in new_rows.items():
+                    if addr_key in self.all_rows:
+                        existing_row = self.all_rows[addr_key]
+                        # Convert new_row to dict format for update_from_db
+                        db_data = {
+                            "nickname": new_row.nickname,
+                            "comment": new_row.comment,
+                            "used": new_row.used,
+                            "data_type": new_row.data_type,
+                            "initial_value": new_row.initial_value,
+                            "retentive": new_row.retentive,
+                        }
+                        if existing_row.update_from_db(db_data):
                             any_changes = True
+                    else:
+                        # New row added externally
+                        self.all_rows[addr_key] = new_row
+                        any_changes = True
+
+                # Check for rows deleted externally
+                for addr_key in list(self.all_rows.keys()):
+                    if addr_key not in new_rows:
+                        row = self.all_rows[addr_key]
+                        if not row.is_dirty:
+                            del self.all_rows[addr_key]
+                            any_changes = True
+
+                # Also update rows_by_type if loaded
+                for _type_name, rows in self.rows_by_type.items():
+                    for row in rows:
+                        if row.addr_key in new_rows:
+                            new_row = new_rows[row.addr_key]
+                            db_data = {
+                                "nickname": new_row.nickname,
+                                "comment": new_row.comment,
+                                "used": new_row.used,
+                                "data_type": new_row.data_type,
+                                "initial_value": new_row.initial_value,
+                                "retentive": new_row.retentive,
+                            }
+                            if row.update_from_db(db_data):
+                                any_changes = True
 
         except Exception:
             # Connection error, skip this reload
@@ -395,10 +387,9 @@ class SharedAddressData:
             old_nickname: The old nickname (for removal)
             new_nickname: The new nickname
         """
-        if old_nickname and addr_key in self.all_nicknames:
-            del self.all_nicknames[addr_key]
-        if new_nickname:
-            self.all_nicknames[addr_key] = new_nickname
+        # Update the nickname in all_rows if it exists
+        if addr_key in self.all_rows:
+            self.all_rows[addr_key].nickname = new_nickname
 
     def save_all_changes(self) -> int:
         """Save all dirty rows to database.
@@ -418,12 +409,20 @@ class SharedAddressData:
         if not all_dirty_rows:
             return 0
 
+        # Capture rows that will be fully deleted (before mark_saved resets dirty state)
+        rows_to_remove = [row for row in all_dirty_rows if row.needs_full_delete]
+
         with self._get_connection() as conn:
             count = save_changes(conn, all_dirty_rows)
 
         # Mark rows as saved
         for row in all_dirty_rows:
             row.mark_saved()
+
+        # Remove fully-deleted rows from all_rows
+        for row in rows_to_remove:
+            if row.addr_key in self.all_rows:
+                del self.all_rows[row.addr_key]
 
         self.notify_data_changed()
         return count
@@ -433,9 +432,9 @@ class SharedAddressData:
         # Clear cached data - panels will reload when accessed
         self.rows_by_type.clear()
 
-        # Reload nicknames
+        # Reload all addresses
         with self._get_connection() as conn:
-            self.all_nicknames = load_all_nicknames(conn)
+            self.all_rows = load_all_addresses(conn)
 
         self.notify_data_changed()
 

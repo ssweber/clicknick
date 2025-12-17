@@ -7,13 +7,75 @@ Mimics the Click PLC Address Picker UI with sidebar navigation.
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import messagebox, ttk
 
 from .add_block_dialog import AddBlockDialog
+from .address_model import AddressRow
 from .address_panel import AddressPanel
 from .jump_sidebar import COMBINED_TYPES, JumpSidebar
-from .mdb_operations import MdbConnection, load_all_nicknames
+from .mdb_operations import MdbConnection, load_all_addresses
+from .outline_panel import OutlinePanel
 from .shared_data import SharedAddressData
+
+
+class OutlineWindow(tk.Toplevel):
+    """Floating outline window that docks to the right of the main window."""
+
+    def _dock_to_parent(self) -> None:
+        """Position this window to the right of the parent."""
+        self.parent_window.update_idletasks()
+        px = self.parent_window.winfo_x()
+        py = self.parent_window.winfo_y()
+        pw = self.parent_window.winfo_width()
+        ph = self.parent_window.winfo_height()
+        self.geometry(f"250x{ph}+{px + pw + 5}+{py}")
+
+    def _on_parent_configure(self, event) -> None:
+        """Re-dock when parent moves or resizes."""
+        if event.widget == self.parent_window:
+            self.after_idle(self._dock_to_parent)
+
+    def _on_close(self) -> None:
+        """Handle close - just hide, don't destroy."""
+        self.withdraw()
+        if hasattr(self.parent_window, "outline_btn"):
+            self.parent_window.outline_btn.configure(text="Outline >>")
+
+    def __init__(
+        self,
+        parent: tk.Toplevel,
+        on_address_select: Callable[[str, int], None],
+    ):
+        """Initialize the outline window.
+
+        Args:
+            parent: Parent window to dock to
+            on_address_select: Callback when address is selected (memory_type, address)
+        """
+        super().__init__(parent)
+        self.parent_window = parent
+
+        self.title("Outline")
+        self.resizable(True, True)
+        self.transient(parent)
+
+        # Embed the OutlinePanel
+        self.outline = OutlinePanel(self, on_address_select)
+        self.outline.pack_propagate(True)  # Allow resizing in window
+        self.outline.pack(fill=tk.BOTH, expand=True)
+
+        self._dock_to_parent()
+        parent.bind("<Configure>", self._on_parent_configure, add=True)
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def build_tree(self, all_rows: dict[int, AddressRow]) -> None:
+        """Rebuild the tree from address row data.
+
+        Args:
+            all_rows: Dict mapping address key to AddressRow
+        """
+        self.outline.build_tree(all_rows)
 
 
 class AddressEditorWindow(tk.Toplevel):
@@ -46,6 +108,11 @@ class AddressEditorWindow(tk.Toplevel):
         # Update sidebar button indicators
         self.sidebar.update_all_indicators()
 
+    def _refresh_outline(self) -> None:
+        """Refresh the outline tree with current data."""
+        if self._outline_window is not None:
+            self._outline_window.build_tree(self.shared_data.all_rows)
+
     def _do_revalidation(self) -> None:
         """Perform the actual revalidation (called after debounce delay)."""
         self._revalidate_timer = None
@@ -59,6 +126,10 @@ class AddressEditorWindow(tk.Toplevel):
         for panel in self.panels.values():
             panel.revalidate()
         self._update_status()
+
+        # Refresh outline if visible (live update)
+        if self._outline_window is not None and self._outline_window.winfo_viewable():
+            self._refresh_outline()
 
         # Notify other windows
         # Set flag to avoid double-processing when we get notified back
@@ -167,13 +238,17 @@ class AddressEditorWindow(tk.Toplevel):
                 panel._populate_sheet_data()
                 panel._apply_filters()
             else:
-                # Load from database and store in shared data
-                with self._get_connection() as conn:
-                    # Refresh nicknames
-                    self.all_nicknames = load_all_nicknames(conn)
-                    self.shared_data.all_nicknames = self.all_nicknames
+                # Load from database if not initialized
+                if not self.shared_data.is_initialized():
+                    with self._get_connection() as conn:
+                        self.shared_data.all_rows = load_all_addresses(conn)
+                    self.shared_data._initialized = True
 
-                    panel.load_data(conn, self.all_nicknames)
+                # Get nicknames from shared data (derived property)
+                self.all_nicknames = self.shared_data.all_nicknames
+
+                # Load panel data from preloaded all_rows
+                panel.load_data(self.shared_data.all_rows, self.all_nicknames)
 
                 # Store rows in shared data for other windows
                 self.shared_data.set_rows(type_name, panel.rows)
@@ -346,7 +421,11 @@ class AddressEditorWindow(tk.Toplevel):
                 tooltip.wm_overrideredirect(True)
                 tooltip.wm_geometry(f"+{x}+{y}")
                 label = ttk.Label(
-                    tooltip, text=text, background="#ffffe0", relief="solid", borderwidth=1
+                    tooltip,
+                    text=text,
+                    background="#ffffe0",
+                    relief="solid",
+                    borderwidth=1,
                 )
                 label.pack()
 
@@ -439,6 +518,50 @@ class AddressEditorWindow(tk.Toplevel):
         # Update status
         self._update_status()
 
+    def _on_outline_address_select(self, memory_type: str, address: int) -> None:
+        """Handle address selection from outline tree.
+
+        Args:
+            memory_type: The memory type (X, Y, C, etc.)
+            address: The address number
+        """
+        # Determine which panel type to show
+        # Handle combined types (T/TD, CT/CTD)
+        panel_type = memory_type
+        for combined, sub_types in COMBINED_TYPES.items():
+            if memory_type in sub_types:
+                panel_type = combined
+                break
+
+        # Switch to the correct panel
+        if panel_type != self.current_type:
+            self._on_type_selected(panel_type)
+
+        # Scroll to the address
+        if panel_type in self.panels:
+            self.panels[panel_type].scroll_to_address(address, memory_type)
+
+    def _toggle_outline(self) -> None:
+        """Toggle the outline window visibility."""
+        if self._outline_window is None:
+            # Create outline window
+            self._outline_window = OutlineWindow(
+                self,
+                on_address_select=self._on_outline_address_select,
+            )
+            self._refresh_outline()
+            self.outline_btn.configure(text="Outline <<")
+        elif self._outline_window.winfo_viewable():
+            # Hide it
+            self._outline_window.withdraw()
+            self.outline_btn.configure(text="Outline >>")
+        else:
+            # Show it
+            self._refresh_outline()
+            self._outline_window.deiconify()
+            self._outline_window._dock_to_parent()
+            self.outline_btn.configure(text="Outline <<")
+
     def _create_widgets(self) -> None:
         """Create all window widgets."""
         # Main container
@@ -459,16 +582,16 @@ class AddressEditorWindow(tk.Toplevel):
         )
         self.sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(5, 0), pady=5)
 
-        # Right side container
-        right_frame = ttk.Frame(main_frame)
-        right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # Center container (full remaining space - outline is external)
+        center_frame = ttk.Frame(main_frame)
+        center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Panel container (where address panels go) - now at top
-        self.panel_container = ttk.Frame(right_frame)
+        # Panel container (where address panels go)
+        self.panel_container = ttk.Frame(center_frame)
         self.panel_container.pack(fill=tk.BOTH, expand=True)
 
-        # Footer toolbar at bottom of right side
-        footer = ttk.Frame(right_frame)
+        # Footer toolbar at bottom of center
+        footer = ttk.Frame(center_frame)
         footer.pack(fill=tk.X, pady=(5, 0))
 
         # Refresh button
@@ -484,6 +607,10 @@ class AddressEditorWindow(tk.Toplevel):
         self.add_block_btn.pack(side=tk.LEFT, padx=(5, 0))
         # Create tooltip for the button
         self._create_tooltip(self.add_block_btn, "Click & drag memory addresses to define block")
+
+        # Outline toggle button
+        self.outline_btn = ttk.Button(footer, text="Outline >>", command=self._toggle_outline)
+        self.outline_btn.pack(side=tk.RIGHT, padx=(5, 0))
 
         # Save button
         self.save_btn = ttk.Button(footer, text="💾 Save All", command=self._save_all)
@@ -536,6 +663,10 @@ class AddressEditorWindow(tk.Toplevel):
             panel._all_nicknames = self.all_nicknames
             panel.refresh_from_external()
 
+        # Refresh outline if visible
+        if self._outline_window is not None and self._outline_window.winfo_viewable():
+            self._refresh_outline()
+
         self._update_status()
 
     def _on_closing(self) -> None:
@@ -553,6 +684,11 @@ class AddressEditorWindow(tk.Toplevel):
                 # Check if save was successful (no more dirty rows)
                 if self._has_unsaved_changes():
                     return  # Save failed, don't close
+
+        # Close outline window if open
+        if self._outline_window is not None:
+            self._outline_window.destroy()
+            self._outline_window = None
 
         # Unregister from shared data
         self.shared_data.remove_observer(self._on_shared_data_changed)
@@ -596,6 +732,7 @@ class AddressEditorWindow(tk.Toplevel):
         self.all_nicknames: dict[int, str] = {}
         self.current_type: str = ""
         self._ignore_next_notification = False  # Flag to prevent double-processing
+        self._outline_window: OutlineWindow | None = None
 
         # Debounce timer for batching nickname changes (e.g., from Replace All)
         self._revalidate_timer: str | None = None

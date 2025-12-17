@@ -13,7 +13,7 @@ from .address_model import (
     validate_nickname,
 )
 from .address_panel import AddressPanel
-from .mdb_operations import MdbConnection, load_all_nicknames, load_nicknames_for_type, save_changes
+from .mdb_operations import MdbConnection, get_data_for_type, load_all_addresses, save_changes
 from .shared_data import SharedAddressData
 
 __all__ = [
@@ -34,7 +34,7 @@ __all__ = [
     "SharedAddressData",
     "MdbConnection",
     # Database operations
-    "load_nicknames_for_type",
-    "load_all_nicknames",
+    "load_all_addresses",
+    "get_data_for_type",
     "save_changes",
 ]

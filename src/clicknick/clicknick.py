@@ -302,6 +302,9 @@ class ClickNickApp:
             )
 
         except Exception as e:
+            import traceback
+
+            traceback.print_exc()  # This prints the FULL stack trace
             self._update_status(f"Error opening editor: {e}", "error")
 
     def _create_menu_bar(self):

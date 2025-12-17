@@ -76,64 +76,44 @@ class MdbConnection:
         self.close()
 
 
-def load_nicknames_for_type(
-    conn: MdbConnection, memory_type: str
+def get_data_for_type(
+    all_rows: dict[int, AddressRow], memory_type: str
 ) -> dict[int, dict[str, str | bool | int]]:
-    """Load existing address data for a specific memory type.
+    """Extract data for a specific memory type from all_rows.
+
+    This replaces load_nicknames_for_type for cases where all data
+    is already loaded.
 
     Args:
-        conn: Active database connection
-        memory_type: The memory type to load (X, Y, C, etc.)
+        all_rows: Dict mapping AddrKey to AddressRow (from load_all_addresses)
+        memory_type: The memory type to filter (X, Y, C, etc.)
 
     Returns:
         Dict mapping address (int) to dict with keys:
         nickname, comment, used, data_type, initial_value, retentive
-
-    Raises:
-        RuntimeError: If not connected
     """
-    if not conn._conn:
-        raise RuntimeError("Not connected to database")
-
-    cursor = conn._conn.cursor()
-
-    # Query rows for this specific memory type
-    query = """
-        SELECT Address, Nickname, Comment, Use, DataType, InitialValue, Retentive
-        FROM address
-        WHERE MemoryType = ?
-        ORDER BY Address
-    """
-    cursor.execute(query, (memory_type,))
-
-    # Get default values for this memory type
-    default_data_type = MEMORY_TYPE_TO_DATA_TYPE.get(memory_type, 0)
-    default_retentive = DEFAULT_RETENTIVE.get(memory_type, False)
-
     result: dict[int, dict[str, str | bool | int]] = {}
-    for row in cursor.fetchall():
-        address, nickname, comment, used, data_type, initial_value, retentive = row
-        result[int(address)] = {
-            "nickname": nickname or "",
-            "comment": comment or "",
-            "used": bool(used),
-            "data_type": data_type if data_type is not None else default_data_type,
-            "initial_value": initial_value or "",
-            "retentive": bool(retentive) if retentive is not None else default_retentive,
-        }
-
-    cursor.close()
+    for row in all_rows.values():
+        if row.memory_type == memory_type:
+            result[row.address] = {
+                "nickname": row.nickname,
+                "comment": row.comment,
+                "used": row.used,
+                "data_type": row.data_type,
+                "initial_value": row.initial_value,
+                "retentive": row.retentive,
+            }
     return result
 
 
-def load_all_nicknames(conn: MdbConnection) -> dict[int, str]:
-    """Load ALL nicknames from database for uniqueness validation.
+def load_all_addresses(conn: MdbConnection) -> dict[int, AddressRow]:
+    """Load ALL addresses from database.
 
     Args:
         conn: Active database connection
 
     Returns:
-        Dict mapping AddrKey to nickname
+        Dict mapping AddrKey to AddressRow
 
     Raises:
         RuntimeError: If not connected
@@ -144,16 +124,51 @@ def load_all_nicknames(conn: MdbConnection) -> dict[int, str]:
     cursor = conn._conn.cursor()
 
     query = """
-        SELECT AddrKey, Nickname
+        SELECT AddrKey, MemoryType, Address, Nickname, Comment, Use, DataType, InitialValue, Retentive
         FROM address
-        WHERE Nickname <> ''
+        ORDER BY AddrKey
     """
     cursor.execute(query)
 
-    result = {}
+    result: dict[int, AddressRow] = {}
     for row in cursor.fetchall():
-        addr_key, nickname = row
-        result[addr_key] = nickname
+        (
+            addr_key,
+            memory_type,
+            address,
+            nickname,
+            comment,
+            used,
+            data_type,
+            initial_value,
+            retentive,
+        ) = row
+
+        # Get default values for this memory type
+        default_data_type = MEMORY_TYPE_TO_DATA_TYPE.get(memory_type, 0)
+        default_retentive = DEFAULT_RETENTIVE.get(memory_type, False)
+
+        nickname_str = nickname or ""
+        comment_str = comment or ""
+        initial_value_str = initial_value or ""
+        data_type_val = data_type if data_type is not None else default_data_type
+        retentive_val = bool(retentive) if retentive is not None else default_retentive
+
+        result[addr_key] = AddressRow(
+            memory_type=memory_type,
+            address=int(address),
+            nickname=nickname_str,
+            original_nickname=nickname_str,
+            comment=comment_str,
+            original_comment=comment_str,
+            used=bool(used),
+            exists_in_mdb=True,
+            data_type=data_type_val,
+            initial_value=initial_value_str,
+            original_initial_value=initial_value_str,
+            retentive=retentive_val,
+            original_retentive=retentive_val,
+        )
 
     cursor.close()
     return result

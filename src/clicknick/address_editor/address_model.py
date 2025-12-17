@@ -121,6 +121,16 @@ INT2_MAX = 2147483647
 FLOAT_MIN = -3.4028235e38
 FLOAT_MAX = 3.4028235e38
 
+# Display names for DataType values
+DATA_TYPE_DISPLAY: dict[int, str] = {
+    DATA_TYPE_BIT: "BIT",
+    DATA_TYPE_INT: "INT",
+    DATA_TYPE_INT2: "INT32",
+    DATA_TYPE_FLOAT: "FLOAT",
+    DATA_TYPE_HEX: "HEX",
+    DATA_TYPE_TXT: "TXT",
+}
+
 
 def get_addr_key(memory_type: str, address: int) -> int:
     """Calculate AddrKey from memory type and address.
@@ -308,6 +318,37 @@ class AddressRow:
     def display_address(self) -> str:
         """Get the display string for this address (e.g., 'X001', 'C150')."""
         return f"{self.memory_type}{self.address}"
+
+    @property
+    def is_default_retentive(self) -> bool:
+        """Return True if retentive matches the default for this memory_type."""
+        default = DEFAULT_RETENTIVE.get(self.memory_type, False)
+        return self.retentive == default
+
+    @property
+    def data_type_display(self) -> str:
+        """Get human-readable data type name."""
+        return DATA_TYPE_DISPLAY.get(self.data_type, "")
+
+    @property
+    def outline_suffix(self) -> str:
+        """Get suffix string for outline panel (appended to nickname text).
+
+        Format: : DataType = Value, Retentive=X
+        - Value only shown if not 0/False/empty
+        - Retentive only shown if not default for memory type
+        """
+        parts = [f": {self.data_type_display}"]
+
+        # Show initial value if not default (0, False, or empty)
+        if self.initial_value and self.initial_value not in ("0", ""):
+            parts.append(f"= {self.initial_value}")
+
+        # Show retentive if not default
+        if not self.is_default_retentive:
+            parts.append(f"Retentive={self.retentive}")
+
+        return " ".join(parts)
 
     @property
     def is_dirty(self) -> bool:
