@@ -31,10 +31,24 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
 
 
 ### 📑 Outline Dock
-- **Navigate large projects** – See all your nicknames in an organized tree view
-- **Spot patterns** – Arrays and related items grouped automatically
-  - Use underscores to create groups: `SupplyTank_Pump_Status` appears under `SupplyTank` → `Pump`
-  - Numbered items collapse into ranges: `Motor1`, `Motor2`, `Motor3` → `Motor[1-3]`
+- **Navigate large projects** – See all your nicknames in an organized tree view  
+- **Spot patterns** – Arrays and related items grouped automatically  
+  - **Single underscores** create hierarchy:
+    ```
+    SupplyTank_Pump_Status  →  SupplyTank
+                                └── Pump
+                                    └── Status
+    ```
+  - **Trailing numbers** create arrays:
+    ```
+    Alm1_id, Alm1_value, Alm2_id, Alm2_value  →  Alm[1-2]
+                                                   ├── 1
+                                                   │   ├── id
+                                                   │   └── value
+                                                   └── 2
+                                                       ├── id
+                                                       └── value
+    ```
 - **One-click access** – Double-click to edit any address
 
 ![Outline dock screenshot](https://github.com/user-attachments/assets/352d9f6e-b9f2-43e7-b82e-81a92065c45a)
