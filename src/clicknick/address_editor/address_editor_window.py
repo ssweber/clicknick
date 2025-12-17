@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from collections.abc import Callable
+from pathlib import Path
 from tkinter import messagebox, ttk
 
 from .add_block_dialog import AddBlockDialog
@@ -696,6 +697,38 @@ class AddressEditorWindow(tk.Toplevel):
 
         self.destroy()
 
+    @staticmethod
+    def _get_disclaimer_flag_path() -> Path:
+        """Get the path to the disclaimer acknowledgment flag file."""
+        import os
+
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home()))
+        return base / "ClickNick" / "disclaimer_acknowledged"
+
+    def _show_beta_disclaimer(self) -> None:
+        """Show beta disclaimer popup on first launch."""
+        flag_path = self._get_disclaimer_flag_path()
+
+        if flag_path.exists():
+            return  # Already acknowledged
+
+        disclaimer_text = (
+            "BETA SOFTWARE DISCLAIMER\n\n"
+            "ClickNick is currently beta software. While we strive for stability, "
+            "unexpected behavior is possible.\n\n"
+            "• ALWAYS CREATE A BACKUP of your CLICK project file (.ckp) "
+            "before using the Address Editor.\n\n"
+            "• Use at your own risk. The developers are not liable for any data loss, "
+            "project corruption, or process interruptions resulting from the use "
+            "of this software."
+        )
+
+        messagebox.showwarning("Beta Software", disclaimer_text, parent=self)
+
+        # Create flag file to prevent showing again
+        flag_path.parent.mkdir(parents=True, exist_ok=True)
+        flag_path.touch()
+
     def __init__(
         self,
         parent: tk.Widget,
@@ -739,6 +772,7 @@ class AddressEditorWindow(tk.Toplevel):
         self._pending_revalidate: bool = False
 
         self._create_widgets()
+        self._show_beta_disclaimer()
         self._load_initial_data()
 
         # Register as observer for shared data changes
