@@ -24,10 +24,13 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
 ![Address Editor demo](https://github.com/user-attachments/assets/6fced9f5-2325-4867-ba23-d3b14ef8e866)  
 
 > [!NOTE]  
-> Nicknames edited in the Address Editor appear immediately in autocomplete. Existing ladder logic refreshes after editing via the built-in Address Picker (Ctrl+T) or reopening the project.  
+> Nicknames edited in the Address Editor appear immediately in autocomplete. 
+> Existing ladder logic refreshes after editing via the built-in Address Picker (Ctrl+T) or reopening the project.  
 
-> [!WARNING]    
-> Replace works on all visible editable columns. Hidden columns like Initial Value and Retentive can be shown, but use caution with numerical replacements—changing 1→2 (e.g., Alm1→Alm2) would also change 101 to 202. Consider using 'Find in Selection' to avoid unintended changes.
+> [!IMPORTANT]      
+> **Replace works on all visible editable columns.** Hidden columns (like Initial Value and Retentive) can be shown, 
+> but watch out for numerical replacements—changing 1→2 (e.g., Alm1→Alm2) would also change 101 to 202. 
+> Use **'Find in Selection'** to limit changes and avoid surprises.
 
 ### 📑 Outline Dock
 
@@ -35,33 +38,24 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
 
 - **Navigate large projects** – See all your nicknames in an organized tree view  
 - **Spot patterns** – Arrays and related items grouped automatically  
-  - **Single underscores** create hierarchy:
+  - **Single underscores** create hierarchy. "SupplyTank_Pump_Status"
     ```
-    SupplyTank_Pump_Status  →  SupplyTank
-                                └── Pump
-                                    └── Status
+    SupplyTank
+        └── Pump
+            └── Status
     ```
-  - **Trailing numbers** create arrays:
+  - **Trailing numbers** create arrays. "Alm1_id, Alm1_value, Alm2_id, Alm2_value" becomes:
     ```
-    Alm1_id, Alm1_value, Alm2_id, Alm2_value  →  Alm[1-2]
-                                                   ├── 1
-                                                   │   ├── id
-                                                   │   └── value
-                                                   └── 2
-                                                       ├── id
-                                                       └── value
+    Alm[1-2]
+    1
+      ├── id
+      └── value
+    2
+      ├── id
+      └── value
+
     ```
 - **One-click access** – Double-click to edit any address
-
-> [!IMPORTANT]
-> **BETA SOFTWARE DISCLAIMER**
->
-> ClickNick is currently **beta software**. While designed for stability, interacting with active engineering software carries inherent risks.
->
-> *   **SAFEGUARDS:** Always back up your CLICK project file (`.ckp`) before using the **Address Editor**.
-> *   **HOW TO RECOVER:** The Address Editor modifies the temporary "scratchpad" database loaded by the CLICK software. If you encounter errors or data sync issues, simply **close the CLICK software WITHOUT saving**. This will discard all changes made by ClickNick and revert to your last saved state.
-> *   **READ-ONLY:** The **Nickname Autocomplete** feature is passive; it reads project data to assist you but **never modifies** your logic or project files.
-> *   **LIABILITY:** Use at your own risk. The developers are not liable for data loss, project corruption, or process interruptions.
 
 ### **Connectivity**  
 - 🔌 Live ODBC database connection  
@@ -70,7 +64,13 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
 ## **Why ClickNick?**    
 ✔ **Work faster** – Less time on manual address lookup  
 ✔ **Fewer mistakes** – Autocomplete reduces typos  
-✔ **Stay organized** – Better tag management for complex projects  
+✔ **Stay organized** – Better tag management for complex projects 
+
+> [!IMPORTANT]  
+## Beta Disclaimer
+
+ClickNick is beta software. Use at your own risk. The developers aren't liable for 
+data loss, corruption, or process interruptions. Always back up your `.ckp` files.
 
 ---
 

@@ -697,36 +697,34 @@ class AddressEditorWindow(tk.Toplevel):
 
         self.destroy()
 
-    @staticmethod
-    def _get_disclaimer_flag_path() -> Path:
-        """Get the path to the disclaimer acknowledgment flag file."""
-        import os
+    @staticmethod  
+    def _get_address_editor_popup_flag() -> Path:  
+        """Get path to the flag indicating the Address Editor popup has been seen."""  
+        import os  
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home()))  
+        return base / "ClickNick" / "address_editor_popup_seen"  
 
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home()))
-        return base / "ClickNick" / "disclaimer_acknowledged"
+    def _show_address_editor_popup(self) -> None:  
+        """Show first-run tips for the Address Editor (appears once per user)."""  
+        flag_path = self._get_address_editor_popup_flag()  
 
-    def _show_beta_disclaimer(self) -> None:
-        """Show beta disclaimer popup on first launch."""
-        flag_path = self._get_disclaimer_flag_path()
+        if flag_path.exists():  
+            return  
 
-        if flag_path.exists():
-            return  # Already acknowledged
-
-        disclaimer_text = (
-            "BETA SOFTWARE DISCLAIMER\n\n"
-            "ClickNick is currently beta software. While we strive for stability, "
-            "unexpected behavior is possible.\n\n"
-            "• ALWAYS CREATE A BACKUP of your CLICK project file (.ckp) "
-            "before using the Address Editor.\n\n"
-            "• Use at your own risk. The developers are not liable for any data loss, "
-            "project corruption, or process interruptions resulting from the use "
-            "of this software."
+        # Content
+        popup_text = (
+            "Address Editor (Beta)\n\n"
+            "1. This tool edits address information in the CLICK Programming Software's scratchpad database.\n"
+            "2. Changes only TRULY save when you save in the CLICK Software.\n\n"
+            "Quick safety tips:\n"
+            "• Back up your `.ckp` file first\n"
+            "• Not sure about a change? Close CLICK without saving to undo everything"
         )
 
-        messagebox.showwarning("Beta Software", disclaimer_text, parent=self)
+        messagebox.showinfo("First-Time Tips", popup_text, parent=self)  
 
-        # Create flag file to prevent showing again
-        flag_path.parent.mkdir(parents=True, exist_ok=True)
+        # Mark as shown so we don't bother the user again  
+        flag_path.parent.mkdir(parents=True, exist_ok=True)  
         flag_path.touch()
 
     def __init__(
@@ -772,8 +770,8 @@ class AddressEditorWindow(tk.Toplevel):
         self._pending_revalidate: bool = False
 
         self._create_widgets()
-        self._show_beta_disclaimer()
         self._load_initial_data()
+        self._show_address_editor_popup()
 
         # Register as observer for shared data changes
         self.shared_data.add_observer(self._on_shared_data_changed)
