@@ -24,38 +24,31 @@ class OutlineWindow(tk.Toplevel):
     """Floating outline window that docks to the right of the main window."""
 
     def _dock_to_parent(self) -> None:
-        """Position this window to the right of the parent."""
-        # We only update width/height here if we specifically want to force it
-        # to match the parent height.
+        if not self.snap_var.get():
+            return
+
         self.parent_window.update_idletasks()
         px = self.parent_window.winfo_x()
         py = self.parent_window.winfo_y()
         pw = self.parent_window.winfo_width()
         ph = self.parent_window.winfo_height()
-        
-        # Calculate target X and Y
+
         target_x = px + pw + 20
         target_y = py
-        
-        # Get current width (to preserve it if user resized it manually)
+
         current_w = self.winfo_width()
-        # Handle case where window isn't drawn yet (width=1)
-        if current_w < 50: current_w = 250
-            
+        if current_w < 50:
+            current_w = 250
+
         self.geometry(f"{current_w}x{ph}+{target_x}+{target_y}")
 
     def _on_parent_configure(self, event) -> None:
-        """Re-dock when parent moves or resizes."""
-        if event.widget == self.parent_window:
-            # Use after_idle to ensure parent geometry is settled
+        if self.snap_var.get() and event.widget == self.parent_window:
             self.after_idle(self._dock_to_parent)
 
     def _on_self_configure(self, event) -> None:
-        """
-        Enforce the left-side anchor. 
-        If user tries to resize from LEFT, this snaps the window back 
-        to the right of the parent immediately.
-        """
+        if not self.snap_var.get():
+            return
         if not self.parent_window or not self.winfo_exists():
             return
 
@@ -70,8 +63,23 @@ class OutlineWindow(tk.Toplevel):
             # This creates the effect that the left edge is locked.
             self.geometry(f"+{target_x}+{target_y}")
 
+    def _toggle_snap(self):
+        """
+        Update the button icon and perform docking logic.
+        Note: The variable and visual relief are handled automatically
+        by the ttk.Checkbutton logic.
+        """
+        # The Checkbutton updates the variable BEFORE calling this command
+        if self.snap_var.get():
+            # Just became Snapped
+            self.snap_btn.configure(text="📌")  # Pin icon
+            self._dock_to_parent()
+        else:
+            # Just became Unsnapped
+            self.snap_btn.configure(text="🔗")  # Unlinked icon
+            # No need to set relief, 'Toolbutton' style handles it
+
     def _on_close(self) -> None:
-        """Handle close - just hide, don't destroy."""
         self.withdraw()
         if hasattr(self.parent_window, "outline_btn"):
             self.parent_window.outline_btn.configure(text="Outline >>")
@@ -91,23 +99,38 @@ class OutlineWindow(tk.Toplevel):
         self.parent_window = parent
 
         self.title("Outline")
-        self.resizable(True, True) 
+        self.resizable(True, True)
         self.transient(parent)
 
-        # Embed the OutlinePanel
+        # 1. Logic Variable
+        self.snap_var = tk.BooleanVar(value=True)
+
+        # 2. Embed the OutlinePanel first
         self.outline = OutlinePanel(self, on_address_select)
-        self.outline.pack_propagate(True)
         self.outline.pack(fill=tk.BOTH, expand=True)
 
-        # 1. Initial Dock
-        self._dock_to_parent()
+        # 3. Floating Snap Button (Using ttk)
+        # We use a Checkbutton with style='Toolbutton'
+        # This creates a button that stays sunken when True, raised when False
+        self.snap_btn = ttk.Checkbutton(
+            self,
+            text="📌",
+            variable=self.snap_var,
+            command=self._toggle_snap,
+            style="Toolbutton",
+            width=2,
+            # removed: relief (handled by style), bg (not supported in ttk), font (handled by style usually)
+        )
 
-        # 2. Bind Parent Configure (Move/Resize Parent)
+        # Note: If you really need to change font in ttk, you must use ttk.Style(),
+        # but standard generic buttons usually accept width.
+
+        self.snap_btn.place(relx=1.0, y=1, x=-25, anchor="ne")
+
+        # 4. Initial Dock & Binds
+        self._dock_to_parent()
         parent.bind("<Configure>", self._on_parent_configure, add=True)
-        
-        # 3. Bind Self Configure (Move/Resize This Window) <--- NEW PART
         self.bind("<Configure>", self._on_self_configure)
-        
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def build_tree(self, all_rows: dict[int, AddressRow]) -> None:
