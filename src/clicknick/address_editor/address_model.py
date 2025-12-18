@@ -411,6 +411,10 @@ class AddressRow:
         return self.loaded_with_error and not self.is_nickname_dirty
 
     @property
+    def has_reportable_error(self):
+        return not (self.is_valid or self.is_empty or self.should_ignore_validation_error)
+
+    @property
     def has_content(self) -> bool:
         """True if row has any user-defined content worth saving."""
         return (

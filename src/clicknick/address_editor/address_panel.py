@@ -224,12 +224,8 @@ class AddressPanel(ttk.Frame):
         for data_idx, row in enumerate(self.rows):
             # --- Nickname Column ---
             nickname_note = None
-            if not row.is_empty:
-                if not row.is_valid:
-                    if row.should_ignore_validation_error:
-                        nickname_note = f"(Ignored) {row.validation_error}"
-                    else:
-                        nickname_note = row.validation_error
+            if row.has_reportable_error:
+                nickname_note = row.validation_error
 
             if nickname_note:
                 target_notes[(data_idx, self.COL_NICKNAME)] = nickname_note
@@ -306,23 +302,14 @@ class AddressPanel(ttk.Frame):
                         )
 
             # Invalid rows get red background on nickname cell (or orange if ignored)
-            if not row.is_valid and not row.is_empty:
-                if row.should_ignore_validation_error:
-                    # Light orange for ignored SC/SD system preset errors
-                    self.sheet.highlight_cells(
-                        row=data_idx,
-                        column=self.COL_NICKNAME,
-                        bg="#ffe4b3",  # Light orange
-                        fg="#666666",  # Gray text
-                    )
-                else:
-                    # Red for real errors
-                    self.sheet.highlight_cells(
-                        row=data_idx,
-                        column=self.COL_NICKNAME,
-                        bg="#ffcccc",
-                        fg="black",
-                    )
+            if row.has_reportable_error:
+                # Red for real errors
+                self.sheet.highlight_cells(
+                    row=data_idx,
+                    column=self.COL_NICKNAME,
+                    bg="#ffcccc",
+                    fg="black",
+                )
             # Dirty nickname gets light yellow background
             elif row.is_nickname_dirty:
                 self.sheet.highlight_cells(
@@ -1269,6 +1256,8 @@ class AddressPanel(ttk.Frame):
 
             # Apply initial filters (uses display_rows internally)
             self._apply_filters()
+
+            self._refresh_display()
         finally:
             self._suppress_notifications = False
 
@@ -1373,18 +1362,11 @@ class AddressPanel(ttk.Frame):
 
     def has_errors(self) -> bool:
         """Check if any rows have validation errors."""
-        return any(
-            not row.is_valid and not row.is_empty and not row.should_ignore_validation_error
-            for row in self.rows
-        )
+        return any(row.has_reportable_error for row in self.rows)
 
     def get_error_count(self) -> int:
         """Get count of rows with validation errors."""
-        return sum(
-            1
-            for row in self.rows
-            if not row.is_valid and not row.is_empty and not row.should_ignore_validation_error
-        )
+        return sum(1 for row in self.rows if row.has_reportable_error)
 
     def _clear_row_highlight(self, data_idx: int) -> None:
         """Clear the temporary highlight from a row and restore normal styling.
