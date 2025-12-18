@@ -214,11 +214,15 @@ class AddressPanel(ttk.Frame):
             return "Enter initial value"
 
     def _update_cell_notes(self) -> None:
-        """Update cell notes for validation errors and hints."""
-        new_notes: set[tuple[int, int]] = set()
+        """Update cell notes for validation errors and hints.
+
+        Uses a local cache to prevent calling sheet.note() redundantly.
+        """
+        # 1. Calculate the 'Target State' (what the sheet should look like right now)
+        target_notes: dict[tuple[int, int], str] = {}
 
         for data_idx, row in enumerate(self.rows):
-            # Build note for nickname cell based on validation state
+            # --- Nickname Column ---
             nickname_note = None
             if not row.is_empty:
                 if not row.is_valid:
@@ -227,30 +231,35 @@ class AddressPanel(ttk.Frame):
                     else:
                         nickname_note = row.validation_error
 
-            # Set or clear nickname note
-            cell_key = (data_idx, self.COL_NICKNAME)
             if nickname_note:
-                self.sheet.note(data_idx, self.COL_NICKNAME, note=nickname_note)
-                new_notes.add(cell_key)
-            elif cell_key in self._cells_with_notes:
-                # Delete note using keyword argument
-                self.sheet.note(data_idx, self.COL_NICKNAME, note=None)
+                target_notes[(data_idx, self.COL_NICKNAME)] = nickname_note
 
-            # Build note for init value cell
+            # --- Init Value Column ---
             init_note = None
             if not row.initial_value_valid and row.initial_value != "":
                 init_note = row.initial_value_error
 
-            # Set or clear init value note
-            cell_key = (data_idx, self.COL_INIT_VALUE)
             if init_note:
-                self.sheet.note(data_idx, self.COL_INIT_VALUE, note=init_note)
-                new_notes.add(cell_key)
-            elif cell_key in self._cells_with_notes:
-                # Delete note using keyword argument
-                self.sheet.note(data_idx, self.COL_INIT_VALUE, note=None)
+                target_notes[(data_idx, self.COL_INIT_VALUE)] = init_note
 
-        self._cells_with_notes = new_notes
+        # 2. Compare Target vs Cache
+        # If the sheet is new, self._note_cache is empty, so everything gets drawn.
+
+        # A. Remove notes that are in cache but NOT in target
+        for cell_key in list(self._note_cache.keys()):
+            if cell_key not in target_notes:
+                # Note exists in UI but shouldn't anymore -> Remove it
+                self.sheet.note(cell_key[0], cell_key[1], note=None)
+                del self._note_cache[cell_key]
+
+        # B. Add/Update notes that are in target
+        for cell_key, note_text in target_notes.items():
+            current_cached_text = self._note_cache.get(cell_key)
+
+            # Only talk to tksheet if the text is different/new
+            if current_cached_text != note_text:
+                self.sheet.note(cell_key[0], cell_key[1], note=note_text)
+                self._note_cache[cell_key] = note_text
 
     def _apply_row_styling(self) -> None:
         """Apply visual styling to rows based on state.
@@ -997,6 +1006,7 @@ class AddressPanel(ttk.Frame):
         self._all_nicknames: dict[int, str] = {}
         self._displayed_rows: list[int] = []  # Data indices of currently displayed rows
         self._cells_with_notes: set[tuple[int, int]] = set()  # (row, col) pairs
+        self._note_cache: dict[tuple[int, int], str] = {}
 
         # Flag to suppress change notifications during programmatic updates
         self._suppress_notifications = False
