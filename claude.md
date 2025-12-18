@@ -86,7 +86,7 @@ Filters implement `FilterBase.filter_matches(completion_list, current_text)`:
 ## Key Dependencies
 - `pywin32` - Python for Win32 (pywin32) extensions
 - `pyodbc` - ODBC connection to Access database
-- `tksheet` - Spreadsheet widget for Address Editor v7 (documentation at https://ragardner.github.io/tksheet/DOCUMENTATION.html)
+- `tksheet` - Spreadsheet widget for Address Editor v7 (documentation at https://ragardner.github.io/tksheet/DOCUMENTATION.md)
 - `tkinter` - GUI framework (stdlib)
 
 ## Testing
