@@ -37,8 +37,8 @@ class AddressPanel(ttk.Frame):
     """
 
     # Column indices (Address is now in row index, not a data column)
-    COL_NICKNAME = 0
-    COL_USED = 1
+    COL_USED = 0
+    COL_NICKNAME = 1
     COL_INIT_VALUE = 2
     COL_RETENTIVE = 3
     COL_COMMENT = 4
@@ -779,7 +779,7 @@ class AddressPanel(ttk.Frame):
         # Table (tksheet) - Address is shown in row index for row selection
         self.sheet = tksheet.Sheet(
             self,
-            headers=["Nickname", "Used", "Init Value", "Ret", "Comment", "Ok", "Issue"],
+            headers=["Used", "Nickname", "Init Value", "Ret", "Comment", "Ok", "Issue"],
             show_row_index=True,
             index_align="w",  # Left-align the row index
             height=400,
@@ -816,7 +816,7 @@ class AddressPanel(ttk.Frame):
             )
 
         # Set column widths (address is in row index now)
-        self.sheet.set_column_widths([200, 40, 90, 30, 400, 30, 100])
+        self.sheet.set_column_widths([40, 200, 90, 30, 400, 30, 100])
         self.sheet.row_index(70)  # Set row index width
         self.sheet.readonly_columns([self.COL_USED, self.COL_VALID, self.COL_ISSUE])
 
@@ -925,8 +925,8 @@ class AddressPanel(ttk.Frame):
         retentive_display = paired_row.retentive if paired_row else row.retentive
 
         return [
-            row.nickname,
             used_display,
+            row.nickname,
             init_value_display,
             retentive_display,  # Boolean for checkbox
             row.comment,
