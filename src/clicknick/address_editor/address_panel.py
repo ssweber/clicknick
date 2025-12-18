@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING
 
 from tksheet import Sheet, num2alpha
 
+from .char_limit_tooltip import CharLimitTooltip
+
 # --- LOGGING CONFIGURATION ---
 DEBUG_MODE = False  # <--- CHANGE THIS TO True TO ENABLE DEBUGGING
 logger = logging.getLogger(__name__)
@@ -901,6 +903,10 @@ class AddressPanel(ttk.Frame):
             note_corners=True,  # Enable note indicators
         )
         self.sheet.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        CharLimitTooltip(
+            sheet=self.sheet, char_limits={self.COL_NICKNAME: 24, self.COL_COMMENT: 128}
+        )
 
         # Configure notes to behave like tooltips
         self.sheet.set_options(
