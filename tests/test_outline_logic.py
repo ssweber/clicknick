@@ -180,7 +180,7 @@ class TestFlattenTree:
         items = flatten_tree(root)
 
         assert len(items) == 1
-        assert items[0].text == "• Motor"
+        assert items[0].text == "Motor"
         assert items[0].depth == 0
         assert items[0].leaf == ("X", 1)
         assert items[0].has_children is False
@@ -200,9 +200,9 @@ class TestFlattenTree:
         assert items[0].depth == 0
 
         # Children
-        assert items[1].text == "• Speed"
+        assert items[1].text == "Speed"
         assert items[1].depth == 1
-        assert items[2].text == "• Temp"
+        assert items[2].text == "Temp"
         assert items[2].depth == 1
 
     def test_single_child_collapse(self):
@@ -213,7 +213,7 @@ class TestFlattenTree:
 
         # Should collapse to "Timer Ts" as single leaf
         assert len(items) == 1
-        assert items[0].text == "• Timer Ts"
+        assert items[0].text == "Timer Ts"
 
     def test_array_display(self):
         """Array nodes show [min-max] suffix."""
@@ -240,8 +240,8 @@ class TestFlattenTree:
         # Should have Setpoint[1-2] parent with "1 Reached", "2 Reached" children
         texts = [i.text for i in items]
         assert "Setpoint[1-2]" in texts
-        assert "• 1 Reached" in texts
-        assert "• 2 Reached" in texts
+        assert "1 Reached" in texts
+        assert "2 Reached" in texts
 
     def test_sort_alphabetically_false(self):
         """Without alphabetical sort, insertion order is preserved."""
@@ -254,7 +254,7 @@ class TestFlattenTree:
         items = flatten_tree(root)
 
         texts = [i.text for i in items]
-        assert texts == ["• Zebra", "• Alpha", "• Middle"]
+        assert texts == ["Zebra", "Alpha", "Middle"]
 
 
 class TestDoubleUnderscoreIntegration:

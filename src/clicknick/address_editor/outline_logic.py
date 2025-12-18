@@ -218,7 +218,7 @@ def _flatten_node(node: TreeNode, depth: int, items: list[DisplayItem]) -> None:
                 leaf_tuple, addr_key = _extract_leaf_info(leaf_child.leaf)
                 items.append(
                     DisplayItem(
-                        text=f"• {name} {child_name}",
+                        text=f"{name} {child_name}",
                         depth=depth,
                         leaf=leaf_tuple,
                         has_children=False,
@@ -249,7 +249,7 @@ def _flatten_node(node: TreeNode, depth: int, items: list[DisplayItem]) -> None:
         if is_pure_leaf:
             items.append(
                 DisplayItem(
-                    text=f"• {text}",
+                    text=f"{text}",
                     depth=depth,
                     leaf=leaf_tuple,
                     has_children=False,
