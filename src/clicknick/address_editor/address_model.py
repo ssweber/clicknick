@@ -338,13 +338,16 @@ class AddressRow:
         - Value only shown if not 0/False/empty
         - Retentive only shown if not default for memory type
         """
-        parts = [f": {self.data_type_display}"]
+        parts = [f"  : {self.data_type_display}"]
 
         # Show initial value if not default (0, False, or empty)
         if (
             self.initial_value and self.initial_value not in ("0", "")
         ) or not self.is_default_retentive:
-            parts.append(f"= {self.initial_value}")
+            initial_value = self.initial_value
+            if self.data_type_display == "BIT":
+                initial_value = "OFF" if "0" else "ON"
+            parts.append(f"= {initial_value}")
 
         return " ".join(parts)
 
