@@ -5,12 +5,28 @@ Uses tksheet for high-performance table display with virtual rows.
 
 from __future__ import annotations
 
+import logging
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
-import tksheet
+from tksheet import Sheet, num2alpha
+
+# --- LOGGING CONFIGURATION ---
+DEBUG_MODE = False  # <--- CHANGE THIS TO True TO ENABLE DEBUGGING
+logger = logging.getLogger(__name__)
+if DEBUG_MODE:
+    logger.setLevel(logging.DEBUG)
+    # Ensure output goes to console if this is the main entry point or not configured elsewhere
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter("%(levelname)s:%(name)s:%(message)s")
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+else:
+    logger.setLevel(logging.WARNING)  # Only show Warnings/Errors in production
+# -----------------------------
 
 from .address_model import (
     ADDRESS_RANGES,
@@ -27,6 +43,33 @@ if TYPE_CHECKING:
     pass
 
 
+class WarningNoteSheet(Sheet):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Override the internal main table's redraw_corner method
+        self.MT.redraw_corner = self.custom_redraw_corner
+
+    def custom_redraw_corner(self, x: float, y: float, tags: str | tuple[str]) -> None:
+        # Position the symbol slightly offset from the top-right corner
+        text_x = x - 7
+        text_y = y + 7
+
+        if self.MT.hidd_corners:
+            iid = self.MT.hidd_corners.pop()
+            # Update position and properties for the symbol
+            self.MT.coords(iid, text_x, text_y)
+            self.MT.itemconfig(
+                iid, text="⚠", fill="black", font=("Arial", 10, "bold"), state="normal", tags=tags
+            )
+            self.MT.disp_corners.add(iid)
+        else:
+            # Create a new text object instead of a polygon
+            iid = self.MT.create_text(
+                text_x, text_y, text="⚠", fill="black", font=("Arial", 10, "bold"), tags=tags
+            )
+            self.MT.disp_corners.add(iid)
+
+
 class AddressPanel(ttk.Frame):
     """Single panel for editing one memory type's addresses.
 
@@ -39,11 +82,9 @@ class AddressPanel(ttk.Frame):
     # Column indices (Address is now in row index, not a data column)
     COL_USED = 0
     COL_NICKNAME = 1
-    COL_INIT_VALUE = 2
-    COL_RETENTIVE = 3
-    COL_COMMENT = 4
-    COL_VALID = 5
-    COL_ISSUE = 6
+    COL_COMMENT = 2
+    COL_INIT_VALUE = 3
+    COL_RETENTIVE = 4
 
     def _is_bit_type_panel(self) -> bool:
         """Check if this panel displays a single BIT-type memory (X, Y, C, SC).
@@ -133,6 +174,84 @@ class AddressPanel(ttk.Frame):
 
         return row_colors
 
+    def _get_init_value_hint(self, data_type: int) -> str:
+        """Get the hint text for initial value based on data type.
+
+        Args:
+            data_type: The data type code
+
+        Returns:
+            Hint string describing valid range/values
+        """
+        from .address_model import (
+            DATA_TYPE_BIT,
+            DATA_TYPE_FLOAT,
+            DATA_TYPE_HEX,
+            DATA_TYPE_INT,
+            DATA_TYPE_INT2,
+            DATA_TYPE_TXT,
+            FLOAT_MAX,
+            FLOAT_MIN,
+            INT2_MAX,
+            INT2_MIN,
+            INT_MAX,
+            INT_MIN,
+        )
+
+        if data_type == DATA_TYPE_BIT:
+            return "0 or 1"
+        elif data_type == DATA_TYPE_INT:
+            return f"Range: {INT_MIN} to {INT_MAX}"
+        elif data_type == DATA_TYPE_INT2:
+            return f"Range: {INT2_MIN} to {INT2_MAX}"
+        elif data_type == DATA_TYPE_FLOAT:
+            return f"Range: {FLOAT_MIN:.2e} to {FLOAT_MAX:.2e}"
+        elif data_type == DATA_TYPE_HEX:
+            return "Hex value (e.g., FF or 0xFF)"
+        elif data_type == DATA_TYPE_TXT:
+            return "Text string"
+        else:
+            return "Enter initial value"
+
+    def _update_cell_notes(self) -> None:
+        """Update cell notes for validation errors and hints."""
+        new_notes: set[tuple[int, int]] = set()
+
+        for data_idx, row in enumerate(self.rows):
+            # Build note for nickname cell based on validation state
+            nickname_note = None
+            if not row.is_empty:
+                if not row.is_valid:
+                    if row.should_ignore_validation_error:
+                        nickname_note = f"(Ignored) {row.validation_error}"
+                    else:
+                        nickname_note = row.validation_error
+
+            # Set or clear nickname note
+            cell_key = (data_idx, self.COL_NICKNAME)
+            if nickname_note:
+                self.sheet.note(data_idx, self.COL_NICKNAME, note=nickname_note)
+                new_notes.add(cell_key)
+            elif cell_key in self._cells_with_notes:
+                # Delete note using keyword argument
+                self.sheet.note(data_idx, self.COL_NICKNAME, note=None)
+
+            # Build note for init value cell
+            init_note = None
+            if not row.initial_value_valid and row.initial_value != "":
+                init_note = row.initial_value_error
+
+            # Set or clear init value note
+            cell_key = (data_idx, self.COL_INIT_VALUE)
+            if init_note:
+                self.sheet.note(data_idx, self.COL_INIT_VALUE, note=init_note)
+                new_notes.add(cell_key)
+            elif cell_key in self._cells_with_notes:
+                # Delete note using keyword argument
+                self.sheet.note(data_idx, self.COL_INIT_VALUE, note=None)
+
+        self._cells_with_notes = new_notes
+
     def _apply_row_styling(self) -> None:
         """Apply visual styling to rows based on state.
 
@@ -170,7 +289,7 @@ class AddressPanel(ttk.Frame):
                     type_idx = 0
 
                 if type_idx == 1:  # Second type gets slight background tint
-                    for col in range(7):  # 7 data columns (address is in row index)
+                    for col in range(5):  # 5 data columns
                         self.sheet.highlight_cells(
                             row=data_idx,
                             column=col,
@@ -255,15 +374,6 @@ class AddressPanel(ttk.Frame):
                     fg="#666666",
                 )
 
-            # Empty rows get gray text on validation columns
-            if row.is_empty and row.comment == "" and row.initial_value == "":
-                for col in [self.COL_VALID, self.COL_ISSUE]:
-                    self.sheet.highlight_cells(
-                        row=data_idx,
-                        column=col,
-                        fg="#999999",
-                    )
-
     def _toggle_init_ret_columns(self) -> None:
         """Toggle visibility of Init Value and Retentive columns."""
         hide = self.hide_init_ret_var.get()
@@ -297,39 +407,10 @@ class AddressPanel(ttk.Frame):
             text=f"Rows: {total_visible} | Errors: {error_count} | Modified: {modified_count}"
         )
 
-    def _update_row_computed_columns(self, data_idx: int) -> None:
-        """Update only the computed columns (Ok, Issue) for a single row.
-
-        Args:
-            data_idx: Index into self.rows (data index, not display index)
-        """
-        row = self.rows[data_idx]
-
-        # Determine validity display
-        if row.is_empty and row.initial_value == "":
-            valid_display = "--"
-            issue_display = "(empty)"
-        elif row.is_valid and row.initial_value_valid:
-            valid_display = "\u2713"  # checkmark
-            issue_display = ""
-        else:
-            valid_display = "\u2717"  # X mark
-            if not row.is_valid:
-                issue_display = row.validation_error
-            else:
-                issue_display = row.initial_value_error
-
-        self.sheet.set_cell_data(data_idx, self.COL_VALID, valid_display)
-        self.sheet.set_cell_data(data_idx, self.COL_ISSUE, issue_display)
-
-    def _update_computed_columns(self) -> None:
-        """Update computed columns (Ok, Issue) for all rows."""
-        for data_idx in range(len(self.rows)):
-            self._update_row_computed_columns(data_idx)
-
     def _refresh_display(self) -> None:
         """Refresh styling and status (lightweight, no data rebuild)."""
         self._apply_row_styling()
+        self._update_cell_notes()
         self._update_status()
         # Use set_refresh_timer() instead of redraw() to prevent multiple redraws
         # and ensure proper refresh after set_cell_data() calls
@@ -516,8 +597,8 @@ class AddressPanel(ttk.Frame):
             address_row = self.rows[data_idx]
 
             # Check if this column is editable for this row
-            if col == self.COL_USED or col == self.COL_VALID or col == self.COL_ISSUE:
-                # Read-only columns - skip
+            if col == self.COL_USED:
+                # Read-only column - skip
                 continue
             elif col == self.COL_INIT_VALUE and not address_row.can_edit_initial_value:
                 # Non-editable init value - skip
@@ -567,9 +648,9 @@ class AddressPanel(ttk.Frame):
 
         # Process each modified cell
         for (event_row, col), old_value in table_cells.items():
-            print(
-                f"DEBUG: event_row={event_row}, "
-                f"displayed_rows={self._displayed_rows[:5]}..., "
+            logger.debug(
+                f"event_row={event_row}, "
+                f"displayed_rows_count={len(self._displayed_rows)}, "
                 f"filter_active={len(self._displayed_rows) != len(self.rows)}"
             )
 
@@ -584,17 +665,17 @@ class AddressPanel(ttk.Frame):
                 data_idx = event_row
 
             if data_idx is None or data_idx >= len(self.rows):
-                print(f"DEBUG: Skipping invalid data_idx={data_idx}")
+                logger.debug(f"Skipping invalid data_idx={data_idx}")
                 continue
 
             address_row = self.rows[data_idx]
-            print(
-                f"DEBUG: address_row.display_address={address_row.display_address}, nickname={address_row.nickname}"
+            logger.debug(
+                f"address_row.display_address={address_row.display_address}, nickname={address_row.nickname}"
             )
 
             # Get the NEW value from the sheet using data index
             new_value = self.sheet.get_cell_data(data_idx, col)
-            print(f"DEBUG: new_value from sheet={new_value}, old_value from event={old_value}")
+            logger.debug(f"new_value from sheet={new_value}, old_value from event={old_value}")
 
             if col == self.COL_NICKNAME:
                 old_nickname = old_value if old_value else ""
@@ -677,12 +758,6 @@ class AddressPanel(ttk.Frame):
         # Revalidate ALL rows if nickname changed (fixing a duplicate affects both rows)
         if nickname_changed or needs_revalidate:
             self._validate_all()
-            # Validation can affect any row, so update computed columns for all rows
-            self._update_computed_columns()
-        elif modified_data_indices:
-            # Only update computed columns for modified rows
-            for data_idx in modified_data_indices:
-                self._update_row_computed_columns(data_idx)
 
         # Refresh styling and status
         self._refresh_display()
@@ -698,6 +773,49 @@ class AddressPanel(ttk.Frame):
         # Schedule batched notification delivery
         if nickname_changes or data_changed:
             self._schedule_notifications()
+
+    def _setup_header_notes(self) -> None:
+        """Set up tooltip notes on column headers with hints."""
+
+        # Used column
+        self.sheet.note(
+            self.sheet.span(num2alpha(self.COL_USED), header=True, table=False),
+            note="Used in PLC program",
+        )
+
+        # Nickname column
+        self.sheet.note(
+            self.sheet.span(num2alpha(self.COL_NICKNAME), header=True, table=False),
+            note="Nickname (≤24 chars, unique)",
+        )
+
+        # Init Value column - hint depends on panel type
+        if self._is_bit_type_panel():
+            init_hint = "Initial value: 0 or 1 (checkbox)"
+        elif self.combined_types and len(self.combined_types) > 1:
+            primary_type = self.combined_types[0]
+            data_type = MEMORY_TYPE_TO_DATA_TYPE.get(primary_type, 0)
+            init_hint = f"Initial value\n{self._get_init_value_hint(data_type)}"
+        else:
+            data_type = MEMORY_TYPE_TO_DATA_TYPE.get(self.memory_type, 0)
+            init_hint = f"Initial value\n{self._get_init_value_hint(data_type)}"
+
+        self.sheet.note(
+            self.sheet.span(num2alpha(self.COL_INIT_VALUE), header=True, table=False),
+            note=init_hint,
+        )
+
+        # Retentive column
+        self.sheet.note(
+            self.sheet.span(num2alpha(self.COL_RETENTIVE), header=True, table=False),
+            note="Retains value across power cycles",
+        )
+
+        # Comment column
+        self.sheet.note(
+            self.sheet.span(num2alpha(self.COL_COMMENT), header=True, table=False),
+            note="Comment (max 128 chars)",
+        )
 
     def _create_widgets(self) -> None:
         """Create all panel widgets."""
@@ -777,15 +895,23 @@ class AddressPanel(ttk.Frame):
         ).pack(side=tk.LEFT, padx=(5, 0))
 
         # Table (tksheet) - Address is shown in row index for row selection
-        self.sheet = tksheet.Sheet(
+        self.sheet = WarningNoteSheet(
             self,
-            headers=["Used", "Nickname", "Init Value", "Ret", "Comment", "Ok", "Issue"],
+            headers=["Used", "Nickname", "Comment", "Init Value", "Ret"],
             show_row_index=True,
             index_align="w",  # Left-align the row index
             height=400,
             width=800,
+            note_corners=True,  # Enable note indicators
         )
         self.sheet.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Configure notes to behave like tooltips
+        self.sheet.set_options(
+            tooltip_hover_delay=300,  # Appears in 300ms instead of 1200ms
+            tooltip_width=300,  # Wider to prevent horizontal scrolling
+            tooltip_height=100,  # Height to fit a few lines without scrolling
+        )
 
         # Enable standard bindings for editing, but disable unwanted ones
         self.sheet.enable_bindings()
@@ -807,18 +933,19 @@ class AddressPanel(ttk.Frame):
         )
 
         # Enable checkboxes in retentive column with edit_data=True
-        self.sheet[tksheet.num2alpha(self.COL_RETENTIVE)].checkbox(edit_data=True, checked=None)
+        self.sheet[num2alpha(self.COL_RETENTIVE)].checkbox(edit_data=True, checked=None)
 
         # Enable checkboxes in init value column for single-type BIT panels (X, Y, C, SC)
         if self._is_bit_type_panel():
-            self.sheet[tksheet.num2alpha(self.COL_INIT_VALUE)].checkbox(
-                edit_data=True, checked=None
-            )
+            self.sheet[num2alpha(self.COL_INIT_VALUE)].checkbox(edit_data=True, checked=None)
 
         # Set column widths (address is in row index now)
-        self.sheet.set_column_widths([40, 200, 90, 30, 400, 30, 100])
+        self.sheet.set_column_widths([40, 200, 400, 90, 30])
         self.sheet.row_index(70)  # Set row index width
-        self.sheet.readonly_columns([self.COL_USED, self.COL_VALID, self.COL_ISSUE])
+        self.sheet.readonly_columns([self.COL_USED])
+
+        # Set up header notes with hints
+        self._setup_header_notes()
 
         # === KEY CHANGE: Use bulk_table_edit_validation for paste operations ===
         # This ensures the entire paste completes before validation runs
@@ -869,6 +996,7 @@ class AddressPanel(ttk.Frame):
         self.rows: list[AddressRow] = []
         self._all_nicknames: dict[int, str] = {}
         self._displayed_rows: list[int] = []  # Data indices of currently displayed rows
+        self._cells_with_notes: set[tuple[int, int]] = set()  # (row, col) pairs
 
         # Flag to suppress change notifications during programmatic updates
         self._suppress_notifications = False
@@ -896,21 +1024,6 @@ class AddressPanel(ttk.Frame):
         is_bit_panel = self._is_bit_type_panel()
         is_combined_panel = self.combined_types and len(self.combined_types) > 1
 
-        # Determine validity display
-        if row.is_empty and row.initial_value == "":
-            valid_display = "--"
-            issue_display = "(empty)"
-        elif row.is_valid and row.initial_value_valid:
-            valid_display = "\u2713"  # checkmark
-            issue_display = ""
-        else:
-            valid_display = "\u2717"  # X mark
-            # Show nickname error first, then initial value error
-            if not row.is_valid:
-                issue_display = row.validation_error
-            else:
-                issue_display = row.initial_value_error
-
         # Used column display
         used_display = "\u2713" if row.used else ""
 
@@ -927,11 +1040,9 @@ class AddressPanel(ttk.Frame):
         return [
             used_display,
             row.nickname,
+            row.comment,
             init_value_display,
             retentive_display,  # Boolean for checkbox
-            row.comment,
-            valid_display,
-            issue_display,
         ]
 
     def _populate_sheet_data(self) -> None:
@@ -954,13 +1065,11 @@ class AddressPanel(ttk.Frame):
         self.sheet.set_index_data(row_index_values)
 
         # Set up checkboxes for retentive column (whole column)
-        self.sheet[tksheet.num2alpha(self.COL_RETENTIVE)].checkbox(edit_data=True, checked=None)
+        self.sheet[num2alpha(self.COL_RETENTIVE)].checkbox(edit_data=True, checked=None)
 
         # Set up checkboxes for init value column on BIT-type panels
         if is_bit_panel:
-            self.sheet[tksheet.num2alpha(self.COL_INIT_VALUE)].checkbox(
-                edit_data=True, checked=None
-            )
+            self.sheet[num2alpha(self.COL_INIT_VALUE)].checkbox(edit_data=True, checked=None)
 
         # For combined panels, create per-row checkboxes for BIT-type rows
         if is_combined_panel:
@@ -1232,7 +1341,6 @@ class AddressPanel(ttk.Frame):
     def revalidate(self) -> None:
         """Re-validate all rows (called when global nicknames change)."""
         self._validate_all()
-        self._update_computed_columns()
         self._refresh_display()
 
     def refresh_from_external(self) -> None:
@@ -1247,7 +1355,6 @@ class AddressPanel(ttk.Frame):
 
         # Revalidate and refresh styling
         self._validate_all()
-        self._update_computed_columns()
         self._refresh_display()
 
     def get_dirty_rows(self) -> list[AddressRow]:
@@ -1276,7 +1383,7 @@ class AddressPanel(ttk.Frame):
             data_idx: The data index of the row to clear
         """
         # Dehighlight the row
-        for col in range(7):
+        for col in range(5):  # 5 data columns
             self.sheet.dehighlight_cells(row=data_idx, column=col)
         self.sheet.dehighlight_cells(row=data_idx, canvas="row_index")
 
@@ -1293,7 +1400,7 @@ class AddressPanel(ttk.Frame):
         """
         # Highlight all visible columns with a distinct color
         highlight_color = "#90EE90"  # Light green
-        for col in range(7):  # 7 data columns
+        for col in range(5):  # 5 data columns
             self.sheet.highlight_cells(
                 row=data_idx,
                 column=col,
