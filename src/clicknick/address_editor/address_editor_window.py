@@ -697,19 +697,20 @@ class AddressEditorWindow(tk.Toplevel):
 
         self.destroy()
 
-    @staticmethod  
-    def _get_address_editor_popup_flag() -> Path:  
-        """Get path to the flag indicating the Address Editor popup has been seen."""  
-        import os  
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home()))  
-        return base / "ClickNick" / "address_editor_popup_seen"  
+    @staticmethod
+    def _get_address_editor_popup_flag() -> Path:
+        """Get path to the flag indicating the Address Editor popup has been seen."""
+        import os
 
-    def _show_address_editor_popup(self) -> None:  
-        """Show first-run tips for the Address Editor (appears once per user)."""  
-        flag_path = self._get_address_editor_popup_flag()  
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home()))
+        return base / "ClickNick" / "address_editor_popup_seen"
 
-        if flag_path.exists():  
-            return  
+    def _show_address_editor_popup(self) -> None:
+        """Show first-run tips for the Address Editor (appears once per user)."""
+        flag_path = self._get_address_editor_popup_flag()
+
+        if flag_path.exists():
+            return
 
         # Content
         popup_text = (
@@ -721,10 +722,10 @@ class AddressEditorWindow(tk.Toplevel):
             "• Not sure about a change? Close CLICK without saving to undo everything"
         )
 
-        messagebox.showinfo("First-Time Tips", popup_text, parent=self)  
+        messagebox.showinfo("First-Time Tips", popup_text, parent=self)
 
-        # Mark as shown so we don't bother the user again  
-        flag_path.parent.mkdir(parents=True, exist_ok=True)  
+        # Mark as shown so we don't bother the user again
+        flag_path.parent.mkdir(parents=True, exist_ok=True)
         flag_path.touch()
 
     def __init__(
