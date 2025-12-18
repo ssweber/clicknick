@@ -25,17 +25,50 @@ class OutlineWindow(tk.Toplevel):
 
     def _dock_to_parent(self) -> None:
         """Position this window to the right of the parent."""
+        # We only update width/height here if we specifically want to force it
+        # to match the parent height.
         self.parent_window.update_idletasks()
         px = self.parent_window.winfo_x()
         py = self.parent_window.winfo_y()
         pw = self.parent_window.winfo_width()
         ph = self.parent_window.winfo_height()
-        self.geometry(f"250x{ph}+{px + pw + 5}+{py}")
+        
+        # Calculate target X and Y
+        target_x = px + pw + 20
+        target_y = py
+        
+        # Get current width (to preserve it if user resized it manually)
+        current_w = self.winfo_width()
+        # Handle case where window isn't drawn yet (width=1)
+        if current_w < 50: current_w = 250
+            
+        self.geometry(f"{current_w}x{ph}+{target_x}+{target_y}")
 
     def _on_parent_configure(self, event) -> None:
         """Re-dock when parent moves or resizes."""
         if event.widget == self.parent_window:
+            # Use after_idle to ensure parent geometry is settled
             self.after_idle(self._dock_to_parent)
+
+    def _on_self_configure(self, event) -> None:
+        """
+        Enforce the left-side anchor. 
+        If user tries to resize from LEFT, this snaps the window back 
+        to the right of the parent immediately.
+        """
+        if not self.parent_window or not self.winfo_exists():
+            return
+
+        # Calculate where the Left Edge MUST be
+        target_x = self.parent_window.winfo_x() + self.parent_window.winfo_width() + 20
+        target_y = self.parent_window.winfo_y()
+
+        # If we have drifted from the dock position (e.g. user dragged left edge)
+        # Note: We allow some tolerance (e.g. +/- 1 pixel) or exact match
+        if self.winfo_x() != target_x or self.winfo_y() != target_y:
+            # Apply position only ("+X+Y"), preserving the current Width/Height
+            # This creates the effect that the left edge is locked.
+            self.geometry(f"+{target_x}+{target_y}")
 
     def _on_close(self) -> None:
         """Handle close - just hide, don't destroy."""
@@ -58,16 +91,23 @@ class OutlineWindow(tk.Toplevel):
         self.parent_window = parent
 
         self.title("Outline")
-        self.resizable(True, True)
+        self.resizable(True, True) 
         self.transient(parent)
 
         # Embed the OutlinePanel
         self.outline = OutlinePanel(self, on_address_select)
-        self.outline.pack_propagate(True)  # Allow resizing in window
+        self.outline.pack_propagate(True)
         self.outline.pack(fill=tk.BOTH, expand=True)
 
+        # 1. Initial Dock
         self._dock_to_parent()
+
+        # 2. Bind Parent Configure (Move/Resize Parent)
         parent.bind("<Configure>", self._on_parent_configure, add=True)
+        
+        # 3. Bind Self Configure (Move/Resize This Window) <--- NEW PART
+        self.bind("<Configure>", self._on_self_configure)
+        
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def build_tree(self, all_rows: dict[int, AddressRow]) -> None:
