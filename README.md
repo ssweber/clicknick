@@ -67,7 +67,8 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
 ✔ **Fewer mistakes** – Autocomplete reduces typos  
 ✔ **Stay organized** – Better tag management for complex projects 
 
-> [!IMPORTANT] Beta Disclaimer 
+> [!IMPORTANT] 
+> ### Beta Disclaimer 
 > ClickNick is beta software. Use at your own risk. The developers aren't liable for 
 > data loss, corruption, or process interruptions. Always back up your `.ckp` files.
 
