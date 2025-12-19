@@ -60,14 +60,16 @@ class Nickname:
 
         if self.used is False:
             details.append("Used: No")
+            
+        if self.data_type == "BIT":
+            if not self.is_default_retentive:
+                details.append(f"Retentive")
+            elif self.initial_value == "1":
+                details.append(f"Initial Value = ON")
+                
+        elif not self.is_default_retentive:
+            details.append(f"Initial Value = {self.initial_value}")
 
-        if (
-            self.initial_value and self.initial_value not in ("0", "")
-        ) or not self.is_default_retentive:
-            initial_value = self.initial_value
-            if self.data_type == "BIT":
-                initial_value = "OFF" if "0" else "ON"
-            details.append(f"Initial Value: {initial_value}")
 
         if details:
             lines.append(", ".join(details))
