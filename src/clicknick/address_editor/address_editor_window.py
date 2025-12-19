@@ -361,9 +361,9 @@ class AddressEditorWindow(tk.Toplevel):
             # For combined types, figure out which sub-type to scroll to
             if type_name in COMBINED_TYPES:
                 # Just scroll to the address, panel will find it
-                self.panels[type_name].scroll_to_address(address)
+                self.panels[type_name].scroll_to_address(address, align_top=True)
             else:
-                self.panels[type_name].scroll_to_address(address)
+                self.panels[type_name].scroll_to_address(address, align_top=True)
 
     def _has_unsaved_changes(self) -> bool:
         """Check if any panel has unsaved changes."""

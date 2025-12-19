@@ -455,25 +455,21 @@ class AddressPanel(ttk.Frame):
         """Restore selection to the previously selected row at the same visual position after filter changes."""
         if self._selected_row_idx is None:
             return
-
+        
         # Find the display index for the saved row in currently displayed rows
         try:
             display_idx = self._displayed_rows.index(self._selected_row_idx)
+            
             # Clear existing selection and select the row
             self.sheet.deselect()
             self.sheet.select_row(display_idx)
-
-            # Calculate the target top row to maintain visual position
-            if self._selected_row_visual_offset is not None:
-                target_top_row = max(0, display_idx - self._selected_row_visual_offset)
-                # Scroll so target_top_row is at the top of visible area
-                total_rows = len(self._displayed_rows)
-                if total_rows > 0:
-                    self.sheet.yview_moveto(target_top_row / total_rows)
-                else:
-                    self.sheet.see(display_idx, self.COL_NICKNAME)
-            else:
-                self.sheet.see(display_idx, self.COL_NICKNAME)
+            
+            # Use helper function for scrolling with offset
+            self._scroll_to_row(
+                display_idx, 
+                align_top=True, 
+                offset=self._selected_row_visual_offset
+            )
         except ValueError:
             # Row is not visible in current filter - clear saved selection
             pass
@@ -1455,47 +1451,83 @@ class AddressPanel(ttk.Frame):
         # Schedule removal of highlight
         self.after(duration_ms, lambda: self._clear_row_highlight(data_idx))
 
-    def scroll_to_address(self, address: int, memory_type: str | None = None) -> bool:
+    def scroll_to_address(self, address: int, memory_type: str | None = None, align_top: bool = False) -> bool:
         """Scroll to show a specific address.
-
+        
         Args:
             address: The address number to scroll to
             memory_type: Optional memory type for combined panels
-
+            align_top: If True, ensure the address is at the top of the viewport.
+                       If False (default), just ensure it's visible somewhere in the viewport.
+        
         Returns:
             True if address was found and scrolled to
         """
         # Find the row index for this address
         target_type = memory_type or self.memory_type
-
+        
         row_idx = None
         for i, row in enumerate(self.rows):
             if row.address == address and row.memory_type == target_type:
                 row_idx = i
                 break
-
+        
         if row_idx is None:
             # Try without type match (for single-type panels)
             for i, row in enumerate(self.rows):
                 if row.address == address:
                     row_idx = i
                     break
-
+        
         if row_idx is None:
             return False
-
+        
         # Check if it's visible in current filter
         if row_idx not in self._displayed_rows:
             self.filter_var.set("")
             self.hide_empty_var.set(False)
             self.hide_assigned_var.set(False)
             self._apply_filters()
-
+        
         try:
             display_idx = self._displayed_rows.index(row_idx)
-            self.sheet.see(display_idx, self.COL_NICKNAME)
+            
+            # Use helper function for scrolling
+            self._scroll_to_row(display_idx, align_top=align_top)
+            
             # Highlight the row briefly to show the user where it is
             self._highlight_row(row_idx)
             return True
         except ValueError:
             return False
+
+    def _scroll_to_row(self, display_idx: int, align_top: bool = False, offset: int | None = None) -> None:
+        """Scroll to a specific row in the displayed rows.
+        
+        Args:
+            display_idx: Index of the row in _displayed_rows
+            align_top: If True, ensure the row is at the top of the viewport.
+                       If False, just ensure it's visible somewhere in the viewport.
+            offset: Optional visual offset from the top (if align_top=True).
+                    None means row is at the very top, 0 means row is at the top,
+                    >0 means row is that many lines down from the top.
+        """
+        if align_top:
+            # Calculate scroll position
+            total_rows = len(self._displayed_rows)
+            if total_rows > 0:
+                if offset is not None:
+                    # Scroll so that the row at 'offset' lines from top is at the top
+                    target_top_row = max(0, display_idx - offset)
+                    self.sheet.yview_moveto(target_top_row / total_rows)
+                else:
+                    # Put target row at the top
+                    self.sheet.yview_moveto(display_idx / total_rows)
+                    
+                self.sheet.see(display_idx, self.COL_NICKNAME)
+            # Select the row after scrolling
+            self.sheet.select_row(display_idx)
+        else:
+            # Original behavior: just ensure it's visible
+            self.sheet.see(display_idx, self.COL_NICKNAME)
+            self.sheet.select_row(display_idx)
