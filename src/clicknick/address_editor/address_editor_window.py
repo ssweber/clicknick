@@ -14,6 +14,7 @@ from tkinter import messagebox, ttk
 from .add_block_dialog import AddBlockDialog
 from .address_model import AddressRow
 from .address_panel import AddressPanel
+from .block_panel import BlockPanel
 from .jump_sidebar import COMBINED_TYPES, JumpSidebar
 from .mdb_operations import MdbConnection, load_all_addresses
 from .outline_panel import OutlinePanel
@@ -97,21 +98,29 @@ class OutlineWindow(tk.Toplevel):
         """
         super().__init__(parent)
         self.parent_window = parent
-
         self.title("Outline")
         self.resizable(True, True)
         self.transient(parent)
 
-        # 1. Logic Variable
         self.snap_var = tk.BooleanVar(value=True)
 
-        # 2. Embed the OutlinePanel first
-        self.outline = OutlinePanel(self, on_address_select)
+        # 1. Notebook for tabs
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(fill=tk.BOTH, expand=True)
+
+        # 2. First Tab: Standard Outline
+        self.outline_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.outline_frame, text=" Outline ")
+        self.outline = OutlinePanel(self.outline_frame, on_address_select)
         self.outline.pack(fill=tk.BOTH, expand=True)
 
-        # 3. Floating Snap Button (Using ttk)
-        # We use a Checkbutton with style='Toolbutton'
-        # This creates a button that stays sunken when True, raised when False
+        # 3. Second Tab: Blocks
+        self.blocks_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.blocks_frame, text=" Blocks ")
+        self.blocks = BlockPanel(self.blocks_frame, on_address_select)
+        self.blocks.pack(fill=tk.BOTH, expand=True)
+
+        # 4. Snap Button (Floating on top)
         self.snap_btn = ttk.Checkbutton(
             self,
             text="📌",
@@ -119,15 +128,9 @@ class OutlineWindow(tk.Toplevel):
             command=self._toggle_snap,
             style="Toolbutton",
             width=2,
-            # removed: relief (handled by style), bg (not supported in ttk), font (handled by style usually)
         )
-
-        # Note: If you really need to change font in ttk, you must use ttk.Style(),
-        # but standard generic buttons usually accept width.
-
         self.snap_btn.place(relx=1.0, y=1, x=-25, anchor="ne")
 
-        # 4. Initial Dock & Binds
         self._dock_to_parent()
         parent.bind("<Configure>", self._on_parent_configure, add=True)
         self.bind("<Configure>", self._on_self_configure)
@@ -140,6 +143,7 @@ class OutlineWindow(tk.Toplevel):
             all_rows: Dict mapping address key to AddressRow
         """
         self.outline.build_tree(all_rows)
+        self.blocks.build_tree(all_rows)
 
 
 class AddressEditorWindow(tk.Toplevel):

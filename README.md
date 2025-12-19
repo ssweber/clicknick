@@ -9,7 +9,7 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
   
 ### ✨ Nickname Autocomplete    
 - **Skip the addresses** – Select `Valve5` instead of typing `C123`    
-- **Flexible search** – Prefix, partial match, or abbreviation (e.g., `Motor Speed` ↔ `Mtr_Spd`)    
+- **Flexible filters** – Prefix, partial match/contains, or abbreviation (e.g., `Motor Speed` ↔ `Mtr_Spd`)    
 - **Hover tooltips** – View address comments at a glance    
 - **Exclusion filters** – Hide system or internal addresses (e.g., `SC/SD`, `__private__`)
 
