@@ -1,4 +1,5 @@
 import tkinter as tk
+from contextlib import suppress
 
 
 class CharLimitTooltip:
@@ -23,16 +24,13 @@ class CharLimitTooltip:
 
     def _destroy_tooltip(self):
         if self.hide_timer:
-            try:
+            with suppress(tk.TclError):
                 self.sheet.after_cancel(self.hide_timer)
-            except:
-                pass
             self.hide_timer = None
+
         if self.tip_label:
-            try:
+            with suppress(tk.TclError):
                 self.tip_label.destroy()
-            except:
-                pass
             self.tip_label = None
 
     def _update_visuals(self, editor, limit):

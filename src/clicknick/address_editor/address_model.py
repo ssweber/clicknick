@@ -339,14 +339,14 @@ class AddressRow:
         - Retentive only shown if not default for memory type
         """
         parts = [f"  : {self.data_type_display}"]
-        
+
         # only show 'ON' or 'Retentive' for BIT
         if self.data_type_display == "BIT":
             if not self.is_default_retentive:
-                parts.append(f"= Retentive")
+                parts.append("= Retentive")
             elif self.initial_value == "1":
-                parts.append(f"= ON")
-        
+                parts.append("= ON")
+
         elif not self.is_default_retentive:
             parts.append(f"= {self.initial_value}")
 

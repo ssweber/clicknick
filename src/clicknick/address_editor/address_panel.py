@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from tksheet import Sheet, num2alpha
 
+from .address_model import NON_EDITABLE_TYPES
 from .char_limit_tooltip import CharLimitTooltip
 
 # --- LOGGING CONFIGURATION ---
@@ -613,6 +614,85 @@ class AddressPanel(ttk.Frame):
 
         return event
 
+    def _build_row_display_data(self, row: AddressRow) -> list:
+        """Build display data array for a single row.
+
+        Args:
+            row: The AddressRow to build display data for
+
+        Returns:
+            List of display values for the row's columns
+        """
+        is_bit_panel = self._is_bit_type_panel()
+        is_combined_panel = self.combined_types and len(self.combined_types) > 1
+
+        # Used column display
+        used_display = "\u2713" if row.used else ""
+
+        # Init value: logic to determine if we show "-", Checkbox (bool), or Text
+        paired_row = self._find_paired_row(row)
+        effective_retentive = paired_row.retentive if paired_row else row.retentive
+
+        # If Retentive is ON and not exempt, force display to "-"
+        if effective_retentive and row.memory_type not in NON_EDITABLE_TYPES:
+            init_value_display = "-"
+        else:
+            # Otherwise show the underlying value
+            # For BIT types, return bool so tksheet knows to check/uncheck the checkbox
+            if is_bit_panel or (is_combined_panel and row.data_type == DATA_TYPE_BIT):
+                init_value_display = row.initial_value == "1"
+            else:
+                init_value_display = row.initial_value
+
+        # Retentive: TD/CTD rows share retentive with their paired T/CT row
+        retentive_display = effective_retentive
+
+        return [
+            used_display,
+            row.nickname,
+            row.comment,
+            init_value_display,
+            retentive_display,  # Boolean for checkbox
+        ]
+
+    def _update_row_display(self, data_idx: int) -> None:
+        """Update display data for a single row after changes.
+
+        Args:
+            data_idx: Index into self.rows (data index, not display index)
+        """
+        row = self.rows[data_idx]
+        display_data = self._build_row_display_data(row)
+
+        # Update each cell in the row
+        for col, value in enumerate(display_data):
+            # Special handling for Init Value to switch between Checkbox and Text
+            if col == self.COL_INIT_VALUE:
+                # Always attempt to delete existing checkbox in this cell to ensure clean state
+                self.sheet.delete_checkbox(data_idx, col)
+
+                if value == "-":
+                    # Just set the text "-"
+                    self.sheet.set_cell_data(data_idx, col, value)
+                elif row.data_type == DATA_TYPE_BIT:
+                    # It's a BIT type and not masked -> Create Checkbox
+                    is_checked = value is True
+                    state = "normal" if row.can_edit_initial_value else "readonly"
+                    self.sheet.create_checkbox(
+                        r=data_idx,
+                        c=col,
+                        checked=is_checked,
+                        state=state,
+                        text="",
+                    )
+                    # Also set the data model to the boolean value
+                    self.sheet.set_cell_data(data_idx, col, is_checked)
+                else:
+                    # Standard value (Word/Float/Text) -> Just set data
+                    self.sheet.set_cell_data(data_idx, col, value)
+            else:
+                self.sheet.set_cell_data(data_idx, col, value)
+
     def _on_sheet_modified(self, event) -> None:
         """Handle sheet modification events (called AFTER changes are applied).
 
@@ -652,10 +732,7 @@ class AddressPanel(ttk.Frame):
                 f"filter_active={len(self._displayed_rows) != len(self.rows)}"
             )
 
-            # When filtering is active, tksheet event indices are already data indices
-            # When no filter, display index == data index
-            filter_active = len(self._displayed_rows) != len(self.rows)
-            data_idx = event_row  # tksheet usually sends data index if filtering, verify per version
+            data_idx = event_row
 
             if data_idx is None or data_idx >= len(self.rows):
                 logger.debug(f"Skipping invalid data_idx={data_idx}")
@@ -710,14 +787,13 @@ class AddressPanel(ttk.Frame):
                 # Skip if type doesn't allow editing initial value
                 if not address_row.can_edit_initial_value:
                     continue
-                
+
                 # Check if row is currently masked by Retentive (showing "-")
                 # If so, revert any edit attempts immediately
-                exempt_types = ("SD", "SC", "XD", "YD")
                 paired_row = self._find_paired_row(address_row)
                 effective_retentive = paired_row.retentive if paired_row else address_row.retentive
-                
-                if effective_retentive and address_row.memory_type not in exempt_types:
+
+                if effective_retentive and address_row.memory_type not in NON_EDITABLE_TYPES:
                     # User tried to edit a masked value. Revert visual to "-"
                     # We add to modified_indices so _update_row_display restores the "-"
                     modified_data_indices.add(data_idx)
@@ -758,7 +834,7 @@ class AddressPanel(ttk.Frame):
                 # Update the target row
                 target_row.retentive = new_retentive
                 modified_data_indices.add(data_idx)
-                
+
                 # If we toggled retentive, we might need to update the paired row's display too
                 # (e.g. Toggled T retentive -> TD init value needs to show/hide "-")
                 if paired_row:
@@ -768,13 +844,13 @@ class AddressPanel(ttk.Frame):
                         if r is paired_row:
                             modified_data_indices.add(i)
                             break
-                
+
                 # Also if there is a pair that uses the same address but isn't the current row
                 # (e.g. We are on TD, we toggled Ret (which maps to T). We need to refresh T row too)
                 if self.combined_types and len(self.combined_types) > 1:
-                     for i, r in enumerate(self.rows):
-                         if r.address == address_row.address and r is not address_row:
-                             modified_data_indices.add(i)
+                    for i, r in enumerate(self.rows):
+                        if r.address == address_row.address and r is not address_row:
+                            modified_data_indices.add(i)
 
                 data_changed = True
 
@@ -961,14 +1037,6 @@ class AddressPanel(ttk.Frame):
             "sort_columns",
             "undo",
         )
-
-        # Enable checkboxes in retentive column with edit_data=True
-        self.sheet[num2alpha(self.COL_RETENTIVE)].checkbox(edit_data=True, checked=None)
-
-        # NOTE: We do NOT enable column-wide checkboxes for COL_INIT_VALUE anymore.
-        # We use cell-specific checkboxes created in _populate_sheet_data and _update_row_display
-        # to allow switching between Checkbox (for BITs) and Text ("-") dynamically.
-
         # Set column widths (address is in row index now)
         self.sheet.set_column_widths([40, 200, 400, 90, 30])
         self.sheet.row_index(70)  # Set row index width
@@ -977,11 +1045,11 @@ class AddressPanel(ttk.Frame):
         # Set up header notes with hints
         self._setup_header_notes()
 
-        # === KEY CHANGE: Use bulk_table_edit_validation for paste operations ===
+        # Use bulk_table_edit_validation for paste operations ===
         # This ensures the entire paste completes before validation runs
         self.sheet.bulk_table_edit_validation(self._bulk_validate)
 
-        # === KEY CHANGE: Bind to <<SheetModified>> for post-edit processing ===
+        # Bind to <<SheetModified>> for post-edit processing ===
         # This fires AFTER the sheet has been modified, not during
         self.sheet.bind("<<SheetModified>>", self._on_sheet_modified)
 
@@ -1043,128 +1111,35 @@ class AddressPanel(ttk.Frame):
 
         self._create_widgets()
 
-    def _build_row_display_data(self, row: AddressRow) -> list:
-        """Build display data array for a single row.
-
-        Args:
-            row: The AddressRow to build display data for
-
-        Returns:
-            List of display values for the row's columns
-        """
-        is_bit_panel = self._is_bit_type_panel()
-        is_combined_panel = self.combined_types and len(self.combined_types) > 1
-
-        # Used column display
-        used_display = "\u2713" if row.used else ""
-
-        # Init value: logic to determine if we show "-", Checkbox (bool), or Text
-        exempt_types = ("SD", "SC", "XD", "YD")
-        paired_row = self._find_paired_row(row)
-        effective_retentive = paired_row.retentive if paired_row else row.retentive
-
-        # If Retentive is ON and not exempt, force display to "-"
-        if effective_retentive and row.memory_type not in exempt_types:
-            init_value_display = "-"
-        else:
-            # Otherwise show the underlying value
-            # For BIT types, return bool so tksheet knows to check/uncheck the checkbox
-            if is_bit_panel or (is_combined_panel and row.data_type == DATA_TYPE_BIT):
-                init_value_display = row.initial_value == "1"
-            else:
-                init_value_display = row.initial_value
-
-        # Retentive: TD/CTD rows share retentive with their paired T/CT row
-        retentive_display = effective_retentive
-
-        return [
-            used_display,
-            row.nickname,
-            row.comment,
-            init_value_display,
-            retentive_display,  # Boolean for checkbox
-        ]
-
     def _populate_sheet_data(self) -> None:
         """Populate sheet with ALL row data (called once at load time).
 
         This sets up the full dataset and creates cell-specific checkboxes.
         """
-        is_bit_panel = self._is_bit_type_panel()
-        is_combined_panel = self.combined_types and len(self.combined_types) > 1
-
-        # Build data for ALL rows
-        data = []
-        row_index_values = []
-        for row in self.rows:
-            row_index_values.append(row.display_address)
-            data.append(self._build_row_display_data(row))
-
-        # Set all data at once
+        # Build and set all data at once
+        data = [self._build_row_display_data(row) for row in self.rows]
         self.sheet.set_sheet_data(data, reset_col_positions=False)
-        self.sheet.set_index_data(row_index_values)
+        self.sheet.set_index_data([row.display_address for row in self.rows])
 
-        # Set up checkboxes for retentive column (whole column)
-        self.sheet[num2alpha(self.COL_RETENTIVE)].checkbox(edit_data=True, checked=None)
-
-        # Manually create checkboxes for Init Value on BIT-type rows where applicable
-        # We must iterate because some rows might be "-" due to Retentive
+        # Create checkboxes
         for data_idx, row in enumerate(self.rows):
-            is_bit_row = is_bit_panel or (is_combined_panel and row.data_type == DATA_TYPE_BIT)
-            
-            if is_bit_row:
-                # Check what value we put in the data. If it's "-" (string), don't make a checkbox.
-                # If it's boolean, make a checkbox.
-                val = data[data_idx][self.COL_INIT_VALUE]
-                
-                if val != "-":
-                    is_checked = (val is True)
-                    state = "normal" if row.can_edit_initial_value else "disabled"
+            # Retentive checkbox
+            self.sheet.create_checkbox(
+                r=data_idx,
+                c=self.COL_RETENTIVE,
+                checked=row.retentive,
+                text="",
+            )
+            # Initial value checkbox
+            if row.data_type == DATA_TYPE_BIT:
+                init_val = data[data_idx][self.COL_INIT_VALUE]
+                if init_val != "-":
                     self.sheet.create_checkbox(
                         r=data_idx,
                         c=self.COL_INIT_VALUE,
-                        checked=is_checked,
-                        state=state,
+                        checked=(init_val is True),
                         text="",
                     )
-
-    def _update_row_display(self, data_idx: int) -> None:
-        """Update display data for a single row after changes.
-
-        Args:
-            data_idx: Index into self.rows (data index, not display index)
-        """
-        row = self.rows[data_idx]
-        display_data = self._build_row_display_data(row)
-
-        # Update each cell in the row
-        for col, value in enumerate(display_data):
-            # Special handling for Init Value to switch between Checkbox and Text
-            if col == self.COL_INIT_VALUE:
-                # Always attempt to delete existing checkbox in this cell to ensure clean state
-                self.sheet.delete_checkbox(data_idx, col)
-                
-                if value == "-":
-                    # Just set the text "-"
-                    self.sheet.set_cell_data(data_idx, col, value)
-                elif row.data_type == DATA_TYPE_BIT:
-                    # It's a BIT type and not masked -> Create Checkbox
-                    is_checked = (value is True)
-                    state = "normal" if row.can_edit_initial_value else "disabled"
-                    self.sheet.create_checkbox(
-                        r=data_idx,
-                        c=col,
-                        checked=is_checked,
-                        state=state,
-                        text="",
-                    )
-                    # Also set the data model to the boolean value
-                    self.sheet.set_cell_data(data_idx, col, is_checked)
-                else:
-                    # Standard value (Word/Float/Text) -> Just set data
-                    self.sheet.set_cell_data(data_idx, col, value)
-            else:
-                self.sheet.set_cell_data(data_idx, col, value)
 
     def _validate_row(self, row: AddressRow) -> None:
         """Validate a single row."""
