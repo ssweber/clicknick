@@ -50,7 +50,7 @@ class OutlinePanel(ttk.Frame):
         )
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        self.tree.column("#0", width=180, minwidth=100, stretch=True)
+        self.tree.column("#0", width=200, minwidth=100, stretch=True)
 
         scrollbar.config(command=self.tree.yview)
         self.tree.bind("<Double-Button-1>", self._on_double_click)
@@ -66,7 +66,7 @@ class OutlinePanel(ttk.Frame):
             parent: Parent widget
             on_address_select: Callback when address is selected (memory_type, address)
         """
-        super().__init__(parent, width=200)
+        super().__init__(parent, width=275)
         self.pack_propagate(False)
 
         self.on_address_select = on_address_select

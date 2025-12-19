@@ -66,7 +66,7 @@ class AddBlockDialog(tk.Toplevel):
             color_frame,
             text="None",
             width=6,
-            relief="sunken",  # Default selected
+            relief="raised",
             command=lambda: self._select_color(None),
         )
         none_btn.grid(row=0, column=0, padx=1, pady=1)
@@ -96,6 +96,8 @@ class AddBlockDialog(tk.Toplevel):
             command=self._select_random_color,
         )
         random_btn.pack(pady=(5, 10))
+
+        self._select_random_color()
 
         # Buttons frame
         btn_frame = ttk.Frame(main_frame)

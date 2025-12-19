@@ -21,7 +21,7 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
 - **Search & Replace** (Ctrl+F / Ctrl+R) - With `Find in Selection` toggle   
 - **Custom blocks** – Drag to create color-coded groups for organization and quick navigation
 
-![Address Editor demo](https://github.com/user-attachments/assets/6fced9f5-2325-4867-ba23-d3b14ef8e866)  
+![Address Editor demo](https://github.com/user-attachments/assets/4aa6fd2f-f6f8-4921-aba3-7f16e51b95ce)  
 
 > [!NOTE]  
 > Nicknames edited in the Address Editor appear immediately in autocomplete. 
@@ -34,17 +34,17 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
 
 ### 📑 Outline Dock
 
-![Outline dock screenshot](https://github.com/user-attachments/assets/352d9f6e-b9f2-43e7-b82e-81a92065c45a)
+![Outline dock screenshot](https://github.com/user-attachments/assets/c08b292e-7a95-49c0-a4ab-712d333f7ba8)
 
 - **Navigate large projects** – See all your nicknames in an organized tree view  
 - **Spot patterns** – Arrays and related items grouped automatically  
-  - **Single underscores** create hierarchy. "SupplyTank_Pump_Status"
+  - **Single underscores** create hierarchy. `SupplyTank_Pump_Status` becomes
     ```
     SupplyTank
         └── Pump
             └── Status
     ```
-  - **Trailing numbers** create arrays. "Alm1_id, Alm1_value, Alm2_id, Alm2_value" becomes:
+  - **Trailing numbers** create arrays. `Alm1_id`, `Alm1_value`, `Alm2_id`, `Alm2_value` becomes:
     ```
     Alm[1-2]
     1
