@@ -26,6 +26,7 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
 > [!NOTE]  
 > Nicknames edited in the Address Editor appear immediately in autocomplete. 
 > Existing ladder logic refreshes after editing via the built-in Address Picker (Ctrl+T) or reopening the project.  
+> See issue https://github.com/ssweber/clicknick/issues/36
 
 > [!IMPORTANT]      
 > **Replace works on all visible editable columns.** Hidden columns (like Initial Value and Retentive) can be shown, 
@@ -66,11 +67,9 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
 ✔ **Fewer mistakes** – Autocomplete reduces typos  
 ✔ **Stay organized** – Better tag management for complex projects 
 
-> [!IMPORTANT]  
-## Beta Disclaimer
-
-ClickNick is beta software. Use at your own risk. The developers aren't liable for 
-data loss, corruption, or process interruptions. Always back up your `.ckp` files.
+> [!IMPORTANT] Beta Disclaimer 
+> ClickNick is beta software. Use at your own risk. The developers aren't liable for 
+> data loss, corruption, or process interruptions. Always back up your `.ckp` files.
 
 ---
 
