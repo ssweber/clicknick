@@ -176,6 +176,11 @@ class AddressEditorWindow(tk.Toplevel):
         # Update sidebar button indicators
         self.sidebar.update_all_indicators()
 
+    def _refresh_navigation(self) -> None:
+        """Refresh the navigation dock with current data."""
+        if self._nav_window is not None:
+            self._nav_window.build_tree(self.shared_data.all_rows)
+
     def _do_revalidation(self) -> None:
         """Perform the actual revalidation (called after debounce delay)."""
         self._revalidate_timer = None
@@ -848,11 +853,6 @@ class AddressEditorWindow(tk.Toplevel):
         # Keyboard shortcuts
         self.bind("<Control-s>", lambda e: self._save_all())
         self.bind("<Control-S>", lambda e: self._save_all())
-
-    def _refresh_navigation(self) -> None:
-        """Refresh the navigation dock with current data."""
-        if self._nav_window is not None:
-            self._nav_window.build_tree(self.shared_data.all_rows)
 
     def _has_errors(self) -> bool:
         """Check if any panel has validation errors."""
