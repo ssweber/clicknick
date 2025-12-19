@@ -131,6 +131,25 @@ Autocomplete works in:
 
 ---
 
+## **Block Tag Specification**  
+
+### **Syntax - Put in Comment Field**  
+- `<BlockName>` - Opening tag for a range  
+- `</BlockName>` - Closing tag for a range  
+- `<BlockName />` - Self-closing tag for a singular point  
+- `<BlockName bg="#color">` - Adds background color (works in opening or self-closing tags)
+
+Replace `BlockName` with your desired identifier (e.g., `<Reserved>`, `<Alm Bits>`).  
+
+### **Recognized Color Keywords**  
+The following words can be used as color values (or any valid HEX code):  
+
+**Red**, **Pink**, **Purple**, **Deep Purple**, **Indigo**, **Blue**, **Light Blue**, **Cyan**, **Teal**, **Green**, **Light Green**, **Lime**, **Yellow**, **Amber**, **Orange**, **Deep Orange**, **Brown**, **Blue Grey**  
+
+*(Each corresponds to a predefined HEX value.)*  
+
+---
+
 ## **Documentation**  
 
 - [Installation Guide](installation.md) – Python and uv setup  
