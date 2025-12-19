@@ -3,19 +3,17 @@ name: Publish to PyPI
 on:
   release:
     types: [published]
-  workflow_dispatch: # Enable manual trigger.
+  workflow_dispatch:
 
 jobs:
-  build-and-publish:
+  # JOB 1: Build on Windows (handles pywin32)
+  build:
+    name: Build distribution
     runs-on: windows-latest
-    permissions:
-      id-token: write # Mandatory for OIDC.
-      contents: read
     steps:
       - name: Checkout (official GitHub action)
         uses: actions/checkout@v4
         with:
-          # Important for versioning plugins:
           fetch-depth: 0
 
       - name: Install uv (official Astral action)
@@ -25,14 +23,36 @@ jobs:
           enable-cache: true
           python-version: "3.12"
 
-      - name: Set up Python (using uv)
+      - name: Set up Python
         run: uv python install
 
-      - name: Install all dependencies
+      - name: Install dependencies
+        # This works now because we are on Windows
         run: uv sync --all-extras --dev
-        
+
       - name: Build package
         run: uv build
 
-      - name: Publish to PyPI (using uv)
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-files
+          path: dist/
+
+  # JOB 2: Publish on Linux (Required for pypa action)
+  publish:
+    name: Publish to PyPI
+    needs: build  # Waits for the build job to finish
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # IMPORTANT: Mandatory for trusted publishing
+      contents: read
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-files
+          path: dist/
+
+      - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
