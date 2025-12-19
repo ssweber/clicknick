@@ -7,7 +7,7 @@ Repository = "https://github.com/ssweber/clicknick"
 
 [project]
 name = "clicknick"
-description = "Bolts nickname autocomplete onto CLICK Programming Software. Includes Address Editor & Outline "
+description = "Bolts nickname autocomplete onto CLICK Programming Software. Includes Address Editor & Navigation Dock. "
 authors = [
     { name = "ssweber", email = "57631333+ssweber@users.noreply.github.com" }
 ]
@@ -37,9 +37,9 @@ classifiers = [
 # ---- Main dependencies ----
 
 dependencies = [
-    "pywin32>=306",
-    "pyodbc>=5.2.0",
-    "tksheet>=7.0.0",
+    "pywin32 >= 311",
+    "pyodbc >= 5.3.0",
+    "tksheet == 7.5.19",
 ]
 
 

@@ -21,7 +21,7 @@ from .outline_panel import OutlinePanel
 from .shared_data import SharedAddressData
 
 
-class OutlineWindow(tk.Toplevel):
+class NavWindow(tk.Toplevel):
     """Floating outline window that docks to the right of the main window."""
 
     def _dock_to_parent(self) -> None:
@@ -82,15 +82,15 @@ class OutlineWindow(tk.Toplevel):
 
     def _on_close(self) -> None:
         self.withdraw()
-        if hasattr(self.parent_window, "outline_btn"):
-            self.parent_window.outline_btn.configure(text="Outline >>")
+        if hasattr(self.parent_window, "nav_btn"):
+            self.parent_window.nav_btn.configure(text="Outline >>")
 
     def __init__(
         self,
         parent: tk.Toplevel,
         on_address_select: Callable[[str, int], None],
     ):
-        """Initialize the outline window.
+        """Initialize the navigation window.
 
         Args:
             parent: Parent window to dock to
@@ -98,7 +98,7 @@ class OutlineWindow(tk.Toplevel):
         """
         super().__init__(parent)
         self.parent_window = parent
-        self.title("Outline")
+        self.title("Navigation")
         self.resizable(True, True)
         self.transient(parent)
 
@@ -176,11 +176,6 @@ class AddressEditorWindow(tk.Toplevel):
         # Update sidebar button indicators
         self.sidebar.update_all_indicators()
 
-    def _refresh_outline(self) -> None:
-        """Refresh the outline tree with current data."""
-        if self._outline_window is not None:
-            self._outline_window.build_tree(self.shared_data.all_rows)
-
     def _do_revalidation(self) -> None:
         """Perform the actual revalidation (called after debounce delay)."""
         self._revalidate_timer = None
@@ -196,8 +191,8 @@ class AddressEditorWindow(tk.Toplevel):
         self._update_status()
 
         # Refresh outline if visible (live update)
-        if self._outline_window is not None and self._outline_window.winfo_viewable():
-            self._refresh_outline()
+        if self._nav_window is not None and self._nav_window.winfo_viewable():
+            self._refresh_navigation()
 
         # Notify other windows
         # Set flag to avoid double-processing when we get notified back
@@ -609,26 +604,26 @@ class AddressEditorWindow(tk.Toplevel):
         if panel_type in self.panels:
             self.panels[panel_type].scroll_to_address(address, memory_type)
 
-    def _toggle_outline(self) -> None:
+    def _toggle_nav(self) -> None:
         """Toggle the outline window visibility."""
-        if self._outline_window is None:
+        if self._nav_window is None:
             # Create outline window
-            self._outline_window = OutlineWindow(
+            self._nav_window = NavWindow(
                 self,
                 on_address_select=self._on_outline_address_select,
             )
-            self._refresh_outline()
-            self.outline_btn.configure(text="Outline <<")
-        elif self._outline_window.winfo_viewable():
+            self._refresh_navigation()
+            self.nav_btn.configure(text="Navigation <<")
+        elif self._nav_window.winfo_viewable():
             # Hide it
-            self._outline_window.withdraw()
-            self.outline_btn.configure(text="Outline >>")
+            self._nav_window.withdraw()
+            self.nav_btn.configure(text="Navigation >>")
         else:
             # Show it
-            self._refresh_outline()
-            self._outline_window.deiconify()
-            self._outline_window._dock_to_parent()
-            self.outline_btn.configure(text="Outline <<")
+            self._refresh_navigation()
+            self._nav_window.deiconify()
+            self._nav_window._dock_to_parent()
+            self.nav_btn.configure(text="Navigation <<")
 
     def _create_widgets(self) -> None:
         """Create all window widgets."""
@@ -677,8 +672,8 @@ class AddressEditorWindow(tk.Toplevel):
         self._create_tooltip(self.add_block_btn, "Click & drag memory addresses to define block")
 
         # Outline toggle button
-        self.outline_btn = ttk.Button(footer, text="Outline >>", command=self._toggle_outline)
-        self.outline_btn.pack(side=tk.RIGHT, padx=(5, 0))
+        self.nav_btn = ttk.Button(footer, text="Navigation >>", command=self._toggle_nav)
+        self.nav_btn.pack(side=tk.RIGHT, padx=(5, 0))
 
         # Save button
         self.save_btn = ttk.Button(footer, text="💾 Save All", command=self._save_all)
@@ -732,8 +727,8 @@ class AddressEditorWindow(tk.Toplevel):
             panel.refresh_from_external()
 
         # Refresh outline if visible
-        if self._outline_window is not None and self._outline_window.winfo_viewable():
-            self._refresh_outline()
+        if self._nav_window is not None and self._nav_window.winfo_viewable():
+            self._refresh_navigation()
 
         self._update_status()
 
@@ -754,9 +749,9 @@ class AddressEditorWindow(tk.Toplevel):
                     return  # Save failed, don't close
 
         # Close outline window if open
-        if self._outline_window is not None:
-            self._outline_window.destroy()
-            self._outline_window = None
+        if self._nav_window is not None:
+            self._nav_window.destroy()
+            self._nav_window = None
 
         # Unregister from shared data
         self.shared_data.remove_observer(self._on_shared_data_changed)
@@ -831,7 +826,7 @@ class AddressEditorWindow(tk.Toplevel):
         self.all_nicknames: dict[int, str] = {}
         self.current_type: str = ""
         self._ignore_next_notification = False  # Flag to prevent double-processing
-        self._outline_window: OutlineWindow | None = None
+        self._nav_window: NavWindow | None = None
 
         # Debounce timer for batching nickname changes (e.g., from Replace All)
         self._revalidate_timer: str | None = None
@@ -853,6 +848,11 @@ class AddressEditorWindow(tk.Toplevel):
         # Keyboard shortcuts
         self.bind("<Control-s>", lambda e: self._save_all())
         self.bind("<Control-S>", lambda e: self._save_all())
+
+    def _refresh_navigation(self) -> None:
+        """Refresh the navigation dock with current data."""
+        if self._nav_window is not None:
+            self._nav_window.build_tree(self.shared_data.all_rows)
 
     def _has_errors(self) -> bool:
         """Check if any panel has validation errors."""

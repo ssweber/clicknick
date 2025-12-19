@@ -3,7 +3,7 @@
 # **ClickNick**  
 *Enhanced Productivity for CLICK PLC Programming*    
   
-Bolts nickname autocomplete onto CLICK Programming Software. Additional tools include a standalone Address Editor and Outline.  
+Bolts nickname autocomplete onto CLICK Programming Software. Additional tools include a standalone Address Editor and Navigation Dock.  
 
 ## **Features**    
   
@@ -32,9 +32,9 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
 > but watch out for numerical replacements—changing 1→2 (e.g., Alm1→Alm2) would also change 101 to 202. 
 > Use **'Find in Selection'** to limit changes and avoid surprises.
 
-### 📑 Outline Dock
+### 📑 Navigation Dock
 
-![Outline dock screenshot](https://github.com/user-attachments/assets/c08b292e-7a95-49c0-a4ab-712d333f7ba8)
+![Outline dock screenshot](https://github.com/user-attachments/assets/07928355-180e-4b00-b0bb-07ad2bdbe831)
 
 - **Navigate large projects** – See all your nicknames in an organized tree view  
 - **Spot patterns** – Arrays and related items grouped automatically  
