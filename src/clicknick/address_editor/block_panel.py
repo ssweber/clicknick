@@ -38,7 +38,6 @@ class BlockPanel(ttk.Frame):
         # Simplified column
         self.tree = ttk.Treeview(
             tree_frame,
-            columns=("nickname",),  # Keeping nickname col if needed, but display is in #0
             show="tree",  # Hide headers as we are formatting like a list
             selectmode="browse",
             yscrollcommand=scrollbar.set,
