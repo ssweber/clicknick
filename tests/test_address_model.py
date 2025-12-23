@@ -4,12 +4,6 @@ import pytest
 
 from clicknick.address_editor.address_model import (
     ADDRESS_RANGES,
-    DATA_TYPE_BIT,
-    DATA_TYPE_FLOAT,
-    DATA_TYPE_HEX,
-    DATA_TYPE_INT,
-    DATA_TYPE_INT2,
-    DATA_TYPE_TXT,
     DEFAULT_RETENTIVE,
     FORBIDDEN_CHARS,
     MEMORY_TYPE_BASES,
@@ -18,6 +12,7 @@ from clicknick.address_editor.address_model import (
     NON_EDITABLE_TYPES,
     PAIRED_RETENTIVE_TYPES,
     AddressRow,
+    DataType,
     get_addr_key,
     parse_addr_key,
     validate_initial_value,
@@ -219,7 +214,7 @@ class TestAddressRow:
         assert row.memory_type == "X"
         assert row.address == 1
         assert row.nickname == "StartButton"
-        assert row.original_nickname == ""
+        assert row.original_nickname == "StartButton"
 
     def test_display_address(self):
         """Test display_address property."""
@@ -407,169 +402,169 @@ class TestValidateInitialValue:
 
     def test_empty_initial_value_valid(self):
         """Empty initial value is always valid."""
-        is_valid, error = validate_initial_value("", DATA_TYPE_BIT)
+        is_valid, error = validate_initial_value("", DataType.BIT)
         assert is_valid is True
         assert error == ""
 
     # Bit type tests
     def test_bit_value_zero_valid(self):
         """Bit value 0 is valid."""
-        is_valid, error = validate_initial_value("0", DATA_TYPE_BIT)
+        is_valid, error = validate_initial_value("0", DataType.BIT)
         assert is_valid is True
         assert error == ""
 
     def test_bit_value_one_valid(self):
         """Bit value 1 is valid."""
-        is_valid, error = validate_initial_value("1", DATA_TYPE_BIT)
+        is_valid, error = validate_initial_value("1", DataType.BIT)
         assert is_valid is True
         assert error == ""
 
     def test_bit_value_two_invalid(self):
         """Bit value 2 is invalid."""
-        is_valid, error = validate_initial_value("2", DATA_TYPE_BIT)
+        is_valid, error = validate_initial_value("2", DataType.BIT)
         assert is_valid is False
         assert "0 or 1" in error
 
     def test_bit_value_text_invalid(self):
         """Bit value text is invalid."""
-        is_valid, error = validate_initial_value("yes", DATA_TYPE_BIT)
+        is_valid, error = validate_initial_value("yes", DataType.BIT)
         assert is_valid is False
 
     # Int (16-bit) type tests
     def test_int_value_zero_valid(self):
         """Int value 0 is valid."""
-        is_valid, error = validate_initial_value("0", DATA_TYPE_INT)
+        is_valid, error = validate_initial_value("0", DataType.INT)
         assert is_valid is True
 
     def test_int_value_min_valid(self):
         """Int minimum value -32768 is valid."""
-        is_valid, error = validate_initial_value("-32768", DATA_TYPE_INT)
+        is_valid, error = validate_initial_value("-32768", DataType.INT)
         assert is_valid is True
 
     def test_int_value_max_valid(self):
         """Int maximum value 32767 is valid."""
-        is_valid, error = validate_initial_value("32767", DATA_TYPE_INT)
+        is_valid, error = validate_initial_value("32767", DataType.INT)
         assert is_valid is True
 
     def test_int_value_too_low_invalid(self):
         """Int value below minimum is invalid."""
-        is_valid, error = validate_initial_value("-32769", DATA_TYPE_INT)
+        is_valid, error = validate_initial_value("-32769", DataType.INT)
         assert is_valid is False
         assert "Range" in error
 
     def test_int_value_too_high_invalid(self):
         """Int value above maximum is invalid."""
-        is_valid, error = validate_initial_value("32768", DATA_TYPE_INT)
+        is_valid, error = validate_initial_value("32768", DataType.INT)
         assert is_valid is False
         assert "Range" in error
 
     def test_int_value_text_invalid(self):
         """Int value text is invalid."""
-        is_valid, error = validate_initial_value("abc", DATA_TYPE_INT)
+        is_valid, error = validate_initial_value("abc", DataType.INT)
         assert is_valid is False
         assert "integer" in error
 
     # Int2 (32-bit) type tests
     def test_int2_value_zero_valid(self):
         """Int2 value 0 is valid."""
-        is_valid, error = validate_initial_value("0", DATA_TYPE_INT2)
+        is_valid, error = validate_initial_value("0", DataType.INT2)
         assert is_valid is True
 
     def test_int2_value_min_valid(self):
         """Int2 minimum value is valid."""
-        is_valid, error = validate_initial_value("-2147483648", DATA_TYPE_INT2)
+        is_valid, error = validate_initial_value("-2147483648", DataType.INT2)
         assert is_valid is True
 
     def test_int2_value_max_valid(self):
         """Int2 maximum value is valid."""
-        is_valid, error = validate_initial_value("2147483647", DATA_TYPE_INT2)
+        is_valid, error = validate_initial_value("2147483647", DataType.INT2)
         assert is_valid is True
 
     def test_int2_value_too_low_invalid(self):
         """Int2 value below minimum is invalid."""
-        is_valid, error = validate_initial_value("-2147483649", DATA_TYPE_INT2)
+        is_valid, error = validate_initial_value("-2147483649", DataType.INT2)
         assert is_valid is False
 
     def test_int2_value_too_high_invalid(self):
         """Int2 value above maximum is invalid."""
-        is_valid, error = validate_initial_value("2147483648", DATA_TYPE_INT2)
+        is_valid, error = validate_initial_value("2147483648", DataType.INT2)
         assert is_valid is False
 
     # Float type tests
     def test_float_value_zero_valid(self):
         """Float value 0 is valid."""
-        is_valid, error = validate_initial_value("0", DATA_TYPE_FLOAT)
+        is_valid, error = validate_initial_value("0", DataType.FLOAT)
         assert is_valid is True
 
     def test_float_value_decimal_valid(self):
         """Float decimal value is valid."""
-        is_valid, error = validate_initial_value("3.14159", DATA_TYPE_FLOAT)
+        is_valid, error = validate_initial_value("3.14159", DataType.FLOAT)
         assert is_valid is True
 
     def test_float_value_scientific_valid(self):
         """Float scientific notation is valid."""
-        is_valid, error = validate_initial_value("-3.4028235E+38", DATA_TYPE_FLOAT)
+        is_valid, error = validate_initial_value("-3.4028235E+38", DataType.FLOAT)
         assert is_valid is True
 
     def test_float_value_text_invalid(self):
         """Float text value is invalid."""
-        is_valid, error = validate_initial_value("abc", DATA_TYPE_FLOAT)
+        is_valid, error = validate_initial_value("abc", DataType.FLOAT)
         assert is_valid is False
         assert "number" in error
 
     # Hex type tests
     def test_hex_value_zero_valid(self):
         """Hex value 0 is valid."""
-        is_valid, error = validate_initial_value("0", DATA_TYPE_HEX)
+        is_valid, error = validate_initial_value("0", DataType.HEX)
         assert is_valid is True
 
     def test_hex_value_0000_valid(self):
         """Hex value 0000 is valid."""
-        is_valid, error = validate_initial_value("0000", DATA_TYPE_HEX)
+        is_valid, error = validate_initial_value("0000", DataType.HEX)
         assert is_valid is True
 
     def test_hex_value_FFFF_valid(self):
         """Hex value FFFF is valid."""
-        is_valid, error = validate_initial_value("FFFF", DATA_TYPE_HEX)
+        is_valid, error = validate_initial_value("FFFF", DataType.HEX)
         assert is_valid is True
 
     def test_hex_value_lowercase_valid(self):
         """Hex lowercase value is valid."""
-        is_valid, error = validate_initial_value("abcd", DATA_TYPE_HEX)
+        is_valid, error = validate_initial_value("abcd", DataType.HEX)
         assert is_valid is True
 
     def test_hex_value_too_long_invalid(self):
         """Hex value longer than 4 digits is invalid."""
-        is_valid, error = validate_initial_value("12345", DATA_TYPE_HEX)
+        is_valid, error = validate_initial_value("12345", DataType.HEX)
         assert is_valid is False
         assert "4 hex" in error
 
     def test_hex_value_invalid_chars(self):
         """Hex value with invalid characters is invalid."""
-        is_valid, error = validate_initial_value("GHIJ", DATA_TYPE_HEX)
+        is_valid, error = validate_initial_value("GHIJ", DataType.HEX)
         assert is_valid is False
         assert "hex" in error
 
     # TXT type tests
     def test_txt_value_single_char_valid(self):
         """TXT single character is valid."""
-        is_valid, error = validate_initial_value("A", DATA_TYPE_TXT)
+        is_valid, error = validate_initial_value("A", DataType.TXT)
         assert is_valid is True
 
     def test_txt_value_space_valid(self):
         """TXT space character is valid."""
-        is_valid, error = validate_initial_value(" ", DATA_TYPE_TXT)
+        is_valid, error = validate_initial_value(" ", DataType.TXT)
         assert is_valid is True
 
     def test_txt_value_too_long_invalid(self):
         """TXT multiple characters is invalid."""
-        is_valid, error = validate_initial_value("AB", DATA_TYPE_TXT)
+        is_valid, error = validate_initial_value("AB", DataType.TXT)
         assert is_valid is False
         assert "single char" in error
 
     def test_txt_value_non_ascii_invalid(self):
         """TXT non-ASCII character is invalid."""
-        is_valid, error = validate_initial_value("\x80", DATA_TYPE_TXT)
+        is_valid, error = validate_initial_value("\x80", DataType.TXT)
         assert is_valid is False
         assert "ASCII" in error
 
@@ -613,33 +608,33 @@ class TestDataTypeConstants:
         """Bit types have correct data type."""
         bit_types = ["X", "Y", "C", "T", "CT", "SC"]
         for mem_type in bit_types:
-            assert MEMORY_TYPE_TO_DATA_TYPE[mem_type] == DATA_TYPE_BIT
+            assert MEMORY_TYPE_TO_DATA_TYPE[mem_type] == DataType.BIT
 
     def test_data_type_int_types(self):
         """Int types have correct data type."""
         int_types = ["DS", "SD", "TD"]
         for mem_type in int_types:
-            assert MEMORY_TYPE_TO_DATA_TYPE[mem_type] == DATA_TYPE_INT
+            assert MEMORY_TYPE_TO_DATA_TYPE[mem_type] == DataType.INT
 
     def test_data_type_int2_types(self):
         """Int2 types have correct data type."""
         int2_types = ["DD", "CTD"]
         for mem_type in int2_types:
-            assert MEMORY_TYPE_TO_DATA_TYPE[mem_type] == DATA_TYPE_INT2
+            assert MEMORY_TYPE_TO_DATA_TYPE[mem_type] == DataType.INT2
 
     def test_data_type_float_type(self):
         """Float type has correct data type."""
-        assert MEMORY_TYPE_TO_DATA_TYPE["DF"] == DATA_TYPE_FLOAT
+        assert MEMORY_TYPE_TO_DATA_TYPE["DF"] == DataType.FLOAT
 
     def test_data_type_hex_types(self):
         """Hex types have correct data type."""
         hex_types = ["DH", "XD", "YD"]
         for mem_type in hex_types:
-            assert MEMORY_TYPE_TO_DATA_TYPE[mem_type] == DATA_TYPE_HEX
+            assert MEMORY_TYPE_TO_DATA_TYPE[mem_type] == DataType.HEX
 
     def test_data_type_txt_type(self):
         """TXT type has correct data type."""
-        assert MEMORY_TYPE_TO_DATA_TYPE["TXT"] == DATA_TYPE_TXT
+        assert MEMORY_TYPE_TO_DATA_TYPE["TXT"] == DataType.TXT
 
 
 class TestAddressRowInitialValueRetentive:
@@ -650,7 +645,7 @@ class TestAddressRowInitialValueRetentive:
         row = AddressRow(
             memory_type="DS",
             address=1,
-            data_type=DATA_TYPE_INT,
+            data_type=DataType.INT,
             initial_value="100",
             original_initial_value="100",
         )
@@ -662,7 +657,7 @@ class TestAddressRowInitialValueRetentive:
         row = AddressRow(
             memory_type="DS",
             address=1,
-            data_type=DATA_TYPE_INT,
+            data_type=DataType.INT,
             initial_value="200",
             original_initial_value="100",
         )
@@ -730,7 +725,7 @@ class TestAddressRowInitialValueRetentive:
         row = AddressRow(
             memory_type="DS",
             address=1,
-            data_type=DATA_TYPE_INT,
+            data_type=DataType.INT,
             initial_value="100",
         )
         row.validate({})
@@ -742,7 +737,7 @@ class TestAddressRowInitialValueRetentive:
         row = AddressRow(
             memory_type="DS",
             address=1,
-            data_type=DATA_TYPE_INT,
+            data_type=DataType.INT,
             initial_value="abc",  # Invalid for int
         )
         row.validate({})

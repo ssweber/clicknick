@@ -33,11 +33,11 @@ else:
 
 from .address_model import (
     ADDRESS_RANGES,
-    DATA_TYPE_BIT,
     DEFAULT_RETENTIVE,
     MEMORY_TYPE_TO_DATA_TYPE,
     PAIRED_RETENTIVE_TYPES,
     AddressRow,
+    DataType,
     validate_nickname,
 )
 from .blocktag_model import parse_block_tag
@@ -96,7 +96,7 @@ class AddressPanel(ttk.Frame):
         """
         if self.combined_types and len(self.combined_types) > 1:
             return False
-        return MEMORY_TYPE_TO_DATA_TYPE.get(self.memory_type, 0) == DATA_TYPE_BIT
+        return MEMORY_TYPE_TO_DATA_TYPE.get(self.memory_type, 0) == DataType.BIT
 
     def _find_paired_row(self, row: AddressRow) -> AddressRow | None:
         """Find the paired T/CT row for a TD/CTD row.
@@ -187,12 +187,6 @@ class AddressPanel(ttk.Frame):
             Hint string describing valid range/values
         """
         from .address_model import (
-            DATA_TYPE_BIT,
-            DATA_TYPE_FLOAT,
-            DATA_TYPE_HEX,
-            DATA_TYPE_INT,
-            DATA_TYPE_INT2,
-            DATA_TYPE_TXT,
             FLOAT_MAX,
             FLOAT_MIN,
             INT2_MAX,
@@ -201,17 +195,17 @@ class AddressPanel(ttk.Frame):
             INT_MIN,
         )
 
-        if data_type == DATA_TYPE_BIT:
+        if data_type == DataType.BIT:
             return "0 or 1"
-        elif data_type == DATA_TYPE_INT:
+        elif data_type == DataType.INT:
             return f"Range: {INT_MIN} to {INT_MAX}"
-        elif data_type == DATA_TYPE_INT2:
+        elif data_type == DataType.INT2:
             return f"Range: {INT2_MIN} to {INT2_MAX}"
-        elif data_type == DATA_TYPE_FLOAT:
+        elif data_type == DataType.FLOAT:
             return f"Range: {FLOAT_MIN:.2e} to {FLOAT_MAX:.2e}"
-        elif data_type == DATA_TYPE_HEX:
+        elif data_type == DataType.HEX:
             return "Hex value (e.g., FF or 0xFF)"
-        elif data_type == DATA_TYPE_TXT:
+        elif data_type == DataType.TXT:
             return "Text string"
         else:
             return "Enter initial value"
@@ -666,7 +660,7 @@ class AddressPanel(ttk.Frame):
         else:
             # Otherwise show the underlying value
             # For BIT types, return bool so tksheet knows to check/uncheck the checkbox
-            if is_bit_panel or (is_combined_panel and row.data_type == DATA_TYPE_BIT):
+            if is_bit_panel or (is_combined_panel and row.data_type == DataType.BIT):
                 init_value_display = row.initial_value == "1"
             else:
                 init_value_display = row.initial_value
@@ -701,7 +695,7 @@ class AddressPanel(ttk.Frame):
                 if value == "-":
                     # Just set the text "-"
                     self.sheet.set_cell_data(data_idx, col, value)
-                elif row.data_type == DATA_TYPE_BIT:
+                elif row.data_type == DataType.BIT:
                     # It's a BIT type and not masked -> Create Checkbox
                     is_checked = value is True
                     state = "normal" if row.can_edit_initial_value else "readonly"
@@ -827,7 +821,7 @@ class AddressPanel(ttk.Frame):
                     continue
 
                 # Standard update logic
-                if address_row.data_type == DATA_TYPE_BIT:
+                if address_row.data_type == DataType.BIT:
                     new_init = "1" if bool(new_value) else "0"
                 else:
                     new_init = new_value if new_value else ""
@@ -1158,7 +1152,7 @@ class AddressPanel(ttk.Frame):
                 text="",
             )
             # Initial value checkbox
-            if row.data_type == DATA_TYPE_BIT:
+            if row.data_type == DataType.BIT:
                 init_val = data[data_idx][self.COL_INIT_VALUE]
                 if init_val != "-":
                     self.sheet.create_checkbox(
