@@ -4,49 +4,80 @@ Contains AddressRow dataclass, validation functions, and AddrKey calculations.
 """
 
 from dataclasses import dataclass, field
+from enum import IntEnum
+from typing import Optional
+
+# ==============================================================================
+# Address Memory Map Configuration
+# ==============================================================================
 
 # Address ranges by memory type (start, end inclusive)
 ADDRESS_RANGES: dict[str, tuple[int, int]] = {
-    "X": (1, 816),  # Inputs
-    "Y": (1, 816),  # Outputs
-    "C": (1, 2000),  # Internal relays
-    "T": (1, 500),  # Timers
-    "CT": (1, 250),  # Counters
-    "SC": (1, 1000),  # Special relays
-    "DS": (1, 4500),  # Data registers (16-bit)
-    "DD": (1, 1000),  # Double data registers (32-bit)
-    "DH": (1, 500),  # Hex data registers
-    "DF": (1, 500),  # Float data registers
-    "XD": (0, 16),  # Input groups (note: starts at 0)
-    "YD": (0, 16),  # Output groups (note: starts at 0)
-    "TD": (1, 500),  # Timer data
-    "CTD": (1, 250),  # Counter data
-    "SD": (1, 1000),  # Special data registers
-    "TXT": (1, 1000),  # Text registers
+    "X": (1, 816),       # Inputs
+    "Y": (1, 816),       # Outputs
+    "C": (1, 2000),      # Internal relays
+    "T": (1, 500),       # Timers
+    "CT": (1, 250),      # Counters
+    "SC": (1, 1000),     # Special relays
+    "DS": (1, 4500),     # Data registers (16-bit)
+    "DD": (1, 1000),     # Double data registers (32-bit)
+    "DH": (1, 500),      # Hex data registers
+    "DF": (1, 500),      # Float data registers
+    "XD": (0, 16),       # Input groups (note: starts at 0)
+    "YD": (0, 16),       # Output groups (note: starts at 0)
+    "TD": (1, 500),      # Timer data
+    "CTD": (1, 250),     # Counter data
+    "SD": (1, 1000),     # Special data registers
+    "TXT": (1, 1000),    # Text registers
 }
 
-# Base values for AddrKey calculation
+# Base values for AddrKey calculation (Primary Key in MDB)
 MEMORY_TYPE_BASES: dict[str, int] = {
-    "X": 0x0000000,
-    "Y": 0x1000000,
-    "C": 0x2000000,
-    "T": 0x3000000,
-    "CT": 0x4000000,
-    "SC": 0x5000000,
-    "DS": 0x6000000,
-    "DD": 0x7000000,
-    "DH": 0x8000000,
-    "DF": 0x9000000,
-    "XD": 0xA000000,
-    "YD": 0xB000000,
-    "TD": 0xC000000,
-    "CTD": 0xD000000,
-    "SD": 0xE000000,
-    "TXT": 0xF000000,
+    "X": 0x0000000, "Y": 0x1000000, "C": 0x2000000, "T": 0x3000000,
+    "CT": 0x4000000, "SC": 0x5000000, "DS": 0x6000000, "DD": 0x7000000,
+    "DH": 0x8000000, "DF": 0x9000000, "XD": 0xA000000, "YD": 0xB000000,
+    "TD": 0xC000000, "CTD": 0xD000000, "SD": 0xE000000, "TXT": 0xF000000,
 }
 
 # Reverse mapping: type_index -> memory_type
 _INDEX_TO_TYPE: dict[int, str] = {v >> 24: k for k, v in MEMORY_TYPE_BASES.items()}
+
+# ==============================================================================
+# Data Type Configuration
+# ==============================================================================
+
+class DataType(IntEnum):
+    """DataType mapping from MDB database."""
+    BIT = 0    # C, CT, SC, T, X, Y - values: "0" or "1"
+    INT = 1    # DS, SD, TD - 16-bit signed: -32768 to 32767
+    INT2 = 2  # CTD, DD - 32-bit signed: -2147483648 to 2147483647
+    FLOAT = 3  # DF - float: -3.4028235E+38 to 3.4028235E+38
+    HEX = 4    # DH, XD, YD - hex string: "0000" to "FFFF"
+    TXT = 6    # TXT - single ASCII character
+
+# Display names for DataType values
+DATA_TYPE_DISPLAY: dict[int, str] = {
+    DataType.BIT: "BIT",
+    DataType.INT: "INT",
+    DataType.INT2: "INT2",
+    DataType.FLOAT: "FLOAT",
+    DataType.HEX: "HEX",
+    DataType.TXT: "TXT",
+}
+
+# DataType by memory type
+MEMORY_TYPE_TO_DATA_TYPE: dict[str, int] = {
+    "X": DataType.BIT, "Y": DataType.BIT, "C": DataType.BIT,
+    "T": DataType.BIT, "CT": DataType.BIT, "SC": DataType.BIT,
+    "DS": DataType.INT, "SD": DataType.INT, "TD": DataType.INT,
+    "DD": DataType.INT2, "CTD": DataType.INT2,
+    "DF": DataType.FLOAT, "DH": DataType.HEX,
+    "XD": DataType.HEX, "YD": DataType.HEX, "TXT": DataType.TXT,
+}
+
+# ==============================================================================
+# Validation Rules & Constraints
+# ==============================================================================
 
 # Validation constants
 NICKNAME_MAX_LENGTH = 24
@@ -56,14 +87,13 @@ COMMENT_MAX_LENGTH = 128
 # Note: Space is allowed, hyphen (-) and period (.) are forbidden
 FORBIDDEN_CHARS = set("%\"<>!#$&'()*+-./:;=?@[\\]^`{|}~")
 
-# DataType mapping (from MDB database)
-# Maps DataType number to data format
-DATA_TYPE_BIT = 0  # C, CT, SC, T, X, Y - values: "0" or "1"
-DATA_TYPE_INT = 1  # DS, SD, TD - 16-bit signed: -32768 to 32767
-DATA_TYPE_INT2 = 2  # CTD, DD - 32-bit signed: -2147483648 to 2147483647
-DATA_TYPE_FLOAT = 3  # DF - float: -3.4028235E+38 to 3.4028235E+38
-DATA_TYPE_HEX = 4  # DH, XD, YD - hex string: "0000" to "FFFF"
-DATA_TYPE_TXT = 6  # TXT - single ASCII character
+# Value ranges for validation
+INT_MIN = -32768
+INT_MAX = 32767
+INT2_MIN = -2147483648
+INT2_MAX = 2147483647
+FLOAT_MIN = -3.4028235e38
+FLOAT_MAX = 3.4028235e38
 
 # Memory types where InitialValue/Retentive cannot be edited
 # System types: values are fixed by CLICK software
@@ -79,9 +109,9 @@ DEFAULT_RETENTIVE: dict[str, bool] = {
     "Y": False,
     "C": False,
     "T": False,
-    "CT": True,  # Counters are retentive by default
+    "CT": True,   # Counters are retentive by default
     "SC": False,  # Can't change
-    "DS": True,  # Data registers are retentive by default
+    "DS": True,   # Data registers are retentive by default
     "DD": True,
     "DH": True,
     "DF": True,
@@ -93,44 +123,9 @@ DEFAULT_RETENTIVE: dict[str, bool] = {
     "TXT": True,
 }
 
-# DataType by memory type
-MEMORY_TYPE_TO_DATA_TYPE: dict[str, int] = {
-    "X": DATA_TYPE_BIT,
-    "Y": DATA_TYPE_BIT,
-    "C": DATA_TYPE_BIT,
-    "T": DATA_TYPE_BIT,
-    "CT": DATA_TYPE_BIT,
-    "SC": DATA_TYPE_BIT,
-    "DS": DATA_TYPE_INT,
-    "SD": DATA_TYPE_INT,
-    "TD": DATA_TYPE_INT,
-    "DD": DATA_TYPE_INT2,
-    "CTD": DATA_TYPE_INT2,
-    "DF": DATA_TYPE_FLOAT,
-    "DH": DATA_TYPE_HEX,
-    "XD": DATA_TYPE_HEX,
-    "YD": DATA_TYPE_HEX,
-    "TXT": DATA_TYPE_TXT,
-}
-
-# Value ranges for validation
-INT_MIN = -32768
-INT_MAX = 32767
-INT2_MIN = -2147483648
-INT2_MAX = 2147483647
-FLOAT_MIN = -3.4028235e38
-FLOAT_MAX = 3.4028235e38
-
-# Display names for DataType values
-DATA_TYPE_DISPLAY: dict[int, str] = {
-    DATA_TYPE_BIT: "BIT",
-    DATA_TYPE_INT: "INT",
-    DATA_TYPE_INT2: "INT32",
-    DATA_TYPE_FLOAT: "FLOAT",
-    DATA_TYPE_HEX: "HEX",
-    DATA_TYPE_TXT: "TXT",
-}
-
+# ==============================================================================
+# Helper Functions
+# ==============================================================================
 
 def get_addr_key(memory_type: str, address: int) -> int:
     """Calculate AddrKey from memory type and address.
@@ -219,12 +214,12 @@ def validate_initial_value(
     if initial_value == "":
         return True, ""  # Empty is valid (means no initial value set)
 
-    if data_type == DATA_TYPE_BIT:
+    if data_type == DataType.BIT:
         if initial_value not in ("0", "1"):
             return False, "Must be 0 or 1"
         return True, ""
 
-    elif data_type == DATA_TYPE_INT:
+    elif data_type == DataType.INT:
         try:
             val = int(initial_value)
             if val < INT_MIN or val > INT_MAX:
@@ -233,7 +228,7 @@ def validate_initial_value(
         except ValueError:
             return False, "Must be integer"
 
-    elif data_type == DATA_TYPE_INT2:
+    elif data_type == DataType.INT2:
         try:
             val = int(initial_value)
             if val < INT2_MIN or val > INT2_MAX:
@@ -242,7 +237,7 @@ def validate_initial_value(
         except ValueError:
             return False, "Must be integer"
 
-    elif data_type == DATA_TYPE_FLOAT:
+    elif data_type == DataType.FLOAT:
         try:
             val = float(initial_value)
             # Allow scientific notation like -3.4028235E+38
@@ -252,7 +247,7 @@ def validate_initial_value(
         except ValueError:
             return False, "Must be number"
 
-    elif data_type == DATA_TYPE_HEX:
+    elif data_type == DataType.HEX:
         # Hex values should be 4 hex digits (0000 to FFFF)
         if len(initial_value) > 4:
             return False, "Max 4 hex digits"
@@ -264,7 +259,7 @@ def validate_initial_value(
         except ValueError:
             return False, "Must be hex (0-9, A-F)"
 
-    elif data_type == DATA_TYPE_TXT:
+    elif data_type == DataType.TXT:
         # Single ASCII character (7-bit)
         if len(initial_value) != 1:
             return False, "Must be single char"
@@ -275,6 +270,9 @@ def validate_initial_value(
     # Unknown data type
     return True, ""
 
+# ==============================================================================
+# Main Data Model
+# ==============================================================================
 
 @dataclass
 class AddressRow:
@@ -282,25 +280,41 @@ class AddressRow:
 
     This is the in-memory model for a single PLC address. It tracks both
     the current values and the original values (for dirty tracking).
+    
+    Usage:
+        # Create a clean row (originals automatically set to match content)
+        row = AddressRow("X", 1, nickname="Input1")
+        
+        # Create a dirty row (explicit originals)
+        row = AddressRow("X", 1, nickname="Input1", original_nickname="OldName")
     """
 
+    # --- Identity ---
     memory_type: str  # 'X', 'Y', 'C', etc.
-    address: int  # 1, 2, 3... (or 0 for XD/YD)
-    nickname: str = ""  # Current nickname or ""
-    original_nickname: str = ""  # Nickname when loaded (for dirty tracking)
-    comment: str = ""  # Address comment
-    original_comment: str = ""  # Comment when loaded (for dirty tracking)
-    used: bool = False  # Whether address is used in program
-    exists_in_mdb: bool = False  # True if row was loaded from database
+    address: int      # 1, 2, 3... (or 0 for XD/YD)
 
-    # Initial value and retentive fields
-    data_type: int = DATA_TYPE_BIT  # DataType from MDB (0=bit, 1=int, etc.)
+    # --- Content ---
+    nickname: str = ""       # Current nickname or ""
+    comment: str = ""        # Address comment
     initial_value: str = ""  # Current initial value (stored as string)
-    original_initial_value: str = ""  # Initial value when loaded
     retentive: bool = False  # Current retentive setting
-    original_retentive: bool = False  # Retentive when loaded
 
-    # Validation state (computed, not stored in comparisons)
+    # --- Metadata ---
+    used: bool = False             # Whether address is used in program
+    exists_in_mdb: bool = False    # True if row was loaded from database
+    data_type: int = DataType.BIT  # DataType from MDB (0=bit, 1=int, etc.)
+
+    # --- Dirty Tracking (Original Values) ---
+    # These track the value at load-time to determine if the row is 'dirty'.
+    # default=None allows __post_init__ to automatically populate them from Content fields.
+    # repr=False keeps debugging output clean.
+    original_nickname: Optional[str] = field(default=None, repr=False)
+    original_comment: Optional[str] = field(default=None, repr=False)
+    original_initial_value: Optional[str] = field(default=None, repr=False)
+    original_retentive: Optional[bool] = field(default=None, repr=False)
+
+    # --- Validation State ---
+    # Computed state, not stored in comparisons
     is_valid: bool = field(default=True, compare=False)
     validation_error: str = field(default="", compare=False)
     initial_value_valid: bool = field(default=True, compare=False)
@@ -308,6 +322,20 @@ class AddressRow:
 
     # Track if row was loaded with invalid data (SC/SD often have system-set invalid nicknames)
     loaded_with_error: bool = field(default=False, compare=False)
+
+    def __post_init__(self):
+        """Capture initial values if originals were not explicitly provided."""
+        if self.original_nickname is None:
+            self.original_nickname = self.nickname
+        
+        if self.original_comment is None:
+            self.original_comment = self.comment
+            
+        if self.original_initial_value is None:
+            self.original_initial_value = self.initial_value
+            
+        if self.original_retentive is None:
+            self.original_retentive = self.retentive
 
     @property
     def addr_key(self) -> int:
@@ -341,7 +369,7 @@ class AddressRow:
         parts = [f"  : {self.data_type_display}"]
 
         # only show 'ON' or 'Retentive' for BIT
-        if self.data_type_display == "BIT":
+        if self.data_type == DataType.BIT:
             if not self.is_default_retentive:
                 parts.append("= Retentive")
             elif self.initial_value == "1":
@@ -352,14 +380,16 @@ class AddressRow:
 
         return " ".join(parts)
 
+    # --- Dirty Checking Properties ---
+
     @property
     def is_dirty(self) -> bool:
         """True if any field has been modified since load."""
         return (
-            self.nickname != self.original_nickname
-            or self.comment != self.original_comment
-            or self.initial_value != self.original_initial_value
-            or self.retentive != self.original_retentive
+            self.is_nickname_dirty
+            or self.is_comment_dirty
+            or self.is_initial_value_dirty
+            or self.is_retentive_dirty
         )
 
     @property
@@ -381,6 +411,8 @@ class AddressRow:
     def is_retentive_dirty(self) -> bool:
         """True if the retentive setting has been modified."""
         return self.retentive != self.original_retentive
+
+    # --- State Helper Properties ---
 
     @property
     def can_edit_initial_value(self) -> bool:
@@ -424,6 +456,8 @@ class AddressRow:
             or self.initial_value != ""
             or self.retentive != DEFAULT_RETENTIVE.get(self.memory_type, False)
         )
+
+    # --- CRUD Helper Properties ---
 
     @property
     def needs_insert(self) -> bool:
@@ -494,6 +528,7 @@ class AddressRow:
         self.original_comment = self.comment
         self.original_initial_value = self.initial_value
         self.original_retentive = self.retentive
+        self.exists_in_mdb = True
 
     def update_from_db(self, db_data: dict) -> bool:
         """Update non-dirty fields from database data.
@@ -516,37 +551,30 @@ class AddressRow:
             self.used = new_used
             changed = True
 
+        # Helper to check cleanliness and update
+        def _update_if_clean(field_name, original_field, new_value):
+            current_val = getattr(self, field_name)
+            original_val = getattr(self, original_field)
+            
+            # If current equals original (user hasn't touched it)
+            # AND current doesn't equal new value (there is a change from DB)
+            if current_val == original_val and current_val != new_value:
+                setattr(self, field_name, new_value)
+                setattr(self, original_field, new_value)
+                return True
+            return False
+
         # Update nickname only if not dirty
-        if not self.is_nickname_dirty:
-            new_nickname = db_data.get("nickname", "")
-            if self.nickname != new_nickname:
-                self.nickname = new_nickname
-                self.original_nickname = new_nickname
-                changed = True
+        changed |= _update_if_clean("nickname", "original_nickname", db_data.get("nickname", ""))
 
         # Update comment only if not dirty
-        if not self.is_comment_dirty:
-            new_comment = db_data.get("comment", "")
-            if self.comment != new_comment:
-                self.comment = new_comment
-                self.original_comment = new_comment
-                changed = True
+        changed |= _update_if_clean("comment", "original_comment", db_data.get("comment", ""))
 
         # Update initial_value only if not dirty
-        if not self.is_initial_value_dirty:
-            new_initial_value = db_data.get("initial_value", "")
-            if self.initial_value != new_initial_value:
-                self.initial_value = new_initial_value
-                self.original_initial_value = new_initial_value
-                changed = True
+        changed |= _update_if_clean("initial_value", "original_initial_value", db_data.get("initial_value", ""))
 
         # Update retentive only if not dirty
-        if not self.is_retentive_dirty:
-            new_retentive = db_data.get("retentive", False)
-            if self.retentive != new_retentive:
-                self.retentive = new_retentive
-                self.original_retentive = new_retentive
-                changed = True
+        changed |= _update_if_clean("retentive", "original_retentive", db_data.get("retentive", False))
 
         # Update exists_in_mdb flag
         self.exists_in_mdb = True
