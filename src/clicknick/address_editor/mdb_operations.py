@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import pyodbc
 
 from ..mdb_shared import create_access_connection, find_click_database
-from .address_model import DEFAULT_RETENTIVE, MEMORY_TYPE_TO_DATA_TYPE, AddressRow
+from .address_model import DEFAULT_RETENTIVE, MEMORY_TYPE_TO_DATA_TYPE, AddressRow, DataType
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -123,6 +123,8 @@ def load_all_addresses(conn: MdbConnection) -> dict[int, AddressRow]:
 
     cursor = conn._conn.cursor()
 
+    # Note: We don't need to select keys that match the defaults strictly,
+    # but selecting them allows us to handle overrides correctly.
     query = """
         SELECT AddrKey, MemoryType, Address, Nickname, Comment, Use, DataType, InitialValue, Retentive
         FROM address
@@ -131,6 +133,7 @@ def load_all_addresses(conn: MdbConnection) -> dict[int, AddressRow]:
     cursor.execute(query)
 
     result: dict[int, AddressRow] = {}
+
     for row in cursor.fetchall():
         (
             addr_key,
@@ -144,30 +147,31 @@ def load_all_addresses(conn: MdbConnection) -> dict[int, AddressRow]:
             retentive,
         ) = row
 
-        # Get default values for this memory type
-        default_data_type = MEMORY_TYPE_TO_DATA_TYPE.get(memory_type, 0)
-        default_retentive = DEFAULT_RETENTIVE.get(memory_type, False)
+        # Handle DB Nulls and Defaults
+        # If DB DataType is NULL, fallback to the hardcoded default for that memory type
+        if data_type is None:
+            final_data_type = MEMORY_TYPE_TO_DATA_TYPE.get(memory_type, DataType.BIT)
+        else:
+            final_data_type = data_type
 
-        nickname_str = nickname or ""
-        comment_str = comment or ""
-        initial_value_str = initial_value or ""
-        data_type_val = data_type if data_type is not None else default_data_type
-        retentive_val = bool(retentive) if retentive is not None else default_retentive
+        # If DB Retentive is NULL, fallback to hardcoded default
+        if retentive is None:
+            final_retentive = DEFAULT_RETENTIVE.get(memory_type, False)
+        else:
+            final_retentive = bool(retentive)
 
+        # Create the row.
+        # __post_init__ will automatically set original_nickname = nickname, etc.
         result[addr_key] = AddressRow(
             memory_type=memory_type,
             address=int(address),
-            nickname=nickname_str,
-            original_nickname=nickname_str,
-            comment=comment_str,
-            original_comment=comment_str,
+            nickname=nickname or "",
+            comment=comment or "",
             used=bool(used),
             exists_in_mdb=True,
-            data_type=data_type_val,
-            initial_value=initial_value_str,
-            original_initial_value=initial_value_str,
-            retentive=retentive_val,
-            original_retentive=retentive_val,
+            data_type=final_data_type,
+            initial_value=initial_value or "",
+            retentive=final_retentive,
         )
 
     cursor.close()
