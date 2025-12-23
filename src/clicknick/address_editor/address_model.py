@@ -5,7 +5,6 @@ Contains AddressRow dataclass, validation functions, and AddrKey calculations.
 
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Optional
 
 # ==============================================================================
 # Address Memory Map Configuration
@@ -13,30 +12,42 @@ from typing import Optional
 
 # Address ranges by memory type (start, end inclusive)
 ADDRESS_RANGES: dict[str, tuple[int, int]] = {
-    "X": (1, 816),       # Inputs
-    "Y": (1, 816),       # Outputs
-    "C": (1, 2000),      # Internal relays
-    "T": (1, 500),       # Timers
-    "CT": (1, 250),      # Counters
-    "SC": (1, 1000),     # Special relays
-    "DS": (1, 4500),     # Data registers (16-bit)
-    "DD": (1, 1000),     # Double data registers (32-bit)
-    "DH": (1, 500),      # Hex data registers
-    "DF": (1, 500),      # Float data registers
-    "XD": (0, 16),       # Input groups (note: starts at 0)
-    "YD": (0, 16),       # Output groups (note: starts at 0)
-    "TD": (1, 500),      # Timer data
-    "CTD": (1, 250),     # Counter data
-    "SD": (1, 1000),     # Special data registers
-    "TXT": (1, 1000),    # Text registers
+    "X": (1, 816),  # Inputs
+    "Y": (1, 816),  # Outputs
+    "C": (1, 2000),  # Internal relays
+    "T": (1, 500),  # Timers
+    "CT": (1, 250),  # Counters
+    "SC": (1, 1000),  # Special relays
+    "DS": (1, 4500),  # Data registers (16-bit)
+    "DD": (1, 1000),  # Double data registers (32-bit)
+    "DH": (1, 500),  # Hex data registers
+    "DF": (1, 500),  # Float data registers
+    "XD": (0, 16),  # Input groups (note: starts at 0)
+    "YD": (0, 16),  # Output groups (note: starts at 0)
+    "TD": (1, 500),  # Timer data
+    "CTD": (1, 250),  # Counter data
+    "SD": (1, 1000),  # Special data registers
+    "TXT": (1, 1000),  # Text registers
 }
 
 # Base values for AddrKey calculation (Primary Key in MDB)
 MEMORY_TYPE_BASES: dict[str, int] = {
-    "X": 0x0000000, "Y": 0x1000000, "C": 0x2000000, "T": 0x3000000,
-    "CT": 0x4000000, "SC": 0x5000000, "DS": 0x6000000, "DD": 0x7000000,
-    "DH": 0x8000000, "DF": 0x9000000, "XD": 0xA000000, "YD": 0xB000000,
-    "TD": 0xC000000, "CTD": 0xD000000, "SD": 0xE000000, "TXT": 0xF000000,
+    "X": 0x0000000,
+    "Y": 0x1000000,
+    "C": 0x2000000,
+    "T": 0x3000000,
+    "CT": 0x4000000,
+    "SC": 0x5000000,
+    "DS": 0x6000000,
+    "DD": 0x7000000,
+    "DH": 0x8000000,
+    "DF": 0x9000000,
+    "XD": 0xA000000,
+    "YD": 0xB000000,
+    "TD": 0xC000000,
+    "CTD": 0xD000000,
+    "SD": 0xE000000,
+    "TXT": 0xF000000,
 }
 
 # Reverse mapping: type_index -> memory_type
@@ -46,14 +57,17 @@ _INDEX_TO_TYPE: dict[int, str] = {v >> 24: k for k, v in MEMORY_TYPE_BASES.items
 # Data Type Configuration
 # ==============================================================================
 
+
 class DataType(IntEnum):
     """DataType mapping from MDB database."""
-    BIT = 0    # C, CT, SC, T, X, Y - values: "0" or "1"
-    INT = 1    # DS, SD, TD - 16-bit signed: -32768 to 32767
+
+    BIT = 0  # C, CT, SC, T, X, Y - values: "0" or "1"
+    INT = 1  # DS, SD, TD - 16-bit signed: -32768 to 32767
     INT2 = 2  # CTD, DD - 32-bit signed: -2147483648 to 2147483647
     FLOAT = 3  # DF - float: -3.4028235E+38 to 3.4028235E+38
-    HEX = 4    # DH, XD, YD - hex string: "0000" to "FFFF"
-    TXT = 6    # TXT - single ASCII character
+    HEX = 4  # DH, XD, YD - hex string: "0000" to "FFFF"
+    TXT = 6  # TXT - single ASCII character
+
 
 # Display names for DataType values
 DATA_TYPE_DISPLAY: dict[int, str] = {
@@ -67,12 +81,22 @@ DATA_TYPE_DISPLAY: dict[int, str] = {
 
 # DataType by memory type
 MEMORY_TYPE_TO_DATA_TYPE: dict[str, int] = {
-    "X": DataType.BIT, "Y": DataType.BIT, "C": DataType.BIT,
-    "T": DataType.BIT, "CT": DataType.BIT, "SC": DataType.BIT,
-    "DS": DataType.INT, "SD": DataType.INT, "TD": DataType.INT,
-    "DD": DataType.INT2, "CTD": DataType.INT2,
-    "DF": DataType.FLOAT, "DH": DataType.HEX,
-    "XD": DataType.HEX, "YD": DataType.HEX, "TXT": DataType.TXT,
+    "X": DataType.BIT,
+    "Y": DataType.BIT,
+    "C": DataType.BIT,
+    "T": DataType.BIT,
+    "CT": DataType.BIT,
+    "SC": DataType.BIT,
+    "DS": DataType.INT,
+    "SD": DataType.INT,
+    "TD": DataType.INT,
+    "DD": DataType.INT2,
+    "CTD": DataType.INT2,
+    "DF": DataType.FLOAT,
+    "DH": DataType.HEX,
+    "XD": DataType.HEX,
+    "YD": DataType.HEX,
+    "TXT": DataType.TXT,
 }
 
 # ==============================================================================
@@ -109,9 +133,9 @@ DEFAULT_RETENTIVE: dict[str, bool] = {
     "Y": False,
     "C": False,
     "T": False,
-    "CT": True,   # Counters are retentive by default
+    "CT": True,  # Counters are retentive by default
     "SC": False,  # Can't change
-    "DS": True,   # Data registers are retentive by default
+    "DS": True,  # Data registers are retentive by default
     "DD": True,
     "DH": True,
     "DF": True,
@@ -126,6 +150,7 @@ DEFAULT_RETENTIVE: dict[str, bool] = {
 # ==============================================================================
 # Helper Functions
 # ==============================================================================
+
 
 def get_addr_key(memory_type: str, address: int) -> int:
     """Calculate AddrKey from memory type and address.
@@ -270,9 +295,11 @@ def validate_initial_value(
     # Unknown data type
     return True, ""
 
+
 # ==============================================================================
 # Main Data Model
 # ==============================================================================
+
 
 @dataclass
 class AddressRow:
@@ -280,38 +307,38 @@ class AddressRow:
 
     This is the in-memory model for a single PLC address. It tracks both
     the current values and the original values (for dirty tracking).
-    
+
     Usage:
         # Create a clean row (originals automatically set to match content)
         row = AddressRow("X", 1, nickname="Input1")
-        
+
         # Create a dirty row (explicit originals)
         row = AddressRow("X", 1, nickname="Input1", original_nickname="OldName")
     """
 
     # --- Identity ---
     memory_type: str  # 'X', 'Y', 'C', etc.
-    address: int      # 1, 2, 3... (or 0 for XD/YD)
+    address: int  # 1, 2, 3... (or 0 for XD/YD)
 
     # --- Content ---
-    nickname: str = ""       # Current nickname or ""
-    comment: str = ""        # Address comment
+    nickname: str = ""  # Current nickname or ""
+    comment: str = ""  # Address comment
     initial_value: str = ""  # Current initial value (stored as string)
     retentive: bool = False  # Current retentive setting
 
     # --- Metadata ---
-    used: bool = False             # Whether address is used in program
-    exists_in_mdb: bool = False    # True if row was loaded from database
+    used: bool = False  # Whether address is used in program
+    exists_in_mdb: bool = False  # True if row was loaded from database
     data_type: int = DataType.BIT  # DataType from MDB (0=bit, 1=int, etc.)
 
     # --- Dirty Tracking (Original Values) ---
     # These track the value at load-time to determine if the row is 'dirty'.
     # default=None allows __post_init__ to automatically populate them from Content fields.
     # repr=False keeps debugging output clean.
-    original_nickname: Optional[str] = field(default=None, repr=False)
-    original_comment: Optional[str] = field(default=None, repr=False)
-    original_initial_value: Optional[str] = field(default=None, repr=False)
-    original_retentive: Optional[bool] = field(default=None, repr=False)
+    original_nickname: str | None = field(default=None, repr=False)
+    original_comment: str | None = field(default=None, repr=False)
+    original_initial_value: str | None = field(default=None, repr=False)
+    original_retentive: bool | None = field(default=None, repr=False)
 
     # --- Validation State ---
     # Computed state, not stored in comparisons
@@ -327,13 +354,13 @@ class AddressRow:
         """Capture initial values if originals were not explicitly provided."""
         if self.original_nickname is None:
             self.original_nickname = self.nickname
-        
+
         if self.original_comment is None:
             self.original_comment = self.comment
-            
+
         if self.original_initial_value is None:
             self.original_initial_value = self.initial_value
-            
+
         if self.original_retentive is None:
             self.original_retentive = self.retentive
 
@@ -555,7 +582,7 @@ class AddressRow:
         def _update_if_clean(field_name, original_field, new_value):
             current_val = getattr(self, field_name)
             original_val = getattr(self, original_field)
-            
+
             # If current equals original (user hasn't touched it)
             # AND current doesn't equal new value (there is a change from DB)
             if current_val == original_val and current_val != new_value:
@@ -571,10 +598,14 @@ class AddressRow:
         changed |= _update_if_clean("comment", "original_comment", db_data.get("comment", ""))
 
         # Update initial_value only if not dirty
-        changed |= _update_if_clean("initial_value", "original_initial_value", db_data.get("initial_value", ""))
+        changed |= _update_if_clean(
+            "initial_value", "original_initial_value", db_data.get("initial_value", "")
+        )
 
         # Update retentive only if not dirty
-        changed |= _update_if_clean("retentive", "original_retentive", db_data.get("retentive", False))
+        changed |= _update_if_clean(
+            "retentive", "original_retentive", db_data.get("retentive", False)
+        )
 
         # Update exists_in_mdb flag
         self.exists_in_mdb = True
