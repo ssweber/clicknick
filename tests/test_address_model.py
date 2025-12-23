@@ -307,9 +307,9 @@ class TestAddressRow:
         row = AddressRow(memory_type="X", address=1, nickname="NewName", original_nickname="")
         assert row.needs_update is False
 
-    def test_needs_delete(self):
-        """Test needs_delete: nickname cleared but has comment or is used (keep row)."""
-        # Exists in MDB, nickname cleared, but has comment - needs_delete (clear nickname, keep row)
+    def test_needs_nickname_clear_only(self):
+        """Test needs_nickname_clear_only: nickname cleared but has comment or is used (keep row)."""
+        # Exists in MDB, nickname cleared, but has comment - needs_nickname_clear_only (clear nickname, keep row)
         row = AddressRow(
             memory_type="X",
             address=1,
@@ -318,9 +318,9 @@ class TestAddressRow:
             comment="Keep me",
             exists_in_mdb=True,
         )
-        assert row.needs_delete is True
+        assert row.needs_nickname_clear_only is True
 
-        # Exists in MDB, nickname cleared, address is used - needs_delete (clear nickname, keep row)
+        # Exists in MDB, nickname cleared, address is used - needs_nickname_clear_only (clear nickname, keep row)
         row = AddressRow(
             memory_type="X",
             address=1,
@@ -329,7 +329,7 @@ class TestAddressRow:
             used=True,
             exists_in_mdb=True,
         )
-        assert row.needs_delete is True
+        assert row.needs_nickname_clear_only is True
 
         # Exists in MDB, nickname cleared, no comment, not used - needs_full_delete instead
         row = AddressRow(
@@ -339,12 +339,12 @@ class TestAddressRow:
             original_nickname="OldName",
             exists_in_mdb=True,
         )
-        assert row.needs_delete is False
+        assert row.needs_nickname_clear_only is False
         assert row.needs_full_delete is True
 
         # Virtual row with no nickname - no delete needed
         row = AddressRow(memory_type="X", address=1, nickname="", original_nickname="")
-        assert row.needs_delete is False
+        assert row.needs_nickname_clear_only is False
         assert row.needs_full_delete is False
 
     def test_mark_saved(self):

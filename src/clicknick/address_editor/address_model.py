@@ -436,7 +436,7 @@ class AddressRow:
         return self.is_dirty and self.has_content and not self.is_virtual
 
     @property
-    def needs_delete(self) -> bool:
+    def needs_nickname_clear_only(self) -> bool:
         """True if should clear nickname (but keep row for comment/used/initial value)."""
         # Nickname was cleared, row existed, but has other content or is used
         has_other_content = (

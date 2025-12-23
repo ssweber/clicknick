@@ -238,7 +238,7 @@ def save_changes(conn: MdbConnection, rows: Sequence[AddressRow]) -> int:
                 )
                 modified_count += 1
 
-            elif row.needs_delete:
+            elif row.needs_nickname_clear_only:
                 # Clear nickname (set to empty string, keep row for other fields)
                 cursor.execute(
                     """
