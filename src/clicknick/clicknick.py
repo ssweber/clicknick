@@ -270,34 +270,47 @@ class ClickNickApp:
             self._update_status("Connect to a ClickPLC window first", "error")
             return
 
-        # Check for ODBC drivers
-        if not self.nickname_manager.has_access_driver():
+        # Check for ODBC drivers (MDB mode requires them)
+        csv_path = self.csv_path_var.get()
+        if not csv_path and not self.nickname_manager.has_access_driver():
             self._show_odbc_warning()
             return
 
         try:
             from .address_editor import AddressEditorWindow, SharedAddressData
+            from .address_editor.data_source import CsvDataSource, MdbDataSource
 
-            # Use stored hwnd to avoid lookup issues with multiple windows
-            click_hwnd = self.connected_click_hwnd
-
-            # Create or reuse shared data for this PLC connection
+            # Create or reuse shared data for this data source
             if not hasattr(self, "_address_editor_shared_data"):
                 self._address_editor_shared_data = None
+            if not hasattr(self, "_address_editor_source_path"):
+                self._address_editor_source_path = None
 
-            # Create new shared data if none exists or if PID changed
+            # Determine the data source path
+            if csv_path:
+                current_source_path = csv_path
+            else:
+                # MDB path is derived from hwnd
+                current_source_path = f"mdb:{self.connected_click_pid}:{self.connected_click_hwnd}"
+
+            # Create new shared data if none exists or if source changed
             if (
                 self._address_editor_shared_data is None
-                or self._address_editor_shared_data.click_pid != self.connected_click_pid
+                or self._address_editor_source_path != current_source_path
             ):
-                self._address_editor_shared_data = SharedAddressData(
-                    self.connected_click_pid, click_hwnd
-                )
+                # Create appropriate data source
+                if csv_path:
+                    data_source = CsvDataSource(csv_path)
+                else:
+                    data_source = MdbDataSource(
+                        click_pid=self.connected_click_pid,
+                        click_hwnd=self.connected_click_hwnd,
+                    )
+                self._address_editor_shared_data = SharedAddressData(data_source)
+                self._address_editor_source_path = current_source_path
 
             AddressEditorWindow(
                 self.root,
-                self.connected_click_pid,
-                click_hwnd,
                 shared_data=self._address_editor_shared_data,
             )
 
@@ -323,10 +336,6 @@ class ClickNickApp:
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Address Editor...", command=self._open_address_editor)
-
-        # Disable Address Editor if ODBC drivers are not available
-        if not self.nickname_manager.has_access_driver():
-            tools_menu.entryconfigure("Address Editor...", state="disabled")
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -549,6 +558,7 @@ class ClickNickApp:
                     self.selected_instance_var.set(self.connected_click_filename)
                 return
             self._address_editor_shared_data = None
+            self._address_editor_source_path = None
 
         # Stop monitoring if currently active
         if self.monitoring:
@@ -612,6 +622,7 @@ class ClickNickApp:
         if hasattr(self, "_address_editor_shared_data") and self._address_editor_shared_data:
             self._address_editor_shared_data.force_close_all_windows()
             self._address_editor_shared_data = None
+            self._address_editor_source_path = None
 
         self.root.after(2000, self.refresh_click_instances)
 

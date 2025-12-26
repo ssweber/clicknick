@@ -7,14 +7,56 @@ with changes in one window automatically reflected in others.
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any
 
 from .address_model import AddressRow
 from .blocktag_model import parse_block_tag
-from .mdb_operations import MdbConnection, load_all_addresses, save_changes
+from .data_source import DataSource
 
 # File monitoring interval in milliseconds
 FILE_MONITOR_INTERVAL_MS = 2000
+
+
+@dataclass
+class TypeView:
+    """Cached view data for a memory type (built once, shared by all panels).
+
+    This contains pre-computed display data that would otherwise be
+    recalculated by each AddressPanel independently.
+    """
+
+    # The type key (e.g., "X", "T/TD")
+    type_key: str
+
+    # Ordered list of AddressRow references (shared with SharedAddressData)
+    rows: list[AddressRow]
+
+    # Display data arrays (parallel to rows)
+    # Each inner list = [used_display, nickname, comment, init_value_display, retentive_display]
+    display_data: list[list[Any]] = field(default_factory=list)
+
+    # Row index labels (e.g., "X001", "T1", "TD1")
+    index_labels: list[str] = field(default_factory=list)
+
+    # Block colors computed from comments (row_idx -> hex_color)
+    block_colors: dict[int, str] = field(default_factory=dict)
+
+    # Timestamp for cache invalidation
+    last_updated: float = 0.0
+
+    # Combined types if this is an interleaved view (e.g., ["T", "TD"])
+    combined_types: list[str] | None = None
+
+    def invalidate(self) -> None:
+        """Mark this view as needing rebuild."""
+        self.last_updated = 0.0
+
+    def mark_updated(self) -> None:
+        """Mark this view as freshly built."""
+        self.last_updated = time.time()
 
 
 class SharedAddressData:
@@ -26,7 +68,9 @@ class SharedAddressData:
 
     Usage:
         # Create shared data (usually once in main app)
-        shared = SharedAddressData(click_pid, click_hwnd)
+        from .data_source import MdbDataSource
+        data_source = MdbDataSource(click_pid=pid, click_hwnd=hwnd)
+        shared = SharedAddressData(data_source)
         shared.load_initial_data()
 
         # Each window registers as observer
@@ -36,15 +80,13 @@ class SharedAddressData:
         # When data changes in any window, all observers are notified
     """
 
-    def __init__(self, click_pid: int, click_hwnd: int):
+    def __init__(self, data_source: DataSource):
         """Initialize the shared data store.
 
         Args:
-            click_pid: Process ID of the CLICK software
-            click_hwnd: Window handle of the CLICK software
+            data_source: DataSource implementation for loading/saving data
         """
-        self.click_pid = click_pid
-        self.click_hwnd = click_hwnd
+        self._data_source = data_source
 
         # Data storage - shared across all windows
         self.all_rows: dict[int, AddressRow] = {}  # AddrKey -> AddressRow
@@ -60,18 +102,21 @@ class SharedAddressData:
         self._initialized = False
 
         # File monitoring state
-        self._mdb_path: str | None = None
+        self._file_path: str | None = None
         self._last_mtime: float = 0.0
         self._monitor_after_id: str | None = None
         self._monitoring_active = False
 
-    def _get_connection(self) -> MdbConnection:
-        """Create a database connection (use as context manager)."""
-        conn = MdbConnection.from_click_window(self.click_pid, self.click_hwnd)
-        # Store the mdb path for file monitoring
-        if self._mdb_path is None:
-            self._mdb_path = conn.db_path
-        return conn
+        # Cached views by type key (e.g., "X", "T/TD")
+        self._views: dict[str, TypeView] = {}
+
+        # View observers - called when a view needs refresh (called with type_key)
+        self._view_observers: list[Callable[[str], None]] = []
+
+    @property
+    def supports_used_field(self) -> bool:
+        """Check if the data source supports the 'Used' field."""
+        return self._data_source.supports_used_field
 
     def add_observer(self, callback: Callable[[], None]) -> None:
         """Add an observer callback that will be called when data changes."""
@@ -82,6 +127,71 @@ class SharedAddressData:
         """Remove an observer callback."""
         if callback in self._observers:
             self._observers.remove(callback)
+
+    # --- View Management ---
+
+    def add_view_observer(self, callback: Callable[[str], None]) -> None:
+        """Add a view observer callback.
+
+        Args:
+            callback: Called with type_key when a view needs refresh
+        """
+        if callback not in self._view_observers:
+            self._view_observers.append(callback)
+
+    def remove_view_observer(self, callback: Callable[[str], None]) -> None:
+        """Remove a view observer callback."""
+        if callback in self._view_observers:
+            self._view_observers.remove(callback)
+
+    def get_view(self, type_key: str) -> TypeView | None:
+        """Get the cached view for a memory type.
+
+        Args:
+            type_key: The memory type key (e.g., "X", "T/TD")
+
+        Returns:
+            TypeView if cached, None otherwise
+        """
+        return self._views.get(type_key)
+
+    def set_view(self, type_key: str, view: TypeView) -> None:
+        """Store a view for a memory type.
+
+        Args:
+            type_key: The memory type key
+            view: The TypeView to cache
+        """
+        self._views[type_key] = view
+        view.mark_updated()
+
+    def _notify_view_observers(self, type_key: str) -> None:
+        """Notify view observers that a view needs refresh.
+
+        Args:
+            type_key: The type key that was invalidated
+        """
+        for callback in self._view_observers:
+            try:
+                callback(type_key)
+            except Exception:
+                pass  # Don't let one observer's error break others
+
+    def invalidate_view(self, type_key: str) -> None:
+        """Mark a view as needing rebuild.
+
+        Args:
+            type_key: The memory type key to invalidate
+        """
+        if type_key in self._views:
+            self._views[type_key].invalidate()
+            self._notify_view_observers(type_key)
+
+    def invalidate_all_views(self) -> None:
+        """Mark all views as needing rebuild."""
+        for type_key, view in self._views.items():
+            view.invalidate()
+            self._notify_view_observers(type_key)
 
     def register_window(self, window) -> None:
         """Register an editor window for tracking.
@@ -165,14 +275,18 @@ class SharedAddressData:
         self._windows.clear()
         self.rows_by_type.clear()  # Clear cached data since DB is gone
 
-    def notify_data_changed(self) -> None:
+    def notify_data_changed(self, sender: object = None) -> None:
         """Notify all observers that data has changed.
 
         Call this after modifying shared data to update all windows.
+
+        Args:
+            sender: The object that triggered the change (allows observers
+                    to skip processing if they are the sender)
         """
         for callback in self._observers:
             try:
-                callback()
+                callback(sender)
             except Exception:
                 pass  # Don't let one observer's error break others
 
@@ -182,14 +296,14 @@ class SharedAddressData:
         return {addr_key: row.nickname for addr_key, row in self.all_rows.items() if row.nickname}
 
     def load_initial_data(self) -> None:
-        """Load all address data from database."""
-        with self._get_connection() as conn:
-            self.all_rows = load_all_addresses(conn)
+        """Load all address data from data source."""
+        self.all_rows = self._data_source.load_all_addresses()
         self._initialized = True
 
-        # Store initial file modification time for monitoring
-        if self._mdb_path and os.path.exists(self._mdb_path):
-            self._last_mtime = os.path.getmtime(self._mdb_path)
+        # Store file path and initial modification time for monitoring
+        self._file_path = self._data_source.file_path
+        if self._file_path and os.path.exists(self._file_path):
+            self._last_mtime = os.path.getmtime(self._file_path)
 
     def is_initialized(self) -> bool:
         """Check if initial data has been loaded."""
@@ -226,20 +340,47 @@ class SharedAddressData:
                 pass
         self._monitor_after_id = None
 
-    def _reload_from_db(self) -> None:
-        """Reload data from database, updating non-dirty cells."""
+    def _reload_from_source(self) -> None:
+        """Reload data from data source, updating non-dirty cells."""
         any_changes = False
 
         try:
-            with self._get_connection() as conn:
-                # Reload all addresses
-                new_rows = load_all_addresses(conn)
+            # Reload all addresses
+            new_rows = self._data_source.load_all_addresses()
 
-                # Update existing rows from new data
-                for addr_key, new_row in new_rows.items():
-                    if addr_key in self.all_rows:
-                        existing_row = self.all_rows[addr_key]
-                        # Convert new_row to dict format for update_from_db
+            # Update existing rows from new data
+            for addr_key, new_row in new_rows.items():
+                if addr_key in self.all_rows:
+                    existing_row = self.all_rows[addr_key]
+                    # Convert new_row to dict format for update_from_db
+                    db_data = {
+                        "nickname": new_row.nickname,
+                        "comment": new_row.comment,
+                        "used": new_row.used,
+                        "data_type": new_row.data_type,
+                        "initial_value": new_row.initial_value,
+                        "retentive": new_row.retentive,
+                    }
+                    if existing_row.update_from_db(db_data):
+                        any_changes = True
+                else:
+                    # New row added externally
+                    self.all_rows[addr_key] = new_row
+                    any_changes = True
+
+            # Check for rows deleted externally
+            for addr_key in list(self.all_rows.keys()):
+                if addr_key not in new_rows:
+                    row = self.all_rows[addr_key]
+                    if not row.is_dirty:
+                        del self.all_rows[addr_key]
+                        any_changes = True
+
+            # Also update rows_by_type if loaded
+            for _type_name, rows in self.rows_by_type.items():
+                for row in rows:
+                    if row.addr_key in new_rows:
+                        new_row = new_rows[row.addr_key]
                         db_data = {
                             "nickname": new_row.nickname,
                             "comment": new_row.comment,
@@ -248,55 +389,27 @@ class SharedAddressData:
                             "initial_value": new_row.initial_value,
                             "retentive": new_row.retentive,
                         }
-                        if existing_row.update_from_db(db_data):
+                        if row.update_from_db(db_data):
                             any_changes = True
-                    else:
-                        # New row added externally
-                        self.all_rows[addr_key] = new_row
-                        any_changes = True
-
-                # Check for rows deleted externally
-                for addr_key in list(self.all_rows.keys()):
-                    if addr_key not in new_rows:
-                        row = self.all_rows[addr_key]
-                        if not row.is_dirty:
-                            del self.all_rows[addr_key]
-                            any_changes = True
-
-                # Also update rows_by_type if loaded
-                for _type_name, rows in self.rows_by_type.items():
-                    for row in rows:
-                        if row.addr_key in new_rows:
-                            new_row = new_rows[row.addr_key]
-                            db_data = {
-                                "nickname": new_row.nickname,
-                                "comment": new_row.comment,
-                                "used": new_row.used,
-                                "data_type": new_row.data_type,
-                                "initial_value": new_row.initial_value,
-                                "retentive": new_row.retentive,
-                            }
-                            if row.update_from_db(db_data):
-                                any_changes = True
 
         except Exception:
-            # Connection error, skip this reload
+            # Load error, skip this reload
             return
 
         if any_changes:
             self.notify_data_changed()
 
     def _check_file_modified(self) -> None:
-        """Check if the mdb file has been modified and reload if so."""
+        """Check if the data file has been modified and reload if so."""
         if not self._monitoring_active:
             return
 
         try:
-            if self._mdb_path and os.path.exists(self._mdb_path):
-                current_mtime = os.path.getmtime(self._mdb_path)
+            if self._file_path and os.path.exists(self._file_path):
+                current_mtime = os.path.getmtime(self._file_path)
                 if current_mtime > self._last_mtime:
                     self._last_mtime = current_mtime
-                    self._reload_from_db()
+                    self._reload_from_source()
         except Exception:
             # File might be locked during write, skip this check
             pass
@@ -392,17 +505,31 @@ class SharedAddressData:
             self.all_rows[addr_key].nickname = new_nickname
 
     def save_all_changes(self) -> int:
-        """Save all dirty rows to database.
+        """Save changes to data source.
 
         Returns:
             Number of changes saved
 
         Raises:
             Exception: If save fails
+            RuntimeError: If data source is read-only
         """
-        all_dirty_rows = []
+        if self._data_source.is_read_only:
+            raise RuntimeError("Data source is read-only")
+
+        # Build complete row set: start with all_rows, overlay with panel rows
+        # (Panel rows may have edits that aren't in all_rows)
+        rows_to_save: dict[int, AddressRow] = {}
+        all_dirty_rows: list[AddressRow] = []
+
+        # First, add all original rows
+        for addr_key, row in self.all_rows.items():
+            rows_to_save[addr_key] = row
+
+        # Then overlay with panel rows (which have any edits)
         for rows in self.rows_by_type.values():
             for row in rows:
+                rows_to_save[row.addr_key] = row
                 if row.is_dirty:
                     all_dirty_rows.append(row)
 
@@ -412,10 +539,11 @@ class SharedAddressData:
         # Capture rows that will be fully deleted (before mark_saved resets dirty state)
         rows_to_remove = [row for row in all_dirty_rows if row.needs_full_delete]
 
-        with self._get_connection() as conn:
-            count = save_changes(conn, all_dirty_rows)
+        # Pass all rows - data source decides what to save
+        # (MDB saves only dirty rows, CSV rewrites all rows with content)
+        count = self._data_source.save_changes(list(rows_to_save.values()))
 
-        # Mark rows as saved
+        # Mark dirty rows as saved
         for row in all_dirty_rows:
             row.mark_saved()
 
@@ -428,13 +556,13 @@ class SharedAddressData:
         return count
 
     def discard_all_changes(self) -> None:
-        """Discard all changes and reload from database."""
+        """Discard all changes and reload from data source."""
         # Clear cached data - panels will reload when accessed
         self.rows_by_type.clear()
+        self._views.clear()  # Clear TypeView cache so panels rebuild from fresh data
 
         # Reload all addresses
-        with self._get_connection() as conn:
-            self.all_rows = load_all_addresses(conn)
+        self.all_rows = self._data_source.load_all_addresses()
 
         self.notify_data_changed()
 

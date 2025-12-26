@@ -13,6 +13,7 @@ from .address_model import (
     validate_nickname,
 )
 from .address_panel import AddressPanel
+from .data_source import CsvDataSource, DataSource, MdbDataSource
 from .mdb_operations import MdbConnection, get_data_for_type, load_all_addresses, save_changes
 from .shared_data import SharedAddressData
 
@@ -33,6 +34,10 @@ __all__ = [
     "AddressEditorWindow",
     "SharedAddressData",
     "MdbConnection",
+    # Data sources
+    "DataSource",
+    "MdbDataSource",
+    "CsvDataSource",
     # Database operations
     "load_all_addresses",
     "get_data_for_type",

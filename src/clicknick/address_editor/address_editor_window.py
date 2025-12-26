@@ -16,9 +16,9 @@ from .address_model import AddressRow
 from .address_panel import AddressPanel
 from .block_panel import BlockPanel
 from .jump_sidebar import COMBINED_TYPES, JumpSidebar
-from .mdb_operations import MdbConnection, load_all_addresses
 from .outline_panel import OutlinePanel
 from .shared_data import SharedAddressData
+from .view_builder import build_type_view
 
 
 class NavWindow(tk.Toplevel):
@@ -149,17 +149,6 @@ class NavWindow(tk.Toplevel):
 class AddressEditorWindow(tk.Toplevel):
     """Main window for the Address Editor."""
 
-    def _get_connection(self) -> MdbConnection:
-        """Create a database connection (use as context manager).
-
-        Returns:
-            MdbConnection instance (connects when entering context)
-
-        Raises:
-            Exception: If connection fails
-        """
-        return MdbConnection.from_click_window(self.click_pid, self.click_hwnd)
-
     def _update_status(self) -> None:
         """Update the status bar with current state."""
         total_modified = self.shared_data.get_total_modified_count()
@@ -199,10 +188,8 @@ class AddressEditorWindow(tk.Toplevel):
         if self._nav_window is not None and self._nav_window.winfo_viewable():
             self._refresh_navigation()
 
-        # Notify other windows
-        # Set flag to avoid double-processing when we get notified back
-        self._ignore_next_notification = True
-        self.shared_data.notify_data_changed()
+        # Notify other windows (pass self so we skip our own notification)
+        self.shared_data.notify_data_changed(sender=self)
 
     def _schedule_revalidation(self) -> None:
         """Schedule a debounced revalidation of all panels."""
@@ -230,9 +217,8 @@ class AddressEditorWindow(tk.Toplevel):
         """Handle any data change from any panel (comment, init value, retentive)."""
         self._update_status()
 
-        # Notify other windows
-        self._ignore_next_notification = True
-        self.shared_data.notify_data_changed()
+        # Notify other windows (pass self so we skip our own notification)
+        self.shared_data.notify_data_changed(sender=self)
 
     def _hide_all_panels(self) -> None:
         """Hide all panels from view."""
@@ -294,32 +280,66 @@ class AddressEditorWindow(tk.Toplevel):
                 on_close=None,  # No close button in sidebar mode
             )
 
-            # Check if shared data already has rows for this type
-            # (from another window that already loaded this type)
-            existing_rows = self.shared_data.get_rows(type_name)
+            # Load from data source if not initialized
+            if not self.shared_data.is_initialized():
+                self.shared_data.load_initial_data()
 
-            if existing_rows is not None:
-                # Use existing shared rows
-                panel.rows = existing_rows
-                panel._all_nicknames = self.shared_data.all_nicknames
+            # Get nicknames from shared data
+            self.all_nicknames = self.shared_data.all_nicknames
+
+            # Check for existing TypeView (from another window/panel)
+            existing_view = self.shared_data.get_view(type_name)
+
+            if existing_view is not None:
+                # Use existing shared view - rows are already built
+                panel.rows = existing_view.rows
+                panel._all_nicknames = self.all_nicknames
                 panel._validate_all()
                 panel._populate_sheet_data()
                 panel._apply_filters()
+
+                # Initialize styler (uses panel's _get_block_colors_for_rows for dynamic updates)
+                from .address_row_styler import AddressRowStyler
+
+                panel._styler = AddressRowStyler(
+                    sheet=panel.sheet,
+                    rows=panel.rows,
+                    get_displayed_rows=lambda: panel._displayed_rows,
+                    combined_types=panel.combined_types,
+                    get_block_colors=panel._get_block_colors_for_rows,
+                )
+                panel._refresh_display()
             else:
-                # Load from database if not initialized
-                if not self.shared_data.is_initialized():
-                    with self._get_connection() as conn:
-                        self.shared_data.all_rows = load_all_addresses(conn)
-                    self.shared_data._initialized = True
+                # Build new view using view_builder
+                view = build_type_view(
+                    all_rows=self.shared_data.all_rows,
+                    type_key=type_name,
+                    all_nicknames=self.all_nicknames,
+                    combined_types=combined,
+                )
 
-                # Get nicknames from shared data (derived property)
-                self.all_nicknames = self.shared_data.all_nicknames
+                # Store view in shared data for other windows/panels
+                self.shared_data.set_view(type_name, view)
+                self.shared_data.set_rows(type_name, view.rows)
 
-                # Load panel data from preloaded all_rows
-                panel.load_data(self.shared_data.all_rows, self.all_nicknames)
+                # Load panel from view
+                panel.rows = view.rows
+                panel._all_nicknames = self.all_nicknames
+                panel._validate_all()
+                panel._populate_sheet_data()
+                panel._apply_filters()
 
-                # Store rows in shared data for other windows
-                self.shared_data.set_rows(type_name, panel.rows)
+                # Initialize styler (uses panel's _get_block_colors_for_rows for dynamic updates)
+                from .address_row_styler import AddressRowStyler
+
+                panel._styler = AddressRowStyler(
+                    sheet=panel.sheet,
+                    rows=panel.rows,
+                    get_displayed_rows=lambda: panel._displayed_rows,
+                    combined_types=panel.combined_types,
+                    get_block_colors=panel._get_block_colors_for_rows,
+                )
+                panel._refresh_display()
 
             self.panels[type_name] = panel
 
@@ -711,25 +731,52 @@ class AddressEditorWindow(tk.Toplevel):
             messagebox.showerror("Database Error", str(e))
             self.destroy()
 
-    def _on_shared_data_changed(self) -> None:
+    def _on_shared_data_changed(self, sender: object = None) -> None:
         """Handle notification that shared data has changed.
 
         Called when another window modifies the shared data, or when
         external changes are detected in the MDB file.
         Refreshes all panels to show the updated data.
+
+        Args:
+            sender: The object that triggered the change (if any)
         """
         # Skip if this notification was triggered by our own change
-        if getattr(self, "_ignore_next_notification", False):
-            self._ignore_next_notification = False
+        if sender is self:
             return
 
         # Update local reference to nicknames
         self.all_nicknames = self.shared_data.all_nicknames
 
-        # Refresh all panels - use refresh_from_external to sync sheet cell data
-        for panel in self.panels.values():
+        # Check if views were cleared (e.g., after discard_all_changes)
+        # If so, we need to rebuild panel data, not just refresh display
+        for type_name, panel in self.panels.items():
             panel._all_nicknames = self.all_nicknames
-            panel.refresh_from_external()
+
+            if self.shared_data.get_view(type_name) is None:
+                # View was cleared - rebuild from fresh data
+                from .view_builder import build_type_view
+
+                combined = COMBINED_TYPES.get(type_name)
+                view = build_type_view(
+                    all_rows=self.shared_data.all_rows,
+                    type_key=type_name,
+                    all_nicknames=self.all_nicknames,
+                    combined_types=combined,
+                )
+                self.shared_data.set_view(type_name, view)
+                self.shared_data.set_rows(type_name, view.rows)
+
+                # Replace panel's rows with fresh ones
+                panel.rows = view.rows
+                panel._validate_all()
+                # Rebuild sheet data from scratch
+                panel._populate_sheet_data()
+                panel._apply_filters()
+                panel._refresh_display()
+            else:
+                # Normal refresh - just sync display
+                panel.refresh_from_external()
 
         # Refresh outline if visible
         if self._nav_window is not None and self._nav_window.winfo_viewable():
@@ -798,39 +845,24 @@ class AddressEditorWindow(tk.Toplevel):
     def __init__(
         self,
         parent: tk.Widget,
-        click_pid: int,
-        click_hwnd: int,
-        shared_data: SharedAddressData | None = None,
+        shared_data: SharedAddressData,
     ):
         """Initialize the Address Editor window.
 
         Args:
             parent: Parent widget (main app window)
-            click_pid: Process ID of the CLICK software
-            click_hwnd: Window handle of the CLICK software
-            shared_data: Optional shared data store for multi-window support.
-                         If None, creates its own data store.
+            shared_data: Shared data store for multi-window support
         """
         super().__init__(parent)
 
         self.title("ClickNick Address Editor")
         self.geometry("1025x700")
 
-        self.click_pid = click_pid
-        self.click_hwnd = click_hwnd
-
-        # Use shared data if provided, otherwise create our own
-        if shared_data is not None:
-            self.shared_data = shared_data
-            self._owns_shared_data = False
-        else:
-            self.shared_data = SharedAddressData(click_pid, click_hwnd)
-            self._owns_shared_data = True
+        self.shared_data = shared_data
 
         self.panels: dict[str, AddressPanel] = {}  # type_name -> panel
         self.all_nicknames: dict[int, str] = {}
         self.current_type: str = ""
-        self._ignore_next_notification = False  # Flag to prevent double-processing
         self._nav_window: NavWindow | None = None
 
         # Debounce timer for batching nickname changes (e.g., from Replace All)

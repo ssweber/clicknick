@@ -14,7 +14,15 @@ from typing import TYPE_CHECKING
 from tksheet import Sheet, num2alpha
 
 from .address_model import NON_EDITABLE_TYPES
+from .address_row_styler import AddressRowStyler
 from .char_limit_tooltip import CharLimitTooltip
+from .panel_constants import (
+    COL_COMMENT,
+    COL_INIT_VALUE,
+    COL_NICKNAME,
+    COL_RETENTIVE,
+    COL_USED,
+)
 
 # --- LOGGING CONFIGURATION ---
 DEBUG_MODE = False  # <--- CHANGE THIS TO True TO ENABLE DEBUGGING
@@ -32,13 +40,10 @@ else:
 # -----------------------------
 
 from .address_model import (
-    ADDRESS_RANGES,
-    DEFAULT_RETENTIVE,
     MEMORY_TYPE_TO_DATA_TYPE,
     PAIRED_RETENTIVE_TYPES,
     AddressRow,
     DataType,
-    validate_nickname,
 )
 from .blocktag_model import parse_block_tag
 
@@ -82,12 +87,12 @@ class AddressPanel(ttk.Frame):
     Supports combined types (e.g., T+TD interleaved) via combined_types parameter.
     """
 
-    # Column indices (Address is now in row index, not a data column)
-    COL_USED = 0
-    COL_NICKNAME = 1
-    COL_COMMENT = 2
-    COL_INIT_VALUE = 3
-    COL_RETENTIVE = 4
+    # Column indices imported from panel_constants
+    COL_USED = COL_USED
+    COL_NICKNAME = COL_NICKNAME
+    COL_COMMENT = COL_COMMENT
+    COL_INIT_VALUE = COL_INIT_VALUE
+    COL_RETENTIVE = COL_RETENTIVE
 
     def _is_bit_type_panel(self) -> bool:
         """Check if this panel displays a single BIT-type memory (X, Y, C, SC).
@@ -122,61 +127,6 @@ class AddressPanel(ttk.Frame):
         if self.on_close:
             self.on_close(self)
 
-    def _get_block_colors_for_rows(self) -> dict[int, str]:
-        """Compute block background colors for each row address.
-
-        Parses block tags from row comments to determine which rows
-        should have colored row indices. Nested blocks override outer blocks.
-
-        Returns:
-            Dict mapping row index (in self.rows) to bg color string.
-        """
-
-        # Build list of colored blocks: (start_idx, end_idx, bg_color)
-        # We use row indices not addresses for easier lookup
-        colored_blocks: list[tuple[int, int | None, str]] = []
-
-        # Stack for tracking open tags: name -> [(start_idx, bg_color), ...]
-        open_tags: dict[str, list[tuple[int, str | None]]] = {}
-
-        for row_idx, row in enumerate(self.rows):
-            block_tag = parse_block_tag(row.comment)
-            if not block_tag.name:
-                continue
-
-            if block_tag.tag_type == "self-closing":
-                if block_tag.bg_color:
-                    colored_blocks.append((row_idx, row_idx, block_tag.bg_color))
-            elif block_tag.tag_type == "open":
-                if block_tag.name not in open_tags:
-                    open_tags[block_tag.name] = []
-                open_tags[block_tag.name].append((row_idx, block_tag.bg_color))
-            elif block_tag.tag_type == "close":
-                if block_tag.name in open_tags and open_tags[block_tag.name]:
-                    start_idx, start_bg_color = open_tags[block_tag.name].pop()
-                    if start_bg_color:
-                        colored_blocks.append((start_idx, row_idx, start_bg_color))
-
-        # Handle unclosed tags as singular points
-        for stack in open_tags.values():
-            for start_idx, bg_color in stack:
-                if bg_color:
-                    colored_blocks.append((start_idx, start_idx, bg_color))
-
-        # Build row_idx -> color map, with inner blocks overriding outer
-        # Sort by range size descending (larger ranges first), then by start index
-        # This ensures inner (smaller) blocks are processed last and override
-        colored_blocks.sort(key=lambda b: (-(b[1] - b[0]) if b[1] else 0, b[0]))
-
-        row_colors: dict[int, str] = {}
-        for start_idx, end_idx, bg_color in colored_blocks:
-            if end_idx is None:
-                end_idx = start_idx
-            for idx in range(start_idx, end_idx + 1):
-                row_colors[idx] = bg_color
-
-        return row_colors
-
     def _get_init_value_hint(self, data_type: int) -> str:
         """Get the hint text for initial value based on data type.
 
@@ -209,163 +159,6 @@ class AddressPanel(ttk.Frame):
             return "Text string"
         else:
             return "Enter initial value"
-
-    def _update_cell_notes(self) -> None:
-        """Update cell notes for validation errors and hints.
-
-        Uses a local cache to prevent calling sheet.note() redundantly.
-        """
-        # 1. Calculate the 'Target State' (what the sheet should look like right now)
-        target_notes: dict[tuple[int, int], str] = {}
-
-        for data_idx, row in enumerate(self.rows):
-            # --- Nickname Column ---
-            nickname_note = None
-            if row.has_reportable_error:
-                nickname_note = row.validation_error
-
-            if nickname_note:
-                target_notes[(data_idx, self.COL_NICKNAME)] = nickname_note
-
-            # --- Init Value Column ---
-            init_note = None
-            if not row.initial_value_valid and row.initial_value != "":
-                init_note = row.initial_value_error
-
-            if init_note:
-                target_notes[(data_idx, self.COL_INIT_VALUE)] = init_note
-
-        # 2. Compare Target vs Cache
-        # If the sheet is new, self._note_cache is empty, so everything gets drawn.
-
-        # A. Remove notes that are in cache but NOT in target
-        for cell_key in list(self._note_cache.keys()):
-            if cell_key not in target_notes:
-                # Note exists in UI but shouldn't anymore -> Remove it
-                self.sheet.note(cell_key[0], cell_key[1], note=None)
-                del self._note_cache[cell_key]
-
-        # B. Add/Update notes that are in target
-        for cell_key, note_text in target_notes.items():
-            current_cached_text = self._note_cache.get(cell_key)
-
-            # Only talk to tksheet if the text is different/new
-            if current_cached_text != note_text:
-                self.sheet.note(cell_key[0], cell_key[1], note=note_text)
-                self._note_cache[cell_key] = note_text
-
-    def _apply_row_styling(self) -> None:
-        """Apply visual styling to rows based on state.
-
-        Note: highlight_cells() uses DATA row indices, not display indices.
-        This ensures highlights persist correctly when rows are filtered.
-        """
-        # Clear all existing highlights first
-        self.sheet.dehighlight_all()
-
-        # Get block colors for row indices
-        block_colors = self._get_block_colors_for_rows()
-
-        for data_idx in self._displayed_rows:
-            row = self.rows[data_idx]
-
-            # Apply block color to row index only (not data cells)
-            if data_idx in block_colors:
-                # Import here to avoid circular imports
-                from .colors import get_block_color_hex
-
-                # Convert color name to hex (supports both names and hex codes)
-                hex_color = get_block_color_hex(block_colors[data_idx])
-                if hex_color:
-                    self.sheet.highlight_cells(
-                        row=data_idx,
-                        bg=hex_color,
-                        canvas="row_index",
-                    )
-
-            # Alternate row colors for combined types to distinguish between types
-            if self.combined_types and len(self.combined_types) > 1:
-                try:
-                    type_idx = self.combined_types.index(row.memory_type)
-                except ValueError:
-                    type_idx = 0
-
-                if type_idx == 1:  # Second type gets slight background tint
-                    for col in range(5):  # 5 data columns
-                        self.sheet.highlight_cells(
-                            row=data_idx,
-                            column=col,
-                            bg="#f0f8ff",  # Light blue tint for TD/CTD rows
-                        )
-
-            # Invalid rows get red background on nickname cell (or orange if ignored)
-            if row.has_reportable_error:
-                # Red for real errors
-                self.sheet.highlight_cells(
-                    row=data_idx,
-                    column=self.COL_NICKNAME,
-                    bg="#ffcccc",
-                    fg="black",
-                )
-            # Dirty nickname gets light yellow background
-            elif row.is_nickname_dirty:
-                self.sheet.highlight_cells(
-                    row=data_idx,
-                    column=self.COL_NICKNAME,
-                    bg="#ffffcc",
-                    fg="black",
-                )
-
-            # Dirty comment gets light yellow background
-            if row.is_comment_dirty:
-                self.sheet.highlight_cells(
-                    row=data_idx,
-                    column=self.COL_COMMENT,
-                    bg="#ffffcc",
-                    fg="black",
-                )
-
-            # Dirty initial value gets light yellow background
-            if row.is_initial_value_dirty:
-                self.sheet.highlight_cells(
-                    row=data_idx,
-                    column=self.COL_INIT_VALUE,
-                    bg="#ffffcc",
-                    fg="black",
-                )
-
-            # Dirty retentive gets light yellow background
-            if row.is_retentive_dirty:
-                self.sheet.highlight_cells(
-                    row=data_idx,
-                    column=self.COL_RETENTIVE,
-                    bg="#ffffcc",
-                    fg="black",
-                )
-
-            # Invalid initial value gets red background
-            if not row.initial_value_valid and row.initial_value != "":
-                self.sheet.highlight_cells(
-                    row=data_idx,
-                    column=self.COL_INIT_VALUE,
-                    bg="#ffcccc",
-                    fg="black",
-                )
-
-            # Non-editable types get gray background on init/retentive columns
-            if not row.can_edit_initial_value:
-                self.sheet.highlight_cells(
-                    row=data_idx,
-                    column=self.COL_INIT_VALUE,
-                    bg="#e0e0e0",
-                    fg="#666666",
-                )
-                self.sheet.highlight_cells(
-                    row=data_idx,
-                    column=self.COL_RETENTIVE,
-                    bg="#e0e0e0",
-                    fg="#666666",
-                )
 
     def _toggle_init_ret_columns(self) -> None:
         """Toggle visibility of Init Value and Retentive columns."""
@@ -402,8 +195,8 @@ class AddressPanel(ttk.Frame):
 
     def _refresh_display(self) -> None:
         """Refresh styling and status (lightweight, no data rebuild)."""
-        self._apply_row_styling()
-        self._update_cell_notes()
+        if self._styler:
+            self._styler.apply_all_styling()
         self._update_status()
         # Use set_refresh_timer() instead of redraw() to prevent multiple redraws
         # and ensure proper refresh after set_cell_data() calls
@@ -554,34 +347,6 @@ class AddressPanel(ttk.Frame):
         """Validate all rows against current nickname registry."""
         for row in self.rows:
             row.validate(self._all_nicknames)
-
-    def _fire_batched_notifications(self) -> None:
-        """Fire batched notifications for all pending changes."""
-        self._notification_timer = None
-
-        # Fire nickname changes (batched)
-        if self._pending_nickname_changes and self.on_nickname_changed:
-            for addr_key, old_nick, new_nick in self._pending_nickname_changes:
-                self.on_nickname_changed(addr_key, old_nick, new_nick)
-        self._pending_nickname_changes = []
-
-        # Fire data change notification once
-        if self._pending_data_changed and self.on_data_changed:
-            self.on_data_changed()
-        self._pending_data_changed = False
-
-    def _schedule_notifications(self) -> None:
-        """Schedule batched notifications after a short delay.
-
-        This debounces rapid changes (like Replace All) to avoid
-        triggering expensive cross-panel validation for each cell.
-        """
-        # Cancel any existing timer
-        if self._notification_timer is not None:
-            self.after_cancel(self._notification_timer)
-
-        # Schedule notification after 50ms idle
-        self._notification_timer = self.after(50, self._fire_batched_notifications)
 
     def _bulk_validate(self, event) -> object:
         """Bulk validation handler for paste and multi-cell edits.
@@ -885,17 +650,13 @@ class AddressPanel(ttk.Frame):
         # Refresh styling and status
         self._refresh_display()
 
-        # Queue notifications for batched delivery (debounced)
-        # This prevents expensive cross-panel validation for each cell in bulk operations
-        if nickname_changes:
-            self._pending_nickname_changes.extend(nickname_changes)
+        # Notify parent immediately - window layer handles debouncing
+        if nickname_changes and self.on_nickname_changed:
+            for addr_key, old_nick, new_nick in nickname_changes:
+                self.on_nickname_changed(addr_key, old_nick, new_nick)
 
-        if data_changed:
-            self._pending_data_changed = True
-
-        # Schedule batched notification delivery
-        if nickname_changes or data_changed:
-            self._schedule_notifications()
+        if data_changed and self.on_data_changed:
+            self.on_data_changed()
 
     def _setup_header_notes(self) -> None:
         """Set up tooltip notes on column headers with hints."""
@@ -1125,12 +886,65 @@ class AddressPanel(ttk.Frame):
         self._selected_row_idx: int | None = None
         self._selected_row_visual_offset = None
 
-        # Debounce timer for batching notifications
-        self._notification_timer: str | None = None
-        self._pending_nickname_changes: list[tuple[int, str, str]] = []
-        self._pending_data_changed: bool = False
+        # Styler will be initialized after load_data() populates self.rows
+        self._styler: AddressRowStyler | None = None
 
         self._create_widgets()
+
+    def _get_block_colors_for_rows(self) -> dict[int, str]:
+        """Compute block background colors for each row address.
+
+        Parses block tags from row comments to determine which rows
+        should have colored row indices. Nested blocks override outer blocks.
+
+        Returns:
+            Dict mapping row index (in self.rows) to bg color string.
+        """
+
+        # Build list of colored blocks: (start_idx, end_idx, bg_color)
+        # We use row indices not addresses for easier lookup
+        colored_blocks: list[tuple[int, int | None, str]] = []
+
+        # Stack for tracking open tags: name -> [(start_idx, bg_color), ...]
+        open_tags: dict[str, list[tuple[int, str | None]]] = {}
+
+        for row_idx, row in enumerate(self.rows):
+            block_tag = parse_block_tag(row.comment)
+            if not block_tag.name:
+                continue
+
+            if block_tag.tag_type == "self-closing":
+                if block_tag.bg_color:
+                    colored_blocks.append((row_idx, row_idx, block_tag.bg_color))
+            elif block_tag.tag_type == "open":
+                if block_tag.name not in open_tags:
+                    open_tags[block_tag.name] = []
+                open_tags[block_tag.name].append((row_idx, block_tag.bg_color))
+            elif block_tag.tag_type == "close":
+                if block_tag.name in open_tags and open_tags[block_tag.name]:
+                    start_idx, start_bg_color = open_tags[block_tag.name].pop()
+                    if start_bg_color:
+                        colored_blocks.append((start_idx, row_idx, start_bg_color))
+
+        # Handle unclosed tags as singular points
+        for stack in open_tags.values():
+            for start_idx, bg_color in stack:
+                if bg_color:
+                    colored_blocks.append((start_idx, start_idx, bg_color))
+
+        # Build row_idx -> color map, with inner blocks overriding outer
+        # Sort by range size descending (larger ranges first), then by start index
+        # This ensures inner (smaller) blocks are processed last and override
+        colored_blocks.sort(key=lambda b: (-(b[1] - b[0]) if b[1] else 0, b[0]))
+
+        row_colors: dict[int, str] = {}
+        for start_idx, end_idx, bg_color in colored_blocks:
+            if end_idx is None:
+                end_idx = start_idx
+            for idx in range(start_idx, end_idx + 1):
+                row_colors[idx] = bg_color
+
+        return row_colors
 
     def _populate_sheet_data(self) -> None:
         """Populate sheet with ALL row data (called once at load time).
@@ -1165,168 +979,6 @@ class AddressPanel(ttk.Frame):
     def _validate_row(self, row: AddressRow) -> None:
         """Validate a single row."""
         row.validate(self._all_nicknames)
-
-    def _create_row_from_data(
-        self,
-        mem_type: str,
-        addr: int,
-        data: dict | None,
-        all_nicknames: dict[int, str],
-    ) -> AddressRow:
-        """Create an AddressRow from database data or defaults.
-
-        Args:
-            mem_type: Memory type (X, Y, T, TD, etc.)
-            addr: Address number
-            data: Data dict from database, or None for virtual row
-            all_nicknames: Global nicknames for validation
-
-        Returns:
-            Configured AddressRow
-        """
-        default_data_type = MEMORY_TYPE_TO_DATA_TYPE.get(mem_type, 0)
-        default_retentive = DEFAULT_RETENTIVE.get(mem_type, False)
-
-        if data:
-            nickname = data.get("nickname", "")
-            comment = data.get("comment", "")
-            used = data.get("used", False)
-            data_type = data.get("data_type", default_data_type)
-            initial_value = data.get("initial_value", "")
-            retentive = data.get("retentive", default_retentive)
-
-            row = AddressRow(
-                memory_type=mem_type,
-                address=addr,
-                nickname=nickname,
-                original_nickname=nickname,
-                comment=comment,
-                original_comment=comment,
-                used=used,
-                exists_in_mdb=True,
-                data_type=data_type,
-                initial_value=initial_value,
-                original_initial_value=initial_value,
-                retentive=retentive,
-                original_retentive=retentive,
-            )
-
-            # Mark X/SC/SD rows that load with invalid nicknames
-            if mem_type in ("X", "SC", "SD") and nickname:
-                is_valid, _ = validate_nickname(nickname, all_nicknames, row.addr_key)
-                if not is_valid:
-                    row.loaded_with_error = True
-        else:
-            row = AddressRow(
-                memory_type=mem_type,
-                address=addr,
-                exists_in_mdb=False,
-                data_type=default_data_type,
-                retentive=default_retentive,
-                original_retentive=default_retentive,
-            )
-
-        return row
-
-    def _build_interleaved_rows(
-        self,
-        all_rows: dict[int, AddressRow],
-        types: list[str],
-        all_nicknames: dict[int, str],
-    ) -> list[AddressRow]:
-        """Build interleaved rows for combined types.
-
-        For T+TD: T1, TD1, T2, TD2, ...
-        For CT+CTD: CT1, CTD1, CT2, CTD2, ...
-        """
-        from .mdb_operations import get_data_for_type
-
-        # Get existing data for all types from preloaded data
-        existing_by_type = {}
-        for mem_type in types:
-            existing_by_type[mem_type] = get_data_for_type(all_rows, mem_type)
-
-        # Find the common address range
-        all_starts = []
-        all_ends = []
-        for mem_type in types:
-            if mem_type in ADDRESS_RANGES:
-                start, end = ADDRESS_RANGES[mem_type]
-                all_starts.append(start)
-                all_ends.append(end)
-
-        if not all_starts:
-            return []
-
-        # Use the overlapping range
-        range_start = max(all_starts)
-        range_end = min(all_ends)
-
-        rows = []
-        for addr in range(range_start, range_end + 1):
-            # Add a row for each type at this address (interleaved)
-            for mem_type in types:
-                data = existing_by_type[mem_type].get(addr)
-                row = self._create_row_from_data(mem_type, addr, data, all_nicknames)
-                rows.append(row)
-
-        return rows
-
-    def _build_single_type_rows(
-        self,
-        all_rows: dict[int, AddressRow],
-        mem_type: str,
-        all_nicknames: dict[int, str],
-    ) -> list[AddressRow]:
-        """Build rows for a single memory type."""
-        from .mdb_operations import get_data_for_type
-
-        start, end = ADDRESS_RANGES[mem_type]
-        existing = get_data_for_type(all_rows, mem_type)
-
-        rows = []
-        for addr in range(start, end + 1):
-            data = existing.get(addr)
-            row = self._create_row_from_data(mem_type, addr, data, all_nicknames)
-            rows.append(row)
-
-        return rows
-
-    def load_data(
-        self,
-        all_rows: dict[int, AddressRow],
-        all_nicknames: dict[int, str],
-    ) -> None:
-        """Load all addresses for this memory type.
-
-        Args:
-            all_rows: Dict mapping AddrKey to AddressRow (preloaded data)
-            all_nicknames: Global dict of all nicknames for validation
-        """
-        # Suppress notifications during load to avoid triggering sync logic
-        self._suppress_notifications = True
-
-        try:
-            # Check if this is a combined type panel
-            if self.combined_types and len(self.combined_types) > 1:
-                self.rows = self._build_interleaved_rows(
-                    all_rows, self.combined_types, all_nicknames
-                )
-            else:
-                self.rows = self._build_single_type_rows(all_rows, self.memory_type, all_nicknames)
-
-            self._all_nicknames = all_nicknames
-            self._validate_all()
-
-            # Populate sheet with ALL data once (use display_rows for filtering)
-            self._populate_sheet_data()
-
-            # Apply initial filters (uses display_rows internally)
-            self._apply_filters()
-
-            self._refresh_display()
-        finally:
-            self._suppress_notifications = False
 
     def update_from_external(
         self,
@@ -1435,21 +1087,6 @@ class AddressPanel(ttk.Frame):
         """Get count of rows with validation errors."""
         return sum(1 for row in self.rows if row.has_reportable_error)
 
-    def _clear_row_highlight(self, data_idx: int) -> None:
-        """Clear the temporary highlight from a row and restore normal styling.
-
-        Args:
-            data_idx: The data index of the row to clear
-        """
-        # Dehighlight the row
-        for col in range(5):  # 5 data columns
-            self.sheet.dehighlight_cells(row=data_idx, column=col)
-        self.sheet.dehighlight_cells(row=data_idx, canvas="row_index")
-
-        # Re-apply normal styling (this will restore any state-based highlights)
-        self._apply_row_styling()
-        self.sheet.set_refresh_timer()
-
     def _highlight_row(self, data_idx: int, duration_ms: int = 1500) -> None:
         """Temporarily highlight a row to draw user attention.
 
@@ -1457,24 +1094,12 @@ class AddressPanel(ttk.Frame):
             data_idx: The data index of the row to highlight
             duration_ms: How long to show the highlight in milliseconds
         """
-        # Highlight all visible columns with a distinct color
-        highlight_color = "#90EE90"  # Light green
-        for col in range(5):  # 5 data columns
-            self.sheet.highlight_cells(
-                row=data_idx,
-                column=col,
-                bg=highlight_color,
+        if self._styler:
+            self._styler.highlight_row_temporary(
+                data_idx=data_idx,
+                duration_ms=duration_ms,
+                after_func=self.after,
             )
-        # Also highlight the row index
-        self.sheet.highlight_cells(
-            row=data_idx,
-            bg=highlight_color,
-            canvas="row_index",
-        )
-        self.sheet.set_refresh_timer()
-
-        # Schedule removal of highlight
-        self.after(duration_ms, lambda: self._clear_row_highlight(data_idx))
 
     def scroll_to_address(
         self, address: int, memory_type: str | None = None, align_top: bool = False
