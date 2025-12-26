@@ -762,10 +762,35 @@ class AddressEditorWindow(tk.Toplevel):
         # Update local reference to nicknames
         self.all_nicknames = self.shared_data.all_nicknames
 
-        # Refresh all panels - use refresh_from_external to sync sheet cell data
-        for panel in self.panels.values():
+        # Check if views were cleared (e.g., after discard_all_changes)
+        # If so, we need to rebuild panel data, not just refresh display
+        for type_name, panel in self.panels.items():
             panel._all_nicknames = self.all_nicknames
-            panel.refresh_from_external()
+
+            if self.shared_data.get_view(type_name) is None:
+                # View was cleared - rebuild from fresh data
+                from .view_builder import build_type_view
+
+                combined = COMBINED_TYPES.get(type_name)
+                view = build_type_view(
+                    all_rows=self.shared_data.all_rows,
+                    type_key=type_name,
+                    all_nicknames=self.all_nicknames,
+                    combined_types=combined,
+                )
+                self.shared_data.set_view(type_name, view)
+                self.shared_data.set_rows(type_name, view.rows)
+
+                # Replace panel's rows with fresh ones
+                panel.rows = view.rows
+                panel._validate_all()
+                # Rebuild sheet data from scratch
+                panel._populate_sheet_data()
+                panel._apply_filters()
+                panel._refresh_display()
+            else:
+                # Normal refresh - just sync display
+                panel.refresh_from_external()
 
         # Refresh outline if visible
         if self._nav_window is not None and self._nav_window.winfo_viewable():

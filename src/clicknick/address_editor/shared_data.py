@@ -548,6 +548,7 @@ class SharedAddressData:
         """Discard all changes and reload from database."""
         # Clear cached data - panels will reload when accessed
         self.rows_by_type.clear()
+        self._views.clear()  # Clear TypeView cache so panels rebuild from fresh data
 
         # Reload all addresses
         with self._get_connection() as conn:
