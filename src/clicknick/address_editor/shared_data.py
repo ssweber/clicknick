@@ -278,14 +278,18 @@ class SharedAddressData:
         self._windows.clear()
         self.rows_by_type.clear()  # Clear cached data since DB is gone
 
-    def notify_data_changed(self) -> None:
+    def notify_data_changed(self, sender: object = None) -> None:
         """Notify all observers that data has changed.
 
         Call this after modifying shared data to update all windows.
+
+        Args:
+            sender: The object that triggered the change (allows observers
+                    to skip processing if they are the sender)
         """
         for callback in self._observers:
             try:
-                callback()
+                callback(sender)
             except Exception:
                 pass  # Don't let one observer's error break others
 

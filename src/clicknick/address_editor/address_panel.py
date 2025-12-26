@@ -351,34 +351,6 @@ class AddressPanel(ttk.Frame):
         for row in self.rows:
             row.validate(self._all_nicknames)
 
-    def _fire_batched_notifications(self) -> None:
-        """Fire batched notifications for all pending changes."""
-        self._notification_timer = None
-
-        # Fire nickname changes (batched)
-        if self._pending_nickname_changes and self.on_nickname_changed:
-            for addr_key, old_nick, new_nick in self._pending_nickname_changes:
-                self.on_nickname_changed(addr_key, old_nick, new_nick)
-        self._pending_nickname_changes = []
-
-        # Fire data change notification once
-        if self._pending_data_changed and self.on_data_changed:
-            self.on_data_changed()
-        self._pending_data_changed = False
-
-    def _schedule_notifications(self) -> None:
-        """Schedule batched notifications after a short delay.
-
-        This debounces rapid changes (like Replace All) to avoid
-        triggering expensive cross-panel validation for each cell.
-        """
-        # Cancel any existing timer
-        if self._notification_timer is not None:
-            self.after_cancel(self._notification_timer)
-
-        # Schedule notification after 50ms idle
-        self._notification_timer = self.after(50, self._fire_batched_notifications)
-
     def _bulk_validate(self, event) -> object:
         """Bulk validation handler for paste and multi-cell edits.
 
@@ -681,17 +653,13 @@ class AddressPanel(ttk.Frame):
         # Refresh styling and status
         self._refresh_display()
 
-        # Queue notifications for batched delivery (debounced)
-        # This prevents expensive cross-panel validation for each cell in bulk operations
-        if nickname_changes:
-            self._pending_nickname_changes.extend(nickname_changes)
+        # Notify parent immediately - window layer handles debouncing
+        if nickname_changes and self.on_nickname_changed:
+            for addr_key, old_nick, new_nick in nickname_changes:
+                self.on_nickname_changed(addr_key, old_nick, new_nick)
 
-        if data_changed:
-            self._pending_data_changed = True
-
-        # Schedule batched notification delivery
-        if nickname_changes or data_changed:
-            self._schedule_notifications()
+        if data_changed and self.on_data_changed:
+            self.on_data_changed()
 
     def _setup_header_notes(self) -> None:
         """Set up tooltip notes on column headers with hints."""
@@ -920,11 +888,6 @@ class AddressPanel(ttk.Frame):
         # Track selected row for filter changes (actual row index in self.rows)
         self._selected_row_idx: int | None = None
         self._selected_row_visual_offset = None
-
-        # Debounce timer for batching notifications
-        self._notification_timer: str | None = None
-        self._pending_nickname_changes: list[tuple[int, str, str]] = []
-        self._pending_data_changed: bool = False
 
         # Styler will be initialized after load_data() populates self.rows
         self._styler: AddressRowStyler | None = None

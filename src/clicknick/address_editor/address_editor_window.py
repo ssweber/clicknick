@@ -200,10 +200,8 @@ class AddressEditorWindow(tk.Toplevel):
         if self._nav_window is not None and self._nav_window.winfo_viewable():
             self._refresh_navigation()
 
-        # Notify other windows
-        # Set flag to avoid double-processing when we get notified back
-        self._ignore_next_notification = True
-        self.shared_data.notify_data_changed()
+        # Notify other windows (pass self so we skip our own notification)
+        self.shared_data.notify_data_changed(sender=self)
 
     def _schedule_revalidation(self) -> None:
         """Schedule a debounced revalidation of all panels."""
@@ -231,9 +229,8 @@ class AddressEditorWindow(tk.Toplevel):
         """Handle any data change from any panel (comment, init value, retentive)."""
         self._update_status()
 
-        # Notify other windows
-        self._ignore_next_notification = True
-        self.shared_data.notify_data_changed()
+        # Notify other windows (pass self so we skip our own notification)
+        self.shared_data.notify_data_changed(sender=self)
 
     def _hide_all_panels(self) -> None:
         """Hide all panels from view."""
@@ -748,16 +745,18 @@ class AddressEditorWindow(tk.Toplevel):
             messagebox.showerror("Database Error", str(e))
             self.destroy()
 
-    def _on_shared_data_changed(self) -> None:
+    def _on_shared_data_changed(self, sender: object = None) -> None:
         """Handle notification that shared data has changed.
 
         Called when another window modifies the shared data, or when
         external changes are detected in the MDB file.
         Refreshes all panels to show the updated data.
+
+        Args:
+            sender: The object that triggered the change (if any)
         """
         # Skip if this notification was triggered by our own change
-        if getattr(self, "_ignore_next_notification", False):
-            self._ignore_next_notification = False
+        if sender is self:
             return
 
         # Update local reference to nicknames
@@ -867,7 +866,6 @@ class AddressEditorWindow(tk.Toplevel):
         self.panels: dict[str, AddressPanel] = {}  # type_name -> panel
         self.all_nicknames: dict[int, str] = {}
         self.current_type: str = ""
-        self._ignore_next_notification = False  # Flag to prevent double-processing
         self._nav_window: NavWindow | None = None
 
         # Debounce timer for batching nickname changes (e.g., from Replace All)
