@@ -6,7 +6,7 @@ from .filters import ContainsFilter, ContainsPlusFilter, NoneFilter, PrefixFilte
 from .mdb_shared import (
     create_access_connection,
     find_click_database,
-    get_available_access_drivers,
+    has_access_driver,
 )
 from .nickname import Nickname
 
@@ -246,7 +246,7 @@ class NicknameManager:
 
     def has_access_driver(self) -> bool:
         """Check if any Microsoft Access ODBC driver is available."""
-        return len(get_available_access_drivers()) > 0
+        return has_access_driver()
 
     def _convert_database_data_type(self, text: str) -> str:
         type_mapping = {0: "BIT", 1: "INT", 2: "INT2", 3: "FLOAT", 4: "HEX", 6: "TEXT"}

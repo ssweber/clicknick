@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from .address_model import AddressRow
 
 # CSV column names (matching CLICK software export format)
-CSV_COLUMNS = ["Address", "Nickname", "Data Type", "Initial Value", "Retentive", "Address Comment"]
+CSV_COLUMNS = ["Address", "Data Type", "Initial Value", "Retentive", "Address Comment"]
 
 # Data type string to code mapping
 DATA_TYPE_STR_TO_CODE: dict[str, int] = {
@@ -134,11 +134,19 @@ class MdbDataSource(DataSource):
             return load_all_addresses(conn)
 
     def save_changes(self, rows: Sequence[AddressRow]) -> int:
-        """Save dirty rows to the MDB database."""
+        """Save dirty rows to the MDB database.
+
+        Filters to only dirty rows before saving.
+        """
         from .mdb_operations import MdbConnection, save_changes
 
+        # MDB only saves dirty rows
+        dirty_rows = [row for row in rows if row.is_dirty]
+        if not dirty_rows:
+            return 0
+
         with MdbConnection(self._db_path) as conn:
-            return save_changes(conn, rows)
+            return save_changes(conn, dirty_rows)
 
     @property
     def supports_used_field(self) -> bool:
@@ -196,7 +204,7 @@ class CsvDataSource(DataSource):
             DEFAULT_RETENTIVE,
             MEMORY_TYPE_TO_DATA_TYPE,
             AddressRow,
-            make_addr_key,
+            get_addr_key,
         )
 
         result: dict[int, AddressRow] = {}
@@ -246,7 +254,7 @@ class CsvDataSource(DataSource):
                     comment = row.get("Address Comment", "").strip()
                     initial_value = row.get("Initial Value", "").strip()
 
-                    addr_key = make_addr_key(mem_type, address)
+                    addr_key = get_addr_key(mem_type, address)
 
                     addr_row = AddressRow(
                         memory_type=mem_type,
@@ -275,31 +283,32 @@ class CsvDataSource(DataSource):
         return result
 
     def save_changes(self, rows: Sequence[AddressRow]) -> int:
-        """Save changes to the CSV file.
+        """Save to the CSV file.
 
         Rewrites the entire CSV with all rows that have content.
 
         Args:
-            rows: Sequence of AddressRow objects
+            rows: Sequence of all AddressRow objects
 
         Returns:
             Number of rows written
         """
-        # Collect all rows with content (from all rows, not just dirty)
+        # Collect all rows with content
         rows_to_write = []
         for row in rows:
-            # Write rows that have nickname or comment (or are marked as needing update)
-            if row.nickname or row.comment or row.is_dirty:
-                # Skip rows that are being deleted
-                if row.needs_full_delete:
-                    continue
+            # Skip rows being deleted
+            if row.needs_full_delete:
+                continue
+            # Write rows that have nickname or comment
+            if row.nickname or row.comment:
                 rows_to_write.append(row)
 
         # Sort by memory type order and address
-        from .address_model import MEMORY_TYPE_ORDER
+        from .address_model import MEMORY_TYPE_BASES
 
-        type_order = {t: i for i, t in enumerate(MEMORY_TYPE_ORDER)}
-        rows_to_write.sort(key=lambda r: (type_order.get(r.memory_type, 999), r.address))
+        rows_to_write.sort(
+            key=lambda r: (MEMORY_TYPE_BASES.get(r.memory_type, 0xFFFFFFFF), r.address)
+        )
 
         # Write CSV
         try:
@@ -320,8 +329,8 @@ class CsvDataSource(DataSource):
                     writer.writerow(
                         {
                             "Address": addr_str,
-                            "Nickname": row.nickname,
                             "Data Type": data_type_str,
+                            "Nickname": row.nickname,
                             "Initial Value": row.initial_value,
                             "Retentive": "Yes" if row.retentive else "No",
                             "Address Comment": row.comment,

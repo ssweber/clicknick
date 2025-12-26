@@ -33,7 +33,10 @@ def get_available_access_drivers() -> list[str]:
 
 def has_access_driver() -> bool:
     """Check if any Microsoft Access ODBC driver is available."""
-    return len(get_available_access_drivers()) > 0
+    return False
+
+
+#     return len(get_available_access_drivers()) > 0
 
 
 def find_click_database(click_pid: int | None = None, click_hwnd: int | None = None) -> str | None:

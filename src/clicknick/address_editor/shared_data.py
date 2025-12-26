@@ -505,7 +505,7 @@ class SharedAddressData:
             self.all_rows[addr_key].nickname = new_nickname
 
     def save_all_changes(self) -> int:
-        """Save all dirty rows to data source.
+        """Save changes to data source.
 
         Returns:
             Number of changes saved
@@ -517,9 +517,19 @@ class SharedAddressData:
         if self._data_source.is_read_only:
             raise RuntimeError("Data source is read-only")
 
-        all_dirty_rows = []
+        # Build complete row set: start with all_rows, overlay with panel rows
+        # (Panel rows may have edits that aren't in all_rows)
+        rows_to_save: dict[int, AddressRow] = {}
+        all_dirty_rows: list[AddressRow] = []
+
+        # First, add all original rows
+        for addr_key, row in self.all_rows.items():
+            rows_to_save[addr_key] = row
+
+        # Then overlay with panel rows (which have any edits)
         for rows in self.rows_by_type.values():
             for row in rows:
+                rows_to_save[row.addr_key] = row
                 if row.is_dirty:
                     all_dirty_rows.append(row)
 
@@ -529,9 +539,11 @@ class SharedAddressData:
         # Capture rows that will be fully deleted (before mark_saved resets dirty state)
         rows_to_remove = [row for row in all_dirty_rows if row.needs_full_delete]
 
-        count = self._data_source.save_changes(all_dirty_rows)
+        # Pass all rows - data source decides what to save
+        # (MDB saves only dirty rows, CSV rewrites all rows with content)
+        count = self._data_source.save_changes(list(rows_to_save.values()))
 
-        # Mark rows as saved
+        # Mark dirty rows as saved
         for row in all_dirty_rows:
             row.mark_saved()
 

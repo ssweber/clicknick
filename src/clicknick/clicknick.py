@@ -337,10 +337,6 @@ class ClickNickApp:
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Address Editor...", command=self._open_address_editor)
 
-        # Disable Address Editor if ODBC drivers are not available
-        if not self.nickname_manager.has_access_driver():
-            tools_menu.entryconfigure("Address Editor...", state="disabled")
-
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
