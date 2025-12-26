@@ -37,7 +37,7 @@ DATA_TYPE_CODE_TO_STR: dict[int, str] = {
     2: "INT2",
     3: "FLOAT",
     4: "HEX",
-    6: "TEXT", # Alias
+    6: "TEXT",  # Alias
 }
 
 # Regex for parsing address strings like "X001", "C100", "DS1000", "TD5"
