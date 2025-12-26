@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from .address_model import AddressRow
 
 # CSV column names (matching CLICK software export format)
-CSV_COLUMNS = ["Address", "Data Type", "Initial Value", "Retentive", "Address Comment"]
+CSV_COLUMNS = ["Address", "Data Type", "Nickname", "Initial Value", "Retentive", "Address Comment"]
 
 # Data type string to code mapping
 DATA_TYPE_STR_TO_CODE: dict[str, int] = {
@@ -30,14 +30,14 @@ DATA_TYPE_STR_TO_CODE: dict[str, int] = {
     "TEXT": 6,  # Alias
 }
 
-# Data type code to string mapping (for saving)
+# Data type code to string mapping (for saving csv)
 DATA_TYPE_CODE_TO_STR: dict[int, str] = {
     0: "BIT",
     1: "INT",
     2: "INT2",
     3: "FLOAT",
     4: "HEX",
-    6: "TXT",
+    6: "TEXT", # Alias
 }
 
 # Regex for parsing address strings like "X001", "C100", "DS1000", "TD5"
@@ -286,21 +286,13 @@ class CsvDataSource(DataSource):
         """Save to the CSV file.
 
         Rewrites the entire CSV with all rows that have content.
-
-        Args:
-            rows: Sequence of all AddressRow objects
-
-        Returns:
-            Number of rows written
         """
         # Collect all rows with content
         rows_to_write = []
         for row in rows:
-            # Skip rows being deleted
             if row.needs_full_delete:
                 continue
-            # Write rows that have nickname or comment
-            if row.nickname or row.comment:
+            if row.has_content:
                 rows_to_write.append(row)
 
         # Sort by memory type order and address
@@ -310,11 +302,19 @@ class CsvDataSource(DataSource):
             key=lambda r: (MEMORY_TYPE_BASES.get(r.memory_type, 0xFFFFFFFF), r.address)
         )
 
-        # Write CSV
         try:
             with open(self._csv_path, "w", newline="", encoding="utf-8") as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=CSV_COLUMNS)
-                writer.writeheader()
+                # 1. Write the Header manually
+                # assuming CSV_COLUMNS is a list like ["Address", "Data Type", ...]
+                csvfile.write(",".join(CSV_COLUMNS) + "\n")
+
+                # Helper to format fields that MUST be quoted
+                def format_quoted(text):
+                    if text is None:
+                        return '""'
+                    # Escape existing double-quotes by doubling them (CSV standard)
+                    escaped_text = str(text).replace('"', '""')
+                    return f'"{escaped_text}"'
 
                 for row in rows_to_write:
                     # Convert data type to string
@@ -326,16 +326,20 @@ class CsvDataSource(DataSource):
                     else:
                         addr_str = f"{row.memory_type}{row.address}"
 
-                    writer.writerow(
-                        {
-                            "Address": addr_str,
-                            "Data Type": data_type_str,
-                            "Nickname": row.nickname,
-                            "Initial Value": row.initial_value,
-                            "Retentive": "Yes" if row.retentive else "No",
-                            "Address Comment": row.comment,
-                        }
-                    )
+                    # 2. Construct the line manually
+                    # We leave Address, DataType, InitialValue, and Retentive RAW.
+                    # We wrap Nickname and Comment in our format_quoted helper.
+                    line_parts = [
+                        addr_str,
+                        data_type_str,
+                        format_quoted(row.nickname),
+                        str(row.initial_value) if row.initial_value is not None else "",
+                        "Yes" if row.retentive else "No",
+                        format_quoted(row.comment),
+                    ]
+
+                    # Join with commas and write
+                    csvfile.write(",".join(line_parts) + "\n")
 
             return len(rows_to_write)
 
