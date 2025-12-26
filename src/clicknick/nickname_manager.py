@@ -222,7 +222,7 @@ class NicknameManager:
                     nickname_obj = Nickname(
                         nickname=row["Nickname"],
                         address=row["Address"],
-                        data_type=row["Data Type"],
+                        data_type_display=row["Data Type"],
                         initial_value=row["Initial Value"],
                         retentive=row["Retentive"] == "Yes",
                         comment=strip_block_tag(row["Address Comment"]),
@@ -308,7 +308,7 @@ class NicknameManager:
                 nickname_obj = Nickname(
                     nickname=nickname,
                     address=address,
-                    data_type=self._convert_database_data_type(data_type),
+                    data_type_display=self._convert_database_data_type(data_type),
                     initial_value=initial_value,
                     retentive=retentive,
                     comment=strip_block_tag(comment),

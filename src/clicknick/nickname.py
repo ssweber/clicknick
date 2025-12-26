@@ -27,7 +27,7 @@ class Nickname:
 
     nickname: str
     address: str
-    data_type: str
+    data_type_display: str
     initial_value: str
     retentive: bool
     comment: str = ""
@@ -38,7 +38,7 @@ class Nickname:
     @property
     def is_default_retentive(self) -> bool:
         """Return True if retentive matches the default for this data_type"""
-        default = DEFAULT_RETENTIVE.get(self.data_type, False)
+        default = DEFAULT_RETENTIVE.get(self.data_type_display, False)
         return self.retentive == default
 
     def details(self) -> str:
@@ -46,8 +46,8 @@ class Nickname:
         lines = [self.nickname]
 
         # Second line: data_type : Address
-        if self.data_type:
-            lines[0] += f" - {self.data_type} : {self.address}"
+        if self.data_type_display:
+            lines[0] += f" - {self.data_type_display} : {self.address}"
         else:
             lines[0] += f" - {self.address}"
 
@@ -61,7 +61,7 @@ class Nickname:
         if self.used is False:
             details.append("Used: No")
 
-        if self.data_type == "BIT":
+        if self.data_type_display == "BIT":
             if not self.is_default_retentive:
                 details.append("Retentive")
             elif self.initial_value == "1":
