@@ -16,7 +16,6 @@ from .address_model import AddressRow
 from .address_panel import AddressPanel
 from .block_panel import BlockPanel
 from .jump_sidebar import COMBINED_TYPES, JumpSidebar
-from .mdb_operations import MdbConnection, load_all_addresses
 from .outline_panel import OutlinePanel
 from .shared_data import SharedAddressData
 from .view_builder import build_type_view
@@ -150,17 +149,6 @@ class NavWindow(tk.Toplevel):
 class AddressEditorWindow(tk.Toplevel):
     """Main window for the Address Editor."""
 
-    def _get_connection(self) -> MdbConnection:
-        """Create a database connection (use as context manager).
-
-        Returns:
-            MdbConnection instance (connects when entering context)
-
-        Raises:
-            Exception: If connection fails
-        """
-        return MdbConnection.from_click_window(self.click_pid, self.click_hwnd)
-
     def _update_status(self) -> None:
         """Update the status bar with current state."""
         total_modified = self.shared_data.get_total_modified_count()
@@ -292,11 +280,9 @@ class AddressEditorWindow(tk.Toplevel):
                 on_close=None,  # No close button in sidebar mode
             )
 
-            # Load from database if not initialized
+            # Load from data source if not initialized
             if not self.shared_data.is_initialized():
-                with self._get_connection() as conn:
-                    self.shared_data.all_rows = load_all_addresses(conn)
-                self.shared_data._initialized = True
+                self.shared_data.load_initial_data()
 
             # Get nicknames from shared data
             self.all_nicknames = self.shared_data.all_nicknames
@@ -859,34 +845,20 @@ class AddressEditorWindow(tk.Toplevel):
     def __init__(
         self,
         parent: tk.Widget,
-        click_pid: int,
-        click_hwnd: int,
-        shared_data: SharedAddressData | None = None,
+        shared_data: SharedAddressData,
     ):
         """Initialize the Address Editor window.
 
         Args:
             parent: Parent widget (main app window)
-            click_pid: Process ID of the CLICK software
-            click_hwnd: Window handle of the CLICK software
-            shared_data: Optional shared data store for multi-window support.
-                         If None, creates its own data store.
+            shared_data: Shared data store for multi-window support
         """
         super().__init__(parent)
 
         self.title("ClickNick Address Editor")
         self.geometry("1025x700")
 
-        self.click_pid = click_pid
-        self.click_hwnd = click_hwnd
-
-        # Use shared data if provided, otherwise create our own
-        if shared_data is not None:
-            self.shared_data = shared_data
-            self._owns_shared_data = False
-        else:
-            self.shared_data = SharedAddressData(click_pid, click_hwnd)
-            self._owns_shared_data = True
+        self.shared_data = shared_data
 
         self.panels: dict[str, AddressPanel] = {}  # type_name -> panel
         self.all_nicknames: dict[int, str] = {}
