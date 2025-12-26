@@ -7,7 +7,10 @@ with changes in one window automatically reflected in others.
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any
 
 from .address_model import AddressRow
 from .blocktag_model import parse_block_tag
@@ -15,6 +18,45 @@ from .mdb_operations import MdbConnection, load_all_addresses, save_changes
 
 # File monitoring interval in milliseconds
 FILE_MONITOR_INTERVAL_MS = 2000
+
+
+@dataclass
+class TypeView:
+    """Cached view data for a memory type (built once, shared by all panels).
+
+    This contains pre-computed display data that would otherwise be
+    recalculated by each AddressPanel independently.
+    """
+
+    # The type key (e.g., "X", "T/TD")
+    type_key: str
+
+    # Ordered list of AddressRow references (shared with SharedAddressData)
+    rows: list[AddressRow]
+
+    # Display data arrays (parallel to rows)
+    # Each inner list = [used_display, nickname, comment, init_value_display, retentive_display]
+    display_data: list[list[Any]] = field(default_factory=list)
+
+    # Row index labels (e.g., "X001", "T1", "TD1")
+    index_labels: list[str] = field(default_factory=list)
+
+    # Block colors computed from comments (row_idx -> hex_color)
+    block_colors: dict[int, str] = field(default_factory=dict)
+
+    # Timestamp for cache invalidation
+    last_updated: float = 0.0
+
+    # Combined types if this is an interleaved view (e.g., ["T", "TD"])
+    combined_types: list[str] | None = None
+
+    def invalidate(self) -> None:
+        """Mark this view as needing rebuild."""
+        self.last_updated = 0.0
+
+    def mark_updated(self) -> None:
+        """Mark this view as freshly built."""
+        self.last_updated = time.time()
 
 
 class SharedAddressData:
@@ -65,6 +107,12 @@ class SharedAddressData:
         self._monitor_after_id: str | None = None
         self._monitoring_active = False
 
+        # Cached views by type key (e.g., "X", "T/TD")
+        self._views: dict[str, TypeView] = {}
+
+        # View observers - called when a view needs refresh (called with type_key)
+        self._view_observers: list[Callable[[str], None]] = []
+
     def _get_connection(self) -> MdbConnection:
         """Create a database connection (use as context manager)."""
         conn = MdbConnection.from_click_window(self.click_pid, self.click_hwnd)
@@ -82,6 +130,71 @@ class SharedAddressData:
         """Remove an observer callback."""
         if callback in self._observers:
             self._observers.remove(callback)
+
+    # --- View Management ---
+
+    def add_view_observer(self, callback: Callable[[str], None]) -> None:
+        """Add a view observer callback.
+
+        Args:
+            callback: Called with type_key when a view needs refresh
+        """
+        if callback not in self._view_observers:
+            self._view_observers.append(callback)
+
+    def remove_view_observer(self, callback: Callable[[str], None]) -> None:
+        """Remove a view observer callback."""
+        if callback in self._view_observers:
+            self._view_observers.remove(callback)
+
+    def get_view(self, type_key: str) -> TypeView | None:
+        """Get the cached view for a memory type.
+
+        Args:
+            type_key: The memory type key (e.g., "X", "T/TD")
+
+        Returns:
+            TypeView if cached, None otherwise
+        """
+        return self._views.get(type_key)
+
+    def set_view(self, type_key: str, view: TypeView) -> None:
+        """Store a view for a memory type.
+
+        Args:
+            type_key: The memory type key
+            view: The TypeView to cache
+        """
+        self._views[type_key] = view
+        view.mark_updated()
+
+    def _notify_view_observers(self, type_key: str) -> None:
+        """Notify view observers that a view needs refresh.
+
+        Args:
+            type_key: The type key that was invalidated
+        """
+        for callback in self._view_observers:
+            try:
+                callback(type_key)
+            except Exception:
+                pass  # Don't let one observer's error break others
+
+    def invalidate_view(self, type_key: str) -> None:
+        """Mark a view as needing rebuild.
+
+        Args:
+            type_key: The memory type key to invalidate
+        """
+        if type_key in self._views:
+            self._views[type_key].invalidate()
+            self._notify_view_observers(type_key)
+
+    def invalidate_all_views(self) -> None:
+        """Mark all views as needing rebuild."""
+        for type_key, view in self._views.items():
+            view.invalidate()
+            self._notify_view_observers(type_key)
 
     def register_window(self, window) -> None:
         """Register an editor window for tracking.

@@ -19,6 +19,7 @@ from .jump_sidebar import COMBINED_TYPES, JumpSidebar
 from .mdb_operations import MdbConnection, load_all_addresses
 from .outline_panel import OutlinePanel
 from .shared_data import SharedAddressData
+from .view_builder import build_type_view
 
 
 class NavWindow(tk.Toplevel):
@@ -294,32 +295,68 @@ class AddressEditorWindow(tk.Toplevel):
                 on_close=None,  # No close button in sidebar mode
             )
 
-            # Check if shared data already has rows for this type
-            # (from another window that already loaded this type)
-            existing_rows = self.shared_data.get_rows(type_name)
+            # Load from database if not initialized
+            if not self.shared_data.is_initialized():
+                with self._get_connection() as conn:
+                    self.shared_data.all_rows = load_all_addresses(conn)
+                self.shared_data._initialized = True
 
-            if existing_rows is not None:
-                # Use existing shared rows
-                panel.rows = existing_rows
-                panel._all_nicknames = self.shared_data.all_nicknames
+            # Get nicknames from shared data
+            self.all_nicknames = self.shared_data.all_nicknames
+
+            # Check for existing TypeView (from another window/panel)
+            existing_view = self.shared_data.get_view(type_name)
+
+            if existing_view is not None:
+                # Use existing shared view - rows are already built
+                panel.rows = existing_view.rows
+                panel._all_nicknames = self.all_nicknames
                 panel._validate_all()
                 panel._populate_sheet_data()
                 panel._apply_filters()
+
+                # Initialize styler (uses panel's _get_block_colors_for_rows for dynamic updates)
+                from .address_row_styler import AddressRowStyler
+
+                panel._styler = AddressRowStyler(
+                    sheet=panel.sheet,
+                    rows=panel.rows,
+                    get_displayed_rows=lambda: panel._displayed_rows,
+                    combined_types=panel.combined_types,
+                    get_block_colors=panel._get_block_colors_for_rows,
+                )
+                panel._refresh_display()
             else:
-                # Load from database if not initialized
-                if not self.shared_data.is_initialized():
-                    with self._get_connection() as conn:
-                        self.shared_data.all_rows = load_all_addresses(conn)
-                    self.shared_data._initialized = True
+                # Build new view using view_builder
+                view = build_type_view(
+                    all_rows=self.shared_data.all_rows,
+                    type_key=type_name,
+                    all_nicknames=self.all_nicknames,
+                    combined_types=combined,
+                )
 
-                # Get nicknames from shared data (derived property)
-                self.all_nicknames = self.shared_data.all_nicknames
+                # Store view in shared data for other windows/panels
+                self.shared_data.set_view(type_name, view)
+                self.shared_data.set_rows(type_name, view.rows)
 
-                # Load panel data from preloaded all_rows
-                panel.load_data(self.shared_data.all_rows, self.all_nicknames)
+                # Load panel from view
+                panel.rows = view.rows
+                panel._all_nicknames = self.all_nicknames
+                panel._validate_all()
+                panel._populate_sheet_data()
+                panel._apply_filters()
 
-                # Store rows in shared data for other windows
-                self.shared_data.set_rows(type_name, panel.rows)
+                # Initialize styler (uses panel's _get_block_colors_for_rows for dynamic updates)
+                from .address_row_styler import AddressRowStyler
+
+                panel._styler = AddressRowStyler(
+                    sheet=panel.sheet,
+                    rows=panel.rows,
+                    get_displayed_rows=lambda: panel._displayed_rows,
+                    combined_types=panel.combined_types,
+                    get_block_colors=panel._get_block_colors_for_rows,
+                )
+                panel._refresh_display()
 
             self.panels[type_name] = panel
 
