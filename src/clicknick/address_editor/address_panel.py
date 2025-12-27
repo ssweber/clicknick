@@ -42,7 +42,6 @@ else:
 
 from .address_model import (
     MEMORY_TYPE_TO_DATA_TYPE,
-    PAIRED_RETENTIVE_TYPES,
     AddressRow,
     DataType,
 )
@@ -871,25 +870,6 @@ class AddressPanel(ttk.Frame):
 
         self._create_widgets()
 
-    def initialize_from_view(self, rows: list, nicknames: dict):
-        """Initializes the panel with row data, performs validation, and sets up styling."""
-        self.rows = rows
-        self._all_nicknames = nicknames
-        
-        self._validate_all()
-        self._populate_sheet_data()
-        self._apply_filters()
-
-        # Initialize styler
-        self._styler = AddressRowStyler(
-            sheet=self.sheet,
-            get_rows=lambda: self.rows,
-            get_displayed_rows=lambda: self._displayed_rows,
-            combined_types=self.combined_types,
-            get_block_colors=self._get_block_colors_for_rows,
-        )
-        self._refresh_display()
-
     def _get_block_colors_for_rows(self) -> dict[int, str]:
         """Compute block background colors for each row address.
 
@@ -974,6 +954,25 @@ class AddressPanel(ttk.Frame):
                         checked=(init_val is True),
                         text="",
                     )
+
+    def initialize_from_view(self, rows: list, nicknames: dict):
+        """Initializes the panel with row data, performs validation, and sets up styling."""
+        self.rows = rows
+        self._all_nicknames = nicknames
+
+        self._validate_all()
+        self._populate_sheet_data()
+        self._apply_filters()
+
+        # Initialize styler
+        self._styler = AddressRowStyler(
+            sheet=self.sheet,
+            get_rows=lambda: self.rows,
+            get_displayed_rows=lambda: self._displayed_rows,
+            combined_types=self.combined_types,
+            get_block_colors=self._get_block_colors_for_rows,
+        )
+        self._refresh_display()
 
     def _validate_row(self, row: AddressRow) -> None:
         """Validate a single row."""
