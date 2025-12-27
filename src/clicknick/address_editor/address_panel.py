@@ -995,7 +995,7 @@ class AddressPanel(ttk.Frame):
             self._validate_all()
 
         self._refresh_display()
-        
+
     def rebuild_from_view(self, view):
         """Rebuild panel data from a view object."""
         self.rows = view.rows
