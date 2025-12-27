@@ -131,3 +131,7 @@ class BlockPanel(ttk.Frame):
                 # Add row to any currently open blocks (nested support or overlap)
                 for data in active_blocks.values():
                     data["rows"].append(row)
+                    
+    def refresh(self, all_rows: dict[int, AddressRow]) -> None:
+        """Refresh the tree with updated data."""
+        self.build_tree(all_rows)

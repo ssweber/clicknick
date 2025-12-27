@@ -548,7 +548,6 @@ class NicknameCombobox(ttk.Combobox):
 
         """Initialize all component managers."""
         self.data_provider = None
-        self.keypress_callback = None
         self.selection_callback = None
 
         # Initialize managers

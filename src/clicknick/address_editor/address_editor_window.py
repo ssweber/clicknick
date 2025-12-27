@@ -136,14 +136,14 @@ class NavWindow(tk.Toplevel):
         self.bind("<Configure>", self._on_self_configure)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
-    def build_tree(self, all_rows: dict[int, AddressRow]) -> None:
-        """Rebuild the tree from address row data.
+    def refresh(self, all_rows: dict[int, AddressRow]) -> None:
+        """Refresh the tree with updated data.
 
         Args:
             all_rows: Dict mapping address key to AddressRow
         """
-        self.outline.build_tree(all_rows)
-        self.blocks.build_tree(all_rows)
+        self.outline.refresh(all_rows)
+        self.blocks.refresh(all_rows)
 
 
 class AddressEditorWindow(tk.Toplevel):
@@ -168,7 +168,7 @@ class AddressEditorWindow(tk.Toplevel):
     def _refresh_navigation(self) -> None:
         """Refresh the navigation dock with current data."""
         if self._nav_window is not None:
-            self._nav_window.build_tree(self.shared_data.all_rows)
+            self._nav_window.refresh(self.shared_data.all_rows)
 
     def _do_revalidation(self) -> None:
         """Perform the actual revalidation (called after debounce delay)."""
@@ -863,7 +863,3 @@ class AddressEditorWindow(tk.Toplevel):
         # Keyboard shortcuts
         self.bind("<Control-s>", lambda e: self._save_all())
         self.bind("<Control-S>", lambda e: self._save_all())
-
-    def _has_errors(self) -> bool:
-        """Check if any panel has validation errors."""
-        return self.shared_data.has_errors()

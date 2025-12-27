@@ -199,7 +199,7 @@ class Overlay(tk.Toplevel):
                 return None
 
             # Parse positions
-            win_x, win_y, win_width, win_height = map(int, window_pos.split(","))
+            win_x, win_y, _, _ = map(int, window_pos.split(","))
 
             # Get control position
             control_pos = WIN32.get_control_pos(self.target_window_id, self.target_edit_control)
