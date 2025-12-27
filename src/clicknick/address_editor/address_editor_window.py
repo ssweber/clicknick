@@ -423,7 +423,7 @@ class AddressEditorWindow(tk.Toplevel):
             messagebox.showerror("Refresh Error", str(e), parent=self)
 
     def _discard_changes(self) -> None:
-        """Discard all unsaved changes and reload from database."""
+        """Discard all unsaved changes by resetting to original values."""
         if not self.shared_data.has_unsaved_changes():
             messagebox.showinfo("Discard", "No changes to discard.", parent=self)
             return
@@ -437,23 +437,15 @@ class AddressEditorWindow(tk.Toplevel):
             return
 
         try:
-            # Discard shared data - this will notify all windows
+            # Discard shared data - resets rows in-place and notifies all windows
+            # The notification triggers _on_shared_data_changed which refreshes panels
             self.shared_data.discard_all_changes()
-
-            # Clear local panels - they'll be recreated when selected
-            for panel in self.panels.values():
-                panel.destroy()
-            self.panels.clear()
 
             # Update local nicknames reference
             self.all_nicknames = self.shared_data.all_nicknames
 
             self._update_status()
-            self.status_var.set("Changes discarded - reloaded from database")
-
-            # Re-select current type to recreate panel
-            if self.current_type:
-                self._on_type_selected(self.current_type)
+            self.status_var.set("Changes discarded")
 
         except Exception as e:
             messagebox.showerror("Error", str(e), parent=self)

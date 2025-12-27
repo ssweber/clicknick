@@ -498,13 +498,19 @@ class SharedAddressData:
         return count
 
     def discard_all_changes(self) -> None:
-        """Discard all changes and reload from data source."""
-        # Clear cached data - panels will reload when accessed
-        self.rows_by_type.clear()
-        self._views.clear()  # Clear TypeView cache so panels rebuild from fresh data
+        """Discard all changes by resetting rows to original values.
 
-        # Reload all addresses
-        self.all_rows = self._data_source.load_all_addresses()
+        This is much faster than reloading from database since we just
+        reset the in-memory rows using their stored original values.
+        """
+        # Reset all dirty rows in-place
+        for rows in self.rows_by_type.values():
+            for row in rows:
+                if row.is_dirty:
+                    row.discard()
+                    # Sync all_rows to match (for all_nicknames property)
+                    if row.addr_key in self.all_rows:
+                        self.all_rows[row.addr_key].nickname = row.nickname
 
         self.notify_data_changed()
 

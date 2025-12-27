@@ -557,6 +557,13 @@ class AddressRow:
         self.original_retentive = self.retentive
         self.exists_in_mdb = True
 
+    def discard(self) -> None:
+        """Reset to original values, discarding any unsaved changes."""
+        self.nickname = self.original_nickname
+        self.comment = self.original_comment
+        self.initial_value = self.original_initial_value
+        self.retentive = self.original_retentive
+
     def update_from_db(self, db_data: dict) -> bool:
         """Update non-dirty fields from database data.
 
