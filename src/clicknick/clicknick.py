@@ -439,6 +439,25 @@ class ClickNickApp:
         # Combobox overlay (initialized when needed)
         self.overlay = None
 
+    def _update_window_title(self):
+        """Update window title to reflect current connection and data source."""
+        if not self.connected_click_filename:
+            self.root.title("ClickNick")
+            return
+
+        # Determine source type
+        if self.csv_path_var.get():
+            source = "CSV"
+        elif self.using_database:
+            source = "DB"
+        else:
+            source = ""
+
+        if source:
+            self.root.title(f"ClickNick - {self.connected_click_filename} - {source}")
+        else:
+            self.root.title(f"ClickNick - {self.connected_click_filename}")
+
     def _check_odbc_drivers_and_warn(self):
         """Check for ODBC drivers and show warning if none available."""
         if not self.nickname_manager.has_access_driver():
@@ -498,6 +517,7 @@ class ClickNickApp:
 
             self._update_status("✓ CSV loaded", "connected")
             self.using_database = False
+            self._update_window_title()
             self.start_monitoring()
         else:
             self._update_status("⚠ CSV load failed", "error")
@@ -541,6 +561,7 @@ class ClickNickApp:
 
             self._update_status("✓ DB loaded", "connected")
             self.using_database = True
+            self._update_window_title()
 
             self.start_monitoring()
         else:

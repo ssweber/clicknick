@@ -834,6 +834,26 @@ class AddressEditorWindow(tk.Toplevel):
         flag_path.parent.mkdir(parents=True, exist_ok=True)
         flag_path.touch()
 
+    def _get_window_title(self) -> str:
+        """Generate window title based on data source."""
+        base_title = "ClickNick Address Editor"
+
+        try:
+            file_path = self.shared_data._data_source.file_path
+            if file_path:
+                filename = Path(file_path).name
+                # Determine source type from extension
+                if file_path.lower().endswith(".mdb"):
+                    return f"{base_title} - {filename} - DB"
+                elif file_path.lower().endswith(".csv"):
+                    return f"{base_title} - {filename} - CSV"
+                else:
+                    return f"{base_title} - {filename}"
+        except Exception:
+            pass
+
+        return base_title
+
     def __init__(
         self,
         parent: tk.Widget,
@@ -847,10 +867,9 @@ class AddressEditorWindow(tk.Toplevel):
         """
         super().__init__(parent)
 
-        self.title("ClickNick Address Editor")
-        self.geometry("1025x700")
-
         self.shared_data = shared_data
+        self.title(self._get_window_title())
+        self.geometry("1025x700")
 
         self.panels: dict[str, AddressPanel] = {}  # type_name -> panel
         self.all_nicknames: dict[int, str] = {}
