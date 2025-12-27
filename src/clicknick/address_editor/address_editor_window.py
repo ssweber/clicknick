@@ -721,7 +721,9 @@ class AddressEditorWindow(tk.Toplevel):
         for type_name, panel in self.panels.items():
             panel._all_nicknames = self.all_nicknames
 
-            if self.shared_data.get_view(type_name) is None:
+            view = self.shared_data.get_view(type_name)
+
+            if view is None:
                 # View was cleared - rebuild from fresh data
                 from .view_builder import build_type_view
 
@@ -739,6 +741,14 @@ class AddressEditorWindow(tk.Toplevel):
                 panel.rows = view.rows
                 panel._validate_all()
                 # Rebuild sheet data from scratch
+                panel._populate_sheet_data()
+                panel._apply_filters()
+                panel._refresh_display()
+            elif panel.rows is not view.rows:
+                # View exists but panel has stale rows (another window rebuilt the view)
+                # Update panel to use the view's rows and rebuild sheet data
+                panel.rows = view.rows
+                panel._validate_all()
                 panel._populate_sheet_data()
                 panel._apply_filters()
                 panel._refresh_display()

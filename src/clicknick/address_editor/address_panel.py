@@ -858,8 +858,6 @@ class AddressPanel(ttk.Frame):
         self.rows: list[AddressRow] = []
         self._all_nicknames: dict[int, str] = {}
         self._displayed_rows: list[int] = []  # Data indices of currently displayed rows
-        self._cells_with_notes: set[tuple[int, int]] = set()  # (row, col) pairs
-        self._note_cache: dict[tuple[int, int], str] = {}
 
         # Flag to suppress change notifications during programmatic updates
         self._suppress_notifications = False
@@ -885,7 +883,7 @@ class AddressPanel(ttk.Frame):
         # Initialize styler
         self._styler = AddressRowStyler(
             sheet=self.sheet,
-            rows=self.rows,
+            get_rows=lambda: self.rows,
             get_displayed_rows=lambda: self._displayed_rows,
             combined_types=self.combined_types,
             get_block_colors=self._get_block_colors_for_rows,

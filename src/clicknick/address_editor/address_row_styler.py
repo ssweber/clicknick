@@ -58,7 +58,7 @@ class AddressRowStyler:
     def __init__(
         self,
         sheet: Sheet,
-        rows: list[AddressRow],
+        get_rows: Callable[[], list[AddressRow]],
         get_displayed_rows: Callable[[], list[int]],
         combined_types: list[str] | None = None,
         get_block_colors: Callable[[], dict[int, str]] | None = None,
@@ -67,13 +67,13 @@ class AddressRowStyler:
 
         Args:
             sheet: The tksheet Sheet instance
-            rows: List of AddressRow (data model)
+            get_rows: Callable returning the current list of AddressRow
             get_displayed_rows: Callable returning current displayed row indices
             combined_types: List like ["T", "TD"] for interleaved panels
             get_block_colors: Optional callable returning row_idx -> color map
         """
         self.sheet = sheet
-        self.rows = rows
+        self._get_rows = get_rows
         self._get_displayed_rows = get_displayed_rows
         self.combined_types = combined_types
         self._get_block_colors = get_block_colors
@@ -90,7 +90,7 @@ class AddressRowStyler:
         block_colors: dict[int, str] | None = None,
     ) -> None:
         """Apply highlights for a single row."""
-        row = self.rows[data_idx]
+        row = self._get_rows()[data_idx]
         block_colors = block_colors or {}
 
         # 1. Block color on row index
@@ -200,8 +200,9 @@ class AddressRowStyler:
         target: dict[tuple[int, int], str] = {}
         displayed = self._get_displayed_rows()
 
+        rows = self._get_rows()
         for data_idx in displayed:
-            row = self.rows[data_idx]
+            row = rows[data_idx]
             if row.has_reportable_error:
                 target[(data_idx, COL_NICKNAME)] = row.validation_error
             if not row.initial_value_valid and row.initial_value != "":
@@ -245,7 +246,7 @@ class AddressRowStyler:
 
     def _update_row_notes(self, data_idx: int) -> None:
         """Update notes for a single row."""
-        row = self.rows[data_idx]
+        row = self._get_rows()[data_idx]
 
         # Nickname note
         nick_key = (data_idx, COL_NICKNAME)
