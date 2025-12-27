@@ -144,13 +144,7 @@ class AddressPanel(ttk.Frame):
     def _update_status(self) -> None:
         """Update the status label with current counts."""
         total_visible = len(self._displayed_rows)
-        error_count = sum(
-            1
-            for idx in self._displayed_rows
-            if not self.rows[idx].is_valid
-            and not self.rows[idx].is_empty
-            and not self.rows[idx].should_ignore_validation_error
-        )
+        error_count = self.get_error_count()
         modified_count = sum(1 for idx in self._displayed_rows if self.rows[idx].is_dirty)
 
         self.status_label.config(
@@ -965,10 +959,6 @@ class AddressPanel(ttk.Frame):
         )
 
         self._refresh_display()
-
-    def _validate_row(self, row: AddressRow) -> None:
-        """Validate a single row."""
-        row.validate(self._all_nicknames)
 
     def revalidate(self) -> None:
         """Re-validate all rows (called when global nicknames change)."""

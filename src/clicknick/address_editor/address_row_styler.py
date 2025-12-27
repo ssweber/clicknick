@@ -270,16 +270,6 @@ class AddressRowStyler:
             self.sheet.note(data_idx, COL_INIT_VALUE, note=None)
             del self._note_cache[init_key]
 
-    def update_row_styling(self, data_idx: int) -> None:
-        """Update styling for a single row.
-
-        Call after a cell edit in that row.
-        """
-        self._clear_row_highlights(data_idx)
-        block_colors = self._get_block_colors() if self._get_block_colors else {}
-        self._apply_row_highlights(data_idx, block_colors)
-        self._update_row_notes(data_idx)
-
     def highlight_row_temporary(
         self,
         data_idx: int,
@@ -323,9 +313,3 @@ class AddressRowStyler:
 
             after_id = after_func(duration_ms, clear_highlight)
             self._pending_highlight_clears[data_idx] = after_id
-
-    def clear_all_notes(self) -> None:
-        """Clear all notes (call before destroy)."""
-        for r, c in list(self._note_cache.keys()):
-            self.sheet.note(r, c, note=None)
-        self._note_cache.clear()
