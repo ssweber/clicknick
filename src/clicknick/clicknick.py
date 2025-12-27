@@ -394,7 +394,6 @@ class ClickNickApp:
 
         # Connected Click.exe instance
         self.connected_click_pid = None
-        self.connected_click_title = None
         self.connected_click_filename = None
         self.connected_click_hwnd = None
 
@@ -587,7 +586,6 @@ class ClickNickApp:
 
         # Reset connection state
         self.connected_click_pid = None
-        self.connected_click_title = None
         self.connected_click_filename = None
         self.connected_click_hwnd = None
         self.using_database = False
@@ -600,7 +598,6 @@ class ClickNickApp:
 
         # Store the new connection FIRST (including hwnd to avoid lookup issues)
         self.connected_click_pid = pid
-        self.connected_click_title = title
         self.connected_click_filename = filename
         self.connected_click_hwnd = hwnd
 
