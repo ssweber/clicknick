@@ -5,7 +5,6 @@ Uses tksheet for high-performance table display with virtual rows.
 
 from __future__ import annotations
 
-import logging
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
@@ -13,9 +12,16 @@ from typing import TYPE_CHECKING
 
 from tksheet import Sheet, num2alpha
 
-from .address_model import NON_EDITABLE_TYPES
+from .address_model import (
+    MEMORY_TYPE_TO_DATA_TYPE,
+    NON_EDITABLE_TYPES,
+    AddressRow,
+    DataType,
+)
 from .address_row_styler import AddressRowStyler
+from .blocktag_model import parse_block_tag
 from .char_limit_tooltip import CharLimitTooltip
+from .debug_trace import logger, perf_timer
 from .panel_constants import (
     COL_COMMENT,
     COL_INIT_VALUE,
@@ -24,28 +30,6 @@ from .panel_constants import (
     COL_USED,
 )
 from .view_builder import find_paired_row
-
-# --- LOGGING CONFIGURATION ---
-DEBUG_MODE = False  # <--- CHANGE THIS TO True TO ENABLE DEBUGGING
-logger = logging.getLogger(__name__)
-if DEBUG_MODE:
-    logger.setLevel(logging.DEBUG)
-    # Ensure output goes to console if this is the main entry point or not configured elsewhere
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter("%(levelname)s:%(name)s:%(message)s")
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-else:
-    logger.setLevel(logging.WARNING)  # Only show Warnings/Errors in production
-# -----------------------------
-
-from .address_model import (
-    MEMORY_TYPE_TO_DATA_TYPE,
-    AddressRow,
-    DataType,
-)
-from .blocktag_model import parse_block_tag
 
 if TYPE_CHECKING:
     pass
@@ -324,11 +308,6 @@ class AddressPanel(ttk.Frame):
         # Restore selection after filter change
         self._restore_selection()
 
-    def _validate_all(self) -> None:
-        """Validate all rows against current nickname registry."""
-        for row in self.rows:
-            row.validate(self._all_nicknames)
-
     def _bulk_validate(self, event) -> object:
         """Bulk validation handler for paste and multi-cell edits.
 
@@ -467,8 +446,11 @@ class AddressPanel(ttk.Frame):
         paste operations, and bulk edits. The changes have already been
         applied to the sheet at this point.
         """
+        logger.debug(f"_on_sheet_modified START: {self.memory_type}, rows={len(self.rows)}")
+
         # Skip processing if notifications are suppressed (e.g., during load)
         if self._suppress_notifications:
+            logger.debug("_on_sheet_modified: suppressed, returning early")
             return
 
         # Get modified cells from event
@@ -622,22 +604,40 @@ class AddressPanel(ttk.Frame):
                 data_changed = True
 
         # Refresh display for all modified rows (handles toggling "-" vs Checkbox/Value)
-        for idx in modified_data_indices:
-            self._update_row_display(idx)
+        logger.debug(f"_on_sheet_modified: updating {len(modified_data_indices)} modified rows")
+        with perf_timer("update_modified_rows", len(modified_data_indices)):
+            for idx in modified_data_indices:
+                self._update_row_display(idx)
 
+        # IMPORTANT: Notify parent FIRST to update shared_data reverse index
+        # This must happen before validation so duplicate detection works correctly
+        if nickname_changes and self.on_nickname_changed:
+            logger.debug(f"_on_sheet_modified: notifying {len(nickname_changes)} nickname changes")
+            for addr_key, old_nick, new_nick in nickname_changes:
+                self.on_nickname_changed(self.memory_type, addr_key, old_nick, new_nick)
+
+        # Targeted validation using the updated reverse index
+        if nickname_changed and self.on_validate_affected:
+            # Use O(1) targeted validation via shared_data reverse index
+            # This validates other affected rows (e.g., rows that had old nickname)
+            for _addr_key, old_nick, new_nick in nickname_changes:
+                self.on_validate_affected(old_nick, new_nick)
+
+        # Always validate the locally modified rows in THIS panel
+        # (on_validate_affected validates shared_data.all_rows, which may be different objects)
         if nickname_changed or needs_revalidate:
-            self._validate_all()
+            for idx in modified_data_indices:
+                self.rows[idx].validate(self._all_nicknames, self.is_duplicate)
 
         # Refresh styling and status
-        self._refresh_display()
-
-        # Notify parent immediately - window layer handles debouncing
-        if nickname_changes and self.on_nickname_changed:
-            for addr_key, old_nick, new_nick in nickname_changes:
-                self.on_nickname_changed(addr_key, old_nick, new_nick)
+        with perf_timer("_refresh_display"):
+            self._refresh_display()
 
         if data_changed and self.on_data_changed:
+            logger.debug("_on_sheet_modified: calling on_data_changed callback")
             self.on_data_changed()
+
+        logger.debug(f"_on_sheet_modified END: {self.memory_type}")
 
     def _setup_header_notes(self) -> None:
         """Set up tooltip notes on column headers with hints."""
@@ -832,9 +832,11 @@ class AddressPanel(ttk.Frame):
         parent: tk.Widget,
         memory_type: str,
         combined_types: list[str] | None = None,
-        on_nickname_changed: Callable[[int, str, str], None] | None = None,
+        on_nickname_changed: Callable[[str, int, str, str], None] | None = None,
         on_data_changed: Callable[[], None] | None = None,
         on_close: Callable[[AddressPanel], None] | None = None,
+        on_validate_affected: Callable[[str, str], set[int]] | None = None,
+        is_duplicate: Callable[[str, int], bool] | None = None,
     ):
         """Initialize the address panel.
 
@@ -842,9 +844,12 @@ class AddressPanel(ttk.Frame):
             parent: Parent widget
             memory_type: The memory type to edit (X, Y, C, etc.)
             combined_types: List of types to show interleaved (e.g., ["T", "TD"])
-            on_nickname_changed: Callback when a nickname changes (for cross-panel validation).
+            on_nickname_changed: Callback when a nickname changes (memory_type, addr_key, old, new).
             on_data_changed: Callback when any data changes (for multi-window sync).
             on_close: Callback when panel close button is clicked.
+            on_validate_affected: Callback to validate rows affected by nickname change (old, new).
+                Returns set of validated addr_keys. Used for O(1) targeted validation.
+            is_duplicate: O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
         """
         super().__init__(parent)
 
@@ -853,6 +858,8 @@ class AddressPanel(ttk.Frame):
         self.on_nickname_changed = on_nickname_changed
         self.on_data_changed = on_data_changed
         self.on_close = on_close
+        self.on_validate_affected = on_validate_affected
+        self.is_duplicate = is_duplicate
 
         self.rows: list[AddressRow] = []
         self._all_nicknames: dict[int, str] = {}
@@ -869,6 +876,11 @@ class AddressPanel(ttk.Frame):
         self._styler: AddressRowStyler | None = None
 
         self._create_widgets()
+
+    def _validate_all(self) -> None:
+        """Validate all rows against current nickname registry."""
+        for row in self.rows:
+            row.validate(self._all_nicknames)
 
     def _get_block_colors_for_rows(self) -> dict[int, str]:
         """Compute block background colors for each row address.
@@ -930,39 +942,52 @@ class AddressPanel(ttk.Frame):
 
         This sets up the full dataset and creates cell-specific checkboxes.
         """
+        logger.debug(f"_populate_sheet_data START: {self.memory_type}, rows={len(self.rows)}")
+
         # Build and set all data at once
-        data = [self._build_row_display_data(row) for row in self.rows]
-        self.sheet.set_sheet_data(data, reset_col_positions=False)
-        self.sheet.set_index_data([row.display_address for row in self.rows])
+        with perf_timer("_populate_sheet_data.build_data", len(self.rows)):
+            data = [self._build_row_display_data(row) for row in self.rows]
+
+        with perf_timer("_populate_sheet_data.set_sheet_data"):
+            self.sheet.set_sheet_data(data, reset_col_positions=False)
+            self.sheet.set_index_data([row.display_address for row in self.rows])
 
         # Create checkboxes
-        for data_idx, row in enumerate(self.rows):
-            # Retentive checkbox
-            self.sheet.create_checkbox(
-                r=data_idx,
-                c=self.COL_RETENTIVE,
-                checked=row.retentive,
-                text="",
-            )
-            # Initial value checkbox
-            if row.data_type == DataType.BIT:
-                init_val = data[data_idx][self.COL_INIT_VALUE]
-                if init_val != "-":
-                    self.sheet.create_checkbox(
-                        r=data_idx,
-                        c=self.COL_INIT_VALUE,
-                        checked=(init_val is True),
-                        text="",
-                    )
+        with perf_timer("_populate_sheet_data.create_checkboxes", len(self.rows)):
+            for data_idx, row in enumerate(self.rows):
+                # Retentive checkbox
+                self.sheet.create_checkbox(
+                    r=data_idx,
+                    c=self.COL_RETENTIVE,
+                    checked=row.retentive,
+                    text="",
+                )
+                # Initial value checkbox
+                if row.data_type == DataType.BIT:
+                    init_val = data[data_idx][self.COL_INIT_VALUE]
+                    if init_val != "-":
+                        self.sheet.create_checkbox(
+                            r=data_idx,
+                            c=self.COL_INIT_VALUE,
+                            checked=(init_val is True),
+                            text="",
+                        )
+
+        logger.debug(f"_populate_sheet_data END: {self.memory_type}")
 
     def initialize_from_view(self, rows: list, nicknames: dict):
         """Initializes the panel with row data, performs validation, and sets up styling."""
+        logger.debug(f"initialize_from_view START: {self.memory_type}, rows={len(rows)}")
         self.rows = rows
         self._all_nicknames = nicknames
 
-        self._validate_all()
+        with perf_timer("initialize_from_view._validate_all", len(rows)):
+            self._validate_all()
+
         self._populate_sheet_data()
-        self._apply_filters()
+
+        with perf_timer("initialize_from_view._apply_filters", len(rows)):
+            self._apply_filters()
 
         # Initialize styler
         self._styler = AddressRowStyler(
@@ -972,7 +997,11 @@ class AddressPanel(ttk.Frame):
             combined_types=self.combined_types,
             get_block_colors=self._get_block_colors_for_rows,
         )
-        self._refresh_display()
+
+        with perf_timer("initialize_from_view._refresh_display"):
+            self._refresh_display()
+
+        logger.debug(f"initialize_from_view END: {self.memory_type}")
 
     def _validate_row(self, row: AddressRow) -> None:
         """Validate a single row."""
@@ -980,22 +1009,44 @@ class AddressPanel(ttk.Frame):
 
     def revalidate(self) -> None:
         """Re-validate all rows (called when global nicknames change)."""
-        self._validate_all()
-        self._refresh_display()
+        logger.debug(f"revalidate START: {self.memory_type}, rows={len(self.rows)}")
+        with perf_timer("revalidate._validate_all", len(self.rows)):
+            self._validate_all()
+        with perf_timer("revalidate._refresh_display"):
+            self._refresh_display()
+        logger.debug(f"revalidate END: {self.memory_type}")
 
-    def refresh_from_external(self) -> None:
+    def refresh_from_external(self, skip_validation: bool = False) -> None:
         """Refresh all row displays after external data changes.
 
         Call this when AddressRow objects have been updated externally
         (e.g., via row.update_from_db()) to sync the sheet's cell data.
-        """
-        # Update all row displays to sync AddressRow data to sheet cells
-        for data_idx in range(len(self.rows)):
-            self._update_row_display(data_idx)
 
-        # Revalidate and refresh styling
-        self._validate_all()
-        self._refresh_display()
+        Args:
+            skip_validation: If True, skip _validate_all() because the sender
+                already validated the shared rows. Use when syncing from another
+                window's edit (not from external DB changes).
+        """
+        logger.debug(
+            f"refresh_from_external START: {self.memory_type}, rows={len(self.rows)}, "
+            f"skip_validation={skip_validation}"
+        )
+
+        # Update all row displays to sync AddressRow data to sheet cells
+        # WARNING: This is O(n) and can be slow for large panels like DS (5000 rows)
+        with perf_timer("refresh_from_external.update_all_rows", len(self.rows)):
+            for data_idx in range(len(self.rows)):
+                self._update_row_display(data_idx)
+
+        # Revalidate only if needed (external DB changes, not window sync)
+        if not skip_validation:
+            with perf_timer("refresh_from_external._validate_all", len(self.rows)):
+                self._validate_all()
+
+        with perf_timer("refresh_from_external._refresh_display"):
+            self._refresh_display()
+
+        logger.debug(f"refresh_from_external END: {self.memory_type}")
 
     def get_dirty_rows(self) -> list[AddressRow]:
         """Get all rows that have been modified."""

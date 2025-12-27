@@ -3,6 +3,7 @@
 Contains AddressRow dataclass, validation functions, and AddrKey calculations.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum
 
@@ -185,17 +186,11 @@ def parse_addr_key(addr_key: int) -> tuple[str, int]:
     return _INDEX_TO_TYPE[type_index], address
 
 
-def validate_nickname(
-    nickname: str,
-    all_nicknames: dict[int, str],
-    current_addr_key: int,
-) -> tuple[bool, str]:
-    """Validate a nickname against all rules.
+def validate_nickname_format(nickname: str) -> tuple[bool, str]:
+    """Validate nickname format (length, characters, etc.) without uniqueness check.
 
     Args:
         nickname: The nickname to validate
-        all_nicknames: Dict of addr_key -> nickname for uniqueness check
-        current_addr_key: The addr_key of the row being validated (excluded from uniqueness)
 
     Returns:
         Tuple of (is_valid, error_message) - error_message is "" if valid
@@ -215,10 +210,45 @@ def validate_nickname(
         chars_display = "".join(sorted(invalid_chars)[:3])
         return False, f"Invalid: {chars_display}"
 
-    # Check uniqueness (excluding self)
-    for addr_key, existing_nick in all_nicknames.items():
-        if addr_key != current_addr_key and existing_nick == nickname:
+    return True, ""
+
+
+def validate_nickname(
+    nickname: str,
+    all_nicknames: dict[int, str],
+    current_addr_key: int,
+    is_duplicate: Callable[[str, int], bool] | None = None,
+) -> tuple[bool, str]:
+    """Validate a nickname against all rules.
+
+    Args:
+        nickname: The nickname to validate
+        all_nicknames: Dict of addr_key -> nickname for uniqueness check (legacy, used if is_duplicate is None)
+        current_addr_key: The addr_key of the row being validated (excluded from uniqueness)
+        is_duplicate: Optional O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
+            If provided, uses this instead of O(n) scan of all_nicknames.
+
+    Returns:
+        Tuple of (is_valid, error_message) - error_message is "" if valid
+    """
+    # Check format first
+    is_valid, error = validate_nickname_format(nickname)
+    if not is_valid:
+        return is_valid, error
+
+    if nickname == "":
+        return True, ""
+
+    # Check uniqueness
+    if is_duplicate is not None:
+        # O(1) check via reverse index
+        if is_duplicate(nickname, current_addr_key):
             return False, "Duplicate"
+    else:
+        # Legacy O(n) fallback
+        for addr_key, existing_nick in all_nicknames.items():
+            if addr_key != current_addr_key and existing_nick == nickname:
+                return False, "Duplicate"
 
     return True, ""
 
@@ -528,15 +558,21 @@ class AddressRow:
             and not self.is_virtual
         )
 
-    def validate(self, all_nicknames: dict[int, str]) -> None:
+    def validate(
+        self,
+        all_nicknames: dict[int, str],
+        is_duplicate: Callable[[str, int], bool] | None = None,
+    ) -> None:
         """Validate this row and update validation state.
 
         Args:
             all_nicknames: Dict of addr_key -> nickname for uniqueness check
+            is_duplicate: Optional O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
+                If provided, uses this instead of O(n) scan of all_nicknames.
         """
         # Validate nickname
         self.is_valid, self.validation_error = validate_nickname(
-            self.nickname, all_nicknames, self.addr_key
+            self.nickname, all_nicknames, self.addr_key, is_duplicate
         )
 
         # Validate initial value

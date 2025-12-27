@@ -14,6 +14,7 @@ from typing import Any
 from .address_model import AddressRow
 from .blocktag_model import parse_block_tag
 from .data_source import DataSource
+from .debug_trace import logger, perf_timer
 
 # File monitoring interval in milliseconds
 FILE_MONITOR_INTERVAL_MS = 2000
@@ -79,6 +80,10 @@ class SharedAddressData:
         # Data storage - shared across all windows
         self.all_rows: dict[int, AddressRow] = {}  # AddrKey -> AddressRow
         self.rows_by_type: dict[str, list[AddressRow]] = {}
+
+        # Reverse index: nickname -> set of addr_keys that have this nickname
+        # Used for O(1) duplicate detection instead of O(n) scan
+        self._nickname_to_addrs: dict[str, set[int]] = {}
 
         # Observer callbacks - called when data changes
         self._observers: list[Callable[[], None]] = []
@@ -226,26 +231,126 @@ class SharedAddressData:
             sender: The object that triggered the change (allows observers
                     to skip processing if they are the sender)
         """
-        for callback in self._observers:
-            try:
-                callback(sender)
-            except Exception:
-                pass  # Don't let one observer's error break others
+        logger.debug(
+            f"notify_data_changed START: sender={sender.__class__.__name__ if sender else 'None'}, "
+            f"observers={len(self._observers)}"
+        )
+        with perf_timer("notify_data_changed.all_observers", len(self._observers)):
+            for i, callback in enumerate(self._observers):
+                try:
+                    logger.debug(f"notify_data_changed: calling observer {i}")
+                    callback(sender)
+                except Exception as e:
+                    logger.debug(f"notify_data_changed: observer {i} raised {e}")
+                    pass  # Don't let one observer's error break others
+        logger.debug("notify_data_changed END")
 
     @property
     def all_nicknames(self) -> dict[int, str]:
         """Get dict mapping AddrKey to nickname (derived from all_rows)."""
         return {addr_key: row.nickname for addr_key, row in self.all_rows.items() if row.nickname}
 
+    def _rebuild_nickname_index(self) -> None:
+        """Rebuild the nickname -> addr_keys reverse index from all_rows."""
+        self._nickname_to_addrs.clear()
+        for addr_key, row in self.all_rows.items():
+            if row.nickname:
+                if row.nickname not in self._nickname_to_addrs:
+                    self._nickname_to_addrs[row.nickname] = set()
+                self._nickname_to_addrs[row.nickname].add(addr_key)
+
     def load_initial_data(self) -> None:
         """Load all address data from data source."""
         self.all_rows = self._data_source.load_all_addresses()
         self._initialized = True
 
+        # Build reverse index for O(1) duplicate detection
+        self._rebuild_nickname_index()
+
         # Store file path and initial modification time for monitoring
         self._file_path = self._data_source.file_path
         if self._file_path and os.path.exists(self._file_path):
             self._last_mtime = os.path.getmtime(self._file_path)
+
+    def get_addr_keys_for_nickname(self, nickname: str) -> set[int]:
+        """Get all addr_keys that have a specific nickname.
+
+        Args:
+            nickname: The nickname to look up
+
+        Returns:
+            Set of addr_keys (empty if nickname not found)
+        """
+        if not nickname:
+            return set()
+        return self._nickname_to_addrs.get(nickname, set()).copy()
+
+    def is_duplicate_nickname(self, nickname: str, exclude_addr_key: int) -> bool:
+        """Check if a nickname is used by any other address.
+
+        O(1) lookup using the reverse index.
+
+        Args:
+            nickname: The nickname to check
+            exclude_addr_key: The addr_key to exclude from the check
+
+        Returns:
+            True if nickname is used by another address
+        """
+        if not nickname:
+            return False
+        addr_keys = self._nickname_to_addrs.get(nickname, set())
+        # Duplicate if more than one addr_key, or one that isn't the excluded one
+        if len(addr_keys) > 1:
+            return True
+        if len(addr_keys) == 1 and exclude_addr_key not in addr_keys:
+            return True
+        return False
+
+    def validate_affected_rows(self, old_nickname: str, new_nickname: str) -> set[int]:
+        """Validate only the rows affected by a nickname change.
+
+        Instead of validating all 4500+ rows, this only validates:
+        - Rows that had the old nickname (may no longer be duplicates)
+        - Rows that have the new nickname (may now be duplicates)
+
+        Uses O(1) duplicate checking via the reverse index.
+
+        Args:
+            old_nickname: The previous nickname value
+            new_nickname: The new nickname value
+
+        Returns:
+            Set of addr_keys that were validated
+        """
+        # Collect affected addr_keys
+        affected_keys: set[int] = set()
+
+        if old_nickname:
+            affected_keys.update(self.get_addr_keys_for_nickname(old_nickname))
+        if new_nickname:
+            affected_keys.update(self.get_addr_keys_for_nickname(new_nickname))
+
+        if not affected_keys:
+            return set()
+
+        logger.debug(
+            f"validate_affected_rows: old='{old_nickname}', new='{new_nickname}', "
+            f"affected_count={len(affected_keys)}"
+        )
+
+        # Build all_nicknames dict for validation (needed by row.validate() for format checks)
+        all_nicknames = self.all_nicknames
+
+        # Validate affected rows using O(1) duplicate check
+        with perf_timer("validate_affected_rows", len(affected_keys)):
+            for addr_key in affected_keys:
+                if addr_key in self.all_rows:
+                    self.all_rows[addr_key].validate(
+                        all_nicknames, is_duplicate=self.is_duplicate_nickname
+                    )
+
+        return affected_keys
 
     def is_initialized(self) -> bool:
         """Check if initial data has been loaded."""
@@ -442,6 +547,19 @@ class SharedAddressData:
             old_nickname: The old nickname (for removal)
             new_nickname: The new nickname
         """
+        # Update reverse index: remove from old nickname's set
+        if old_nickname and old_nickname in self._nickname_to_addrs:
+            self._nickname_to_addrs[old_nickname].discard(addr_key)
+            # Clean up empty sets
+            if not self._nickname_to_addrs[old_nickname]:
+                del self._nickname_to_addrs[old_nickname]
+
+        # Update reverse index: add to new nickname's set
+        if new_nickname:
+            if new_nickname not in self._nickname_to_addrs:
+                self._nickname_to_addrs[new_nickname] = set()
+            self._nickname_to_addrs[new_nickname].add(addr_key)
+
         # Update the nickname in all_rows if it exists
         if addr_key in self.all_rows:
             self.all_rows[addr_key].nickname = new_nickname
@@ -503,16 +621,23 @@ class SharedAddressData:
         This is much faster than reloading from database since we just
         reset the in-memory rows using their stored original values.
         """
-        # Reset all dirty rows in-place
-        for rows in self.rows_by_type.values():
-            for row in rows:
-                if row.is_dirty:
-                    row.discard()
-                    # Sync all_rows to match (for all_nicknames property)
-                    if row.addr_key in self.all_rows:
-                        self.all_rows[row.addr_key].nickname = row.nickname
+        logger.debug("discard_all_changes START")
 
+        # Reset all dirty rows in-place
+        dirty_count = 0
+        with perf_timer("discard_all_changes.reset_rows"):
+            for rows in self.rows_by_type.values():
+                for row in rows:
+                    if row.is_dirty:
+                        dirty_count += 1
+                        row.discard()
+                        # Sync all_rows to match (for all_nicknames property)
+                        if row.addr_key in self.all_rows:
+                            self.all_rows[row.addr_key].nickname = row.nickname
+
+        logger.debug(f"discard_all_changes: reset {dirty_count} dirty rows")
         self.notify_data_changed()
+        logger.debug("discard_all_changes END")
 
     def has_unsaved_changes(self) -> bool:
         """Check if any loaded type has unsaved changes."""
