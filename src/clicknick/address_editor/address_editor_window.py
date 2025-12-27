@@ -292,23 +292,7 @@ class AddressEditorWindow(tk.Toplevel):
 
             if existing_view is not None:
                 # Use existing shared view - rows are already built
-                panel.rows = existing_view.rows
-                panel._all_nicknames = self.all_nicknames
-                panel._validate_all()
-                panel._populate_sheet_data()
-                panel._apply_filters()
-
-                # Initialize styler (uses panel's _get_block_colors_for_rows for dynamic updates)
-                from .address_row_styler import AddressRowStyler
-
-                panel._styler = AddressRowStyler(
-                    sheet=panel.sheet,
-                    rows=panel.rows,
-                    get_displayed_rows=lambda: panel._displayed_rows,
-                    combined_types=panel.combined_types,
-                    get_block_colors=panel._get_block_colors_for_rows,
-                )
-                panel._refresh_display()
+                panel.initialize_from_view(existing_view.rows, self.all_nicknames)
             else:
                 # Build new view using view_builder
                 view = build_type_view(
@@ -323,23 +307,7 @@ class AddressEditorWindow(tk.Toplevel):
                 self.shared_data.set_rows(type_name, view.rows)
 
                 # Load panel from view
-                panel.rows = view.rows
-                panel._all_nicknames = self.all_nicknames
-                panel._validate_all()
-                panel._populate_sheet_data()
-                panel._apply_filters()
-
-                # Initialize styler (uses panel's _get_block_colors_for_rows for dynamic updates)
-                from .address_row_styler import AddressRowStyler
-
-                panel._styler = AddressRowStyler(
-                    sheet=panel.sheet,
-                    rows=panel.rows,
-                    get_displayed_rows=lambda: panel._displayed_rows,
-                    combined_types=panel.combined_types,
-                    get_block_colors=panel._get_block_colors_for_rows,
-                )
-                panel._refresh_display()
+                panel.initialize_from_view(view.rows, self.all_nicknames)
 
             self.panels[type_name] = panel
 

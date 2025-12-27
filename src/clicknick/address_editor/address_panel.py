@@ -23,6 +23,7 @@ from .panel_constants import (
     COL_RETENTIVE,
     COL_USED,
 )
+from .view_builder import find_paired_row
 
 # --- LOGGING CONFIGURATION ---
 DEBUG_MODE = False  # <--- CHANGE THIS TO True TO ENABLE DEBUGGING
@@ -102,25 +103,6 @@ class AddressPanel(ttk.Frame):
         if self.combined_types and len(self.combined_types) > 1:
             return False
         return MEMORY_TYPE_TO_DATA_TYPE.get(self.memory_type, 0) == DataType.BIT
-
-    def _find_paired_row(self, row: AddressRow) -> AddressRow | None:
-        """Find the paired T/CT row for a TD/CTD row.
-
-        TD rows share retentive with T rows at the same address.
-        CTD rows share retentive with CT rows at the same address.
-
-        Returns None if row is not a paired type or paired row not found.
-        """
-        paired_type = PAIRED_RETENTIVE_TYPES.get(row.memory_type)
-        if not paired_type:
-            return None
-
-        # Find the row with the same address and the paired type
-        for other_row in self.rows:
-            if other_row.memory_type == paired_type and other_row.address == row.address:
-                return other_row
-
-        return None
 
     def _on_close_clicked(self) -> None:
         """Handle close button click."""
@@ -416,7 +398,7 @@ class AddressPanel(ttk.Frame):
         used_display = "\u2713" if row.used else ""
 
         # Init value: logic to determine if we show "-", Checkbox (bool), or Text
-        paired_row = self._find_paired_row(row)
+        paired_row = find_paired_row(row, self.rows)
         effective_retentive = paired_row.retentive if paired_row else row.retentive
 
         # If Retentive is ON and not exempt, force display to "-"
@@ -576,7 +558,7 @@ class AddressPanel(ttk.Frame):
 
                 # Check if row is currently masked by Retentive (showing "-")
                 # If so, revert any edit attempts immediately
-                paired_row = self._find_paired_row(address_row)
+                paired_row = find_paired_row(address_row, self.rows)
                 effective_retentive = paired_row.retentive if paired_row else address_row.retentive
 
                 if effective_retentive and address_row.memory_type not in NON_EDITABLE_TYPES:
@@ -610,7 +592,7 @@ class AddressPanel(ttk.Frame):
                 new_retentive = bool(new_value)
 
                 # For TD/CTD rows, update the paired T/CT row instead
-                paired_row = self._find_paired_row(address_row)
+                paired_row = find_paired_row(address_row, self.rows)
                 target_row = paired_row if paired_row else address_row
 
                 # Skip if no change
@@ -891,6 +873,25 @@ class AddressPanel(ttk.Frame):
 
         self._create_widgets()
 
+    def initialize_from_view(self, rows: list, nicknames: dict):
+        """Initializes the panel with row data, performs validation, and sets up styling."""
+        self.rows = rows
+        self._all_nicknames = nicknames
+        
+        self._validate_all()
+        self._populate_sheet_data()
+        self._apply_filters()
+
+        # Initialize styler
+        self._styler = AddressRowStyler(
+            sheet=self.sheet,
+            rows=self.rows,
+            get_displayed_rows=lambda: self._displayed_rows,
+            combined_types=self.combined_types,
+            get_block_colors=self._get_block_colors_for_rows,
+        )
+        self._refresh_display()
+
     def _get_block_colors_for_rows(self) -> dict[int, str]:
         """Compute block background colors for each row address.
 
@@ -979,82 +980,6 @@ class AddressPanel(ttk.Frame):
     def _validate_row(self, row: AddressRow) -> None:
         """Validate a single row."""
         row.validate(self._all_nicknames)
-
-    def update_from_external(
-        self,
-        all_rows: dict[int, AddressRow],
-        all_nicknames: dict[int, str],
-    ) -> None:
-        """Update data from external source (e.g., MDB file changed).
-
-        Only updates non-dirty rows to preserve user edits.
-
-        Args:
-            all_rows: Dict mapping AddrKey to AddressRow (preloaded data)
-            all_nicknames: Global dict of all nicknames
-        """
-        # Suppress notifications during external update
-        self._suppress_notifications = True
-
-        try:
-            from .mdb_operations import get_data_for_type
-
-            # Get fresh data from preloaded rows
-            if self.combined_types and len(self.combined_types) > 1:
-                existing_by_type = {}
-                for mem_type in self.combined_types:
-                    existing_by_type[mem_type] = get_data_for_type(all_rows, mem_type)
-            else:
-                existing_data = get_data_for_type(all_rows, self.memory_type)
-
-            # Update non-dirty rows
-            for row in self.rows:
-                if row.is_dirty:
-                    # Skip dirty rows - preserve user edits
-                    continue
-
-                # Get fresh data for this row
-                if self.combined_types and len(self.combined_types) > 1:
-                    data = existing_by_type.get(row.memory_type, {}).get(row.address)
-                else:
-                    data = existing_data.get(row.address)
-
-                if data:
-                    # Update from database
-                    row.nickname = data.get("nickname", "")
-                    row.original_nickname = row.nickname
-                    row.comment = data.get("comment", "")
-                    row.original_comment = row.comment
-                    row.used = data.get("used", False)
-                    row.initial_value = data.get("initial_value", "")
-                    row.original_initial_value = row.initial_value
-                    row.retentive = data.get("retentive", row.retentive)
-                    row.original_retentive = row.retentive
-                    row.exists_in_mdb = True
-                else:
-                    # Row no longer exists in database - reset to defaults
-                    row.nickname = ""
-                    row.original_nickname = ""
-                    row.comment = ""
-                    row.original_comment = ""
-                    row.used = False
-                    row.initial_value = ""
-                    row.original_initial_value = ""
-                    row.exists_in_mdb = False
-
-            # Update nickname registry and revalidate
-            self._all_nicknames = all_nicknames
-            self._validate_all()
-
-            # Update all row displays with new data
-            for data_idx in range(len(self.rows)):
-                self._update_row_display(data_idx)
-
-            # Refresh styling and status
-            self._refresh_display()
-
-        finally:
-            self._suppress_notifications = False
 
     def revalidate(self) -> None:
         """Re-validate all rows (called when global nicknames change)."""
