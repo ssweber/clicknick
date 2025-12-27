@@ -15,7 +15,6 @@ from .add_block_dialog import AddBlockDialog
 from .address_model import AddressRow
 from .address_panel import AddressPanel
 from .block_panel import BlockPanel
-from .debug_trace import logger, perf_timer
 from .jump_sidebar import COMBINED_TYPES, JumpSidebar
 from .outline_panel import OutlinePanel
 from .shared_data import SharedAddressData
@@ -173,14 +172,9 @@ class AddressEditorWindow(tk.Toplevel):
 
     def _do_revalidation(self) -> None:
         """Perform the actual revalidation (called after debounce delay)."""
-        logger.debug(
-            f"_do_revalidation START: panels={list(self.panels.keys())}, "
-            f"recently_validated={self._recently_validated_panels}"
-        )
         self._revalidate_timer = None
 
         if not self._pending_revalidate:
-            logger.debug("_do_revalidation: no pending revalidation, returning early")
             return
 
         self._pending_revalidate = False
@@ -193,15 +187,8 @@ class AddressEditorWindow(tk.Toplevel):
             if type_name not in self._recently_validated_panels
         ]
 
-        with perf_timer("_do_revalidation.revalidate_panels", len(panels_to_validate)):
-            for type_name, panel in panels_to_validate:
-                logger.debug(f"_do_revalidation: revalidating panel {type_name}")
-                panel.revalidate()
-
-        # Log skipped panels
-        skipped = self._recently_validated_panels & set(self.panels.keys())
-        if skipped:
-            logger.debug(f"_do_revalidation: skipped recently validated panels: {skipped}")
+        for _type_name, panel in panels_to_validate:
+            panel.revalidate()
 
         # Clear the tracking set for next edit cycle
         self._recently_validated_panels.clear()
@@ -210,8 +197,7 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Refresh outline if visible (live update)
         if self._nav_window is not None and self._nav_window.winfo_viewable():
-            with perf_timer("_do_revalidation._refresh_navigation"):
-                self._refresh_navigation()
+            self._refresh_navigation()
 
         # NOTE: We intentionally do NOT call notify_data_changed here.
         # Other windows already received notification via _handle_data_changed
@@ -219,7 +205,6 @@ class AddressEditorWindow(tk.Toplevel):
         # AddressRow objects, so other windows see the updated state.
         # Calling notify_data_changed again would trigger redundant
         # refresh_from_external calls (~300ms wasted).
-        logger.debug("_do_revalidation END")
 
     def _schedule_revalidation(self) -> None:
         """Schedule a debounced revalidation of all panels."""
@@ -244,10 +229,6 @@ class AddressEditorWindow(tk.Toplevel):
             old_nick: The old nickname value
             new_nick: The new nickname value
         """
-        logger.debug(
-            f"_handle_nickname_changed: type={memory_type}, addr_key={addr_key}, "
-            f"'{old_nick}' -> '{new_nick}'"
-        )
         # Update shared data registry immediately
         self.shared_data.update_nickname(addr_key, old_nick, new_nick)
 
@@ -260,7 +241,6 @@ class AddressEditorWindow(tk.Toplevel):
 
     def _handle_data_changed(self) -> None:
         """Handle any data change from any panel (comment, init value, retentive)."""
-        logger.debug("_handle_data_changed: updating status and notifying")
         self._update_status()
 
         # Notify other windows (pass self so we skip our own notification)
@@ -749,14 +729,8 @@ class AddressEditorWindow(tk.Toplevel):
         Args:
             sender: The object that triggered the change (if any)
         """
-        logger.debug(
-            f"_on_shared_data_changed START: sender={sender.__class__.__name__ if sender else 'None'}, "
-            f"is_self={sender is self}, panels={list(self.panels.keys())}"
-        )
-
         # Skip if this notification was triggered by our own change
         if sender is self:
-            logger.debug("_on_shared_data_changed: sender is self, skipping")
             return
 
         # Update local reference to nicknames
@@ -765,67 +739,51 @@ class AddressEditorWindow(tk.Toplevel):
         # Check if views were cleared (e.g., after discard_all_changes)
         # If so, we need to rebuild panel data, not just refresh display
         for type_name, panel in self.panels.items():
-            logger.debug(f"_on_shared_data_changed: processing panel {type_name}")
             panel._all_nicknames = self.all_nicknames
 
             view = self.shared_data.get_view(type_name)
 
             if view is None:
                 # View was cleared - rebuild from fresh data
-                logger.debug(f"_on_shared_data_changed: view is None for {type_name}, rebuilding")
                 from .view_builder import build_type_view
 
                 combined = COMBINED_TYPES.get(type_name)
-                with perf_timer(f"_on_shared_data_changed.build_view.{type_name}"):
-                    view = build_type_view(
-                        all_rows=self.shared_data.all_rows,
-                        type_key=type_name,
-                        all_nicknames=self.all_nicknames,
-                        combined_types=combined,
-                    )
+                view = build_type_view(
+                    all_rows=self.shared_data.all_rows,
+                    type_key=type_name,
+                    all_nicknames=self.all_nicknames,
+                    combined_types=combined,
+                )
                 self.shared_data.set_view(type_name, view)
                 self.shared_data.set_rows(type_name, view.rows)
 
                 # Replace panel's rows with fresh ones
                 panel.rows = view.rows
-                with perf_timer(f"_on_shared_data_changed.rebuild.{type_name}", len(view.rows)):
-                    panel._validate_all()
-                    # Rebuild sheet data from scratch
-                    panel._populate_sheet_data()
-                    panel._apply_filters()
-                    panel._refresh_display()
+                panel._validate_all()
+                # Rebuild sheet data from scratch
+                panel._populate_sheet_data()
+                panel._apply_filters()
+                panel._refresh_display()
             elif panel.rows is not view.rows:
                 # View exists but panel has stale rows (another window rebuilt the view)
                 # Update panel to use the view's rows and rebuild sheet data
-                logger.debug(f"_on_shared_data_changed: stale rows for {type_name}, rebuilding")
                 panel.rows = view.rows
-                with perf_timer(f"_on_shared_data_changed.rebuild.{type_name}", len(view.rows)):
-                    panel._validate_all()
-                    panel._populate_sheet_data()
-                    panel._apply_filters()
-                    panel._refresh_display()
+                panel._validate_all()
+                panel._populate_sheet_data()
+                panel._apply_filters()
+                panel._refresh_display()
             else:
                 # Normal refresh - just sync display
-                # WARNING: This calls refresh_from_external which is O(n) on ALL rows!
                 # If sender is another window, skip validation (they already did it)
                 # If sender is None (external MDB change), we need to validate
                 skip_validation = sender is not None
-                logger.debug(
-                    f"_on_shared_data_changed: calling refresh_from_external for {type_name} "
-                    f"({len(panel.rows)} rows, skip_validation={skip_validation})"
-                )
-                with perf_timer(
-                    f"_on_shared_data_changed.refresh_from_external.{type_name}", len(panel.rows)
-                ):
-                    panel.refresh_from_external(skip_validation=skip_validation)
+                panel.refresh_from_external(skip_validation=skip_validation)
 
         # Refresh outline if visible
         if self._nav_window is not None and self._nav_window.winfo_viewable():
-            with perf_timer("_on_shared_data_changed._refresh_navigation"):
-                self._refresh_navigation()
+            self._refresh_navigation()
 
         self._update_status()
-        logger.debug("_on_shared_data_changed END")
 
     def _on_closing(self) -> None:
         """Handle window close - prompt to save if needed."""

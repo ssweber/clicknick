@@ -14,7 +14,6 @@ from typing import Any
 from .address_model import AddressRow
 from .blocktag_model import parse_block_tag
 from .data_source import DataSource
-from .debug_trace import logger, perf_timer
 
 # File monitoring interval in milliseconds
 FILE_MONITOR_INTERVAL_MS = 2000
@@ -231,19 +230,11 @@ class SharedAddressData:
             sender: The object that triggered the change (allows observers
                     to skip processing if they are the sender)
         """
-        logger.debug(
-            f"notify_data_changed START: sender={sender.__class__.__name__ if sender else 'None'}, "
-            f"observers={len(self._observers)}"
-        )
-        with perf_timer("notify_data_changed.all_observers", len(self._observers)):
-            for i, callback in enumerate(self._observers):
-                try:
-                    logger.debug(f"notify_data_changed: calling observer {i}")
-                    callback(sender)
-                except Exception as e:
-                    logger.debug(f"notify_data_changed: observer {i} raised {e}")
-                    pass  # Don't let one observer's error break others
-        logger.debug("notify_data_changed END")
+        for callback in self._observers:
+            try:
+                callback(sender)
+            except Exception:
+                pass  # Don't let one observer's error break others
 
     @property
     def all_nicknames(self) -> dict[int, str]:
@@ -334,21 +325,15 @@ class SharedAddressData:
         if not affected_keys:
             return set()
 
-        logger.debug(
-            f"validate_affected_rows: old='{old_nickname}', new='{new_nickname}', "
-            f"affected_count={len(affected_keys)}"
-        )
-
         # Build all_nicknames dict for validation (needed by row.validate() for format checks)
         all_nicknames = self.all_nicknames
 
         # Validate affected rows using O(1) duplicate check
-        with perf_timer("validate_affected_rows", len(affected_keys)):
-            for addr_key in affected_keys:
-                if addr_key in self.all_rows:
-                    self.all_rows[addr_key].validate(
-                        all_nicknames, is_duplicate=self.is_duplicate_nickname
-                    )
+        for addr_key in affected_keys:
+            if addr_key in self.all_rows:
+                self.all_rows[addr_key].validate(
+                    all_nicknames, is_duplicate=self.is_duplicate_nickname
+                )
 
         return affected_keys
 
@@ -621,23 +606,16 @@ class SharedAddressData:
         This is much faster than reloading from database since we just
         reset the in-memory rows using their stored original values.
         """
-        logger.debug("discard_all_changes START")
-
         # Reset all dirty rows in-place
-        dirty_count = 0
-        with perf_timer("discard_all_changes.reset_rows"):
-            for rows in self.rows_by_type.values():
-                for row in rows:
-                    if row.is_dirty:
-                        dirty_count += 1
-                        row.discard()
-                        # Sync all_rows to match (for all_nicknames property)
-                        if row.addr_key in self.all_rows:
-                            self.all_rows[row.addr_key].nickname = row.nickname
+        for rows in self.rows_by_type.values():
+            for row in rows:
+                if row.is_dirty:
+                    row.discard()
+                    # Sync all_rows to match (for all_nicknames property)
+                    if row.addr_key in self.all_rows:
+                        self.all_rows[row.addr_key].nickname = row.nickname
 
-        logger.debug(f"discard_all_changes: reset {dirty_count} dirty rows")
         self.notify_data_changed()
-        logger.debug("discard_all_changes END")
 
     def has_unsaved_changes(self) -> bool:
         """Check if any loaded type has unsaved changes."""

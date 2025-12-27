@@ -21,7 +21,6 @@ from .address_model import (
 from .address_row_styler import AddressRowStyler
 from .blocktag_model import parse_block_tag
 from .char_limit_tooltip import CharLimitTooltip
-from .debug_trace import logger, perf_timer
 from .panel_constants import (
     COL_COMMENT,
     COL_INIT_VALUE,
@@ -446,11 +445,8 @@ class AddressPanel(ttk.Frame):
         paste operations, and bulk edits. The changes have already been
         applied to the sheet at this point.
         """
-        logger.debug(f"_on_sheet_modified START: {self.memory_type}, rows={len(self.rows)}")
-
         # Skip processing if notifications are suppressed (e.g., during load)
         if self._suppress_notifications:
-            logger.debug("_on_sheet_modified: suppressed, returning early")
             return
 
         # Get modified cells from event
@@ -475,26 +471,15 @@ class AddressPanel(ttk.Frame):
 
         # Process each modified cell
         for (event_row, col), old_value in table_cells.items():
-            logger.debug(
-                f"event_row={event_row}, "
-                f"displayed_rows_count={len(self._displayed_rows)}, "
-                f"filter_active={len(self._displayed_rows) != len(self.rows)}"
-            )
-
             data_idx = event_row
 
             if data_idx is None or data_idx >= len(self.rows):
-                logger.debug(f"Skipping invalid data_idx={data_idx}")
                 continue
 
             address_row = self.rows[data_idx]
-            logger.debug(
-                f"address_row.display_address={address_row.display_address}, nickname={address_row.nickname}"
-            )
 
             # Get the NEW value from the sheet using data index
             new_value = self.sheet.get_cell_data(data_idx, col)
-            logger.debug(f"new_value from sheet={new_value}, old_value from event={old_value}")
 
             if col == self.COL_NICKNAME:
                 old_nickname = old_value if old_value else ""
@@ -604,15 +589,12 @@ class AddressPanel(ttk.Frame):
                 data_changed = True
 
         # Refresh display for all modified rows (handles toggling "-" vs Checkbox/Value)
-        logger.debug(f"_on_sheet_modified: updating {len(modified_data_indices)} modified rows")
-        with perf_timer("update_modified_rows", len(modified_data_indices)):
-            for idx in modified_data_indices:
-                self._update_row_display(idx)
+        for idx in modified_data_indices:
+            self._update_row_display(idx)
 
         # IMPORTANT: Notify parent FIRST to update shared_data reverse index
         # This must happen before validation so duplicate detection works correctly
         if nickname_changes and self.on_nickname_changed:
-            logger.debug(f"_on_sheet_modified: notifying {len(nickname_changes)} nickname changes")
             for addr_key, old_nick, new_nick in nickname_changes:
                 self.on_nickname_changed(self.memory_type, addr_key, old_nick, new_nick)
 
@@ -630,14 +612,10 @@ class AddressPanel(ttk.Frame):
                 self.rows[idx].validate(self._all_nicknames, self.is_duplicate)
 
         # Refresh styling and status
-        with perf_timer("_refresh_display"):
-            self._refresh_display()
+        self._refresh_display()
 
         if data_changed and self.on_data_changed:
-            logger.debug("_on_sheet_modified: calling on_data_changed callback")
             self.on_data_changed()
-
-        logger.debug(f"_on_sheet_modified END: {self.memory_type}")
 
     def _setup_header_notes(self) -> None:
         """Set up tooltip notes on column headers with hints."""
@@ -942,52 +920,40 @@ class AddressPanel(ttk.Frame):
 
         This sets up the full dataset and creates cell-specific checkboxes.
         """
-        logger.debug(f"_populate_sheet_data START: {self.memory_type}, rows={len(self.rows)}")
-
         # Build and set all data at once
-        with perf_timer("_populate_sheet_data.build_data", len(self.rows)):
-            data = [self._build_row_display_data(row) for row in self.rows]
+        data = [self._build_row_display_data(row) for row in self.rows]
 
-        with perf_timer("_populate_sheet_data.set_sheet_data"):
-            self.sheet.set_sheet_data(data, reset_col_positions=False)
-            self.sheet.set_index_data([row.display_address for row in self.rows])
+        self.sheet.set_sheet_data(data, reset_col_positions=False)
+        self.sheet.set_index_data([row.display_address for row in self.rows])
 
         # Create checkboxes
-        with perf_timer("_populate_sheet_data.create_checkboxes", len(self.rows)):
-            for data_idx, row in enumerate(self.rows):
-                # Retentive checkbox
-                self.sheet.create_checkbox(
-                    r=data_idx,
-                    c=self.COL_RETENTIVE,
-                    checked=row.retentive,
-                    text="",
-                )
-                # Initial value checkbox
-                if row.data_type == DataType.BIT:
-                    init_val = data[data_idx][self.COL_INIT_VALUE]
-                    if init_val != "-":
-                        self.sheet.create_checkbox(
-                            r=data_idx,
-                            c=self.COL_INIT_VALUE,
-                            checked=(init_val is True),
-                            text="",
-                        )
-
-        logger.debug(f"_populate_sheet_data END: {self.memory_type}")
+        for data_idx, row in enumerate(self.rows):
+            # Retentive checkbox
+            self.sheet.create_checkbox(
+                r=data_idx,
+                c=self.COL_RETENTIVE,
+                checked=row.retentive,
+                text="",
+            )
+            # Initial value checkbox
+            if row.data_type == DataType.BIT:
+                init_val = data[data_idx][self.COL_INIT_VALUE]
+                if init_val != "-":
+                    self.sheet.create_checkbox(
+                        r=data_idx,
+                        c=self.COL_INIT_VALUE,
+                        checked=(init_val is True),
+                        text="",
+                    )
 
     def initialize_from_view(self, rows: list, nicknames: dict):
         """Initializes the panel with row data, performs validation, and sets up styling."""
-        logger.debug(f"initialize_from_view START: {self.memory_type}, rows={len(rows)}")
         self.rows = rows
         self._all_nicknames = nicknames
 
-        with perf_timer("initialize_from_view._validate_all", len(rows)):
-            self._validate_all()
-
+        self._validate_all()
         self._populate_sheet_data()
-
-        with perf_timer("initialize_from_view._apply_filters", len(rows)):
-            self._apply_filters()
+        self._apply_filters()
 
         # Initialize styler
         self._styler = AddressRowStyler(
@@ -998,10 +964,7 @@ class AddressPanel(ttk.Frame):
             get_block_colors=self._get_block_colors_for_rows,
         )
 
-        with perf_timer("initialize_from_view._refresh_display"):
-            self._refresh_display()
-
-        logger.debug(f"initialize_from_view END: {self.memory_type}")
+        self._refresh_display()
 
     def _validate_row(self, row: AddressRow) -> None:
         """Validate a single row."""
@@ -1009,12 +972,8 @@ class AddressPanel(ttk.Frame):
 
     def revalidate(self) -> None:
         """Re-validate all rows (called when global nicknames change)."""
-        logger.debug(f"revalidate START: {self.memory_type}, rows={len(self.rows)}")
-        with perf_timer("revalidate._validate_all", len(self.rows)):
-            self._validate_all()
-        with perf_timer("revalidate._refresh_display"):
-            self._refresh_display()
-        logger.debug(f"revalidate END: {self.memory_type}")
+        self._validate_all()
+        self._refresh_display()
 
     def refresh_from_external(self, skip_validation: bool = False) -> None:
         """Refresh all row displays after external data changes.
@@ -1027,26 +986,15 @@ class AddressPanel(ttk.Frame):
                 already validated the shared rows. Use when syncing from another
                 window's edit (not from external DB changes).
         """
-        logger.debug(
-            f"refresh_from_external START: {self.memory_type}, rows={len(self.rows)}, "
-            f"skip_validation={skip_validation}"
-        )
-
         # Update all row displays to sync AddressRow data to sheet cells
-        # WARNING: This is O(n) and can be slow for large panels like DS (5000 rows)
-        with perf_timer("refresh_from_external.update_all_rows", len(self.rows)):
-            for data_idx in range(len(self.rows)):
-                self._update_row_display(data_idx)
+        for data_idx in range(len(self.rows)):
+            self._update_row_display(data_idx)
 
         # Revalidate only if needed (external DB changes, not window sync)
         if not skip_validation:
-            with perf_timer("refresh_from_external._validate_all", len(self.rows)):
-                self._validate_all()
+            self._validate_all()
 
-        with perf_timer("refresh_from_external._refresh_display"):
-            self._refresh_display()
-
-        logger.debug(f"refresh_from_external END: {self.memory_type}")
+        self._refresh_display()
 
     def get_dirty_rows(self) -> list[AddressRow]:
         """Get all rows that have been modified."""
