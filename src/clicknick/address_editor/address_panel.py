@@ -995,6 +995,14 @@ class AddressPanel(ttk.Frame):
             self._validate_all()
 
         self._refresh_display()
+        
+    def rebuild_from_view(self, view):
+        """Rebuild panel data from a view object."""
+        self.rows = view.rows
+        self._validate_all()
+        self._populate_sheet_data()
+        self._apply_filters()
+        self._refresh_display()
 
     def get_dirty_rows(self) -> list[AddressRow]:
         """Get all rows that have been modified."""

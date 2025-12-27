@@ -758,20 +758,11 @@ class AddressEditorWindow(tk.Toplevel):
                 self.shared_data.set_rows(type_name, view.rows)
 
                 # Replace panel's rows with fresh ones
-                panel.rows = view.rows
-                panel._validate_all()
-                # Rebuild sheet data from scratch
-                panel._populate_sheet_data()
-                panel._apply_filters()
-                panel._refresh_display()
+                panel.rebuild_from_view(view)
             elif panel.rows is not view.rows:
                 # View exists but panel has stale rows (another window rebuilt the view)
                 # Update panel to use the view's rows and rebuild sheet data
-                panel.rows = view.rows
-                panel._validate_all()
-                panel._populate_sheet_data()
-                panel._apply_filters()
-                panel._refresh_display()
+                panel.rebuild_from_view(view)
             else:
                 # Normal refresh - just sync display
                 # If sender is another window, skip validation (they already did it)
