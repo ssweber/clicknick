@@ -143,7 +143,7 @@ class ClickNickApp:
 
     def _create_options_section(self, parent):
         """Create the options section."""
-        options_frame = ttk.LabelFrame(parent, text="Search Options", padding=10)
+        options_frame = ttk.LabelFrame(parent, text="Autocomplete Options", padding=10)
 
         # Search mode widgets
         filter_frame = ttk.Frame(options_frame)
