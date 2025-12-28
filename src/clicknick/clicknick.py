@@ -320,6 +320,80 @@ class ClickNickApp:
             traceback.print_exc()  # This prints the FULL stack trace
             self._update_status(f"Error opening editor: {e}", "error")
 
+    def _open_dataview_editor(self):
+        """Open the Dataview Editor window.
+
+        The dataview editor allows creating and editing CLICK DataView files (.cdv).
+        """
+        if not self.connected_click_pid:
+            self._update_status("Connect to a ClickPLC window first", "error")
+            return
+
+        try:
+            from .dataview_editor import DataviewEditorWindow, SharedDataviewData
+            from .mdb_shared import get_project_path_from_hwnd
+
+            # Get project path from connected Click window
+            project_path = get_project_path_from_hwnd(self.connected_click_hwnd)
+
+            # Create or reuse shared data
+            if not hasattr(self, "_dataview_editor_shared_data"):
+                self._dataview_editor_shared_data = None
+            if not hasattr(self, "_dataview_editor_project_path"):
+                self._dataview_editor_project_path = None
+
+            # Create nickname lookup function using NicknameManager
+            def lookup_nickname_by_address(address: str) -> tuple[str, str] | None:
+                """Look up nickname and comment for an address."""
+                from .address_editor.address_model import parse_address_display
+
+                if not self.nickname_manager.is_loaded:
+                    return None
+
+                # Parse the lookup address to (memory_type, mdb_address)
+                parsed_lookup = parse_address_display(address)
+                if not parsed_lookup:
+                    return None
+
+                # Compare by parsed values (handles X001 == X1)
+                for nick in self.nickname_manager.nicknames:
+                    parsed_nick = parse_address_display(nick.address)
+                    if parsed_nick == parsed_lookup:
+                        return (nick.nickname, nick.comment)
+                return None
+
+            # Create new shared data if none exists or if project changed
+            if (
+                self._dataview_editor_shared_data is None
+                or self._dataview_editor_project_path != project_path
+            ):
+                # Also need address shared data for nickname lookups
+                address_shared_data = getattr(self, "_address_editor_shared_data", None)
+
+                self._dataview_editor_shared_data = SharedDataviewData(
+                    project_path=project_path,
+                    address_shared_data=address_shared_data,
+                    nickname_lookup_fn=lookup_nickname_by_address,
+                )
+                self._dataview_editor_project_path = project_path
+
+            # Get project name for window title
+            title_suffix = ""
+            if project_path:
+                title_suffix = project_path.name
+
+            DataviewEditorWindow(
+                self.root,
+                shared_data=self._dataview_editor_shared_data,
+                title_suffix=title_suffix,
+            )
+
+        except Exception as e:
+            import traceback
+
+            traceback.print_exc()
+            self._update_status(f"Error opening dataview editor: {e}", "error")
+
     def _create_menu_bar(self):
         """Create the application menu bar."""
         menubar = tk.Menu(self.root)
@@ -336,6 +410,7 @@ class ClickNickApp:
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Address Editor...", command=self._open_address_editor)
+        tools_menu.add_command(label="Dataview Editor...", command=self._open_dataview_editor)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)

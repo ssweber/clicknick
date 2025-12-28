@@ -11,7 +11,9 @@ from enum import IntEnum
 # Address Memory Map Configuration
 # ==============================================================================
 
-# Address ranges by memory type (start, end inclusive)
+# Address ranges by memory type (start, end inclusive) - these are MDB addresses
+# For XD/YD: MDB 0=XD0, 1=XD0u, 2=XD1, 4=XD2, 6=XD3, 8=XD4, 10=XD5, 12=XD6, 14=XD7, 16=XD8
+# Hidden slots (3,5,7,9,11,13,15) are upper bytes for XD1-8 that aren't displayed
 ADDRESS_RANGES: dict[str, tuple[int, int]] = {
     "X": (1, 816),  # Inputs
     "Y": (1, 816),  # Outputs
@@ -23,8 +25,8 @@ ADDRESS_RANGES: dict[str, tuple[int, int]] = {
     "DD": (1, 1000),  # Double data registers (32-bit)
     "DH": (1, 500),  # Hex data registers
     "DF": (1, 500),  # Float data registers
-    "XD": (0, 16),  # Input groups (note: starts at 0)
-    "YD": (0, 16),  # Output groups (note: starts at 0)
+    "XD": (0, 16),  # Input groups: XD0, XD0u, XD1-XD8 (MDB 0-16, skip odd > 1)
+    "YD": (0, 16),  # Output groups: YD0, YD0u, YD1-YD8 (MDB 0-16, skip odd > 1)
     "TD": (1, 500),  # Timer data
     "CTD": (1, 250),  # Counter data
     "SD": (1, 1000),  # Special data registers
@@ -154,11 +156,11 @@ DEFAULT_RETENTIVE: dict[str, bool] = {
 
 
 def get_addr_key(memory_type: str, address: int) -> int:
-    """Calculate AddrKey from memory type and address.
+    """Calculate AddrKey from memory type and MDB address.
 
     Args:
         memory_type: The memory type (X, Y, C, etc.)
-        address: The address number
+        address: The MDB address number
 
     Returns:
         The AddrKey value used as primary key in MDB
@@ -170,13 +172,13 @@ def get_addr_key(memory_type: str, address: int) -> int:
 
 
 def parse_addr_key(addr_key: int) -> tuple[str, int]:
-    """Parse an AddrKey back to memory type and address.
+    """Parse an AddrKey back to memory type and MDB address.
 
     Args:
         addr_key: The AddrKey value from MDB
 
     Returns:
-        Tuple of (memory_type, address)
+        Tuple of (memory_type, mdb_address)
 
     Raises:
         KeyError: If the type index is not recognized
@@ -184,6 +186,142 @@ def parse_addr_key(addr_key: int) -> tuple[str, int]:
     type_index = addr_key >> 24
     address = addr_key & 0xFFFFFF
     return _INDEX_TO_TYPE[type_index], address
+
+
+def is_xd_yd_upper_byte(memory_type: str, mdb_address: int) -> bool:
+    """Check if an XD/YD MDB address is for an upper byte (only XD0u/YD0u at MDB 1).
+
+    XD/YD structure:
+    - MDB 0 = XD0 (lower), MDB 1 = XD0u (upper) - only slot 0 has upper byte variant
+    - MDB 2 = XD1, MDB 4 = XD2, ... MDB 16 = XD8 (no upper byte variants displayed)
+
+    Args:
+        memory_type: The memory type (XD or YD)
+        mdb_address: The MDB address number
+
+    Returns:
+        True if this is XD0u/YD0u (MDB address 1)
+    """
+    if memory_type in ("XD", "YD"):
+        return mdb_address == 1
+    return False
+
+
+def is_xd_yd_hidden_slot(memory_type: str, mdb_address: int) -> bool:
+    """Check if an XD/YD MDB address is a hidden slot (odd addresses > 1).
+
+    These are the upper byte slots for XD1-8/YD1-8 that aren't displayed.
+
+    Args:
+        memory_type: The memory type (XD or YD)
+        mdb_address: The MDB address number
+
+    Returns:
+        True if this slot should be hidden (odd addresses >= 3)
+    """
+    if memory_type in ("XD", "YD"):
+        return mdb_address >= 3 and mdb_address % 2 == 1
+    return False
+
+
+def xd_yd_mdb_to_display(mdb_address: int) -> int:
+    """Convert XD/YD MDB address to display address number.
+
+    XD/YD structure:
+    - MDB 0 -> 0 (XD0)
+    - MDB 1 -> 0 (XD0u)
+    - MDB 2 -> 1 (XD1), MDB 4 -> 2 (XD2), ... MDB 16 -> 8 (XD8)
+
+    Args:
+        mdb_address: The MDB address (0, 1, 2, 4, 6, ...)
+
+    Returns:
+        The display address number (0, 0, 1, 2, 3, ...)
+    """
+    if mdb_address <= 1:
+        return 0
+    return mdb_address // 2
+
+
+def xd_yd_display_to_mdb(display_addr: int, upper_byte: bool = False) -> int:
+    """Convert XD/YD display address to MDB address.
+
+    Args:
+        display_addr: The display address (0-8)
+        upper_byte: True for XD0u/YD0u (only valid for display_addr=0)
+
+    Returns:
+        The MDB address
+    """
+    if display_addr == 0:
+        return 1 if upper_byte else 0
+    return display_addr * 2
+
+
+def format_address_display(memory_type: str, mdb_address: int) -> str:
+    """Format a memory type and address as a display string.
+
+    For XD/YD:
+    - MDB 0 -> "XD0", MDB 1 -> "XD0u"
+    - MDB 2 -> "XD1", MDB 4 -> "XD2", ... MDB 16 -> "XD8"
+    - Odd addresses >= 3 are hidden slots (returns "XDn?" to indicate)
+
+    Args:
+        memory_type: The memory type (X, XD, DS, etc.)
+        mdb_address: The MDB address number
+
+    Returns:
+        Formatted address string (e.g., "X001", "XD0", "XD0u", "DS100")
+    """
+    if memory_type in ("XD", "YD"):
+        if mdb_address == 0:
+            return f"{memory_type}0"
+        elif mdb_address == 1:
+            return f"{memory_type}0u"
+        else:
+            display_addr = mdb_address // 2
+            return f"{memory_type}{display_addr}"
+    return f"{memory_type}{mdb_address}"
+
+
+def parse_address_display(address_str: str) -> tuple[str, int] | None:
+    """Parse a display address string to memory type and MDB address.
+
+    Handles XD/YD: "XD0u" -> ("XD", 1), "XD1" -> ("XD", 2), "XD8" -> ("XD", 16)
+
+    Args:
+        address_str: Address string like "X001", "XD0", "XD0u", "XD8"
+
+    Returns:
+        Tuple of (memory_type, mdb_address) or None if invalid
+    """
+    import re
+
+    if not address_str:
+        return None
+
+    address_str = address_str.strip().upper()
+
+    # Match pattern: letters followed by digits, optionally ending with 'U'
+    match = re.match(r"^([A-Z]+)(\d+)(U?)$", address_str)
+    if not match:
+        return None
+
+    memory_type = match.group(1)
+    display_addr = int(match.group(2))
+    is_upper = match.group(3) == "U"
+
+    if memory_type not in MEMORY_TYPE_BASES:
+        return None
+
+    if memory_type in ("XD", "YD"):
+        # Only XD0/YD0 can have 'u' suffix
+        if is_upper and display_addr != 0:
+            return None  # Invalid: XD1u, XD2u, etc. don't exist
+        return memory_type, xd_yd_display_to_mdb(display_addr, is_upper)
+
+    # For non-XD/YD, display address equals MDB address
+    return memory_type, display_addr
 
 
 def validate_nickname_format(nickname: str) -> tuple[bool, str]:
@@ -401,8 +539,8 @@ class AddressRow:
 
     @property
     def display_address(self) -> str:
-        """Get the display string for this address (e.g., 'X001', 'C150')."""
-        return f"{self.memory_type}{self.address}"
+        """Get the display string for this address (e.g., 'X001', 'XD0u', 'C150')."""
+        return format_address_display(self.memory_type, self.address)
 
     @property
     def is_default_retentive(self) -> bool:

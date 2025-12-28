@@ -72,6 +72,39 @@ def find_click_database(click_pid: int | None = None, click_hwnd: int | None = N
         return None
 
 
+def get_project_path_from_hwnd(click_hwnd: int | None = None) -> Path | None:
+    """Get the project path from a CLICK window handle.
+
+    The project is stored in the Temp folder under CLICK ({hwnd_hex}).
+
+    Args:
+        click_hwnd: Window handle of the CLICK software
+
+    Returns:
+        Path to the project folder (the CLICK ({hwnd}) parent) or None if not found
+    """
+    if not click_hwnd:
+        return None
+
+    try:
+        # Convert window handle to uppercase hex string without '0x' prefix
+        hwnd_hex = format(click_hwnd, "08X")
+
+        # Build the expected project path (parent of CLICK folder contains the project)
+        username = os.environ.get("USERNAME")
+        click_folder = Path(f"C:/Users/{username}/AppData/Local/Temp/CLICK ({hwnd_hex})")
+
+        if click_folder.exists():
+            # The project path is the Temp folder containing the CLICK folder
+            return click_folder.parent
+
+        return None
+
+    except Exception as e:
+        print(f"Error getting project path: {e}")
+        return None
+
+
 def create_access_connection(db_path: str | Path) -> pyodbc.Connection:
     """Create ODBC connection to Access database with driver fallback.
 

@@ -14,6 +14,7 @@ from .address_model import (
     DEFAULT_RETENTIVE,
     MEMORY_TYPE_TO_DATA_TYPE,
     PAIRED_RETENTIVE_TYPES,
+    is_xd_yd_hidden_slot,
     AddressRow,
     validate_nickname,
 )
@@ -107,6 +108,9 @@ def build_single_type_rows(
 
     rows = []
     for addr in range(start, end + 1):
+        # Skip hidden XD/YD slots (odd addresses >= 3 are upper bytes not displayed)
+        if is_xd_yd_hidden_slot(mem_type, addr):
+            continue
         data = existing.get(addr)
         row = create_row_from_data(mem_type, addr, data, all_nicknames)
         rows.append(row)

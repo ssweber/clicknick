@@ -99,6 +99,76 @@ class TestAddrKeyCalculation:
             parsed = parse_addr_key(addr_key)
             assert parsed == (memory_type, address)
 
+    def test_xd_yd_display_functions(self):
+        """Test XD/YD display address formatting and parsing."""
+        from clicknick.address_editor.address_model import (
+            format_address_display,
+            is_xd_yd_hidden_slot,
+            is_xd_yd_upper_byte,
+            parse_address_display,
+            xd_yd_display_to_mdb,
+            xd_yd_mdb_to_display,
+        )
+
+        # XD/YD structure:
+        # MDB 0 = XD0, MDB 1 = XD0u (only slot 0 has upper byte variant)
+        # MDB 2 = XD1, MDB 4 = XD2, ... MDB 16 = XD8
+        # MDB 3, 5, 7, ... 15 are hidden upper byte slots
+
+        # Test xd_yd_mdb_to_display
+        assert xd_yd_mdb_to_display(0) == 0  # XD0
+        assert xd_yd_mdb_to_display(1) == 0  # XD0u
+        assert xd_yd_mdb_to_display(2) == 1  # XD1
+        assert xd_yd_mdb_to_display(4) == 2  # XD2
+        assert xd_yd_mdb_to_display(16) == 8  # XD8
+
+        # Test xd_yd_display_to_mdb
+        assert xd_yd_display_to_mdb(0) == 0  # XD0
+        assert xd_yd_display_to_mdb(0, upper_byte=True) == 1  # XD0u
+        assert xd_yd_display_to_mdb(1) == 2  # XD1
+        assert xd_yd_display_to_mdb(8) == 16  # XD8
+
+        # Test is_xd_yd_upper_byte (only MDB 1 is upper byte)
+        assert is_xd_yd_upper_byte("XD", 0) is False
+        assert is_xd_yd_upper_byte("XD", 1) is True
+        assert is_xd_yd_upper_byte("XD", 2) is False
+        assert is_xd_yd_upper_byte("XD", 3) is False  # Hidden, but not displayed as upper
+        assert is_xd_yd_upper_byte("YD", 1) is True
+        assert is_xd_yd_upper_byte("DS", 1) is False  # Non-XD/YD
+
+        # Test is_xd_yd_hidden_slot
+        assert is_xd_yd_hidden_slot("XD", 0) is False  # XD0
+        assert is_xd_yd_hidden_slot("XD", 1) is False  # XD0u (displayed)
+        assert is_xd_yd_hidden_slot("XD", 2) is False  # XD1
+        assert is_xd_yd_hidden_slot("XD", 3) is True   # Hidden
+        assert is_xd_yd_hidden_slot("XD", 5) is True   # Hidden
+        assert is_xd_yd_hidden_slot("XD", 16) is False  # XD8
+        assert is_xd_yd_hidden_slot("DS", 3) is False  # Non-XD/YD
+
+        # Test format_address_display
+        assert format_address_display("XD", 0) == "XD0"
+        assert format_address_display("XD", 1) == "XD0u"
+        assert format_address_display("XD", 2) == "XD1"
+        assert format_address_display("XD", 4) == "XD2"
+        assert format_address_display("XD", 16) == "XD8"
+        assert format_address_display("YD", 0) == "YD0"
+        assert format_address_display("YD", 1) == "YD0u"
+        assert format_address_display("DS", 100) == "DS100"  # Non-XD/YD unchanged
+
+        # Test parse_address_display
+        assert parse_address_display("XD0") == ("XD", 0)
+        assert parse_address_display("XD0u") == ("XD", 1)
+        assert parse_address_display("XD1") == ("XD", 2)
+        assert parse_address_display("XD2") == ("XD", 4)
+        assert parse_address_display("XD8") == ("XD", 16)
+        assert parse_address_display("YD0u") == ("YD", 1)
+        assert parse_address_display("YD8") == ("YD", 16)
+        assert parse_address_display("DS100") == ("DS", 100)
+        assert parse_address_display("X001") == ("X", 1)
+        assert parse_address_display("XD1u") is None  # Invalid: only XD0 has u variant
+        assert parse_address_display("INVALID") is None
+        assert parse_address_display("") is None
+
     def test_parse_addr_key_invalid_type_index(self):
         """Test that invalid type index raises KeyError."""
         # 0x10000001 would have type index 16, which doesn't exist
