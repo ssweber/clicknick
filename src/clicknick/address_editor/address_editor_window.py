@@ -305,7 +305,7 @@ class AddressEditorWindow(tk.Toplevel):
                 on_data_changed=self._handle_data_changed,
                 on_close=None,  # No close button in sidebar mode
                 on_validate_affected=self.shared_data.validate_affected_rows,
-                is_duplicate=self.shared_data.is_duplicate_nickname,
+                is_duplicate_fn=self.shared_data.is_duplicate_nickname,
             )
 
             # Load from data source if not initialized

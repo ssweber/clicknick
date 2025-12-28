@@ -332,7 +332,7 @@ class SharedAddressData:
         for addr_key in affected_keys:
             if addr_key in self.all_rows:
                 self.all_rows[addr_key].validate(
-                    all_nicknames, is_duplicate=self.is_duplicate_nickname
+                    all_nicknames, is_duplicate_fn=self.is_duplicate_nickname
                 )
 
         return affected_keys

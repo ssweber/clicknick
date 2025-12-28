@@ -808,7 +808,7 @@ class AddressPanel(ttk.Frame):
         on_data_changed: Callable[[], None] | None = None,
         on_close: Callable[[AddressPanel], None] | None = None,
         on_validate_affected: Callable[[str, str], set[int]] | None = None,
-        is_duplicate: Callable[[str, int], bool] | None = None,
+        is_duplicate_fn: Callable[[str, int], bool] | None = None,
     ):
         """Initialize the address panel.
 
@@ -821,7 +821,7 @@ class AddressPanel(ttk.Frame):
             on_close: Callback when panel close button is clicked.
             on_validate_affected: Callback to validate rows affected by nickname change (old, new).
                 Returns set of validated addr_keys. Used for O(1) targeted validation.
-            is_duplicate: O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
+            is_duplicate_fn: O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
         """
         super().__init__(parent)
 
@@ -831,7 +831,7 @@ class AddressPanel(ttk.Frame):
         self.on_data_changed = on_data_changed
         self.on_close = on_close
         self.on_validate_affected = on_validate_affected
-        self.is_duplicate = is_duplicate
+        self.is_duplicate_fn = is_duplicate_fn
 
         self.rows: list[AddressRow] = []
         self._all_nicknames: dict[int, str] = {}

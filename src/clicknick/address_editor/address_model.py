@@ -217,7 +217,7 @@ def validate_nickname(
     nickname: str,
     all_nicknames: dict[int, str],
     current_addr_key: int,
-    is_duplicate: Callable[[str, int], bool] | None = None,
+    is_duplicate_fn: Callable[[str, int], bool] | None = None,
 ) -> tuple[bool, str]:
     """Validate a nickname against all rules.
 
@@ -225,7 +225,7 @@ def validate_nickname(
         nickname: The nickname to validate
         all_nicknames: Dict of addr_key -> nickname for uniqueness check (legacy, used if is_duplicate is None)
         current_addr_key: The addr_key of the row being validated (excluded from uniqueness)
-        is_duplicate: Optional O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
+        is_duplicate_fn: Optional O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
             If provided, uses this instead of O(n) scan of all_nicknames.
 
     Returns:
@@ -240,9 +240,9 @@ def validate_nickname(
         return True, ""
 
     # Check uniqueness
-    if is_duplicate is not None:
+    if is_duplicate_fn is not None:
         # O(1) check via reverse index
-        if is_duplicate(nickname, current_addr_key):
+        if is_duplicate_fn(nickname, current_addr_key):
             return False, "Duplicate"
     else:
         # Legacy O(n) fallback
