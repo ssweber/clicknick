@@ -66,10 +66,10 @@ src/clicknick/
 - `validation.py` - Nickname and initial value validation functions
 
 **`data/`** - Data loading and shared state
-- `shared_data.py` - `SharedAddressData` for cross-window synchronization, observer pattern
-- `shared_dataview.py` - `SharedDataviewData` for dataview editor
+- `shared_data.py` - `SharedAddressData`: single source of truth for all address data, observer pattern, file monitoring
+- `shared_dataview.py` - `SharedDataviewData`: read-only shim over `SharedAddressData` for nickname lookups, manages CDV files
 - `data_source.py` - Abstract `DataSource` with `MdbDataSource` and `CsvDataSource`
-- `nickname_manager.py` - Loads nicknames from CSV or ODBC, manages filtering
+- `nickname_manager.py` - Read-only shim over `SharedAddressData`, provides filtering for Overlay autocomplete
 
 **`utils/`** - Utilities
 - `filters.py` - Filter strategies: `NoneFilter`, `PrefixFilter`, `ContainsFilter`, `ContainsPlusFilter`
@@ -109,10 +109,24 @@ src/clicknick/
 - `window_mapping.py` - Maps window classes to edit controls and allowed address types
 
 ### Data Flow
+
+**Initialization (on connect_to_instance):**
+1. `SharedAddressData` created with `MdbDataSource` or `CsvDataSource`
+2. `load_initial_data()` populates `all_rows: dict[int, AddressRow]`
+3. `start_file_monitoring()` begins polling for external MDB/CSV changes
+4. `NicknameManager.set_shared_data()` wires it as observer for cache invalidation
+
+**Autocomplete Flow:**
 1. `ClickWindowDetector` polls for Click.exe child windows (instruction dialogs)
 2. When detected, `Overlay` positions over the target edit control
-3. `NicknameManager.get_filtered_nicknames()` filters by address type + search text
+3. `NicknameManager.get_filtered_nicknames()` builds/uses cached `Nickname` list from `SharedAddressData.all_rows`
 4. Selection inserts address via Win32 `set_control_text`
+
+**Change Propagation:**
+1. Address Editor or external MDB change triggers `SharedAddressData.notify_data_changed()`
+2. All observers notified (NicknameManager, AddressEditorWindows, SharedDataviewData)
+3. NicknameManager invalidates its nickname cache, rebuilt on next filter request
+4. SharedDataviewData triggers `refresh_nicknames_from_shared()` on DataviewEditorWindow
 
 ### Filter System
 Filters implement `FilterBase.filter_matches(completion_list, current_text)`:

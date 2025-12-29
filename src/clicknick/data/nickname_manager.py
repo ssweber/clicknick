@@ -1,26 +1,28 @@
-import csv
-import os
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from ..models.blocktag import strip_block_tag
 from ..models.nickname import Nickname
 from ..utils.filters import ContainsFilter, ContainsPlusFilter, NoneFilter, PrefixFilter
-from ..utils.mdb_shared import (
-    create_access_connection,
-    find_click_database,
-    has_access_driver,
-)
+from ..utils.mdb_shared import has_access_driver
+
+if TYPE_CHECKING:
+    from .shared_data import SharedAddressData
 
 
 class NicknameManager:
-    """Manages nicknames loaded from CSV or database with efficient filtering."""
+    """Read-only shim over SharedAddressData for nickname filtering and lookup.
+
+    This class delegates to SharedAddressData for all address data. It builds
+    a cached list of Nickname objects on demand and invalidates the cache when
+    SharedAddressData notifies of changes.
+    """
 
     def __init__(self, settings=None, filter_strategies=None):
-        self.nicknames: list[Nickname] = []  # List of Nickname objects
-        self._loaded_filepath = None
-        self._last_load_timestamp = None
-        self._click_pid = None
-        self._click_hwnd = None
-        self.settings = settings  # Store reference to app settings
+        self._shared_data: SharedAddressData | None = None
+        self._nickname_cache: list[Nickname] | None = None
+        self.settings = settings
 
         # Use provided filter strategies or create default ones
         if filter_strategies:
@@ -33,29 +35,89 @@ class NicknameManager:
                 "containsplus": ContainsPlusFilter(),
             }
 
+    def _on_data_changed(self, sender=None) -> None:
+        """Observer callback when SharedAddressData changes."""
+        self._nickname_cache = None
+
+    def set_shared_data(self, shared_data: SharedAddressData | None) -> None:
+        """Set the SharedAddressData to delegate to.
+
+        Registers as observer to invalidate cache on changes.
+        """
+        # Unregister from old shared data
+        if self._shared_data is not None:
+            self._shared_data.remove_observer(self._on_data_changed)
+
+        self._shared_data = shared_data
+        self._nickname_cache = None
+
+        # Register as observer on new shared data
+        if self._shared_data is not None:
+            self._shared_data.add_observer(self._on_data_changed)
+
+    def _build_nickname_cache(self) -> list[Nickname]:
+        """Build Nickname list from SharedAddressData.all_rows."""
+        if self._shared_data is None:
+            return []
+
+        nicknames = []
+        for row in self._shared_data.all_rows.values():
+            if not row.nickname:
+                continue
+            nickname_obj = Nickname(
+                nickname=row.nickname,
+                address=row.display_address,
+                data_type_display=row.data_type_display,
+                initial_value=row.initial_value,
+                retentive=row.retentive,
+                comment=strip_block_tag(row.comment),
+                address_type=row.memory_type,
+                used=row.used,
+            )
+            nicknames.append(nickname_obj)
+        return nicknames
+
+    def _generate_abbreviation_tags(self):
+        """Generate abbreviation tags for containsplus filtering."""
+        if self._nickname_cache is None:
+            return
+
+        containsplus_filter = self.filter_strategies.get("containsplus")
+        if not containsplus_filter:
+            return
+
+        for nickname_obj in self._nickname_cache:
+            nickname_obj.abbr_tags = containsplus_filter.generate_tags(nickname_obj.nickname)
+
+    @property
+    def nicknames(self) -> list[Nickname]:
+        """Get cached Nickname list, rebuilt on demand."""
+        if self._nickname_cache is None:
+            self._nickname_cache = self._build_nickname_cache()
+            self._generate_abbreviation_tags()
+        return self._nickname_cache
+
     @property
     def is_loaded(self) -> bool:
         """Check if nicknames data is loaded."""
         return len(self.nicknames) > 0
 
     def apply_sorting(self, sort_by_nickname: bool = False):
-        """
-        Apply sorting to the loaded nicknames.
+        """Apply sorting to the loaded nicknames.
 
         Args:
             sort_by_nickname: If True, sort by nickname alphabetically.
                              If False, keep original order (memory type + address).
         """
-        if not self.is_loaded:
-            return
+        if self._nickname_cache is None:
+            # Force cache build first
+            _ = self.nicknames
 
-        if sort_by_nickname:
-            self.nicknames.sort(key=lambda x: x.nickname)
-        # If False, keep the original database/CSV order (MemoryType + Address)
+        if self._nickname_cache and sort_by_nickname:
+            self._nickname_cache.sort(key=lambda x: x.nickname)
 
     def get_address_for_nickname(self, nickname: str) -> str | None:
-        """
-        Get the address for a given nickname.
+        """Get the address for a given nickname.
 
         Args:
             nickname: The exact nickname to look up
@@ -63,19 +125,13 @@ class NicknameManager:
         Returns:
             The corresponding address or None if not found
         """
-        if not self.is_loaded:
-            return None
-
-        # Find exact match for the nickname
         for nickname_obj in self.nicknames:
             if nickname_obj.nickname == nickname:
                 return nickname_obj.address
-
         return None
 
     def get_nickname_details(self, nickname: str) -> str:
-        """
-        Get detailed information for a given nickname.
+        """Get detailed information for a given nickname.
 
         Args:
             nickname: The exact nickname to look up
@@ -83,42 +139,13 @@ class NicknameManager:
         Returns:
             Detailed string with address, data type, initial value, and comment
         """
-        if not self.is_loaded:
-            return ""
-
-        # Find exact match for the nickname
         for nickname_obj in self.nicknames:
             if nickname_obj.nickname == nickname:
                 return nickname_obj.details()
-
         return ""
 
-    def _check_for_file_updates(self) -> None:
-        """Check if the loaded file has been modified and reload if necessary."""
-        if not self._loaded_filepath:
-            return
-
-        try:
-            current_timestamp = os.path.getmtime(self._loaded_filepath)
-            if current_timestamp != self._last_load_timestamp:
-                print(f"Detected changes in {self._loaded_filepath}, reloading...")
-
-                # If we loaded from database, reload using the stored PID and handle
-                if self._click_pid and self._click_hwnd:
-                    self.load_from_database(self._click_pid, self._click_hwnd)
-                else:
-                    # Otherwise reload from CSV
-                    self.load_csv(self._loaded_filepath)
-
-                # Reapply sorting preference after reload
-                if self.settings:
-                    self.apply_sorting(self.settings.sort_by_nickname)
-        except Exception as e:
-            print(f"Error checking for file updates: {e}")
-
     def get_filtered_nicknames(self, address_types: list[str], search_text: str = "") -> list[str]:
-        """
-        Get filtered list of nickname strings using current app settings.
+        """Get filtered list of nickname strings using current app settings.
 
         Args:
             address_types: List of allowed address types (X, Y, C, etc.)
@@ -127,10 +154,7 @@ class NicknameManager:
         Returns:
             List of matching nickname strings
         """
-        # Lazy check for file updates
-        self._check_for_file_updates()
-
-        if not self.is_loaded or not address_types:
+        if not self.nicknames or not address_types:
             return []
 
         # Get filtering parameters from settings (with fallbacks)
@@ -139,7 +163,6 @@ class NicknameManager:
             exclude_sc_sd = self.settings.exclude_sc_sd
             excluded_terms = self.settings.get_exclude_terms_list()
         else:
-            # Fallback values if no settings available
             search_mode = "none"
             exclude_sc_sd = False
             excluded_terms = []
@@ -173,164 +196,6 @@ class NicknameManager:
 
         return [obj.nickname for obj in search_filtered_objects]
 
-    def _generate_abbreviation_tags(self):
-        """Generate abbreviation tags for containsplus filtering"""
-        if not self.is_loaded:
-            return
-
-        containsplus_filter = self.filter_strategies.get("containsplus")
-        if not containsplus_filter:
-            return
-
-        for nickname_obj in self.nicknames:
-            nickname_obj.abbr_tags = containsplus_filter.generate_tags(nickname_obj.nickname)
-
-    def load_csv(self, filepath: str) -> bool:
-        """
-        Load nicknames from a CSV file in original order (MemoryType + Address).
-
-        Args:
-            filepath: Path to the CSV file
-
-        Returns:
-            bool: True if loading was successful
-        """
-        try:
-            # Reset data
-            self.nicknames = []
-            self._click_pid = None
-            self._click_hwnd = None
-
-            # Load the CSV file
-            with open(filepath, newline="") as csvfile:
-                reader = csv.DictReader(csvfile)
-                # Verify required columns exist
-                required_columns = [
-                    "Address",
-                    "Nickname",
-                    "Data Type",
-                    "Initial Value",
-                    "Retentive",
-                    "Address Comment",
-                ]
-                if not all(col in reader.fieldnames for col in required_columns):
-                    print(f"CSV missing required columns: {required_columns}")
-                    return False
-
-                # Convert to Nickname objects
-                for row in reader:
-                    nickname_obj = Nickname(
-                        nickname=row["Nickname"],
-                        address=row["Address"],
-                        data_type_display=row["Data Type"],
-                        initial_value=row["Initial Value"],
-                        retentive=row["Retentive"] == "Yes",
-                        comment=strip_block_tag(row["Address Comment"]),
-                        address_type="".join(c for c in row["Address"] if c.isupper()),
-                    )
-                    self.nicknames.append(nickname_obj)
-
-            # Generate abbreviation tags
-            self._generate_abbreviation_tags()
-
-            # Store filepath and timestamp for future checks
-            self._loaded_filepath = filepath
-            self._last_load_timestamp = os.path.getmtime(filepath)
-
-            print(f"Loaded {len(self.nicknames)} nicknames from {filepath}")
-            return True
-
-        except Exception as e:
-            print(f"Error loading CSV: {e}")
-            return False
-
     def has_access_driver(self) -> bool:
         """Check if any Microsoft Access ODBC driver is available."""
         return has_access_driver()
-
-    def _convert_database_data_type(self, text: str) -> str:
-        type_mapping = {0: "BIT", 1: "INT", 2: "INT2", 3: "FLOAT", 4: "HEX", 6: "TEXT"}
-        return type_mapping.get(text, "")
-
-    def load_from_database(self, click_pid=None, click_hwnd=None):
-        """
-        Load nicknames directly from the CLICK Programming Software's Access database.
-
-        Args:
-            click_pid: Process ID of the CLICK software
-            click_hwnd: Window handle of the CLICK software
-
-        Returns:
-            bool: True if loading was successful
-        """
-        try:
-            # Save the Click PID and window handle for future reloads
-            self._click_pid = click_pid
-            self._click_hwnd = click_hwnd
-
-            # Find the database path
-            db_path = find_click_database(click_pid, click_hwnd)
-            if not db_path:
-                print("Could not locate CLICK database file")
-                return False
-
-            # Connect to the database
-            try:
-                conn = create_access_connection(db_path)
-            except RuntimeError as e:
-                print(str(e))
-                return False
-
-            cursor = conn.cursor()
-
-            # Execute query to get all nicknames
-            query = """
-                SELECT Nickname, MemoryType & Address AS AddressInfo, MemoryType, DataType, Use as Used, InitialValue, Retentive, Comment
-                FROM address 
-                WHERE Nickname <> ''
-                ORDER BY MemoryType, Address;
-            """
-            cursor.execute(query)
-
-            # Process results into Nickname objects
-            self.nicknames = []
-            for row in cursor.fetchall():
-                (
-                    nickname,
-                    address,
-                    memory_type,
-                    data_type,
-                    used,
-                    initial_value,
-                    retentive,
-                    comment,
-                ) = row
-                nickname_obj = Nickname(
-                    nickname=nickname,
-                    address=address,
-                    data_type_display=self._convert_database_data_type(data_type),
-                    initial_value=initial_value,
-                    retentive=retentive,
-                    comment=strip_block_tag(comment),
-                    address_type=memory_type,
-                    used=used,
-                )
-                self.nicknames.append(nickname_obj)
-
-            # Close connection
-            cursor.close()
-            conn.close()
-
-            # Generate abbreviation tags
-            self._generate_abbreviation_tags()
-
-            # Store filepath and timestamp for future checks
-            self._loaded_filepath = db_path
-            self._last_load_timestamp = os.path.getmtime(db_path)
-
-            print(f"Loaded {len(self.nicknames)} nicknames from database at {db_path}")
-            return True
-
-        except Exception as e:
-            print(f"Error loading from database: {e}")
-            return False

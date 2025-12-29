@@ -408,6 +408,13 @@ class DataviewEditorWindow(tk.Toplevel):
         # Handle window close
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
+    def refresh_nicknames_from_shared(self) -> None:
+        """Called by SharedDataviewData when SharedAddressData changes.
+
+        Auto-refreshes nicknames in all open panels when address data is modified.
+        """
+        self._refresh_nicknames()
+
     def has_unsaved_changes(self) -> bool:
         """Check if any open dataviews have unsaved changes."""
         return any(panel.is_dirty for panel in self._open_panels.values())

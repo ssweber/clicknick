@@ -1,11 +1,11 @@
-"""Shared data model for Dataview Editor windows.
+"""Shared data model for Dataview Editor window.
 
-Manages open dataviews and provides nickname lookup from SharedAddressData.
+Read-only shim over SharedAddressData for nickname lookups.
+Manages CDV file discovery and the single dataview editor window.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -17,10 +17,13 @@ if TYPE_CHECKING:
 
 
 class SharedDataviewData:
-    """Shared data store for dataview editor windows.
+    """Shared data for the Dataview Editor window.
 
-    This class manages the list of available CDV files and provides
-    nickname lookup via SharedAddressData.
+    This class:
+    - Provides nickname lookup via SharedAddressData (read-only shim)
+    - Manages CDV file discovery in the project's DataView folder
+    - Tracks the single dataview editor window
+    - Observes SharedAddressData for automatic nickname refresh
     """
 
     def __init__(
@@ -35,18 +38,19 @@ class SharedDataviewData:
             address_shared_data: SharedAddressData for nickname lookups
         """
         self._project_path = project_path
-        self._address_shared_data = address_shared_data
+        self._address_shared_data: SharedAddressData | None = None
         self._dataview_folder: Path | None = None
 
-        # Observer callbacks
-        self._observers: list[Callable[[], None]] = []
-
-        # Registered windows
-        self._windows: list = []
+        # Single window tracking (only one dataview editor at a time)
+        self._window = None
 
         # Find dataview folder
         if project_path:
             self._dataview_folder = get_dataview_folder(project_path)
+
+        # Wire up to SharedAddressData if provided
+        if address_shared_data:
+            self.set_address_shared_data(address_shared_data)
 
     @property
     def dataview_folder(self) -> Path | None:
@@ -58,13 +62,34 @@ class SharedDataviewData:
         """Get the SharedAddressData for nickname lookups."""
         return self._address_shared_data
 
-    def set_address_shared_data(self, data: SharedAddressData) -> None:
+    def _on_address_data_changed(self, sender=None) -> None:
+        """Observer callback when SharedAddressData changes.
+
+        Triggers nickname refresh in the dataview editor window.
+        """
+        if self._window is not None and hasattr(self._window, "refresh_nicknames_from_shared"):
+            try:
+                self._window.refresh_nicknames_from_shared()
+            except Exception:
+                pass
+
+    def set_address_shared_data(self, data: SharedAddressData | None) -> None:
         """Set the SharedAddressData for nickname lookups.
 
+        Registers as observer to auto-refresh nicknames when address data changes.
+
         Args:
-            data: SharedAddressData instance
+            data: SharedAddressData instance or None to disconnect
         """
+        # Unregister from old shared data
+        if self._address_shared_data is not None:
+            self._address_shared_data.remove_observer(self._on_address_data_changed)
+
         self._address_shared_data = data
+
+        # Register as observer on new shared data
+        if self._address_shared_data is not None:
+            self._address_shared_data.add_observer(self._on_address_data_changed)
 
     def get_cdv_files(self) -> list[Path]:
         """Get list of CDV files in the dataview folder.
@@ -99,79 +124,66 @@ class SharedDataviewData:
 
         return None
 
-    def add_observer(self, callback: Callable[[], None]) -> None:
-        """Add an observer callback."""
-        if callback not in self._observers:
-            self._observers.append(callback)
-
-    def remove_observer(self, callback: Callable[[], None]) -> None:
-        """Remove an observer callback."""
-        if callback in self._observers:
-            self._observers.remove(callback)
-
-    def notify_data_changed(self) -> None:
-        """Notify all observers that data has changed."""
-        for callback in self._observers:
-            try:
-                callback()
-            except Exception:
-                pass
-
     def register_window(self, window) -> None:
-        """Register a dataview editor window."""
-        if window not in self._windows:
-            self._windows.append(window)
+        """Register the dataview editor window."""
+        self._window = window
 
     def unregister_window(self, window) -> None:
-        """Unregister a dataview editor window."""
-        if window in self._windows:
-            self._windows.remove(window)
+        """Unregister the dataview editor window."""
+        if self._window == window:
+            self._window = None
 
-    def close_all_windows(self, prompt_save: bool = True) -> bool:
-        """Close all registered editor windows.
+    def close_window(self, prompt_save: bool = True) -> bool:
+        """Close the dataview editor window if open.
 
         Args:
             prompt_save: If True, prompt to save unsaved changes first.
 
         Returns:
-            True if all windows were closed, False if user cancelled.
+            True if window was closed (or wasn't open), False if user cancelled.
         """
+        if self._window is None:
+            return True
+
         # Check for unsaved changes
-        if prompt_save:
-            has_unsaved = any(
-                hasattr(w, "has_unsaved_changes") and w.has_unsaved_changes() for w in self._windows
-            )
-            if has_unsaved:
+        if prompt_save and hasattr(self._window, "has_unsaved_changes"):
+            if self._window.has_unsaved_changes():
                 from tkinter import messagebox
 
-                parent = self._windows[0] if self._windows else None
                 result = messagebox.askyesnocancel(
                     "Unsaved Changes",
                     "You have unsaved changes in Dataview Editor. Save before closing?",
-                    parent=parent,
+                    parent=self._window,
                 )
                 if result is None:  # Cancel
                     return False
                 if result:  # Yes - save
-                    for window in self._windows:
-                        if hasattr(window, "save_all"):
-                            window.save_all()
+                    if hasattr(self._window, "save_all"):
+                        self._window.save_all()
 
-        # Close all windows
-        for window in self._windows[:]:
-            try:
-                window.destroy()
-            except Exception:
-                pass
+        # Close window
+        try:
+            self._window.destroy()
+        except Exception:
+            pass
 
-        self._windows.clear()
+        self._window = None
         return True
 
-    def force_close_all_windows(self) -> None:
-        """Force close all windows without saving."""
-        for window in self._windows[:]:
+    def force_close_window(self) -> None:
+        """Force close the window without saving."""
+        if self._window is not None:
             try:
-                window.destroy()
+                self._window.destroy()
             except Exception:
                 pass
-        self._windows.clear()
+            self._window = None
+
+    # Backwards compatibility aliases
+    def close_all_windows(self, prompt_save: bool = True) -> bool:
+        """Close the dataview editor window. Alias for close_window()."""
+        return self.close_window(prompt_save)
+
+    def force_close_all_windows(self) -> None:
+        """Force close the window. Alias for force_close_window()."""
+        self.force_close_window()

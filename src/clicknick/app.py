@@ -279,63 +279,41 @@ class ClickNickApp:
             self._show_odbc_warning()
             return
 
+        # Use the app-level SharedAddressData
+        if self._shared_address_data is None:
+            self._update_status("No data loaded", "error")
+            return
+
         try:
-            from .data.data_source import CsvDataSource, MdbDataSource
-            from .data.shared_data import SharedAddressData
             from .views.address_editor.window import AddressEditorWindow
-
-            # Create or reuse shared data for this data source
-            if not hasattr(self, "_address_editor_shared_data"):
-                self._address_editor_shared_data = None
-            if not hasattr(self, "_address_editor_source_path"):
-                self._address_editor_source_path = None
-
-            # Determine the data source path
-            if csv_path:
-                current_source_path = csv_path
-            else:
-                # MDB path is derived from hwnd
-                current_source_path = f"mdb:{self.connected_click_pid}:{self.connected_click_hwnd}"
-
-            # Create new shared data if none exists or if source changed
-            if (
-                self._address_editor_shared_data is None
-                or self._address_editor_source_path != current_source_path
-            ):
-                # Create appropriate data source
-                if csv_path:
-                    data_source = CsvDataSource(csv_path)
-                else:
-                    data_source = MdbDataSource(
-                        click_pid=self.connected_click_pid,
-                        click_hwnd=self.connected_click_hwnd,
-                    )
-                self._address_editor_shared_data = SharedAddressData(data_source)
-                self._address_editor_source_path = current_source_path
 
             AddressEditorWindow(
                 self.root,
-                shared_data=self._address_editor_shared_data,
+                shared_data=self._shared_address_data,
             )
 
         except Exception as e:
             import traceback
 
-            traceback.print_exc()  # This prints the FULL stack trace
+            traceback.print_exc()
             self._update_status(f"Error opening editor: {e}", "error")
 
     def _open_dataview_editor(self):
-        """Open the Dataview Editor window.
+        """Open the Dataview Editor window, or focus if already open.
 
         The dataview editor allows creating and editing CLICK DataView files (.cdv).
+        Only one DataviewEditorWindow can be open at a time.
         """
         if not self.connected_click_pid:
             self._update_status("Connect to a ClickPLC window first", "error")
             return
 
+        # Use the app-level SharedAddressData
+        if self._shared_address_data is None:
+            self._update_status("No data loaded", "error")
+            return
+
         try:
-            from .data.data_source import MdbDataSource
-            from .data.shared_data import SharedAddressData
             from .data.shared_dataview import SharedDataviewData
             from .utils.mdb_shared import get_project_path_from_hwnd
             from .views.dataview_editor.window import DataviewEditorWindow
@@ -343,24 +321,11 @@ class ClickNickApp:
             # Get project path from connected Click window
             project_path = get_project_path_from_hwnd(self.connected_click_hwnd)
 
-            # Create or reuse shared data
+            # Create or reuse shared dataview data
             if not hasattr(self, "_dataview_editor_shared_data"):
                 self._dataview_editor_shared_data = None
             if not hasattr(self, "_dataview_editor_project_path"):
                 self._dataview_editor_project_path = None
-
-            # Ensure address shared data exists for nickname lookups
-            if not hasattr(self, "_address_editor_shared_data"):
-                self._address_editor_shared_data = None
-
-            if self._address_editor_shared_data is None:
-                # Create SharedAddressData on-demand using MDB data source
-                data_source = MdbDataSource(
-                    click_pid=self.connected_click_pid,
-                    click_hwnd=self.connected_click_hwnd,
-                )
-                self._address_editor_shared_data = SharedAddressData(data_source)
-                self._address_editor_shared_data.load_initial_data()
 
             # Create new shared data if none exists or if project changed
             if (
@@ -369,9 +334,19 @@ class ClickNickApp:
             ):
                 self._dataview_editor_shared_data = SharedDataviewData(
                     project_path=project_path,
-                    address_shared_data=self._address_editor_shared_data,
+                    address_shared_data=self._shared_address_data,
                 )
                 self._dataview_editor_project_path = project_path
+
+            # If window already open, focus it instead of creating a new one
+            if self._dataview_editor_shared_data._window is not None:
+                try:
+                    self._dataview_editor_shared_data._window.lift()
+                    self._dataview_editor_shared_data._window.focus_force()
+                    return
+                except Exception:
+                    # Window was destroyed, clear reference
+                    self._dataview_editor_shared_data._window = None
 
             # Get project name for window title
             title_suffix = ""
@@ -480,6 +455,10 @@ class ClickNickApp:
         self.nickname_manager = NicknameManager(self.settings, self.filter_strategies)
         self.detector = ClickWindowDetector(CLICK_PLC_WINDOW_MAPPING, self)
 
+        # Shared address data (single source of truth for all address data)
+        self._shared_address_data = None
+        self._shared_data_source_path = None
+
         # Initialize overlay early (before UI creation)
         self.overlay = None
 
@@ -577,12 +556,26 @@ class ClickNickApp:
 
     def load_csv(self):
         """Load nicknames from CSV file."""
-        if not self.csv_path_var.get():
+        csv_path = self.csv_path_var.get()
+        if not csv_path:
             self._update_status("⚠ No CSV file selected", "error")
-            return
+            return False
 
-        # Try to load from CSV
-        if self.nickname_manager.load_csv(self.csv_path_var.get()):
+        try:
+            from .data.data_source import CsvDataSource
+            from .data.shared_data import SharedAddressData
+
+            data_source = CsvDataSource(csv_path)
+            self._shared_address_data = SharedAddressData(data_source)
+            self._shared_address_data.load_initial_data()
+            self._shared_data_source_path = csv_path
+
+            # Start file monitoring for external changes
+            self._shared_address_data.start_file_monitoring(self.root)
+
+            # Wire NicknameManager to use SharedAddressData
+            self.nickname_manager.set_shared_data(self._shared_address_data)
+
             # Apply user's sorting preference
             self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
@@ -590,8 +583,11 @@ class ClickNickApp:
             self.using_database = False
             self._update_window_title()
             self.start_monitoring()
-        else:
+            return True
+        except Exception as e:
+            print(f"Error loading CSV: {e}")
             self._update_status("⚠ CSV load failed", "error")
+            return False
 
     def browse_and_load_csv(self):
         """Browse for and load CSV file from menu."""
@@ -604,10 +600,10 @@ class ClickNickApp:
             self.load_csv()
 
     def load_from_database(self):
-        """Load nicknames directly from the CLICK database."""
+        """Start monitoring after SharedAddressData is loaded."""
         if not self.connected_click_pid:
             self._update_status("⚠ Not connected", "error")
-            return
+            return False
 
         # Check if ODBC drivers are available
         if not self.nickname_manager.has_access_driver():
@@ -615,42 +611,39 @@ class ClickNickApp:
             if not self._odbc_warning_shown:
                 self._show_odbc_warning()
                 self._odbc_warning_shown = True
-            return
+            return False
 
-        # Clear the CSV path to indicate we're using the database
-        self.csv_path_var.set("")
-
-        # Try to load from database (use stored hwnd to avoid lookup issues with multiple windows)
-        success = self.nickname_manager.load_from_database(
-            click_pid=self.connected_click_pid,
-            click_hwnd=self.connected_click_hwnd,
-        )
-
-        if success:
-            # Apply user's sorting preference
-            self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
-
-            self._update_status("✓ DB loaded", "connected")
-            self.using_database = True
-            self._update_window_title()
-
-            self.start_monitoring()
-        else:
+        # SharedAddressData already created and loaded in connect_to_instance()
+        if self._shared_address_data is None:
             self._update_status("⚠ DB load failed", "error")
             self.using_database = False
+            return False
+
+        # Apply user's sorting preference
+        self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
+
+        self._update_status("✓ DB loaded", "connected")
+        self.using_database = True
+        self._update_window_title()
+
+        self.start_monitoring()
+        return True
 
     def connect_to_instance(self, pid, title, filename, hwnd):
         """Connect to a specific Click.exe instance."""
         # Close any open editor windows first (prompt to save if needed)
-        if hasattr(self, "_address_editor_shared_data") and self._address_editor_shared_data:
-            if not self._address_editor_shared_data.close_all_windows(prompt_save=True):
+        if self._shared_address_data is not None:
+            if not self._shared_address_data.close_all_windows(prompt_save=True):
                 # User cancelled - don't switch instances
                 # Restore combobox selection to current instance
                 if self.connected_click_filename:
                     self.selected_instance_var.set(self.connected_click_filename)
                 return
-            self._address_editor_shared_data = None
-            self._address_editor_source_path = None
+            self._shared_address_data = None
+            self._shared_data_source_path = None
+
+        # Disconnect NicknameManager from old data
+        self.nickname_manager.set_shared_data(None)
 
         # Stop monitoring if currently active
         if self.monitoring:
@@ -665,15 +658,30 @@ class ClickNickApp:
         # Clear CSV path when switching instances
         self.csv_path_var.set("")
 
-        # Reset nickname manager (reuse filter strategies to preserve cache)
-        self.nickname_manager = NicknameManager(self.settings, self.filter_strategies)
-
         # Store the new connection FIRST (including hwnd to avoid lookup issues)
         self.connected_click_pid = pid
         self.connected_click_filename = filename
         self.connected_click_hwnd = hwnd
 
-        # Use centralized database loading method
+        # Create SharedAddressData for the new connection
+        from .data.data_source import MdbDataSource
+        from .data.shared_data import SharedAddressData
+
+        data_source = MdbDataSource(
+            click_pid=self.connected_click_pid,
+            click_hwnd=self.connected_click_hwnd,
+        )
+        self._shared_address_data = SharedAddressData(data_source)
+        self._shared_address_data.load_initial_data()
+        self._shared_data_source_path = f"mdb:{pid}:{hwnd}"
+
+        # Start file monitoring for external changes
+        self._shared_address_data.start_file_monitoring(self.root)
+
+        # Wire NicknameManager to use SharedAddressData
+        self.nickname_manager.set_shared_data(self._shared_address_data)
+
+        # Use centralized database loading method (now just starts monitoring)
         self.load_from_database()
 
     def _handle_popup_window(self, window_id, window_class, edit_control):
@@ -709,10 +717,13 @@ class ClickNickApp:
         self.stop_monitoring(update_status=False)
 
         # Force close any open editor windows (can't save - DB is gone)
-        if hasattr(self, "_address_editor_shared_data") and self._address_editor_shared_data:
-            self._address_editor_shared_data.force_close_all_windows()
-            self._address_editor_shared_data = None
-            self._address_editor_source_path = None
+        if self._shared_address_data is not None:
+            self._shared_address_data.force_close_all_windows()
+            self._shared_address_data = None
+            self._shared_data_source_path = None
+
+        # Disconnect NicknameManager from data
+        self.nickname_manager.set_shared_data(None)
 
         self.root.after(2000, self.refresh_click_instances)
 
