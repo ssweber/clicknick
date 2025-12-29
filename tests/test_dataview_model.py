@@ -1,6 +1,6 @@
 """Tests for Dataview model."""
 
-from clicknick.dataview_editor.dataview_model import (
+from clicknick.models.dataview_row import (
     MAX_DATAVIEW_ROWS,
     WRITABLE_SC,
     WRITABLE_SD,

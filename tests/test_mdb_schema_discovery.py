@@ -283,7 +283,7 @@ class TestExternalMdbChanges:
 
     def test_detects_nickname_change_in_mdb(self, temp_mdb):
         """Test that nickname changes in MDB are detected."""
-        from clicknick.address_editor.address_model import AddressRow, get_addr_key
+        from clicknick.models.address_row import AddressRow, get_addr_key
 
         conn = get_mdb_connection(temp_mdb)
         if not conn:
@@ -346,7 +346,7 @@ class TestExternalMdbChanges:
 
     def test_detects_comment_change_in_mdb(self, temp_mdb):
         """Test that comment changes in MDB are detected."""
-        from clicknick.address_editor.address_model import AddressRow, get_addr_key
+        from clicknick.models.address_row import AddressRow, get_addr_key
 
         conn = get_mdb_connection(temp_mdb)
         if not conn:
@@ -409,7 +409,7 @@ class TestExternalMdbChanges:
 
     def test_preserves_dirty_fields_on_external_change(self, temp_mdb):
         """Test that user edits (dirty fields) are preserved when MDB changes externally."""
-        from clicknick.address_editor.address_model import AddressRow, get_addr_key
+        from clicknick.models.address_row import AddressRow, get_addr_key
 
         conn = get_mdb_connection(temp_mdb)
         if not conn:

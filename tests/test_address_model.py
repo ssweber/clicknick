@@ -2,7 +2,16 @@
 
 import pytest
 
-from clicknick.address_editor.address_model import (
+from clicknick.models.address_row import AddressRow, get_addr_key, parse_addr_key
+from clicknick.models.blocktag import (
+    BlockTag,
+    extract_block_name,
+    get_block_type,
+    is_block_tag,
+    parse_block_tag,
+    strip_block_tag,
+)
+from clicknick.models.constants import (
     ADDRESS_RANGES,
     DEFAULT_RETENTIVE,
     FORBIDDEN_CHARS,
@@ -11,21 +20,9 @@ from clicknick.address_editor.address_model import (
     NICKNAME_MAX_LENGTH,
     NON_EDITABLE_TYPES,
     PAIRED_RETENTIVE_TYPES,
-    AddressRow,
     DataType,
-    get_addr_key,
-    parse_addr_key,
-    validate_initial_value,
-    validate_nickname,
 )
-from clicknick.address_editor.blocktag_model import (
-    BlockTag,
-    extract_block_name,
-    get_block_type,
-    is_block_tag,
-    parse_block_tag,
-    strip_block_tag,
-)
+from clicknick.models.validation import validate_initial_value, validate_nickname
 
 
 class TestAddrKeyCalculation:
@@ -101,7 +98,7 @@ class TestAddrKeyCalculation:
 
     def test_xd_yd_display_functions(self):
         """Test XD/YD display address formatting and parsing."""
-        from clicknick.address_editor.address_model import (
+        from clicknick.models.address_row import (
             format_address_display,
             is_xd_yd_hidden_slot,
             is_xd_yd_upper_byte,

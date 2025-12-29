@@ -1,7 +1,7 @@
 import pytest
 
-from clicknick.filters import ContainsPlusFilter
-from clicknick.nickname import Nickname
+from clicknick.models.nickname import Nickname
+from clicknick.utils.filters import ContainsPlusFilter
 
 
 class TestContainsPlusFilter:
