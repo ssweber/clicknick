@@ -28,8 +28,37 @@ class OutlinePanel(ttk.Frame):
         if selection := self.tree.selection():
             iid = selection[0]
             if leaf_data := self._leaf_data.get(iid):
+                # Single leaf node - use normal callback
                 memory_type, address = leaf_data
                 self.on_address_select(memory_type, address)
+            elif self.on_batch_select:
+                # Parent node - collect all leaves and use batch callback
+                leaves = self._get_all_leaves_under(iid)
+                if leaves:
+                    self.on_batch_select(leaves)
+
+    def _get_all_leaves_under(self, iid: str) -> list[tuple[str, int]]:
+        """Get all leaf addresses under a parent node.
+
+        Args:
+            iid: The tree item id
+
+        Returns:
+            List of (memory_type, address) tuples for all leaves
+        """
+        leaves = []
+        self._collect_leaves(iid, leaves)
+        return leaves
+
+    def _collect_leaves(self, iid: str, leaves: list[tuple[str, int]]) -> None:
+        """Recursively collect all leaf addresses under a node."""
+        # Check if this node is a leaf
+        if leaf_data := self._leaf_data.get(iid):
+            leaves.append(leaf_data)
+
+        # Recurse into children
+        for child_iid in self.tree.get_children(iid):
+            self._collect_leaves(child_iid, leaves)
 
     def _create_widgets(self) -> None:
         """Create the treeview widget."""
@@ -59,17 +88,20 @@ class OutlinePanel(ttk.Frame):
         self,
         parent: tk.Widget,
         on_address_select: Callable[[str, int], None],
+        on_batch_select: Callable[[list[tuple[str, int]]], None] | None = None,
     ):
         """Initialize the outline panel.
 
         Args:
             parent: Parent widget
-            on_address_select: Callback when address is selected (memory_type, address)
+            on_address_select: Callback when single address is selected (memory_type, address)
+            on_batch_select: Callback when parent node is selected (list of (memory_type, address))
         """
         super().__init__(parent, width=275)
         self.pack_propagate(False)
 
         self.on_address_select = on_address_select
+        self.on_batch_select = on_batch_select
         self._leaf_data: dict[str, tuple[str, int]] = {}
 
         self._create_widgets()

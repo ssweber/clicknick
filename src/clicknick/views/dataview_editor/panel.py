@@ -15,10 +15,7 @@ from tksheet import Sheet
 from ...models.dataview_row import (
     MAX_DATAVIEW_ROWS,
     DataviewRow,
-    TypeCode,
     create_empty_dataview,
-    display_to_storage,
-    storage_to_display,
 )
 from .cdv_file import load_cdv, save_cdv
 
@@ -26,14 +23,14 @@ from .cdv_file import load_cdv, save_cdv
 COL_ADDRESS = 0
 COL_NICKNAME = 1
 COL_COMMENT = 2
-COL_NEW_VALUE = 3
 
 
 class DataviewPanel(ttk.Frame):
     """Panel for editing a single DataView's addresses.
 
-    Displays 100 fixed rows with columns: Address, Nickname, Comment, New Value.
+    Displays 100 fixed rows with columns: Address, Nickname, Comment.
     Supports row reordering, cut/copy/paste, and address autocomplete.
+    New Value data is preserved internally for saving but not displayed.
     """
 
     def _populate_sheet(self) -> None:
@@ -42,25 +39,13 @@ class DataviewPanel(ttk.Frame):
         try:
             data = []
             for row in self.rows:
-                # Build display row - convert storage format to display format
-                new_value_display = storage_to_display(row.new_value, row.type_code)
-                data.append([row.address, row.nickname, row.comment, new_value_display])
+                # Build display row (New Value is kept internally but not displayed)
+                data.append([row.address, row.nickname, row.comment])
 
             self.sheet.set_sheet_data(data, reset_col_positions=False)
 
             # Set row index labels (1-100)
             self.sheet.set_index_data([str(i + 1) for i in range(MAX_DATAVIEW_ROWS)])
-
-            # Create checkboxes for BIT type New Values (only if there's a value set)
-            for i, row in enumerate(self.rows):
-                if row.type_code == TypeCode.BIT and row.address:
-                    if row.is_writable and row.new_value:
-                        # Has a new value - show checkbox
-                        checked = row.new_value == "1"
-                        self.sheet.create_checkbox(r=i, c=COL_NEW_VALUE, checked=checked, text="")
-                    elif not row.new_value:
-                        # No new value - show '-'
-                        self.sheet.set_cell_data(i, COL_NEW_VALUE, "-")
         finally:
             self._suppress_notifications = False
 
@@ -68,27 +53,10 @@ class DataviewPanel(ttk.Frame):
         """Update display for a single row."""
         row = self.rows[row_idx]
 
-        # Update cells
+        # Update cells (New Value is kept internally but not displayed)
         self.sheet.set_cell_data(row_idx, COL_ADDRESS, row.address)
         self.sheet.set_cell_data(row_idx, COL_NICKNAME, row.nickname)
         self.sheet.set_cell_data(row_idx, COL_COMMENT, row.comment)
-
-        # Handle New Value - delete any existing checkbox first
-        self.sheet.delete_checkbox(row_idx, COL_NEW_VALUE)
-
-        if row.type_code == TypeCode.BIT and row.address:
-            if row.is_writable and row.new_value:
-                # BIT type with writable address and value set - use checkbox
-                checked = row.new_value == "1"
-                self.sheet.create_checkbox(r=row_idx, c=COL_NEW_VALUE, checked=checked, text="")
-                self.sheet.set_cell_data(row_idx, COL_NEW_VALUE, checked)
-            else:
-                # BIT with no new value - show '-'
-                self.sheet.set_cell_data(row_idx, COL_NEW_VALUE, "-")
-        else:
-            # Other types - convert storage to display format
-            display_value = storage_to_display(row.new_value, row.type_code)
-            self.sheet.set_cell_data(row_idx, COL_NEW_VALUE, display_value)
 
     def _update_status(self) -> None:
         """Update the status label."""
@@ -145,40 +113,35 @@ class DataviewPanel(ttk.Frame):
                     self._update_row_display(row_idx)
                     data_changed = True
 
-            elif col == COL_NEW_VALUE:
-                # Only process if address is writable
-                if not row.is_writable:
-                    # Revert to empty
-                    self._update_row_display(row_idx)
-                    continue
-
-                if row.type_code == TypeCode.BIT:
-                    new_val = "1" if bool(new_value) else "0"
-                else:
-                    # Convert display value to storage format
-                    display_val = str(new_value) if new_value else ""
-                    new_val = display_to_storage(display_val, row.type_code)
-
-                if new_val != row.new_value:
-                    row.new_value = new_val
-                    data_changed = True
-
-                    # Update has_new_values flag
-                    if new_val:
-                        self.has_new_values = True
-
         if data_changed:
             self._is_dirty = True
             self._update_status()
             if self.on_modified:
                 self.on_modified()
 
+    def _validate_edit(self, event) -> str:
+        """Validate and normalize cell edits.
+
+        Args:
+            event: The edit validation event from tksheet
+
+        Returns:
+            The validated/normalized value
+        """
+        # Only validate Address column
+        if hasattr(event, "column") and event.column == COL_ADDRESS:
+            value = event.value or ""
+            # Normalize: uppercase, strip whitespace
+            return value.strip().upper()
+
+        return event.value
+
     def _create_widgets(self) -> None:
         """Create all panel widgets."""
-        # Table (tksheet)
+        # Table (tksheet) - New Value is kept internally but not displayed
         self.sheet = Sheet(
             self,
-            headers=["Address", "Nickname", "Comment", "New Value"],
+            headers=["Address", "Nickname", "Comment"],
             show_row_index=True,
             height=400,
             width=700,
@@ -205,13 +168,14 @@ class DataviewPanel(ttk.Frame):
         )
 
         # Set column widths
-        self.sheet.set_column_widths([80, 180, 280, 100])
+        self.sheet.set_column_widths([80, 180, 280])
         self.sheet.row_index(40)  # Row index width (row numbers)
 
         # Make Nickname and Comment columns read-only (populated from address lookup)
         self.sheet.readonly_columns([COL_NICKNAME, COL_COMMENT])
 
-        # Bind to modification events
+        # Set up edit validation and bind to modification events
+        self.sheet.edit_validation(self._validate_edit)
         self.sheet.bind("<<SheetModified>>", self._on_sheet_modified)
 
         # Initialize with empty data

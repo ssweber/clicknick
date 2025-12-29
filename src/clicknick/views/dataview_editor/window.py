@@ -11,6 +11,9 @@ from tkinter import filedialog, messagebox, ttk
 from typing import TYPE_CHECKING
 
 from ...data.shared_dataview import SharedDataviewData
+from ...widgets.custom_notebook import CustomNotebook
+from ...widgets.nickname_combobox import NicknameCombobox
+from ..nav_window.window import NavWindow
 from .panel import DataviewPanel
 
 if TYPE_CHECKING:
@@ -251,6 +254,11 @@ class DataviewEditorWindow(tk.Toplevel):
             if result:  # Yes - save
                 self.save_all()
 
+        # Close navigation window if open
+        if self._nav_window is not None:
+            self._nav_window.destroy()
+            self._nav_window = None
+
         # Unregister from shared data
         self.shared_data.unregister_window(self)
 
@@ -317,6 +325,248 @@ class DataviewEditorWindow(tk.Toplevel):
         """Handle tab change event."""
         pass  # Could update window title, etc.
 
+    def _on_tab_close_request(self, tab_index: int) -> bool:
+        """Handle close button click on a tab.
+
+        Args:
+            tab_index: Index of the tab being closed
+
+        Returns:
+            True to allow close, False to cancel
+        """
+        try:
+            tab_id = self.notebook.tabs()[tab_index]
+            panel = self.notebook.nametowidget(tab_id)
+
+            # Check for unsaved changes
+            if panel.is_dirty:
+                result = messagebox.askyesnocancel(
+                    "Unsaved Changes",
+                    f"'{panel.name}' has unsaved changes. Save before closing?",
+                    parent=self,
+                )
+                if result is None:  # Cancel
+                    return False
+                if result:  # Yes - save
+                    if panel.file_path:
+                        panel.save()
+                    else:
+                        # Need to save as
+                        self.notebook.select(tab_index)
+                        self._save_as()
+                        if panel.is_dirty:  # User cancelled save dialog
+                            return False
+
+            # Remove from tracking (cleanup before notebook.forget is called)
+            if panel.file_path in self._open_panels:
+                del self._open_panels[panel.file_path]
+            elif None in self._open_panels and self._open_panels[None] == panel:
+                del self._open_panels[None]
+
+            return True
+
+        except (tk.TclError, IndexError):
+            return True
+
+    def _on_tab_closed(self, event) -> None:
+        """Handle tab closed event (after the tab is removed)."""
+        pass  # Cleanup already done in _on_tab_close_request
+
+    def _on_tab_right_click(self, event) -> None:
+        """Handle right-click on notebook tab - show close menu."""
+        # Identify which tab was clicked
+        try:
+            clicked_tab = self.notebook.identify(event.x, event.y)
+            if clicked_tab != "label":
+                return
+
+            # Get the tab index at the click position
+            tab_index = self.notebook.index(f"@{event.x},{event.y}")
+            if tab_index is None:
+                return
+
+            # Create context menu
+            menu = tk.Menu(self, tearoff=0)
+            menu.add_command(label="Close", command=lambda: self._close_tab_at_index(tab_index))
+            menu.post(event.x_root, event.y_root)
+        except tk.TclError:
+            pass
+
+    def _close_tab_at_index(self, tab_index: int) -> None:
+        """Close the tab at the given index.
+
+        Args:
+            tab_index: Index of the tab to close
+        """
+        try:
+            tab_id = self.notebook.tabs()[tab_index]
+            panel = self.notebook.nametowidget(tab_id)
+
+            # Check for unsaved changes
+            if panel.is_dirty:
+                result = messagebox.askyesnocancel(
+                    "Unsaved Changes",
+                    f"'{panel.name}' has unsaved changes. Save before closing?",
+                    parent=self,
+                )
+                if result is None:  # Cancel
+                    return
+                if result:  # Yes - save
+                    if panel.file_path:
+                        panel.save()
+                    else:
+                        # Need to save as
+                        self.notebook.select(tab_index)
+                        self._save_as()
+                        if panel.is_dirty:  # User cancelled save dialog
+                            return
+
+            # Remove from tracking
+            if panel.file_path in self._open_panels:
+                del self._open_panels[panel.file_path]
+            elif None in self._open_panels and self._open_panels[None] == panel:
+                del self._open_panels[None]
+
+            # Close tab
+            self.notebook.forget(panel)
+            panel.destroy()
+        except (tk.TclError, IndexError):
+            pass
+
+    def _provide_filtered_nicknames(self, search_text: str) -> list[str]:
+        """Data provider for the NicknameCombobox.
+
+        Args:
+            search_text: The current search text from the combobox
+
+        Returns:
+            List of matching nickname strings
+        """
+        address_shared = self.shared_data.address_shared_data
+        if not address_shared:
+            return []
+
+        search_upper = search_text.strip().upper()
+
+        # Build list of matching nicknames
+        matches = []
+        for row in address_shared.all_rows.values():
+            nickname = row.nickname
+            if not nickname:
+                continue
+
+            # Match against nickname (contains search)
+            if search_upper:
+                if search_upper in nickname.upper():
+                    matches.append(nickname)
+            else:
+                matches.append(nickname)
+
+        # Sort and return
+        matches.sort()
+        return matches
+
+    def _on_nickname_selected(self, nickname: str) -> None:
+        """Handle nickname selection from combobox.
+
+        Looks up the address for the nickname and inserts it into the dataview.
+
+        Args:
+            nickname: The selected nickname string
+        """
+        if not nickname:
+            return
+
+        address_shared = self.shared_data.address_shared_data
+        if not address_shared:
+            return
+
+        # Find the address for this nickname
+        for row in address_shared.all_rows.values():
+            if row.nickname == nickname:
+                self.add_address_to_current(row.display_address)
+                self.nickname_combo.reset()
+                return
+
+        # Nickname not found - maybe user typed an address directly?
+        # Try to add it as-is (will be validated by the panel)
+        self.add_address_to_current(nickname.upper())
+        self.nickname_combo.reset()
+
+    def _on_insert_button_clicked(self) -> None:
+        """Handle Insert button click - finalize current combobox entry."""
+        self.nickname_combo.finalize_entry()
+
+    def _toggle_nav(self) -> None:
+        """Toggle the navigation window visibility."""
+        if self._nav_window is None:
+            # Create navigation window with double-click insert behavior
+            self._nav_window = NavWindow(
+                self,
+                on_address_select=self._on_nav_address_insert,
+                on_batch_select=self._on_nav_batch_insert,
+            )
+            self._refresh_navigation()
+            self.nav_btn.configure(text="<< Navigator")
+        elif self._nav_window.winfo_viewable():
+            # Hide it
+            self._nav_window.withdraw()
+            self.nav_btn.configure(text=">> Navigator")
+        else:
+            # Show it
+            self._refresh_navigation()
+            self._nav_window.deiconify()
+            self._nav_window._dock_to_parent()
+            self.nav_btn.configure(text="<< Navigator")
+
+    def _refresh_navigation(self) -> None:
+        """Refresh the navigation window with current data."""
+        if self._nav_window is None:
+            return
+
+        address_shared = self.shared_data.address_shared_data
+        if address_shared:
+            self._nav_window.refresh(address_shared.all_rows)
+
+    def _on_nav_address_insert(self, memory_type: str, address: int) -> None:
+        """Handle single address selection from NavWindow - insert into current dataview.
+
+        Args:
+            memory_type: The memory type (X, Y, C, etc.)
+            address: The address number
+        """
+        # Look up the row to get display_address
+        from ...models.address_row import get_addr_key
+
+        address_shared = self.shared_data.address_shared_data
+        if not address_shared:
+            return
+
+        addr_key = get_addr_key(memory_type, address)
+        row = address_shared.all_rows.get(addr_key)
+        if row:
+            self.add_address_to_current(row.display_address)
+
+    def _on_nav_batch_insert(self, addresses: list[tuple[str, int]]) -> None:
+        """Handle batch address selection from NavWindow - insert multiple into current dataview.
+
+        Args:
+            addresses: List of (memory_type, address) tuples
+        """
+        from ...models.address_row import get_addr_key
+
+        address_shared = self.shared_data.address_shared_data
+        if not address_shared:
+            return
+
+        for memory_type, address in addresses:
+            addr_key = get_addr_key(memory_type, address)
+            row = address_shared.all_rows.get(addr_key)
+            if row:
+                if not self.add_address_to_current(row.display_address):
+                    # No more empty rows available
+                    break
+
     def _create_widgets(self) -> None:
         """Create the main UI widgets."""
         # Main paned window for sidebar + content
@@ -363,11 +613,45 @@ class DataviewEditorWindow(tk.Toplevel):
         self.content = ttk.Frame(self.paned)
         self.paned.add(self.content, weight=1)
 
-        self.notebook = ttk.Notebook(self.content)
-        self.notebook.pack(fill=tk.BOTH, expand=True)
+        # Top toolbar with nickname combobox and insert button
+        toolbar = ttk.Frame(self.content)
+        toolbar.pack(fill=tk.X, padx=5, pady=(5, 0))
 
-        # Bind tab change
+        # Nickname entry with NicknameCombobox
+        ttk.Label(toolbar, text="Nickname:").pack(side=tk.LEFT, padx=(0, 5))
+
+        # Frame to hold combobox (NicknameCombobox calls master.withdraw())
+        self.combobox_frame = ttk.Frame(toolbar)
+        self.combobox_frame.pack(side=tk.LEFT, padx=(0, 5))
+        # Add dummy withdraw method since Frame doesn't have one
+        self.combobox_frame.withdraw = lambda: None
+
+        self.nickname_combo = NicknameCombobox(self.combobox_frame, width=30)
+        self.nickname_combo.pack()
+
+        # Configure the combobox callbacks
+        self.nickname_combo.set_data_provider(self._provide_filtered_nicknames)
+        self.nickname_combo.set_selection_callback(self._on_nickname_selected)
+
+        # Insert button
+        ttk.Button(toolbar, text="Insert", command=self._on_insert_button_clicked, width=8).pack(
+            side=tk.LEFT, padx=(0, 5)
+        )
+
+        # Navigator toggle button (right side)
+        self.nav_btn = ttk.Button(toolbar, text=">> Navigator", command=self._toggle_nav)
+        self.nav_btn.pack(side=tk.RIGHT)
+
+        # Notebook for tabs (with close buttons)
+        self.notebook = CustomNotebook(
+            self.content, on_close_callback=self._on_tab_close_request
+        )
+        self.notebook.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
+
+        # Bind tab change and close events
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        self.notebook.bind("<<NotebookTabClosed>>", self._on_tab_closed)
+        self.notebook.bind("<Button-3>", self._on_tab_right_click)
 
         # Initial sash position (sidebar width)
         self.after(100, lambda: self.paned.sashpos(0, 180))
@@ -394,6 +678,9 @@ class DataviewEditorWindow(tk.Toplevel):
         self._open_panels: dict[Path | None, DataviewPanel] = {}
         self._untitled_counter = 0
 
+        # Navigation window
+        self._nav_window: NavWindow | None = None
+
         # Configure window
         self._setup_window()
         self._create_menu()
@@ -414,6 +701,7 @@ class DataviewEditorWindow(tk.Toplevel):
         Auto-refreshes nicknames in all open panels when address data is modified.
         """
         self._refresh_nicknames()
+        self._refresh_navigation()
 
     def has_unsaved_changes(self) -> bool:
         """Check if any open dataviews have unsaved changes."""
