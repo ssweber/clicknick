@@ -140,8 +140,8 @@ class TestAddrKeyCalculation:
         assert is_xd_yd_hidden_slot("XD", 0) is False  # XD0
         assert is_xd_yd_hidden_slot("XD", 1) is False  # XD0u (displayed)
         assert is_xd_yd_hidden_slot("XD", 2) is False  # XD1
-        assert is_xd_yd_hidden_slot("XD", 3) is True   # Hidden
-        assert is_xd_yd_hidden_slot("XD", 5) is True   # Hidden
+        assert is_xd_yd_hidden_slot("XD", 3) is True  # Hidden
+        assert is_xd_yd_hidden_slot("XD", 5) is True  # Hidden
         assert is_xd_yd_hidden_slot("XD", 16) is False  # XD8
         assert is_xd_yd_hidden_slot("DS", 3) is False  # Non-XD/YD
 

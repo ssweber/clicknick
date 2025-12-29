@@ -330,6 +330,8 @@ class ClickNickApp:
             return
 
         try:
+            from .address_editor import SharedAddressData
+            from .address_editor.data_source import MdbDataSource
             from .dataview_editor import DataviewEditorWindow, SharedDataviewData
             from .mdb_shared import get_project_path_from_hwnd
 
@@ -342,38 +344,27 @@ class ClickNickApp:
             if not hasattr(self, "_dataview_editor_project_path"):
                 self._dataview_editor_project_path = None
 
-            # Create nickname lookup function using NicknameManager
-            def lookup_nickname_by_address(address: str) -> tuple[str, str] | None:
-                """Look up nickname and comment for an address."""
-                from .address_editor.address_model import parse_address_display
+            # Ensure address shared data exists for nickname lookups
+            if not hasattr(self, "_address_editor_shared_data"):
+                self._address_editor_shared_data = None
 
-                if not self.nickname_manager.is_loaded:
-                    return None
-
-                # Parse the lookup address to (memory_type, mdb_address)
-                parsed_lookup = parse_address_display(address)
-                if not parsed_lookup:
-                    return None
-
-                # Compare by parsed values (handles X001 == X1)
-                for nick in self.nickname_manager.nicknames:
-                    parsed_nick = parse_address_display(nick.address)
-                    if parsed_nick == parsed_lookup:
-                        return (nick.nickname, nick.comment)
-                return None
+            if self._address_editor_shared_data is None:
+                # Create SharedAddressData on-demand using MDB data source
+                data_source = MdbDataSource(
+                    click_pid=self.connected_click_pid,
+                    click_hwnd=self.connected_click_hwnd,
+                )
+                self._address_editor_shared_data = SharedAddressData(data_source)
+                self._address_editor_shared_data.load_initial_data()
 
             # Create new shared data if none exists or if project changed
             if (
                 self._dataview_editor_shared_data is None
                 or self._dataview_editor_project_path != project_path
             ):
-                # Also need address shared data for nickname lookups
-                address_shared_data = getattr(self, "_address_editor_shared_data", None)
-
                 self._dataview_editor_shared_data = SharedDataviewData(
                     project_path=project_path,
-                    address_shared_data=address_shared_data,
-                    nickname_lookup_fn=lookup_nickname_by_address,
+                    address_shared_data=self._address_editor_shared_data,
                 )
                 self._dataview_editor_project_path = project_path
 

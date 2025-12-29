@@ -19,25 +19,22 @@ class SharedDataviewData:
     """Shared data store for dataview editor windows.
 
     This class manages the list of available CDV files and provides
-    nickname lookup via a configurable lookup function.
+    nickname lookup via SharedAddressData.
     """
 
     def __init__(
         self,
         project_path: Path | None = None,
         address_shared_data: SharedAddressData | None = None,
-        nickname_lookup_fn: Callable[[str], tuple[str, str] | None] | None = None,
     ):
         """Initialize the shared dataview data.
 
         Args:
             project_path: Path to the CLICK project folder
-            address_shared_data: SharedAddressData for nickname lookups (optional)
-            nickname_lookup_fn: Custom function to lookup (nickname, comment) by address
+            address_shared_data: SharedAddressData for nickname lookups
         """
         self._project_path = project_path
         self._address_shared_data = address_shared_data
-        self._nickname_lookup_fn = nickname_lookup_fn
         self._dataview_folder: Path | None = None
 
         # Observer callbacks
@@ -87,13 +84,6 @@ class SharedDataviewData:
         Returns:
             Tuple of (nickname, comment) or None if not found.
         """
-        # Try custom lookup function first (e.g., from NicknameManager)
-        if self._nickname_lookup_fn:
-            result = self._nickname_lookup_fn(address)
-            if result:
-                return result
-
-        # Fall back to SharedAddressData if available
         if self._address_shared_data:
             from ..address_editor.address_model import get_addr_key, parse_address_display
 

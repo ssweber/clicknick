@@ -14,8 +14,8 @@ from .address_model import (
     DEFAULT_RETENTIVE,
     MEMORY_TYPE_TO_DATA_TYPE,
     PAIRED_RETENTIVE_TYPES,
-    is_xd_yd_hidden_slot,
     AddressRow,
+    is_xd_yd_hidden_slot,
     validate_nickname,
 )
 from .blocktag_model import parse_block_tag
