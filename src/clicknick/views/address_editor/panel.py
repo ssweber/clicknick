@@ -598,7 +598,7 @@ class AddressPanel(ttk.Frame):
         # (on_validate_affected validates shared_data.all_rows, which may be different objects)
         if nickname_changed or needs_revalidate:
             for idx in modified_data_indices:
-                self.rows[idx].validate(self._all_nicknames, self.is_duplicate)
+                self.rows[idx].validate(self._all_nicknames, self.is_duplicate_fn)
 
         # Refresh styling and status
         self._refresh_display()

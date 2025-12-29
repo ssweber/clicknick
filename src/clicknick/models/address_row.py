@@ -424,7 +424,7 @@ class AddressRow:
     def validate(
         self,
         all_nicknames: dict[int, str],
-        is_duplicate: Callable[[str, int], bool] | None = None,
+        is_duplicate_fn: Callable[[str, int], bool] | None = None,
     ) -> None:
         """Validate this row and update validation state.
 
@@ -435,7 +435,7 @@ class AddressRow:
         """
         # Validate nickname
         self.is_valid, self.validation_error = validate_nickname(
-            self.nickname, all_nicknames, self.addr_key, is_duplicate
+            self.nickname, all_nicknames, self.addr_key, is_duplicate_fn
         )
 
         # Validate initial value
