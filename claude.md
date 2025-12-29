@@ -33,7 +33,8 @@ uv tool install --editable .
 ## Architecture
 
 ### Entry Points
-- `clicknick` (GUI) / `clicknick-debug` (console) - both call `clicknick:main`
+- `clicknick` (GUI) - calls `clicknick:main`
+- `clicknick-dev` (console) - calls `clicknick:main_dev`, enables in-progress features
 - Main app: `src/clicknick/clicknick.py` -> `ClickNickApp` class
 
 ### Core Components

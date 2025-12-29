@@ -19,6 +19,9 @@ from .window_mapping import CLICK_PLC_WINDOW_MAPPING
 # Set DPI awareness for better UI rendering
 windll.shcore.SetProcessDpiAwareness(1)
 
+# Dev mode flag - enables in-progress features
+_DEV_MODE = False
+
 
 def get_version():
     """Get version from package metadata."""
@@ -401,7 +404,8 @@ class ClickNickApp:
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Address Editor...", command=self._open_address_editor)
-        tools_menu.add_command(label="Dataview Editor...", command=self._open_dataview_editor)
+        if _DEV_MODE:
+            tools_menu.add_command(label="Dataview Editor...", command=self._open_dataview_editor)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -876,6 +880,14 @@ class ClickNickApp:
 
 def main() -> None:
     """Entry point for the application."""
+    app = ClickNickApp()
+    app.run()
+
+
+def main_dev() -> None:
+    """Entry point for development mode with in-progress features enabled."""
+    global _DEV_MODE
+    _DEV_MODE = True
     app = ClickNickApp()
     app.run()
 
