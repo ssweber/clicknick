@@ -370,7 +370,7 @@ class DataviewPanel(ttk.Frame):
         """
         # Find first empty row
         for i, row in enumerate(self.rows):
-            if row.is_empty:
+            if row and row.is_empty:
                 row.address = address.strip().upper()
                 row.update_type_code()
 
