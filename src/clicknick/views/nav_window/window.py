@@ -80,12 +80,14 @@ class NavWindow(tk.Toplevel):
         self,
         parent: tk.Toplevel,
         on_address_select: Callable[[str, int], None],
+        on_batch_select: Callable[[list[tuple[str, int]]], None] | None = None,
     ):
         """Initialize the navigation window.
 
         Args:
             parent: Parent window to dock to
-            on_address_select: Callback when address is selected (memory_type, address)
+            on_address_select: Callback when single address is selected (memory_type, address)
+            on_batch_select: Callback when parent node is selected (list of (memory_type, address))
         """
         super().__init__(parent)
         self.parent_window = parent
@@ -102,7 +104,7 @@ class NavWindow(tk.Toplevel):
         # 2. First Tab: Standard Outline
         self.outline_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.outline_frame, text=" Outline ")
-        self.outline = OutlinePanel(self.outline_frame, on_address_select)
+        self.outline = OutlinePanel(self.outline_frame, on_address_select, on_batch_select)
         self.outline.pack(fill=tk.BOTH, expand=True)
 
         # 3. Second Tab: Blocks

@@ -760,6 +760,8 @@ class AddressPanel(ttk.Frame):
             "column_drag_and_drop",
             "row_drag_and_drop",
             "rc_select_column",
+            "rc_insert_column",
+            "rc_delete_column",
             "rc_insert_row",
             "rc_delete_row",
             "sort_cells",
