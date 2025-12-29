@@ -11,10 +11,22 @@ import re
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+from ..models.address_row import AddressRow, get_addr_key
+from ..models.constants import (
+    ADDRESS_RANGES,
+    DEFAULT_RETENTIVE,
+    MEMORY_TYPE_BASES,
+    MEMORY_TYPE_TO_DATA_TYPE,
+)
+from ..utils.mdb_operations import (
+    MdbConnection,
+    find_click_database,
+    load_all_addresses,
+    save_changes,
+)
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-    from .address_model import AddressRow
 
 # CSV column names (matching CLICK software export format)
 CSV_COLUMNS = ["Address", "Data Type", "Nickname", "Initial Value", "Retentive", "Address Comment"]
@@ -112,8 +124,6 @@ class MdbDataSource(DataSource):
         if db_path:
             self._db_path = db_path
         elif click_pid is not None and click_hwnd is not None:
-            from ..mdb_shared import find_click_database
-
             db_path = find_click_database(click_pid, click_hwnd)
             if not db_path:
                 raise FileNotFoundError("Could not locate CLICK database")
@@ -128,8 +138,6 @@ class MdbDataSource(DataSource):
 
     def load_all_addresses(self) -> dict[int, AddressRow]:
         """Load all addresses from the MDB database."""
-        from .mdb_operations import MdbConnection, load_all_addresses
-
         with MdbConnection(self._db_path) as conn:
             return load_all_addresses(conn)
 
@@ -138,8 +146,6 @@ class MdbDataSource(DataSource):
 
         Filters to only dirty rows before saving.
         """
-        from .mdb_operations import MdbConnection, save_changes
-
         # MDB only saves dirty rows
         dirty_rows = [row for row in rows if row.is_dirty]
         if not dirty_rows:
@@ -199,14 +205,6 @@ class CsvDataSource(DataSource):
         Returns:
             Dict mapping AddrKey (int) to AddressRow
         """
-        from .address_model import (
-            ADDRESS_RANGES,
-            DEFAULT_RETENTIVE,
-            MEMORY_TYPE_TO_DATA_TYPE,
-            AddressRow,
-            get_addr_key,
-        )
-
         result: dict[int, AddressRow] = {}
 
         # First, load all rows from CSV
@@ -296,8 +294,6 @@ class CsvDataSource(DataSource):
                 rows_to_write.append(row)
 
         # Sort by memory type order and address
-        from .address_model import MEMORY_TYPE_BASES
-
         rows_to_write.sort(
             key=lambda r: (MEMORY_TYPE_BASES.get(r.memory_type, 0xFFFFFFFF), r.address)
         )

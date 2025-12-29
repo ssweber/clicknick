@@ -2,7 +2,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from .utils.win32_utils import WIN32
+from ..utils.win32_utils import WIN32
 
 
 @dataclass

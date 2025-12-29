@@ -9,19 +9,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .address_model import (
+from ...data.shared_data import TypeView
+from ...models.address_row import AddressRow, is_xd_yd_hidden_slot
+from ...models.blocktag import parse_block_tag
+from ...models.constants import (
     ADDRESS_RANGES,
     DEFAULT_RETENTIVE,
     MEMORY_TYPE_TO_DATA_TYPE,
     PAIRED_RETENTIVE_TYPES,
-    AddressRow,
-    is_xd_yd_hidden_slot,
-    validate_nickname,
 )
-from .blocktag_model import parse_block_tag
+from ...models.validation import validate_nickname
+from ...utils.mdb_operations import get_data_for_type
 
 if TYPE_CHECKING:
-    from .shared_data import TypeView
+    from ...data.shared_data import TypeView
 
 
 def create_row_from_data(
@@ -101,7 +102,6 @@ def build_single_type_rows(
     Returns:
         List of AddressRow for all addresses in the range
     """
-    from .mdb_operations import get_data_for_type
 
     start, end = ADDRESS_RANGES[mem_type]
     existing = get_data_for_type(all_rows, mem_type)
@@ -136,7 +136,6 @@ def build_interleaved_rows(
     Returns:
         List of interleaved AddressRow
     """
-    from .mdb_operations import get_data_for_type
 
     # Get existing data for all types from preloaded data
     existing_by_type = {}
@@ -281,7 +280,6 @@ def build_type_view(
     Returns:
         Populated TypeView
     """
-    from .shared_data import TypeView
 
     # Build rows
     if combined_types and len(combined_types) > 1:

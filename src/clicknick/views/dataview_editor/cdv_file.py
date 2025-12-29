@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .dataview_model import (
+from ...models.dataview_row import (
     MAX_DATAVIEW_ROWS,
     DataviewRow,
     create_empty_dataview,

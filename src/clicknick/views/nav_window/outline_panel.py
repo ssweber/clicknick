@@ -10,7 +10,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from tkinter import ttk
 
-from .address_model import AddressRow
+from ...models.address_row import AddressRow
 from .outline_logic import (
     FLAT_MEMORY_TYPES,
     MEMORY_TYPE_ORDER,

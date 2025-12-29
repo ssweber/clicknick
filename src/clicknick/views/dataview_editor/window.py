@@ -10,8 +10,8 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import TYPE_CHECKING
 
-from .dataview_panel import DataviewPanel
-from .shared_dataview_data import SharedDataviewData
+from ...data.shared_dataview import SharedDataviewData
+from .panel import DataviewPanel
 
 if TYPE_CHECKING:
     pass

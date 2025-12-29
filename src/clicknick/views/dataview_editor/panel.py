@@ -12,8 +12,7 @@ from tkinter import ttk
 
 from tksheet import Sheet
 
-from .cdv_file import load_cdv, save_cdv
-from .dataview_model import (
+from ...models.dataview_row import (
     MAX_DATAVIEW_ROWS,
     DataviewRow,
     TypeCode,
@@ -21,6 +20,7 @@ from .dataview_model import (
     display_to_storage,
     storage_to_display,
 )
+from .cdv_file import load_cdv, save_cdv
 
 # Column indices
 COL_ADDRESS = 0

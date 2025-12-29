@@ -1,6 +1,6 @@
 """Tests for outline_logic.py - tree building and flattening for address outline."""
 
-from clicknick.address_editor.outline_logic import (
+from clicknick.views.nav_window.outline_logic import (
     TreeNode,
     build_tree,
     flatten_tree,

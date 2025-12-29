@@ -1,24 +1,6 @@
 from dataclasses import dataclass
 
-# Default retentive values by memory type (from CLICK documentation)
-DEFAULT_RETENTIVE: dict[str, bool] = {
-    "X": False,
-    "Y": False,
-    "C": False,
-    "T": False,
-    "CT": True,  # Counters are retentive by default
-    "SC": False,  # Can't change
-    "DS": True,  # Data registers are retentive by default
-    "DD": True,
-    "DH": True,
-    "DF": True,
-    "XD": False,  # Can't change
-    "YD": False,  # Can't change
-    "TD": False,  # Can't change (stored elsewhere)
-    "CTD": True,  # Can't change (stored elsewhere)
-    "SD": False,  # Can't change
-    "TXT": True,
-}
+from .constants import DEFAULT_RETENTIVE
 
 
 @dataclass

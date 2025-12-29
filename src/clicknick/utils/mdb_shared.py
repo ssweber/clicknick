@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pyodbc
 
+from ..utils.win32_utils import WIN32
+
 PREFERRED_ACCESS_DRIVERS = [
     "Microsoft Access Driver (*.mdb, *.accdb)",
     "Microsoft Access Driver (*.mdb)",
@@ -49,8 +51,6 @@ def find_click_database(click_pid: int | None = None, click_hwnd: int | None = N
     try:
         # Get the window handle if we don't have it
         if click_pid and not click_hwnd:
-            from .win32_utils import WIN32
-
             click_hwnd = WIN32.get_hwnd_by_pid(click_pid)
 
         if click_hwnd:

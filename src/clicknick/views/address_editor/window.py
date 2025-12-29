@@ -10,12 +10,11 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from src.clicknick.views.nav_window.window import NavWindow
-
-from ...address_editor.add_block_dialog import AddBlockDialog
-from ...address_editor.panel import AddressPanel
-from ...address_editor.jump_sidebar import COMBINED_TYPES, JumpSidebar
 from ...data.shared_data import SharedAddressData
+from ...widgets.add_block_dialog import AddBlockDialog
+from ..nav_window.window import NavWindow
+from .jump_sidebar import COMBINED_TYPES, JumpSidebar
+from .panel import AddressPanel
 from .view_builder import build_type_view
 
 
@@ -618,7 +617,6 @@ class AddressEditorWindow(tk.Toplevel):
 
             if view is None:
                 # View was cleared - rebuild from fresh data
-                from .view_builder import build_type_view
 
                 combined = COMBINED_TYPES.get(type_name)
                 view = build_type_view(

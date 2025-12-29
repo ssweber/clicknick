@@ -9,10 +9,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .cdv_file import get_dataview_folder, list_cdv_files
+from ..models.address_row import get_addr_key, parse_address_display
+from ..views.dataview_editor.cdv_file import get_dataview_folder, list_cdv_files
 
 if TYPE_CHECKING:
-    from ..address_editor.shared_data import SharedAddressData
+    from .shared_data import SharedAddressData
 
 
 class SharedDataviewData:
@@ -85,8 +86,6 @@ class SharedDataviewData:
             Tuple of (nickname, comment) or None if not found.
         """
         if self._address_shared_data:
-            from ..address_editor.address_model import get_addr_key, parse_address_display
-
             parsed = parse_address_display(address)
             if not parsed:
                 return None

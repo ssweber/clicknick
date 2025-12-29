@@ -10,17 +10,22 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
-from ..config import INT_MAX
-
-from ..models.constants import FLOAT_MIN, INT2_MAX, INT2_MIN, INT_MIN, MEMORY_TYPE_TO_DATA_TYPE, NON_EDITABLE_TYPES, DataType
 from tksheet import Sheet, num2alpha
 
-from .address_model import (
-    AddressRow,
+from ...models.address_row import AddressRow
+from ...models.blocktag import parse_block_tag
+from ...models.constants import (
+    FLOAT_MAX,
+    FLOAT_MIN,
+    INT2_MAX,
+    INT2_MIN,
+    INT_MAX,
+    INT_MIN,
+    MEMORY_TYPE_TO_DATA_TYPE,
+    NON_EDITABLE_TYPES,
+    DataType,
 )
-from .address_row_styler import AddressRowStyler
-from .blocktag_model import parse_block_tag
-from .char_limit_tooltip import CharLimitTooltip
+from ...widgets.char_limit_tooltip import CharLimitTooltip
 from .panel_constants import (
     COL_COMMENT,
     COL_INIT_VALUE,
@@ -28,6 +33,7 @@ from .panel_constants import (
     COL_RETENTIVE,
     COL_USED,
 )
+from .row_styler import AddressRowStyler
 from .view_builder import find_paired_row
 
 if TYPE_CHECKING:
@@ -100,10 +106,6 @@ class AddressPanel(ttk.Frame):
         Returns:
             Hint string describing valid range/values
         """
-        from ..models.constants import (
-            FLOAT_MAX,
-        )
-
         if data_type == DataType.BIT:
             return "0 or 1"
         elif data_type == DataType.INT:

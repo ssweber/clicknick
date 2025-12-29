@@ -1,4 +1,4 @@
-from clicknick.filters import ContainsFilter
+from clicknick.utils.filters import ContainsFilter
 
 
 class TestContainsFilter:

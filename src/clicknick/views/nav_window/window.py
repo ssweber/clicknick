@@ -1,10 +1,15 @@
-from src.clicknick.address_editor.block_panel import BlockPanel
-from src.clicknick.address_editor.outline_panel import OutlinePanel
-
+from __future__ import annotations
 
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
+from typing import TYPE_CHECKING
+
+from .block_panel import BlockPanel
+from .outline_panel import OutlinePanel
+
+if TYPE_CHECKING:
+    from ...models.address_row import AddressRow
 
 
 class NavWindow(tk.Toplevel):

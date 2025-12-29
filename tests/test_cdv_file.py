@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from clicknick.dataview_editor.cdv_file import export_cdv, load_cdv, save_cdv
-from clicknick.dataview_editor.dataview_model import (
+from clicknick.models.dataview_row import (
     MAX_DATAVIEW_ROWS,
     TypeCode,
     create_empty_dataview,
 )
+from clicknick.views.dataview_editor.cdv_file import export_cdv, load_cdv, save_cdv
 
 # Test files in the tests directory
 TEST_DIR = Path(__file__).parent

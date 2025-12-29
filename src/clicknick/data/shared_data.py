@@ -11,8 +11,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from .address_model import AddressRow
-from .blocktag_model import parse_block_tag
+from ..models.address_row import AddressRow
+from ..models.blocktag import parse_block_tag
 from .data_source import DataSource
 
 # File monitoring interval in milliseconds

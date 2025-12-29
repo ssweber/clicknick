@@ -1,9 +1,9 @@
 import tkinter as tk
 from tkinter import ttk
 
+from ..utils.win32_utils import WIN32
 from ..widgets.floating_tooltip import FloatingTooltip
 from ..widgets.nickname_combobox import NicknameCombobox
-from .utils.win32_utils import WIN32
 
 
 class Overlay(tk.Toplevel):

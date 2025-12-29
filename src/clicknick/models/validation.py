@@ -1,6 +1,16 @@
 from collections.abc import Callable
-from src.clicknick.config import INT_MAX
-from src.clicknick.models.constants import FLOAT_MAX, FLOAT_MIN, FORBIDDEN_CHARS, INT2_MAX, INT2_MIN, INT_MIN, NICKNAME_MAX_LENGTH, DataType
+
+from .constants import (
+    FLOAT_MAX,
+    FLOAT_MIN,
+    FORBIDDEN_CHARS,
+    INT2_MAX,
+    INT2_MIN,
+    INT_MAX,
+    INT_MIN,
+    NICKNAME_MAX_LENGTH,
+    DataType,
+)
 
 
 def validate_nickname_format(nickname: str) -> tuple[bool, str]:
@@ -40,7 +50,7 @@ def validate_nickname(
 
     Args:
         nickname: The nickname to validate
-        all_nicknames: Dict of addr_key -> nickname for uniqueness check (legacy, used if is_duplicate is None)
+        all_nicknames: Dict of addr_key -> nickname for uniqueness check (legacy, used if is_duplicate_fn is None)
         current_addr_key: The addr_key of the row being validated (excluded from uniqueness)
         is_duplicate_fn: Optional O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
             If provided, uses this instead of O(n) scan of all_nicknames.

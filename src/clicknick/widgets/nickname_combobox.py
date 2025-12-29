@@ -3,8 +3,8 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 
-from .prefix_autocomplete import PrefixAutocomplete
 from ..detection.window_mapping import DATA_TYPES
+from .prefix_autocomplete import PrefixAutocomplete
 
 
 class ComboboxTCLManager:

@@ -9,9 +9,9 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 
-from .address_model import AddressRow
-from .blocktag_model import parse_block_tag
-from .colors import get_block_color_hex
+from ...models.address_row import AddressRow
+from ...models.blocktag import parse_block_tag
+from ...widgets.colors import get_block_color_hex
 
 
 class BlockPanel(ttk.Frame):

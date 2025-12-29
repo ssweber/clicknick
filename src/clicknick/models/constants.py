@@ -7,7 +7,6 @@
 # Hidden slots (3,5,7,9,11,13,15) are upper bytes for XD1-8 that aren't displayed
 from enum import IntEnum
 
-
 ADDRESS_RANGES: dict[str, tuple[int, int]] = {
     "X": (1, 816),  # Inputs
     "Y": (1, 816),  # Outputs
@@ -105,6 +104,7 @@ COMMENT_MAX_LENGTH = 128
 FORBIDDEN_CHARS = set("%\"<>!#$&'()*+-./:;=?@[\\]^`{|}~")
 # Value ranges for validation
 INT_MIN = -32768
+INT_MAX = 32767
 INT2_MIN = -2147483648
 INT2_MAX = 2147483647
 FLOAT_MIN = -3.4028235e38

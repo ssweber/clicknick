@@ -6,14 +6,15 @@ Contains AddressRow dataclass, validation functions, and AddrKey calculations.
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from src.clicknick.models.constants import MEMORY_TYPE_BASES
-from src.clicknick.models.constants import _INDEX_TO_TYPE
-from src.clicknick.models.constants import DataType
-from src.clicknick.models.constants import DATA_TYPE_DISPLAY
-from src.clicknick.models.constants import NON_EDITABLE_TYPES
-from src.clicknick.models.constants import DEFAULT_RETENTIVE
-from src.clicknick.models.validation import validate_nickname
-from src.clicknick.models.validation import validate_initial_value
+from .constants import (
+    _INDEX_TO_TYPE,
+    DATA_TYPE_DISPLAY,
+    DEFAULT_RETENTIVE,
+    MEMORY_TYPE_BASES,
+    NON_EDITABLE_TYPES,
+    DataType,
+)
+from .validation import validate_initial_value, validate_nickname
 
 # ==============================================================================
 # Helper Functions

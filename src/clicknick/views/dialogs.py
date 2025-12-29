@@ -4,7 +4,7 @@ import tkinter as tk
 from datetime import datetime
 from tkinter import ttk
 
-from .utils.win32_utils import WIN32
+from ..utils.win32_utils import WIN32
 
 
 def open_url(url):

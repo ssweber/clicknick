@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from .colors import get_block_color_hex
+from ...widgets.colors import get_block_color_hex
 from .panel_constants import (
     COL_COMMENT,
     COL_INIT_VALUE,
@@ -26,7 +26,7 @@ from .panel_constants import (
 if TYPE_CHECKING:
     from tksheet import Sheet
 
-    from .address_model import AddressRow
+    from ...models.address_row import AddressRow
 
 # Number of data columns in the sheet
 NUM_COLUMNS = 5

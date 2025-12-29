@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING
 
 import pyodbc
 
-from ..utils.mdb_shared import create_access_connection, find_click_database
+from ..models.address_row import AddressRow
 from ..models.constants import DEFAULT_RETENTIVE, MEMORY_TYPE_TO_DATA_TYPE, DataType
-from .address_model import AddressRow
+from .mdb_shared import create_access_connection, find_click_database
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
