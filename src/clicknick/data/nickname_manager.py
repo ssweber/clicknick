@@ -1,14 +1,14 @@
 import csv
 import os
 
-from .address_editor.blocktag_model import strip_block_tag
-from .filters import ContainsFilter, ContainsPlusFilter, NoneFilter, PrefixFilter
-from .mdb_shared import (
+from ..address_editor.blocktag_model import strip_block_tag
+from .utils.filters import ContainsFilter, ContainsPlusFilter, NoneFilter, PrefixFilter
+from .utils.mdb_shared import (
     create_access_connection,
     find_click_database,
     has_access_driver,
 )
-from .nickname import Nickname
+from .models.nickname import Nickname
 
 
 class NicknameManager:

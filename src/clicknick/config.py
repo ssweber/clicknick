@@ -46,3 +46,6 @@ class AppSettings:
     def show_info_tooltip(self) -> bool:
         """Get info tooltip display setting."""
         return self.show_info_tooltip_var.get() if self.show_info_tooltip_var else True
+
+
+INT_MAX = 32767

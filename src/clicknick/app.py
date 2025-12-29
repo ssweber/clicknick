@@ -2,19 +2,19 @@ import tkinter as tk
 from ctypes import windll
 from tkinter import PhotoImage, filedialog, font, ttk
 
-from .dialogs import AboutDialog, OdbcWarningDialog
-from .filters import (  # preserve lru_cache
+from .views.dialogs import AboutDialog, OdbcWarningDialog
+from .utils.filters import (  # preserve lru_cache
     ContainsFilter,
     ContainsPlusFilter,
     NoneFilter,
     PrefixFilter,
 )
-from .icon_data import ICON_PNG_BASE64
-from .nickname_manager import NicknameManager
-from .overlay import Overlay
-from .settings import AppSettings
-from .window_detector import ClickWindowDetector
-from .window_mapping import CLICK_PLC_WINDOW_MAPPING
+from .resources.icon_data import ICON_PNG_BASE64
+from .data.nickname_manager import NicknameManager
+from .views.overlay import Overlay
+from .config import AppSettings
+from .detection.window_detector import ClickWindowDetector
+from .detection.window_mapping import CLICK_PLC_WINDOW_MAPPING
 
 # Set DPI awareness for better UI rendering
 windll.shcore.SetProcessDpiAwareness(1)
@@ -281,7 +281,7 @@ class ClickNickApp:
 
         try:
             from .address_editor import AddressEditorWindow, SharedAddressData
-            from .address_editor.data_source import CsvDataSource, MdbDataSource
+            from .address_editor import CsvDataSource, MdbDataSource
 
             # Create or reuse shared data for this data source
             if not hasattr(self, "_address_editor_shared_data"):
@@ -334,9 +334,9 @@ class ClickNickApp:
 
         try:
             from .address_editor import SharedAddressData
-            from .address_editor.data_source import MdbDataSource
+            from .address_editor import MdbDataSource
             from .dataview_editor import DataviewEditorWindow, SharedDataviewData
-            from .mdb_shared import get_project_path_from_hwnd
+            from .utils.mdb_shared import get_project_path_from_hwnd
 
             # Get project path from connected Click window
             project_path = get_project_path_from_hwnd(self.connected_click_hwnd)

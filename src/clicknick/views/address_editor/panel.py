@@ -10,13 +10,13 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
+from ..config import INT_MAX
+
+from ..models.constants import FLOAT_MIN, INT2_MAX, INT2_MIN, INT_MIN, MEMORY_TYPE_TO_DATA_TYPE, NON_EDITABLE_TYPES, DataType
 from tksheet import Sheet, num2alpha
 
 from .address_model import (
-    MEMORY_TYPE_TO_DATA_TYPE,
-    NON_EDITABLE_TYPES,
     AddressRow,
-    DataType,
 )
 from .address_row_styler import AddressRowStyler
 from .blocktag_model import parse_block_tag
@@ -100,13 +100,8 @@ class AddressPanel(ttk.Frame):
         Returns:
             Hint string describing valid range/values
         """
-        from .address_model import (
+        from ..models.constants import (
             FLOAT_MAX,
-            FLOAT_MIN,
-            INT2_MAX,
-            INT2_MIN,
-            INT_MAX,
-            INT_MIN,
         )
 
         if data_type == DataType.BIT:

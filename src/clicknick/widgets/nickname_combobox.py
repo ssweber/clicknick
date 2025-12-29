@@ -4,7 +4,7 @@ from collections.abc import Callable
 from tkinter import ttk
 
 from .prefix_autocomplete import PrefixAutocomplete
-from .window_mapping import DATA_TYPES
+from ..detection.window_mapping import DATA_TYPES
 
 
 class ComboboxTCLManager:
