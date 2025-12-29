@@ -22,69 +22,6 @@ class CustomNotebook(ttk.Notebook):
 
     __initialized = False
 
-    def __init__(self, *args, **kwargs):
-        # Extract our custom callback before passing to parent
-        self._on_close_callback: Callable[[int], bool] | None = kwargs.pop(
-            "on_close_callback", None
-        )
-
-        if not CustomNotebook.__initialized:
-            self.__initialize_custom_style()
-            CustomNotebook.__initialized = True
-
-        kwargs["style"] = "CustomNotebook"
-        ttk.Notebook.__init__(self, *args, **kwargs)
-
-        self._active = None
-
-        self.bind("<ButtonPress-1>", self.on_close_press, True)
-        self.bind("<ButtonRelease-1>", self.on_close_release)
-
-    def set_close_callback(self, callback: Callable[[int], bool] | None) -> None:
-        """Set the callback for tab close.
-
-        Args:
-            callback: Function that takes tab index and returns True to allow close.
-        """
-        self._on_close_callback = callback
-
-    def on_close_press(self, event):
-        """Called when the button is pressed over the close button."""
-        element = self.identify(event.x, event.y)
-
-        if "close" in element:
-            index = self.index("@%d,%d" % (event.x, event.y))
-            self.state(["pressed"])
-            self._active = index
-            return "break"
-
-    def on_close_release(self, event):
-        """Called when the button is released."""
-        if not self.instate(["pressed"]):
-            return
-
-        element = self.identify(event.x, event.y)
-        if "close" not in element:
-            # user moved the mouse off of the close button
-            return
-
-        index = self.index("@%d,%d" % (event.x, event.y))
-
-        if self._active == index:
-            # Check if close is allowed
-            if self._on_close_callback:
-                if not self._on_close_callback(index):
-                    # Close was cancelled
-                    self.state(["!pressed"])
-                    self._active = None
-                    return
-
-            self.forget(index)
-            self.event_generate("<<NotebookTabClosed>>")
-
-        self.state(["!pressed"])
-        self._active = None
-
     def __initialize_custom_style(self):
         style = ttk.Style()
         self.images = (
@@ -162,3 +99,66 @@ class CustomNotebook(ttk.Notebook):
                 )
             ],
         )
+
+    def __init__(self, *args, **kwargs):
+        # Extract our custom callback before passing to parent
+        self._on_close_callback: Callable[[int], bool] | None = kwargs.pop(
+            "on_close_callback", None
+        )
+
+        if not CustomNotebook.__initialized:
+            self.__initialize_custom_style()
+            CustomNotebook.__initialized = True
+
+        kwargs["style"] = "CustomNotebook"
+        ttk.Notebook.__init__(self, *args, **kwargs)
+
+        self._active = None
+
+        self.bind("<ButtonPress-1>", self.on_close_press, True)
+        self.bind("<ButtonRelease-1>", self.on_close_release)
+
+    def set_close_callback(self, callback: Callable[[int], bool] | None) -> None:
+        """Set the callback for tab close.
+
+        Args:
+            callback: Function that takes tab index and returns True to allow close.
+        """
+        self._on_close_callback = callback
+
+    def on_close_press(self, event):
+        """Called when the button is pressed over the close button."""
+        element = self.identify(event.x, event.y)
+
+        if "close" in element:
+            index = self.index("@%d,%d" % (event.x, event.y))
+            self.state(["pressed"])
+            self._active = index
+            return "break"
+
+    def on_close_release(self, event):
+        """Called when the button is released."""
+        if not self.instate(["pressed"]):
+            return
+
+        element = self.identify(event.x, event.y)
+        if "close" not in element:
+            # user moved the mouse off of the close button
+            return
+
+        index = self.index("@%d,%d" % (event.x, event.y))
+
+        if self._active == index:
+            # Check if close is allowed
+            if self._on_close_callback:
+                if not self._on_close_callback(index):
+                    # Close was cancelled
+                    self.state(["!pressed"])
+                    self._active = None
+                    return
+
+            self.forget(index)
+            self.event_generate("<<NotebookTabClosed>>")
+
+        self.state(["!pressed"])
+        self._active = None

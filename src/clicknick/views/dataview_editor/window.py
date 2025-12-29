@@ -372,26 +372,6 @@ class DataviewEditorWindow(tk.Toplevel):
         """Handle tab closed event (after the tab is removed)."""
         pass  # Cleanup already done in _on_tab_close_request
 
-    def _on_tab_right_click(self, event) -> None:
-        """Handle right-click on notebook tab - show close menu."""
-        # Identify which tab was clicked
-        try:
-            clicked_tab = self.notebook.identify(event.x, event.y)
-            if clicked_tab != "label":
-                return
-
-            # Get the tab index at the click position
-            tab_index = self.notebook.index(f"@{event.x},{event.y}")
-            if tab_index is None:
-                return
-
-            # Create context menu
-            menu = tk.Menu(self, tearoff=0)
-            menu.add_command(label="Close", command=lambda: self._close_tab_at_index(tab_index))
-            menu.post(event.x_root, event.y_root)
-        except tk.TclError:
-            pass
-
     def _close_tab_at_index(self, tab_index: int) -> None:
         """Close the tab at the given index.
 
@@ -431,6 +411,26 @@ class DataviewEditorWindow(tk.Toplevel):
             self.notebook.forget(panel)
             panel.destroy()
         except (tk.TclError, IndexError):
+            pass
+
+    def _on_tab_right_click(self, event) -> None:
+        """Handle right-click on notebook tab - show close menu."""
+        # Identify which tab was clicked
+        try:
+            clicked_tab = self.notebook.identify(event.x, event.y)
+            if clicked_tab != "label":
+                return
+
+            # Get the tab index at the click position
+            tab_index = self.notebook.index(f"@{event.x},{event.y}")
+            if tab_index is None:
+                return
+
+            # Create context menu
+            menu = tk.Menu(self, tearoff=0)
+            menu.add_command(label="Close", command=lambda: self._close_tab_at_index(tab_index))
+            menu.post(event.x_root, event.y_root)
+        except tk.TclError:
             pass
 
     def _provide_filtered_nicknames(self, search_text: str) -> list[str]:
@@ -497,28 +497,6 @@ class DataviewEditorWindow(tk.Toplevel):
         """Handle Insert button click - finalize current combobox entry."""
         self.nickname_combo.finalize_entry()
 
-    def _toggle_nav(self) -> None:
-        """Toggle the navigation window visibility."""
-        if self._nav_window is None:
-            # Create navigation window with double-click insert behavior
-            self._nav_window = NavWindow(
-                self,
-                on_address_select=self._on_nav_address_insert,
-                on_batch_select=self._on_nav_batch_insert,
-            )
-            self._refresh_navigation()
-            self.nav_btn.configure(text="<< Navigator")
-        elif self._nav_window.winfo_viewable():
-            # Hide it
-            self._nav_window.withdraw()
-            self.nav_btn.configure(text=">> Navigator")
-        else:
-            # Show it
-            self._refresh_navigation()
-            self._nav_window.deiconify()
-            self._nav_window._dock_to_parent()
-            self.nav_btn.configure(text="<< Navigator")
-
     def _refresh_navigation(self) -> None:
         """Refresh the navigation window with current data."""
         if self._nav_window is None:
@@ -567,6 +545,28 @@ class DataviewEditorWindow(tk.Toplevel):
                     # No more empty rows available
                     break
 
+    def _toggle_nav(self) -> None:
+        """Toggle the navigation window visibility."""
+        if self._nav_window is None:
+            # Create navigation window with double-click insert behavior
+            self._nav_window = NavWindow(
+                self,
+                on_address_select=self._on_nav_address_insert,
+                on_batch_select=self._on_nav_batch_insert,
+            )
+            self._refresh_navigation()
+            self.nav_btn.configure(text="<< Navigator")
+        elif self._nav_window.winfo_viewable():
+            # Hide it
+            self._nav_window.withdraw()
+            self.nav_btn.configure(text=">> Navigator")
+        else:
+            # Show it
+            self._refresh_navigation()
+            self._nav_window.deiconify()
+            self._nav_window._dock_to_parent()
+            self.nav_btn.configure(text="<< Navigator")
+
     def _create_widgets(self) -> None:
         """Create the main UI widgets."""
         # Main paned window for sidebar + content
@@ -599,13 +599,13 @@ class DataviewEditorWindow(tk.Toplevel):
         btn_frame = ttk.Frame(sidebar)
         btn_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
 
-        ttk.Button(btn_frame, text="New", command=self._new_dataview, width=8).pack(
+        ttk.Button(btn_frame, text="New", command=self._new_dataview, width=7).pack(
             side=tk.LEFT, padx=2
         )
-        ttk.Button(btn_frame, text="Open", command=self._open_selected, width=8).pack(
+        ttk.Button(btn_frame, text="Open", command=self._open_selected, width=7).pack(
             side=tk.LEFT, padx=2
         )
-        ttk.Button(btn_frame, text="Refresh", command=self._refresh_file_list, width=8).pack(
+        ttk.Button(btn_frame, text="⟳", command=self._refresh_file_list, width=2).pack(
             side=tk.LEFT, padx=2
         )
 
@@ -643,9 +643,7 @@ class DataviewEditorWindow(tk.Toplevel):
         self.nav_btn.pack(side=tk.RIGHT)
 
         # Notebook for tabs (with close buttons)
-        self.notebook = CustomNotebook(
-            self.content, on_close_callback=self._on_tab_close_request
-        )
+        self.notebook = CustomNotebook(self.content, on_close_callback=self._on_tab_close_request)
         self.notebook.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
 
         # Bind tab change and close events

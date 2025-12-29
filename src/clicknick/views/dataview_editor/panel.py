@@ -16,6 +16,7 @@ from ...models.dataview_row import (
     MAX_DATAVIEW_ROWS,
     DataviewRow,
     create_empty_dataview,
+    get_type_code_for_address,
 )
 from .cdv_file import load_cdv, save_cdv
 
@@ -119,6 +120,56 @@ class DataviewPanel(ttk.Frame):
             if self.on_modified:
                 self.on_modified()
 
+    def _on_rows_moved(self, event) -> None:
+        """Handle row drag-and-drop reordering.
+
+        Updates self.rows to match the new order in the sheet.
+        """
+        if self._suppress_notifications:
+            return
+
+        # Get the move mapping from the event
+        # event["moved"]["rows"]["data"] maps old_idx -> new_idx
+        moved = event.get("moved", {})
+        rows_moved = moved.get("rows", {})
+        data_mapping = rows_moved.get("data", {})
+
+        if not data_mapping:
+            return
+
+        # Reorder self.rows to match the new sheet order
+        # Build the new order by reading positions from the mapping
+        new_rows = [None] * len(self.rows)
+        moved_indices = set(data_mapping.keys())
+
+        for old_idx, new_idx in data_mapping.items():
+            new_rows[new_idx] = self.rows[old_idx]
+
+        # Fill in unmoved rows - they stay in place unless displaced
+        for i, row in enumerate(self.rows):
+            if i not in moved_indices:
+                # Find the first empty slot at or after position i
+                # But we need to check if this position was taken by a moved row
+                if new_rows[i] is None:
+                    new_rows[i] = row
+
+        # Handle any remaining None slots (shouldn't happen, but be safe)
+        old_idx = 0
+        for i in range(len(new_rows)):
+            if new_rows[i] is None:
+                while old_idx < len(self.rows) and self.rows[old_idx] in new_rows:
+                    old_idx += 1
+                if old_idx < len(self.rows):
+                    new_rows[i] = self.rows[old_idx]
+                    old_idx += 1
+
+        self.rows = new_rows
+        self._is_dirty = True
+        self._update_status()
+
+        if self.on_modified:
+            self.on_modified()
+
     def _validate_edit(self, event) -> str:
         """Validate and normalize cell edits.
 
@@ -126,13 +177,24 @@ class DataviewPanel(ttk.Frame):
             event: The edit validation event from tksheet
 
         Returns:
-            The validated/normalized value
+            The validated/normalized value, or empty string if invalid
         """
         # Only validate Address column
         if hasattr(event, "column") and event.column == COL_ADDRESS:
             value = event.value or ""
             # Normalize: uppercase, strip whitespace
-            return value.strip().upper()
+            normalized = value.strip().upper()
+
+            # Empty is valid (clearing the cell)
+            if not normalized:
+                return ""
+
+            # Validate address format and memory type
+            if get_type_code_for_address(normalized) is None:
+                # Invalid address - reject by returning empty string
+                return ""
+
+            return normalized
 
         return event.value
 
@@ -158,6 +220,8 @@ class DataviewPanel(ttk.Frame):
         self.sheet.disable_bindings(
             "column_drag_and_drop",
             "rc_select_column",
+            "rc_insert_column",
+            "rc_delete_column",
             "rc_insert_row",  # We have fixed 100 rows
             "rc_delete_row",  # We have fixed 100 rows
             "sort_cells",
@@ -177,6 +241,9 @@ class DataviewPanel(ttk.Frame):
         # Set up edit validation and bind to modification events
         self.sheet.edit_validation(self._validate_edit)
         self.sheet.bind("<<SheetModified>>", self._on_sheet_modified)
+
+        # Handle row drag-and-drop reordering
+        self.sheet.extra_bindings("end_move_rows", self._on_rows_moved)
 
         # Initialize with empty data
         self._populate_sheet()

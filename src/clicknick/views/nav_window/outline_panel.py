@@ -23,19 +23,15 @@ from .outline_logic import (
 class OutlinePanel(ttk.Frame):
     """Panel displaying hierarchical treeview of tag nicknames."""
 
-    def _on_double_click(self, event) -> None:
-        """Handle double-click on tree item."""
-        if selection := self.tree.selection():
-            iid = selection[0]
-            if leaf_data := self._leaf_data.get(iid):
-                # Single leaf node - use normal callback
-                memory_type, address = leaf_data
-                self.on_address_select(memory_type, address)
-            elif self.on_batch_select:
-                # Parent node - collect all leaves and use batch callback
-                leaves = self._get_all_leaves_under(iid)
-                if leaves:
-                    self.on_batch_select(leaves)
+    def _collect_leaves(self, iid: str, leaves: list[tuple[str, int]]) -> None:
+        """Recursively collect all leaf addresses under a node."""
+        # Check if this node is a leaf
+        if leaf_data := self._leaf_data.get(iid):
+            leaves.append(leaf_data)
+
+        # Recurse into children
+        for child_iid in self.tree.get_children(iid):
+            self._collect_leaves(child_iid, leaves)
 
     def _get_all_leaves_under(self, iid: str) -> list[tuple[str, int]]:
         """Get all leaf addresses under a parent node.
@@ -50,15 +46,19 @@ class OutlinePanel(ttk.Frame):
         self._collect_leaves(iid, leaves)
         return leaves
 
-    def _collect_leaves(self, iid: str, leaves: list[tuple[str, int]]) -> None:
-        """Recursively collect all leaf addresses under a node."""
-        # Check if this node is a leaf
-        if leaf_data := self._leaf_data.get(iid):
-            leaves.append(leaf_data)
-
-        # Recurse into children
-        for child_iid in self.tree.get_children(iid):
-            self._collect_leaves(child_iid, leaves)
+    def _on_double_click(self, event) -> None:
+        """Handle double-click on tree item."""
+        if selection := self.tree.selection():
+            iid = selection[0]
+            if leaf_data := self._leaf_data.get(iid):
+                # Single leaf node - use normal callback
+                memory_type, address = leaf_data
+                self.on_address_select(memory_type, address)
+            elif self.on_batch_select:
+                # Parent node - collect all leaves and use batch callback
+                leaves = self._get_all_leaves_under(iid)
+                if leaves:
+                    self.on_batch_select(leaves)
 
     def _create_widgets(self) -> None:
         """Create the treeview widget."""
