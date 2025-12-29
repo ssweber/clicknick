@@ -299,9 +299,10 @@ class ClickNickApp:
             self._update_status(f"Error opening editor: {e}", "error")
 
     def _open_dataview_editor(self):
-        """Open the Dataview Editor window.
+        """Open the Dataview Editor window, or focus if already open.
 
         The dataview editor allows creating and editing CLICK DataView files (.cdv).
+        Only one DataviewEditorWindow can be open at a time.
         """
         if not self.connected_click_pid:
             self._update_status("Connect to a ClickPLC window first", "error")
@@ -336,6 +337,16 @@ class ClickNickApp:
                     address_shared_data=self._shared_address_data,
                 )
                 self._dataview_editor_project_path = project_path
+
+            # If window already open, focus it instead of creating a new one
+            if self._dataview_editor_shared_data._window is not None:
+                try:
+                    self._dataview_editor_shared_data._window.lift()
+                    self._dataview_editor_shared_data._window.focus_force()
+                    return
+                except Exception:
+                    # Window was destroyed, clear reference
+                    self._dataview_editor_shared_data._window = None
 
             # Get project name for window title
             title_suffix = ""

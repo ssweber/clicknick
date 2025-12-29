@@ -67,7 +67,7 @@ src/clicknick/
 
 **`data/`** - Data loading and shared state
 - `shared_data.py` - `SharedAddressData`: single source of truth for all address data, observer pattern, file monitoring
-- `shared_dataview.py` - `SharedDataviewData` for dataview editor (references SharedAddressData for lookups)
+- `shared_dataview.py` - `SharedDataviewData`: read-only shim over `SharedAddressData` for nickname lookups, manages CDV files
 - `data_source.py` - Abstract `DataSource` with `MdbDataSource` and `CsvDataSource`
 - `nickname_manager.py` - Read-only shim over `SharedAddressData`, provides filtering for Overlay autocomplete
 
@@ -124,8 +124,9 @@ src/clicknick/
 
 **Change Propagation:**
 1. Address Editor or external MDB change triggers `SharedAddressData.notify_data_changed()`
-2. All observers notified (NicknameManager, AddressEditorWindows)
+2. All observers notified (NicknameManager, AddressEditorWindows, SharedDataviewData)
 3. NicknameManager invalidates its nickname cache, rebuilt on next filter request
+4. SharedDataviewData triggers `refresh_nicknames_from_shared()` on DataviewEditorWindow
 
 ### Filter System
 Filters implement `FilterBase.filter_matches(completion_list, current_text)`:
