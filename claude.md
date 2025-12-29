@@ -35,43 +35,78 @@ uv tool install --editable .
 ### Entry Points
 - `clicknick` (GUI) - calls `clicknick:main`
 - `clicknick-dev` (console) - calls `clicknick:main_dev`, enables in-progress features
-- Main app: `src/clicknick/clicknick.py` -> `ClickNickApp` class
+- Main app: `src/clicknick/app.py` -> `ClickNickApp` class
 
-### Core Components
+### Package Structure
 
-**Window Detection & Integration**
-- `window_detector.py` - Detects Click.exe child windows, validates controls using AHK
-- `window_mapping.py` - Maps window classes to edit controls and their allowed address types
-- `win32_utils.py` - Singleton wrapper for Windows API utilities using pywin32
+```
+src/clicknick/
+├── app.py                 # Main ClickNickApp class
+├── config.py              # AppSettings with persistence
+├── models/                # Data models and constants
+├── data/                  # Data loading and shared state
+├── utils/                 # Utilities (filters, MDB, Win32)
+├── views/                 # Windows and panels
+│   ├── address_editor/    # Address Editor views
+│   ├── dataview_editor/   # Dataview Editor views
+│   └── nav_window/        # Navigation window (outline, blocks)
+├── widgets/               # Reusable UI components
+├── detection/             # Window detection for Click.exe
+└── resources/             # Icons and static assets
+```
 
-**Nickname Management**
-- `nickname_manager.py` - Loads nicknames from CSV or ODBC (Access .mdb), manages filtering
-- `nickname.py` - `Nickname` dataclass with address, type, comment, abbreviation tags
+### Core Packages
+
+**`models/`** - Data models and constants
+- `constants.py` - ADDRESS_RANGES, MEMORY_TYPE_BASES, DEFAULT_RETENTIVE, DataType enum
+- `address_row.py` - `AddressRow` dataclass with dirty tracking, validation, CRUD helpers
+- `nickname.py` - `Nickname` dataclass for autocomplete (lightweight, immutable)
+- `dataview_row.py` - `DataviewRow` dataclass for CDV files
+- `blocktag.py` - BlockTag model for block-level tagging in comments
+- `validation.py` - Nickname and initial value validation functions
+
+**`data/`** - Data loading and shared state
+- `shared_data.py` - `SharedAddressData` for cross-window synchronization, observer pattern
+- `shared_dataview.py` - `SharedDataviewData` for dataview editor
+- `data_source.py` - Abstract `DataSource` with `MdbDataSource` and `CsvDataSource`
+- `nickname_manager.py` - Loads nicknames from CSV or ODBC, manages filtering
+
+**`utils/`** - Utilities
 - `filters.py` - Filter strategies: `NoneFilter`, `PrefixFilter`, `ContainsFilter`, `ContainsPlusFilter`
-- `mdb_shared.py` - Shared MDB/Access database utilities (used both by NicknameManager and the Address Editor)
+- `mdb_shared.py` - Shared MDB/Access database utilities
+- `mdb_operations.py` - ODBC read/write operations for Address Editor
+- `win32_utils.py` - Singleton wrapper for Windows API utilities
 
-**UI Components**
+**`views/`** - Windows and panels
 - `overlay.py` - `tk.Toplevel` overlay positioned over target edit controls
+- `dialogs.py` - About and ODBC warning dialogs
+- `address_editor/` - Multi-window editor for PLC addresses
+  - `window.py` - Main AddressEditorWindow
+  - `panel.py` - AddressPanel (tksheet-based) for each memory type
+  - `view_builder.py` - TypeView construction for shared display data
+  - `jump_sidebar.py` - JumpSidebar for quick navigation
+  - `row_styler.py` - Visual styling for validation, dirty tracking, blocks
+- `dataview_editor/` - Editor for CLICK DataView files (.cdv)
+  - `window.py` - DataviewEditorWindow with file list sidebar
+  - `panel.py` - DataviewPanel (tksheet-based) for editing
+  - `cdv_file.py` - CDV file I/O (UTF-16 CSV format)
+- `nav_window/` - Floating navigation window
+  - `window.py` - NavWindow that docks to parent
+  - `outline_panel.py` - Hierarchical treeview of nicknames by underscore segments
+  - `outline_logic.py` - Tree building logic (segment parsing, array detection)
+  - `block_panel.py` - Block navigation from `<Block>` tags in comments
+
+**`widgets/`** - Reusable UI components
 - `nickname_combobox.py` - Custom autocomplete combobox with keyboard navigation
 - `floating_tooltip.py` - Shows nickname details on hover
-- `prefix_autocomplete.py` - Prefix-based autocomplete for combobox
-- `settings.py` - `AppSettings` with persistence (search mode, exclusions, tooltips)
-- `dialogs.py` - About and ODBC warning dialogs
-
-**Address Editor** (`src/clicknick/address_editor/`)
-- Multi-window editor for PLC addresses with sync between instances
-- `address_editor_window.py` - Main editor window & Outline window
-- `address_panel.py` - Tab panel for each memory type
-- `address_model.py` - Data model, validation, constants (ADDRESS_RANGES, MEMORY_TYPE_BASES)
-- `address_outline.py` - Hierarchical treeview of nicknames (toggleable right sidebar)
-- `blocktag_model.py` - BlockTag model for block-level tagging
+- `prefix_autocomplete.py` - Prefix-based autocomplete logic
 - `add_block_dialog.py` - Dialog for adding address blocks
-- `jump_sidebar.py` - JumpSidebar and JumpButton for quick navigation
-- `colors.py` - Color constants and functions for the editor UI
-- `mdb_operations.py` - ODBC read/write to Access database
-- `shared_data.py` - `SharedAddressData` for cross-window synchronization
-- `outline_panel.py` - OutlinePanel displays a tkinter treeview of nicknames, parsed hierarchically by underscore segments. Double-click navigates to the address in the main panel.
-- `outline_logic.py` - Tree building logic for the outline. Parses nicknames into segments (single _ splits, double __ preserves literal underscore), detects array indices from trailing numbers, collapses single-child chains. Entry order is memory type (per MEMORY_TYPE_ORDER) then address.
+- `char_limit_tooltip.py` - Character limit indicator
+- `colors.py` - Color constants for the editor UI
+
+**`detection/`** - Window detection
+- `window_detector.py` - Detects Click.exe child windows, validates controls
+- `window_mapping.py` - Maps window classes to edit controls and allowed address types
 
 ### Data Flow
 1. `ClickWindowDetector` polls for Click.exe child windows (instruction dialogs)
