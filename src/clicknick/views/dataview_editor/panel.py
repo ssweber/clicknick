@@ -6,10 +6,11 @@ Target is 100 rows, but overflow (rows 100+) is supported with visual indication
 
 from __future__ import annotations
 
+import os
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 from tksheet import Sheet
 
@@ -28,6 +29,9 @@ COL_COMMENT = 2
 
 # Color for overflow rows (index >= 100)
 COLOR_OVERFLOW_BG = "#e0e0e0"
+
+# File monitoring interval in milliseconds
+FILE_MONITOR_INTERVAL_MS = 2000
 
 
 class DataviewPanel(ttk.Frame):
@@ -431,6 +435,14 @@ class DataviewPanel(ttk.Frame):
             # Show error
             self.status_label.config(text=f"Error loading: {e}")
 
+    # --- File Monitoring ---
+
+    def _on_destroy(self, event) -> None:
+        """Handle panel destruction."""
+        # Only handle destruction of this widget, not children
+        if event.widget == self:
+            self.stop_file_monitoring()
+
     def __init__(
         self,
         parent: tk.Widget,
@@ -460,11 +472,21 @@ class DataviewPanel(ttk.Frame):
         # Suppress notifications during programmatic updates
         self._suppress_notifications = False
 
+        # File monitoring state
+        self._last_mtime: float = 0.0
+        self._monitor_after_id: str | None = None
+        self._monitoring_active = False
+        self._reload_prompt_shown = False  # Prevent duplicate prompts
+
         self._create_widgets()
 
         # Load file if provided
         if file_path and file_path.exists():
             self._load_file()
+            self.start_file_monitoring()
+
+        # Stop monitoring when panel is destroyed
+        self.bind("<Destroy>", self._on_destroy)
 
     def save(self) -> bool:
         """Save data to file.
@@ -484,6 +506,11 @@ class DataviewPanel(ttk.Frame):
             save_cdv(self.file_path, self.rows, self.has_new_values)
             self._is_dirty = False
             self._update_status()
+
+            # Update mtime so we don't prompt to reload our own save
+            if self.file_path.exists():
+                self._last_mtime = os.path.getmtime(self.file_path)
+
             return True
         except Exception as e:
             self.status_label.config(text=f"Error saving: {e}")
@@ -498,8 +525,103 @@ class DataviewPanel(ttk.Frame):
         Returns:
             True if saved successfully, False otherwise.
         """
+        old_path = self.file_path
         self.file_path = new_path
-        return self.save()
+        if self.save():
+            # Restart monitoring for new file
+            if old_path != new_path:
+                self.stop_file_monitoring()
+                self.start_file_monitoring()
+            return True
+        return False
+
+    def _schedule_file_check(self) -> None:
+        """Schedule the next file modification check."""
+        if not self._monitoring_active:
+            return
+        self._monitor_after_id = self.after(FILE_MONITOR_INTERVAL_MS, self._check_file_modified)
+
+    def start_file_monitoring(self) -> None:
+        """Start monitoring the CDV file for external changes."""
+        if self._monitoring_active or not self.file_path:
+            return
+
+        # Store initial modification time
+        if self.file_path.exists():
+            self._last_mtime = os.path.getmtime(self.file_path)
+
+        self._monitoring_active = True
+        self._reload_prompt_shown = False
+        self._schedule_file_check()
+
+    def stop_file_monitoring(self) -> None:
+        """Stop file monitoring."""
+        self._monitoring_active = False
+        if self._monitor_after_id:
+            try:
+                self.after_cancel(self._monitor_after_id)
+            except Exception:
+                pass
+        self._monitor_after_id = None
+
+    def _reload_file(self) -> None:
+        """Reload the file from disk."""
+        if not self.file_path or not self.file_path.exists():
+            return
+
+        try:
+            self.rows, self.has_new_values = load_cdv(self.file_path)
+
+            # Populate nicknames and comments from lookup
+            if self.nickname_lookup:
+                for row in self.rows:
+                    if row.address:
+                        result = self.nickname_lookup(row.address)
+                        if result:
+                            row.nickname, row.comment = result
+
+            self._populate_sheet()
+            self._is_dirty = False
+            self._update_status()
+
+            # Update mtime to prevent immediate re-prompt
+            self._last_mtime = os.path.getmtime(self.file_path)
+        except Exception as e:
+            self.status_label.config(text=f"Error reloading: {e}")
+
+    def _prompt_reload(self) -> None:
+        """Prompt user to reload the file after external modification."""
+        self._reload_prompt_shown = True
+
+        result = messagebox.askyesno(
+            "Reload",
+            "This file has been modified by another program.\n\nDo you want to reload it?",
+            parent=self,
+        )
+
+        if result:
+            self._reload_file()
+
+        # Allow future prompts
+        self._reload_prompt_shown = False
+
+    def _check_file_modified(self) -> None:
+        """Check if the CDV file has been modified externally."""
+        if not self._monitoring_active:
+            return
+
+        try:
+            if self.file_path and self.file_path.exists():
+                current_mtime = os.path.getmtime(self.file_path)
+                if current_mtime > self._last_mtime and not self._reload_prompt_shown:
+                    self._last_mtime = current_mtime
+                    self._prompt_reload()
+        except Exception:
+            # File might be locked during write, skip this check
+            pass
+
+        # Schedule next check
+        self._schedule_file_check()
 
     @property
     def is_dirty(self) -> bool:
