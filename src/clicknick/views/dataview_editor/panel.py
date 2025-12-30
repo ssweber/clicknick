@@ -128,45 +128,43 @@ class DataviewPanel(ttk.Frame):
         if self._suppress_notifications:
             return
 
-        # Get the move mapping from the event
-        # event["moved"]["rows"]["data"] maps old_idx -> new_idx
+        # 1. Extract mapping
         moved = event.get("moved", {})
-        rows_moved = moved.get("rows", {})
-        data_mapping = rows_moved.get("data", {})
-
-        if not data_mapping:
+        rows_data = moved.get("rows", {}).get("data", {})
+        
+        if not rows_data:
             return
 
-        # Reorder self.rows to match the new sheet order
-        # Build the new order by reading positions from the mapping
-        new_rows = [None] * len(self.rows)
-        moved_indices = set(data_mapping.keys())
+        # Ensure keys are integers (JSON often sends "0": 5)
+        mapping = {int(k): int(v) for k, v in rows_data.items()}
 
-        for old_idx, new_idx in data_mapping.items():
+        # 2. Create the "Skeleton" List
+        # Place the moved items exactly where they belong.
+        new_rows = [None] * len(self.rows)
+        for old_idx, new_idx in mapping.items():
             new_rows[new_idx] = self.rows[old_idx]
 
-        # Fill in unmoved rows - they stay in place unless displaced
-        for i, row in enumerate(self.rows):
-            if i not in moved_indices:
-                # Find the first empty slot at or after position i
-                # But we need to check if this position was taken by a moved row
-                if new_rows[i] is None:
-                    new_rows[i] = row
+        # 3. Collect the Unmoved Rows
+        # Identify rows that weren't moved and reverse them so we can .pop() efficiently.
+        remaining = [
+            row for i, row in enumerate(self.rows) 
+            if i not in mapping
+        ]
+        remaining.reverse() 
 
-        # Handle any remaining None slots (shouldn't happen, but be safe)
-        old_idx = 0
-        for i in range(len(new_rows)):
-            if new_rows[i] is None:
-                while old_idx < len(self.rows) and self.rows[old_idx] in new_rows:
-                    old_idx += 1
-                if old_idx < len(self.rows):
-                    new_rows[i] = self.rows[old_idx]
-                    old_idx += 1
+        # 4. Fill the Gaps
+        # List comprehension: If the slot has a moved row, keep it. 
+        # If it's None, pop the next available unmoved row into it.
+        self.rows = [
+            row if row is not None else remaining.pop() 
+            for row in new_rows
+        ]
 
-        self.rows = new_rows
         self._is_dirty = True
         self._update_status()
-
+        self.sheet.set_index_data([str(i + 1) for i in range(MAX_DATAVIEW_ROWS)])
+        self.sheet.refresh(redraw_header=False, redraw_row_index=True)
+        
         if self.on_modified:
             self.on_modified()
 
@@ -370,7 +368,7 @@ class DataviewPanel(ttk.Frame):
         """
         # Find first empty row
         for i, row in enumerate(self.rows):
-            if row and row.is_empty:
+            if row.is_empty:
                 row.address = address.strip().upper()
                 row.update_type_code()
 
