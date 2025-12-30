@@ -2,8 +2,10 @@ import platform
 import sys
 import tkinter as tk
 from datetime import datetime
-from tkinter import ttk
+from pathlib import Path
+from tkinter import filedialog, ttk
 
+from ..data.data_source import convert_mdb_csv_to_user_csv
 from ..utils.win32_utils import WIN32
 
 
@@ -230,3 +232,130 @@ class OdbcWarningDialog:
 
         # Focus the window
         self.window.focus_set()
+
+
+class CsvFallbackDialog:
+    """Dialog shown when ODBC drivers are missing but Address.csv is available."""
+
+    def __init__(self, parent, source_csv_path: Path, default_filename: str = "Address.csv"):
+        self.parent = parent
+        self.source_csv_path = source_csv_path
+        self.default_filename = default_filename
+        self.saved_path: str | None = None
+
+        self.create_window()
+
+    def _on_save_copy(self):
+        """Handle Save Copy button - open Save As dialog and convert file."""
+        # Get user's Documents folder as default
+        try:
+            import os
+
+            documents = Path(os.path.expanduser("~/Documents"))
+            if not documents.exists():
+                documents = Path.home()
+        except Exception:
+            documents = Path.home()
+
+        # Open Save As dialog
+        dest_path = filedialog.asksaveasfilename(
+            parent=self.window,
+            title="Save Address CSV Copy",
+            initialdir=str(documents),
+            initialfile=self.default_filename,
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+
+        if dest_path:
+            try:
+                # Convert MDB-format CSV to user-format CSV
+                convert_mdb_csv_to_user_csv(str(self.source_csv_path), dest_path)
+                self.saved_path = dest_path
+                self.window.destroy()
+            except Exception as e:
+                # Show error message
+                tk.messagebox.showerror(
+                    "Error",
+                    f"Failed to convert and save file:\n{e}",
+                    parent=self.window,
+                )
+
+    def _on_cancel(self):
+        """Handle Cancel button."""
+        self.saved_path = None
+        self.window.destroy()
+
+    def create_window(self):
+        self.window = tk.Toplevel(self.parent)
+        self.window.title("ODBC Drivers Not Found")
+        self.window.resizable(False, False)
+        self.window.grab_set()
+        self.window.transient(self.parent)
+
+        # Center the window
+        self.window.geometry(f"+{self.parent.winfo_rootx() + 50}+{self.parent.winfo_rooty() + 50}")
+
+        main_frame = ttk.Frame(self.window, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Warning icon and title
+        title_frame = ttk.Frame(main_frame)
+        ttk.Label(title_frame, text="⚠️", font=("Arial", 24)).pack(side=tk.LEFT)
+        ttk.Label(title_frame, text="ODBC Drivers Not Found", font=("Arial", 14, "bold")).pack(
+            side=tk.LEFT, padx=(10, 0)
+        )
+        title_frame.pack(pady=(0, 15))
+
+        # Explanation
+        intro_text = (
+            "A project CSV file was found, but it cannot be used directly.\n"
+            "You must save a copy to continue."
+        )
+        ttk.Label(main_frame, text=intro_text, wraplength=400, justify=tk.LEFT).pack(pady=(0, 15))
+
+        # Warnings frame
+        warnings_frame = ttk.LabelFrame(main_frame, text="Important", padding="10")
+
+        warnings = [
+            "• This file is generated when CLICK opens a project",
+            "• Does NOT update with changes made in CLICK after load",
+            "• Will be DELETED when CLICK closes",
+        ]
+        for warning in warnings:
+            ttk.Label(warnings_frame, text=warning, wraplength=380, justify=tk.LEFT).pack(
+                anchor=tk.W, pady=2
+            )
+
+        warnings_frame.pack(fill=tk.X, pady=(0, 15))
+
+        # Buttons frame
+        button_frame = ttk.Frame(main_frame)
+
+        save_btn = ttk.Button(
+            button_frame, text="Save Copy && Continue", command=self._on_save_copy
+        )
+        save_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        cancel_btn = ttk.Button(button_frame, text="Cancel", command=self._on_cancel)
+        cancel_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        help_btn = ttk.Button(
+            button_frame,
+            text="ODBC Help",
+            command=lambda: open_url("https://github.com/ssweber/clicknick/issues/17"),
+        )
+        help_btn.pack(side=tk.LEFT)
+
+        button_frame.pack(pady=(0, 10))
+
+        # Focus save button
+        save_btn.focus_set()
+
+        # Make dialog modal - wait for it to close
+        self.window.protocol("WM_DELETE_WINDOW", self._on_cancel)
+
+    def show(self) -> str | None:
+        """Show the dialog and return the saved path (or None if cancelled)."""
+        self.window.wait_window()
+        return self.saved_path

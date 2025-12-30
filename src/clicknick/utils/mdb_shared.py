@@ -19,6 +19,15 @@ PREFERRED_ACCESS_DRIVERS = [
     "Microsoft Access Driver",
 ]
 
+# CSV-only mode flag - when True, has_access_driver() returns False
+_CSV_ONLY_MODE = False
+
+
+def set_csv_only_mode(enabled: bool) -> None:
+    """Enable or disable CSV-only mode (for testing fallback without ODBC)."""
+    global _CSV_ONLY_MODE
+    _CSV_ONLY_MODE = enabled
+
 
 def get_available_access_drivers() -> list[str]:
     """Get list of available Microsoft Access ODBC drivers.
@@ -35,6 +44,8 @@ def get_available_access_drivers() -> list[str]:
 
 def has_access_driver() -> bool:
     """Check if any Microsoft Access ODBC driver is available."""
+    if _CSV_ONLY_MODE:
+        return False
     return len(get_available_access_drivers()) > 0
 
 
@@ -69,6 +80,36 @@ def find_click_database(click_pid: int | None = None, click_hwnd: int | None = N
 
     except Exception as e:
         print(f"Error finding database: {e}")
+        return None
+
+
+def find_fallback_csv(click_hwnd: int | None = None) -> Path | None:
+    """Find Address.csv in the CLICK temp folder as fallback when ODBC unavailable.
+
+    The CLICK software generates Address.csv in the same folder as SC_.mdb
+    when a project is loaded.
+
+    Args:
+        click_hwnd: Window handle of the CLICK software
+
+    Returns:
+        Path to Address.csv if found, None otherwise
+    """
+    if not click_hwnd:
+        return None
+
+    try:
+        hwnd_hex = format(click_hwnd, "08X")
+        username = os.environ.get("USERNAME")
+        csv_path = Path(f"C:/Users/{username}/AppData/Local/Temp/CLICK ({hwnd_hex})/Address.csv")
+
+        if csv_path.exists():
+            return csv_path
+
+        return None
+
+    except Exception as e:
+        print(f"Error finding fallback CSV: {e}")
         return None
 
 
