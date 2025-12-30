@@ -238,13 +238,16 @@ class DataviewRow:
         self.comment = ""
 
 
-def create_empty_dataview() -> list[DataviewRow]:
-    """Create a new empty dataview with MAX_DATAVIEW_ROWS rows.
+def create_empty_dataview(count: int = MAX_DATAVIEW_ROWS) -> list[DataviewRow]:
+    """Create a new empty dataview with the specified number of rows.
+
+    Args:
+        count: Number of rows to create (default MAX_DATAVIEW_ROWS).
 
     Returns:
         List of empty DataviewRow objects.
     """
-    return [DataviewRow() for _ in range(MAX_DATAVIEW_ROWS)]
+    return [DataviewRow() for _ in range(count)]
 
 
 # --- New Value Conversion Functions ---

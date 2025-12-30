@@ -7,6 +7,7 @@ import pytest
 
 from clicknick.models.dataview_row import (
     MAX_DATAVIEW_ROWS,
+    DataviewRow,
     TypeCode,
     create_empty_dataview,
 )
@@ -153,16 +154,50 @@ class TestSaveCdv:
         finally:
             temp_path.unlink(missing_ok=True)
 
-    def test_wrong_row_count_raises(self):
-        """Test that saving with wrong row count raises ValueError."""
-        rows = [create_empty_dataview()[0]]  # Only 1 row
+    def test_fewer_rows_pads_to_100(self):
+        """Test that saving with fewer rows pads to 100."""
+        rows = [DataviewRow(address="X001")]  # Only 1 row
 
         with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f:
             temp_path = Path(f.name)
 
         try:
-            with pytest.raises(ValueError, match="Expected 100 rows"):
-                save_cdv(temp_path, rows, has_new_values=False)
+            # Should not raise - pads with empty rows
+            save_cdv(temp_path, rows, has_new_values=False)
+
+            # Verify file was saved and has correct structure
+            loaded_rows, _ = load_cdv(temp_path)
+            assert len(loaded_rows) == 100
+            assert loaded_rows[0].address == "X001"
+            assert all(r.is_empty for r in loaded_rows[1:])
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+    def test_overflow_rows_not_saved(self):
+        """Test that overflow rows (>100) are not saved."""
+        rows = create_empty_dataview()
+        rows[0].address = "X001"
+
+        # Add 5 overflow rows
+        for i in range(5):
+            overflow_row = DataviewRow(address=f"Y{i:03d}")
+            rows.append(overflow_row)
+
+        assert len(rows) == 105
+
+        with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f:
+            temp_path = Path(f.name)
+
+        try:
+            save_cdv(temp_path, rows, has_new_values=False)
+
+            # Verify only first 100 rows saved
+            loaded_rows, _ = load_cdv(temp_path)
+            assert len(loaded_rows) == 100
+            assert loaded_rows[0].address == "X001"
+            # Y000-Y004 should NOT be in loaded rows (they were overflow)
+            addresses = [r.address for r in loaded_rows if r.address]
+            assert "Y000" not in addresses
         finally:
             temp_path.unlink(missing_ok=True)
 

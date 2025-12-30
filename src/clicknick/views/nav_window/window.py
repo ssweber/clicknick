@@ -110,7 +110,7 @@ class NavWindow(tk.Toplevel):
         # 3. Second Tab: Blocks
         self.blocks_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.blocks_frame, text=" Blocks ")
-        self.blocks = BlockPanel(self.blocks_frame, on_address_select)
+        self.blocks = BlockPanel(self.blocks_frame, on_address_select, on_batch_select)
         self.blocks.pack(fill=tk.BOTH, expand=True)
 
         # 4. Snap Button (Floating on top)
