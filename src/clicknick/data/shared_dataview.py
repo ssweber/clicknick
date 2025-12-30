@@ -124,6 +124,34 @@ class SharedDataviewData:
 
         return None
 
+    def normalize_address(self, address: str) -> str | None:
+        """Normalize an address string to its canonical display form.
+
+        Parses the input address and returns the properly formatted display_address
+        from the corresponding AddressRow (e.g., "x1" -> "X001", "xd0u" -> "XD0u").
+
+        Args:
+            address: The address string to normalize (e.g., "x1", "XD0U")
+
+        Returns:
+            The normalized display_address, or None if address is invalid.
+        """
+        if not self._address_shared_data:
+            return None
+
+        parsed = parse_address_display(address)
+        if not parsed:
+            return None
+
+        memory_type, mdb_address = parsed
+        addr_key = get_addr_key(memory_type, mdb_address)
+
+        if addr_key in self._address_shared_data.all_rows:
+            row = self._address_shared_data.all_rows[addr_key]
+            return row.display_address
+
+        return None
+
     def register_window(self, window) -> None:
         """Register the dataview editor window."""
         self._window = window

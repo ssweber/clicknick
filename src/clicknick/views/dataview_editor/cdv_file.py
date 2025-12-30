@@ -106,15 +106,13 @@ def save_cdv(path: Path | str, rows: list[DataviewRow], has_new_values: bool) ->
 
     Args:
         path: Path to save the CDV file.
-        rows: List of DataviewRow objects (must be MAX_DATAVIEW_ROWS length).
+        rows: List of DataviewRow objects (may exceed MAX_DATAVIEW_ROWS).
         has_new_values: True if any rows have new values set.
 
-    Raises:
-        ValueError: If rows list is wrong length.
+    Note:
+        Only the first MAX_DATAVIEW_ROWS (100) rows are saved to maintain
+        file format compatibility. Overflow rows (index 100+) are not persisted.
     """
-    if len(rows) != MAX_DATAVIEW_ROWS:
-        raise ValueError(f"Expected {MAX_DATAVIEW_ROWS} rows, got {len(rows)}")
-
     path = Path(path)
 
     # Build content
@@ -124,8 +122,14 @@ def save_cdv(path: Path | str, rows: list[DataviewRow], has_new_values: bool) ->
     header_flag = -1 if has_new_values else 0
     lines.append(f"{header_flag},0,0")
 
-    # Data rows
-    for row in rows:
+    # Data rows - only save first MAX_DATAVIEW_ROWS
+    rows_to_save = list(rows[:MAX_DATAVIEW_ROWS])
+
+    # Pad with empty rows if needed to always have exactly 100 lines
+    while len(rows_to_save) < MAX_DATAVIEW_ROWS:
+        rows_to_save.append(DataviewRow())
+
+    for row in rows_to_save:
         if row.is_empty:
             lines.append(",0")
         else:

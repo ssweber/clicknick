@@ -132,6 +132,9 @@ def format_address_display(memory_type: str, mdb_address: int) -> str:
     - MDB 2 -> "XD1", MDB 4 -> "XD2", ... MDB 16 -> "XD8"
     - Odd addresses >= 3 are hidden slots (returns "XDn?" to indicate)
 
+    For X/Y (bits):
+    - 3-digit zero-padded: X001, Y001, X816, Y816
+
     Args:
         memory_type: The memory type (X, XD, DS, etc.)
         mdb_address: The MDB address number
@@ -147,6 +150,8 @@ def format_address_display(memory_type: str, mdb_address: int) -> str:
         else:
             display_addr = mdb_address // 2
             return f"{memory_type}{display_addr}"
+    if memory_type in ("X", "Y"):
+        return f"{memory_type}{mdb_address:03d}"
     return f"{memory_type}{mdb_address}"
 
 

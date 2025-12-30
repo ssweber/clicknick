@@ -13,7 +13,8 @@ from .utils.filters import (  # preserve lru_cache
     NoneFilter,
     PrefixFilter,
 )
-from .views.dialogs import AboutDialog, OdbcWarningDialog
+from .utils.mdb_shared import find_fallback_csv, set_csv_only_mode
+from .views.dialogs import AboutDialog, CsvFallbackDialog, OdbcWarningDialog
 from .views.overlay import Overlay
 
 # Set DPI awareness for better UI rendering
@@ -663,7 +664,27 @@ class ClickNickApp:
         self.connected_click_filename = filename
         self.connected_click_hwnd = hwnd
 
-        # Create SharedAddressData for the new connection
+        # Check for ODBC drivers - if missing, try CSV fallback
+        if not self.nickname_manager.has_access_driver():
+            fallback_csv = find_fallback_csv(hwnd)
+            if fallback_csv:
+                # Show dialog prompting user to save a copy
+                default_name = f"{filename.replace('.ckp', '')}_Address.csv"
+                dialog = CsvFallbackDialog(self.root, fallback_csv, default_name)
+                saved_path = dialog.show()
+                if saved_path:
+                    # Load from the saved CSV copy
+                    self.csv_path_var.set(saved_path)
+                    self.load_csv()
+                    return
+            # No fallback available or user cancelled - show standard ODBC warning
+            self._update_status("⏹ Stopped - Use File → Load Nicknames...", "error")
+            if not self._odbc_warning_shown:
+                self._show_odbc_warning()
+                self._odbc_warning_shown = True
+            return
+
+        # Create SharedAddressData for the new connection (ODBC available)
         from .data.data_source import MdbDataSource
         from .data.shared_data import SharedAddressData
 
@@ -791,27 +812,6 @@ class ClickNickApp:
     def _start_monitoring_internal(self) -> bool:
         """Internal method to start monitoring without status updates.
         Returns True if successful, False otherwise."""
-        # Check if we have nicknames loaded (either from CSV or database)
-        if not self.nickname_manager.is_loaded:
-            csv_path = self.csv_path_var.get()
-            if csv_path:
-                # Load from CSV
-                if not self.nickname_manager.load_csv(csv_path):
-                    self._update_status("⚠ Failed to load CSV", "error")
-                    return False
-                # Apply sorting preference
-                self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
-            else:
-                # Try loading from database (use stored hwnd)
-                if not self.nickname_manager.load_from_database(
-                    click_pid=self.connected_click_pid,
-                    click_hwnd=self.connected_click_hwnd,
-                ):
-                    self._update_status("⚠ No nicknames loaded", "error")
-                    return False
-                # Apply sorting preference
-                self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
-
         # Validate connection to Click instance
         if not self.connected_click_pid:
             self._update_status("⚠ Not connected to ClickPLC window", "error")
@@ -898,9 +898,20 @@ def main() -> None:
 
 
 def main_dev() -> None:
-    """Entry point for development mode with in-progress features enabled."""
+    """Entry point for development mode with in-progress features enabled.
+
+    Args (via sys.argv):
+        -csvonly: Force CSV-only mode (pretend ODBC drivers are unavailable)
+    """
+    import sys
+
     global _DEV_MODE
     _DEV_MODE = True
+
+    if "-csvonly" in sys.argv:
+        set_csv_only_mode(True)
+        print("CSV-only mode enabled (ODBC drivers will appear unavailable)")
+
     app = ClickNickApp()
     app.run()
 

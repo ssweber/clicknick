@@ -56,6 +56,75 @@ DATA_TYPE_CODE_TO_STR: dict[int, str] = {
 ADDRESS_PATTERN = re.compile(r"^([A-Z]+)(\d+)$")
 
 
+def load_addresses_from_mdb_dump(csv_path: str) -> dict[int, AddressRow]:
+    """Load addresses from MDB-format CSV (CLICK Address.csv export).
+
+    The CLICK software exports Address.csv in MDB format with columns:
+    AddrKey, MemoryType, Address, DataType, Nickname, Use, InitialValue, Retentive, Comment
+
+    Args:
+        csv_path: Path to MDB-format CSV (e.g., Address.csv from CLICK temp folder)
+
+    Returns:
+        Dict mapping AddrKey (int) to AddressRow
+    """
+    result: dict[int, AddressRow] = {}
+
+    with open(csv_path, newline="", encoding="utf-8") as csvfile:
+        reader = csv.DictReader(csvfile)
+
+        for row in reader:
+            # Skip rows without nicknames or comments (empty entries)
+            nickname = row.get("Nickname", "").strip()
+            comment = row.get("Comment", "").strip()
+            if not nickname and not comment:
+                continue
+
+            mem_type = row.get("MemoryType", "").strip()
+            if mem_type not in ADDRESS_RANGES:
+                continue
+
+            try:
+                address = int(row.get("Address", "0"))
+            except ValueError:
+                continue
+
+            # Parse data type
+            try:
+                data_type = int(row.get("DataType", "0"))
+            except ValueError:
+                data_type = MEMORY_TYPE_TO_DATA_TYPE.get(mem_type, 0)
+
+            # Parse retentive (0 or 1)
+            retentive_raw = row.get("Retentive", "").strip().lower()
+            default_retentive = DEFAULT_RETENTIVE.get(mem_type, False)
+            retentive = retentive_raw in (1, "1") if retentive_raw else default_retentive
+
+            initial_value = row.get("InitialValue", "").strip()
+
+            addr_key = get_addr_key(mem_type, address)
+
+            addr_row = AddressRow(
+                memory_type=mem_type,
+                address=address,
+                nickname=nickname,
+                original_nickname=nickname,
+                comment=comment,
+                original_comment=comment,
+                used=False,  # MDB dump doesn't reliably have this
+                exists_in_mdb=bool(nickname or comment),
+                data_type=data_type,
+                initial_value=initial_value,
+                original_initial_value=initial_value,
+                retentive=retentive,
+                original_retentive=retentive,
+            )
+
+            result[addr_key] = addr_row
+
+    return result
+
+
 class DataSource(ABC):
     """Abstract base class for address data sources.
 
@@ -95,68 +164,6 @@ class DataSource(ABC):
     @property
     def supports_used_field(self) -> bool:
         """Return True if the data source has a 'Used' field."""
-        return True
-
-
-class MdbDataSource(DataSource):
-    """Data source backed by CLICK MDB (Access) database.
-
-    Wraps the existing mdb_operations module functionality.
-    """
-
-    def __init__(
-        self,
-        click_pid: int | None = None,
-        click_hwnd: int | None = None,
-        db_path: str | None = None,
-    ):
-        """Initialize MDB data source.
-
-        Args:
-            click_pid: Process ID of CLICK software (used with click_hwnd)
-            click_hwnd: Window handle of CLICK software (used with click_pid)
-            db_path: Direct path to database (alternative to pid/hwnd)
-
-        Raises:
-            ValueError: If neither db_path nor (click_pid, click_hwnd) provided
-            FileNotFoundError: If database cannot be located
-        """
-        if db_path:
-            self._db_path = db_path
-        elif click_pid is not None and click_hwnd is not None:
-            db_path = find_click_database(click_pid, click_hwnd)
-            if not db_path:
-                raise FileNotFoundError("Could not locate CLICK database")
-            self._db_path = db_path
-        else:
-            raise ValueError("Must provide either db_path or (click_pid, click_hwnd)")
-
-    @property
-    def file_path(self) -> str:
-        """Return the path to the MDB file."""
-        return self._db_path
-
-    def load_all_addresses(self) -> dict[int, AddressRow]:
-        """Load all addresses from the MDB database."""
-        with MdbConnection(self._db_path) as conn:
-            return load_all_addresses(conn)
-
-    def save_changes(self, rows: Sequence[AddressRow]) -> int:
-        """Save dirty rows to the MDB database.
-
-        Filters to only dirty rows before saving.
-        """
-        # MDB only saves dirty rows
-        dirty_rows = [row for row in rows if row.is_dirty]
-        if not dirty_rows:
-            return 0
-
-        with MdbConnection(self._db_path) as conn:
-            return save_changes(conn, dirty_rows)
-
-    @property
-    def supports_used_field(self) -> bool:
-        """MDB has the Used field from the database."""
         return True
 
 
@@ -341,3 +348,83 @@ class CsvDataSource(DataSource):
 
         except OSError:
             return 0
+
+
+def convert_mdb_csv_to_user_csv(source_path: str, dest_path: str) -> None:
+    """Convert MDB-format CSV (CLICK export) to user-format CSV.
+
+    Loads the MDB-format CSV as AddressRows, then saves using CsvDataSource
+    to ensure proper formatting.
+
+    Args:
+        source_path: Path to MDB-format CSV (e.g., Address.csv from CLICK temp folder)
+        dest_path: Path to write user-format CSV
+    """
+    # Load as AddressRows
+    addresses = load_addresses_from_mdb_dump(source_path)
+
+    # Save using CsvDataSource (reuses existing save logic)
+    csv_source = CsvDataSource(dest_path)
+    csv_source.save_changes(list(addresses.values()))
+
+
+class MdbDataSource(DataSource):
+    """Data source backed by CLICK MDB (Access) database.
+
+    Wraps the existing mdb_operations module functionality.
+    """
+
+    def __init__(
+        self,
+        click_pid: int | None = None,
+        click_hwnd: int | None = None,
+        db_path: str | None = None,
+    ):
+        """Initialize MDB data source.
+
+        Args:
+            click_pid: Process ID of CLICK software (used with click_hwnd)
+            click_hwnd: Window handle of CLICK software (used with click_pid)
+            db_path: Direct path to database (alternative to pid/hwnd)
+
+        Raises:
+            ValueError: If neither db_path nor (click_pid, click_hwnd) provided
+            FileNotFoundError: If database cannot be located
+        """
+        if db_path:
+            self._db_path = db_path
+        elif click_pid is not None and click_hwnd is not None:
+            db_path = find_click_database(click_pid, click_hwnd)
+            if not db_path:
+                raise FileNotFoundError("Could not locate CLICK database")
+            self._db_path = db_path
+        else:
+            raise ValueError("Must provide either db_path or (click_pid, click_hwnd)")
+
+    @property
+    def file_path(self) -> str:
+        """Return the path to the MDB file."""
+        return self._db_path
+
+    def load_all_addresses(self) -> dict[int, AddressRow]:
+        """Load all addresses from the MDB database."""
+        with MdbConnection(self._db_path) as conn:
+            return load_all_addresses(conn)
+
+    def save_changes(self, rows: Sequence[AddressRow]) -> int:
+        """Save dirty rows to the MDB database.
+
+        Filters to only dirty rows before saving.
+        """
+        # MDB only saves dirty rows
+        dirty_rows = [row for row in rows if row.is_dirty]
+        if not dirty_rows:
+            return 0
+
+        with MdbConnection(self._db_path) as conn:
+            return save_changes(conn, dirty_rows)
+
+    @property
+    def supports_used_field(self) -> bool:
+        """MDB has the Used field from the database."""
+        return True

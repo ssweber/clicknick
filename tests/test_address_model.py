@@ -285,8 +285,12 @@ class TestAddressRow:
 
     def test_display_address(self):
         """Test display_address property."""
+        # X/Y use 3-digit zero-padding
         row = AddressRow(memory_type="X", address=1)
-        assert row.display_address == "X1"
+        assert row.display_address == "X001"
+
+        row = AddressRow(memory_type="Y", address=42)
+        assert row.display_address == "Y042"
 
         row = AddressRow(memory_type="DS", address=100)
         assert row.display_address == "DS100"

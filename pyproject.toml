@@ -93,6 +93,7 @@ packages = ["src/clicknick"]
 [tool.ruff]
 # Set as desired, typically 88 (black standard) or 100 (wide).
 line-length = 100
+extend-exclude = ["src/clicknick/widgets/custom_notebook.py"]
 
 [tool.ruff.lint]
 select = [
