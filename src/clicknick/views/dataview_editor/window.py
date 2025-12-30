@@ -99,6 +99,7 @@ class DataviewEditorWindow(tk.Toplevel):
             file_path=file_path,
             on_modified=self._on_panel_modified,
             nickname_lookup=self.shared_data.lookup_nickname,
+            address_normalizer=self.shared_data.normalize_address,
         )
 
         # Add tab
@@ -117,6 +118,7 @@ class DataviewEditorWindow(tk.Toplevel):
             file_path=None,
             on_modified=self._on_panel_modified,
             nickname_lookup=self.shared_data.lookup_nickname,
+            address_normalizer=self.shared_data.normalize_address,
         )
 
         self.notebook.add(panel, text=name)

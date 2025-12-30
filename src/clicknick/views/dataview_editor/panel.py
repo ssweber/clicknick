@@ -334,19 +334,22 @@ class DataviewPanel(ttk.Frame):
         """
         # Only validate Address column
         if hasattr(event, "column") and event.column == COL_ADDRESS:
-            value = event.value or ""
-            # Normalize: uppercase, strip whitespace
-            normalized = value.strip().upper()
+            value = (event.value or "").strip()
 
             # Empty is valid (clearing the cell)
-            if not normalized:
+            if not value:
                 return ""
 
-            # Validate address format and memory type
+            # Try to normalize via lookup (handles "x1" -> "X001", "xd0u" -> "XD0u")
+            if self.address_normalizer:
+                normalized = self.address_normalizer(value)
+                if normalized:
+                    return normalized
+
+            # Fallback: basic validation without normalization
+            normalized = value.upper()
             if get_type_code_for_address(normalized) is None:
-                # Invalid address - reject by returning empty string
                 return ""
-
             return normalized
 
         return event.value
@@ -449,6 +452,7 @@ class DataviewPanel(ttk.Frame):
         file_path: Path | None = None,
         on_modified: Callable[[], None] | None = None,
         nickname_lookup: Callable[[str], tuple[str, str] | None] | None = None,
+        address_normalizer: Callable[[str], str | None] | None = None,
     ):
         """Initialize the dataview panel.
 
@@ -457,12 +461,14 @@ class DataviewPanel(ttk.Frame):
             file_path: Path to the CDV file (None for new unsaved dataview)
             on_modified: Callback when data is modified
             nickname_lookup: Callback to lookup (nickname, comment) for an address
+            address_normalizer: Callback to normalize address to canonical form (e.g., "x1" -> "X001")
         """
         super().__init__(parent)
 
         self.file_path = file_path
         self.on_modified = on_modified
         self.nickname_lookup = nickname_lookup
+        self.address_normalizer = address_normalizer
 
         # Data model
         self.rows: list[DataviewRow] = create_empty_dataview()
