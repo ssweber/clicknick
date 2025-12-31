@@ -48,11 +48,34 @@ if TYPE_CHECKING:
     pass
 
 
-class WarningNoteSheet(Sheet):
+class AddressEditorSheet(Sheet):
+    """Custom Sheet subclass with additional features for Address Editor.
+
+    Customizations:
+    - Warning symbol in cell corners (for notes)
+    - add_begin_right_click() for handlers that run before popup menu builds
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Override the internal main table's redraw_corner method
         self.MT.redraw_corner = self.custom_redraw_corner
+
+    def add_begin_right_click(self, callback) -> None:
+        """Add a right-click handler that runs BEFORE the popup menu is built.
+
+        Uses bindtag ordering to insert a custom tag at the start, ensuring
+        the callback runs before tksheet's internal handlers build the menu.
+
+        Args:
+            callback: Function to call on right-click, receives the event.
+        """
+        custom_tag = f"BeginRC_{id(self)}"
+        for widget in (self.MT, self.RI):
+            current_tags = widget.bindtags()
+            if custom_tag not in current_tags:
+                widget.bindtags((custom_tag,) + current_tags)
+        self.MT.bind_class(custom_tag, "<Button-3>", callback)
 
     def custom_redraw_corner(self, x: float, y: float, tags: str | tuple[str]) -> None:
         # Position the symbol slightly offset from the top-right corner
@@ -901,7 +924,7 @@ class AddressPanel(ttk.Frame):
         ).pack(side=tk.LEFT, padx=(5, 0))
 
         # Table (tksheet) - Address is shown in row index for row selection
-        self.sheet = WarningNoteSheet(
+        self.sheet = AddressEditorSheet(
             self,
             headers=["Used", "Nickname", "Comment", "Init Value", "Ret"],
             show_row_index=True,
@@ -945,15 +968,7 @@ class AddressPanel(ttk.Frame):
         )
 
         # Bind right-click to dynamically show/hide "Discard changes" menu item
-        # We need our handler to run BEFORE tksheet builds the popup menu.
-        # Put our custom tag at the start of bindtags so we modify the menu first.
-        custom_tag = f"DiscardMenu_{id(self)}"
-        for widget in (self.sheet.MT, self.sheet.RI):
-            current_tags = widget.bindtags()
-            if custom_tag not in current_tags:
-                widget.bindtags((custom_tag,) + current_tags)
-        # Bind to our custom tag
-        self.sheet.MT.bind_class(custom_tag, "<Button-3>", self._on_right_click)
+        self.sheet.add_begin_right_click(self._on_right_click)
 
         # Set column widths (address is in row index now)
         self.sheet.set_column_widths([40, 200, 400, 90, 30])
