@@ -11,6 +11,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from ...data.shared_data import SharedAddressData
+from ...models.blocktag import parse_block_tag, strip_block_tag
 from ...widgets.add_block_dialog import AddBlockDialog
 from ..nav_window.window import NavWindow
 from .jump_sidebar import COMBINED_TYPES, JumpSidebar
@@ -143,12 +144,35 @@ class AddressEditorWindow(tk.Toplevel):
         return sorted(selected)
 
     def _update_add_block_button_state(self) -> None:
-        """Update the Add Block button enabled state based on row selection."""
+        """Update the Add Block button state and text based on row selection.
+
+        If the selected row has an opening or self-closing block tag,
+        shows "Remove Block". Otherwise shows "Add Block".
+        """
         selected = self._get_selected_row_indices()
-        if selected:
-            self.add_block_btn.configure(state="normal")
+        if not selected:
+            self.add_block_btn.configure(state="disabled", text="+ Add Block")
+            return
+
+        panel = self.panels.get(self.current_type)
+        if not panel:
+            self.add_block_btn.configure(state="disabled", text="+ Add Block")
+            return
+
+        first_display_idx = selected[0]
+        if first_display_idx >= len(panel._displayed_rows):
+            self.add_block_btn.configure(state="disabled", text="+ Add Block")
+            return
+
+        first_row_idx = panel._displayed_rows[first_display_idx]
+        first_row = panel.rows[first_row_idx]
+
+        block_tag = parse_block_tag(first_row.comment)
+
+        if block_tag.tag_type in ("open", "self-closing"):
+            self.add_block_btn.configure(state="normal", text="- Remove Block")
         else:
-            self.add_block_btn.configure(state="disabled")
+            self.add_block_btn.configure(state="normal", text="+ Add Block")
 
     def _bind_panel_selection(self, panel: AddressPanel) -> None:
         """Bind selection change events on a panel's sheet.
@@ -466,6 +490,72 @@ class AddressEditorWindow(tk.Toplevel):
         # Update status
         self._update_status()
 
+    def _on_remove_block_clicked(self) -> None:
+        """Handle Remove Block button click.
+
+        Removes the block tag from the selected row's comment.
+        If it's an opening tag, also removes the corresponding closing tag.
+        """
+        selected_display_rows = self._get_selected_row_indices()
+        if not selected_display_rows:
+            return
+
+        panel = self.panels.get(self.current_type)
+        if not panel:
+            return
+
+        first_display_idx = selected_display_rows[0]
+        if first_display_idx >= len(panel._displayed_rows):
+            return
+
+        first_row_idx = panel._displayed_rows[first_display_idx]
+        first_row = panel.rows[first_row_idx]
+
+        block_tag = parse_block_tag(first_row.comment)
+
+        if block_tag.tag_type not in ("open", "self-closing"):
+            return
+
+        block_name = block_tag.name
+
+        # Remove the tag from the first row, keep remaining text
+        first_row.comment = strip_block_tag(first_row.comment)
+        panel._update_row_display(first_row_idx)
+
+        # If it's an opening tag, find and remove the closing tag
+        if block_tag.tag_type == "open" and block_name:
+            # Search forward through rows for the matching closing tag
+            for search_idx in range(first_row_idx + 1, len(panel.rows)):
+                search_row = panel.rows[search_idx]
+                search_tag = parse_block_tag(search_row.comment)
+
+                if search_tag.tag_type == "close" and search_tag.name == block_name:
+                    # Found the matching closing tag - remove it
+                    search_row.comment = strip_block_tag(search_row.comment)
+                    panel._update_row_display(search_idx)
+                    break
+
+        # Refresh the panel styling
+        panel._refresh_display()
+
+        # Notify data changed
+        if panel.on_data_changed:
+            panel.on_data_changed()
+
+        # Update button state (will switch back to "Add Block")
+        self._update_add_block_button_state()
+
+        # Update status
+        self._update_status()
+
+    def _on_block_button_clicked(self) -> None:
+        """Handle block button click - routes to add or remove based on state."""
+        button_text = str(self.add_block_btn.cget("text"))
+        if "Remove" in button_text:
+            self._on_remove_block_clicked()
+        else:
+            self._on_add_block_clicked()
+
     def _on_outline_address_select(self, memory_type: str, address: int) -> None:
         """Handle address selection from outline tree.
 
@@ -549,7 +639,7 @@ class AddressEditorWindow(tk.Toplevel):
         self.add_block_btn = ttk.Button(
             footer,
             text="+ Add Block",
-            command=self._on_add_block_clicked,
+            command=self._on_block_button_clicked,
             state="disabled",
         )
         self.add_block_btn.pack(side=tk.LEFT, padx=(5, 0))
