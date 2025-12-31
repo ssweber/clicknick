@@ -135,7 +135,7 @@ class DataviewPanel(ttk.Frame):
             new_value = self.sheet.get_cell_data(row_idx, col)
 
             if col == COL_ADDRESS:
-                new_address = (new_value or "").strip().upper()
+                new_address = (new_value or "").strip()
 
                 if new_address != row.address:
                     row.address = new_address

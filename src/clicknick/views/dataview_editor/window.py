@@ -506,7 +506,7 @@ class DataviewEditorWindow(tk.Toplevel):
 
         # Nickname not found - maybe user typed an address directly?
         # Try to add it as-is (will be validated by the panel)
-        self.add_address_to_current(nickname.upper())
+        self.add_address_to_current(nickname)
         self.nickname_combo.reset()
 
     def _on_insert_button_clicked(self) -> None:

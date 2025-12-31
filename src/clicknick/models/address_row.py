@@ -195,6 +195,25 @@ def parse_address_display(address_str: str) -> tuple[str, int] | None:
     return memory_type, display_addr
 
 
+def normalize_address(address: str) -> str | None:
+    """Normalize an address string to its canonical display form.
+
+    Parses the input address and returns the properly formatted display address
+    (e.g., "x1" -> "X001", "xd0u" -> "XD0u").
+
+    Args:
+        address: The address string to normalize (e.g., "x1", "XD0U")
+
+    Returns:
+        The normalized display address, or None if address is invalid.
+    """
+    parsed = parse_address_display(address)
+    if not parsed:
+        return None
+    memory_type, mdb_address = parsed
+    return format_address_display(memory_type, mdb_address)
+
+
 # ==============================================================================
 # Main Data Model
 # ==============================================================================

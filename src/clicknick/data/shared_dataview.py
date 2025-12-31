@@ -9,7 +9,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..models.address_row import AddressRow, get_addr_key, parse_address_display
+from ..models.address_row import (
+    get_addr_key,
+    normalize_address as _normalize_address,
+    parse_address_display,
+)
 from ..views.dataview_editor.cdv_file import get_dataview_folder, list_cdv_files
 
 if TYPE_CHECKING:
@@ -136,14 +140,7 @@ class SharedDataviewData:
         Returns:
             The normalized display_address, or None if address is invalid.
         """
-        parsed = parse_address_display(address)
-        if not parsed:
-            return None
-
-        memory_type, mdb_address = parsed
-        # Create a dummy AddressRow to get the properly formatted display_address
-        row = AddressRow(memory_type=memory_type, address=mdb_address)
-        return row.display_address
+        return _normalize_address(address)
 
     def register_window(self, window) -> None:
         """Register the dataview editor window."""
