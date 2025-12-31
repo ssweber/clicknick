@@ -5,6 +5,7 @@ Provides a file list sidebar and tabbed interface for editing DataViews.
 
 from __future__ import annotations
 
+import os
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -669,6 +670,37 @@ class DataviewEditorWindow(tk.Toplevel):
         # Initial sash position (sidebar width)
         self.after(100, lambda: self.paned.sashpos(0, 180))
 
+    @staticmethod
+    def _get_dataview_editor_popup_flag() -> Path:
+        """Get path to the flag indicating the Dataview Editor popup has been seen."""
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home()))
+        return base / "ClickNick" / "dataview_editor_popup_seen"
+
+    def _show_dataview_editor_popup(self) -> None:
+        """Show first-run tips for the Dataview Editor (appears once per user)."""
+        flag_path = self._get_dataview_editor_popup_flag()
+
+        if flag_path.exists():
+            return
+
+        # Content
+        popup_text = (
+            "Dataview Editor (Beta)\n\n"
+            "1. This tool edits the generated .cdv files in the CLICK Programming "
+            "Software's temporary project folder.\n"
+            "2. New Dataviews created will need to be imported manually.\n"
+            "3. Changes only TRULY save when you save in the CLICK Software.\n\n"
+            "Quick safety tips:\n"
+            "• Back up your `.ckp` file first\n"
+            "• Not sure about a change? Close CLICK without saving to undo everything"
+        )
+
+        messagebox.showinfo("First-Time Tips", popup_text, parent=self)
+
+        # Mark as shown so we don't bother the user again
+        flag_path.parent.mkdir(parents=True, exist_ok=True)
+        flag_path.touch()
+
     def __init__(
         self,
         parent: tk.Widget,
@@ -704,6 +736,9 @@ class DataviewEditorWindow(tk.Toplevel):
 
         # Refresh file list
         self._refresh_file_list()
+
+        # Show first-run popup
+        self._show_dataview_editor_popup()
 
         # Handle window close
         self.protocol("WM_DELETE_WINDOW", self._on_close)
