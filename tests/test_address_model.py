@@ -900,7 +900,7 @@ class TestUpdateFromDb:
         assert row.original_nickname == "NewName"
 
     def test_update_from_db_preserves_dirty_nickname(self):
-        """Dirty nickname should NOT be overwritten from db."""
+        """Dirty nickname value preserved, but original updated to new baseline."""
         row = AddressRow(
             memory_type="X",
             address=1,
@@ -912,10 +912,12 @@ class TestUpdateFromDb:
 
         changed = row.update_from_db({"nickname": "DbChange", "comment": "", "used": False})
 
-        # Nickname should NOT be changed since it was dirty
-        assert changed is False
+        # User's edit preserved, but original updated to new DB value
+        assert changed is True
         assert row.nickname == "UserEdit"
-        assert row.original_nickname == "OldName"
+        assert row.original_nickname == "DbChange"
+        # Still dirty (user edit != new baseline)
+        assert row.is_nickname_dirty is True
 
     def test_update_from_db_updates_non_dirty_comment(self):
         """Non-dirty comment should be updated from db."""
@@ -935,7 +937,7 @@ class TestUpdateFromDb:
         assert row.original_comment == "New comment"
 
     def test_update_from_db_preserves_dirty_comment(self):
-        """Dirty comment should NOT be overwritten from db."""
+        """Dirty comment value preserved, but original updated to new baseline."""
         row = AddressRow(
             memory_type="X",
             address=1,
@@ -947,9 +949,11 @@ class TestUpdateFromDb:
 
         row.update_from_db({"nickname": "", "comment": "Db change", "used": False})
 
-        # Comment should NOT be changed since it was dirty
+        # User's edit preserved, but original updated to new DB value
         assert row.comment == "User edit"
-        assert row.original_comment == "Old comment"
+        assert row.original_comment == "Db change"
+        # Still dirty (user edit != new baseline)
+        assert row.is_comment_dirty is True
 
     def test_update_from_db_always_updates_used(self):
         """Used flag is read-only in editor, so always update from db."""
