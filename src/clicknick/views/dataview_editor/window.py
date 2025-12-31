@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from ...data.shared_dataview import SharedDataviewData
 from ...widgets.custom_notebook import CustomNotebook
+from ...widgets.new_dataview_dialog import NewDataviewDialog
 from ...widgets.nickname_combobox import NicknameCombobox
 from ..nav_window.window import NavWindow
 from .panel import DataviewPanel
@@ -110,8 +111,12 @@ class DataviewEditorWindow(tk.Toplevel):
 
     def _new_dataview(self) -> None:
         """Create a new unsaved dataview."""
-        self._untitled_counter += 1
-        name = f"Untitled{self._untitled_counter}"
+        # Show dialog to get name
+        dialog = NewDataviewDialog(self)
+        name = dialog.show()
+
+        if not name:
+            return  # User cancelled
 
         panel = DataviewPanel(
             self.notebook,
@@ -119,6 +124,7 @@ class DataviewEditorWindow(tk.Toplevel):
             on_modified=self._on_panel_modified,
             nickname_lookup=self.shared_data.lookup_nickname,
             address_normalizer=self.shared_data.normalize_address,
+            name=name,
         )
 
         self.notebook.add(panel, text=name)
@@ -141,25 +147,33 @@ class DataviewEditorWindow(tk.Toplevel):
             self._open_dataview(Path(file_path))
 
     def _save_as(self) -> None:
-        """Save the current dataview with a new name."""
+        """Save the current dataview to a selected folder."""
         panel = self._get_current_panel()
         if not panel:
             return
 
         initial_dir = self.shared_data.dataview_folder or Path.cwd()
-        initial_name = panel.name if panel.name != "Untitled" else ""
 
-        file_path = filedialog.asksaveasfilename(
+        # Use folder selection dialog
+        folder_path = filedialog.askdirectory(
             parent=self,
-            title="Save DataView As",
+            title="Select Folder to Save DataView",
             initialdir=initial_dir,
-            initialfile=initial_name,
-            defaultextension=".cdv",
-            filetypes=[("DataView files", "*.cdv"), ("All files", "*.*")],
         )
 
-        if file_path:
-            new_path = Path(file_path)
+        if folder_path:
+            # Use the panel's name for the filename
+            new_path = Path(folder_path) / f"{panel.name}.cdv"
+
+            # Check if file already exists
+            if new_path.exists() and new_path != panel.file_path:
+                result = messagebox.askyesno(
+                    "File Exists",
+                    f"'{new_path.name}' already exists. Overwrite?",
+                    parent=self,
+                )
+                if not result:
+                    return
 
             # Update tracking
             old_path = panel.file_path
@@ -282,7 +296,6 @@ class DataviewEditorWindow(tk.Toplevel):
         file_menu.add_command(label="Open...", command=self._open_file, accelerator="Ctrl+O")
         file_menu.add_separator()
         file_menu.add_command(label="Save", command=self._save_current, accelerator="Ctrl+S")
-        file_menu.add_command(label="Save As...", command=self._save_as)
         file_menu.add_command(label="Export...", command=self._export)
         file_menu.add_separator()
         file_menu.add_command(
@@ -579,7 +592,7 @@ class DataviewEditorWindow(tk.Toplevel):
         sidebar = ttk.Frame(self.paned)
         self.paned.add(sidebar, weight=0)
 
-        ttk.Label(sidebar, text="DataViews", font=("TkDefaultFont", 10, "bold")).pack(
+        ttk.Label(sidebar, text="Project DataViews", font=("TkDefaultFont", 10, "bold")).pack(
             pady=(5, 2), padx=5, anchor=tk.W
         )
 

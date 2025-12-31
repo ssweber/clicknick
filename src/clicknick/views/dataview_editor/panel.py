@@ -453,6 +453,7 @@ class DataviewPanel(ttk.Frame):
         on_modified: Callable[[], None] | None = None,
         nickname_lookup: Callable[[str], tuple[str, str] | None] | None = None,
         address_normalizer: Callable[[str], str | None] | None = None,
+        name: str | None = None,
     ):
         """Initialize the dataview panel.
 
@@ -462,11 +463,13 @@ class DataviewPanel(ttk.Frame):
             on_modified: Callback when data is modified
             nickname_lookup: Callback to lookup (nickname, comment) for an address
             address_normalizer: Callback to normalize address to canonical form (e.g., "x1" -> "X001")
+            name: Custom name for new unsaved dataviews (used instead of "Untitled")
         """
         super().__init__(parent)
 
         self.file_path = file_path
         self.on_modified = on_modified
+        self._custom_name = name
         self.nickname_lookup = nickname_lookup
         self.address_normalizer = address_normalizer
 
@@ -639,6 +642,8 @@ class DataviewPanel(ttk.Frame):
         """Get the dataview name (filename without extension)."""
         if self.file_path:
             return self.file_path.stem
+        if self._custom_name:
+            return self._custom_name
         return "Untitled"
 
     def _find_insertion_gap(self) -> int | None:
