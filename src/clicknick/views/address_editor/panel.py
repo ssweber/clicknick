@@ -33,6 +33,14 @@ from .panel_constants import (
     COL_RETENTIVE,
     COL_USED,
 )
+
+# Mapping from column index to AddressRow field name for discard operations
+COL_TO_FIELD = {
+    COL_NICKNAME: "nickname",
+    COL_COMMENT: "comment",
+    COL_INIT_VALUE: "initial_value",
+    COL_RETENTIVE: "retentive",
+}
 from .row_styler import AddressRowStyler
 from .view_builder import find_paired_row
 
@@ -608,6 +616,170 @@ class AddressPanel(ttk.Frame):
         if data_changed and self.on_data_changed:
             self.on_data_changed()
 
+    def _discard_cell_changes(self) -> None:
+        """Discard changes for the currently selected cell(s)."""
+        selected = self.sheet.get_selected_cells()
+        if not selected:
+            return
+
+        modified_indices: set[int] = set()
+        nickname_changes: list[tuple[int, str, str]] = []
+
+        for display_row, col in selected:
+            data_idx = self._get_data_index(display_row)
+            if data_idx is None:
+                continue
+
+            field_name = COL_TO_FIELD.get(col)
+            if not field_name:
+                continue
+
+            row = self.rows[data_idx]
+
+            # Track nickname changes for reverse index update
+            if field_name == "nickname" and row.is_nickname_dirty:
+                old_nick = row.nickname
+                new_nick = row.original_nickname
+                nickname_changes.append((row.addr_key, old_nick, new_nick))
+
+            if row.discard_field(field_name):
+                modified_indices.add(data_idx)
+
+        if not modified_indices:
+            return
+
+        # Update displays
+        for idx in modified_indices:
+            self._update_row_display(idx)
+
+        # Notify parent of nickname changes (for reverse index update)
+        if nickname_changes and self.on_nickname_changed:
+            for addr_key, old_nick, new_nick in nickname_changes:
+                self.on_nickname_changed(self.memory_type, addr_key, old_nick, new_nick)
+
+        # Re-validate affected rows
+        for idx in modified_indices:
+            self.rows[idx].validate(self._all_nicknames, self.is_duplicate_fn)
+
+        self._refresh_display()
+
+        if self.on_data_changed:
+            self.on_data_changed()
+
+    def _discard_row_changes(self) -> None:
+        """Discard all changes for the currently selected row(s)."""
+        selected = self.sheet.get_selected_rows()
+        if not selected:
+            return
+
+        modified_indices: set[int] = set()
+        nickname_changes: list[tuple[int, str, str]] = []
+
+        for display_row in selected:
+            data_idx = self._get_data_index(display_row)
+            if data_idx is None:
+                continue
+
+            row = self.rows[data_idx]
+            if not row.is_dirty:
+                continue
+
+            # Track nickname changes for reverse index update
+            if row.is_nickname_dirty:
+                old_nick = row.nickname
+                new_nick = row.original_nickname
+                nickname_changes.append((row.addr_key, old_nick, new_nick))
+
+            row.discard()
+            modified_indices.add(data_idx)
+
+        if not modified_indices:
+            return
+
+        # Update displays
+        for idx in modified_indices:
+            self._update_row_display(idx)
+
+        # Notify parent of nickname changes (for reverse index update)
+        if nickname_changes and self.on_nickname_changed:
+            for addr_key, old_nick, new_nick in nickname_changes:
+                self.on_nickname_changed(self.memory_type, addr_key, old_nick, new_nick)
+
+        # Re-validate affected rows
+        for idx in modified_indices:
+            self.rows[idx].validate(self._all_nicknames, self.is_duplicate_fn)
+
+        self._refresh_display()
+
+        if self.on_data_changed:
+            self.on_data_changed()
+
+    def _update_discard_menu(
+        self, region: str, clicked_row: int | None, clicked_col: int | None
+    ) -> None:
+        """Update the popup menu based on what was right-clicked."""
+        # Remove any existing discard menu items first
+        self.sheet.popup_menu_del_command(label="↩ Discard changes")
+
+        if region == "table" and clicked_row is not None and clicked_col is not None:
+            # Check if the clicked cell is dirty
+            data_idx = self._get_data_index(clicked_row)
+            if data_idx is None:
+                return
+
+            field_name = COL_TO_FIELD.get(clicked_col)
+            if not field_name:
+                return
+
+            row = self.rows[data_idx]
+            # Check if this specific field is dirty
+            is_dirty = False
+            if field_name == "nickname" and row.is_nickname_dirty:
+                is_dirty = True
+            elif field_name == "comment" and row.is_comment_dirty:
+                is_dirty = True
+            elif field_name == "initial_value" and row.is_initial_value_dirty:
+                is_dirty = True
+            elif field_name == "retentive" and row.is_retentive_dirty:
+                is_dirty = True
+
+            if is_dirty:
+                self.sheet.popup_menu_add_command(
+                    label="↩ Discard changes",
+                    func=self._discard_cell_changes,
+                    table_menu=True,
+                    index_menu=False,
+                    header_menu=False,
+                    empty_space_menu=False,
+                )
+
+        elif region == "index" and clicked_row is not None:
+            # Check if the clicked row is dirty
+            data_idx = self._get_data_index(clicked_row)
+            if data_idx is None:
+                return
+
+            if self.rows[data_idx].is_dirty:
+                self.sheet.popup_menu_add_command(
+                    label="↩ Discard changes",
+                    func=self._discard_row_changes,
+                    table_menu=False,
+                    index_menu=True,
+                    header_menu=False,
+                    empty_space_menu=False,
+                )
+
+    def _on_right_click(self, event) -> None:
+        """Handle right-click to conditionally show 'Discard changes' menu item.
+
+        Runs BEFORE tksheet's handler (via bindtag ordering) so the menu
+        is updated before tksheet builds and shows the popup.
+        """
+        region = self.sheet.identify_region(event)
+        clicked_row = self.sheet.identify_row(event)
+        clicked_col = self.sheet.identify_column(event)
+        self._update_discard_menu(region, clicked_row, clicked_col)
+
     def _setup_header_notes(self) -> None:
         """Set up tooltip notes on column headers with hints."""
 
@@ -771,6 +943,18 @@ class AddressPanel(ttk.Frame):
             "sort_columns",
             "undo",
         )
+
+        # Bind right-click to dynamically show/hide "Discard changes" menu item
+        # We need our handler to run BEFORE tksheet builds the popup menu.
+        # Put our custom tag at the start of bindtags so we modify the menu first.
+        custom_tag = f"DiscardMenu_{id(self)}"
+        for widget in (self.sheet.MT, self.sheet.RI):
+            current_tags = widget.bindtags()
+            if custom_tag not in current_tags:
+                widget.bindtags((custom_tag,) + current_tags)
+        # Bind to our custom tag
+        self.sheet.MT.bind_class(custom_tag, "<Button-3>", self._on_right_click)
+
         # Set column widths (address is in row index now)
         self.sheet.set_column_widths([40, 200, 400, 90, 30])
         self.sheet.row_index(70)  # Set row index width

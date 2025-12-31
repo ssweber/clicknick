@@ -488,6 +488,34 @@ class AddressRow:
         self.initial_value = self.original_initial_value
         self.retentive = self.original_retentive
 
+    def discard_field(self, field_name: str) -> bool:
+        """Reset a single field to its original value.
+
+        Args:
+            field_name: One of 'nickname', 'comment', 'initial_value', 'retentive'
+
+        Returns:
+            True if the field was dirty and has been discarded, False otherwise.
+        """
+        field_map = {
+            "nickname": ("nickname", "original_nickname"),
+            "comment": ("comment", "original_comment"),
+            "initial_value": ("initial_value", "original_initial_value"),
+            "retentive": ("retentive", "original_retentive"),
+        }
+
+        if field_name not in field_map:
+            return False
+
+        current_field, original_field = field_map[field_name]
+        current_val = getattr(self, current_field)
+        original_val = getattr(self, original_field)
+
+        if current_val != original_val:
+            setattr(self, current_field, original_val)
+            return True
+        return False
+
     def update_from_db(self, db_data: dict) -> bool:
         """Update from database data, handling dirty fields gracefully.
 
@@ -539,9 +567,7 @@ class AddressRow:
         changed |= _update_field(
             "initial_value", "original_initial_value", db_data.get("initial_value", "")
         )
-        changed |= _update_field(
-            "retentive", "original_retentive", db_data.get("retentive", False)
-        )
+        changed |= _update_field("retentive", "original_retentive", db_data.get("retentive", False))
 
         self.exists_in_mdb = True
         return changed
