@@ -204,12 +204,6 @@ class TestDataviewRow:
         row.address = "XD0u"
         assert row.address_number == "0u"
 
-    def test_normalize_address(self):
-        """Test normalize_address method."""
-        row = DataviewRow(address="  x001  ")
-        row.normalize_address()
-        assert row.address == "X001"
-
     def test_update_type_code(self):
         """Test update_type_code method."""
         row = DataviewRow(address="DS100")

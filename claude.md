@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Development Commands
 
+**IMPORTANT: Always use `make` commands, not direct `uv run` commands.**
+
 ```bash
 # Install dependencies
 make install                    # or: uv sync --all-extras --dev
@@ -17,14 +19,11 @@ make
 
 # Individual commands
 make lint                       # Run codespell, ssort, ruff (check + format)
-make test                       # Run pytest
+make test                       # Run pytest (ALWAYS use this, not uv run pytest)
 make build                      # Build wheel with uv
 
-# Run directly
+# Run the app
 uv run clicknick                # Run the app
-uv run pytest                   # All tests
-uv run pytest tests/test_filters.py  # Single test file
-uv run pytest -s tests/test_filters.py::test_name  # Single test with output
 
 # Install as editable local tool
 uv tool install --editable .

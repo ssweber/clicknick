@@ -212,11 +212,6 @@ class DataviewRow:
         parsed = parse_address(self.address)
         return parsed[1] if parsed else None
 
-    def normalize_address(self) -> None:
-        """Normalize the address format (uppercase, etc.)."""
-        if self.address:
-            self.address = self.address.strip().upper()
-
     def update_type_code(self) -> bool:
         """Update the type code based on the current address.
 

@@ -460,12 +460,14 @@ class TestExternalMdbChanges:
                 "used": bool(db_row[2]),
             }
 
-            # Apply update - should NOT overwrite user's edit
+            # Apply update - should NOT overwrite user's edit, but updates baseline
             row.update_from_db(db_data)
 
-            # User's edit should be preserved
+            # User's edit preserved, but original updated to new DB value
             assert row.nickname == "UserEdit"
-            assert row.original_nickname == "OriginalName"  # Still tracks original
+            assert row.original_nickname == "ExternalChange"  # Baseline updated
+            # Still dirty (user edit != new baseline)
+            assert row.is_nickname_dirty is True
 
             cursor.close()
         finally:

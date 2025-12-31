@@ -629,21 +629,66 @@ class ClickNickApp:
         self.start_monitoring()
         return True
 
-    def connect_to_instance(self, pid, title, filename, hwnd):
-        """Connect to a specific Click.exe instance."""
-        # Close any open editor windows first (prompt to save if needed)
+    def _close_editor_windows(self, prompt_save: bool = True) -> bool:
+        """Close all editor windows (Address Editor and Dataview Editor).
+
+        Args:
+            prompt_save: If True, prompt to save unsaved changes.
+
+        Returns:
+            True if all windows were closed, False if user cancelled.
+        """
+        # Close Address Editor windows
         if self._shared_address_data is not None:
-            if not self._shared_address_data.close_all_windows(prompt_save=True):
-                # User cancelled - don't switch instances
-                # Restore combobox selection to current instance
-                if self.connected_click_filename:
-                    self.selected_instance_var.set(self.connected_click_filename)
-                return
+            if not self._shared_address_data.close_all_windows(prompt_save=prompt_save):
+                return False
             self._shared_address_data = None
             self._shared_data_source_path = None
 
+        # Close Dataview Editor window
+        if (
+            hasattr(self, "_dataview_editor_shared_data")
+            and self._dataview_editor_shared_data is not None
+        ):
+            if self._dataview_editor_shared_data._window is not None:
+                try:
+                    # Check for unsaved changes in Dataview Editor
+                    window = self._dataview_editor_shared_data._window
+                    if (
+                        prompt_save
+                        and hasattr(window, "_has_unsaved_changes")
+                        and window._has_unsaved_changes()
+                    ):
+                        from tkinter import messagebox
+
+                        result = messagebox.askyesnocancel(
+                            "Unsaved Changes",
+                            "Dataview Editor has unsaved changes. Save before closing?",
+                            parent=window,
+                        )
+                        if result is None:  # Cancel
+                            return False
+                        if result:  # Yes - save
+                            window._save_current_file()
+                    window.destroy()
+                except Exception:
+                    pass  # Window may already be destroyed
+            self._dataview_editor_shared_data = None
+            self._dataview_editor_project_path = None
+
         # Disconnect NicknameManager from old data
         self.nickname_manager.set_shared_data(None)
+        return True
+
+    def connect_to_instance(self, pid, title, filename, hwnd):
+        """Connect to a specific Click.exe instance."""
+        # Close any open editor windows first (prompt to save if needed)
+        if not self._close_editor_windows(prompt_save=True):
+            # User cancelled - don't switch instances
+            # Restore combobox selection to current instance
+            if self.connected_click_filename:
+                self.selected_instance_var.set(self.connected_click_filename)
+            return
 
         # Stop monitoring if currently active
         if self.monitoring:
@@ -766,6 +811,26 @@ class ClickNickApp:
 
         csv_unloaded = False
         if new_filename and new_filename != self.connected_click_filename:
+            # File changed within the same Click window - close editor windows without prompting
+            # (user changed file in Click, so data loss is expected)
+            has_address_windows = (
+                self._shared_address_data is not None
+                and len(self._shared_address_data._windows) > 0
+            )
+            has_dataview_window = (
+                hasattr(self, "_dataview_editor_shared_data")
+                and self._dataview_editor_shared_data is not None
+                and self._dataview_editor_shared_data._window is not None
+            )
+            if has_address_windows or has_dataview_window:
+                from tkinter import messagebox
+
+                messagebox.showinfo(
+                    "Project Changed",
+                    "The Click project was changed. Editor windows will now close.",
+                )
+            self._close_editor_windows(prompt_save=False)
+
             # Clear CSV path if it was set
             if self.csv_path_var.get():
                 self.csv_path_var.set("")
@@ -783,9 +848,31 @@ class ClickNickApp:
             self.instances_combobox["values"] = [inst.filename for inst in self.click_instances]
             self.connected_click_filename = new_filename
             self.selected_instance_var.set(new_filename)
+
             if csv_unloaded:
                 self.stop_monitoring(update_status=False)
-            if not csv_unloaded:
+            else:
+                # Recreate SharedAddressData for the new MDB file
+                if self.nickname_manager.has_access_driver():
+                    from .data.data_source import MdbDataSource
+                    from .data.shared_data import SharedAddressData
+
+                    data_source = MdbDataSource(
+                        click_pid=self.connected_click_pid,
+                        click_hwnd=self.connected_click_hwnd,
+                    )
+                    self._shared_address_data = SharedAddressData(data_source)
+                    self._shared_address_data.load_initial_data()
+                    self._shared_data_source_path = (
+                        f"mdb:{self.connected_click_pid}:{self.connected_click_hwnd}"
+                    )
+
+                    # Start file monitoring for external changes
+                    self._shared_address_data.start_file_monitoring(self.root)
+
+                    # Wire NicknameManager to use new SharedAddressData
+                    self.nickname_manager.set_shared_data(self._shared_address_data)
+
                 self._update_status(f"⚡ Monitoring {new_filename}", "connected")
 
         # Skip detection if overlay is visible and being managed

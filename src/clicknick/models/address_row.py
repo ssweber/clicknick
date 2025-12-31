@@ -195,6 +195,25 @@ def parse_address_display(address_str: str) -> tuple[str, int] | None:
     return memory_type, display_addr
 
 
+def normalize_address(address: str) -> str | None:
+    """Normalize an address string to its canonical display form.
+
+    Parses the input address and returns the properly formatted display address
+    (e.g., "x1" -> "X001", "xd0u" -> "XD0u").
+
+    Args:
+        address: The address string to normalize (e.g., "x1", "XD0U")
+
+    Returns:
+        The normalized display address, or None if address is invalid.
+    """
+    parsed = parse_address_display(address)
+    if not parsed:
+        return None
+    memory_type, mdb_address = parsed
+    return format_address_display(memory_type, mdb_address)
+
+
 # ==============================================================================
 # Main Data Model
 # ==============================================================================
@@ -469,11 +488,46 @@ class AddressRow:
         self.initial_value = self.original_initial_value
         self.retentive = self.original_retentive
 
+    def discard_field(self, field_name: str) -> bool:
+        """Reset a single field to its original value.
+
+        Args:
+            field_name: One of 'nickname', 'comment', 'initial_value', 'retentive'
+
+        Returns:
+            True if the field was dirty and has been discarded, False otherwise.
+        """
+        field_map = {
+            "nickname": ("nickname", "original_nickname"),
+            "comment": ("comment", "original_comment"),
+            "initial_value": ("initial_value", "original_initial_value"),
+            "retentive": ("retentive", "original_retentive"),
+        }
+
+        if field_name not in field_map:
+            return False
+
+        current_field, original_field = field_map[field_name]
+        current_val = getattr(self, current_field)
+        original_val = getattr(self, original_field)
+
+        if current_val != original_val:
+            setattr(self, current_field, original_val)
+            return True
+        return False
+
     def update_from_db(self, db_data: dict) -> bool:
-        """Update non-dirty fields from database data.
+        """Update from database data, handling dirty fields gracefully.
 
         Used when external changes are detected in the mdb file.
-        Only updates fields that haven't been modified by the user.
+
+        For clean fields: updates both current and original to new value.
+        For dirty fields: only updates original (preserves user's edit, updates baseline).
+
+        This means:
+        - User edits are never lost due to external changes
+        - Discard will revert to the latest external value (not stale data)
+        - Save will overwrite the external change with user's edit
 
         Args:
             db_data: Dict with keys: nickname, comment, used, data_type,
@@ -490,36 +544,30 @@ class AddressRow:
             self.used = new_used
             changed = True
 
-        # Helper to check cleanliness and update
-        def _update_if_clean(field_name, original_field, new_value):
+        def _update_field(field_name: str, original_field: str, new_value) -> bool:
             current_val = getattr(self, field_name)
             original_val = getattr(self, original_field)
+            is_dirty = current_val != original_val
 
-            # If current equals original (user hasn't touched it)
-            # AND current doesn't equal new value (there is a change from DB)
-            if current_val == original_val and current_val != new_value:
-                setattr(self, field_name, new_value)
-                setattr(self, original_field, new_value)
-                return True
+            if is_dirty:
+                # Dirty: only update baseline (preserves user's edit)
+                if original_val != new_value:
+                    setattr(self, original_field, new_value)
+                    return True
+            else:
+                # Clean: update both current and original
+                if current_val != new_value:
+                    setattr(self, field_name, new_value)
+                    setattr(self, original_field, new_value)
+                    return True
             return False
 
-        # Update nickname only if not dirty
-        changed |= _update_if_clean("nickname", "original_nickname", db_data.get("nickname", ""))
-
-        # Update comment only if not dirty
-        changed |= _update_if_clean("comment", "original_comment", db_data.get("comment", ""))
-
-        # Update initial_value only if not dirty
-        changed |= _update_if_clean(
+        changed |= _update_field("nickname", "original_nickname", db_data.get("nickname", ""))
+        changed |= _update_field("comment", "original_comment", db_data.get("comment", ""))
+        changed |= _update_field(
             "initial_value", "original_initial_value", db_data.get("initial_value", "")
         )
+        changed |= _update_field("retentive", "original_retentive", db_data.get("retentive", False))
 
-        # Update retentive only if not dirty
-        changed |= _update_if_clean(
-            "retentive", "original_retentive", db_data.get("retentive", False)
-        )
-
-        # Update exists_in_mdb flag
         self.exists_in_mdb = True
-
         return changed

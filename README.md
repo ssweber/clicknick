@@ -3,7 +3,7 @@
 # **ClickNick**  
 *Enhanced Productivity for CLICK PLC Programming*    
   
-Bolts nickname autocomplete onto CLICK Programming Software. Additional tools include a standalone Address Editor and Navigation Dock.  
+Bolts nickname autocomplete onto CLICK Programming Software. Additional tools include a standalone Address & Dataview Editors and Navigation Dock.  
 
 ## **Features**    
   
@@ -37,8 +37,8 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
 
 ![Outline dock screenshot](https://github.com/user-attachments/assets/07928355-180e-4b00-b0bb-07ad2bdbe831)
 
-- **Navigate large projects** – See all your nicknames in an organized tree view  
-- **Spot patterns** – Arrays and related items grouped automatically  
+- **Navigate large projects** – See all your nicknames in an organized tree view
+- **Spot patterns** – Arrays and related items grouped automatically
   - **Single underscores** create hierarchy. `SupplyTank_Pump_Status` becomes
     ```
     SupplyTank
@@ -57,6 +57,14 @@ Bolts nickname autocomplete onto CLICK Programming Software. Additional tools in
 
     ```
 - **One-click access** – Double-click to edit any address
+
+### 📊 Dataview Editor
+- **Project integration** – Loads all DataViews (.cdv files) from your CLICK project
+- **Tab interface** – Edit multiple DataViews simultaneously
+- **Nickname lookup** – Add addresses by typing nicknames instead of raw addresses
+- **Drag-and-drop reordering** – Rearrange rows freely with cut/paste support
+- **Flexible row limit** – No hard 100-row limit while organizing; overflow rows shown in grey (excluded from save)
+- **Navigator integration** – Double-click nicknames or entire structures from the Outline/Blocks panel to insert
 
 ### **Connectivity**  
 - 🔌 Live ODBC database connection  
