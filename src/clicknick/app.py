@@ -382,8 +382,7 @@ class ClickNickApp:
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Address Editor...", command=self._open_address_editor)
-        if _DEV_MODE:
-            tools_menu.add_command(label="Dataview Editor...", command=self._open_dataview_editor)
+        tools_menu.add_command(label="Dataview Editor...", command=self._open_dataview_editor)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
