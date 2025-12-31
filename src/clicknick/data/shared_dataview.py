@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..models.address_row import get_addr_key, parse_address_display
+from ..models.address_row import AddressRow, get_addr_key, parse_address_display
 from ..views.dataview_editor.cdv_file import get_dataview_folder, list_cdv_files
 
 if TYPE_CHECKING:
@@ -128,7 +128,7 @@ class SharedDataviewData:
         """Normalize an address string to its canonical display form.
 
         Parses the input address and returns the properly formatted display_address
-        from the corresponding AddressRow (e.g., "x1" -> "X001", "xd0u" -> "XD0u").
+        (e.g., "x1" -> "X001", "xd0u" -> "XD0u").
 
         Args:
             address: The address string to normalize (e.g., "x1", "XD0U")
@@ -136,21 +136,14 @@ class SharedDataviewData:
         Returns:
             The normalized display_address, or None if address is invalid.
         """
-        if not self._address_shared_data:
-            return None
-
         parsed = parse_address_display(address)
         if not parsed:
             return None
 
         memory_type, mdb_address = parsed
-        addr_key = get_addr_key(memory_type, mdb_address)
-
-        if addr_key in self._address_shared_data.all_rows:
-            row = self._address_shared_data.all_rows[addr_key]
-            return row.display_address
-
-        return None
+        # Create a dummy AddressRow to get the properly formatted display_address
+        row = AddressRow(memory_type=memory_type, address=mdb_address)
+        return row.display_address
 
     def register_window(self, window) -> None:
         """Register the dataview editor window."""
