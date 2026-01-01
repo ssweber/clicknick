@@ -59,7 +59,7 @@ python -m clicknick
 Skip the addresses – Select Valve5 instead of typing C123  
 Flexible filters – Prefix, partial match/contains, or abbreviation (e.g., Motor Speed ↔ Mtr_Spd)  
 Hover tooltips – View address comments at a glance  
-Exclusion filters – Hide system or internal addresses (e.g., SC/SD, __private__)
+Exclusion filters – Hide system or internal addresses (e.g., SC/SD, `__private__`)
 
 ![ClickNick autocomplete demo](https://github.com/user-attachments/assets/0275dcf4-6d79-4775-8763-18b13e8fd3a3)  
 
