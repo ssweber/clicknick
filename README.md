@@ -72,6 +72,8 @@ Bulk editing – Edit before saving, copy/paste multiple cells, live duplicate d
 Search & Replace (Ctrl+F / Ctrl+R) - With Find in Selection toggle  
 Custom blocks – Drag to create color-coded groups for organization and quick navigation
 
+![Address Editor demo](https://github.com/user-attachments/assets/4aa6fd2f-f6f8-4921-aba3-7f16e51b95ce)
+
 > [!NOTE]  
 > Nicknames edited in the Address Editor appear immediately in autocomplete. 
 > Existing ladder logic refreshes after editing via the built-in Address Picker (Ctrl+T) or reopening the project.  
@@ -79,8 +81,6 @@ Custom blocks – Drag to create color-coded groups for organization and quick n
 
 > **⚠️ Search & Replace Behavior**  
 > Replace affects all *visible* columns. Hidden columns (Initial Value, Retentive) are only modified if you make them visible first. Use "Find in Selection" to limit scope.
-
-![Address Editor demo](https://github.com/user-attachments/assets/4aa6fd2f-f6f8-4921-aba3-7f16e51b95ce)  
 
 ---
 
