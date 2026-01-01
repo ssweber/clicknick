@@ -151,17 +151,3 @@ Example: `<Alm Bits bg="Red">` ... `</Alm Bits>`
 ## Motivation
 
 CLICK PLCs were my first PLC experience, but remembering addresses became painful. Other platforms autocomplete—why not CLICK? ClickNick adds the modern tools I wish I'd had.
-
----
-
-## **Documentation**  
-
-- [Installation Guide](installation.md) – Python and uv setup  
-- [Development](development.md) – Contributing workflows  
-- [Publishing](publishing.md) – PyPI release instructions  
-
----
-
-*This project was built from
-[simple-modern-uv](https://github.com/jlevy/simple-modern-uv).*
-
