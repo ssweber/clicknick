@@ -23,45 +23,24 @@ from .outline_logic import (
 class OutlinePanel(ttk.Frame):
     """Panel displaying hierarchical treeview of tag nicknames."""
 
-    def _collect_leaves(self, iid: str, leaves: list[tuple[str, int]]) -> None:
-        """Recursively collect all leaf addresses under a node."""
-        # Check if this node is a leaf
-        if leaf_data := self._leaf_data.get(iid):
-            leaves.append(leaf_data)
-
-        # Recurse into children
-        for child_iid in self.tree.get_children(iid):
-            self._collect_leaves(child_iid, leaves)
-
-    def _get_all_leaves_under(self, iid: str) -> list[tuple[str, int]]:
-        """Get all leaf addresses under a parent node.
-
-        Args:
-            iid: The tree item id
-
-        Returns:
-            List of (memory_type, address) tuples for all leaves
-        """
-        leaves = []
-        self._collect_leaves(iid, leaves)
-        return leaves
-
     def _on_double_click(self, event) -> None:
         """Handle double-click on tree item."""
-        if selection := self.tree.selection():
-            iid = selection[0]
-            has_leaf = iid in self._leaf_data
-            has_children = bool(self.tree.get_children(iid))
+        if not (selection := self.tree.selection()):
+            return
 
-            if has_children and self.on_batch_select:
-                # Has children - use batch callback (includes self if also a leaf)
-                leaves = self._get_all_leaves_under(iid)
-                if leaves:
-                    self.on_batch_select(leaves)
-            elif has_leaf:
-                # Pure leaf node - use single callback
-                memory_type, address = self._leaf_data[iid]
-                self.on_address_select(memory_type, address)
+        iid = selection[0]
+        item = self._item_data.get(iid)
+        if item is None:
+            return
+
+        if item.has_children and self.on_batch_select:
+            # Has children - use batch callback (includes self if also a leaf)
+            if leaves := item.get_all_leaves():
+                self.on_batch_select(leaves)
+        elif item.leaf:
+            # Pure leaf node - use single callback
+            memory_type, address = item.leaf
+            self.on_address_select(memory_type, address)
 
     def _create_widgets(self) -> None:
         """Create the treeview widget."""
@@ -105,33 +84,31 @@ class OutlinePanel(ttk.Frame):
 
         self.on_address_select = on_address_select
         self.on_batch_select = on_batch_select
-        self._leaf_data: dict[str, tuple[str, int]] = {}
+        self._item_data: dict[str, DisplayItem] = {}  # iid -> DisplayItem
 
         self._create_widgets()
 
+    def _insert_item(
+        self, item: DisplayItem, parent_iid: str, all_rows: dict[int, AddressRow]
+    ) -> None:
+        """Recursively insert a DisplayItem and its children into the treeview."""
+        # Build display text with outline_suffix for leaves
+        display_text = item.text
+        if item.addr_key is not None and item.addr_key in all_rows:
+            row = all_rows[item.addr_key]
+            display_text = f"{item.text} {row.outline_suffix}"
+
+        iid = self.tree.insert(parent_iid, tk.END, text=display_text)
+        self._item_data[iid] = item
+
+        # Recursively insert children
+        for child in item.children:
+            self._insert_item(child, iid, all_rows)
+
     def _render_items(self, items: list[DisplayItem], all_rows: dict[int, AddressRow]) -> None:
-        """Render pre-flattened items to treeview."""
-        parent_stack: list[str] = [""]
-
+        """Render DisplayItem tree to treeview."""
         for item in items:
-            while len(parent_stack) > item.depth + 1:
-                parent_stack.pop()
-            parent_iid = parent_stack[-1]
-
-            # For leaf items with addr_key, append outline_suffix from the AddressRow
-            display_text = item.text
-            if item.addr_key is not None and item.addr_key in all_rows:
-                row = all_rows[item.addr_key]
-                # Append type/init/retentive suffix to the nickname text
-                display_text = f"{item.text} {row.outline_suffix}"
-
-            iid = self.tree.insert(parent_iid, tk.END, text=display_text)
-
-            if item.leaf:
-                self._leaf_data[iid] = item.leaf
-
-            if item.has_children:
-                parent_stack.append(iid)
+            self._insert_item(item, "", all_rows)
 
     def _prepare_entries(self, all_rows: dict[int, AddressRow]) -> list[tuple[str, int, str, int]]:
         """Prepare sorted entries for tree building."""
@@ -162,10 +139,13 @@ class OutlinePanel(ttk.Frame):
             if type_entries := sorted(by_type.get(memory_type, []), key=lambda x: x[0]):
                 parent_iid = self.tree.insert("", tk.END, text=memory_type)
                 for address, row in type_entries:
-                    iid = self.tree.insert(
-                        parent_iid, tk.END, text=f"• {row.nickname} {row.outline_suffix}"
+                    # Create a DisplayItem for flat entries too
+                    item = DisplayItem(
+                        text=f"• {row.nickname} {row.outline_suffix}",
+                        leaf=(memory_type, address),
                     )
-                    self._leaf_data[iid] = (memory_type, address)
+                    iid = self.tree.insert(parent_iid, tk.END, text=item.text)
+                    self._item_data[iid] = item
 
     def build_tree(self, all_rows: dict[int, AddressRow]) -> None:
         """Rebuild the tree from address row data.
@@ -173,7 +153,7 @@ class OutlinePanel(ttk.Frame):
         Args:
             all_rows: Dict mapping address key to AddressRow
         """
-        self._leaf_data.clear()
+        self._item_data.clear()
 
         for item in self.tree.get_children():
             self.tree.delete(item)

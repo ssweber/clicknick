@@ -1,11 +1,40 @@
 """Tests for outline_logic.py - tree building and flattening for address outline."""
 
 from clicknick.views.nav_window.outline_logic import (
+    DisplayItem,
     TreeNode,
     build_tree,
     flatten_tree,
     parse_segments,
 )
+
+
+def flatten_to_tuples(items: list[DisplayItem], depth: int = 0) -> list[tuple[str, int]]:
+    """Flatten tree to (text, depth) tuples for easier testing."""
+    result = []
+    for item in items:
+        result.append((item.text, depth))
+        result.extend(flatten_to_tuples(item.children, depth + 1))
+    return result
+
+
+def get_all_texts(items: list[DisplayItem]) -> list[str]:
+    """Get all text values from the tree, preserving pre-order traversal."""
+    result = []
+    for item in items:
+        result.append(item.text)
+        result.extend(get_all_texts(item.children))
+    return result
+
+
+def find_item(items: list[DisplayItem], predicate) -> DisplayItem | None:
+    """Find an item matching predicate in the tree."""
+    for item in items:
+        if predicate(item):
+            return item
+        if found := find_item(item.children, predicate):
+            return found
+    return None
 
 
 class TestParseSegments:
@@ -187,7 +216,6 @@ class TestFlattenTree:
 
         assert len(items) == 1
         assert items[0].text == "Motor"
-        assert items[0].depth == 0
         assert items[0].leaf == ("X", 1)
         assert items[0].has_children is False
 
@@ -200,16 +228,17 @@ class TestFlattenTree:
         root = build_tree(entries)
         items = flatten_tree(root)
 
-        # Motor is a parent (collapsed path doesn't apply here since 2 children)
-        assert items[0].text == "Motor"
-        assert items[0].has_children is True
-        assert items[0].depth == 0
+        # Motor is a parent at top level
+        assert len(items) == 1
+        motor = items[0]
+        assert motor.text == "Motor"
+        assert motor.has_children is True
 
-        # Children
-        assert items[1].text == "Speed"
-        assert items[1].depth == 1
-        assert items[2].text == "Temp"
-        assert items[2].depth == 1
+        # Children are nested
+        assert len(motor.children) == 2
+        child_texts = [c.text for c in motor.children]
+        assert "Speed" in child_texts
+        assert "Temp" in child_texts
 
     def test_single_child_collapse(self):
         """Single-child chains are collapsed."""
@@ -231,7 +260,8 @@ class TestFlattenTree:
         items = flatten_tree(root)
 
         # Find the Motor[1-2] node
-        motor_item = next(i for i in items if "Motor" in i.text and "[" in i.text)
+        motor_item = find_item(items, lambda i: "Motor" in i.text and "[" in i.text)
+        assert motor_item is not None
         assert motor_item.text == "Motor[1-2]"
 
     def test_array_index_collapse(self):
@@ -243,8 +273,7 @@ class TestFlattenTree:
         root = build_tree(entries)
         items = flatten_tree(root)
 
-        # Should have Setpoint[1-2] parent with "1_Reached", "2_Reached" children
-        texts = [i.text for i in items]
+        texts = get_all_texts(items)
         assert "Setpoint[1-2]" in texts
         assert "1_Reached" in texts
         assert "2_Reached" in texts
@@ -317,8 +346,7 @@ class TestDoubleUnderscoreIntegration:
         root = build_tree(entries)
         items = flatten_tree(root)
 
-        # Get the children under Mtr[1] -> 1
-        texts = [i.text for i in items]
+        texts = get_all_texts(items)
         # Speed and Run should come before _ Private
         speed_idx = texts.index("Speed")
         run_idx = texts.index("Run")
@@ -396,9 +424,12 @@ class TestTimerInterleaving:
         root = build_tree(entries)
         items = flatten_tree(root)
 
-        # All under Pump, order preserved
-        texts = [i.text for i in items if i.depth == 1]
-        assert texts == ["Run", "Stop", "Speed"]
+        # All under Pump parent
+        assert len(items) == 1
+        pump = items[0]
+        assert pump.text == "Pump"
+        child_texts = [c.text for c in pump.children]
+        assert child_texts == ["Run", "Stop", "Speed"]
 
 
 class TestSingleElementArrayCollapse:
@@ -425,7 +456,7 @@ class TestSingleElementArrayCollapse:
         root = build_tree(entries)
         items = flatten_tree(root)
 
-        texts = [i.text for i in items]
+        texts = get_all_texts(items)
         # Should have Mold_A_Prod[1-2] parent with children
         assert any("[1-2]" in t for t in texts)
 
@@ -442,12 +473,18 @@ class TestSingleElementArrayCollapse:
         root = build_tree(entries)
         items = flatten_tree(root)
 
-        texts = [i.text for i in items]
+        # All top-level items
+        top_texts = [i.text for i in items]
         # Array portion shown with brackets (even single element, due to mixed content)
-        assert "Pump[1]" in texts
-        assert "1_Speed" in texts
+        assert "Pump[1]" in top_texts
         # Non-array sibling shown with full prefix at same level
-        assert "Pump_Status" in texts
+        assert "Pump_Status" in top_texts
+
+        # Check the array child
+        pump_array = find_item(items, lambda i: i.text == "Pump[1]")
+        assert pump_array is not None
+        assert len(pump_array.children) == 1
+        assert pump_array.children[0].text == "1_Speed"
 
     def test_single_element_no_siblings_collapses(self):
         """Single-element array with no siblings collapses."""
@@ -475,7 +512,7 @@ class TestMixedArrayContent:
         root = build_tree(entries)
         items = flatten_tree(root)
 
-        texts = [i.text for i in items]
+        texts = get_all_texts(items)
         # The leaf should appear as its own item
         assert "HMI_Alarm" in texts
         # The array should be separate (no leaf attached)
@@ -484,16 +521,20 @@ class TestMixedArrayContent:
         assert "1_id" in texts
         assert "2_id" in texts
 
-        # Verify the leaf and array are separate items
-        alarm_items = [i for i in items if i.text == "HMI_Alarm"]
-        assert len(alarm_items) == 1
-        assert alarm_items[0].leaf == ("C", 1)
-        assert alarm_items[0].has_children is False
+        # Verify the leaf and array are separate items at top level
+        top_texts = [i.text for i in items]
+        assert "HMI_Alarm" in top_texts
+        assert "HMI_Alarm[1-2]" in top_texts
 
-        array_items = [i for i in items if i.text == "HMI_Alarm[1-2]"]
-        assert len(array_items) == 1
-        assert array_items[0].leaf is None
-        assert array_items[0].has_children is True
+        alarm_leaf = find_item(items, lambda i: i.text == "HMI_Alarm")
+        assert alarm_leaf is not None
+        assert alarm_leaf.leaf == ("C", 1)
+        assert alarm_leaf.has_children is False
+
+        array_item = find_item(items, lambda i: i.text == "HMI_Alarm[1-2]")
+        assert array_item is not None
+        assert array_item.leaf is None
+        assert array_item.has_children is True
 
     def test_array_with_non_numeric_siblings(self):
         """Non-numeric siblings of array indices shown separately."""
@@ -506,15 +547,8 @@ class TestMixedArrayContent:
         root = build_tree(entries)
         items = flatten_tree(root)
 
-        texts = [i.text for i in items]
-        # All should be at the same level (depth 0)
-        assert "HMI_Alarm" in texts
-        assert "HMI_Alarm[1-2]" in texts
-        assert "HMI_Alarm_Status" in texts
-
-        # Verify depths - all should be at depth 0
-        top_level = [i for i in items if i.depth == 0]
-        top_texts = [i.text for i in top_level]
+        # All should be at top level
+        top_texts = [i.text for i in items]
         assert "HMI_Alarm" in top_texts
         assert "HMI_Alarm[1-2]" in top_texts
         assert "HMI_Alarm_Status" in top_texts
@@ -530,9 +564,89 @@ class TestMixedArrayContent:
         root = build_tree(entries)
         items = flatten_tree(root)
 
-        texts = [i.text for i in items]
+        texts = get_all_texts(items)
         assert "Command_Alarm" in texts
         assert "Command_Alarm[1-2]" in texts
         assert "1_id" in texts
         assert "2_id" in texts
         assert "Command_Alarm_Status" in texts
+
+
+class TestDisplayItemMethods:
+    """Tests for DisplayItem's tree methods."""
+
+    def test_get_all_leaves_single(self):
+        """get_all_leaves on a single leaf returns just that leaf."""
+        entries = [("X", 1, "Motor", 100)]
+        root = build_tree(entries)
+        items = flatten_tree(root)
+
+        assert len(items) == 1
+        leaves = items[0].get_all_leaves()
+        assert leaves == [("X", 1)]
+
+    def test_get_all_leaves_nested(self):
+        """get_all_leaves collects all leaves under a parent."""
+        entries = [
+            ("X", 1, "Motor1_Speed", 100),
+            ("X", 2, "Motor2_Speed", 200),
+            ("X", 3, "Motor1_Run", 300),
+        ]
+        root = build_tree(entries)
+        items = flatten_tree(root)
+
+        # Find the Motor[1-2] parent
+        motor_array = find_item(items, lambda i: "Motor" in i.text and i.has_children)
+        assert motor_array is not None
+
+        leaves = motor_array.get_all_leaves()
+        assert len(leaves) == 3
+        assert ("X", 1) in leaves
+        assert ("X", 2) in leaves
+        assert ("X", 3) in leaves
+
+    def test_iter_preorder_single(self):
+        """iter_preorder on a single item yields (item, 0)."""
+        entries = [("X", 1, "Motor", 100)]
+        root = build_tree(entries)
+        items = flatten_tree(root)
+
+        preorder = list(items[0].iter_preorder())
+        assert len(preorder) == 1
+        assert preorder[0] == (items[0], 0)
+
+    def test_iter_preorder_nested(self):
+        """iter_preorder yields items with correct depths."""
+        entries = [
+            ("X", 1, "Motor1_Speed", 100),
+            ("X", 2, "Motor2_Speed", 200),
+        ]
+        root = build_tree(entries)
+        items = flatten_tree(root)
+
+        # Should have Motor[1-2] with children
+        assert len(items) == 1
+        root_item = items[0]
+
+        preorder = list(root_item.iter_preorder())
+        # Root at depth 0, two children at depth 1
+        assert len(preorder) == 3
+        assert preorder[0][1] == 0  # root depth
+        assert preorder[1][1] == 1  # child depth
+        assert preorder[2][1] == 1  # child depth
+
+    def test_has_children_property(self):
+        """has_children returns True only when children list is non-empty."""
+        leaf = DisplayItem(text="test", leaf=("X", 1))
+        assert leaf.has_children is False
+
+        parent = DisplayItem(text="parent", children=[leaf])
+        assert parent.has_children is True
+
+    def test_is_leaf_property(self):
+        """is_leaf returns True only when leaf data is present."""
+        non_leaf = DisplayItem(text="parent")
+        assert non_leaf.is_leaf is False
+
+        leaf = DisplayItem(text="test", leaf=("X", 1))
+        assert leaf.is_leaf is True
