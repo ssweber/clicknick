@@ -4,7 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**ClickNick** is a Windows desktop application providing context-aware nickname autocomplete for ClickPLC instruction windows. It connects to the CLICK Programming Software via ODBC to read nicknames from its Access database (SC_.mdb) and displays an overlay combobox when users interact with supported PLC instruction dialogs.
+**ClickNick** is a Windows desktop application providing context-aware nickname autocomplete and editing tools for CLICK PLC Programming Software (v2.60–v3.80). It connects via ODBC to read/write nicknames from the project's Access database (SC_.mdb) or can import from CSV. Core components:
+
+- **Overlay** – Positions a combobox over instruction dialog edit controls for nickname autocomplete
+- **Address Editor** – Multi-window tksheet-based editor with search/replace, block tagging, validation
+- **Navigation Dock** – Treeview of nicknames parsed by underscore segments and array indices
+- **Dataview Editor** – Edits .cdv files with nickname lookup from shared address data
+
+## Prerequisites
+
+- **OS:** Windows 10 or 11
+- **CLICK Software:** v2.60–v3.80
+- **ODBC Drivers:** Microsoft Access Database Engine (for live DB connection; optional if using CSV)
+- **Python:** 3.11+ (only if using pip; uv manages Python automatically)
 
 ## Build & Development Commands
 
@@ -140,3 +152,25 @@ Filters implement `FilterBase.filter_matches(completion_list, current_text)`:
 
 ## Testing
 Tests are in `tests/` and `src/` (pytest discovers both). Filter tests cover abbreviation matching edge cases.
+
+## Block Tag Specification
+
+Block tags are added in the Comment field to create visual blocks in the Address Editor.
+
+**Syntax:**
+- `<BlockName>` – Opening tag for a range
+- `</BlockName>` – Closing tag for a range
+- `<BlockName />` – Self-closing tag for a single address
+- `<BlockName bg="#color">` – Adds background color
+
+**Colors:** HEX codes or keywords: Red, Pink, Purple, Deep Purple, Indigo, Blue, Light Blue, Cyan, Teal, Green, Light Green, Lime, Yellow, Amber, Orange, Deep Orange, Brown, Blue Grey
+
+Example: `<Alm Bits bg="Red">` ... `</Alm Bits>`
+
+## Navigation Dock Logic
+
+**Hierarchy:** Single underscores create tree levels.
+- `SupplyTank_Pump_Status` → `SupplyTank` > `Pump` > `Status`
+
+**Arrays:** Trailing numbers auto-group.
+- `Alm1_id`, `Alm1_value`, `Alm2_id`, `Alm2_value` → `Alm[1-2]` with nested `id`, `value` leaves

@@ -1,181 +1,153 @@
+# ClickNick
+
 ![clicknick_logo](https://github.com/user-attachments/assets/2cb7f411-3174-478c-a6c9-409aaa788376)
 
-# **ClickNick**  
-*Enhanced Productivity for CLICK PLC Programming*    
+*Modern IDE Features for Automation Direct CLICK PLC Programming.*
   
-Bolts nickname autocomplete onto CLICK Programming Software. Additional tools include a standalone Address & Dataview Editors and Navigation Dock.  
+ClickNick adds autocomplete, bulk editing, and visual organization tools to CLICK Programming Software.
 
-## **Features**    
-  
-### ✨ Nickname Autocomplete    
-- **Skip the addresses** – Select `Valve5` instead of typing `C123`    
-- **Flexible filters** – Prefix, partial match/contains, or abbreviation (e.g., `Motor Speed` ↔ `Mtr_Spd`)    
-- **Hover tooltips** – View address comments at a glance    
-- **Exclusion filters** – Hide system or internal addresses (e.g., `SC/SD`, `__private__`)
+| | Standard CLICK | ClickNick |
+|---|---|---|
+| **Instruction Entry** | Type addresses `C123` | ✅ **Autocomplete** nicknames |
+| **Address Editing** | One-by-one in app | ✅ **Bulk edit**, multi-window, search/replace |
+| **Organization** | Flat list | ✅ **Color named blocks** + **tree outline** (hierarchy & arrays) |
+| **DataView** | Input raw addresses, limited reordering | ✅ **Autocomplete**, add entire grouped structures and blocks, drag and drop reordering |
+| **Price** | Free (bundled) | Free (open source) |
+| **Best For** | Simple projects | Complex projects, productivity |
+
+## Features at a Glance
+
+- **[✨ Nickname Autocomplete](#autocomplete)** – Type `Valve5` instead of `C123`, with smart filters and hover tooltips
+- **[🛠️ Modern Address Editor](#address-editor)** – Bulk edit with search/replace, color-coded blocks, multi-window support
+- **[📑 Navigation Dock](#navigation-dock)** – Tree view with automatic hierarchy and array grouping
+- **[📊 Dataview Editor](#dataview-editor)** – Tabbed interface, nickname lookup, unlimited reordering
+- **[🔌 Connectivity](#connectivity)** – CSV import and live ODBC database support
+
+**Beta Disclaimer** – This is beta software. Use at your own risk and always back up `.ckp` files.
+
+---
+
+## Prerequisites
+
+- **OS:** Windows 10 or 11
+- **CLICK Software:** v2.60–v3.80 ([download here](https://www.automationdirect.com/clickplcs/free-software/free-click-software))
+- **ODBC Drivers:** Microsoft Access Database Engine (for live DB connection; [install link](https://github.com/ssweber/clicknick/issues/17))
+- **Python:** 3.11+ (only if using pip; uv manages Python automatically)
+
+## Quick Start
+
+### Option 1: uv (recommended)
+```bash
+uvx clicknick@latest              # Try it without installing
+uv tool install clicknick         # Install for offline use
+clicknick                         # Run (command line or Start Menu)
+```
+New to uv? See [installation instructions](https://github.com/astral-sh/uv#installation).  
+
+### Option 2: pip
+```bash
+pip install clicknick
+python -m clicknick
+```
+
+---
+
+## Detailed Features
+
+### <a name="autocomplete"></a>✨ Nickname Autocomplete
+
+Skip the addresses – Select Valve5 instead of typing C123  
+Flexible filters – Prefix, partial match/contains, or abbreviation (e.g., Motor Speed ↔ Mtr_Spd)  
+Hover tooltips – View address comments at a glance  
+Exclusion filters – Hide system or internal addresses (e.g., SC/SD, `__private__`)
 
 ![ClickNick autocomplete demo](https://github.com/user-attachments/assets/0275dcf4-6d79-4775-8763-18b13e8fd3a3)  
-  
-### 🛠️ Modern Address Editor    
-- **Multi-window** – Edit different address sections simultaneously    
-- **Bulk editing** – Edit before saving, copy/paste multiple cells, live duplicate detection and validation    
-- **Search & Replace** (Ctrl+F / Ctrl+R) - With `Find in Selection` toggle   
-- **Custom blocks** – Drag to create color-coded groups for organization and quick navigation
 
-![Address Editor demo](https://github.com/user-attachments/assets/4aa6fd2f-f6f8-4921-aba3-7f16e51b95ce)  
+---
+
+### <a name="address-editor"></a>🛠️ Modern Address Editor
+
+Multi-window – Edit different address sections simultaneously  
+Bulk editing – Edit before saving, copy/paste multiple cells, live duplicate detection and validation  
+Search & Replace (Ctrl+F / Ctrl+R) - With Find in Selection toggle  
+Custom blocks – Drag to create color-coded groups for organization and quick navigation
+
+![Address Editor demo](https://github.com/user-attachments/assets/4aa6fd2f-f6f8-4921-aba3-7f16e51b95ce)
 
 > [!NOTE]  
 > Nicknames edited in the Address Editor appear immediately in autocomplete. 
 > Existing ladder logic refreshes after editing via the built-in Address Picker (Ctrl+T) or reopening the project.  
 > See issue https://github.com/ssweber/clicknick/issues/36
 
-> [!IMPORTANT]      
-> **Replace works on all visible editable columns.** Hidden columns (like Initial Value and Retentive) can be shown, 
-> but watch out for numerical replacements—changing 1→2 (e.g., Alm1→Alm2) would also change 101 to 202. 
-> Use **'Find in Selection'** to limit changes and avoid surprises.
+> **⚠️ Search & Replace Behavior**  
+> Replace affects all *visible* columns. Hidden columns (Initial Value, Retentive) are only modified if you make them visible first. Use "Find in Selection" to limit scope.
 
-### 📑 Navigation Dock
+---
+
+### <a name="navigation-dock"></a>📑 Navigation Dock
+
+Navigate large projects – See all your nicknames in an organized tree view  
+Spot patterns – Arrays and related items grouped automatically  
+
+**Hierarchy:** Single underscores create levels. `SupplyTank_Pump_Status` becomes:
+```
+SupplyTank
+    └── Pump
+        └── Status
+```
+
+**Arrays:** Trailing numbers auto-group. `Alm1_id`, `Alm1_value`, `Alm2_id`, `Alm2_value` becomes:
+```
+Alm[1-2]
+1
+  ├── id
+  └── value
+2
+  ├── id
+  └── value
+```
+
+One-click access – Double-click any item to edit.
 
 ![Outline dock screenshot](https://github.com/user-attachments/assets/07928355-180e-4b00-b0bb-07ad2bdbe831)
 
-- **Navigate large projects** – See all your nicknames in an organized tree view
-- **Spot patterns** – Arrays and related items grouped automatically
-  - **Single underscores** create hierarchy. `SupplyTank_Pump_Status` becomes
-    ```
-    SupplyTank
-        └── Pump
-            └── Status
-    ```
-  - **Trailing numbers** create arrays. `Alm1_id`, `Alm1_value`, `Alm2_id`, `Alm2_value` becomes:
-    ```
-    Alm[1-2]
-    1
-      ├── id
-      └── value
-    2
-      ├── id
-      └── value
+---
 
-    ```
-- **One-click access** – Double-click to edit any address
+### <a name="dataview-editor"></a>📊 Dataview Editor
 
-### 📊 Dataview Editor
-- **Project integration** – Loads all DataViews (.cdv files) from your CLICK project
-- **Tab interface** – Edit multiple DataViews simultaneously
-- **Nickname lookup** – Add addresses by typing nicknames instead of raw addresses
-- **Drag-and-drop reordering** – Rearrange rows freely with cut/paste support
-- **Flexible row limit** – No hard 100-row limit while organizing; overflow rows shown in grey (excluded from save)
-- **Navigator integration** – Double-click nicknames or entire structures from the Outline/Blocks panel to insert
-
-### **Connectivity**  
-- 🔌 Live ODBC database connection  
-- 📄 CSV nickname import  
-
-## **Why ClickNick?**    
-✔ **Work faster** – Less time on manual address lookup  
-✔ **Fewer mistakes** – Autocomplete reduces typos  
-✔ **Stay organized** – Better tag management for complex projects 
-
-> [!IMPORTANT] 
-> ### Beta Disclaimer 
-> ClickNick is beta software. Use at your own risk. The developers aren't liable for 
-> data loss, corruption, or process interruptions. Always back up your `.ckp` files.
+Project integration – Loads all DataViews (.cdv files) from your CLICK project in tab-interface  
+Nickname lookup – Add addresses by typing nicknames instead of raw addresses  
+Drag-and-drop reordering – Rearrange rows freely with cut/paste support  
+Flexible row limit – No hard 100-row limit while organizing; overflow rows shown in grey (excluded from save)  
+Navigator integration – Double-click nicknames or entire structures from the Outline/Blocks panel to insert
 
 ---
 
-## **Installation**  
+### <a name="connectivity"></a>🔌 Connectivity
 
-> [!NOTE]  
-> Live database connectivity requires Microsoft Access ODBC drivers. See our [installation guide](https://github.com/ssweber/clicknick/issues/17) if you encounter driver issues. CSV import works without additional drivers.  
-
-### Option 1: uv (recommended)  
-
-**Try it:**  
-```cmd  
-uvx clicknick@latest  
-```  
-
-**Install for offline use:**  
-```cmd  
-uv tool install clicknick  
-```  
-
-**Run:** `clicknick` (command line or Start Menu)  
-**Upgrade:** `uv tool upgrade clicknick`  
-**Uninstall:** `uv tool uninstall clicknick`  
-
-New to uv? See [installation instructions](https://github.com/astral-sh/uv#installation).  
-
-### Option 2: pip  
-
-```cmd  
-pip install clicknick  
-python -m clicknick  
-```  
-
-## **Requirements**  
-
-- Windows 10/11  
-- CLICK Programming Software (v2.60–v3.71)  
-- Microsoft Access ODBC drivers (for Address Editor)  
+- **CSV nickname import** – No drivers needed. Import from any spreadsheet
+- **Live ODBC database connection** – Direct, real-time access to CLICK project database
 
 ---
 
-## **Supported Windows**  
+## Block Tag Specification
 
-Autocomplete works in:  
+> **Note:** The Address Editor provides buttons to create and manage blocks. This section documents the underlying format for power users.
 
-| Instructions | Dialogs & Tools |
-|--------------|-----------------|
-| Contact (NO/NC) | Search & Replace |
-| Edge Contact | Data Views |
-| Out, Set, Reset | Address Picker Find |
-| Compare (A with B) | 
-| Timer, Counter | |
-| Math | |
-| Shift Register | |
-| Copy | |
-| Search | |
-| Modbus Send/Receive | |
+Add tags in the Comment field to create visual blocks:
 
----
+**Syntax:**
+- `<BlockName>` - Opening tag for a range
+- `</BlockName>` - Closing tag for a range
+- `<BlockName />` - Self-closing tag for a singular point
+- `<BlockName bg="#color">` - Adds background color
 
-## **Block Tag Specification**  
+**Colors:** Use HEX codes or keywords: Red, Pink, Purple, Deep Purple, Indigo, Blue, Light Blue, Cyan, Teal, Green, Light Green, Lime, Yellow, Amber, Orange, Deep Orange, Brown, Blue Grey
 
-### **Syntax - Put in Comment Field**  
-- `<BlockName>` - Opening tag for a range  
-- `</BlockName>` - Closing tag for a range  
-- `<BlockName />` - Self-closing tag for a singular point  
-- `<BlockName bg="#color">` - Adds background color (works in opening or self-closing tags)
-
-Replace `BlockName` with your desired identifier (e.g., `<Reserved>`, `<Alm Bits>`).  
-
-### **Recognized Color Keywords**  
-The following words can be used as color values (or any valid HEX code):  
-
-**Red**, **Pink**, **Purple**, **Deep Purple**, **Indigo**, **Blue**, **Light Blue**, **Cyan**, **Teal**, **Green**, **Light Green**, **Lime**, **Yellow**, **Amber**, **Orange**, **Deep Orange**, **Brown**, **Blue Grey**  
-
-*(Each corresponds to a predefined HEX value.)*  
+Example: `<Alm Bits bg="Red">` ... `</Alm Bits>`
 
 ---
 
-## **Documentation**  
+## Motivation
 
-- [Installation Guide](installation.md) – Python and uv setup  
-- [Development](development.md) – Contributing workflows  
-- [Publishing](publishing.md) – PyPI release instructions  
-
----
-
-## **Motivation**
-
-CLICK PLCs were my first controller, and I've built numerous projects with them. But as projects grew, remembering memory addresses instead of nicknames added overhead. Productivity and Do-More autocompleted nicknames as I type, why can't CLICK? **ClickNick was born**.
-
-The built-in Address Picker was equally frustrating: either edit one at a time or export to Excel and re-import. Project templates required me to remember where I could add custom tags versus reserved areas. **The Address Editor solves this**—plus adds **Custom Blocks** to define distinct memory regions visually. See high-level project structure with the **Outline** dock.
-
-I hope ClickNick helps new programmers choosing CLICK for its simplicity, as well as those maintaining legacy equipment—and serves as an example of how CLICK software can be extended.
-
----
-
-*This project was built from
-[simple-modern-uv](https://github.com/jlevy/simple-modern-uv).*
-
+CLICK PLCs were my first PLC experience, but remembering addresses became painful. Other platforms autocomplete—why not CLICK? ClickNick adds the modern tools I wish I'd had.
