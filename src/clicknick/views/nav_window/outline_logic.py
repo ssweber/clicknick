@@ -6,15 +6,17 @@ with array detection. Allows navigation to addresses via double-click.
 Display Rules:
 --------------
 1. Nicknames are split by single underscore into path segments.
-   Double underscores escape a literal underscore in the segment name.
+   Double underscores create an intermediate "_" node for grouping related items.
    Example: "Admin_Alarm_Reset" -> Admin -> Alarm -> Reset
-   Example: "Modbus__x" -> Modbus -> _x (double underscore preserves literal _)
+   Example: "Mtr1__Debounce" -> Mtr[1] -> 1 -> _ -> Debounce
 
 2. Trailing numbers on segments are detected as array indices, shown with [min-max].
+   Single-element arrays (only one number, no siblings) collapse the number into the name.
    Example: "Motor1_Speed", "Motor2_Speed" -> Motor[1-2] -> 1 -> Speed
+   Example: "Prod1_Count" (alone) -> Prod1_Count (no brackets)
 
-3. Array indices with a single leaf child are collapsed into "# Name" format.
-   Example: "Setpoint1_Reached", "Setpoint2_Reached" -> Setpoint[1-2] -> 1 Reached, 2 Reached
+3. Array indices with a single leaf child are collapsed into "#_Name" format.
+   Example: "Setpoint1_Reached", "Setpoint2_Reached" -> Setpoint[1-2] -> 1_Reached, 2_Reached
 
 4. If both array items (Motor1_X) and non-array items (Motor_Status) share
    the same base name, they are pulled together under the same parent node
@@ -23,14 +25,20 @@ Display Rules:
    + Command
        - Alarm
        + Alarm[1-2]
-           - 1 id
-           - 2 id
-       - Alarm Status
+           - 1_id
+           - 2_id
+       - Alarm_Status
 
-5. Single-child nodes are collapsed with space " ".
-   Example: "Timer_Ts" (alone) -> Timer Ts
+5. Single-child nodes are collapsed with underscore "_".
+   Example: "Timer_Ts" (alone) -> Timer_Ts
 
-6. SC and SD memory types are displayed as flat lists at the bottom of the tree
+6. Underscore nodes (from double underscores) appear last among siblings.
+   Example: Mtr1_Speed, Mtr1_Run, Mtr1__Debug -> Speed, Run, then __Debug
+
+7. T/TD and CT/CTD entries are interleaved by address number.
+   Example: T1, T2, TD1, TD2 -> T1, TD1, T2, TD2 (in tree insertion order)
+
+8. SC and SD memory types are displayed as flat lists at the bottom of the tree
    without any structure parsing.
 """
 
@@ -46,15 +54,15 @@ MEMORY_TYPE_ORDER = [
     "Y",
     "C",
     "T",
+    "TD",
     "CT",
+    "CTD",
     "DS",
     "DD",
     "DH",
     "DF",
     "XD",
     "YD",
-    "TD",
-    "CTD",
     "TXT",
     "SC",
     "SD",
@@ -89,25 +97,31 @@ def parse_segments(nickname: str) -> list[tuple[str, int | None]]:
 
     Returns list of (name, index) tuples. Index is None for non-array segments.
 
-    Single underscores split segments. Double underscores also split, but preserve
-    a leading underscore on the following segment.
+    Single underscores split segments. Double underscores create an intermediate
+    "_" node, grouping items that follow under a special underscore branch.
     Example: "Motor1_Speed" -> [("Motor", 1), ("Speed", None)]
-    Example: "Modbus__x" -> [("Modbus", None), ("_x", None)]
+    Example: "Mtr1__Debounce" -> [("Mtr", 1), ("_", None), ("Debounce", None)]
     """
-    # Replace __ with _<placeholder> so it splits but preserves _ on next segment
+    # Replace __ with placeholder to mark where _ nodes should be inserted
     placeholder = "\x00"
-    escaped = nickname.replace("__", "_" + placeholder)
+    temp = nickname.replace("__", placeholder)
 
     segments = []
-    for part in escaped.split("_"):
-        # Restore underscores from placeholder
-        part = part.replace(placeholder, "_")
+    for part in temp.split("_"):
         if not part:
             continue
-        if match := _ARRAY_PATTERN.match(part):
-            segments.append((match.group(1), int(match.group(2))))
-        else:
-            segments.append((part, None))
+        # Each placeholder in the part represents a _ segment
+        subparts = part.split(placeholder)
+        for i, subpart in enumerate(subparts):
+            if i > 0:
+                # This was preceded by __, so insert _ segment
+                segments.append(("_", None))
+            if not subpart:
+                continue
+            if match := _ARRAY_PATTERN.match(subpart):
+                segments.append((match.group(1), int(match.group(2))))
+            else:
+                segments.append((subpart, None))
     return segments
 
 
@@ -144,6 +158,70 @@ def _mark_array_nodes(node: TreeNode) -> None:
             child.is_array = True
 
 
+def _interleave_timer_entries(
+    entries: list[tuple[str, int, str, int]],
+) -> list[tuple[str, int, str, int]]:
+    """Reorder entries to interleave T/TD and CT/CTD pairs by address.
+
+    For each T address, the corresponding TD address follows immediately.
+    Same for CT/CTD pairs. Other memory types are unaffected.
+
+    Example: T1, T2, TD1, TD2 -> T1, TD1, T2, TD2
+    """
+    # Build lookup for TD and CTD entries by address
+    td_by_addr: dict[int, tuple[str, int, str, int]] = {}
+    ctd_by_addr: dict[int, tuple[str, int, str, int]] = {}
+
+    result: list[tuple[str, int, str, int]] = []
+    deferred_td: list[tuple[str, int, str, int]] = []
+    deferred_ctd: list[tuple[str, int, str, int]] = []
+
+    # First pass: collect TD and CTD entries
+    for entry in entries:
+        memory_type = entry[0]
+        address = entry[1]
+        if memory_type == "TD":
+            td_by_addr[address] = entry
+        elif memory_type == "CTD":
+            ctd_by_addr[address] = entry
+
+    # Second pass: build interleaved result
+    seen_td: set[int] = set()
+    seen_ctd: set[int] = set()
+
+    for entry in entries:
+        memory_type = entry[0]
+        address = entry[1]
+
+        if memory_type == "TD":
+            # Will be inserted after corresponding T, or at end if no T
+            if address not in seen_td:
+                deferred_td.append(entry)
+            continue
+        elif memory_type == "CTD":
+            # Will be inserted after corresponding CT, or at end if no CT
+            if address not in seen_ctd:
+                deferred_ctd.append(entry)
+            continue
+
+        result.append(entry)
+
+        # If this is T, insert corresponding TD right after
+        if memory_type == "T" and address in td_by_addr:
+            result.append(td_by_addr[address])
+            seen_td.add(address)
+        # If this is CT, insert corresponding CTD right after
+        elif memory_type == "CT" and address in ctd_by_addr:
+            result.append(ctd_by_addr[address])
+            seen_ctd.add(address)
+
+    # Append any TD/CTD entries that didn't have a corresponding T/CT
+    result.extend(deferred_td)
+    result.extend(deferred_ctd)
+
+    return result
+
+
 def build_tree(entries: list[tuple[str, int, str, int]]) -> TreeNode:
     """Build tree structure from nickname entries.
 
@@ -154,6 +232,9 @@ def build_tree(entries: list[tuple[str, int, str, int]]) -> TreeNode:
     Returns:
         Root TreeNode containing the full tree structure.
     """
+    # Interleave T/TD and CT/CTD pairs so related timers are adjacent
+    entries = _interleave_timer_entries(entries)
+
     root = TreeNode()
 
     for memory_type, address, nickname, addr_key in entries:
@@ -205,11 +286,34 @@ def _extract_leaf_info(
     return (memory_type, address), addr_key
 
 
+def _sort_children_underscore_last(child_order: list[str]) -> list[str]:
+    """Sort children so underscore nodes come last, preserving order otherwise."""
+    regular = [name for name in child_order if name != "_"]
+    underscores = [name for name in child_order if name == "_"]
+    return regular + underscores
+
+
+def _is_single_element_array(node: TreeNode) -> tuple[str, TreeNode] | None:
+    """Check if node is an array with exactly one numeric child and no others.
+
+    Returns (number, grandchild) if it should be collapsed, None otherwise.
+    """
+    if not node.is_array:
+        return None
+    # Must have exactly one child, and it must be numeric
+    if len(node.children) != 1:
+        return None
+    only_child_name = node.child_order[0]
+    if not only_child_name.isdigit():
+        return None
+    return only_child_name, node.children[only_child_name]
+
+
 def _flatten_node(node: TreeNode, depth: int, items: list[DisplayItem]) -> None:
     """Recursively flatten a node and its children."""
-    for name in node.child_order:
+    sorted_children = _sort_children_underscore_last(node.child_order)
+    for name in sorted_children:
         child = node.children[name]
-        display = f"{name}{_get_array_range(child)}" if child.is_array else name
 
         # Rule 3: collapse array index with single leaf child
         if name.isdigit():
@@ -218,7 +322,7 @@ def _flatten_node(node: TreeNode, depth: int, items: list[DisplayItem]) -> None:
                 leaf_tuple, addr_key = _extract_leaf_info(leaf_child.leaf)
                 items.append(
                     DisplayItem(
-                        text=f"{name} {child_name}",
+                        text=f"{name}_{child_name}",
                         depth=depth,
                         leaf=leaf_tuple,
                         has_children=False,
@@ -227,46 +331,214 @@ def _flatten_node(node: TreeNode, depth: int, items: list[DisplayItem]) -> None:
                 )
                 continue
 
-        # Rule 5: collapse single-child chains
-        current_path = [display]
-        collapse_node = child
+        # Rule 4: Handle array nodes with mixed content (leaf + numeric + non-numeric children)
+        if child.is_array:
+            numeric_children = [k for k in child.child_order if k.isdigit()]
+            non_numeric_children = [k for k in child.child_order if not k.isdigit()]
 
-        while len(collapse_node.children) == 1 and collapse_node.leaf is None:
-            only_name = collapse_node.child_order[0]
-            only_child = collapse_node.children[only_name]
-            if only_name.isdigit():
-                break
-            segment = (
-                f"{only_name}{_get_array_range(only_child)}" if only_child.is_array else only_name
+            # If the array node itself is also a leaf, emit that first as separate item
+            if child.leaf is not None:
+                leaf_tuple, addr_key = _extract_leaf_info(child.leaf)
+                items.append(
+                    DisplayItem(
+                        text=name,
+                        depth=depth,
+                        leaf=leaf_tuple,
+                        has_children=False,
+                        addr_key=addr_key,
+                    )
+                )
+
+            # Emit the array portion with numeric children
+            if numeric_children:
+                # Check for single-element array
+                if len(numeric_children) == 1 and not non_numeric_children and child.leaf is None:
+                    # Single element, no other content - collapse
+                    num = numeric_children[0]
+                    _flatten_child_with_prefix(f"{name}{num}", child.children[num], depth, items)
+                else:
+                    # Multi-element or mixed - show array brackets
+                    array_range = _get_array_range(child)
+                    items.append(
+                        DisplayItem(
+                            text=f"{name}{array_range}",
+                            depth=depth,
+                            leaf=None,
+                            has_children=True,
+                            addr_key=None,
+                        )
+                    )
+                    # Flatten only numeric children under the array
+                    for num_name in numeric_children:
+                        num_child = child.children[num_name]
+                        _flatten_array_index(num_name, num_child, depth + 1, items)
+
+            # Emit non-numeric children separately, collapsed with parent name
+            for non_num_name in _sort_children_underscore_last(non_numeric_children):
+                non_num_child = child.children[non_num_name]
+                _flatten_child_with_prefix(f"{name}_{non_num_name}", non_num_child, depth, items)
+            continue
+
+        # Non-array nodes: use standard collapse logic
+        _flatten_child_with_prefix(name, child, depth, items)
+
+
+def _flatten_array_index(name: str, child: TreeNode, depth: int, items: list[DisplayItem]) -> None:
+    """Flatten an array index (numeric child) with its content."""
+    if collapse_info := _get_collapsible_leaf(child):
+        child_name, leaf_child = collapse_info
+        leaf_tuple, addr_key = _extract_leaf_info(leaf_child.leaf)
+        items.append(
+            DisplayItem(
+                text=f"{name}_{child_name}",
+                depth=depth,
+                leaf=leaf_tuple,
+                has_children=False,
+                addr_key=addr_key,
             )
+        )
+    elif child.leaf is not None and not child.children:
+        # Pure leaf
+        leaf_tuple, addr_key = _extract_leaf_info(child.leaf)
+        items.append(
+            DisplayItem(
+                text=name,
+                depth=depth,
+                leaf=leaf_tuple,
+                has_children=False,
+                addr_key=addr_key,
+            )
+        )
+    else:
+        # Has children, recurse
+        items.append(
+            DisplayItem(
+                text=name,
+                depth=depth,
+                leaf=None,
+                has_children=True,
+                addr_key=None,
+            )
+        )
+        _flatten_node(child, depth + 1, items)
+
+
+def _has_mixed_array_content(node: TreeNode) -> bool:
+    """Check if an array node has content that requires separate handling.
+
+    Returns True if the node is an array AND has any of:
+    - A leaf value (the base name is itself an address)
+    - Non-numeric children (siblings to the array indices)
+    """
+    if not node.is_array:
+        return False
+    if node.leaf is not None:
+        return True
+    return any(not k.isdigit() for k in node.children)
+
+
+def _flatten_child_with_prefix(
+    prefix: str, node: TreeNode, depth: int, items: list[DisplayItem]
+) -> None:
+    """Flatten a node, collapsing single-child chains into the prefix."""
+    current_path = [prefix]
+    collapse_node = node
+
+    while len(collapse_node.children) == 1 and collapse_node.leaf is None:
+        only_name = collapse_node.child_order[0]
+        only_child = collapse_node.children[only_name]
+        if only_name.isdigit():
+            break
+        # Stop collapsing if we hit an array with mixed content - needs special handling
+        if _has_mixed_array_content(only_child):
+            current_path.append(only_name)
+            collapse_node = only_child
+            break
+        # Check for single-element array within collapse chain
+        if single_elem := _is_single_element_array(only_child):
+            num, grandchild = single_elem
+            segment = f"{only_name}{num}"
+            current_path.append(segment)
+            collapse_node = grandchild
+        elif only_child.is_array:
+            segment = f"{only_name}{_get_array_range(only_child)}"
             current_path.append(segment)
             collapse_node = only_child
-
-        text = " ".join(current_path)
-        is_pure_leaf = collapse_node.leaf is not None and not collapse_node.children
-        leaf_tuple, addr_key = _extract_leaf_info(collapse_node.leaf)
-
-        if is_pure_leaf:
-            items.append(
-                DisplayItem(
-                    text=f"{text}",
-                    depth=depth,
-                    leaf=leaf_tuple,
-                    has_children=False,
-                    addr_key=addr_key,
-                )
-            )
         else:
-            items.append(
-                DisplayItem(
-                    text=text,
-                    depth=depth,
-                    leaf=leaf_tuple,
-                    has_children=True,
-                    addr_key=addr_key,
-                )
+            current_path.append(only_name)
+            collapse_node = only_child
+
+    text = "_".join(current_path)
+
+    # If we stopped at an array with mixed content, handle it specially
+    if _has_mixed_array_content(collapse_node):
+        _flatten_mixed_array(text, collapse_node, depth, items)
+        return
+
+    is_pure_leaf = collapse_node.leaf is not None and not collapse_node.children
+    leaf_tuple, addr_key = _extract_leaf_info(collapse_node.leaf)
+
+    if is_pure_leaf:
+        items.append(
+            DisplayItem(
+                text=text,
+                depth=depth,
+                leaf=leaf_tuple,
+                has_children=False,
+                addr_key=addr_key,
             )
-            _flatten_node(collapse_node, depth + 1, items)
+        )
+    else:
+        items.append(
+            DisplayItem(
+                text=text,
+                depth=depth,
+                leaf=leaf_tuple,
+                has_children=True,
+                addr_key=addr_key,
+            )
+        )
+        _flatten_node(collapse_node, depth + 1, items)
+
+
+def _flatten_mixed_array(name: str, node: TreeNode, depth: int, items: list[DisplayItem]) -> None:
+    """Flatten an array node with mixed content (leaf, numeric, non-numeric children)."""
+    numeric_children = [k for k in node.child_order if k.isdigit()]
+    non_numeric_children = [k for k in node.child_order if not k.isdigit()]
+
+    # If the array node itself is also a leaf, emit that first
+    if node.leaf is not None:
+        leaf_tuple, addr_key = _extract_leaf_info(node.leaf)
+        items.append(
+            DisplayItem(
+                text=name,
+                depth=depth,
+                leaf=leaf_tuple,
+                has_children=False,
+                addr_key=addr_key,
+            )
+        )
+
+    # Emit the array portion with numeric children
+    if numeric_children:
+        array_range = _get_array_range(node)
+        items.append(
+            DisplayItem(
+                text=f"{name}{array_range}",
+                depth=depth,
+                leaf=None,
+                has_children=True,
+                addr_key=None,
+            )
+        )
+        for num_name in numeric_children:
+            num_child = node.children[num_name]
+            _flatten_array_index(num_name, num_child, depth + 1, items)
+
+    # Emit non-numeric children separately, collapsed with parent name
+    for non_num_name in _sort_children_underscore_last(non_numeric_children):
+        non_num_child = node.children[non_num_name]
+        _flatten_child_with_prefix(f"{name}_{non_num_name}", non_num_child, depth, items)
 
 
 def flatten_tree(node: TreeNode) -> list[DisplayItem]:
