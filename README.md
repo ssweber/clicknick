@@ -1,6 +1,7 @@
 ![clicknick_logo](https://github.com/user-attachments/assets/2cb7f411-3174-478c-a6c9-409aaa788376)
 
-# ClickNick: Modern IDE Features for Automation Direct CLICK PLC Programming. 
+# ClickNick
+*Modern IDE Features for Automation Direct CLICK PLC Programming.*
   
 ClickNick adds autocomplete, bulk editing, and visual organization tools to CLICK Programming Software.
 
