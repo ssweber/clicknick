@@ -50,15 +50,18 @@ class OutlinePanel(ttk.Frame):
         """Handle double-click on tree item."""
         if selection := self.tree.selection():
             iid = selection[0]
-            if leaf_data := self._leaf_data.get(iid):
-                # Single leaf node - use normal callback
-                memory_type, address = leaf_data
-                self.on_address_select(memory_type, address)
-            elif self.on_batch_select:
-                # Parent node - collect all leaves and use batch callback
+            has_leaf = iid in self._leaf_data
+            has_children = bool(self.tree.get_children(iid))
+
+            if has_children and self.on_batch_select:
+                # Has children - use batch callback (includes self if also a leaf)
                 leaves = self._get_all_leaves_under(iid)
                 if leaves:
                     self.on_batch_select(leaves)
+            elif has_leaf:
+                # Pure leaf node - use single callback
+                memory_type, address = self._leaf_data[iid]
+                self.on_address_select(memory_type, address)
 
     def _create_widgets(self) -> None:
         """Create the treeview widget."""
