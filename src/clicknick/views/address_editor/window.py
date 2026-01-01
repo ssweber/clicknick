@@ -453,7 +453,7 @@ class AddressEditorWindow(tk.Toplevel):
             tag = f"<{block_name}{bg_attr} />"
             existing_comment = first_row.comment
             if existing_comment:
-                first_row.comment = f"{tag} {existing_comment}"
+                first_row.comment = f"{existing_comment} {tag}"
             else:
                 first_row.comment = tag
         else:
@@ -464,14 +464,14 @@ class AddressEditorWindow(tk.Toplevel):
             # Add opening tag to first row
             existing_first = first_row.comment
             if existing_first:
-                first_row.comment = f"{open_tag} {existing_first}"
+                first_row.comment = f"{existing_first} {open_tag}"
             else:
                 first_row.comment = open_tag
 
             # Add closing tag to last row
             existing_last = last_row.comment
             if existing_last:
-                last_row.comment = f"{close_tag} {existing_last}"
+                last_row.comment = f"{existing_last} {close_tag}"
             else:
                 last_row.comment = close_tag
 
