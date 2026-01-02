@@ -94,6 +94,7 @@ src/clicknick/
 - `address_editor/` - Multi-window editor for PLC addresses
   - `window.py` - Main AddressEditorWindow
   - `panel.py` - AddressPanel (tksheet-based) for each memory type
+  - `sheet.py` - AddressEditorSheet (Custom tksheet Sheet subclass)
   - `view_builder.py` - TypeView construction for shared display data
   - `jump_sidebar.py` - JumpSidebar for quick navigation
   - `row_styler.py` - Visual styling for validation, dirty tracking, blocks

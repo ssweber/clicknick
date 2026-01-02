@@ -383,6 +383,8 @@ class DataviewPanel(ttk.Frame):
             "sort_column",
             "sort_rows",
             "sort_columns",
+            "find",
+            "replace",
         )
 
         # Set column widths

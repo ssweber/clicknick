@@ -75,7 +75,7 @@ Exclusion filters – Hide system or internal addresses (e.g., SC/SD, `__private
 
 Multi-window – Edit different address sections simultaneously  
 Bulk editing – Edit before saving, copy/paste multiple cells, live duplicate detection and validation  
-Search & Replace (Ctrl+F / Ctrl+R) – With Find in Selection toggle  
+Search & Replace (Ctrl+F / Ctrl+R) – With `Find in Selection` toggle and Regex support
 Custom blocks – Drag to create color-coded groups for organization and quick navigation  
 
 ![Address Editor demo](https://github.com/user-attachments/assets/4aa6fd2f-f6f8-4921-aba3-7f16e51b95ce)
@@ -85,9 +85,9 @@ Custom blocks – Drag to create color-coded groups for organization and quick n
 > Existing ladder logic refreshes after editing via the built-in Address Picker (Ctrl+T) or reopening the project.  
 > See issue https://github.com/ssweber/clicknick/issues/36
 
-> **⚠️ Search & Replace Behavior**  
-> Replace affects all *visible* columns. Hidden columns (Initial Value, Retentive) are only modified if you make them visible first. Use "Find in Selection" to limit scope.
-
+> **⚠️ Search & Replace**  
+> Case-sensitive, Nickname and Comment columns only. Regex supported (. = any char, .* = wildcard, (?i) = case-insensitive).
+> See https://regex101.com - Interactive tester with real-time explanations.
 ---
 
 ### <a name="tag-browser"></a>📑 Tag Browser
