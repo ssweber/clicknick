@@ -125,7 +125,7 @@ Project integration – Loads all DataViews (.cdv files) from your CLICK project
 Nickname lookup – Add addresses by typing nicknames instead of raw addresses  
 Drag-and-drop reordering – Rearrange rows freely with cut/paste support  
 Flexible row limit – No hard 100-row limit while organizing; overflow rows shown in grey (excluded from save)  
-Navigator integration – Double-click nicknames or entire structures from the Outline/Blocks panel to insert  
+Tag browser integration – Double-click nicknames or entire structures from the Outline/Blocks panel to insert  
 
 ---
 
