@@ -6,7 +6,7 @@
 
 **ClickNick** lets you program using nicknames instead of raw memory addresses. It provides autocomplete that appears over CLICK instruction dialogs, plus standalone editors that sync with your project.
 
-> **Terminology Note:** CLICK software uses "Nicknames" for what other PLC platforms call "Tags" or "Symbols." This document uses: **Nickname = Tag** and **Address = Raw Memory Reference** (e.g., `C123`).
+*In CLICK, Nicknames = Tags. Addresses = raw memory (`C123`).*
 
 | | Standard CLICK | ClickNick |
 |---|---|---|
