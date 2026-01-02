@@ -2,24 +2,30 @@
 
 ![clicknick_logo](https://github.com/user-attachments/assets/2cb7f411-3174-478c-a6c9-409aaa788376)
 
-*Modern IDE Features for Automation Direct CLICK PLC Programming.*
-  
-ClickNick adds autocomplete, bulk editing, and visual organization tools to CLICK Programming Software.
+*Tag-Based Programming for Automation Direct CLICK PLCs.*
+
+**ClickNick** lets you program using nicknames instead of raw memory addresses. It provides autocomplete that appears over CLICK instruction dialogs, plus standalone editors that sync with your project.
+
+> **Terminology Note:** CLICK software uses "Nicknames" for what other PLC platforms call "Tags" or "Symbols." This document uses: **Nickname = Tag** and **Address = Raw Memory Reference** (e.g., `C123`).
 
 | | Standard CLICK | ClickNick |
 |---|---|---|
-| **Instruction Entry** | Type addresses `C123` | ✅ **Autocomplete** nicknames |
+| **Ladder Logic Editor** | Type addresses `C123` | ✅ **Autocomplete** nicknames |
 | **Address Editing** | One-by-one in app | ✅ **Bulk edit**, multi-window, search/replace |
-| **Organization** | Flat list | ✅ **Color named blocks** + **tree outline** (hierarchy & arrays) |
+| **Tag Organization** | Flat list | ✅ **Color named blocks** + **tree outline** (hierarchy & arrays) |
 | **DataView** | Input raw addresses, limited reordering | ✅ **Autocomplete**, add entire grouped structures and blocks, drag and drop reordering |
 | **Price** | Free (bundled) | Free (open source) |
 | **Best For** | Simple projects | Complex projects, productivity |
+
+### Why ClickNick?
+
+CLICK PLCs were my first PLC experience, but remembering addresses became painful. Other platforms autocomplete—why not CLICK? ClickNick adds the modern tools I wish I'd had.
 
 ## Features at a Glance
 
 - **[✨ Nickname Autocomplete](#autocomplete)** – Type `Valve5` instead of `C123`, with smart filters and hover tooltips
 - **[🛠️ Modern Address Editor](#address-editor)** – Bulk edit with search/replace, color-coded blocks, multi-window support
-- **[📑 Navigation Dock](#navigation-dock)** – Tree view with automatic hierarchy and array grouping
+- **[📑 Tag Browser](#tag-browser)** – Tree view with automatic hierarchy and array grouping
 - **[📊 Dataview Editor](#dataview-editor)** – Tabbed interface, nickname lookup, unlimited reordering
 - **[🔌 Connectivity](#connectivity)** – CSV import and live ODBC database support
 
@@ -31,7 +37,7 @@ ClickNick adds autocomplete, bulk editing, and visual organization tools to CLIC
 
 - **OS:** Windows 10 or 11
 - **CLICK Software:** v2.60–v3.80 ([download here](https://www.automationdirect.com/clickplcs/free-software/free-click-software))
-- **ODBC Drivers:** Microsoft Access Database Engine (for live DB connection; [install link](https://github.com/ssweber/clicknick/issues/17))
+- **ODBC Drivers:** Microsoft Access Database Engine ([install link](https://github.com/ssweber/clicknick/issues/17)) – *only needed for live DB sync; CSV import works without drivers*
 - **Python:** 3.11+ (only if using pip; uv manages Python automatically)
 
 ## Quick Start
@@ -56,9 +62,11 @@ python -m clicknick
 
 ### <a name="autocomplete"></a>✨ Nickname Autocomplete
 
-Skip the addresses – Select Valve5 instead of typing C123  
-Flexible filters – Prefix, partial match/contains, or abbreviation (e.g., Motor Speed ↔ Mtr_Spd)  
-Hover tooltips – View address comments at a glance  
+**How it works:** An autocomplete dropdown appears over CLICK instruction dialogs. Start typing a nickname and select from the filtered list—the address is inserted automatically.
+
+Skip the addresses – Select Valve5 instead of typing C123
+Flexible filters – Prefix, partial match/contains, or abbreviation (e.g., Motor Speed ↔ Mtr_Spd)
+Hover tooltips – View address comments at a glance
 Exclusion filters – Hide system or internal addresses (e.g., SC/SD, `__private__`)
 
 ![ClickNick autocomplete demo](https://github.com/user-attachments/assets/0275dcf4-6d79-4775-8763-18b13e8fd3a3)  
@@ -84,7 +92,7 @@ Custom blocks – Drag to create color-coded groups for organization and quick n
 
 ---
 
-### <a name="navigation-dock"></a>📑 Navigation Dock
+### <a name="tag-browser"></a>📑 Tag Browser
 
 Navigate large projects – See all your nicknames in an organized tree view  
 Spot patterns – Arrays and related items grouped automatically  
@@ -130,7 +138,8 @@ Navigator integration – Double-click nicknames or entire structures from the O
 
 ---
 
-## Block Tag Specification
+<details>
+<summary><strong>Block Tag Specification</strong> (Advanced)</summary>
 
 > **Note:** The Address Editor provides buttons to create and manage blocks. This section documents the underlying format for power users.
 
@@ -146,8 +155,5 @@ Add tags in the Comment field to create visual blocks:
 
 Example: `<Alm Bits bg="Red">` ... `</Alm Bits>`
 
----
+</details>
 
-## Motivation
-
-CLICK PLCs were my first PLC experience, but remembering addresses became painful. Other platforms autocomplete—why not CLICK? ClickNick adds the modern tools I wish I'd had.

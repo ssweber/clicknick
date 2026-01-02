@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Overlay** – Positions a combobox over instruction dialog edit controls for nickname autocomplete
 - **Address Editor** – Multi-window tksheet-based editor with search/replace, block tagging, validation
-- **Navigation Dock** – Treeview of nicknames parsed by underscore segments and array indices
+- **Tag Browser** – Treeview of nicknames parsed by underscore segments and array indices
 - **Dataview Editor** – Edits .cdv files with nickname lookup from shared address data
 
 ## Prerequisites
@@ -60,7 +60,7 @@ src/clicknick/
 ├── views/                 # Windows and panels
 │   ├── address_editor/    # Address Editor views
 │   ├── dataview_editor/   # Dataview Editor views
-│   └── nav_window/        # Navigation window (outline, blocks)
+│   └── nav_window/        # Tag Browser (outline, blocks)
 ├── widgets/               # Reusable UI components
 ├── detection/             # Window detection for Click.exe
 └── resources/             # Icons and static assets
@@ -101,8 +101,8 @@ src/clicknick/
   - `window.py` - DataviewEditorWindow with file list sidebar
   - `panel.py` - DataviewPanel (tksheet-based) for editing
   - `cdv_file.py` - CDV file I/O (UTF-16 CSV format)
-- `nav_window/` - Floating navigation window
-  - `window.py` - NavWindow that docks to parent
+- `nav_window/` - Tag Browser window
+  - `window.py` - NavWindow (Tag Browser) that docks to parent
   - `outline_panel.py` - Hierarchical treeview of nicknames by underscore segments
   - `outline_logic.py` - Tree building logic (segment parsing, array detection)
   - `block_panel.py` - Block navigation from `<Block>` tags in comments
@@ -167,7 +167,7 @@ Block tags are added in the Comment field to create visual blocks in the Address
 
 Example: `<Alm Bits bg="Red">` ... `</Alm Bits>`
 
-## Navigation Dock Logic
+## Tag Browser Logic
 
 **Hierarchy:** Single underscores create tree levels.
 - `SupplyTank_Pump_Status` → `SupplyTank` > `Pump` > `Status`

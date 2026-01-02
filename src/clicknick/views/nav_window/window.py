@@ -74,7 +74,7 @@ class NavWindow(tk.Toplevel):
     def _on_close(self) -> None:
         self.withdraw()
         if hasattr(self.parent_window, "nav_btn"):
-            self.parent_window.nav_btn.configure(text="Outline >>")
+            self.parent_window.nav_btn.configure(text="Tag Browser >>")
 
     def __init__(
         self,
@@ -91,7 +91,7 @@ class NavWindow(tk.Toplevel):
         """
         super().__init__(parent)
         self.parent_window = parent
-        self.title("Navigation")
+        self.title("Tag Browser")
         self.resizable(True, True)
         self.transient(parent)
 

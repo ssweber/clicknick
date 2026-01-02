@@ -588,17 +588,17 @@ class AddressEditorWindow(tk.Toplevel):
                 on_address_select=self._on_outline_address_select,
             )
             self._refresh_navigation()
-            self.nav_btn.configure(text="Navigation <<")
+            self.nav_btn.configure(text="<< Tag Browser")
         elif self._nav_window.winfo_viewable():
             # Hide it
             self._nav_window.withdraw()
-            self.nav_btn.configure(text="Navigation >>")
+            self.nav_btn.configure(text="Tag Browser >>")
         else:
             # Show it
             self._refresh_navigation()
             self._nav_window.deiconify()
             self._nav_window._dock_to_parent()
-            self.nav_btn.configure(text="Navigation <<")
+            self.nav_btn.configure(text="<< Tag Browser")
 
     def _create_widgets(self) -> None:
         """Create all window widgets."""
@@ -646,8 +646,8 @@ class AddressEditorWindow(tk.Toplevel):
         # Create tooltip for the button
         self._create_tooltip(self.add_block_btn, "Click & drag memory addresses to define block")
 
-        # Outline toggle button
-        self.nav_btn = ttk.Button(footer, text="Navigation >>", command=self._toggle_nav)
+        # Tag Browser toggle button
+        self.nav_btn = ttk.Button(footer, text="Tag Browser >>", command=self._toggle_nav)
         self.nav_btn.pack(side=tk.RIGHT, padx=(5, 0))
 
         # Save button

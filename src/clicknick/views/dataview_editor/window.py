@@ -571,17 +571,17 @@ class DataviewEditorWindow(tk.Toplevel):
                 on_batch_select=self._on_nav_batch_insert,
             )
             self._refresh_navigation()
-            self.nav_btn.configure(text="<< Navigator")
+            self.nav_btn.configure(text="<< Tag Browser")
         elif self._nav_window.winfo_viewable():
             # Hide it
             self._nav_window.withdraw()
-            self.nav_btn.configure(text=">> Navigator")
+            self.nav_btn.configure(text="Tag Browser >>")
         else:
             # Show it
             self._refresh_navigation()
             self._nav_window.deiconify()
             self._nav_window._dock_to_parent()
-            self.nav_btn.configure(text="<< Navigator")
+            self.nav_btn.configure(text="<< Tag Browser")
 
     def _create_widgets(self) -> None:
         """Create the main UI widgets."""
@@ -654,8 +654,8 @@ class DataviewEditorWindow(tk.Toplevel):
             side=tk.LEFT, padx=(0, 5)
         )
 
-        # Navigator toggle button (right side)
-        self.nav_btn = ttk.Button(toolbar, text=">> Navigator", command=self._toggle_nav)
+        # Tag Browser toggle button (right side)
+        self.nav_btn = ttk.Button(toolbar, text="Tag Browser >>", command=self._toggle_nav)
         self.nav_btn.pack(side=tk.RIGHT)
 
         # Notebook for tabs (with close buttons)
