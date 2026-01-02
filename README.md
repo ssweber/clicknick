@@ -45,7 +45,7 @@ CLICK PLCs were my first PLC experience, but remembering addresses became painfu
 ### Option 1: uv (recommended)
 ```bash
 uvx clicknick@latest              # Try it without installing
-uv tool install clicknick         # Install for offline use
+uv tool install clicknick         # Install for offline use, update with `uv tool update clicknick`
 clicknick                         # Run (command line or Start Menu)
 ```
 New to uv? See [installation instructions](https://github.com/astral-sh/uv#installation).  
