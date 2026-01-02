@@ -6,8 +6,6 @@
 
 **ClickNick** lets you program using nicknames instead of raw memory addresses. It provides autocomplete that appears over CLICK instruction dialogs, plus standalone editors that sync with your project.
 
-*In CLICK, Nicknames = Tags. Addresses = raw memory (`C123`).*
-
 | | Standard CLICK | ClickNick |
 |---|---|---|
 | **Ladder Logic Editor** | Type addresses `C123` | ✅ **Autocomplete** nicknames |
