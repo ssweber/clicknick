@@ -9,11 +9,14 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..models.address_row import AddressRow
 from ..models.blocktag import parse_block_tag
 from .data_source import DataSource
+
+if TYPE_CHECKING:
+    from ..views.address_editor.view_builder import UnifiedView
 
 # File monitoring interval in milliseconds
 FILE_MONITOR_INTERVAL_MS = 2000
@@ -102,6 +105,9 @@ class SharedAddressData:
         # Cached views by type key (e.g., "X", "T/TD")
         self._views: dict[str, TypeView] = {}
 
+        # Cached unified view (all memory types in one view)
+        self._unified_view: UnifiedView | None = None
+
     @property
     def supports_used_field(self) -> bool:
         """Check if the data source supports the 'Used' field."""
@@ -138,6 +144,31 @@ class SharedAddressData:
             view: The TypeView to cache
         """
         self._views[type_key] = view
+
+    # --- Unified View Management ---
+
+    def get_unified_view(self) -> UnifiedView | None:
+        """Get the cached unified view (all memory types).
+
+        Returns:
+            UnifiedView if cached, None otherwise
+        """
+        return self._unified_view
+
+    def set_unified_view(self, view: UnifiedView) -> None:
+        """Store the unified view.
+
+        Args:
+            view: The UnifiedView to cache
+        """
+        self._unified_view = view
+
+    def invalidate_unified_view(self) -> None:
+        """Invalidate the cached unified view.
+
+        Call this when data changes to force rebuild on next access.
+        """
+        self._unified_view = None
 
     def register_window(self, window) -> None:
         """Register an editor window for tracking.
@@ -230,6 +261,9 @@ class SharedAddressData:
             sender: The object that triggered the change (allows observers
                     to skip processing if they are the sender)
         """
+        # Invalidate unified view cache since data has changed
+        self.invalidate_unified_view()
+
         for callback in self._observers:
             try:
                 callback(sender)
@@ -488,8 +522,9 @@ class SharedAddressData:
             end_addr is None for self-closing (singular) blocks.
             bg_color is None if not specified in the tag.
         """
-
-        rows = self.rows_by_type.get(memory_type)
+        # Filter unified view rows by memory_type
+        unified_rows = self.rows_by_type.get("unified", [])
+        rows = [r for r in unified_rows if r.memory_type == memory_type]
         if not rows:
             return []
 
@@ -646,28 +681,31 @@ class SharedAddressData:
         """Get count of modified rows for a specific memory type.
 
         Args:
-            memory_type: The memory type (X, Y, C, etc.) or combined type (T/TD, CT/CTD)
+            memory_type: The memory type (X, Y, C, etc.)
 
         Returns:
             Count of dirty rows for this type
         """
-        # Rows are stored under the exact key (including combined types like "T/TD")
-        rows = self.rows_by_type.get(memory_type, [])
-        return sum(1 for row in rows if row.is_dirty)
+        # Use unified view rows (the actual rows being edited), not all_rows
+        rows = self.rows_by_type.get("unified", [])
+        return sum(1 for row in rows if row.memory_type == memory_type and row.is_dirty)
 
     def get_error_count_for_type(self, memory_type: str) -> int:
         """Get count of rows with errors for a specific memory type.
 
         Args:
-            memory_type: The memory type (X, Y, C, etc.) or combined type (T/TD, CT/CTD)
+            memory_type: The memory type (X, Y, C, etc.)
 
         Returns:
             Count of rows with validation errors for this type
         """
-        # Rows are stored under the exact key (including combined types like "T/TD")
-        rows = self.rows_by_type.get(memory_type, [])
+        # Use unified view rows (the actual rows being edited), not all_rows
+        rows = self.rows_by_type.get("unified", [])
         return sum(
             1
             for row in rows
-            if not row.is_valid and not row.is_empty and not row.should_ignore_validation_error
+            if row.memory_type == memory_type
+            and not row.is_valid
+            and not row.is_empty
+            and not row.should_ignore_validation_error
         )

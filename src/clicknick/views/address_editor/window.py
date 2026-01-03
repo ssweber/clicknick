@@ -1,7 +1,7 @@
 """Main window for the Address Editor.
 
-Multi-panel editor for viewing, creating, and editing PLC address nicknames.
-Mimics the Click PLC Address Picker UI with sidebar navigation.
+Tabbed editor for viewing, creating, and editing PLC address nicknames.
+Each tab displays all memory types in a unified view.
 """
 
 from __future__ import annotations
@@ -9,14 +9,28 @@ from __future__ import annotations
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
+from typing import TYPE_CHECKING
 
 from ...data.shared_data import SharedAddressData
-from ...models.blocktag import parse_block_tag, strip_block_tag
+
+if TYPE_CHECKING:
+    from ...models.address_row import AddressRow
+
+from ...models.address_row import get_addr_key
+from ...models.blocktag import (
+    PAIRED_BLOCK_TYPES,
+    parse_block_tag,
+    strip_block_tag,
+    validate_block_span,
+)
 from ...widgets.add_block_dialog import AddBlockDialog
+from ...widgets.custom_notebook import CustomNotebook
+from ...widgets.new_tab_dialog import ask_new_tab
 from ..nav_window.window import NavWindow
 from .jump_sidebar import COMBINED_TYPES, JumpSidebar
 from .panel import AddressPanel
-from .view_builder import build_type_view
+from .tab_state import TabState
+from .view_builder import build_unified_view
 
 
 class AddressEditorWindow(tk.Toplevel):
@@ -27,7 +41,7 @@ class AddressEditorWindow(tk.Toplevel):
         total_modified = self.shared_data.get_total_modified_count()
         total_errors = self.shared_data.get_total_error_count()
 
-        parts = [f"Panels: {len(self.panels)}"]
+        parts = [f"Tabs: {len(self._tabs)}"]
         if total_modified > 0:
             parts.append(f"Modified: {total_modified}")
         if total_errors > 0:
@@ -52,16 +66,10 @@ class AddressEditorWindow(tk.Toplevel):
 
         self._pending_revalidate = False
 
-        # Revalidate panels that weren't already validated in _on_sheet_modified
-        # Skip panels that were just edited (they validated themselves)
-        panels_to_validate = [
-            (type_name, panel)
-            for type_name, panel in self.panels.items()
-            if type_name not in self._recently_validated_panels
-        ]
-
-        for _type_name, panel in panels_to_validate:
-            panel.revalidate()
+        # Revalidate all tab panels that weren't already validated
+        for tab_id, (panel, _state) in self._tabs.items():
+            if tab_id not in self._recently_validated_panels:
+                panel.revalidate()
 
         # Clear the tracking set for next edit cycle
         self._recently_validated_panels.clear()
@@ -119,10 +127,21 @@ class AddressEditorWindow(tk.Toplevel):
         # Notify other windows (pass self so we skip our own notification)
         self.shared_data.notify_data_changed(sender=self)
 
-    def _hide_all_panels(self) -> None:
-        """Hide all panels from view."""
-        for panel in self.panels.values():
-            panel.pack_forget()
+    # --- Tab Management Methods ---
+
+    def _get_current_panel(self) -> AddressPanel | None:
+        """Get the panel in the currently selected tab.
+
+        Returns:
+            AddressPanel or None if no tabs exist.
+        """
+        try:
+            current = self.notebook.select()
+            if current and current in self._tabs:
+                return self._tabs[current][0]
+        except Exception:
+            pass
+        return None
 
     def _get_selected_row_indices(self) -> list[int]:
         """Get selected row indices from the current panel.
@@ -130,10 +149,10 @@ class AddressEditorWindow(tk.Toplevel):
         Returns:
             List of display row indices that are selected (sorted).
         """
-        if not self.current_type or self.current_type not in self.panels:
+        panel = self._get_current_panel()
+        if not panel:
             return []
 
-        panel = self.panels[self.current_type]
         sheet = panel.sheet
 
         # Get selected rows from tksheet (returns set of row indices)
@@ -154,7 +173,7 @@ class AddressEditorWindow(tk.Toplevel):
             self.add_block_btn.configure(state="disabled", text="+ Add Block")
             return
 
-        panel = self.panels.get(self.current_type)
+        panel = self._get_current_panel()
         if not panel:
             self.add_block_btn.configure(state="disabled", text="+ Add Block")
             return
@@ -183,103 +202,23 @@ class AddressEditorWindow(tk.Toplevel):
         # Bind to selection events to update Add Block button state
         panel.sheet.bind("<<SheetSelect>>", lambda e: self._update_add_block_button_state())
 
-    def _create_panel(self, type_name: str) -> bool:
-        """Create a panel for the given type.
-
-        Returns:
-            True if panel was created successfully
-        """
-        try:
-            # Check if this is a combined type
-            combined = COMBINED_TYPES.get(type_name)
-
-            panel = AddressPanel(
-                self.panel_container,
-                type_name,
-                combined_types=combined,
-                on_nickname_changed=self._handle_nickname_changed,
-                on_data_changed=self._handle_data_changed,
-                on_close=None,  # No close button in sidebar mode
-                on_validate_affected=self.shared_data.validate_affected_rows,
-                is_duplicate_fn=self.shared_data.is_duplicate_nickname,
-            )
-
-            # Load from data source if not initialized
-            if not self.shared_data.is_initialized():
-                self.shared_data.load_initial_data()
-
-            # Get nicknames from shared data
-            self.all_nicknames = self.shared_data.all_nicknames
-
-            # Check for existing TypeView (from another window/panel)
-            existing_view = self.shared_data.get_view(type_name)
-
-            if existing_view is not None:
-                # Use existing shared view - rows are already built
-                panel.initialize_from_view(existing_view.rows, self.all_nicknames)
-            else:
-                # Build new view using view_builder
-                view = build_type_view(
-                    all_rows=self.shared_data.all_rows,
-                    type_key=type_name,
-                    all_nicknames=self.all_nicknames,
-                    combined_types=combined,
-                )
-
-                # Store view in shared data for other windows/panels
-                self.shared_data.set_view(type_name, view)
-                self.shared_data.set_rows(type_name, view.rows)
-
-                # Load panel from view
-                panel.initialize_from_view(view.rows, self.all_nicknames)
-
-            self.panels[type_name] = panel
-
-            # Bind selection events to update Add Block button state
-            self._bind_panel_selection(panel)
-
-            return True
-
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to create panel: {e}", parent=self)
-            import traceback
-
-            traceback.print_exc()
-            return False
-
-    def _show_single_panel(self, type_name: str) -> None:
-        """Show a single panel, creating it if needed."""
-        self._hide_all_panels()
-
-        # Get or create the panel
-        if type_name not in self.panels:
-            if not self._create_panel(type_name):
-                return
-
-        # Show the panel using pack
-        self.panels[type_name].pack(fill=tk.BOTH, expand=True)
-
-        self._update_status()
-
-        # Reset Add Block button state (selection cleared on panel switch)
-        self._update_add_block_button_state()
-
     def _on_type_selected(self, type_name: str) -> None:
-        """Handle type button click - show/create panel for this type."""
-        self.sidebar.set_selected(type_name)
-        self.current_type = type_name
-        self._show_single_panel(type_name)
+        """Handle type button click - scroll to section in current tab."""
+        # Scroll current panel to the selected memory type section
+        panel = self._get_current_panel()
+        if panel and panel.is_unified:
+            panel.scroll_to_section(type_name)
 
     def _on_address_jump(self, type_name: str, address: int) -> None:
         """Handle address jump from submenu."""
-        # Panel should already be shown from button click
-        if type_name in self.panels:
-            # For combined types, figure out which sub-type to scroll to
+        panel = self._get_current_panel()
+        if panel and panel.is_unified:
+            # For combined types (T/TD, CT/CTD), use the first sub-type
             if type_name in COMBINED_TYPES:
-                # Just scroll to the address, panel will find it
-                self.panels[type_name].scroll_to_address(address, align_top=True)
+                mem_type = COMBINED_TYPES[type_name][0]
             else:
-                self.panels[type_name].scroll_to_address(address, align_top=True)
+                mem_type = type_name
+            panel.scroll_to_address(address, mem_type)
 
     def _has_unsaved_changes(self) -> bool:
         """Check if any panel has unsaved changes."""
@@ -303,8 +242,8 @@ class AddressEditorWindow(tk.Toplevel):
         try:
             count = self.shared_data.save_all_changes()
 
-            # Refresh local panels
-            for panel in self.panels.values():
+            # Refresh all tab panels
+            for _tab_id, (panel, _state) in self._tabs.items():
                 panel._refresh_display()
 
             self.status_var.set(f"Saved {count} changes")
@@ -314,7 +253,7 @@ class AddressEditorWindow(tk.Toplevel):
             messagebox.showerror("Save Error", str(e), parent=self)
 
     def _refresh_all(self) -> None:
-        """Refresh all panels from the database."""
+        """Refresh all tab panels from the database."""
         if self.shared_data.has_unsaved_changes():
             result = messagebox.askyesno(
                 "Unsaved Changes",
@@ -328,20 +267,25 @@ class AddressEditorWindow(tk.Toplevel):
             # Discard shared data - this will notify all windows
             self.shared_data.discard_all_changes()
 
-            # Clear local panels - they'll be recreated when selected
-            for panel in self.panels.values():
-                panel.destroy()
-            self.panels.clear()
-
             # Update local nicknames reference
             self.all_nicknames = self.shared_data.all_nicknames
 
+            # Rebuild unified view and refresh all tabs
+            unified_view = build_unified_view(
+                self.shared_data.all_rows,
+                self.all_nicknames,
+            )
+            self.shared_data.set_unified_view(unified_view)
+            self.shared_data.set_rows("unified", unified_view.rows)
+
+            # Refresh all tab panels
+            for _tab_id, (panel, _state) in self._tabs.items():
+                panel._all_nicknames = self.all_nicknames
+                panel.section_boundaries = unified_view.section_boundaries
+                panel.rebuild_from_view(unified_view)
+
             self._update_status()
             self.status_var.set(f"Refreshed - {len(self.all_nicknames)} nicknames loaded")
-
-            # Re-select current type to recreate panel
-            if self.current_type:
-                self._on_type_selected(self.current_type)
 
         except Exception as e:
             messagebox.showerror("Refresh Error", str(e), parent=self)
@@ -410,13 +354,85 @@ class AddressEditorWindow(tk.Toplevel):
         widget.bind("<Enter>", show_tooltip)
         widget.bind("<Leave>", hide_tooltip)
 
+    def _find_paired_row_idx(
+        self, panel: AddressPanel, row: AddressRow, row_idx: int
+    ) -> int | None:
+        """Find the index of the paired row for interleaved types (T+TD, CT+CTD).
+
+        For interleaved types, rows at the same address should share block tags.
+        This finds the partner row (e.g., TD1 for T1, or T1 for TD1).
+
+        Args:
+            panel: The panel containing the rows
+            row: The row to find a pair for
+            row_idx: Index of the row in panel.rows
+
+        Returns:
+            Index of the paired row, or None if no pair exists
+        """
+        # Check if this is a paired type
+        paired_type = None
+        for pair in PAIRED_BLOCK_TYPES:
+            if row.memory_type in pair:
+                # Find the other type in the pair
+                for t in pair:
+                    if t != row.memory_type:
+                        paired_type = t
+                        break
+                break
+
+        if not paired_type:
+            return None
+
+        # Search nearby for the paired row (interleaved, so should be adjacent)
+        # Check the row before and after
+        for offset in [-1, 1]:
+            check_idx = row_idx + offset
+            if 0 <= check_idx < len(panel.rows):
+                check_row = panel.rows[check_idx]
+                if check_row.memory_type == paired_type and check_row.address == row.address:
+                    return check_idx
+
+        return None
+
+    def _add_tag_to_row(self, row: AddressRow, tag: str) -> None:
+        """Add a block tag to a row's comment.
+
+        Args:
+            row: The row to modify
+            tag: The tag to add
+        """
+        if row.comment:
+            row.comment = f"{row.comment} {tag}"
+        else:
+            row.comment = tag
+
     def _on_add_block_clicked(self) -> None:
         """Handle Add Block button click."""
         selected_display_rows = self._get_selected_row_indices()
         if not selected_display_rows:
             return
 
-        panel = self.panels[self.current_type]
+        panel = self._get_current_panel()
+        if not panel:
+            return
+
+        # Get the actual rows for validation
+        selected_rows = []
+        for display_idx in selected_display_rows:
+            if display_idx < len(panel._displayed_rows):
+                row_idx = panel._displayed_rows[display_idx]
+                selected_rows.append(panel.rows[row_idx])
+
+        # Validate that block doesn't span multiple memory types
+        is_valid, error_msg = validate_block_span(selected_rows)
+        if not is_valid:
+            messagebox.showerror(
+                "Invalid Block Selection",
+                error_msg,
+                parent=self,
+            )
+            return
 
         # Show the Add Block dialog
         dialog = AddBlockDialog(self)
@@ -448,37 +464,48 @@ class AddressEditorWindow(tk.Toplevel):
         else:
             bg_attr = ""
 
+        # Track all rows that need display updates
+        rows_to_update = set()
+
         if first_row_idx == last_row_idx:
             # Single row - self-closing tag
             tag = f"<{block_name}{bg_attr} />"
-            existing_comment = first_row.comment
-            if existing_comment:
-                first_row.comment = f"{existing_comment} {tag}"
-            else:
-                first_row.comment = tag
+            self._add_tag_to_row(first_row, tag)
+            rows_to_update.add(first_row_idx)
+
+            # Also add to paired row if interleaved type
+            paired_idx = self._find_paired_row_idx(panel, first_row, first_row_idx)
+            if paired_idx is not None:
+                self._add_tag_to_row(panel.rows[paired_idx], tag)
+                rows_to_update.add(paired_idx)
         else:
             # Range - opening and closing tags
             open_tag = f"<{block_name}{bg_attr}>"
             close_tag = f"</{block_name}>"
 
             # Add opening tag to first row
-            existing_first = first_row.comment
-            if existing_first:
-                first_row.comment = f"{existing_first} {open_tag}"
-            else:
-                first_row.comment = open_tag
+            self._add_tag_to_row(first_row, open_tag)
+            rows_to_update.add(first_row_idx)
+
+            # Also add opening tag to paired row at start address
+            first_paired_idx = self._find_paired_row_idx(panel, first_row, first_row_idx)
+            if first_paired_idx is not None:
+                self._add_tag_to_row(panel.rows[first_paired_idx], open_tag)
+                rows_to_update.add(first_paired_idx)
 
             # Add closing tag to last row
-            existing_last = last_row.comment
-            if existing_last:
-                last_row.comment = f"{existing_last} {close_tag}"
-            else:
-                last_row.comment = close_tag
+            self._add_tag_to_row(last_row, close_tag)
+            rows_to_update.add(last_row_idx)
 
-        # Update the sheet's cell data for modified rows
-        panel._update_row_display(first_row_idx)
-        if first_row_idx != last_row_idx:
-            panel._update_row_display(last_row_idx)
+            # Also add closing tag to paired row at end address
+            last_paired_idx = self._find_paired_row_idx(panel, last_row, last_row_idx)
+            if last_paired_idx is not None:
+                self._add_tag_to_row(panel.rows[last_paired_idx], close_tag)
+                rows_to_update.add(last_paired_idx)
+
+        # Update the sheet's cell data for all modified rows
+        for row_idx in rows_to_update:
+            panel._update_row_display(row_idx)
 
         # Refresh the panel styling
         panel._refresh_display()
@@ -495,12 +522,13 @@ class AddressEditorWindow(tk.Toplevel):
 
         Removes the block tag from the selected row's comment.
         If it's an opening tag, also removes the corresponding closing tag.
+        For interleaved types (T+TD, CT+CTD), also removes from paired rows.
         """
         selected_display_rows = self._get_selected_row_indices()
         if not selected_display_rows:
             return
 
-        panel = self.panels.get(self.current_type)
+        panel = self._get_current_panel()
         if not panel:
             return
 
@@ -518,9 +546,21 @@ class AddressEditorWindow(tk.Toplevel):
 
         block_name = block_tag.name
 
+        # Track all rows that need display updates
+        rows_to_update = set()
+
         # Remove the tag from the first row, keep remaining text
         first_row.comment = strip_block_tag(first_row.comment)
-        panel._update_row_display(first_row_idx)
+        rows_to_update.add(first_row_idx)
+
+        # Also remove from paired row at start address
+        first_paired_idx = self._find_paired_row_idx(panel, first_row, first_row_idx)
+        if first_paired_idx is not None:
+            paired_row = panel.rows[first_paired_idx]
+            paired_tag = parse_block_tag(paired_row.comment)
+            if paired_tag.name == block_name:
+                paired_row.comment = strip_block_tag(paired_row.comment)
+                rows_to_update.add(first_paired_idx)
 
         # If it's an opening tag, find and remove the closing tag
         if block_tag.tag_type == "open" and block_name:
@@ -532,8 +572,21 @@ class AddressEditorWindow(tk.Toplevel):
                 if search_tag.tag_type == "close" and search_tag.name == block_name:
                     # Found the matching closing tag - remove it
                     search_row.comment = strip_block_tag(search_row.comment)
-                    panel._update_row_display(search_idx)
+                    rows_to_update.add(search_idx)
+
+                    # Also remove from paired row at end address
+                    end_paired_idx = self._find_paired_row_idx(panel, search_row, search_idx)
+                    if end_paired_idx is not None:
+                        end_paired_row = panel.rows[end_paired_idx]
+                        end_paired_tag = parse_block_tag(end_paired_row.comment)
+                        if end_paired_tag.name == block_name:
+                            end_paired_row.comment = strip_block_tag(end_paired_row.comment)
+                            rows_to_update.add(end_paired_idx)
                     break
+
+        # Update the sheet's cell data for all modified rows
+        for row_idx in rows_to_update:
+            panel._update_row_display(row_idx)
 
         # Refresh the panel styling
         panel._refresh_display()
@@ -563,21 +616,66 @@ class AddressEditorWindow(tk.Toplevel):
             memory_type: The memory type (X, Y, C, etc.)
             address: The address number
         """
-        # Determine which panel type to show
-        # Handle combined types (T/TD, CT/CTD)
-        panel_type = memory_type
-        for combined, sub_types in COMBINED_TYPES.items():
-            if memory_type in sub_types:
-                panel_type = combined
-                break
+        # Scroll to the address in the current tab's unified panel
+        panel = self._get_current_panel()
+        if panel and panel.is_unified:
+            panel.scroll_to_address(address, memory_type)
 
-        # Switch to the correct panel
-        if panel_type != self.current_type:
-            self._on_type_selected(panel_type)
+    def _on_outline_batch_select(self, leaves: list[tuple[str, int]]) -> None:
+        """Handle batch selection from outline tree (parent node clicked).
 
-        # Scroll to the address
-        if panel_type in self.panels:
-            self.panels[panel_type].scroll_to_address(address, memory_type)
+        Scrolls to the first address and sets the filter to show related nicknames.
+
+        Args:
+            leaves: List of (memory_type, address) tuples for all child addresses
+        """
+        if not leaves:
+            return
+
+        panel = self._get_current_panel()
+        if not panel or not panel.is_unified:
+            return
+
+        # Find the common prefix from the nicknames of these addresses
+        nicknames = []
+        for memory_type, address in leaves:
+            addr_key = get_addr_key(memory_type, address)
+            if addr_key in self.all_nicknames:
+                nicknames.append(self.all_nicknames[addr_key])
+
+        if not nicknames:
+            # No nicknames found, just scroll to first address
+            memory_type, address = leaves[0]
+            panel.scroll_to_address(address, memory_type)
+            return
+
+        # Find common prefix of all nicknames
+        prefix = nicknames[0]
+        for nick in nicknames[1:]:
+            # Find common prefix
+            common_len = 0
+            for i, (c1, c2) in enumerate(zip(prefix, nick, strict=False)):
+                if c1 == c2:
+                    common_len = i + 1
+                else:
+                    break
+            prefix = prefix[:common_len]
+
+        # Include trailing underscore if present (segment boundary)
+        if prefix and not prefix.endswith("_"):
+            # Find last underscore in prefix
+            last_underscore = prefix.rfind("_")
+            if last_underscore > 0:
+                prefix = prefix[: last_underscore + 1]
+
+        # Set filter and scroll to first address
+        if prefix:
+            panel.filter_var.set(prefix)
+            panel._apply_filters()
+
+        # Scroll to first address
+        memory_type, address = leaves[0]
+        panel.scroll_to_address(address, memory_type)
 
     def _toggle_nav(self) -> None:
         """Toggle the outline window visibility."""
@@ -586,6 +684,7 @@ class AddressEditorWindow(tk.Toplevel):
             self._nav_window = NavWindow(
                 self,
                 on_address_select=self._on_outline_address_select,
+                on_batch_select=self._on_outline_batch_select,
             )
             self._refresh_navigation()
             self.nav_btn.configure(text="<< Tag Browser")
@@ -600,6 +699,192 @@ class AddressEditorWindow(tk.Toplevel):
             self._nav_window._dock_to_parent()
             self.nav_btn.configure(text="<< Tag Browser")
 
+    def _get_current_state(self) -> TabState | None:
+        """Get the state of the currently selected tab.
+
+        Returns:
+            TabState or None if no tabs exist.
+        """
+        try:
+            current = self.notebook.select()
+            if current and current in self._tabs:
+                return self._tabs[current][1]
+        except Exception:
+            pass
+        return None
+
+    def _apply_state_to_panel(self, panel: AddressPanel, state: TabState) -> None:
+        """Apply a TabState to a panel's UI controls.
+
+        Args:
+            panel: The panel to configure
+            state: The state to apply
+        """
+        # Apply filter settings
+        panel.filter_var.set(state.filter_text)
+        panel.hide_empty_var.set(state.hide_empty)
+        panel.hide_assigned_var.set(state.hide_assigned)
+        panel.show_unsaved_only_var.set(state.show_unsaved_only)
+
+        # Apply column visibility
+        panel.hide_used_var.set(state.hide_used_column)
+        panel.hide_init_ret_var.set(state.hide_init_ret_columns)
+        panel._toggle_used_column()
+        panel._toggle_init_ret_columns()
+
+        # Apply filters
+        panel._apply_filters()
+
+        # Scroll to saved position if any
+        if state.scroll_row_index > 0:
+            panel._scroll_to_row(min(state.scroll_row_index, len(panel._displayed_rows) - 1))
+
+    def _create_new_tab(self, clone_from: TabState | None) -> bool:
+        """Create a new tab with a unified panel.
+
+        Args:
+            clone_from: TabState to clone, or None for fresh start.
+
+        Returns:
+            True if tab was created successfully.
+        """
+        try:
+            # Generate tab name
+            self._tab_counter += 1
+            tab_name = f"Tab {self._tab_counter}"
+
+            # Create state (clone or fresh)
+            if clone_from is not None:
+                state = clone_from.clone()
+                state.name = tab_name
+            else:
+                state = TabState.fresh()
+                state.name = tab_name
+
+            # Get or build unified view
+            unified_view = self.shared_data.get_unified_view()
+            if unified_view is None:
+                unified_view = build_unified_view(
+                    self.shared_data.all_rows,
+                    self.all_nicknames,
+                )
+                self.shared_data.set_unified_view(unified_view)
+
+            # Create unified panel
+            panel = AddressPanel(
+                self.notebook,
+                memory_type="unified",  # Special type for unified view
+                combined_types=None,
+                on_nickname_changed=self._handle_nickname_changed,
+                on_data_changed=self._handle_data_changed,
+                on_close=None,
+                on_validate_affected=self.shared_data.validate_affected_rows,
+                is_duplicate_fn=self.shared_data.is_duplicate_nickname,
+                is_unified=True,
+                section_boundaries=unified_view.section_boundaries,
+            )
+
+            # Initialize panel with unified view data
+            panel.initialize_from_view(unified_view.rows, self.all_nicknames)
+
+            # Store rows in shared_data for compatibility
+            self.shared_data.set_rows("unified", unified_view.rows)
+
+            # Add to notebook
+            self.notebook.add(panel, text=tab_name)
+
+            # Track the tab
+            tab_id = str(panel)
+            self._tabs[tab_id] = (panel, state)
+
+            # Select the new tab
+            self.notebook.select(panel)
+
+            # Apply state to panel (filters, column visibility)
+            self._apply_state_to_panel(panel, state)
+
+            # Bind selection events for Add Block button
+            self._bind_panel_selection(panel)
+
+            return True
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to create tab: {e}", parent=self)
+            import traceback
+
+            traceback.print_exc()
+            return False
+
+    def _on_tab_close_request(self, tab_index: int) -> bool:
+        """Handle tab close request.
+
+        Args:
+            tab_index: Index of tab being closed.
+
+        Returns:
+            True to allow close, False to prevent.
+        """
+        # Don't allow closing the last tab
+        if self.notebook.index("end") <= 1:
+            return False
+
+        # Get the tab widget name
+        tab_id = self.notebook.tabs()[tab_index]
+
+        # Remove from tracking
+        if tab_id in self._tabs:
+            del self._tabs[tab_id]
+
+        return True
+
+    def _close_current_tab(self) -> None:
+        """Close the currently selected tab (via keyboard shortcut)."""
+        # Don't allow closing the last tab
+        if self.notebook.index("end") <= 1:
+            return
+
+        try:
+            current = self.notebook.select()
+            if current:
+                # Get the tab index
+                tab_index = self.notebook.index(current)
+
+                # Remove from tracking
+                if current in self._tabs:
+                    del self._tabs[current]
+
+                # Remove the tab
+                self.notebook.forget(tab_index)
+
+                # Update status
+                self._update_status()
+        except Exception:
+            pass
+
+    def _on_tab_changed(self, event=None) -> None:
+        """Handle tab selection change."""
+        # Update Add Block button state for new tab
+        self._update_add_block_button_state()
+        self._update_status()
+
+    def _on_new_tab_clicked(self) -> None:
+        """Handle New Tab button click."""
+        # Get current state for potential cloning
+        current_state = self._get_current_state()
+
+        # Ask user how to create the tab
+        result = ask_new_tab(self)
+
+        if result is None:
+            # User cancelled
+            return
+        elif result:
+            # Clone current tab
+            self._create_new_tab(clone_from=current_state)
+        else:
+            # Start fresh
+            self._create_new_tab(clone_from=None)
+
     def _create_widgets(self) -> None:
         """Create all window widgets."""
         # Main container
@@ -611,7 +896,7 @@ class AddressEditorWindow(tk.Toplevel):
         status_bar = ttk.Label(self, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
         status_bar.pack(fill=tk.X, side=tk.BOTTOM)
 
-        # Sidebar on left
+        # Sidebar on left - buttons now scroll to sections instead of switching panels
         self.sidebar = JumpSidebar(
             main_frame,
             on_type_select=self._on_type_selected,
@@ -624,9 +909,15 @@ class AddressEditorWindow(tk.Toplevel):
         center_frame = ttk.Frame(main_frame)
         center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Panel container (where address panels go)
-        self.panel_container = ttk.Frame(center_frame)
-        self.panel_container.pack(fill=tk.BOTH, expand=True)
+        # Tabbed notebook for address panels (each tab shows ALL memory types)
+        self.notebook = CustomNotebook(
+            center_frame,
+            on_close_callback=self._on_tab_close_request,
+        )
+        self.notebook.pack(fill=tk.BOTH, expand=True)
+
+        # Bind tab change event
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
         # Footer toolbar at bottom of center
         footer = ttk.Frame(center_frame)
@@ -645,6 +936,11 @@ class AddressEditorWindow(tk.Toplevel):
         self.add_block_btn.pack(side=tk.LEFT, padx=(5, 0))
         # Create tooltip for the button
         self._create_tooltip(self.add_block_btn, "Click & drag memory addresses to define block")
+
+        # New Tab button
+        ttk.Button(footer, text="+ New Tab", command=self._on_new_tab_clicked).pack(
+            side=tk.LEFT, padx=(5, 0)
+        )
 
         # Tag Browser toggle button
         self.nav_btn = ttk.Button(footer, text="Tag Browser >>", command=self._toggle_nav)
@@ -674,8 +970,8 @@ class AddressEditorWindow(tk.Toplevel):
 
             self.status_var.set(f"Connected - {len(self.all_nicknames)} nicknames loaded")
 
-            # Select "X" by default to show a single panel
-            self._on_type_selected("X")
+            # Create first tab with fresh state
+            self._create_new_tab(clone_from=None)
 
         except Exception as e:
             messagebox.showerror("Database Error", str(e))
@@ -686,7 +982,7 @@ class AddressEditorWindow(tk.Toplevel):
 
         Called when another window modifies the shared data, or when
         external changes are detected in the MDB file.
-        Refreshes all panels to show the updated data.
+        Refreshes all tab panels to show the updated data.
 
         Args:
             sender: The object that triggered the change (if any)
@@ -698,32 +994,26 @@ class AddressEditorWindow(tk.Toplevel):
         # Update local reference to nicknames
         self.all_nicknames = self.shared_data.all_nicknames
 
-        # Check if views were cleared (e.g., after discard_all_changes)
-        # If so, we need to rebuild panel data, not just refresh display
-        for type_name, panel in self.panels.items():
+        # Check if unified view was cleared (e.g., after discard_all_changes)
+        unified_view = self.shared_data.get_unified_view()
+
+        if unified_view is None:
+            # View was cleared - rebuild from fresh data
+            unified_view = build_unified_view(
+                self.shared_data.all_rows,
+                self.all_nicknames,
+            )
+            self.shared_data.set_unified_view(unified_view)
+            self.shared_data.set_rows("unified", unified_view.rows)
+
+        # Update all tab panels
+        for _tab_id, (panel, _state) in self._tabs.items():
             panel._all_nicknames = self.all_nicknames
 
-            view = self.shared_data.get_view(type_name)
-
-            if view is None:
-                # View was cleared - rebuild from fresh data
-
-                combined = COMBINED_TYPES.get(type_name)
-                view = build_type_view(
-                    all_rows=self.shared_data.all_rows,
-                    type_key=type_name,
-                    all_nicknames=self.all_nicknames,
-                    combined_types=combined,
-                )
-                self.shared_data.set_view(type_name, view)
-                self.shared_data.set_rows(type_name, view.rows)
-
-                # Replace panel's rows with fresh ones
-                panel.rebuild_from_view(view)
-            elif panel.rows is not view.rows:
-                # View exists but panel has stale rows (another window rebuilt the view)
-                # Update panel to use the view's rows and rebuild sheet data
-                panel.rebuild_from_view(view)
+            if panel.rows is not unified_view.rows:
+                # Panel has stale rows - rebuild from unified view
+                panel.section_boundaries = unified_view.section_boundaries
+                panel.rebuild_from_view(unified_view)
             else:
                 # Normal refresh - just sync display
                 # If sender is another window, skip validation (they already did it)
@@ -832,9 +1122,10 @@ class AddressEditorWindow(tk.Toplevel):
         self.title(self._get_window_title())
         self.geometry("1025x700")
 
-        self.panels: dict[str, AddressPanel] = {}  # type_name -> panel
+        # Tab tracking: maps tab widget name to (panel, state) tuple
+        self._tabs: dict[str, tuple[AddressPanel, TabState]] = {}
+        self._tab_counter = 0  # For generating unique tab names
         self.all_nicknames: dict[int, str] = {}
-        self.current_type: str = ""
         self._nav_window: NavWindow | None = None
 
         # Debounce timer for batching nickname changes (e.g., from Replace All)
@@ -860,3 +1151,28 @@ class AddressEditorWindow(tk.Toplevel):
         # Keyboard shortcuts
         self.bind("<Control-s>", lambda e: self._save_all())
         self.bind("<Control-S>", lambda e: self._save_all())
+        self.bind("<Control-t>", lambda e: self._on_new_tab_clicked())
+        self.bind("<Control-T>", lambda e: self._on_new_tab_clicked())
+        self.bind("<Control-w>", lambda e: self._close_current_tab())
+        self.bind("<Control-W>", lambda e: self._close_current_tab())
+
+    def _save_state_from_panel(self, panel: AddressPanel, state: TabState) -> None:
+        """Save the current panel state to a TabState.
+
+        Args:
+            panel: The panel to read from
+            state: The state to update
+        """
+        state.filter_text = panel.filter_var.get()
+        state.hide_empty = panel.hide_empty_var.get()
+        state.hide_assigned = panel.hide_assigned_var.get()
+        state.show_unsaved_only = panel.show_unsaved_only_var.get()
+        state.hide_used_column = panel.hide_used_var.get()
+        state.hide_init_ret_columns = panel.hide_init_ret_var.get()
+
+        # Save scroll position
+        try:
+            start_row, _end_row = panel.sheet.visible_rows
+            state.scroll_row_index = start_row
+        except Exception:
+            state.scroll_row_index = 0
