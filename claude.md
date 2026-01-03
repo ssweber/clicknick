@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **ClickNick** is a Windows desktop application providing context-aware nickname autocomplete and editing tools for CLICK PLC Programming Software (v2.60–v3.80). It connects via ODBC to read/write nicknames from the project's Access database (SC_.mdb) or can import from CSV. Core components:
 
 - **Overlay** – Positions a combobox over instruction dialog edit controls for nickname autocomplete
-- **Address Editor** – Multi-window tksheet-based editor with search/replace, block tagging, validation
+- **Address Editor** – Unified tabbed tksheet-based editor with search/replace, block tagging, validation. Each tab displays ALL memory types in a single scrollable view
 - **Tag Browser** – Treeview of nicknames parsed by underscore segments and array indices
 - **Dataview Editor** – Edits .cdv files with nickname lookup from shared address data
 
@@ -91,12 +91,13 @@ src/clicknick/
 **`views/`** - Windows and panels
 - `overlay.py` - `tk.Toplevel` overlay positioned over target edit controls
 - `dialogs.py` - About and ODBC warning dialogs
-- `address_editor/` - Multi-window editor for PLC addresses
-  - `window.py` - Main AddressEditorWindow
-  - `panel.py` - AddressPanel (tksheet-based) for each memory type
-  - `sheet.py` - AddressEditorSheet (Custom tksheet Sheet subclass)
-  - `view_builder.py` - TypeView construction for shared display data
-  - `jump_sidebar.py` - JumpSidebar for quick navigation
+- `address_editor/` - Unified tabbed editor for PLC addresses
+  - `window.py` - Main AddressEditorWindow with tabbed notebook
+  - `panel.py` - AddressPanel (tksheet-based) displaying unified view of all memory types
+  - `sheet.py` - AddressEditorSheet (custom tksheet Sheet subclass)
+  - `tab_state.py` - TabState dataclass for per-tab filter/column/scroll state
+  - `view_builder.py` - UnifiedView construction with section boundaries
+  - `jump_sidebar.py` - JumpSidebar with buttons that scroll to memory type sections
   - `row_styler.py` - Visual styling for validation, dirty tracking, blocks
 - `dataview_editor/` - Editor for CLICK DataView files (.cdv)
   - `window.py` - DataviewEditorWindow with file list sidebar
@@ -113,6 +114,8 @@ src/clicknick/
 - `floating_tooltip.py` - Shows nickname details on hover
 - `prefix_autocomplete.py` - Prefix-based autocomplete logic
 - `add_block_dialog.py` - Dialog for adding address blocks
+- `new_tab_dialog.py` - Dialog for creating new tabs (clone current or start fresh)
+- `custom_notebook.py` - ttk.Notebook with closeable tabs
 - `char_limit_tooltip.py` - Character limit indicator
 - `colors.py` - Color constants for the editor UI
 
@@ -139,6 +142,36 @@ src/clicknick/
 2. All observers notified (NicknameManager, AddressEditorWindows, SharedDataviewData)
 3. NicknameManager invalidates its nickname cache, rebuilt on next filter request
 4. SharedDataviewData triggers `refresh_nicknames_from_shared()` on DataviewEditorWindow
+
+### Address Editor Architecture
+
+The Address Editor uses a **unified tabbed interface** where each tab displays ALL memory types in a single scrollable panel:
+
+**Unified View Model:**
+- `UnifiedView` (in `view_builder.py`) contains all `AddressRow` objects for all memory types in display order
+- `section_boundaries: dict[str, int]` maps type keys (e.g., "X", "T/TD", "DS") to starting row indices
+- Memory types are ordered: X, Y, C, T/TD, CT/CTD, SC, DS, DD, DH, DF, XD, YD, SD, TXT
+- Combined types (T/TD, CT/CTD) interleave rows: T1, TD1, T2, TD2, ...
+
+**Tab State Management:**
+- Each tab has its own `TabState` dataclass tracking:
+  - Filter settings (text, hide empty, hide assigned, unsaved only)
+  - Column visibility (Used, Init Value/Retentive)
+  - Scroll position
+- `_tabs: dict[str, tuple[AddressPanel, TabState]]` maps notebook tab IDs to panel/state pairs
+- New tabs can clone current tab state or start fresh (via `NewTabDialog`)
+
+**JumpSidebar:**
+- Sidebar buttons scroll to memory type sections instead of switching panels
+- Clicking a button calls `panel.scroll_to_section(type_key)` to jump to that section
+- Right-click menus provide address-level jumps and block navigation
+- Status indicators show modified/error counts per type
+
+**Keyboard Shortcuts:**
+- `Ctrl+T` - New tab
+- `Ctrl+W` - Close current tab
+- `Ctrl+S` - Save all changes
+- `Ctrl+R` - Find/Replace (overrides tksheet default Ctrl+H)
 
 ### Filter System
 Filters implement `FilterBase.filter_matches(completion_list, current_text)`:

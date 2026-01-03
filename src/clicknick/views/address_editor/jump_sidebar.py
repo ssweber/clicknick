@@ -1,6 +1,6 @@
 """Address jump sidebar for the Address Editor.
 
-Provides a sidebar with buttons for selecting memory types and address jumps.
+Provides a sidebar with buttons for scrolling to memory type sections.
 """
 
 import tkinter as tk
@@ -9,11 +9,10 @@ from tkinter import ttk
 
 
 class JumpButton(ttk.Frame):
-    """A button for selecting a memory type, with optional submenu for address jumps."""
+    """A button for scrolling to a memory type section, with optional submenu for address jumps."""
 
     def _on_jump_selected(self, address: int) -> None:
         """Handle jump address selection."""
-        # Panel is already selected, just jump to address
         if self.on_jump:
             self.on_jump(self.type_name, address)
 
@@ -130,8 +129,8 @@ class JumpButton(ttk.Frame):
         menu.post(x, y)
 
     def _on_click(self) -> None:
-        """Handle main button click - select panel and show jump menu if applicable."""
-        # Always select this type first
+        """Handle main button click - scroll to section and show jump menu if applicable."""
+        # Scroll to this type's section
         self.on_select(self.type_name)
 
         # Show jump menu if this type has jumps (XD and YD don't)
@@ -146,7 +145,19 @@ class JumpButton(ttk.Frame):
         on_jump: Callable | None = None,
         jump_addresses: list[int] | None = None,
         get_blocks_callback: Callable | None = None,
+        display_text: str | None = None,
     ):
+        """Initialize button.
+
+        Args:
+            parent: Parent widget
+            type_name: Type name used for callbacks (e.g., "T/TD")
+            on_select: Callback when type is selected
+            on_jump: Callback when jumping to address
+            jump_addresses: List of jump point addresses
+            get_blocks_callback: Callback to get blocks for this type
+            display_text: Optional display text (can be multi-line with \n)
+        """
         super().__init__(parent)
 
         self.type_name = type_name
@@ -154,15 +165,15 @@ class JumpButton(ttk.Frame):
         self.on_jump = on_jump
         self.jump_addresses = jump_addresses or []
         self.get_blocks_callback = get_blocks_callback
+        self.display_text = display_text or type_name
 
-        self._selected = False
         self._status_indicator = ""  # Current status indicator text
 
-        # Main button - clicking opens panel AND shows jump menu (if applicable)
+        # Main button - clicking scrolls to section AND shows jump menu (if applicable)
         self.button = ttk.Button(
             self,
-            text=type_name,
-            width=11,  # Full width since no arrow button
+            text=self.display_text,
+            width=10,  # Narrower button
             command=self._on_click,
         )
         self.button.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -170,18 +181,9 @@ class JumpButton(ttk.Frame):
     def _update_button_text(self) -> None:
         """Update button text to include status indicator."""
         if self._status_indicator:
-            self.button.configure(text=f"{self.type_name} {self._status_indicator}")
+            self.button.configure(text=f"{self.display_text} {self._status_indicator}")
         else:
-            self.button.configure(text=self.type_name)
-
-    def set_selected(self, selected: bool) -> None:
-        """Set the visual selected state."""
-        self._selected = selected
-        # Use a different style or relief to show selection
-        if selected:
-            self.button.configure(style="Selected.TButton")
-        else:
-            self.button.configure(style="TButton")
+            self.button.configure(text=self.display_text)
 
     def update_status(self, modified_count: int, error_count: int) -> None:
         """Update the status indicator based on modified/error counts.
@@ -204,8 +206,8 @@ SIDEBAR_TYPES = [
     "X",
     "Y",
     "C",
-    "T/TD",  # Combined T + TD
-    "CT/CTD",  # Combined CT + CTD
+    "T/TD",  # Combined T + TD (stacked text display)
+    "CT/CTD",  # Combined CT + CTD (stacked text display)
     "SC",
     "DS",
     "DD",
@@ -218,8 +220,13 @@ SIDEBAR_TYPES = [
 ]
 # Types that show combined/interleaved data
 COMBINED_TYPES = {
-    "T/TD": ["T", "TD"],  # Timer panel shows T and TD interleaved
-    "CT/CTD": ["CT", "CTD"],  # Counter panel shows CT and CTD interleaved
+    "T/TD": ["T", "TD"],  # Timer section shows T and TD interleaved
+    "CT/CTD": ["CT", "CTD"],  # Counter section shows CT and CTD interleaved
+}
+# Display text for buttons (stacked for combined types)
+DISPLAY_TEXT = {
+    "T/TD": "T\nTD",  # Stacked vertically
+    "CT/CTD": "CT\nCTD",  # Stacked vertically
 }
 # Address range jump points for types with large ranges
 ADDRESS_JUMPS = {
@@ -239,7 +246,7 @@ ADDRESS_JUMPS = {
 
 
 class JumpSidebar(ttk.Frame):
-    """Sidebar with type selection buttons."""
+    """Sidebar with type selection buttons for scrolling to memory sections."""
 
     def _get_blocks_for_type(self, type_name: str) -> list[tuple[int, int | None, str, str | None]]:
         """Get block definitions for a type from shared data.
@@ -266,15 +273,11 @@ class JumpSidebar(ttk.Frame):
 
     def _create_buttons(self) -> None:
         """Create all type buttons."""
-        # Create a custom style for selected buttons
-        style = ttk.Style()
-        style.configure("Selected.TButton", background="#4a90d9")
-
         for type_name in SIDEBAR_TYPES:
             jump_addrs = ADDRESS_JUMPS.get(type_name)
+            display_text = DISPLAY_TEXT.get(type_name)  # None for regular types
 
             # Create callback for getting blocks for this type
-            # Use default argument to capture type_name in closure
             def make_block_callback(t=type_name):
                 return lambda: self._get_blocks_for_type(t)
 
@@ -285,6 +288,7 @@ class JumpSidebar(ttk.Frame):
                 on_jump=self.on_address_jump,
                 jump_addresses=jump_addrs,
                 get_blocks_callback=make_block_callback(),
+                display_text=display_text,
             )
             btn.pack(fill=tk.X, padx=2, pady=1)
             self.buttons[type_name] = btn
@@ -296,7 +300,7 @@ class JumpSidebar(ttk.Frame):
         on_address_jump: Callable,
         shared_data=None,
     ):
-        super().__init__(parent, width=140)
+        super().__init__(parent, width=100)  # Narrower sidebar
         self.pack_propagate(False)  # Maintain fixed width
 
         self.on_type_select = on_type_select
@@ -306,17 +310,21 @@ class JumpSidebar(ttk.Frame):
 
         self._create_buttons()
 
-    def set_selected(self, type_name: str) -> None:
-        """Update which button appears selected."""
-        for name, btn in self.buttons.items():
-            btn.set_selected(name == type_name)
-
     def update_all_indicators(self) -> None:
         """Update status indicators on all buttons from shared data."""
         if not self.shared_data:
             return
 
         for type_name, btn in self.buttons.items():
-            modified = self.shared_data.get_modified_count_for_type(type_name)
-            errors = self.shared_data.get_error_count_for_type(type_name)
-            btn.update_status(modified, errors)
+            if type_name in COMBINED_TYPES:
+                # Sum counts for all sub-types
+                modified = 0
+                errors = 0
+                for sub_type in COMBINED_TYPES[type_name]:
+                    modified += self.shared_data.get_modified_count_for_type(sub_type)
+                    errors += self.shared_data.get_error_count_for_type(sub_type)
+                btn.update_status(modified, errors)
+            else:
+                modified = self.shared_data.get_modified_count_for_type(type_name)
+                errors = self.shared_data.get_error_count_for_type(type_name)
+                btn.update_status(modified, errors)

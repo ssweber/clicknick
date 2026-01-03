@@ -3,8 +3,13 @@
 Contains BlockTag dataclass and parsing functions.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from .address_row import AddressRow
 
 
 @dataclass
@@ -163,3 +168,42 @@ def strip_block_tag(comment: str) -> str:
     if block_tag.tag_type is not None:
         return block_tag.remaining_text
     return comment
+
+
+# Paired memory types that can be in the same block (interleaved in unified view)
+PAIRED_BLOCK_TYPES = {
+    frozenset({"T", "TD"}),
+    frozenset({"CT", "CTD"}),
+}
+
+
+def validate_block_span(rows: list[AddressRow]) -> tuple[bool, str | None]:
+    """Validate that a block span doesn't cross memory type boundaries.
+
+    Blocks should only contain addresses of the same memory type,
+    with the exception of paired types (T+TD, CT+CTD) which are
+    interleaved and can share blocks.
+
+    Args:
+        rows: List of AddressRow objects that would be in the block
+
+    Returns:
+        Tuple of (is_valid, error_message).
+        - (True, None) if all rows have compatible memory types
+        - (False, error_message) if rows span incompatible memory types
+    """
+    if not rows:
+        return True, None
+
+    # Get unique memory types in the selection
+    memory_types = {row.memory_type for row in rows}
+
+    if len(memory_types) == 1:
+        return True, None
+
+    # Check if it's a valid paired type combination
+    if memory_types in PAIRED_BLOCK_TYPES:
+        return True, None
+
+    types_str = ", ".join(sorted(memory_types))
+    return False, f"Blocks cannot span multiple memory types ({types_str})"
