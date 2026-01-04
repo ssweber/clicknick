@@ -10,7 +10,7 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
-from tksheet import Sheet, num2alpha
+from tksheet import num2alpha
 
 from ...models.address_row import AddressRow
 from ...models.blocktag import parse_block_tag
@@ -33,6 +33,9 @@ from .panel_constants import (
     COL_RETENTIVE,
     COL_USED,
 )
+from .row_styler import AddressRowStyler
+from .sheet import AddressEditorSheet
+from .view_builder import find_paired_row
 
 # Mapping from column index to AddressRow field name for discard operations
 COL_TO_FIELD = {
@@ -41,61 +44,9 @@ COL_TO_FIELD = {
     COL_INIT_VALUE: "initial_value",
     COL_RETENTIVE: "retentive",
 }
-from .row_styler import AddressRowStyler
-from .view_builder import find_paired_row
 
 if TYPE_CHECKING:
     pass
-
-
-class AddressEditorSheet(Sheet):
-    """Custom Sheet subclass with additional features for Address Editor.
-
-    Customizations:
-    - Warning symbol in cell corners (for notes)
-    - add_begin_right_click() for handlers that run before popup menu builds
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Override the internal main table's redraw_corner method
-        self.MT.redraw_corner = self.custom_redraw_corner
-
-    def add_begin_right_click(self, callback) -> None:
-        """Add a right-click handler that runs BEFORE the popup menu is built.
-
-        Uses bindtag ordering to insert a custom tag at the start, ensuring
-        the callback runs before tksheet's internal handlers build the menu.
-
-        Args:
-            callback: Function to call on right-click, receives the event.
-        """
-        custom_tag = f"BeginRC_{id(self)}"
-        for widget in (self.MT, self.RI):
-            current_tags = widget.bindtags()
-            if custom_tag not in current_tags:
-                widget.bindtags((custom_tag,) + current_tags)
-        self.MT.bind_class(custom_tag, "<Button-3>", callback)
-
-    def custom_redraw_corner(self, x: float, y: float, tags: str | tuple[str]) -> None:
-        # Position the symbol slightly offset from the top-right corner
-        text_x = x - 7
-        text_y = y + 7
-
-        if self.MT.hidd_corners:
-            iid = self.MT.hidd_corners.pop()
-            # Update position and properties for the symbol
-            self.MT.coords(iid, text_x, text_y)
-            self.MT.itemconfig(
-                iid, text="⚠", fill="black", font=("Arial", 10, "bold"), state="normal", tags=tags
-            )
-            self.MT.disp_corners.add(iid)
-        else:
-            # Create a new text object instead of a polygon
-            iid = self.MT.create_text(
-                text_x, text_y, text="⚠", fill="black", font=("Arial", 10, "bold"), tags=tags
-            )
-            self.MT.disp_corners.add(iid)
 
 
 class AddressPanel(ttk.Frame):
