@@ -65,15 +65,6 @@ class AddressPanel(ttk.Frame):
     COL_INIT_VALUE = COL_INIT_VALUE
     COL_RETENTIVE = COL_RETENTIVE
 
-    def _is_bit_type_panel(self) -> bool:
-        """Check if this panel displays a single BIT-type memory (X, Y, C, SC).
-
-        Returns False for combined panels (T/TD, CT/CTD) since they mix BIT and non-BIT rows.
-        """
-        if self.combined_types and len(self.combined_types) > 1:
-            return False
-        return MEMORY_TYPE_TO_DATA_TYPE.get(self.memory_type, 0) == DataType.BIT
-
     def _on_close_clicked(self) -> None:
         """Handle close button click."""
         if self.on_close:
@@ -766,16 +757,21 @@ class AddressPanel(ttk.Frame):
             note="Nickname (≤24 chars, unique)",
         )
 
-        # Init Value column - hint depends on panel type
-        if self._is_bit_type_panel():
-            init_hint = "Initial value: 0 or 1 (checkbox)"
-        elif self.combined_types and len(self.combined_types) > 1:
-            primary_type = self.combined_types[0]
-            data_type = MEMORY_TYPE_TO_DATA_TYPE.get(primary_type, 0)
-            init_hint = f"Initial value\n{self._get_init_value_hint(data_type)}"
+        # Init Value column - hint depends on data types present in rows
+        if self.rows:
+            # Collect unique data types from actual rows
+            unique_data_types = sorted(set(row.data_type for row in self.rows))
+
+            if len(unique_data_types) == 1:
+                # Single data type - show specific hint
+                init_hint = f"Initial value\n{self._get_init_value_hint(unique_data_types[0])}"
+            else:
+                # Multiple data types - list all
+                hints = [self._get_init_value_hint(dt) for dt in unique_data_types]
+                init_hint = "Initial value:\n" + "\n".join(f"• {hint}" for hint in hints)
         else:
-            data_type = MEMORY_TYPE_TO_DATA_TYPE.get(self.memory_type, 0)
-            init_hint = f"Initial value\n{self._get_init_value_hint(data_type)}"
+            # Fallback if called before rows are loaded
+            init_hint = "Initial value"
 
         self.sheet.note(
             self.sheet.span(num2alpha(self.COL_INIT_VALUE), header=True, table=False),
@@ -922,9 +918,6 @@ class AddressPanel(ttk.Frame):
         self.sheet.set_column_widths([40, 200, 400, 90, 30])
         self.sheet.row_index(70)  # Set row index width
         self.sheet.readonly_columns([self.COL_USED])
-
-        # Set up header notes with hints
-        self._setup_header_notes()
 
         # Use bulk_table_edit_validation for paste operations ===
         # This ensures the entire paste completes before validation runs
@@ -1091,6 +1084,9 @@ class AddressPanel(ttk.Frame):
         self.rows = rows
         self._all_nicknames = nicknames
 
+        # Set up header notes now that we have rows to inspect
+        self._setup_header_notes()
+
         self._validate_all()
         self._populate_sheet_data()
         self._apply_filters()
@@ -1134,6 +1130,8 @@ class AddressPanel(ttk.Frame):
     def rebuild_from_view(self, view):
         """Rebuild panel data from a view object."""
         self.rows = view.rows
+        # Update header notes for new row data types
+        self._setup_header_notes()
         self._validate_all()
         self._populate_sheet_data()
         self._apply_filters()
