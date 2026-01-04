@@ -75,10 +75,13 @@ python -m clicknick
 
 - Multi-window – Edit different address sections simultaneously  
 - Bulk editing – Edit before saving, copy/paste multiple cells, live duplicate detection and validation  
-- Search & Replace (Ctrl+F / Ctrl+R) – With `Find in Selection` toggle. 
-    - Case-sensitive, Nickname and Comment columns only. 
-    - Regex supported (. = any char, .* = wildcard, (?i) = case-insensitive). 
-    - See https://regex101.com - Interactive tester with real-time explanations.
+- Shortcuts: Ctrl+F (Find) / Ctrl+R (Replace)
+    - Scope: Case-sensitive. Searches **Nickname** and **Comment** columns only. Supports `Find in Selection`.
+    - **Regex Tips:**
+        - `^` start of line, `$` end of line
+        - `.*` match anything, `\d` digit, `\w` letter/number
+        - `( )` captures a group to use as `\1`, `\2` in the **replacement box**
+    - **Resources:** Visit [regex101.com](https://regex101.com) for real-time testing.
 - Custom blocks – Drag to create color-coded groups for organization and quick navigation  
 
 ![Address Editor demo](https://github.com/user-attachments/assets/4aa6fd2f-f6f8-4921-aba3-7f16e51b95ce)
