@@ -220,6 +220,55 @@ def normalize_address(address: str) -> str | None:
 
 
 @dataclass
+class SectionHeaderRow:
+    """Dummy row class for section headers in the Address Editor.
+
+    This is a lightweight placeholder that mimics AddressRow structure
+    to allow seamless integration in the editor's row list. It only contains
+    the minimal fields needed for display and styling.
+
+    Usage:
+        header = SectionHeaderRow(nickname="--- T/TD Section ---")
+    """
+
+    # --- Identity (dummy values) ---
+    memory_type: str = ""
+    address: int = 0
+
+    # --- Content ---
+    nickname: str = ""  # The section header text
+    comment: str = ""
+    initial_value: str = ""
+    retentive: bool = False
+
+    # --- Metadata (dummy values) ---
+    used: bool = False
+    exists_in_mdb: bool = False
+    data_type: int = DataType.BIT
+
+    # --- All other properties return safe defaults ---
+    @property
+    def is_dirty(self) -> bool:
+        return False
+
+    @property
+    def is_valid(self) -> bool:
+        return True
+
+    @property
+    def has_reportable_error(self) -> bool:
+        return False
+
+    @property
+    def can_edit_initial_value(self) -> bool:
+        return False
+
+    @property
+    def can_edit_retentive(self) -> bool:
+        return False
+
+
+@dataclass
 class AddressRow:
     """Represents a single address row in the editor.
 
