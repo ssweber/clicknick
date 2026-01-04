@@ -62,10 +62,10 @@ python -m clicknick
 
 **How it works:** An autocomplete dropdown appears over CLICK instruction dialogs. Start typing a nickname and select from the filtered list—the address is inserted automatically.
 
-Skip the addresses – Select Valve5 instead of typing C123  
-Flexible filters – Prefix, partial match/contains, or abbreviation (e.g., Motor Speed ↔ Mtr_Spd)  
-Hover tooltips – View address comments at a glance  
-Exclusion filters – Hide system or internal addresses (e.g., SC/SD, `__private__`)  
+- Skip the addresses – Select Valve5 instead of typing C123  
+- Flexible filters – Prefix, partial match/contains, or abbreviation (e.g., Motor Speed ↔ Mtr_Spd)  
+- Hover tooltips – View address comments at a glance  
+- Exclusion filters – Hide system or internal addresses (e.g., SC/SD, `__private__`)  
 
 ![ClickNick autocomplete demo](https://github.com/user-attachments/assets/0275dcf4-6d79-4775-8763-18b13e8fd3a3)  
 
@@ -73,10 +73,13 @@ Exclusion filters – Hide system or internal addresses (e.g., SC/SD, `__private
 
 ### <a name="address-editor"></a>🛠️ Modern Address Editor
 
-Multi-window – Edit different address sections simultaneously  
-Bulk editing – Edit before saving, copy/paste multiple cells, live duplicate detection and validation  
-Search & Replace (Ctrl+F / Ctrl+R) – With `Find in Selection` toggle and Regex support
-Custom blocks – Drag to create color-coded groups for organization and quick navigation  
+- Multi-window – Edit different address sections simultaneously  
+- Bulk editing – Edit before saving, copy/paste multiple cells, live duplicate detection and validation  
+- Search & Replace (Ctrl+F / Ctrl+R) – With `Find in Selection` toggle. 
+    - Case-sensitive, Nickname and Comment columns only. 
+    - Regex supported (. = any char, .* = wildcard, (?i) = case-insensitive). 
+    - See https://regex101.com - Interactive tester with real-time explanations.
+- Custom blocks – Drag to create color-coded groups for organization and quick navigation  
 
 ![Address Editor demo](https://github.com/user-attachments/assets/4aa6fd2f-f6f8-4921-aba3-7f16e51b95ce)
 
@@ -85,15 +88,12 @@ Custom blocks – Drag to create color-coded groups for organization and quick n
 > Existing ladder logic refreshes after editing via the built-in Address Picker (Ctrl+T) or reopening the project.  
 > See issue https://github.com/ssweber/clicknick/issues/36
 
-> **⚠️ Search & Replace**  
-> Case-sensitive, Nickname and Comment columns only. Regex supported (. = any char, .* = wildcard, (?i) = case-insensitive).
-> See https://regex101.com - Interactive tester with real-time explanations.
 ---
 
 ### <a name="tag-browser"></a>📑 Tag Browser
 
-Navigate large projects – See all your nicknames in an organized tree view  
-Spot patterns – Arrays and related items grouped automatically  
+- Navigate large projects – See all your nicknames in an organized tree view  
+- Spot patterns – Arrays and related items grouped automatically  
 
 **Hierarchy:** Single underscores create levels. `SupplyTank_Pump_Status` becomes:
 ```
@@ -113,7 +113,7 @@ Alm[1-2]
   └── value
 ```
 
-One-click access – Double-click any item to edit.
+- One-click access – Double-click any item to edit.
 
 ![Outline dock screenshot](https://github.com/user-attachments/assets/07928355-180e-4b00-b0bb-07ad2bdbe831)
 
@@ -121,11 +121,10 @@ One-click access – Double-click any item to edit.
 
 ### <a name="dataview-editor"></a>📊 Dataview Editor
 
-Project integration – Loads all DataViews (.cdv files) from your CLICK project in tab-interface  
-Nickname lookup – Add addresses by typing nicknames instead of raw addresses  
-Drag-and-drop reordering – Rearrange rows freely with cut/paste support  
-Flexible row limit – No hard 100-row limit while organizing; overflow rows shown in grey (excluded from save)  
-Navigator integration – Double-click nicknames or entire structures from the Outline/Blocks panel to insert  
+- Loads all DataViews (.cdv files) from your CLICK project in tab-interface  
+- Add addresses by typing nicknames instead of raw addresses  
+- Drag-and-drop, cut/paste reordering  
+- Double-click nicknames or entire structures from the Outline/Blocks panel to insert  
 
 ---
 
