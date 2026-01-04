@@ -10,7 +10,7 @@
 |---|---|---|
 | **Ladder Logic Editor** | Type addresses `C123` | ✅ **Autocomplete** nicknames |
 | **Address Editing** | One-by-one in app | ✅ **Bulk edit**, multi-window, search/replace |
-| **Tag Organization** | Flat list | ✅ **Color named blocks** + **tree outline** (hierarchy & arrays) |
+| **Tag View** | Flat list | ✅ **Color named blocks** + **tree outline** (hierarchy & arrays) |
 | **DataView** | Input raw addresses, limited reordering | ✅ **Autocomplete**, add entire grouped structures and blocks, drag and drop reordering |
 | **Price** | Free (bundled) | Free (open source) |
 | **Best For** | Simple projects | Complex projects, productivity |
