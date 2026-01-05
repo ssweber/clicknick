@@ -87,6 +87,7 @@ class DisplayItem:
     """A display node with tree structure built-in."""
 
     text: str
+    full_path: str = ""  # Path string for filtering (e.g., "Tank_1_Pump_")
     leaf: tuple[str, int] | None = None  # (memory_type, address) for leaf nodes
     addr_key: int | None = None
     children: list[DisplayItem] = field(default_factory=list)
@@ -348,58 +349,81 @@ def _has_mixed_array_content(node: TreeNode) -> bool:
     return any(not k.isdigit() for k in node.children)
 
 
-def _flatten_array_index(name: str, child: TreeNode) -> DisplayItem:
+def _flatten_array_index(name: str, child: TreeNode, parent_path: str) -> DisplayItem:
     """Flatten an array index (numeric child) with its content."""
+    # Build path: parent_path already includes base name, add the index
+    current_path = f"{parent_path}{name}_" if parent_path else f"{name}_"
+
     if collapse_info := _get_collapsible_leaf(child):
         child_name, leaf_child = collapse_info
         leaf_tuple, addr_key = _extract_leaf_info(leaf_child.leaf)
+        full_path = f"{parent_path}{name}_{child_name}"
         return DisplayItem(
             text=f"{name}_{child_name}",
+            full_path=full_path,
             leaf=leaf_tuple,
             addr_key=addr_key,
         )
 
     if child.leaf is not None and not child.children:
         leaf_tuple, addr_key = _extract_leaf_info(child.leaf)
-        return DisplayItem(text=name, leaf=leaf_tuple, addr_key=addr_key)
+        # Leaf at array index - path is parent + index (no trailing underscore)
+        full_path = f"{parent_path}{name}"
+        return DisplayItem(text=name, full_path=full_path, leaf=leaf_tuple, addr_key=addr_key)
 
     # Has children - recurse
     return DisplayItem(
         text=name,
-        children=_flatten_node_children(child),
+        full_path=current_path,
+        children=_flatten_node_children(child, current_path),
     )
 
 
-def _flatten_mixed_array(name: str, node: TreeNode) -> list[DisplayItem]:
+def _flatten_mixed_array(name: str, node: TreeNode, parent_path: str) -> list[DisplayItem]:
     """Flatten an array node with mixed content. Returns multiple items."""
     items: list[DisplayItem] = []
     numeric_children = [k for k in node.child_order if k.isdigit()]
     non_numeric_children = [k for k in node.child_order if not k.isdigit()]
 
+    # Base path for this array (e.g., "Motor_" for Motor[1-2])
+    base_path = f"{parent_path}{name}_" if parent_path else f"{name}_"
+
     # If array node itself is a leaf, emit that first
     if node.leaf is not None:
         leaf_tuple, addr_key = _extract_leaf_info(node.leaf)
-        items.append(DisplayItem(text=name, leaf=leaf_tuple, addr_key=addr_key))
+        full_path = f"{parent_path}{name}" if parent_path else name
+        items.append(
+            DisplayItem(text=name, full_path=full_path, leaf=leaf_tuple, addr_key=addr_key)
+        )
 
     # Emit array portion with numeric children
     if numeric_children:
         array_range = _get_array_range(node)
+        # Array folder path includes base name with trailing underscore
+        array_path = base_path
         array_children = [
-            _flatten_array_index(num_name, node.children[num_name]) for num_name in numeric_children
+            _flatten_array_index(num_name, node.children[num_name], base_path)
+            for num_name in numeric_children
         ]
-        items.append(DisplayItem(text=f"{name}{array_range}", children=array_children))
+        items.append(
+            DisplayItem(text=f"{name}{array_range}", full_path=array_path, children=array_children)
+        )
 
     # Emit non-numeric children collapsed with parent name
     for non_num_name in _sort_children_underscore_last(non_numeric_children):
         non_num_child = node.children[non_num_name]
-        items.extend(_flatten_child_with_prefix(f"{name}_{non_num_name}", non_num_child))
+        items.extend(
+            _flatten_child_with_prefix(f"{name}_{non_num_name}", non_num_child, parent_path)
+        )
 
     return items
 
 
-def _flatten_child_with_prefix(prefix: str, node: TreeNode) -> list[DisplayItem]:
+def _flatten_child_with_prefix(prefix: str, node: TreeNode, parent_path: str) -> list[DisplayItem]:
     """Flatten a node, collapsing single-child chains. Returns list (usually 1 item)."""
     current_path = [prefix]
+    # Track the actual path segments (without array brackets) for full_path
+    path_segments = [prefix]
     collapse_node = node
 
     # Collapse single-child chains
@@ -410,42 +434,52 @@ def _flatten_child_with_prefix(prefix: str, node: TreeNode) -> list[DisplayItem]
             break
         if _has_mixed_array_content(only_child):
             current_path.append(only_name)
+            path_segments.append(only_name)
             collapse_node = only_child
             break
         if single_elem := _is_single_element_array(only_child):
             num, grandchild = single_elem
             current_path.append(f"{only_name}{num}")
+            path_segments.append(f"{only_name}{num}")
             collapse_node = grandchild
         elif only_child.is_array:
             current_path.append(f"{only_name}{_get_array_range(only_child)}")
+            path_segments.append(only_name)  # Path without brackets
             collapse_node = only_child
         else:
             current_path.append(only_name)
+            path_segments.append(only_name)
             collapse_node = only_child
 
     text = "_".join(current_path)
+    # Build full_path from parent_path + path_segments
+    full_path_base = "_".join(path_segments)
+    full_path_prefix = f"{parent_path}{full_path_base}_" if parent_path else f"{full_path_base}_"
 
     # Handle mixed array content
     if _has_mixed_array_content(collapse_node):
-        return _flatten_mixed_array(text, collapse_node)
+        return _flatten_mixed_array(text, collapse_node, full_path_prefix.rstrip("_") + "_")
 
     leaf_tuple, addr_key = _extract_leaf_info(collapse_node.leaf)
     is_pure_leaf = collapse_node.leaf is not None and not collapse_node.children
 
     if is_pure_leaf:
-        return [DisplayItem(text=text, leaf=leaf_tuple, addr_key=addr_key)]
+        # For pure leaves, path is the full nickname (no trailing underscore)
+        full_path = full_path_prefix.rstrip("_")
+        return [DisplayItem(text=text, full_path=full_path, leaf=leaf_tuple, addr_key=addr_key)]
 
     return [
         DisplayItem(
             text=text,
+            full_path=full_path_prefix,
             leaf=leaf_tuple,
             addr_key=addr_key,
-            children=_flatten_node_children(collapse_node),
+            children=_flatten_node_children(collapse_node, full_path_prefix),
         )
     ]
 
 
-def _flatten_node_children(node: TreeNode) -> list[DisplayItem]:
+def _flatten_node_children(node: TreeNode, parent_path: str = "") -> list[DisplayItem]:
     """Flatten all children of a node into DisplayItems."""
     items: list[DisplayItem] = []
     sorted_children = _sort_children_underscore_last(node.child_order)
@@ -458,9 +492,11 @@ def _flatten_node_children(node: TreeNode) -> list[DisplayItem]:
             if collapse_info := _get_collapsible_leaf(child):
                 child_name, leaf_child = collapse_info
                 leaf_tuple, addr_key = _extract_leaf_info(leaf_child.leaf)
+                full_path = f"{parent_path}{name}_{child_name}"
                 items.append(
                     DisplayItem(
                         text=f"{name}_{child_name}",
+                        full_path=full_path,
                         leaf=leaf_tuple,
                         addr_key=addr_key,
                     )
@@ -472,34 +508,50 @@ def _flatten_node_children(node: TreeNode) -> list[DisplayItem]:
             numeric_children = [k for k in child.child_order if k.isdigit()]
             non_numeric_children = [k for k in child.child_order if not k.isdigit()]
 
+            # Base path for this array node
+            array_base_path = f"{parent_path}{name}_" if parent_path else f"{name}_"
+
             # If array node is also a leaf, emit that first
             if child.leaf is not None:
                 leaf_tuple, addr_key = _extract_leaf_info(child.leaf)
-                items.append(DisplayItem(text=name, leaf=leaf_tuple, addr_key=addr_key))
+                full_path = f"{parent_path}{name}" if parent_path else name
+                items.append(
+                    DisplayItem(text=name, full_path=full_path, leaf=leaf_tuple, addr_key=addr_key)
+                )
 
             # Emit array portion
             if numeric_children:
                 if len(numeric_children) == 1 and not non_numeric_children and child.leaf is None:
                     # Single element - collapse
                     num = numeric_children[0]
-                    items.extend(_flatten_child_with_prefix(f"{name}{num}", child.children[num]))
+                    items.extend(
+                        _flatten_child_with_prefix(f"{name}{num}", child.children[num], parent_path)
+                    )
                 else:
                     # Multi-element - show array brackets
                     array_range = _get_array_range(child)
                     array_children = [
-                        _flatten_array_index(num_name, child.children[num_name])
+                        _flatten_array_index(num_name, child.children[num_name], array_base_path)
                         for num_name in numeric_children
                     ]
-                    items.append(DisplayItem(text=f"{name}{array_range}", children=array_children))
+                    items.append(
+                        DisplayItem(
+                            text=f"{name}{array_range}",
+                            full_path=array_base_path,
+                            children=array_children,
+                        )
+                    )
 
             # Emit non-numeric children
             for non_num_name in _sort_children_underscore_last(non_numeric_children):
                 non_num_child = child.children[non_num_name]
-                items.extend(_flatten_child_with_prefix(f"{name}_{non_num_name}", non_num_child))
+                items.extend(
+                    _flatten_child_with_prefix(f"{name}_{non_num_name}", non_num_child, parent_path)
+                )
             continue
 
         # Non-array nodes
-        items.extend(_flatten_child_with_prefix(name, child))
+        items.extend(_flatten_child_with_prefix(name, child, parent_path))
 
     return items
 

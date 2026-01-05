@@ -33,14 +33,11 @@ class OutlinePanel(ttk.Frame):
         if item is None:
             return
 
-        if item.has_children and self.on_batch_select:
-            # Has children - use batch callback (includes self if also a leaf)
-            if leaves := item.get_all_leaves():
-                self.on_batch_select(leaves)
-        elif item.leaf:
-            # Pure leaf node - use single callback
-            memory_type, address = item.leaf
-            self.on_address_select(memory_type, address)
+        # Always emit with path and all leaves
+        if self.on_select:
+            leaves = item.get_all_leaves()
+            if leaves:
+                self.on_select(item.full_path, leaves)
 
     def _create_widgets(self) -> None:
         """Create the treeview widget."""
@@ -69,21 +66,19 @@ class OutlinePanel(ttk.Frame):
     def __init__(
         self,
         parent: tk.Widget,
-        on_address_select: Callable[[str, int], None],
-        on_batch_select: Callable[[list[tuple[str, int]]], None] | None = None,
+        on_select: Callable[[str, list[tuple[str, int]]], None],
     ):
         """Initialize the outline panel.
 
         Args:
             parent: Parent widget
-            on_address_select: Callback when single address is selected (memory_type, address)
-            on_batch_select: Callback when parent node is selected (list of (memory_type, address))
+            on_select: Callback when item is selected (path, list of (memory_type, address))
+                       Path is the filter prefix for folders or exact name for leaves.
         """
         super().__init__(parent, width=275)
         self.pack_propagate(False)
 
-        self.on_address_select = on_address_select
-        self.on_batch_select = on_batch_select
+        self.on_select = on_select
         self._item_data: dict[str, DisplayItem] = {}  # iid -> DisplayItem
 
         self._create_widgets()
