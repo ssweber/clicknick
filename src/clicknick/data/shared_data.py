@@ -623,14 +623,19 @@ class SharedAddressData:
         # (MDB saves only dirty rows, CSV rewrites all rows with content)
         count = self._data_source.save_changes(list(rows_to_save.values()))
 
-        # Mark dirty rows as saved
+        # Mark dirty rows as saved & upsert in all_rows
         for row in all_dirty_rows:
             row.mark_saved()
+            self.all_rows[row.addr_key] = row
 
         # Remove fully-deleted rows from all_rows
         for row in rows_to_remove:
             if row.addr_key in self.all_rows:
                 del self.all_rows[row.addr_key]
+                
+        # Update modified time
+        if self._file_path and os.path.exists(self._file_path):
+            self._last_mtime = os.path.getmtime(self._file_path)
 
         self.notify_data_changed()
         return count
