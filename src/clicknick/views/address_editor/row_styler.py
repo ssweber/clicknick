@@ -31,8 +31,8 @@ if TYPE_CHECKING:
 # Number of data columns in the sheet
 NUM_COLUMNS = 5
 
-# Memory types that always get alternating color (second type in interleaved pairs)
-ALTERNATING_TYPES = {"TD", "CTD"}
+# Memory types that get secondary (light blue) background tint
+SECONDARY_TYPES = {"TD", "CTD"}
 
 
 class AddressRowStyler:
@@ -43,7 +43,6 @@ class AddressRowStyler:
     - Dirty tracking colors (yellow bg per column)
     - Block tag colors (row index background from comments)
     - Non-editable styling (gray bg for SC/SD/XD/YD)
-    - Combined type alternation (light blue for TD/CTD rows)
     - Temporary highlight (green flash on navigation)
 
     Usage:
@@ -51,7 +50,6 @@ class AddressRowStyler:
             sheet=self.sheet,
             rows=self.rows,
             get_displayed_rows=lambda: self._displayed_rows,
-            combined_types=self.combined_types,
             get_block_colors=self._get_block_colors_for_rows,
         )
         styler.apply_all_styling()  # Full refresh
@@ -63,7 +61,6 @@ class AddressRowStyler:
         sheet: Sheet,
         get_rows: Callable[[], list[AddressRow]],
         get_displayed_rows: Callable[[], list[int]],
-        combined_types: list[str] | None = None,
         get_block_colors: Callable[[], dict[int, str]] | None = None,
     ):
         """Initialize the styler.
@@ -72,13 +69,11 @@ class AddressRowStyler:
             sheet: The tksheet Sheet instance
             get_rows: Callable returning the current list of AddressRow
             get_displayed_rows: Callable returning current displayed row indices
-            combined_types: List like ["T", "TD"] for interleaved panels
             get_block_colors: Optional callable returning row_idx -> color map
         """
         self.sheet = sheet
         self._get_rows = get_rows
         self._get_displayed_rows = get_displayed_rows
-        self.combined_types = combined_types
         self._get_block_colors = get_block_colors
 
         # Note cache to prevent redundant tksheet calls
@@ -106,22 +101,8 @@ class AddressRowStyler:
                     canvas="row_index",
                 )
 
-        # 2. Combined type alternation (light blue for TD/CTD rows)
-        # In unified mode or combined panels, TD and CTD get alternating color
-        apply_alternating = False
-        if self.combined_types and len(self.combined_types) > 1:
-            # Combined panel mode (e.g., ["T", "TD"])
-            try:
-                type_idx = self.combined_types.index(row.memory_type)
-                if type_idx == 1:  # Second type gets slight background tint
-                    apply_alternating = True
-            except ValueError:
-                pass
-        elif row.memory_type in ALTERNATING_TYPES:
-            # Unified mode - TD and CTD always get alternating color
-            apply_alternating = True
-
-        if apply_alternating:
+        # 3. Secondary type tinting (light blue for TD/CTD rows)
+        if row.memory_type in SECONDARY_TYPES:
             for col in range(NUM_COLUMNS):
                 self.sheet.highlight_cells(
                     row=data_idx,
