@@ -1546,39 +1546,48 @@ class AddressEditorWindow(tk.Toplevel):
         flag_path.touch()
 
     def _get_window_title(self) -> str:
-        """Generate window title based on data source."""
+        """Generate window title based on Click project and data source."""
         base_title = "ClickNick Address Editor"
 
+        parts = [base_title]
+
+        # Add Click project filename if available
+        if self.click_filename:
+            parts.append(self.click_filename)
+
+        # Add data source info
         try:
             file_path = self.shared_data._data_source.file_path
             if file_path:
                 filename = Path(file_path).name
-                # Determine source type from extension
+                parts.append(filename)
+                # Add source type indicator
                 if file_path.lower().endswith(".mdb"):
-                    return f"{base_title} - {filename} - DB"
+                    parts.append("DB")
                 elif file_path.lower().endswith(".csv"):
-                    return f"{base_title} - {filename} - CSV"
-                else:
-                    return f"{base_title} - {filename}"
+                    parts.append("CSV")
         except Exception:
             pass
 
-        return base_title
+        return " - ".join(parts)
 
     def __init__(
         self,
         parent: tk.Widget,
         shared_data: SharedAddressData,
+        click_filename: str = "",
     ):
         """Initialize the Address Editor window.
 
         Args:
             parent: Parent widget (main app window)
             shared_data: Shared data store for multi-window support
+            click_filename: The connected Click project filename (e.g., "MyProject.ckp")
         """
         super().__init__(parent)
 
         self.shared_data = shared_data
+        self.click_filename = click_filename
         self.title(self._get_window_title())
         self.geometry("1025x700")
 

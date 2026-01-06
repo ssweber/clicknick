@@ -291,6 +291,7 @@ class ClickNickApp:
             AddressEditorWindow(
                 self.root,
                 shared_data=self._shared_address_data,
+                click_filename=self.connected_click_filename or "",
             )
 
         except Exception as e:
@@ -349,15 +350,10 @@ class ClickNickApp:
                     # Window was destroyed, clear reference
                     self._dataview_editor_shared_data._window = None
 
-            # Get project name for window title
-            title_suffix = ""
-            if project_path:
-                title_suffix = project_path.name
-
             DataviewEditorWindow(
                 self.root,
                 shared_data=self._dataview_editor_shared_data,
-                title_suffix=title_suffix,
+                title_suffix=self.connected_click_filename or "",
             )
 
         except Exception as e:
