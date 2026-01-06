@@ -7,6 +7,8 @@ import tkinter as tk
 from tkinter import messagebox
 
 from tksheet import Sheet
+from tksheet.formatters import data_to_str
+from tksheet.functions import bisect_in, try_binding
 
 from .panel_constants import COL_COMMENT, COL_NICKNAME
 
@@ -65,18 +67,31 @@ class AddressEditorSheet(Sheet):
         This replaces the default find_match which uses 'in' operator.
         Falls back to substring match if regex is invalid.
         Only searches in Nickname and Comment columns.
+        Handles formatters like the original tksheet implementation.
         """
-        if not find_str:
-            return False
-
         # Only search in allowed columns
         if c not in self._SEARCHABLE_COLS:
             return False
 
-        # Get the cell value using row and column indices
-        cell_value = self.MT.get_cell_data(r, c)
-        cell_str = str(cell_value) if cell_value is not None else ""
+        # Get raw value from data
+        try:
+            value = self.MT.data[r][c]
+        except Exception:
+            value = ""
 
+        # Handle formatters
+        kwargs = self.MT.get_cell_kwargs(r, c, key="format")
+        if kwargs:
+            value = data_to_str(value, **kwargs) if kwargs["formatter"] is None else str(value)
+
+        # Handle None/empty cases
+        if value is None:
+            return find_str == ""
+        elif not find_str:
+            return str(value) == ""
+
+        # Regex search instead of substring
+        cell_str = str(value)
         try:
             return bool(re.search(find_str, cell_str))
         except re.error:
@@ -147,16 +162,21 @@ class AddressEditorSheet(Sheet):
         value, event_data = self.MT.single_edit_run_validation(datarn, datacn, event_data)
 
         # Apply if validation passed
-        if value is not None:
+        if value is not None and (
             self.MT.set_cell_data_undo(
                 r=datarn, c=datacn, datarn=datarn, datacn=datacn, value=value, redraw=False
             )
-            # Trigger end edit callback if exists
-            if self.MT.extra_end_edit_cell_func:
-                self.MT.extra_end_edit_cell_func(event_data)
+        ):
+            # Trigger end edit callback with try_binding wrapper
+            try_binding(self.MT.extra_end_edit_cell_func, event_data)
 
         # Move to next match
-        self.MT.find_next()
+        if self.MT.find_window.window.find_in_selection:
+            found_next = self.MT.find_see_and_set(self.MT.find_within(pattern))
+        else:
+            found_next = self.MT.find_see_and_set(self.MT.find_all_cells(pattern))
+        if not found_next and not self.MT.find_window.window.find_in_selection:
+            self.MT.deselect()
 
     def _regex_replace_all(self, event: tk.Misc | None = None) -> None:
         """Replace all matches using regex substitution.
@@ -223,7 +243,15 @@ class AddressEditorSheet(Sheet):
             )
 
         # Iterate through cells and collect replacements
+        tree = self.MT.PAR.ops.treeview
         for r, c in iterable:
+            # Check visibility
+            if not (
+                (tree or self.MT.all_rows_displayed or bisect_in(self.MT.displayed_rows, r))
+                and (self.MT.all_columns_displayed or bisect_in(self.MT.displayed_columns, c))
+            ):
+                continue
+
             # Check if this cell matches the pattern
             if not self._regex_find_match(pattern, r, c):
                 continue
@@ -265,9 +293,8 @@ class AddressEditorSheet(Sheet):
 
                 self.MT.undo_stack.append(stored_event_dict(event_data))
 
-            # Trigger callbacks
-            if self.MT.extra_end_replace_all_func:
-                self.MT.extra_end_replace_all_func(event_data)
+            # Trigger callbacks with try_binding wrapper
+            try_binding(self.MT.extra_end_replace_all_func, event_data, "end_edit_table")
 
             self.MT.sheet_modified(event_data)
             self.emit_event("<<SheetModified>>", event_data)
