@@ -26,38 +26,33 @@ from .panel_constants import (
 if TYPE_CHECKING:
     from tksheet import Sheet
 
-    from ...models.address_row import AddressRow, SectionHeaderRow
+    from ...models.address_row import AddressRow
 
 # Number of data columns in the sheet
 NUM_COLUMNS = 5
-
-# Memory types that get secondary (light blue) background tint
-SECONDARY_TYPES = {"TD", "CTD"}
-
-# Section header background color (dark grey)
-COLOR_SECTION_HEADER_BG = "#3a3a3a"
 
 
 class AddressRowStyler:
     """Encapsulates ALL styling logic for AddressPanel sheets.
 
     Responsible for:
-    - Section headers (dark grey background for SectionHeaderRow instances)
     - Validation colors (red bg for errors, notes for error messages)
     - Dirty tracking colors (yellow bg per column)
     - Block tag colors (row index background from comments)
     - Non-editable styling (gray bg for SC/SD/XD/YD)
-    - Secondary type tinting (light blue for TD/CTD rows based on row.memory_type)
+    - Combined type alternation (light blue for TD/CTD rows)
     - Temporary highlight (green flash on navigation)
 
     Usage:
         styler = AddressRowStyler(
             sheet=self.sheet,
-            get_rows=lambda: self.rows,
+            rows=self.rows,
             get_displayed_rows=lambda: self._displayed_rows,
+            combined_types=self.combined_types,
             get_block_colors=self._get_block_colors_for_rows,
         )
         styler.apply_all_styling()  # Full refresh
+        styler.update_row_styling(data_idx)  # Single row update
     """
 
     def __init__(
@@ -65,6 +60,7 @@ class AddressRowStyler:
         sheet: Sheet,
         get_rows: Callable[[], list[AddressRow]],
         get_displayed_rows: Callable[[], list[int]],
+        combined_types: list[str] | None = None,
         get_block_colors: Callable[[], dict[int, str]] | None = None,
     ):
         """Initialize the styler.
@@ -73,11 +69,13 @@ class AddressRowStyler:
             sheet: The tksheet Sheet instance
             get_rows: Callable returning the current list of AddressRow
             get_displayed_rows: Callable returning current displayed row indices
+            combined_types: List like ["T", "TD"] for interleaved panels
             get_block_colors: Optional callable returning row_idx -> color map
         """
         self.sheet = sheet
         self._get_rows = get_rows
         self._get_displayed_rows = get_displayed_rows
+        self.combined_types = combined_types
         self._get_block_colors = get_block_colors
 
         # Note cache to prevent redundant tksheet calls
@@ -92,28 +90,10 @@ class AddressRowStyler:
         block_colors: dict[int, str] | None = None,
     ) -> None:
         """Apply highlights for a single row."""
-        from ...models.address_row import SectionHeaderRow
-
         row = self._get_rows()[data_idx]
         block_colors = block_colors or {}
 
-        # 1. Section Header - dark grey background across all columns
-        if isinstance(row, SectionHeaderRow):
-            for col in range(NUM_COLUMNS):
-                self.sheet.highlight_cells(
-                    row=data_idx,
-                    column=col,
-                    bg=COLOR_SECTION_HEADER_BG,
-                    fg="white",
-                )
-            self.sheet.highlight_cells(
-                row=data_idx,
-                bg=COLOR_SECTION_HEADER_BG,
-                canvas="row_index",
-            )
-            return  # Skip all other styling for section headers
-
-        # 2. Block color on row index
+        # 1. Block color on row index
         if data_idx in block_colors:
             hex_color = get_block_color_hex(block_colors[data_idx])
             if hex_color:
@@ -123,16 +103,21 @@ class AddressRowStyler:
                     canvas="row_index",
                 )
 
-        # 3. Secondary type tinting (light blue for TD/CTD rows)
-        if row.memory_type in SECONDARY_TYPES:
-            for col in range(NUM_COLUMNS):
-                self.sheet.highlight_cells(
-                    row=data_idx,
-                    column=col,
-                    bg=COLOR_COMBINED_TYPE_ALT,
-                )
+        # 2. Combined type alternation (light blue for TD/CTD rows)
+        if self.combined_types and len(self.combined_types) > 1:
+            try:
+                type_idx = self.combined_types.index(row.memory_type)
+                if type_idx == 1:  # Second type gets slight background tint
+                    for col in range(NUM_COLUMNS):
+                        self.sheet.highlight_cells(
+                            row=data_idx,
+                            column=col,
+                            bg=COLOR_COMBINED_TYPE_ALT,
+                        )
+            except ValueError:
+                pass
 
-        # 4. Error highlighting (nickname column) - takes priority over dirty
+        # 3. Error highlighting (nickname column) - takes priority over dirty
         if row.has_reportable_error:
             self.sheet.highlight_cells(
                 row=data_idx,
@@ -149,7 +134,7 @@ class AddressRowStyler:
                 fg="black",
             )
 
-        # 5. Dirty comment gets light yellow background
+        # 4. Dirty comment gets light yellow background
         if row.is_comment_dirty:
             self.sheet.highlight_cells(
                 row=data_idx,
@@ -158,7 +143,7 @@ class AddressRowStyler:
                 fg="black",
             )
 
-        # 6. Dirty initial value gets light yellow background
+        # 5. Dirty initial value gets light yellow background
         if row.is_initial_value_dirty:
             self.sheet.highlight_cells(
                 row=data_idx,
@@ -167,7 +152,7 @@ class AddressRowStyler:
                 fg="black",
             )
 
-        # 7. Dirty retentive gets light yellow background
+        # 6. Dirty retentive gets light yellow background
         if row.is_retentive_dirty:
             self.sheet.highlight_cells(
                 row=data_idx,
@@ -176,7 +161,7 @@ class AddressRowStyler:
                 fg="black",
             )
 
-        # 8. Invalid initial value gets red background
+        # 7. Invalid initial value gets red background
         if not row.initial_value_valid and row.initial_value != "":
             self.sheet.highlight_cells(
                 row=data_idx,
@@ -185,7 +170,7 @@ class AddressRowStyler:
                 fg="black",
             )
 
-        # 9. Non-editable types get gray background on init/retentive columns
+        # 8. Non-editable types get gray background on init/retentive columns
         if not row.can_edit_initial_value:
             self.sheet.highlight_cells(
                 row=data_idx,

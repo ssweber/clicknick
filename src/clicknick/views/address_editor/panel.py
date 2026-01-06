@@ -1096,6 +1096,7 @@ class AddressPanel(ttk.Frame):
             sheet=self.sheet,
             get_rows=lambda: self.rows,
             get_displayed_rows=lambda: self._displayed_rows,
+            combined_types=self.combined_types,
             get_block_colors=self._get_block_colors_for_rows,
         )
 
