@@ -73,8 +73,10 @@ python -m clicknick
 
 ### <a name="address-editor"></a>🛠️ Modern Address Editor
 
-- Multi-window – Edit different address sections simultaneously  
-- Bulk editing – Edit before saving, copy/paste multiple cells, live duplicate detection and validation  
+- Multi-window – Edit different address sections simultaneously
+- Bulk editing – Edit before saving, copy/paste multiple cells, live duplicate detection and validation
+- Fill Down – Select rows to auto-increment nicknames (e.g., `Alm1` → `Alm2`, `Alm3`...)
+- Clone Structure – Replicate a pattern of nicknames (e.g., `Alm1_ID`, `Alm1_Val` → `Alm2_ID`, `Alm2_Val`...)
 - Shortcuts: Ctrl+F (Find) / Ctrl+R (Replace)
     - Scope: Case-sensitive. Searches **Nickname** and **Comment** columns only. Supports `Find in Selection`.
     - **Regex Tips:**
