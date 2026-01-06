@@ -67,7 +67,7 @@ python -m clicknick
 - Hover tooltips – View address comments at a glance  
 - Exclusion filters – Hide system or internal addresses (e.g., SC/SD, `__private__`)  
 
-![ClickNick autocomplete demo](https://github.com/user-attachments/assets/0275dcf4-6d79-4775-8763-18b13e8fd3a3)  
+![ClickNick autocomplete demo](https://github.com/user-attachments/assets/3a1cdff9-c425-46b7-8b90-4a357d43b6d3)  
 
 ---
 
@@ -86,7 +86,7 @@ python -m clicknick
     - **Resources:** Visit [regex101.com](https://regex101.com) for real-time testing.
 - Custom blocks – Drag to create color-coded groups for organization and quick navigation  
 
-![Address Editor demo](https://github.com/user-attachments/assets/4aa6fd2f-f6f8-4921-aba3-7f16e51b95ce)
+![Address Editor demo](https://github.com/user-attachments/assets/ee7b1914-2f18-483a-ace1-84c2aa8eea98)
 
 > [!NOTE]  
 > Nicknames edited in the Address Editor appear immediately in autocomplete.  
