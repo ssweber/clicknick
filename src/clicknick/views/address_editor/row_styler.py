@@ -104,15 +104,7 @@ class AddressRowStyler:
         # 2. Combined type alternation (light blue for TD/CTD rows)
         # In unified mode or combined panels, TD and CTD get alternating color
         apply_alternating = False
-        if self.combined_types and len(self.combined_types) > 1:
-            # Combined panel mode (e.g., ["T", "TD"])
-            try:
-                type_idx = self.combined_types.index(row.memory_type)
-                if type_idx == 1:  # Second type gets slight background tint
-                    apply_alternating = True
-            except ValueError:
-                pass
-        elif row.memory_type in ALTERNATING_TYPES:
+        if row.memory_type in ALTERNATING_TYPES:
             # Unified mode - TD and CTD always get alternating color
             apply_alternating = True
 
