@@ -1138,7 +1138,7 @@ class AddressPanel(ttk.Frame):
     def _validate_all(self) -> None:
         """Validate all rows against current nickname registry."""
         for row in self.rows:
-            row.validate(self._all_nicknames)
+            row.validate(self._all_nicknames, self.is_duplicate_fn)
 
     def _get_block_colors_for_rows(self) -> dict[int, str]:
         """Get block background colors for each row address (cached).
