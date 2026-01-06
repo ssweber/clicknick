@@ -350,13 +350,19 @@ def _has_mixed_array_content(node: TreeNode) -> bool:
 
 
 def _flatten_array_index(name: str, child: TreeNode, parent_path: str) -> DisplayItem:
-    """Flatten an array index (numeric child) with its content."""
-    # Build path: parent_path already includes base name, add the index
-    current_path = f"{parent_path}{name}_" if parent_path else f"{name}_"
+    """Flatten an array index (numeric child) with its content.
+
+    Note: parent_path for array indices ends WITHOUT underscore (e.g., "Motor")
+    because array indices join directly: "Motor" + "1" = "Motor1"
+    """
+    # Build path: parent + index (no underscore between them)
+    # e.g., "Motor" + "1" + "_" = "Motor1_"
+    current_path = f"{parent_path}{name}_"
 
     if collapse_info := _get_collapsible_leaf(child):
         child_name, leaf_child = collapse_info
         leaf_tuple, addr_key = _extract_leaf_info(leaf_child.leaf)
+        # e.g., "Motor" + "1" + "_" + "Speed" = "Motor1_Speed"
         full_path = f"{parent_path}{name}_{child_name}"
         return DisplayItem(
             text=f"{name}_{child_name}",
@@ -368,6 +374,7 @@ def _flatten_array_index(name: str, child: TreeNode, parent_path: str) -> Displa
     if child.leaf is not None and not child.children:
         leaf_tuple, addr_key = _extract_leaf_info(child.leaf)
         # Leaf at array index - path is parent + index (no trailing underscore)
+        # e.g., "Motor" + "1" = "Motor1"
         full_path = f"{parent_path}{name}"
         return DisplayItem(text=name, full_path=full_path, leaf=leaf_tuple, addr_key=addr_key)
 
@@ -385,28 +392,27 @@ def _flatten_mixed_array(name: str, node: TreeNode, parent_path: str) -> list[Di
     numeric_children = [k for k in node.child_order if k.isdigit()]
     non_numeric_children = [k for k in node.child_order if not k.isdigit()]
 
-    # Base path for this array (e.g., "Motor_" for Motor[1-2])
-    base_path = f"{parent_path}{name}_" if parent_path else f"{name}_"
+    # Base name for this array (e.g., "Motor" for Motor[1-2])
+    # Note: NO trailing underscore - array indices join directly
+    array_base = f"{parent_path}{name}" if parent_path else name
 
     # If array node itself is a leaf, emit that first
     if node.leaf is not None:
         leaf_tuple, addr_key = _extract_leaf_info(node.leaf)
-        full_path = f"{parent_path}{name}" if parent_path else name
         items.append(
-            DisplayItem(text=name, full_path=full_path, leaf=leaf_tuple, addr_key=addr_key)
+            DisplayItem(text=name, full_path=array_base, leaf=leaf_tuple, addr_key=addr_key)
         )
 
     # Emit array portion with numeric children
     if numeric_children:
         array_range = _get_array_range(node)
-        # Array folder path includes base name with trailing underscore
-        array_path = base_path
+        # Array folder path is base name (e.g., "Motor" matches "Motor1_X", "Motor2_X")
         array_children = [
-            _flatten_array_index(num_name, node.children[num_name], base_path)
+            _flatten_array_index(num_name, node.children[num_name], array_base)
             for num_name in numeric_children
         ]
         items.append(
-            DisplayItem(text=f"{name}{array_range}", full_path=array_path, children=array_children)
+            DisplayItem(text=f"{name}{array_range}", full_path=array_base, children=array_children)
         )
 
     # Emit non-numeric children collapsed with parent name
@@ -488,6 +494,8 @@ def _flatten_node_children(node: TreeNode, parent_path: str = "") -> list[Displa
         child = node.children[name]
 
         # Rule 3: collapse array index with single leaf child
+        # Note: parent_path here ends WITHOUT underscore (e.g., "Motor")
+        # so we build "Motor" + "1" + "_" + "Speed" = "Motor1_Speed"
         if name.isdigit():
             if collapse_info := _get_collapsible_leaf(child):
                 child_name, leaf_child = collapse_info
@@ -508,15 +516,15 @@ def _flatten_node_children(node: TreeNode, parent_path: str = "") -> list[Displa
             numeric_children = [k for k in child.child_order if k.isdigit()]
             non_numeric_children = [k for k in child.child_order if not k.isdigit()]
 
-            # Base path for this array node
-            array_base_path = f"{parent_path}{name}_" if parent_path else f"{name}_"
+            # Base path for this array node (NO trailing underscore - indices join directly)
+            # e.g., "Motor" for Motor[1-2], so children become "Motor1_Speed", "Motor2_Speed"
+            array_base = f"{parent_path}{name}" if parent_path else name
 
             # If array node is also a leaf, emit that first
             if child.leaf is not None:
                 leaf_tuple, addr_key = _extract_leaf_info(child.leaf)
-                full_path = f"{parent_path}{name}" if parent_path else name
                 items.append(
-                    DisplayItem(text=name, full_path=full_path, leaf=leaf_tuple, addr_key=addr_key)
+                    DisplayItem(text=name, full_path=array_base, leaf=leaf_tuple, addr_key=addr_key)
                 )
 
             # Emit array portion
@@ -531,13 +539,13 @@ def _flatten_node_children(node: TreeNode, parent_path: str = "") -> list[Displa
                     # Multi-element - show array brackets
                     array_range = _get_array_range(child)
                     array_children = [
-                        _flatten_array_index(num_name, child.children[num_name], array_base_path)
+                        _flatten_array_index(num_name, child.children[num_name], array_base)
                         for num_name in numeric_children
                     ]
                     items.append(
                         DisplayItem(
                             text=f"{name}{array_range}",
-                            full_path=array_base_path,
+                            full_path=array_base,
                             children=array_children,
                         )
                     )
