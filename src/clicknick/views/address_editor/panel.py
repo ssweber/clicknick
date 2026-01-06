@@ -234,10 +234,13 @@ class AddressPanel(ttk.Frame):
         # Save current selection before changing filter
         self._save_selection()
 
-        filter_text = self.filter_var.get().lower()
-        hide_empty = self.hide_empty_var.get()
-        hide_assigned = self.hide_assigned_var.get()
-        show_unsaved_only = self.show_unsaved_only_var.get()
+        # Check if filtering is enabled
+        filter_enabled = self.filter_enabled_var.get()
+
+        filter_text = self.filter_var.get().lower() if filter_enabled else ""
+        hide_empty = self.hide_empty_var.get() if filter_enabled else False
+        hide_assigned = self.hide_assigned_var.get() if filter_enabled else False
+        show_unsaved_only = self.show_unsaved_only_var.get() if filter_enabled else False
 
         # Check if any filters are active
         no_filters = (
@@ -822,7 +825,15 @@ class AddressPanel(ttk.Frame):
         filter_frame = ttk.Frame(self)
         filter_frame.pack(fill=tk.X, padx=5, pady=2)
 
-        ttk.Label(filter_frame, text="Filter:").pack(side=tk.LEFT)
+        # Filter enabled checkbutton (replaces "Filter:" label)
+        self.filter_enabled_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            filter_frame,
+            text="Filter:",
+            variable=self.filter_enabled_var,
+            command=self._apply_filters,
+        ).pack(side=tk.LEFT)
+
         self.filter_var = tk.StringVar()
         self.filter_entry = ttk.Entry(filter_frame, textvariable=self.filter_var, width=15)
         self.filter_entry.pack(side=tk.LEFT, padx=(5, 10))
@@ -1001,6 +1012,15 @@ class AddressPanel(ttk.Frame):
         self._styler: AddressRowStyler | None = None
 
         self._create_widgets()
+
+    def toggle_filter_enabled(self, enabled: bool) -> None:
+        """Toggle filter enabled state.
+
+        Args:
+            enabled: True to enable filtering, False to disable (show all rows)
+        """
+        self.filter_enabled_var.set(enabled)
+        self._apply_filters()
 
     def scroll_to_section(self, type_key: str) -> bool:
         """Scroll to the start of a memory type section (unified mode only).

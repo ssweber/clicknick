@@ -193,14 +193,333 @@ class AddressEditorWindow(tk.Toplevel):
         else:
             self.add_block_btn.configure(state="normal", text="+ Add Block")
 
+    def _can_fill_down(self) -> tuple[bool, list[int], str]:
+        """Check if Fill Down can be performed on current selection.
+
+        Returns:
+            Tuple of (can_fill, list of display row indices to fill, reason if can't fill).
+            can_fill is True if:
+            - Multiple rows are selected
+            - First row has a non-empty nickname containing a number
+            - All other rows have empty nicknames
+        """
+        import re
+
+        selected = self._get_selected_row_indices()
+        if len(selected) < 2:
+            return False, [], "Select multiple rows"
+
+        panel = self._get_current_panel()
+        if not panel:
+            return False, [], ""
+
+        # Get the first row's nickname
+        first_display_idx = selected[0]
+        if first_display_idx >= len(panel._displayed_rows):
+            return False, [], ""
+
+        first_row_idx = panel._displayed_rows[first_display_idx]
+        first_row = panel.rows[first_row_idx]
+        first_nickname = first_row.nickname
+
+        # First nickname must be non-empty
+        if not first_nickname:
+            return False, [], "First row must have a nickname"
+
+        # Check if nickname contains a number (rightmost will be incremented)
+        if not re.search(r"\d+", first_nickname):
+            return False, [], "First nickname must contain a number"
+
+        # Check that all other rows have empty nicknames
+        rows_to_fill = []
+        for display_idx in selected[1:]:
+            if display_idx >= len(panel._displayed_rows):
+                return False, [], ""
+            row_idx = panel._displayed_rows[display_idx]
+            row = panel.rows[row_idx]
+            if row.nickname:  # Must be empty
+                return False, [], "Other selected rows must be empty"
+            rows_to_fill.append(display_idx)
+
+        return True, rows_to_fill, ""
+
+    def _update_fill_down_button_state(self) -> None:
+        """Update the Fill Down button state."""
+        can_fill, _, _ = self._can_fill_down()
+        self.fill_down_btn.configure(state="normal" if can_fill else "disabled")
+
+    def _can_clone_structure(self) -> tuple[bool, str]:
+        """Check if Clone Structure can be performed on current selection.
+
+        Returns:
+            Tuple of (can_clone, reason if can't clone).
+            can_clone is True if:
+            - At least one row is selected
+            - At least one selected row has a nickname with a number
+        """
+        import re
+
+        selected = self._get_selected_row_indices()
+        if not selected:
+            return False, "Select rows to clone"
+
+        panel = self._get_current_panel()
+        if not panel:
+            return False, ""
+
+        # Check if at least one selected row has a nickname with a number
+        has_number = False
+        for display_idx in selected:
+            if display_idx >= len(panel._displayed_rows):
+                continue
+            row_idx = panel._displayed_rows[display_idx]
+            row = panel.rows[row_idx]
+            if row.nickname and re.search(r"\d+", row.nickname):
+                has_number = True
+                break
+
+        if not has_number:
+            return False, "At least one nickname must contain a number"
+
+        return True, ""
+
+    def _update_clone_button_state(self) -> None:
+        """Update the Clone Structure button state."""
+        can_clone, _ = self._can_clone_structure()
+        self.clone_btn.configure(state="normal" if can_clone else "disabled")
+
+    def _increment_nickname_suffix(self, nickname: str, increment: int) -> str:
+        """Increment the rightmost number in a nickname.
+
+        E.g., "Building1_Alm1" with increment=1 -> "Building1_Alm2"
+              "Building1_Alm" with increment=1 -> "Building2_Alm"
+              "Tank_Level10" with increment=2 -> "Tank_Level12"
+
+        Args:
+            nickname: The base nickname to increment
+            increment: How much to add to the number
+
+        Returns:
+            The nickname with incremented rightmost number
+        """
+        import re
+
+        # Find all numbers in the nickname, use the rightmost one
+        matches = list(re.finditer(r"\d+", nickname))
+        if not matches:
+            return nickname
+
+        match = matches[-1]  # Rightmost number
+        num_str = match.group()
+        num = int(num_str)
+        new_num = num + increment
+
+        # Preserve leading zeros if any
+        new_num_str = str(new_num).zfill(len(num_str))
+
+        # Replace the rightmost number
+        return nickname[: match.start()] + new_num_str + nickname[match.end() :]
+
+    def _on_clone_structure_clicked(self) -> None:
+        """Handle Clone Structure button click."""
+        from tkinter import simpledialog
+
+        can_clone, _ = self._can_clone_structure()
+        if not can_clone:
+            return
+
+        panel = self._get_current_panel()
+        if not panel:
+            return
+
+        selected = self._get_selected_row_indices()
+        block_size = len(selected)
+
+        # Ask for number of clones
+        num_clones = simpledialog.askinteger(
+            "Clone Structure",
+            f"How many clones of the {block_size}-row structure?",
+            parent=self,
+            minvalue=1,
+            maxvalue=100,
+        )
+
+        if not num_clones:
+            return
+
+        # Get the last selected display index
+        last_display_idx = selected[-1]
+
+        # Check that destination rows exist and are empty
+        dest_start = last_display_idx + 1
+        dest_count = block_size * num_clones
+
+        # Check if we have enough rows
+        if dest_start + dest_count > len(panel._displayed_rows):
+            messagebox.showerror(
+                "Clone Error",
+                f"Not enough rows below selection. Need {dest_count} empty rows, "
+                f"but only {len(panel._displayed_rows) - dest_start} available.",
+                parent=self,
+            )
+            return
+
+        # Get memory types from selected rows to validate against
+        selected_memory_types = set()
+        for display_idx in selected:
+            row_idx = panel._displayed_rows[display_idx]
+            row = panel.rows[row_idx]
+            selected_memory_types.add(row.memory_type)
+
+        # Check that all destination rows are empty and same memory type
+        for i in range(dest_count):
+            dest_display_idx = dest_start + i
+            row_idx = panel._displayed_rows[dest_display_idx]
+            row = panel.rows[row_idx]
+            if row.nickname:
+                messagebox.showerror(
+                    "Clone Error",
+                    f"Destination row {row.display_address} is not empty. "
+                    "All destination rows must be empty.",
+                    parent=self,
+                )
+                return
+            if row.memory_type not in selected_memory_types:
+                messagebox.showerror(
+                    "Clone Error",
+                    f"Destination row {row.display_address} is a different memory type "
+                    f"({row.memory_type}). Clone cannot cross memory type boundaries.",
+                    parent=self,
+                )
+                return
+
+        # Build the template from selected rows
+        template = []
+        for display_idx in selected:
+            row_idx = panel._displayed_rows[display_idx]
+            row = panel.rows[row_idx]
+            template.append(row.nickname)  # Can be empty string
+
+        # Perform the cloning
+        for clone_num in range(1, num_clones + 1):
+            for template_idx, base_nickname in enumerate(template):
+                dest_display_idx = dest_start + (clone_num - 1) * block_size + template_idx
+                row_idx = panel._displayed_rows[dest_display_idx]
+                row = panel.rows[row_idx]
+
+                if not base_nickname:
+                    # Empty row in template - keep destination empty
+                    continue
+
+                # Increment the rightmost number
+                new_nickname = self._increment_nickname_suffix(base_nickname, clone_num)
+
+                # Update the row
+                old_nickname = row.nickname
+                row.nickname = new_nickname
+
+                # Update global nickname registry
+                panel._all_nicknames[row.addr_key] = new_nickname
+
+                # Update display
+                panel._update_row_display(row_idx)
+
+                # Notify parent of nickname change
+                if panel.on_nickname_changed:
+                    panel.on_nickname_changed(
+                        panel.memory_type, row.addr_key, old_nickname, new_nickname
+                    )
+
+        # Validate all affected rows
+        for clone_num in range(1, num_clones + 1):
+            for template_idx in range(block_size):
+                dest_display_idx = dest_start + (clone_num - 1) * block_size + template_idx
+                row_idx = panel._displayed_rows[dest_display_idx]
+                panel.rows[row_idx].validate(panel._all_nicknames, panel.is_duplicate_fn)
+
+        # Refresh display
+        panel._refresh_display()
+
+        if panel.on_data_changed:
+            panel.on_data_changed()
+
+        # Update status
+        self._update_status()
+        self.status_var.set(f"Cloned {block_size}-row structure {num_clones} times")
+
+    def _on_fill_down_clicked(self) -> None:
+        """Handle Fill Down button click."""
+        can_fill, rows_to_fill, _ = self._can_fill_down()
+        if not can_fill:
+            return
+
+        panel = self._get_current_panel()
+        if not panel:
+            return
+
+        selected = self._get_selected_row_indices()
+        first_display_idx = selected[0]
+        first_row_idx = panel._displayed_rows[first_display_idx]
+        first_row = panel.rows[first_row_idx]
+        base_nickname = first_row.nickname
+
+        # Fill each row with incremented nickname
+        for i, display_idx in enumerate(rows_to_fill, start=1):
+            row_idx = panel._displayed_rows[display_idx]
+            row = panel.rows[row_idx]
+
+            new_nickname = self._increment_nickname_suffix(base_nickname, i)
+
+            # Update the row
+            old_nickname = row.nickname
+            row.nickname = new_nickname
+
+            # Update global nickname registry
+            if new_nickname:
+                panel._all_nicknames[row.addr_key] = new_nickname
+
+            # Update display
+            panel._update_row_display(row_idx)
+
+            # Notify parent of nickname change
+            if panel.on_nickname_changed:
+                panel.on_nickname_changed(
+                    panel.memory_type, row.addr_key, old_nickname, new_nickname
+                )
+
+        # Validate affected rows
+        if panel.on_validate_affected:
+            panel.on_validate_affected("", base_nickname)
+
+        # Validate all filled rows
+        for display_idx in rows_to_fill:
+            row_idx = panel._displayed_rows[display_idx]
+            panel.rows[row_idx].validate(panel._all_nicknames, panel.is_duplicate_fn)
+
+        # Refresh display
+        panel._refresh_display()
+
+        if panel.on_data_changed:
+            panel.on_data_changed()
+
+        # Update button states
+        self._update_fill_down_button_state()
+        self._update_status()
+
+    def _update_button_states(self, event=None) -> None:
+        """Update all footer button states based on current selection."""
+        self._update_add_block_button_state()
+        self._update_fill_down_button_state()
+        self._update_clone_button_state()
+
     def _bind_panel_selection(self, panel: AddressPanel) -> None:
         """Bind selection change events on a panel's sheet.
 
         Args:
             panel: The AddressPanel to bind events on
         """
-        # Bind to selection events to update Add Block button state
-        panel.sheet.bind("<<SheetSelect>>", lambda e: self._update_add_block_button_state())
+        # Bind to selection events to update button states
+        panel.sheet.bind("<<SheetSelect>>", self._update_button_states)
 
     def _on_type_selected(self, type_name: str) -> None:
         """Handle type button click - scroll to section in current tab."""
@@ -673,17 +992,17 @@ class AddressEditorWindow(tk.Toplevel):
                 on_block_select=self._on_block_select,
             )
             self._refresh_navigation()
-            self.nav_btn.configure(text="<< Tag Browser")
+            self._tag_browser_var.set(True)
         elif self._nav_window.winfo_viewable():
             # Hide it
             self._nav_window.withdraw()
-            self.nav_btn.configure(text="Tag Browser >>")
+            self._tag_browser_var.set(False)
         else:
             # Show it
             self._refresh_navigation()
             self._nav_window.deiconify()
             self._nav_window._dock_to_parent()
-            self.nav_btn.configure(text="<< Tag Browser")
+            self._tag_browser_var.set(True)
 
     def _get_current_state(self) -> TabState | None:
         """Get the state of the currently selected tab.
@@ -707,6 +1026,7 @@ class AddressEditorWindow(tk.Toplevel):
             state: The state to apply
         """
         # Apply filter settings
+        panel.filter_enabled_var.set(state.filter_enabled)
         panel.filter_var.set(state.filter_text)
         panel.hide_empty_var.set(state.hide_empty)
         panel.hide_assigned_var.set(state.hide_assigned)
@@ -853,10 +1173,42 @@ class AddressEditorWindow(tk.Toplevel):
         self._update_add_block_button_state()
         self._update_status()
 
+        # Sync menu filter enabled state with current panel
+        panel = self._get_current_panel()
+        if panel:
+            self._filter_enabled_var.set(panel.filter_enabled_var.get())
+
+    def _save_state_from_panel(self, panel: AddressPanel, state: TabState) -> None:
+        """Save the current panel state to a TabState.
+
+        Args:
+            panel: The panel to read from
+            state: The state to update
+        """
+        state.filter_enabled = panel.filter_enabled_var.get()
+        state.filter_text = panel.filter_var.get()
+        state.hide_empty = panel.hide_empty_var.get()
+        state.hide_assigned = panel.hide_assigned_var.get()
+        state.show_unsaved_only = panel.show_unsaved_only_var.get()
+        state.hide_used_column = panel.hide_used_var.get()
+        state.hide_init_ret_columns = panel.hide_init_ret_var.get()
+
+        # Save scroll position
+        try:
+            start_row, _end_row = panel.sheet.visible_rows
+            state.scroll_row_index = start_row
+        except Exception:
+            state.scroll_row_index = 0
+
     def _on_new_tab_clicked(self) -> None:
         """Handle New Tab button click."""
-        # Get current state for potential cloning
+        # Get current panel and state for potential cloning
+        current_panel = self._get_current_panel()
         current_state = self._get_current_state()
+
+        # Save current panel state BEFORE asking user (so clone has current values)
+        if current_panel and current_state:
+            self._save_state_from_panel(current_panel, current_state)
 
         # Ask user how to create the tab
         result = ask_new_tab(self)
@@ -871,97 +1223,11 @@ class AddressEditorWindow(tk.Toplevel):
             # Start fresh
             self._create_new_tab(clone_from=None)
 
-    def _create_widgets(self) -> None:
-        """Create all window widgets."""
-        # Main container
-        main_frame = ttk.Frame(self)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Status bar at very bottom
-        self.status_var = tk.StringVar(value="Ready")
-        status_bar = ttk.Label(self, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
-        status_bar.pack(fill=tk.X, side=tk.BOTTOM)
-
-        # Sidebar on left - buttons now scroll to sections instead of switching panels
-        self.sidebar = JumpSidebar(
-            main_frame,
-            on_type_select=self._on_type_selected,
-            on_address_jump=self._on_address_jump,
-            shared_data=self.shared_data,
-        )
-        self.sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(5, 0), pady=5)
-
-        # Center container (full remaining space - outline is external)
-        center_frame = ttk.Frame(main_frame)
-        center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # Tabbed notebook for address panels (each tab shows ALL memory types)
-        self.notebook = CustomNotebook(
-            center_frame,
-            on_close_callback=self._on_tab_close_request,
-        )
-        self.notebook.pack(fill=tk.BOTH, expand=True)
-
-        # Bind tab change event
-        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
-
-        # Footer toolbar at bottom of center
-        footer = ttk.Frame(center_frame)
-        footer.pack(fill=tk.X, pady=(5, 0))
-
-        # Refresh button
-        ttk.Button(footer, text="⟳ Refresh", command=self._refresh_all).pack(side=tk.LEFT)
-
-        # Add Block button (right of Refresh)
-        self.add_block_btn = ttk.Button(
-            footer,
-            text="+ Add Block",
-            command=self._on_block_button_clicked,
-            state="disabled",
-        )
-        self.add_block_btn.pack(side=tk.LEFT, padx=(5, 0))
-        # Create tooltip for the button
-        self._create_tooltip(self.add_block_btn, "Click & drag memory addresses to define block")
-
-        # New Tab button
-        ttk.Button(footer, text="+ New Tab", command=self._on_new_tab_clicked).pack(
-            side=tk.LEFT, padx=(5, 0)
-        )
-
-        # Tag Browser toggle button
-        self.nav_btn = ttk.Button(footer, text="Tag Browser >>", command=self._toggle_nav)
-        self.nav_btn.pack(side=tk.RIGHT, padx=(5, 0))
-
-        # Save button
-        self.save_btn = ttk.Button(footer, text="💾 Save All", command=self._save_all)
-        self.save_btn.pack(side=tk.RIGHT)
-
-        # Discard button
-        ttk.Button(footer, text="🗑 Discard Changes", command=self._discard_changes).pack(
-            side=tk.RIGHT, padx=(0, 5)
-        )
-
-    def _load_initial_data(self) -> None:
-        """Load initial data from the database."""
-        try:
-            # Load initial data if not already loaded
-            if not self.shared_data.is_initialized():
-                self.shared_data.load_initial_data()
-
-            # Start file monitoring (uses master window for after() calls)
-            self.shared_data.start_file_monitoring(self.master)
-
-            # Get reference to shared nicknames
-            self.all_nicknames = self.shared_data.all_nicknames
-
-            self.status_var.set(f"Connected - {len(self.all_nicknames)} nicknames loaded")
-
-            # Create first tab with fresh state
-            self._create_new_tab(clone_from=None)
-
-        except Exception as e:
-            messagebox.showerror("Database Error", str(e))
-            self.destroy()
+    def _on_filter_toggle(self, event=None) -> None:
+        """Toggle filter enabled state for current panel."""
+        panel = self._get_current_panel()
+        if panel:
+            panel.toggle_filter_enabled(self._filter_enabled_var.get())
 
     def _on_shared_data_changed(self, sender: object = None) -> None:
         """Handle notification that shared data has changed.
@@ -1039,6 +1305,167 @@ class AddressEditorWindow(tk.Toplevel):
         self.shared_data.unregister_window(self)
 
         self.destroy()
+
+    def _create_menu(self) -> None:
+        """Create the menu bar."""
+        menubar = tk.Menu(self)
+        self.config(menu=menubar)
+
+        # File menu
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="File", menu=file_menu)
+
+        file_menu.add_command(
+            label="New Tab", command=self._on_new_tab_clicked, accelerator="Ctrl+T"
+        )
+        file_menu.add_separator()
+        file_menu.add_command(label="Refresh", command=self._refresh_all)
+        file_menu.add_command(label="Save All", command=self._save_all, accelerator="Ctrl+S")
+        file_menu.add_command(label="Discard Changes", command=self._discard_changes)
+        file_menu.add_separator()
+        file_menu.add_command(
+            label="Close Tab", command=self._close_current_tab, accelerator="Ctrl+W"
+        )
+        file_menu.add_separator()
+        file_menu.add_command(label="Close Window", command=self._on_closing)
+
+        # Edit menu
+        edit_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Edit", menu=edit_menu)
+
+        edit_menu.add_command(label="Fill Down", command=self._on_fill_down_clicked)
+        edit_menu.add_command(label="Clone Structure...", command=self._on_clone_structure_clicked)
+
+        # View menu
+        view_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="View", menu=view_menu)
+
+        # Filter enabled toggle (checkbutton)
+        self._filter_enabled_var = tk.BooleanVar(value=True)
+        view_menu.add_checkbutton(
+            label="Filter Enabled",
+            variable=self._filter_enabled_var,
+            command=self._on_filter_toggle,
+            accelerator="Ctrl+Space",
+        )
+        view_menu.add_separator()
+
+        # Tag Browser toggle (checkbutton)
+        self._tag_browser_var = tk.BooleanVar(value=False)
+        view_menu.add_checkbutton(
+            label="Tag Browser",
+            variable=self._tag_browser_var,
+            command=self._toggle_nav,
+        )
+
+    def _on_filter_toggle_key(self, event=None) -> str:
+        """Handle Ctrl+Space keyboard shortcut to toggle filter."""
+        # Toggle the variable (menu checkbutton will update automatically)
+        self._filter_enabled_var.set(not self._filter_enabled_var.get())
+        self._on_filter_toggle()
+        return "break"  # Prevent event propagation
+
+    def _create_widgets(self) -> None:
+        """Create all window widgets."""
+        # Main container
+        main_frame = ttk.Frame(self)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Status bar at very bottom
+        self.status_var = tk.StringVar(value="Ready")
+        status_bar = ttk.Label(self, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
+        status_bar.pack(fill=tk.X, side=tk.BOTTOM)
+
+        # Sidebar on left - buttons now scroll to sections instead of switching panels
+        self.sidebar = JumpSidebar(
+            main_frame,
+            on_type_select=self._on_type_selected,
+            on_address_jump=self._on_address_jump,
+            shared_data=self.shared_data,
+        )
+        self.sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(5, 0), pady=5)
+
+        # Center container (full remaining space - outline is external)
+        center_frame = ttk.Frame(main_frame)
+        center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Tabbed notebook for address panels (each tab shows ALL memory types)
+        self.notebook = CustomNotebook(
+            center_frame,
+            on_close_callback=self._on_tab_close_request,
+        )
+        self.notebook.pack(fill=tk.BOTH, expand=True)
+
+        # Bind tab change event
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+
+        # Footer toolbar at bottom of center
+        footer = ttk.Frame(center_frame)
+        footer.pack(fill=tk.X, pady=(5, 0))
+
+        # Add Block button
+        self.add_block_btn = ttk.Button(
+            footer,
+            text="+ Add Block",
+            command=self._on_block_button_clicked,
+            state="disabled",
+        )
+        self.add_block_btn.pack(side=tk.LEFT)
+        # Create tooltip for the button
+        self._create_tooltip(self.add_block_btn, "Select rows to define block")
+
+        # Fill Down button
+        self.fill_down_btn = ttk.Button(
+            footer,
+            text="↓ Fill Down",
+            command=self._on_fill_down_clicked,
+            state="disabled",
+        )
+        self.fill_down_btn.pack(side=tk.LEFT, padx=(5, 0))
+        # Create tooltip for the button
+        self._create_tooltip(
+            self.fill_down_btn,
+            "Fill empty rows with incrementing nicknames (e.g., Alm1 → Alm2, Alm3...)",
+        )
+
+        # Clone Structure button
+        self.clone_btn = ttk.Button(
+            footer,
+            text="⧉ Clone",
+            command=self._on_clone_structure_clicked,
+            state="disabled",
+        )
+        self.clone_btn.pack(side=tk.LEFT, padx=(5, 0))
+        # Create tooltip for the button
+        self._create_tooltip(
+            self.clone_btn,
+            "Clone selected row pattern into empty rows below",
+        )
+
+        # Save button (right side)
+        ttk.Button(footer, text="💾 Save All", command=self._save_all).pack(side=tk.RIGHT)
+
+    def _load_initial_data(self) -> None:
+        """Load initial data from the database."""
+        try:
+            # Load initial data if not already loaded
+            if not self.shared_data.is_initialized():
+                self.shared_data.load_initial_data()
+
+            # Start file monitoring (uses master window for after() calls)
+            self.shared_data.start_file_monitoring(self.master)
+
+            # Get reference to shared nicknames
+            self.all_nicknames = self.shared_data.all_nicknames
+
+            self.status_var.set(f"Connected - {len(self.all_nicknames)} nicknames loaded")
+
+            # Create first tab with fresh state
+            self._create_new_tab(clone_from=None)
+
+        except Exception as e:
+            messagebox.showerror("Database Error", str(e))
+            self.destroy()
 
     @staticmethod
     def _get_address_editor_popup_flag() -> Path:
@@ -1121,6 +1548,7 @@ class AddressEditorWindow(tk.Toplevel):
         # so _do_revalidation can skip them (they don't need re-validation)
         self._recently_validated_panels: set[str] = set()
 
+        self._create_menu()
         self._create_widgets()
         self._load_initial_data()
         self._show_address_editor_popup()
@@ -1141,24 +1569,7 @@ class AddressEditorWindow(tk.Toplevel):
         self.bind("<Control-T>", lambda e: self._on_new_tab_clicked())
         self.bind("<Control-w>", lambda e: self._close_current_tab())
         self.bind("<Control-W>", lambda e: self._close_current_tab())
+        self.bind("<Control-space>", self._on_filter_toggle_key)
 
-    def _save_state_from_panel(self, panel: AddressPanel, state: TabState) -> None:
-        """Save the current panel state to a TabState.
-
-        Args:
-            panel: The panel to read from
-            state: The state to update
-        """
-        state.filter_text = panel.filter_var.get()
-        state.hide_empty = panel.hide_empty_var.get()
-        state.hide_assigned = panel.hide_assigned_var.get()
-        state.show_unsaved_only = panel.show_unsaved_only_var.get()
-        state.hide_used_column = panel.hide_used_var.get()
-        state.hide_init_ret_columns = panel.hide_init_ret_var.get()
-
-        # Save scroll position
-        try:
-            start_row, _end_row = panel.sheet.visible_rows
-            state.scroll_row_index = start_row
-        except Exception:
-            state.scroll_row_index = 0
+        # Open Tag Browser by default
+        self.after(100, self._toggle_nav)

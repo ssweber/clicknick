@@ -19,6 +19,7 @@ class TabState:
     """
 
     # Filter settings
+    filter_enabled: bool = True  # Filter checkbox state
     filter_text: str = ""
     hide_empty: bool = False
     hide_assigned: bool = False
@@ -41,6 +42,7 @@ class TabState:
             New TabState with same settings.
         """
         return TabState(
+            filter_enabled=self.filter_enabled,
             filter_text=self.filter_text,
             hide_empty=self.hide_empty,
             hide_assigned=self.hide_assigned,
