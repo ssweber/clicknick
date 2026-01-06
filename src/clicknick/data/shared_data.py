@@ -87,6 +87,10 @@ class SharedAddressData:
         # Used for O(1) duplicate detection instead of O(n) scan
         self._nickname_to_addrs: dict[str, set[int]] = {}
 
+        # Lowercase reverse index for case-insensitive duplicate detection
+        # CLICK software treats nicknames as case-insensitive
+        self._nickname_lower_to_addrs: dict[str, set[int]] = {}
+
         # Observer callbacks - called when data changes
         self._observers: list[Callable[[], None]] = []
 
@@ -278,11 +282,18 @@ class SharedAddressData:
     def _rebuild_nickname_index(self) -> None:
         """Rebuild the nickname -> addr_keys reverse index from all_rows."""
         self._nickname_to_addrs.clear()
+        self._nickname_lower_to_addrs.clear()
         for addr_key, row in self.all_rows.items():
             if row.nickname:
+                # Exact case index
                 if row.nickname not in self._nickname_to_addrs:
                     self._nickname_to_addrs[row.nickname] = set()
                 self._nickname_to_addrs[row.nickname].add(addr_key)
+                # Lowercase index for case-insensitive duplicate detection
+                nick_lower = row.nickname.lower()
+                if nick_lower not in self._nickname_lower_to_addrs:
+                    self._nickname_lower_to_addrs[nick_lower] = set()
+                self._nickname_lower_to_addrs[nick_lower].add(addr_key)
 
     def load_initial_data(self) -> None:
         """Load all address data from data source."""
@@ -298,7 +309,7 @@ class SharedAddressData:
             self._last_mtime = os.path.getmtime(self._file_path)
 
     def get_addr_keys_for_nickname(self, nickname: str) -> set[int]:
-        """Get all addr_keys that have a specific nickname.
+        """Get all addr_keys that have a specific nickname (exact case match).
 
         Args:
             nickname: The nickname to look up
@@ -310,21 +321,37 @@ class SharedAddressData:
             return set()
         return self._nickname_to_addrs.get(nickname, set()).copy()
 
-    def is_duplicate_nickname(self, nickname: str, exclude_addr_key: int) -> bool:
-        """Check if a nickname is used by any other address.
+    def get_addr_keys_for_nickname_insensitive(self, nickname: str) -> set[int]:
+        """Get all addr_keys that have a nickname matching case-insensitively.
 
-        O(1) lookup using the reverse index.
+        Args:
+            nickname: The nickname to look up (any case)
+
+        Returns:
+            Set of addr_keys with any case variation of the nickname
+        """
+        if not nickname:
+            return set()
+        return self._nickname_lower_to_addrs.get(nickname.lower(), set()).copy()
+
+    def is_duplicate_nickname(self, nickname: str, exclude_addr_key: int) -> bool:
+        """Check if a nickname is used by any other address (case-insensitive).
+
+        O(1) lookup using the lowercase reverse index.
+        CLICK software treats nicknames as case-insensitive, so "Pump1" and "pump1"
+        are considered duplicates.
 
         Args:
             nickname: The nickname to check
             exclude_addr_key: The addr_key to exclude from the check
 
         Returns:
-            True if nickname is used by another address
+            True if nickname is used by another address (case-insensitive match)
         """
         if not nickname:
             return False
-        addr_keys = self._nickname_to_addrs.get(nickname, set())
+        nick_lower = nickname.lower()
+        addr_keys = self._nickname_lower_to_addrs.get(nick_lower, set())
         # Duplicate if more than one addr_key, or one that isn't the excluded one
         if len(addr_keys) > 1:
             return True
@@ -339,6 +366,7 @@ class SharedAddressData:
         - Rows that had the old nickname (may no longer be duplicates)
         - Rows that have the new nickname (may now be duplicates)
 
+        Uses case-insensitive lookup since CLICK treats nicknames as case-insensitive.
         Uses O(1) duplicate checking via the reverse index.
 
         Args:
@@ -348,13 +376,13 @@ class SharedAddressData:
         Returns:
             Set of addr_keys that were validated
         """
-        # Collect affected addr_keys
+        # Collect affected addr_keys (case-insensitive to catch all case variations)
         affected_keys: set[int] = set()
 
         if old_nickname:
-            affected_keys.update(self.get_addr_keys_for_nickname(old_nickname))
+            affected_keys.update(self.get_addr_keys_for_nickname_insensitive(old_nickname))
         if new_nickname:
-            affected_keys.update(self.get_addr_keys_for_nickname(new_nickname))
+            affected_keys.update(self.get_addr_keys_for_nickname_insensitive(new_nickname))
 
         if not affected_keys:
             return set()
@@ -574,11 +602,25 @@ class SharedAddressData:
             if not self._nickname_to_addrs[old_nickname]:
                 del self._nickname_to_addrs[old_nickname]
 
+        # Update lowercase reverse index: remove from old nickname's set
+        if old_nickname:
+            old_lower = old_nickname.lower()
+            if old_lower in self._nickname_lower_to_addrs:
+                self._nickname_lower_to_addrs[old_lower].discard(addr_key)
+                if not self._nickname_lower_to_addrs[old_lower]:
+                    del self._nickname_lower_to_addrs[old_lower]
+
         # Update reverse index: add to new nickname's set
         if new_nickname:
             if new_nickname not in self._nickname_to_addrs:
                 self._nickname_to_addrs[new_nickname] = set()
             self._nickname_to_addrs[new_nickname].add(addr_key)
+
+            # Update lowercase reverse index
+            new_lower = new_nickname.lower()
+            if new_lower not in self._nickname_lower_to_addrs:
+                self._nickname_lower_to_addrs[new_lower] = set()
+            self._nickname_lower_to_addrs[new_lower].add(addr_key)
 
         # Update the nickname in all_rows if it exists
         if addr_key in self.all_rows:

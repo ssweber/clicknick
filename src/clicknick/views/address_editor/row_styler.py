@@ -269,6 +269,24 @@ class AddressRowStyler:
             self.sheet.note(data_idx, COL_INIT_VALUE, note=None)
             del self._note_cache[init_key]
 
+    def update_rows_styling(self, data_indices: set[int]) -> None:
+        """Update styling for specific rows only (incremental update).
+
+        Much faster than apply_all_styling() for single-cell edits.
+
+        Args:
+            data_indices: Set of data row indices to update
+        """
+        block_colors = self._get_block_colors() if self._get_block_colors else {}
+
+        for data_idx in data_indices:
+            # Clear existing highlights for this row
+            self._clear_row_highlights(data_idx)
+            # Re-apply highlights
+            self._apply_row_highlights(data_idx, block_colors)
+            # Update notes for this row
+            self._update_row_notes(data_idx)
+
     def highlight_row_temporary(
         self,
         data_idx: int,
