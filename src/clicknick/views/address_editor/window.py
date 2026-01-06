@@ -426,8 +426,8 @@ class AddressEditorWindow(tk.Toplevel):
                         row.comment = tmpl["comment"]
                     if tmpl["initial_value"]:
                         row.initial_value = tmpl["initial_value"]
-                    if tmpl["retentive"]:
-                        row.retentive = tmpl["retentive"]
+                    # Always copy retentive (it's a boolean, so check is not None)
+                    row.retentive = tmpl["retentive"]
                     panel._update_row_display(row_idx)
                     continue
 
@@ -460,9 +460,8 @@ class AddressEditorWindow(tk.Toplevel):
                 elif tmpl["initial_value"]:
                     row.initial_value = tmpl["initial_value"]
 
-                # Copy retentive
-                if tmpl["retentive"]:
-                    row.retentive = tmpl["retentive"]
+                # Always copy retentive (it's a boolean)
+                row.retentive = tmpl["retentive"]
 
                 # Update global nickname registry
                 panel._all_nicknames[row.addr_key] = new_nickname
