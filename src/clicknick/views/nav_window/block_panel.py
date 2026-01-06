@@ -21,18 +21,10 @@ class BlockPanel(ttk.Frame):
         """Handle double-click on tree item."""
         if selection := self.tree.selection():
             iid = selection[0]
-            # Check for batch data first (full block range)
+            # Emit block data (all addresses in the block)
             if block_data := self._block_data.get(iid):
-                if self.on_batch_select:
-                    self.on_batch_select(block_data)
-                elif block_data:
-                    # Fall back to single address if no batch callback
-                    memory_type, address = block_data[0]
-                    self.on_address_select(memory_type, address)
-            # Fall back to leaf data (single address) for backwards compatibility
-            elif leaf_data := self._leaf_data.get(iid):
-                memory_type, address = leaf_data
-                self.on_address_select(memory_type, address)
+                if self.on_select:
+                    self.on_select(block_data)
 
     def _create_widgets(self) -> None:
         header = ttk.Label(self, text="Memory Blocks", font=("TkDefaultFont", 9, "bold"))
@@ -61,20 +53,16 @@ class BlockPanel(ttk.Frame):
     def __init__(
         self,
         parent: tk.Widget,
-        on_address_select: Callable[[str, int], None],
-        on_batch_select: Callable[[list[tuple[str, int]]], None] | None = None,
+        on_select: Callable[[list[tuple[str, int]]], None],
     ):
         """Initialize the block panel.
 
         Args:
             parent: Parent widget
-            on_address_select: Callback when single address is selected (memory_type, address)
-            on_batch_select: Callback when block is selected (list of (memory_type, address))
+            on_select: Callback when block is selected (list of (memory_type, address))
         """
         super().__init__(parent)
-        self.on_address_select = on_address_select
-        self.on_batch_select = on_batch_select
-        self._leaf_data: dict[str, tuple[str, int]] = {}
+        self.on_select = on_select
         self._block_data: dict[str, list[tuple[str, int]]] = {}
         self._configured_colors: set[str] = set()
 
@@ -113,15 +101,11 @@ class BlockPanel(ttk.Frame):
         # Insert as a single item
         iid = self.tree.insert("", tk.END, text=f"{prefix} {display_text}", tags=(tag_name,))
 
-        # Store all addresses in the block for batch selection
+        # Store all addresses in the block
         self._block_data[iid] = [(row.memory_type, row.address) for row in rows]
-
-        # Also store first address for backwards compatibility
-        self._leaf_data[iid] = (start_row.memory_type, start_row.address)
 
     def build_tree(self, all_rows: dict[int, AddressRow]) -> None:
         """Parse comments and rebuild the blocks tree."""
-        self._leaf_data.clear()
         self._block_data.clear()
         for item in self.tree.get_children():
             self.tree.delete(item)

@@ -637,6 +637,10 @@ class SharedAddressData:
         if self._file_path and os.path.exists(self._file_path):
             self._last_mtime = os.path.getmtime(self._file_path)
 
+        # Update modified time
+        if self._file_path and os.path.exists(self._file_path):
+            self._last_mtime = os.path.getmtime(self._file_path)
+
         self.notify_data_changed()
         return count
 

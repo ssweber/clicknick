@@ -79,15 +79,16 @@ class NavWindow(tk.Toplevel):
     def __init__(
         self,
         parent: tk.Toplevel,
-        on_address_select: Callable[[str, int], None],
-        on_batch_select: Callable[[list[tuple[str, int]]], None] | None = None,
+        on_outline_select: Callable[[str, list[tuple[str, int]]], None],
+        on_block_select: Callable[[list[tuple[str, int]]], None],
     ):
         """Initialize the navigation window.
 
         Args:
             parent: Parent window to dock to
-            on_address_select: Callback when single address is selected (memory_type, address)
-            on_batch_select: Callback when parent node is selected (list of (memory_type, address))
+            on_outline_select: Callback when outline item is selected (path, leaves).
+                               Path is filter prefix for folders or exact nickname for leaves.
+            on_block_select: Callback when block is selected (list of (memory_type, address)).
         """
         super().__init__(parent)
         self.parent_window = parent
@@ -104,13 +105,13 @@ class NavWindow(tk.Toplevel):
         # 2. First Tab: Standard Outline
         self.outline_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.outline_frame, text=" Outline ")
-        self.outline = OutlinePanel(self.outline_frame, on_address_select, on_batch_select)
+        self.outline = OutlinePanel(self.outline_frame, on_outline_select)
         self.outline.pack(fill=tk.BOTH, expand=True)
 
         # 3. Second Tab: Blocks
         self.blocks_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.blocks_frame, text=" Blocks ")
-        self.blocks = BlockPanel(self.blocks_frame, on_address_select, on_batch_select)
+        self.blocks = BlockPanel(self.blocks_frame, on_block_select)
         self.blocks.pack(fill=tk.BOTH, expand=True)
 
         # 4. Snap Button (Floating on top)

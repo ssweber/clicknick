@@ -522,30 +522,11 @@ class DataviewEditorWindow(tk.Toplevel):
         if address_shared:
             self._nav_window.refresh(address_shared.all_rows)
 
-    def _on_nav_address_insert(self, memory_type: str, address: int) -> None:
-        """Handle single address selection from NavWindow - insert into current dataview.
+    def _insert_addresses(self, addresses: list[tuple[str, int]]) -> None:
+        """Insert addresses into the current dataview.
 
         Args:
-            memory_type: The memory type (X, Y, C, etc.)
-            address: The address number
-        """
-        # Look up the row to get display_address
-        from ...models.address_row import get_addr_key
-
-        address_shared = self.shared_data.address_shared_data
-        if not address_shared:
-            return
-
-        addr_key = get_addr_key(memory_type, address)
-        row = address_shared.all_rows.get(addr_key)
-        if row:
-            self.add_address_to_current(row.display_address)
-
-    def _on_nav_batch_insert(self, addresses: list[tuple[str, int]]) -> None:
-        """Handle batch address selection from NavWindow - insert multiple into current dataview.
-
-        Args:
-            addresses: List of (memory_type, address) tuples
+            addresses: List of (memory_type, address) tuples to insert
         """
         from ...models.address_row import get_addr_key
 
@@ -561,14 +542,34 @@ class DataviewEditorWindow(tk.Toplevel):
                     # No more empty rows available
                     break
 
+    def _on_outline_select(self, path: str, leaves: list[tuple[str, int]]) -> None:
+        """Handle outline selection from NavWindow - insert addresses into current dataview.
+
+        For single leaf nodes: inserts one address.
+        For folder nodes: inserts all child addresses.
+
+        Args:
+            path: Filter prefix (unused for dataview - we always insert)
+            leaves: List of (memory_type, address) tuples
+        """
+        self._insert_addresses(leaves)
+
+    def _on_block_select(self, leaves: list[tuple[str, int]]) -> None:
+        """Handle block selection from NavWindow - insert all block addresses.
+
+        Args:
+            leaves: List of (memory_type, address) tuples for all addresses in the block
+        """
+        self._insert_addresses(leaves)
+
     def _toggle_nav(self) -> None:
         """Toggle the navigation window visibility."""
         if self._nav_window is None:
             # Create navigation window with double-click insert behavior
             self._nav_window = NavWindow(
                 self,
-                on_address_select=self._on_nav_address_insert,
-                on_batch_select=self._on_nav_batch_insert,
+                on_outline_select=self._on_outline_select,
+                on_block_select=self._on_block_select,
             )
             self._refresh_navigation()
             self.nav_btn.configure(text="<< Tag Browser")

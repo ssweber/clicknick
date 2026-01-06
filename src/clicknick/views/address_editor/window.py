@@ -609,25 +609,15 @@ class AddressEditorWindow(tk.Toplevel):
         else:
             self._on_add_block_clicked()
 
-    def _on_outline_address_select(self, memory_type: str, address: int) -> None:
-        """Handle address selection from outline tree.
+    def _on_outline_select(self, path: str, leaves: list[tuple[str, int]]) -> None:
+        """Handle selection from outline tree.
+
+        For single leaf nodes (exact nickname match): scrolls to address.
+        For folder nodes (multiple children): filters by path prefix.
 
         Args:
-            memory_type: The memory type (X, Y, C, etc.)
-            address: The address number
-        """
-        # Scroll to the address in the current tab's unified panel
-        panel = self._get_current_panel()
-        if panel and panel.is_unified:
-            panel.scroll_to_address(address, memory_type)
-
-    def _on_outline_batch_select(self, leaves: list[tuple[str, int]]) -> None:
-        """Handle batch selection from outline tree (parent node clicked).
-
-        Scrolls to the first address and sets the filter to show related nicknames.
-
-        Args:
-            leaves: List of (memory_type, address) tuples for all child addresses
+            path: Filter prefix for folders or exact nickname for leaves
+            leaves: List of (memory_type, address) tuples for all addresses under this node
         """
         if not leaves:
             return
@@ -636,44 +626,40 @@ class AddressEditorWindow(tk.Toplevel):
         if not panel or not panel.is_unified:
             return
 
-        # Find the common prefix from the nicknames of these addresses
-        nicknames = []
-        for memory_type, address in leaves:
-            addr_key = get_addr_key(memory_type, address)
-            if addr_key in self.all_nicknames:
-                nicknames.append(self.all_nicknames[addr_key])
-
-        if not nicknames:
-            # No nicknames found, just scroll to first address
+        # Check if this is a single leaf (exact nickname match)
+        if len(leaves) == 1:
             memory_type, address = leaves[0]
-            panel.scroll_to_address(address, memory_type)
-            return
+            addr_key = get_addr_key(memory_type, address)
+            nickname = self.all_nicknames.get(addr_key, "")
+            # If path matches the nickname exactly, just scroll (don't filter)
+            if path == nickname:
+                panel.scroll_to_address(address, memory_type)
+                return
 
-        # Find common prefix of all nicknames
-        prefix = nicknames[0]
-        for nick in nicknames[1:]:
-            # Find common prefix
-            common_len = 0
-            for i, (c1, c2) in enumerate(zip(prefix, nick, strict=False)):
-                if c1 == c2:
-                    common_len = i + 1
-                else:
-                    break
-            prefix = prefix[:common_len]
-
-        # Include trailing underscore if present (segment boundary)
-        if prefix and not prefix.endswith("_"):
-            # Find last underscore in prefix
-            last_underscore = prefix.rfind("_")
-            if last_underscore > 0:
-                prefix = prefix[: last_underscore + 1]
-
-        # Set filter and scroll to first address
-        if prefix:
-            panel.filter_var.set(prefix)
+        # Folder node - filter by path prefix and scroll to first
+        if path:
+            panel.filter_var.set(path)
             panel._apply_filters()
 
-        # Scroll to first address
+        memory_type, address = leaves[0]
+        panel.scroll_to_address(address, memory_type)
+
+    def _on_block_select(self, leaves: list[tuple[str, int]]) -> None:
+        """Handle selection from block panel.
+
+        Always jumps to the first address in the block (no filtering).
+
+        Args:
+            leaves: List of (memory_type, address) tuples for all addresses in the block
+        """
+        if not leaves:
+            return
+
+        panel = self._get_current_panel()
+        if not panel or not panel.is_unified:
+            return
+
+        # Jump to first address in the block
         memory_type, address = leaves[0]
         panel.scroll_to_address(address, memory_type)
 
@@ -683,8 +669,8 @@ class AddressEditorWindow(tk.Toplevel):
             # Create outline window
             self._nav_window = NavWindow(
                 self,
-                on_address_select=self._on_outline_address_select,
-                on_batch_select=self._on_outline_batch_select,
+                on_outline_select=self._on_outline_select,
+                on_block_select=self._on_block_select,
             )
             self._refresh_navigation()
             self.nav_btn.configure(text="<< Tag Browser")
