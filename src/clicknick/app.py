@@ -850,6 +850,8 @@ class ClickNickApp:
             self.selected_instance_var.set(new_filename)
 
             if csv_unloaded:
+                self.using_database = False
+                self._update_window_title()
                 self.stop_monitoring(update_status=False)
             else:
                 # Recreate SharedAddressData for the new MDB file
@@ -872,6 +874,9 @@ class ClickNickApp:
 
                     # Wire NicknameManager to use new SharedAddressData
                     self.nickname_manager.set_shared_data(self._shared_address_data)
+
+                    self.using_database = True
+                    self._update_window_title()
 
                 self._update_status(f"⚡ Monitoring {new_filename}", "connected")
 
