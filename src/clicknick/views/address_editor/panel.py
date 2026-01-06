@@ -341,8 +341,6 @@ class AddressPanel(ttk.Frame):
         Returns:
             List of display values for the row's columns
         """
-        is_bit_panel = self._is_bit_type_panel()
-        is_combined_panel = self.combined_types and len(self.combined_types) > 1
 
         # Used column display
         used_display = "\u2713" if row.used else ""
@@ -357,7 +355,7 @@ class AddressPanel(ttk.Frame):
         else:
             # Otherwise show the underlying value
             # For BIT types, return bool so tksheet knows to check/uncheck the checkbox
-            if is_bit_panel or (is_combined_panel and row.data_type == DataType.BIT):
+            if row.data_type == DataType.BIT:
                 init_value_display = row.initial_value == "1"
             else:
                 init_value_display = row.initial_value
@@ -1150,7 +1148,6 @@ class AddressPanel(ttk.Frame):
             sheet=self.sheet,
             get_rows=lambda: self.rows,
             get_displayed_rows=lambda: self._displayed_rows,
-            combined_types=self.combined_types,
             get_block_colors=self._get_block_colors_for_rows,
         )
 
