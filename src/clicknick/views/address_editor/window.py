@@ -252,6 +252,50 @@ class AddressEditorWindow(tk.Toplevel):
         if not can_fill and reason:
             self.status_var.set(f"Fill Down: {reason}")
 
+    def _can_clone_structure(self) -> tuple[bool, str]:
+        """Check if Clone Structure can be performed on current selection.
+
+        Returns:
+            Tuple of (can_clone, reason if can't clone).
+            can_clone is True if:
+            - At least one row is selected
+            - At least one selected row has a nickname with a number
+        """
+        import re
+
+        selected = self._get_selected_row_indices()
+        if not selected:
+            return False, "Select rows to clone"
+
+        panel = self._get_current_panel()
+        if not panel:
+            return False, ""
+
+        # Check if at least one selected row has a nickname with a number
+        has_number = False
+        for display_idx in selected:
+            if display_idx >= len(panel._displayed_rows):
+                continue
+            row_idx = panel._displayed_rows[display_idx]
+            row = panel.rows[row_idx]
+            if row.nickname and re.search(r"\d+", row.nickname):
+                has_number = True
+                break
+
+        if not has_number:
+            return False, "At least one nickname must contain a number"
+
+        return True, ""
+
+    def _update_clone_button_state(self) -> None:
+        """Update the Clone Structure button state."""
+        can_clone, reason = self._can_clone_structure()
+        self.clone_btn.configure(state="normal" if can_clone else "disabled")
+
+        # Show reason in status bar when disabled
+        if not can_clone and reason:
+            self.status_var.set(f"Clone: {reason}")
+
     def _increment_nickname_suffix(self, nickname: str, increment: int) -> str:
         """Increment the rightmost number in a nickname.
 
@@ -283,6 +327,133 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Replace the rightmost number
         return nickname[: match.start()] + new_num_str + nickname[match.end() :]
+
+    def _on_clone_structure_clicked(self) -> None:
+        """Handle Clone Structure button click."""
+        from tkinter import simpledialog
+
+        can_clone, _ = self._can_clone_structure()
+        if not can_clone:
+            return
+
+        panel = self._get_current_panel()
+        if not panel:
+            return
+
+        selected = self._get_selected_row_indices()
+        block_size = len(selected)
+
+        # Ask for number of clones
+        num_clones = simpledialog.askinteger(
+            "Clone Structure",
+            f"How many clones of the {block_size}-row structure?",
+            parent=self,
+            minvalue=1,
+            maxvalue=100,
+        )
+
+        if not num_clones:
+            return
+
+        # Get the last selected display index
+        last_display_idx = selected[-1]
+
+        # Check that destination rows exist and are empty
+        dest_start = last_display_idx + 1
+        dest_count = block_size * num_clones
+
+        # Check if we have enough rows
+        if dest_start + dest_count > len(panel._displayed_rows):
+            messagebox.showerror(
+                "Clone Error",
+                f"Not enough rows below selection. Need {dest_count} empty rows, "
+                f"but only {len(panel._displayed_rows) - dest_start} available.",
+                parent=self,
+            )
+            return
+
+        # Get memory types from selected rows to validate against
+        selected_memory_types = set()
+        for display_idx in selected:
+            row_idx = panel._displayed_rows[display_idx]
+            row = panel.rows[row_idx]
+            selected_memory_types.add(row.memory_type)
+
+        # Check that all destination rows are empty and same memory type
+        for i in range(dest_count):
+            dest_display_idx = dest_start + i
+            row_idx = panel._displayed_rows[dest_display_idx]
+            row = panel.rows[row_idx]
+            if row.nickname:
+                messagebox.showerror(
+                    "Clone Error",
+                    f"Destination row {row.display_address} is not empty. "
+                    "All destination rows must be empty.",
+                    parent=self,
+                )
+                return
+            if row.memory_type not in selected_memory_types:
+                messagebox.showerror(
+                    "Clone Error",
+                    f"Destination row {row.display_address} is a different memory type "
+                    f"({row.memory_type}). Clone cannot cross memory type boundaries.",
+                    parent=self,
+                )
+                return
+
+        # Build the template from selected rows
+        template = []
+        for display_idx in selected:
+            row_idx = panel._displayed_rows[display_idx]
+            row = panel.rows[row_idx]
+            template.append(row.nickname)  # Can be empty string
+
+        # Perform the cloning
+        for clone_num in range(1, num_clones + 1):
+            for template_idx, base_nickname in enumerate(template):
+                dest_display_idx = dest_start + (clone_num - 1) * block_size + template_idx
+                row_idx = panel._displayed_rows[dest_display_idx]
+                row = panel.rows[row_idx]
+
+                if not base_nickname:
+                    # Empty row in template - keep destination empty
+                    continue
+
+                # Increment the rightmost number
+                new_nickname = self._increment_nickname_suffix(base_nickname, clone_num)
+
+                # Update the row
+                old_nickname = row.nickname
+                row.nickname = new_nickname
+
+                # Update global nickname registry
+                panel._all_nicknames[row.addr_key] = new_nickname
+
+                # Update display
+                panel._update_row_display(row_idx)
+
+                # Notify parent of nickname change
+                if panel.on_nickname_changed:
+                    panel.on_nickname_changed(
+                        panel.memory_type, row.addr_key, old_nickname, new_nickname
+                    )
+
+        # Validate all affected rows
+        for clone_num in range(1, num_clones + 1):
+            for template_idx in range(block_size):
+                dest_display_idx = dest_start + (clone_num - 1) * block_size + template_idx
+                row_idx = panel._displayed_rows[dest_display_idx]
+                panel.rows[row_idx].validate(panel._all_nicknames, panel.is_duplicate_fn)
+
+        # Refresh display
+        panel._refresh_display()
+
+        if panel.on_data_changed:
+            panel.on_data_changed()
+
+        # Update status
+        self._update_status()
+        self.status_var.set(f"Cloned {block_size}-row structure {num_clones} times")
 
     def _on_fill_down_clicked(self) -> None:
         """Handle Fill Down button click."""
@@ -347,6 +518,7 @@ class AddressEditorWindow(tk.Toplevel):
         """Update all footer button states based on current selection."""
         self._update_add_block_button_state()
         self._update_fill_down_button_state()
+        self._update_clone_button_state()
 
     def _bind_panel_selection(self, panel: AddressPanel) -> None:
         """Bind selection change events on a panel's sheet.
@@ -1255,6 +1427,20 @@ class AddressEditorWindow(tk.Toplevel):
         self._create_tooltip(
             self.fill_down_btn,
             "Fill empty rows with incrementing nicknames (e.g., Alm1 → Alm2, Alm3...)",
+        )
+
+        # Clone Structure button
+        self.clone_btn = ttk.Button(
+            footer,
+            text="⧉ Clone",
+            command=self._on_clone_structure_clicked,
+            state="disabled",
+        )
+        self.clone_btn.pack(side=tk.LEFT, padx=(5, 0))
+        # Create tooltip for the button
+        self._create_tooltip(
+            self.clone_btn,
+            "Clone selected row pattern into empty rows below",
         )
 
         # Save button (right side)
