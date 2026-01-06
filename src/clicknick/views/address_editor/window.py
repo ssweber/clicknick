@@ -853,10 +853,36 @@ class AddressEditorWindow(tk.Toplevel):
         self._update_add_block_button_state()
         self._update_status()
 
+    def _save_state_from_panel(self, panel: AddressPanel, state: TabState) -> None:
+        """Save the current panel state to a TabState.
+
+        Args:
+            panel: The panel to read from
+            state: The state to update
+        """
+        state.filter_text = panel.filter_var.get()
+        state.hide_empty = panel.hide_empty_var.get()
+        state.hide_assigned = panel.hide_assigned_var.get()
+        state.show_unsaved_only = panel.show_unsaved_only_var.get()
+        state.hide_used_column = panel.hide_used_var.get()
+        state.hide_init_ret_columns = panel.hide_init_ret_var.get()
+
+        # Save scroll position
+        try:
+            start_row, _end_row = panel.sheet.visible_rows
+            state.scroll_row_index = start_row
+        except Exception:
+            state.scroll_row_index = 0
+
     def _on_new_tab_clicked(self) -> None:
         """Handle New Tab button click."""
-        # Get current state for potential cloning
+        # Get current panel and state for potential cloning
+        current_panel = self._get_current_panel()
         current_state = self._get_current_state()
+
+        # Save current panel state BEFORE asking user (so clone has current values)
+        if current_panel and current_state:
+            self._save_state_from_panel(current_panel, current_state)
 
         # Ask user how to create the tab
         result = ask_new_tab(self)
@@ -1141,24 +1167,3 @@ class AddressEditorWindow(tk.Toplevel):
         self.bind("<Control-T>", lambda e: self._on_new_tab_clicked())
         self.bind("<Control-w>", lambda e: self._close_current_tab())
         self.bind("<Control-W>", lambda e: self._close_current_tab())
-
-    def _save_state_from_panel(self, panel: AddressPanel, state: TabState) -> None:
-        """Save the current panel state to a TabState.
-
-        Args:
-            panel: The panel to read from
-            state: The state to update
-        """
-        state.filter_text = panel.filter_var.get()
-        state.hide_empty = panel.hide_empty_var.get()
-        state.hide_assigned = panel.hide_assigned_var.get()
-        state.show_unsaved_only = panel.show_unsaved_only_var.get()
-        state.hide_used_column = panel.hide_used_var.get()
-        state.hide_init_ret_columns = panel.hide_init_ret_var.get()
-
-        # Save scroll position
-        try:
-            start_row, _end_row = panel.sheet.visible_rows
-            state.scroll_row_index = start_row
-        except Exception:
-            state.scroll_row_index = 0
