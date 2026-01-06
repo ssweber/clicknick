@@ -244,13 +244,9 @@ class AddressEditorWindow(tk.Toplevel):
         return True, rows_to_fill, ""
 
     def _update_fill_down_button_state(self) -> None:
-        """Update the Fill Down button state and show reason in status bar."""
-        can_fill, _, reason = self._can_fill_down()
+        """Update the Fill Down button state."""
+        can_fill, _, _ = self._can_fill_down()
         self.fill_down_btn.configure(state="normal" if can_fill else "disabled")
-
-        # Show reason in status bar when disabled and rows are selected
-        if not can_fill and reason:
-            self.status_var.set(f"Fill Down: {reason}")
 
     def _can_clone_structure(self) -> tuple[bool, str]:
         """Check if Clone Structure can be performed on current selection.
@@ -289,12 +285,8 @@ class AddressEditorWindow(tk.Toplevel):
 
     def _update_clone_button_state(self) -> None:
         """Update the Clone Structure button state."""
-        can_clone, reason = self._can_clone_structure()
+        can_clone, _ = self._can_clone_structure()
         self.clone_btn.configure(state="normal" if can_clone else "disabled")
-
-        # Show reason in status bar when disabled
-        if not can_clone and reason:
-            self.status_var.set(f"Clone: {reason}")
 
     def _increment_nickname_suffix(self, nickname: str, increment: int) -> str:
         """Increment the rightmost number in a nickname.
@@ -1336,6 +1328,13 @@ class AddressEditorWindow(tk.Toplevel):
         )
         file_menu.add_separator()
         file_menu.add_command(label="Close Window", command=self._on_closing)
+
+        # Edit menu
+        edit_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Edit", menu=edit_menu)
+
+        edit_menu.add_command(label="Fill Down", command=self._on_fill_down_clicked)
+        edit_menu.add_command(label="Clone Structure...", command=self._on_clone_structure_clicked)
 
         # View menu
         view_menu = tk.Menu(menubar, tearoff=0)
