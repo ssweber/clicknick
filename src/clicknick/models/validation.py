@@ -66,15 +66,16 @@ def validate_nickname(
     if nickname == "":
         return True, ""
 
-    # Check uniqueness
+    # Check uniqueness (case-insensitive - CLICK treats nicknames as case-insensitive)
     if is_duplicate_fn is not None:
         # O(1) check via reverse index
         if is_duplicate_fn(nickname, current_addr_key):
             return False, "Duplicate"
     else:
-        # Legacy O(n) fallback
+        # Legacy O(n) fallback (case-insensitive)
+        nickname_lower = nickname.lower()
         for addr_key, existing_nick in all_nicknames.items():
-            if addr_key != current_addr_key and existing_nick == nickname:
+            if addr_key != current_addr_key and existing_nick.lower() == nickname_lower:
                 return False, "Duplicate"
 
     return True, ""
