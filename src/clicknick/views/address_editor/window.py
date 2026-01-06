@@ -1088,6 +1088,9 @@ class AddressEditorWindow(tk.Toplevel):
         # Create tooltip for the button
         self._create_tooltip(self.add_block_btn, "Click & drag memory addresses to define block")
 
+        # Save button (right side)
+        ttk.Button(footer, text="💾 Save All", command=self._save_all).pack(side=tk.RIGHT)
+
     def _load_initial_data(self) -> None:
         """Load initial data from the database."""
         try:
