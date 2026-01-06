@@ -871,7 +871,8 @@ class AddressEditorWindow(tk.Toplevel):
         for row_idx in rows_to_update:
             panel._update_row_display(row_idx)
 
-        # Refresh the panel styling
+        # Invalidate block colors cache and refresh styling
+        panel._invalidate_block_colors_cache()
         panel._refresh_display()
 
         # Notify data changed
@@ -952,7 +953,8 @@ class AddressEditorWindow(tk.Toplevel):
         for row_idx in rows_to_update:
             panel._update_row_display(row_idx)
 
-        # Refresh the panel styling
+        # Invalidate block colors cache and refresh styling
+        panel._invalidate_block_colors_cache()
         panel._refresh_display()
 
         # Notify data changed
