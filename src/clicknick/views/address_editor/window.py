@@ -1532,11 +1532,9 @@ class AddressEditorWindow(tk.Toplevel):
         # Content
         popup_text = (
             "Address Editor (Beta)\n\n"
-            "1. This tool edits address information in the CLICK Programming Software's scratchpad database.\n"
-            "2. Changes only TRULY save when you save in the CLICK Software.\n\n"
-            "Quick safety tips:\n"
-            "• Back up your `.ckp` file first\n"
-            "• Not sure about a change? Close CLICK without saving to undo everything"
+            "This tool edits address information in CLICK's temporary database.\n"
+            "Changes are temporary until you save in CLICK Software.\n\n"
+            "Tip: Close CLICK without saving to undo all changes."
         )
 
         messagebox.showinfo("First-Time Tips", popup_text, parent=self)

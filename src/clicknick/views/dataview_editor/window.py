@@ -692,13 +692,10 @@ class DataviewEditorWindow(tk.Toplevel):
         # Content
         popup_text = (
             "Dataview Editor (Beta)\n\n"
-            "1. This tool edits the generated .cdv files in the CLICK Programming "
-            "Software's temporary project folder.\n"
-            "2. New Dataviews created will need to be imported manually.\n"
-            "3. Changes only TRULY save when you save in the CLICK Software.\n\n"
-            "Quick safety tips:\n"
-            "• Back up your `.ckp` file first\n"
-            "• Not sure about a change? Close CLICK without saving to undo everything"
+            "This tool edits .cdv files in CLICK's temporary project folder.\n"
+            "Changes are temporary until you save in CLICK Software.\n\n"
+            "Note: New Dataviews created here must be imported manually in CLICK.\n"
+            "Tip: Close CLICK without saving to undo all changes."
         )
 
         messagebox.showinfo("First-Time Tips", popup_text, parent=self)

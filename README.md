@@ -15,6 +15,8 @@
 | **Price** | Free (bundled) | Free (open source) |
 | **Best For** | Simple projects | Complex projects, productivity |
 
+ClickNick works with your existing `.ckp` projects—just open your project in CLICK Software and connect. It's entirely local with no internet calls or telemetry; changes are temporary until you save in CLICK.
+
 ### Why ClickNick?
 
 CLICK PLCs were my first PLC experience, but remembering addresses became painful. Other platforms autocomplete—why not CLICK? ClickNick adds the modern tools I wish I'd had.
@@ -27,7 +29,7 @@ CLICK PLCs were my first PLC experience, but remembering addresses became painfu
 - **[📊 Dataview Editor](#dataview-editor)** – Tabbed interface, nickname lookup, unlimited reordering
 - **[🔌 Connectivity](#connectivity)** – CSV import and live ODBC database support
 
-**Beta Disclaimer** – This is beta software. Use at your own risk and always back up `.ckp` files.
+**Beta** – Review Address & Dataview changes before saving in CLICK. [Feedback welcome](https://github.com/ssweber/clicknick/issues).
 
 ---
 
@@ -159,3 +161,26 @@ Example: `<Alm Bits bg="Red">` ... `</Alm Bits>`
 
 </details>
 
+<details>
+<summary><strong>Under the Hood</strong> (How ClickNick accesses your data)</summary>
+
+ClickNick never modifies your `.ckp` project file directly. Instead, it works with the temporary files that CLICK Programming Software creates when you open a project:
+
+**Address Data (MDB or CSV):**
+- When you open a `.ckp` project, CLICK extracts a temporary Access database (`SC_.mdb`) containing all address information (nicknames, comments, initial values)
+- With ODBC drivers: ClickNick connects directly to this database for live read/write access
+- Without ODBC drivers: ClickNick reads the auto-generated `Address.csv` (a snapshot from when the project was opened—doesn't reflect changes made during the session). Alternatively, import a CSV exported from CLICK (File → Export)
+- Changes via ODBC are written back to CLICK's scratchpad—they only become permanent when you save in CLICK Software
+
+**DataView Files (CDV):**
+- DataView configurations are stored as `.cdv` files (UTF-16 encoded CSV) in the project's temporary folder
+- The Dataview Editor reads and writes these files directly
+- New DataViews created in ClickNick must be imported manually in CLICK Software
+
+**Tag Browser (Outline):**
+- The tree view is generated dynamically by parsing nicknames—it doesn't store or modify any data
+- Hierarchy is built by splitting nicknames at underscores; arrays are detected from trailing numbers
+
+**Safety:** Close CLICK without saving to discard all changes made through ClickNick. Your original `.ckp` file remains untouched until you explicitly save.
+
+</details>
