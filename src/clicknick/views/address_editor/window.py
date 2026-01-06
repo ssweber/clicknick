@@ -673,17 +673,17 @@ class AddressEditorWindow(tk.Toplevel):
                 on_block_select=self._on_block_select,
             )
             self._refresh_navigation()
-            self.nav_btn.configure(text="<< Tag Browser")
+            self._tag_browser_var.set(True)
         elif self._nav_window.winfo_viewable():
             # Hide it
             self._nav_window.withdraw()
-            self.nav_btn.configure(text="Tag Browser >>")
+            self._tag_browser_var.set(False)
         else:
             # Show it
             self._refresh_navigation()
             self._nav_window.deiconify()
             self._nav_window._dock_to_parent()
-            self.nav_btn.configure(text="<< Tag Browser")
+            self._tag_browser_var.set(True)
 
     def _get_current_state(self) -> TabState | None:
         """Get the state of the currently selected tab.
@@ -707,6 +707,7 @@ class AddressEditorWindow(tk.Toplevel):
             state: The state to apply
         """
         # Apply filter settings
+        panel.filter_enabled_var.set(state.filter_enabled)
         panel.filter_var.set(state.filter_text)
         panel.hide_empty_var.set(state.hide_empty)
         panel.hide_assigned_var.set(state.hide_assigned)
@@ -853,6 +854,11 @@ class AddressEditorWindow(tk.Toplevel):
         self._update_add_block_button_state()
         self._update_status()
 
+        # Sync menu filter enabled state with current panel
+        panel = self._get_current_panel()
+        if panel:
+            self._filter_enabled_var.set(panel.filter_enabled_var.get())
+
     def _save_state_from_panel(self, panel: AddressPanel, state: TabState) -> None:
         """Save the current panel state to a TabState.
 
@@ -860,6 +866,7 @@ class AddressEditorWindow(tk.Toplevel):
             panel: The panel to read from
             state: The state to update
         """
+        state.filter_enabled = panel.filter_enabled_var.get()
         state.filter_text = panel.filter_var.get()
         state.hide_empty = panel.hide_empty_var.get()
         state.hide_assigned = panel.hide_assigned_var.get()
@@ -897,97 +904,11 @@ class AddressEditorWindow(tk.Toplevel):
             # Start fresh
             self._create_new_tab(clone_from=None)
 
-    def _create_widgets(self) -> None:
-        """Create all window widgets."""
-        # Main container
-        main_frame = ttk.Frame(self)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Status bar at very bottom
-        self.status_var = tk.StringVar(value="Ready")
-        status_bar = ttk.Label(self, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
-        status_bar.pack(fill=tk.X, side=tk.BOTTOM)
-
-        # Sidebar on left - buttons now scroll to sections instead of switching panels
-        self.sidebar = JumpSidebar(
-            main_frame,
-            on_type_select=self._on_type_selected,
-            on_address_jump=self._on_address_jump,
-            shared_data=self.shared_data,
-        )
-        self.sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(5, 0), pady=5)
-
-        # Center container (full remaining space - outline is external)
-        center_frame = ttk.Frame(main_frame)
-        center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # Tabbed notebook for address panels (each tab shows ALL memory types)
-        self.notebook = CustomNotebook(
-            center_frame,
-            on_close_callback=self._on_tab_close_request,
-        )
-        self.notebook.pack(fill=tk.BOTH, expand=True)
-
-        # Bind tab change event
-        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
-
-        # Footer toolbar at bottom of center
-        footer = ttk.Frame(center_frame)
-        footer.pack(fill=tk.X, pady=(5, 0))
-
-        # Refresh button
-        ttk.Button(footer, text="⟳ Refresh", command=self._refresh_all).pack(side=tk.LEFT)
-
-        # Add Block button (right of Refresh)
-        self.add_block_btn = ttk.Button(
-            footer,
-            text="+ Add Block",
-            command=self._on_block_button_clicked,
-            state="disabled",
-        )
-        self.add_block_btn.pack(side=tk.LEFT, padx=(5, 0))
-        # Create tooltip for the button
-        self._create_tooltip(self.add_block_btn, "Click & drag memory addresses to define block")
-
-        # New Tab button
-        ttk.Button(footer, text="+ New Tab", command=self._on_new_tab_clicked).pack(
-            side=tk.LEFT, padx=(5, 0)
-        )
-
-        # Tag Browser toggle button
-        self.nav_btn = ttk.Button(footer, text="Tag Browser >>", command=self._toggle_nav)
-        self.nav_btn.pack(side=tk.RIGHT, padx=(5, 0))
-
-        # Save button
-        self.save_btn = ttk.Button(footer, text="💾 Save All", command=self._save_all)
-        self.save_btn.pack(side=tk.RIGHT)
-
-        # Discard button
-        ttk.Button(footer, text="🗑 Discard Changes", command=self._discard_changes).pack(
-            side=tk.RIGHT, padx=(0, 5)
-        )
-
-    def _load_initial_data(self) -> None:
-        """Load initial data from the database."""
-        try:
-            # Load initial data if not already loaded
-            if not self.shared_data.is_initialized():
-                self.shared_data.load_initial_data()
-
-            # Start file monitoring (uses master window for after() calls)
-            self.shared_data.start_file_monitoring(self.master)
-
-            # Get reference to shared nicknames
-            self.all_nicknames = self.shared_data.all_nicknames
-
-            self.status_var.set(f"Connected - {len(self.all_nicknames)} nicknames loaded")
-
-            # Create first tab with fresh state
-            self._create_new_tab(clone_from=None)
-
-        except Exception as e:
-            messagebox.showerror("Database Error", str(e))
-            self.destroy()
+    def _on_filter_toggle(self, event=None) -> None:
+        """Toggle filter enabled state for current panel."""
+        panel = self._get_current_panel()
+        if panel:
+            panel.toggle_filter_enabled(self._filter_enabled_var.get())
 
     def _on_shared_data_changed(self, sender: object = None) -> None:
         """Handle notification that shared data has changed.
@@ -1065,6 +986,129 @@ class AddressEditorWindow(tk.Toplevel):
         self.shared_data.unregister_window(self)
 
         self.destroy()
+
+    def _create_menu(self) -> None:
+        """Create the menu bar."""
+        menubar = tk.Menu(self)
+        self.config(menu=menubar)
+
+        # File menu
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="File", menu=file_menu)
+
+        file_menu.add_command(
+            label="New Tab", command=self._on_new_tab_clicked, accelerator="Ctrl+T"
+        )
+        file_menu.add_separator()
+        file_menu.add_command(label="Refresh", command=self._refresh_all)
+        file_menu.add_command(label="Save All", command=self._save_all, accelerator="Ctrl+S")
+        file_menu.add_command(label="Discard Changes", command=self._discard_changes)
+        file_menu.add_separator()
+        file_menu.add_command(
+            label="Close Tab", command=self._close_current_tab, accelerator="Ctrl+W"
+        )
+        file_menu.add_separator()
+        file_menu.add_command(label="Close Window", command=self._on_closing)
+
+        # View menu
+        view_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="View", menu=view_menu)
+
+        # Filter enabled toggle (checkbutton)
+        self._filter_enabled_var = tk.BooleanVar(value=True)
+        view_menu.add_checkbutton(
+            label="Filter Enabled",
+            variable=self._filter_enabled_var,
+            command=self._on_filter_toggle,
+            accelerator="Ctrl+Space",
+        )
+        view_menu.add_separator()
+
+        # Tag Browser toggle (checkbutton)
+        self._tag_browser_var = tk.BooleanVar(value=False)
+        view_menu.add_checkbutton(
+            label="Tag Browser",
+            variable=self._tag_browser_var,
+            command=self._toggle_nav,
+        )
+
+    def _on_filter_toggle_key(self, event=None) -> str:
+        """Handle Ctrl+Space keyboard shortcut to toggle filter."""
+        # Toggle the variable (menu checkbutton will update automatically)
+        self._filter_enabled_var.set(not self._filter_enabled_var.get())
+        self._on_filter_toggle()
+        return "break"  # Prevent event propagation
+
+    def _create_widgets(self) -> None:
+        """Create all window widgets."""
+        # Main container
+        main_frame = ttk.Frame(self)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Status bar at very bottom
+        self.status_var = tk.StringVar(value="Ready")
+        status_bar = ttk.Label(self, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
+        status_bar.pack(fill=tk.X, side=tk.BOTTOM)
+
+        # Sidebar on left - buttons now scroll to sections instead of switching panels
+        self.sidebar = JumpSidebar(
+            main_frame,
+            on_type_select=self._on_type_selected,
+            on_address_jump=self._on_address_jump,
+            shared_data=self.shared_data,
+        )
+        self.sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(5, 0), pady=5)
+
+        # Center container (full remaining space - outline is external)
+        center_frame = ttk.Frame(main_frame)
+        center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Tabbed notebook for address panels (each tab shows ALL memory types)
+        self.notebook = CustomNotebook(
+            center_frame,
+            on_close_callback=self._on_tab_close_request,
+        )
+        self.notebook.pack(fill=tk.BOTH, expand=True)
+
+        # Bind tab change event
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+
+        # Footer toolbar at bottom of center
+        footer = ttk.Frame(center_frame)
+        footer.pack(fill=tk.X, pady=(5, 0))
+
+        # Add Block button
+        self.add_block_btn = ttk.Button(
+            footer,
+            text="+ Add Block",
+            command=self._on_block_button_clicked,
+            state="disabled",
+        )
+        self.add_block_btn.pack(side=tk.LEFT)
+        # Create tooltip for the button
+        self._create_tooltip(self.add_block_btn, "Click & drag memory addresses to define block")
+
+    def _load_initial_data(self) -> None:
+        """Load initial data from the database."""
+        try:
+            # Load initial data if not already loaded
+            if not self.shared_data.is_initialized():
+                self.shared_data.load_initial_data()
+
+            # Start file monitoring (uses master window for after() calls)
+            self.shared_data.start_file_monitoring(self.master)
+
+            # Get reference to shared nicknames
+            self.all_nicknames = self.shared_data.all_nicknames
+
+            self.status_var.set(f"Connected - {len(self.all_nicknames)} nicknames loaded")
+
+            # Create first tab with fresh state
+            self._create_new_tab(clone_from=None)
+
+        except Exception as e:
+            messagebox.showerror("Database Error", str(e))
+            self.destroy()
 
     @staticmethod
     def _get_address_editor_popup_flag() -> Path:
@@ -1147,6 +1191,7 @@ class AddressEditorWindow(tk.Toplevel):
         # so _do_revalidation can skip them (they don't need re-validation)
         self._recently_validated_panels: set[str] = set()
 
+        self._create_menu()
         self._create_widgets()
         self._load_initial_data()
         self._show_address_editor_popup()
@@ -1167,3 +1212,7 @@ class AddressEditorWindow(tk.Toplevel):
         self.bind("<Control-T>", lambda e: self._on_new_tab_clicked())
         self.bind("<Control-w>", lambda e: self._close_current_tab())
         self.bind("<Control-W>", lambda e: self._close_current_tab())
+        self.bind("<Control-space>", self._on_filter_toggle_key)
+
+        # Open Tag Browser by default
+        self.after(100, self._toggle_nav)

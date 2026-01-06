@@ -282,6 +282,77 @@ class DataviewEditorWindow(tk.Toplevel):
         # Destroy window
         self.destroy()
 
+    def _refresh_navigation(self) -> None:
+        """Refresh the navigation window with current data."""
+        if self._nav_window is None:
+            return
+
+        address_shared = self.shared_data.address_shared_data
+        if address_shared:
+            self._nav_window.refresh(address_shared.all_rows)
+
+    def _insert_addresses(self, addresses: list[tuple[str, int]]) -> None:
+        """Insert addresses into the current dataview.
+
+        Args:
+            addresses: List of (memory_type, address) tuples to insert
+        """
+        from ...models.address_row import get_addr_key
+
+        address_shared = self.shared_data.address_shared_data
+        if not address_shared:
+            return
+
+        for memory_type, address in addresses:
+            addr_key = get_addr_key(memory_type, address)
+            row = address_shared.all_rows.get(addr_key)
+            if row:
+                if not self.add_address_to_current(row.display_address):
+                    # No more empty rows available
+                    break
+
+    def _on_outline_select(self, path: str, leaves: list[tuple[str, int]]) -> None:
+        """Handle outline selection from NavWindow - insert addresses into current dataview.
+
+        For single leaf nodes: inserts one address.
+        For folder nodes: inserts all child addresses.
+
+        Args:
+            path: Filter prefix (unused for dataview - we always insert)
+            leaves: List of (memory_type, address) tuples
+        """
+        self._insert_addresses(leaves)
+
+    def _on_block_select(self, leaves: list[tuple[str, int]]) -> None:
+        """Handle block selection from NavWindow - insert all block addresses.
+
+        Args:
+            leaves: List of (memory_type, address) tuples for all addresses in the block
+        """
+        self._insert_addresses(leaves)
+
+    def _toggle_nav(self) -> None:
+        """Toggle the navigation window visibility."""
+        if self._nav_window is None:
+            # Create navigation window with double-click insert behavior
+            self._nav_window = NavWindow(
+                self,
+                on_outline_select=self._on_outline_select,
+                on_block_select=self._on_block_select,
+            )
+            self._refresh_navigation()
+            self._tag_browser_var.set(True)
+        elif self._nav_window.winfo_viewable():
+            # Hide it
+            self._nav_window.withdraw()
+            self._tag_browser_var.set(False)
+        else:
+            # Show it
+            self._refresh_navigation()
+            self._nav_window.deiconify()
+            self._nav_window._dock_to_parent()
+            self._tag_browser_var.set(True)
+
     def _create_menu(self) -> None:
         """Create the menu bar."""
         menubar = tk.Menu(self)
@@ -322,6 +393,15 @@ class DataviewEditorWindow(tk.Toplevel):
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="View", menu=view_menu)
         view_menu.add_command(label="Refresh File List", command=self._refresh_file_list)
+        view_menu.add_separator()
+
+        # Tag Browser toggle (checkbutton)
+        self._tag_browser_var = tk.BooleanVar(value=False)
+        view_menu.add_checkbutton(
+            label="Tag Browser",
+            variable=self._tag_browser_var,
+            command=self._toggle_nav,
+        )
 
     def _open_selected(self) -> None:
         """Open the selected file from the list."""
@@ -513,77 +593,6 @@ class DataviewEditorWindow(tk.Toplevel):
         """Handle Insert button click - finalize current combobox entry."""
         self.nickname_combo.finalize_entry()
 
-    def _refresh_navigation(self) -> None:
-        """Refresh the navigation window with current data."""
-        if self._nav_window is None:
-            return
-
-        address_shared = self.shared_data.address_shared_data
-        if address_shared:
-            self._nav_window.refresh(address_shared.all_rows)
-
-    def _insert_addresses(self, addresses: list[tuple[str, int]]) -> None:
-        """Insert addresses into the current dataview.
-
-        Args:
-            addresses: List of (memory_type, address) tuples to insert
-        """
-        from ...models.address_row import get_addr_key
-
-        address_shared = self.shared_data.address_shared_data
-        if not address_shared:
-            return
-
-        for memory_type, address in addresses:
-            addr_key = get_addr_key(memory_type, address)
-            row = address_shared.all_rows.get(addr_key)
-            if row:
-                if not self.add_address_to_current(row.display_address):
-                    # No more empty rows available
-                    break
-
-    def _on_outline_select(self, path: str, leaves: list[tuple[str, int]]) -> None:
-        """Handle outline selection from NavWindow - insert addresses into current dataview.
-
-        For single leaf nodes: inserts one address.
-        For folder nodes: inserts all child addresses.
-
-        Args:
-            path: Filter prefix (unused for dataview - we always insert)
-            leaves: List of (memory_type, address) tuples
-        """
-        self._insert_addresses(leaves)
-
-    def _on_block_select(self, leaves: list[tuple[str, int]]) -> None:
-        """Handle block selection from NavWindow - insert all block addresses.
-
-        Args:
-            leaves: List of (memory_type, address) tuples for all addresses in the block
-        """
-        self._insert_addresses(leaves)
-
-    def _toggle_nav(self) -> None:
-        """Toggle the navigation window visibility."""
-        if self._nav_window is None:
-            # Create navigation window with double-click insert behavior
-            self._nav_window = NavWindow(
-                self,
-                on_outline_select=self._on_outline_select,
-                on_block_select=self._on_block_select,
-            )
-            self._refresh_navigation()
-            self.nav_btn.configure(text="<< Tag Browser")
-        elif self._nav_window.winfo_viewable():
-            # Hide it
-            self._nav_window.withdraw()
-            self.nav_btn.configure(text="Tag Browser >>")
-        else:
-            # Show it
-            self._refresh_navigation()
-            self._nav_window.deiconify()
-            self._nav_window._dock_to_parent()
-            self.nav_btn.configure(text="<< Tag Browser")
-
     def _create_widgets(self) -> None:
         """Create the main UI widgets."""
         # Main paned window for sidebar + content
@@ -654,10 +663,6 @@ class DataviewEditorWindow(tk.Toplevel):
         ttk.Button(toolbar, text="Insert", command=self._on_insert_button_clicked, width=8).pack(
             side=tk.LEFT, padx=(0, 5)
         )
-
-        # Tag Browser toggle button (right side)
-        self.nav_btn = ttk.Button(toolbar, text="Tag Browser >>", command=self._toggle_nav)
-        self.nav_btn.pack(side=tk.RIGHT)
 
         # Notebook for tabs (with close buttons)
         self.notebook = CustomNotebook(self.content, on_close_callback=self._on_tab_close_request)
@@ -743,6 +748,9 @@ class DataviewEditorWindow(tk.Toplevel):
 
         # Handle window close
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        # Open Tag Browser by default
+        self.after(100, self._toggle_nav)
 
     def refresh_nicknames_from_shared(self) -> None:
         """Called by SharedDataviewData when SharedAddressData changes.
