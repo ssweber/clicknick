@@ -76,9 +76,9 @@ class AddressEditorWindow(tk.Toplevel):
 
         self._update_status()
 
-        # Refresh outline if visible (live update)
+        # Refresh outline if visible (live update, deferred until idle)
         if self._nav_window is not None and self._nav_window.winfo_viewable():
-            self._refresh_navigation()
+            self.after_idle(self._refresh_navigation)
 
         # NOTE: We intentionally do NOT call notify_data_changed here.
         # Other windows already received notification via _handle_data_changed
@@ -288,26 +288,30 @@ class AddressEditorWindow(tk.Toplevel):
         can_clone, _ = self._can_clone_structure()
         self.clone_btn.configure(state="normal" if can_clone else "disabled")
 
-    def _increment_nickname_suffix(self, nickname: str, increment: int) -> str:
+    def _increment_nickname_suffix(
+        self, nickname: str, increment: int
+    ) -> tuple[str, int | None, int | None]:
         """Increment the rightmost number in a nickname.
 
-        E.g., "Building1_Alm1" with increment=1 -> "Building1_Alm2"
-              "Building1_Alm" with increment=1 -> "Building2_Alm"
-              "Tank_Level10" with increment=2 -> "Tank_Level12"
+        E.g., "Building1_Alm1" with increment=1 -> ("Building1_Alm2", 1, 2)
+              "Building1_Alm" with increment=1 -> ("Building2_Alm", 1, 2)
+              "Tank_Level10" with increment=2 -> ("Tank_Level12", 10, 12)
+              "NoNumber" with increment=1 -> ("NoNumber", None, None)
 
         Args:
             nickname: The base nickname to increment
             increment: How much to add to the number
 
         Returns:
-            The nickname with incremented rightmost number
+            Tuple of (new_nickname, original_number, new_number).
+            Numbers are None if no number was found in the nickname.
         """
         import re
 
         # Find all numbers in the nickname, use the rightmost one
         matches = list(re.finditer(r"\d+", nickname))
         if not matches:
-            return nickname
+            return nickname, None, None
 
         match = matches[-1]  # Rightmost number
         num_str = match.group()
@@ -318,7 +322,8 @@ class AddressEditorWindow(tk.Toplevel):
         new_num_str = str(new_num).zfill(len(num_str))
 
         # Replace the rightmost number
-        return nickname[: match.start()] + new_num_str + nickname[match.end() :]
+        new_nickname = nickname[: match.start()] + new_num_str + nickname[match.end() :]
+        return new_nickname, num, new_num
 
     def _on_clone_structure_clicked(self) -> None:
         """Handle Clone Structure button click."""
@@ -393,30 +398,71 @@ class AddressEditorWindow(tk.Toplevel):
                 )
                 return
 
-        # Build the template from selected rows
+        # Build the template from selected rows (all attributes)
         template = []
         for display_idx in selected:
             row_idx = panel._displayed_rows[display_idx]
             row = panel.rows[row_idx]
-            template.append(row.nickname)  # Can be empty string
+            template.append(
+                {
+                    "nickname": row.nickname,
+                    "comment": row.comment,
+                    "initial_value": row.initial_value,
+                    "retentive": row.retentive,
+                }
+            )
 
         # Perform the cloning
         for clone_num in range(1, num_clones + 1):
-            for template_idx, base_nickname in enumerate(template):
+            for template_idx, tmpl in enumerate(template):
                 dest_display_idx = dest_start + (clone_num - 1) * block_size + template_idx
                 row_idx = panel._displayed_rows[dest_display_idx]
                 row = panel.rows[row_idx]
 
+                base_nickname = tmpl["nickname"]
                 if not base_nickname:
-                    # Empty row in template - keep destination empty
+                    # Empty row in template - still copy comment/initial_value/retentive
+                    if tmpl["comment"]:
+                        row.comment = tmpl["comment"]
+                    if tmpl["initial_value"]:
+                        row.initial_value = tmpl["initial_value"]
+                    if tmpl["retentive"]:
+                        row.retentive = tmpl["retentive"]
+                    panel._update_row_display(row_idx)
                     continue
 
-                # Increment the rightmost number
-                new_nickname = self._increment_nickname_suffix(base_nickname, clone_num)
+                # Increment the rightmost number in nickname
+                new_nickname, orig_num, new_num = self._increment_nickname_suffix(
+                    base_nickname, clone_num
+                )
 
-                # Update the row
+                # Update the row nickname
                 old_nickname = row.nickname
                 row.nickname = new_nickname
+
+                # Copy comment
+                if tmpl["comment"]:
+                    row.comment = tmpl["comment"]
+
+                # Copy/increment initial_value
+                if tmpl["initial_value"] and orig_num is not None:
+                    # Check if initial_value matches the original pseudo-array number
+                    try:
+                        init_val = int(tmpl["initial_value"])
+                        if init_val == orig_num:
+                            # Increment initial_value to match the new number
+                            row.initial_value = str(new_num)
+                        else:
+                            row.initial_value = tmpl["initial_value"]
+                    except ValueError:
+                        # Non-integer initial_value, just copy as-is
+                        row.initial_value = tmpl["initial_value"]
+                elif tmpl["initial_value"]:
+                    row.initial_value = tmpl["initial_value"]
+
+                # Copy retentive
+                if tmpl["retentive"]:
+                    row.retentive = tmpl["retentive"]
 
                 # Update global nickname registry
                 panel._all_nicknames[row.addr_key] = new_nickname
@@ -468,7 +514,7 @@ class AddressEditorWindow(tk.Toplevel):
             row_idx = panel._displayed_rows[display_idx]
             row = panel.rows[row_idx]
 
-            new_nickname = self._increment_nickname_suffix(base_nickname, i)
+            new_nickname, _, _ = self._increment_nickname_suffix(base_nickname, i)
 
             # Update the row
             old_nickname = row.nickname
@@ -1273,9 +1319,9 @@ class AddressEditorWindow(tk.Toplevel):
                 skip_validation = sender is not None
                 panel.refresh_from_external(skip_validation=skip_validation)
 
-        # Refresh outline if visible
+        # Refresh outline if visible (deferred until idle)
         if self._nav_window is not None and self._nav_window.winfo_viewable():
-            self._refresh_navigation()
+            self.after_idle(self._refresh_navigation)
 
         self._update_status()
 

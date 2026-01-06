@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from tksheet import num2alpha
 
 from ...models.address_row import AddressRow
-from ...models.blocktag import parse_block_tag
+from ...models.blocktag import BlockTag, parse_block_tag
 from ...models.constants import (
     FLOAT_MAX,
     FLOAT_MIN,
@@ -130,11 +130,22 @@ class AddressPanel(ttk.Frame):
             text=f"Rows: {total_visible} | Errors: {error_count} | Modified: {modified_count}"
         )
 
-    def _refresh_display(self) -> None:
-        """Refresh styling and status (lightweight, no data rebuild)."""
+    def _refresh_display(self, modified_rows: set[int] | None = None) -> None:
+        """Refresh styling and status.
+
+        Args:
+            modified_rows: If provided, only refresh styling for these data indices.
+                           If None, performs full refresh (dehighlight_all + re-apply all).
+        """
         if self._styler:
-            self._styler.apply_all_styling()
-        self._update_status()
+            if modified_rows is not None:
+                # Incremental update - only refresh modified rows
+                self._styler.update_rows_styling(modified_rows)
+            else:
+                # Full refresh (for filter changes, etc.)
+                self._styler.apply_all_styling()
+        # Defer status update to avoid blocking the edit (iterates all rows)
+        self.after_idle(self._update_status)
         # Use set_refresh_timer() instead of redraw() to prevent multiple redraws
         # and ensure proper refresh after set_cell_data() calls
         self.sheet.set_refresh_timer()
@@ -412,6 +423,46 @@ class AddressPanel(ttk.Frame):
             else:
                 self.sheet.set_cell_data(data_idx, col, value)
 
+    def _invalidate_block_colors_cache(self) -> None:
+        """Invalidate the block colors cache (call when comments change)."""
+        self._block_colors_cache = None
+
+    def _find_block_range(self, row_idx: int, tag: BlockTag) -> set[int]:
+        """Find the range of row indices affected by a block tag.
+
+        Args:
+            row_idx: Index of the row containing the tag
+            tag: Parsed BlockTag from the comment
+
+        Returns:
+            Set of row indices that need restyling due to this block tag
+        """
+        if not tag.name or not tag.tag_type:
+            return set()
+
+        if tag.tag_type == "self-closing":
+            return {row_idx}
+
+        if tag.tag_type == "open":
+            # Search forward for matching close tag
+            for i in range(row_idx + 1, len(self.rows)):
+                other_tag = parse_block_tag(self.rows[i].comment)
+                if other_tag.name == tag.name and other_tag.tag_type == "close":
+                    return set(range(row_idx, i + 1))
+            # No close found - just the opening row
+            return {row_idx}
+
+        if tag.tag_type == "close":
+            # Search backward for matching open tag
+            for i in range(row_idx - 1, -1, -1):
+                other_tag = parse_block_tag(self.rows[i].comment)
+                if other_tag.name == tag.name and other_tag.tag_type == "open":
+                    return set(range(i, row_idx + 1))
+            # No open found - just the closing row
+            return {row_idx}
+
+        return set()
+
     def _on_sheet_modified(self, event) -> None:
         """Handle sheet modification events (called AFTER changes are applied).
 
@@ -486,10 +537,21 @@ class AddressPanel(ttk.Frame):
                 if new_comment == address_row.comment:
                     continue
 
+                # Check for block tags before and after change
+                old_tag = parse_block_tag(address_row.comment)
+                new_tag = parse_block_tag(new_comment)
+
                 # Update the row
                 address_row.comment = new_comment
                 modified_data_indices.add(data_idx)
                 data_changed = True
+
+                # If block tags involved, expand modified indices to affected range
+                if old_tag.name or new_tag.name:
+                    self._invalidate_block_colors_cache()
+                    # Find ranges affected by both old and new tags
+                    modified_data_indices.update(self._find_block_range(data_idx, old_tag))
+                    modified_data_indices.update(self._find_block_range(data_idx, new_tag))
 
             elif col == self.COL_INIT_VALUE:
                 # Skip if type doesn't allow editing initial value
@@ -585,8 +647,8 @@ class AddressPanel(ttk.Frame):
             for idx in modified_data_indices:
                 self.rows[idx].validate(self._all_nicknames, self.is_duplicate_fn)
 
-        # Refresh styling and status
-        self._refresh_display()
+        # Refresh styling and status (incremental - only modified rows)
+        self._refresh_display(modified_rows=modified_data_indices)
 
         if data_changed and self.on_data_changed:
             self.on_data_changed()
@@ -636,7 +698,7 @@ class AddressPanel(ttk.Frame):
         for idx in modified_indices:
             self.rows[idx].validate(self._all_nicknames, self.is_duplicate_fn)
 
-        self._refresh_display()
+        self._refresh_display(modified_rows=modified_indices)
 
         if self.on_data_changed:
             self.on_data_changed()
@@ -665,6 +727,13 @@ class AddressPanel(ttk.Frame):
                 new_nick = row.original_nickname
                 nickname_changes.append((row.addr_key, old_nick, new_nick))
 
+            if row.is_comment_dirty:
+                old_tag = parse_block_tag(row.comment)
+                new_tag = parse_block_tag(row.original_comment)
+                if old_tag.name or new_tag.name:
+                    block_tag_modified = True
+                    self._invalidate_block_colors_cache()
+
             row.discard()
             modified_indices.add(data_idx)
 
@@ -684,7 +753,7 @@ class AddressPanel(ttk.Frame):
         for idx in modified_indices:
             self.rows[idx].validate(self._all_nicknames, self.is_duplicate_fn)
 
-        self._refresh_display()
+        self._refresh_display(modified_rows=None if block_tag_modified else modified_indices)
 
         if self.on_data_changed:
             self.on_data_changed()
@@ -1004,6 +1073,9 @@ class AddressPanel(ttk.Frame):
         # Flag to suppress change notifications during programmatic updates
         self._suppress_notifications = False
 
+        # Cache for block colors (invalidated when comments change)
+        self._block_colors_cache: dict[int, str] | None = None
+
         # Track selected row for filter changes (actual row index in self.rows)
         self._selected_row_idx: int | None = None
         self._selected_row_visual_offset = None
@@ -1069,7 +1141,7 @@ class AddressPanel(ttk.Frame):
             row.validate(self._all_nicknames)
 
     def _get_block_colors_for_rows(self) -> dict[int, str]:
-        """Compute block background colors for each row address.
+        """Get block background colors for each row address (cached).
 
         Parses block tags from row comments to determine which rows
         should have colored row indices. Nested blocks override outer blocks.
@@ -1077,6 +1149,9 @@ class AddressPanel(ttk.Frame):
         Returns:
             Dict mapping row index (in self.rows) to bg color string.
         """
+        # Return cached value if available
+        if self._block_colors_cache is not None:
+            return self._block_colors_cache
 
         # Build list of colored blocks: (start_idx, end_idx, bg_color)
         # We use row indices not addresses for easier lookup
@@ -1121,6 +1196,8 @@ class AddressPanel(ttk.Frame):
             for idx in range(start_idx, end_idx + 1):
                 row_colors[idx] = bg_color
 
+        # Cache the result
+        self._block_colors_cache = row_colors
         return row_colors
 
     def _populate_sheet_data(self) -> None:
@@ -1189,6 +1266,9 @@ class AddressPanel(ttk.Frame):
                 already validated the shared rows. Use when syncing from another
                 window's edit (not from external DB changes).
         """
+        # Invalidate block colors cache (comments may have changed)
+        self._invalidate_block_colors_cache()
+
         # Update all row displays to sync AddressRow data to sheet cells
         for data_idx in range(len(self.rows)):
             self._update_row_display(data_idx)
@@ -1202,6 +1282,7 @@ class AddressPanel(ttk.Frame):
     def rebuild_from_view(self, view):
         """Rebuild panel data from a view object."""
         self.rows = view.rows
+        self._invalidate_block_colors_cache()
         self._validate_all()
         self._populate_sheet_data()
         self._apply_filters()
