@@ -193,14 +193,169 @@ class AddressEditorWindow(tk.Toplevel):
         else:
             self.add_block_btn.configure(state="normal", text="+ Add Block")
 
+    def _can_fill_down(self) -> tuple[bool, list[int], str]:
+        """Check if Fill Down can be performed on current selection.
+
+        Returns:
+            Tuple of (can_fill, list of display row indices to fill, reason if can't fill).
+            can_fill is True if:
+            - Multiple rows are selected
+            - First row has a non-empty nickname containing a number
+            - All other rows have empty nicknames
+        """
+        import re
+
+        selected = self._get_selected_row_indices()
+        if len(selected) < 2:
+            return False, [], "Select multiple rows"
+
+        panel = self._get_current_panel()
+        if not panel:
+            return False, [], ""
+
+        # Get the first row's nickname
+        first_display_idx = selected[0]
+        if first_display_idx >= len(panel._displayed_rows):
+            return False, [], ""
+
+        first_row_idx = panel._displayed_rows[first_display_idx]
+        first_row = panel.rows[first_row_idx]
+        first_nickname = first_row.nickname
+
+        # First nickname must be non-empty
+        if not first_nickname:
+            return False, [], "First row must have a nickname"
+
+        # Check if nickname contains a number (rightmost will be incremented)
+        if not re.search(r"\d+", first_nickname):
+            return False, [], "First nickname must contain a number"
+
+        # Check that all other rows have empty nicknames
+        rows_to_fill = []
+        for display_idx in selected[1:]:
+            if display_idx >= len(panel._displayed_rows):
+                return False, [], ""
+            row_idx = panel._displayed_rows[display_idx]
+            row = panel.rows[row_idx]
+            if row.nickname:  # Must be empty
+                return False, [], "Other selected rows must be empty"
+            rows_to_fill.append(display_idx)
+
+        return True, rows_to_fill, ""
+
+    def _update_fill_down_button_state(self) -> None:
+        """Update the Fill Down button state and show reason in status bar."""
+        can_fill, _, reason = self._can_fill_down()
+        self.fill_down_btn.configure(state="normal" if can_fill else "disabled")
+
+        # Show reason in status bar when disabled and rows are selected
+        if not can_fill and reason:
+            self.status_var.set(f"Fill Down: {reason}")
+
+    def _increment_nickname_suffix(self, nickname: str, increment: int) -> str:
+        """Increment the rightmost number in a nickname.
+
+        E.g., "Building1_Alm1" with increment=1 -> "Building1_Alm2"
+              "Building1_Alm" with increment=1 -> "Building2_Alm"
+              "Tank_Level10" with increment=2 -> "Tank_Level12"
+
+        Args:
+            nickname: The base nickname to increment
+            increment: How much to add to the number
+
+        Returns:
+            The nickname with incremented rightmost number
+        """
+        import re
+
+        # Find all numbers in the nickname, use the rightmost one
+        matches = list(re.finditer(r"\d+", nickname))
+        if not matches:
+            return nickname
+
+        match = matches[-1]  # Rightmost number
+        num_str = match.group()
+        num = int(num_str)
+        new_num = num + increment
+
+        # Preserve leading zeros if any
+        new_num_str = str(new_num).zfill(len(num_str))
+
+        # Replace the rightmost number
+        return nickname[: match.start()] + new_num_str + nickname[match.end() :]
+
+    def _on_fill_down_clicked(self) -> None:
+        """Handle Fill Down button click."""
+        can_fill, rows_to_fill, _ = self._can_fill_down()
+        if not can_fill:
+            return
+
+        panel = self._get_current_panel()
+        if not panel:
+            return
+
+        selected = self._get_selected_row_indices()
+        first_display_idx = selected[0]
+        first_row_idx = panel._displayed_rows[first_display_idx]
+        first_row = panel.rows[first_row_idx]
+        base_nickname = first_row.nickname
+
+        # Fill each row with incremented nickname
+        for i, display_idx in enumerate(rows_to_fill, start=1):
+            row_idx = panel._displayed_rows[display_idx]
+            row = panel.rows[row_idx]
+
+            new_nickname = self._increment_nickname_suffix(base_nickname, i)
+
+            # Update the row
+            old_nickname = row.nickname
+            row.nickname = new_nickname
+
+            # Update global nickname registry
+            if new_nickname:
+                panel._all_nicknames[row.addr_key] = new_nickname
+
+            # Update display
+            panel._update_row_display(row_idx)
+
+            # Notify parent of nickname change
+            if panel.on_nickname_changed:
+                panel.on_nickname_changed(
+                    panel.memory_type, row.addr_key, old_nickname, new_nickname
+                )
+
+        # Validate affected rows
+        if panel.on_validate_affected:
+            panel.on_validate_affected("", base_nickname)
+
+        # Validate all filled rows
+        for display_idx in rows_to_fill:
+            row_idx = panel._displayed_rows[display_idx]
+            panel.rows[row_idx].validate(panel._all_nicknames, panel.is_duplicate_fn)
+
+        # Refresh display
+        panel._refresh_display()
+
+        if panel.on_data_changed:
+            panel.on_data_changed()
+
+        # Update button states
+        self._update_fill_down_button_state()
+        self._update_status()
+
+    def _update_button_states(self, event=None) -> None:
+        """Update all footer button states based on current selection."""
+        self._update_add_block_button_state()
+        self._update_fill_down_button_state()
+
     def _bind_panel_selection(self, panel: AddressPanel) -> None:
         """Bind selection change events on a panel's sheet.
 
         Args:
             panel: The AddressPanel to bind events on
         """
-        # Bind to selection events to update Add Block button state
-        panel.sheet.bind("<<SheetSelect>>", lambda e: self._update_add_block_button_state())
+        # Bind to selection events to update button states
+        panel.sheet.bind("<<SheetSelect>>", self._update_button_states)
 
     def _on_type_selected(self, type_name: str) -> None:
         """Handle type button click - scroll to section in current tab."""
@@ -1086,7 +1241,21 @@ class AddressEditorWindow(tk.Toplevel):
         )
         self.add_block_btn.pack(side=tk.LEFT)
         # Create tooltip for the button
-        self._create_tooltip(self.add_block_btn, "Click & drag memory addresses to define block")
+        self._create_tooltip(self.add_block_btn, "Select rows to define block")
+
+        # Fill Down button
+        self.fill_down_btn = ttk.Button(
+            footer,
+            text="↓ Fill Down",
+            command=self._on_fill_down_clicked,
+            state="disabled",
+        )
+        self.fill_down_btn.pack(side=tk.LEFT, padx=(5, 0))
+        # Create tooltip for the button
+        self._create_tooltip(
+            self.fill_down_btn,
+            "Fill empty rows with incrementing nicknames (e.g., Alm1 → Alm2, Alm3...)",
+        )
 
         # Save button (right side)
         ttk.Button(footer, text="💾 Save All", command=self._save_all).pack(side=tk.RIGHT)
