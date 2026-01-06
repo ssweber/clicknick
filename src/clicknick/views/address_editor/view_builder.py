@@ -7,6 +7,7 @@ multiple panels and windows.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ...data.shared_data import TypeView
@@ -23,6 +24,51 @@ from ...utils.mdb_operations import get_data_for_type
 
 if TYPE_CHECKING:
     from ...data.shared_data import TypeView
+
+# Memory types in display order (matches SIDEBAR_TYPES from jump_sidebar.py)
+UNIFIED_TYPE_ORDER = [
+    "X",
+    "Y",
+    "C",
+    "T/TD",  # Combined T + TD interleaved
+    "CT/CTD",  # Combined CT + CTD interleaved
+    "SC",
+    "DS",
+    "DD",
+    "DH",
+    "DF",
+    "XD",
+    "YD",
+    "SD",
+    "TXT",
+]
+
+# Types that show combined/interleaved data
+COMBINED_TYPES = {
+    "T/TD": ["T", "TD"],
+    "CT/CTD": ["CT", "CTD"],
+}
+
+
+@dataclass
+class UnifiedView:
+    """Unified view containing ALL memory types in a single row list.
+
+    This enables a single panel to display all addresses, with section
+    boundaries marking where each memory type starts.
+    """
+
+    # All rows for all memory types in order
+    rows: list[AddressRow] = field(default_factory=list)
+
+    # Maps type_key (e.g., "X", "T/TD") to starting row index
+    section_boundaries: dict[str, int] = field(default_factory=dict)
+
+    # Row index labels (e.g., "X001", "T1", "TD1")
+    index_labels: list[str] = field(default_factory=list)
+
+    # Block colors computed from comments (row_idx -> color_name)
+    block_colors: dict[int, str] = field(default_factory=dict)
 
 
 def create_row_from_data(
@@ -300,4 +346,49 @@ def build_type_view(
         index_labels=index_labels,
         block_colors=block_colors,
         combined_types=combined_types,
+    )
+
+
+def build_unified_view(
+    all_rows: dict[int, AddressRow],
+    all_nicknames: dict[int, str],
+) -> UnifiedView:
+    """Build a unified view containing ALL memory types.
+
+    Creates a single row list containing all addresses in UNIFIED_TYPE_ORDER,
+    with T/TD and CT/CTD interleaved. Tracks section boundaries for navigation.
+
+    Args:
+        all_rows: Dict mapping AddrKey to AddressRow (preloaded data)
+        all_nicknames: Global dict of all nicknames for validation
+
+    Returns:
+        UnifiedView with all rows and section boundaries
+    """
+    unified_rows: list[AddressRow] = []
+    section_boundaries: dict[str, int] = {}
+
+    for type_key in UNIFIED_TYPE_ORDER:
+        # Record where this section starts
+        section_boundaries[type_key] = len(unified_rows)
+
+        if type_key in COMBINED_TYPES:
+            # Build interleaved rows for combined types (T/TD, CT/CTD)
+            combined = COMBINED_TYPES[type_key]
+            rows = build_interleaved_rows(all_rows, combined, all_nicknames)
+        else:
+            # Build single type rows
+            rows = build_single_type_rows(all_rows, type_key, all_nicknames)
+
+        unified_rows.extend(rows)
+
+    # Compute block colors and index labels for the unified view
+    block_colors = compute_block_colors(unified_rows)
+    index_labels = compute_index_labels(unified_rows)
+
+    return UnifiedView(
+        rows=unified_rows,
+        section_boundaries=section_boundaries,
+        index_labels=index_labels,
+        block_colors=block_colors,
     )

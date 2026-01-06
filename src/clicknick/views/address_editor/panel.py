@@ -341,8 +341,6 @@ class AddressPanel(ttk.Frame):
         Returns:
             List of display values for the row's columns
         """
-        is_bit_panel = self._is_bit_type_panel()
-        is_combined_panel = self.combined_types and len(self.combined_types) > 1
 
         # Used column display
         used_display = "\u2713" if row.used else ""
@@ -357,7 +355,7 @@ class AddressPanel(ttk.Frame):
         else:
             # Otherwise show the underlying value
             # For BIT types, return bool so tksheet knows to check/uncheck the checkbox
-            if is_bit_panel or (is_combined_panel and row.data_type == DataType.BIT):
+            if row.data_type == DataType.BIT:
                 init_value_display = row.initial_value == "1"
             else:
                 init_value_display = row.initial_value
@@ -958,6 +956,8 @@ class AddressPanel(ttk.Frame):
         on_close: Callable[[AddressPanel], None] | None = None,
         on_validate_affected: Callable[[str, str], set[int]] | None = None,
         is_duplicate_fn: Callable[[str, int], bool] | None = None,
+        is_unified: bool = False,
+        section_boundaries: dict[str, int] | None = None,
     ):
         """Initialize the address panel.
 
@@ -971,6 +971,8 @@ class AddressPanel(ttk.Frame):
             on_validate_affected: Callback to validate rows affected by nickname change (old, new).
                 Returns set of validated addr_keys. Used for O(1) targeted validation.
             is_duplicate_fn: O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
+            is_unified: If True, panel displays ALL memory types in one view.
+            section_boundaries: Maps type_key to starting row index (for unified mode).
         """
         super().__init__(parent)
 
@@ -981,6 +983,8 @@ class AddressPanel(ttk.Frame):
         self.on_close = on_close
         self.on_validate_affected = on_validate_affected
         self.is_duplicate_fn = is_duplicate_fn
+        self.is_unified = is_unified
+        self.section_boundaries = section_boundaries or {}
 
         self.rows: list[AddressRow] = []
         self._all_nicknames: dict[int, str] = {}
@@ -997,6 +1001,47 @@ class AddressPanel(ttk.Frame):
         self._styler: AddressRowStyler | None = None
 
         self._create_widgets()
+
+    def scroll_to_section(self, type_key: str) -> bool:
+        """Scroll to the start of a memory type section (unified mode only).
+
+        Args:
+            type_key: The memory type key (e.g., "X", "T/TD", "DS")
+
+        Returns:
+            True if section was found and scrolled to, False otherwise
+        """
+        if not self.is_unified or type_key not in self.section_boundaries:
+            return False
+
+        # Get the row index where this section starts
+        row_idx = self.section_boundaries[type_key]
+
+        # Find the display index for this row
+        if row_idx in self._displayed_rows:
+            display_idx = self._displayed_rows.index(row_idx)
+        else:
+            # Row is filtered out - find the first visible row in this section
+            # by checking which displayed rows fall in this section's range
+            next_section_start = None
+            for _other_key, other_idx in self.section_boundaries.items():
+                if other_idx > row_idx and (
+                    next_section_start is None or other_idx < next_section_start
+                ):
+                    next_section_start = other_idx
+
+            # Find first displayed row in range [row_idx, next_section_start)
+            for i, disp_row_idx in enumerate(self._displayed_rows):
+                if disp_row_idx >= row_idx:
+                    if next_section_start is None or disp_row_idx < next_section_start:
+                        display_idx = i
+                        break
+            else:
+                # No visible rows in this section
+                return False
+
+        self._scroll_to_row(display_idx, align_top=True)
+        return True
 
     def _validate_all(self) -> None:
         """Validate all rows against current nickname registry."""
@@ -1103,7 +1148,6 @@ class AddressPanel(ttk.Frame):
             sheet=self.sheet,
             get_rows=lambda: self.rows,
             get_displayed_rows=lambda: self._displayed_rows,
-            combined_types=self.combined_types,
             get_block_colors=self._get_block_colors_for_rows,
         )
 
