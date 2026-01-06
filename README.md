@@ -34,7 +34,7 @@ CLICK PLCs were my first PLC experience, but remembering addresses became painfu
 ## Prerequisites
 
 - **OS:** Windows 10 or 11
-- **CLICK Software:** v2.60–v3.80 ([download here](https://www.automationdirect.com/clickplcs/free-software/free-click-software))
+- **CLICK Software:** v2.60–v3.90 ([download here](https://www.automationdirect.com/clickplcs/free-software/free-click-software))
 - **ODBC Drivers:** Microsoft Access Database Engine ([install link](https://github.com/ssweber/clicknick/issues/17)) – *only needed for live DB sync; CSV import works without drivers*
 - **Python:** 3.11+ (only if using pip; uv manages Python automatically)
 
