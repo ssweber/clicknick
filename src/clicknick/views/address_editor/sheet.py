@@ -35,7 +35,7 @@ class AddressEditorSheet(Sheet):
         try:
             return re.compile(pattern)
         except re.error as e:
-            messagebox.showerror("Regex Error", f"Invalid regex pattern: {e}")
+            messagebox.showerror("Regex Error", f"Invalid regex pattern: {e}", parent=self)
             return None
 
     def _regex_find_next(
@@ -144,7 +144,7 @@ class AddressEditorSheet(Sheet):
         try:
             new_value = compiled.sub(replace_str, current, count=1)
         except re.error as e:
-            messagebox.showerror("Regex Error", f"Invalid replacement pattern: {e}")
+            messagebox.showerror("Regex Error", f"Invalid replacement pattern: {e}", parent=self)
             return
 
         # Create event for validation
@@ -210,12 +210,14 @@ class AddressEditorSheet(Sheet):
         event_data["selection_boxes"] = self.MT.get_boxes()
 
         # Get the range of cells to search
+        # Selection boxes store DISPLAY indices, so we need to convert to data indices
         if find_in_selection and self.MT.selection_boxes:
             from itertools import chain
 
             from tksheet.functions import box_gen_coords
 
-            iterable = chain.from_iterable(
+            # Selection box coordinates are display indices
+            display_iterable = chain.from_iterable(
                 box_gen_coords(
                     from_r=box.coords.from_r,
                     from_c=box.coords.from_c,
@@ -227,6 +229,13 @@ class AddressEditorSheet(Sheet):
                 )
                 for box in self.MT.selection_boxes.values()
             )
+            # Convert display indices to data indices
+            iterable = (
+                (self.MT.datarn(disp_r), self.MT.datacn(disp_c))
+                for disp_r, disp_c in display_iterable
+            )
+            # No visibility check needed - selection is already visible
+            check_visibility = False
         else:
             from tksheet.functions import box_gen_coords
 
@@ -241,12 +250,14 @@ class AddressEditorSheet(Sheet):
                 start_c=0,
                 reverse=False,
             )
+            # Need to check visibility when iterating all data rows
+            check_visibility = True
 
         # Iterate through cells and collect replacements
         tree = self.MT.PAR.ops.treeview
         for r, c in iterable:
-            # Check visibility
-            if not (
+            # Check visibility only when iterating all data (not selection)
+            if check_visibility and not (
                 (tree or self.MT.all_rows_displayed or bisect_in(self.MT.displayed_rows, r))
                 and (self.MT.all_columns_displayed or bisect_in(self.MT.displayed_columns, c))
             ):
@@ -263,7 +274,9 @@ class AddressEditorSheet(Sheet):
             try:
                 new_value = compiled.sub(replace_str, current)
             except re.error as e:
-                messagebox.showerror("Regex Error", f"Invalid replacement pattern: {e}")
+                messagebox.showerror(
+                    "Regex Error", f"Invalid replacement pattern: {e}", parent=self
+                )
                 return
 
             # Skip if no change
@@ -300,9 +313,11 @@ class AddressEditorSheet(Sheet):
             self.emit_event("<<SheetModified>>", event_data)
 
             replacements_made = len(event_data["cells"]["table"])
-            messagebox.showinfo("Replace All", f"Replaced {replacements_made} occurrence(s).")
+            messagebox.showinfo(
+                "Replace All", f"Replaced {replacements_made} occurrence(s).", parent=self
+            )
         else:
-            messagebox.showinfo("Replace All", "No matches found.")
+            messagebox.showinfo("Replace All", "No matches found.", parent=self)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
