@@ -245,13 +245,14 @@ class AddressPanel(ttk.Frame):
         # Save current selection before changing filter
         self._save_selection()
 
-        # Check if filtering is enabled
+        # Text filter only applies when "Filter:" checkbox is enabled
         filter_enabled = self.filter_enabled_var.get()
-
         filter_text = self.filter_var.get().lower() if filter_enabled else ""
-        hide_empty = self.hide_empty_var.get() if filter_enabled else False
-        hide_assigned = self.hide_assigned_var.get() if filter_enabled else False
-        show_unsaved_only = self.show_unsaved_only_var.get() if filter_enabled else False
+
+        # Checkbox filters always apply (independent of text filter toggle)
+        hide_empty = self.hide_empty_var.get()
+        hide_assigned = self.hide_assigned_var.get()
+        show_unsaved_only = self.show_unsaved_only_var.get()
 
         # Check if any filters are active
         no_filters = (
@@ -905,8 +906,11 @@ class AddressPanel(ttk.Frame):
 
         self.filter_var = tk.StringVar()
         self.filter_entry = ttk.Entry(filter_frame, textvariable=self.filter_var, width=15)
-        self.filter_entry.pack(side=tk.LEFT, padx=(5, 10))
+        self.filter_entry.pack(side=tk.LEFT, padx=(5, 0))
         self.filter_var.trace_add("write", lambda *_: self._apply_filters())
+
+        # Vertical separator between text filter and checkbox filters
+        ttk.Separator(filter_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
 
         self.hide_empty_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
