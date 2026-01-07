@@ -6,6 +6,7 @@ from pathlib import Path
 from tkinter import filedialog, ttk
 
 from ..data.data_source import convert_mdb_csv_to_user_csv
+from ..utils.mdb_shared import get_available_access_drivers
 from ..utils.win32_utils import WIN32
 
 
@@ -19,10 +20,9 @@ def open_url(url):
 
 
 class AboutDialog:
-    def __init__(self, parent, version, nickname_manager):
+    def __init__(self, parent, version):
         self.parent = parent
         self.version = version
-        self.nickname_manager = nickname_manager
 
         self.create_window()
 
@@ -43,13 +43,16 @@ class AboutDialog:
         ttk.Label(main_frame, text="ClickNick", font=("Arial", 18, "bold")).pack(pady=(0, 5))
         ttk.Label(main_frame, text=f"Version {app_version}", font=("Arial", 12)).pack()
         ttk.Label(
-            main_frame, text="Intelligent nickname overlay for Click PLC", font=("Arial", 10)
+            main_frame,
+            text="Tag-Based Programming for Automation Direct CLICK PLCs",
+            font=("Arial", 10),
         ).pack(pady=(0, 15))
 
         # Description
         desc_text = (
-            "Automatically detects Click PLC popup windows and provides\n"
-            "nickname suggestions with filtering."
+            "Program using nicknames instead of raw memory addresses.\n\n"
+            "It provides autocomplete that appears over CLICK instruction dialogs, plus\n"
+            "standalone editors that sync with your project."
         )
         ttk.Label(main_frame, text=desc_text, justify=tk.CENTER).pack(pady=(0, 15))
 
@@ -73,7 +76,7 @@ class AboutDialog:
         info_text.configure(yscrollcommand=scrollbar.set)
 
         # Get ODBC driver information
-        access_drivers = self.nickname_manager.get_available_access_drivers()
+        access_drivers = get_available_access_drivers()
         if access_drivers:
             odbc_info = f"MS Access ODBC: {', '.join(access_drivers)}"
         else:

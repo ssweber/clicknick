@@ -248,7 +248,7 @@ class ClickNickApp:
 
     def _create_about_dialog(self):
         """Create and show the About dialog."""
-        AboutDialog(self.root, get_version(), self.nickname_manager)
+        AboutDialog(self.root, get_version())
 
     def _show_odbc_warning(self):
         """Show a warning dialog about missing ODBC drivers."""
@@ -362,6 +362,120 @@ class ClickNickApp:
             traceback.print_exc()
             self._update_status(f"Error opening dataview editor: {e}", "error")
 
+    def _verify_mdb_and_cdv(self):
+        """Verify MDB addresses and CDV entries for validity.
+
+        Only available in dev mode. See utils/verification.py for full check list.
+        """
+        if not self.connected_click_pid:
+            self._update_status("Connect to a ClickPLC window first", "error")
+            return
+
+        if self._shared_address_data is None:
+            self._update_status("No data loaded", "error")
+            return
+
+        from tkinter import messagebox, scrolledtext
+
+        from .utils.mdb_shared import get_project_path_from_hwnd
+        from .utils.verification import run_verification
+
+        project_path = get_project_path_from_hwnd(self.connected_click_hwnd)
+        result = run_verification(self._shared_address_data, project_path)
+
+        # Check if we have only system nickname issues (no actionable issues)
+        has_only_system_issues = result.passed and result.system_nickname_issues
+
+        if result.passed and not result.system_nickname_issues:
+            messagebox.showinfo(
+                "Verification Complete",
+                f"All checks passed!\n\n"
+                f"MDB addresses verified: {result.total_addresses}\n"
+                f"CDV files verified: {result.cdv_files_checked}",
+                parent=self.root,
+            )
+        else:
+            # Create a dialog with scrollable text
+            dialog = tk.Toplevel(self.root)
+            dialog.title("Verification Results")
+            dialog.geometry("700x500")
+            dialog.transient(self.root)
+
+            # Summary label at top
+            if has_only_system_issues:
+                summary = (
+                    f"No actionable issues found!\n"
+                    f"MDB addresses verified: {result.total_addresses}\n"
+                    f"CDV files verified: {result.cdv_files_checked}"
+                )
+            else:
+                summary = (
+                    f"Found {result.total_issues} issue(s)\n"
+                    f"MDB issues: {len(result.mdb_issues)} (of {result.total_addresses} addresses)\n"
+                    f"CDV issues: {len(result.cdv_issues)} (in {result.cdv_files_checked} files)"
+                )
+            ttk.Label(dialog, text=summary, padding=10).pack(fill=tk.X)
+
+            # Close button at bottom (pack first with side=BOTTOM)
+            ttk.Button(dialog, text="Close", command=dialog.destroy).pack(
+                side=tk.BOTTOM, pady=(0, 10)
+            )
+
+            # Collapsible section for system nickname issues (pack with side=BOTTOM)
+            if result.system_nickname_issues:
+                collapse_frame = ttk.Frame(dialog)
+                collapse_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 10))
+
+                # Container for the text area (above the button)
+                text_container = ttk.Frame(collapse_frame)
+
+                # Track expanded state
+                is_expanded = tk.BooleanVar(value=False)
+                system_text_area = None
+
+                def toggle_system_issues():
+                    nonlocal system_text_area
+                    if is_expanded.get():
+                        # Collapse
+                        text_container.pack_forget()
+                        toggle_btn.config(
+                            text=f"+ System nicknames starting with _ ({len(result.system_nickname_issues)})"
+                        )
+                        is_expanded.set(False)
+                    else:
+                        # Expand - pack container above button
+                        text_container.pack(side=tk.TOP, fill=tk.X, pady=(0, 5))
+                        if system_text_area is None:
+                            system_text_area = scrolledtext.ScrolledText(
+                                text_container, wrap=tk.WORD, width=80, height=8
+                            )
+                            system_text_area.insert(
+                                tk.END, "\n".join(result.system_nickname_issues)
+                            )
+                            system_text_area.config(state=tk.DISABLED)
+                            system_text_area.pack(fill=tk.X)
+                        toggle_btn.config(
+                            text=f"- System nicknames starting with _ ({len(result.system_nickname_issues)})"
+                        )
+                        is_expanded.set(True)
+
+                toggle_btn = ttk.Button(
+                    collapse_frame,
+                    text=f"+ System nicknames starting with _ ({len(result.system_nickname_issues)})",
+                    command=toggle_system_issues,
+                )
+                toggle_btn.pack(side=tk.BOTTOM, anchor=tk.W)
+
+            # Main scrollable text area for actionable issues (fills remaining space)
+            if result.all_issues:
+                text_area = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, width=80, height=20)
+                text_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+                text_area.insert(tk.END, "\n".join(result.all_issues))
+                text_area.config(state=tk.DISABLED)
+
+            dialog.grab_set()
+            dialog.focus_set()
+
     def _create_menu_bar(self):
         """Create the application menu bar."""
         menubar = tk.Menu(self.root)
@@ -379,6 +493,9 @@ class ClickNickApp:
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Address Editor...", command=self._open_address_editor)
         tools_menu.add_command(label="Dataview Editor...", command=self._open_dataview_editor)
+        if _DEV_MODE:
+            tools_menu.add_separator()
+            tools_menu.add_command(label="Verify MDB & CDV...", command=self._verify_mdb_and_cdv)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
