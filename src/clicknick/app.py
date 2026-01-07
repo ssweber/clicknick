@@ -362,6 +362,62 @@ class ClickNickApp:
             traceback.print_exc()
             self._update_status(f"Error opening dataview editor: {e}", "error")
 
+    def _verify_mdb_and_cdv(self):
+        """Verify MDB addresses and CDV entries for validity.
+
+        Only available in dev mode. See utils/verification.py for full check list.
+        """
+        if not self.connected_click_pid:
+            self._update_status("Connect to a ClickPLC window first", "error")
+            return
+
+        if self._shared_address_data is None:
+            self._update_status("No data loaded", "error")
+            return
+
+        from tkinter import messagebox, scrolledtext
+
+        from .utils.mdb_shared import get_project_path_from_hwnd
+        from .utils.verification import run_verification
+
+        project_path = get_project_path_from_hwnd(self.connected_click_hwnd)
+        result = run_verification(self._shared_address_data, project_path)
+
+        if result.passed:
+            messagebox.showinfo(
+                "Verification Complete",
+                f"All checks passed!\n\n"
+                f"MDB addresses verified: {result.total_addresses}\n"
+                f"CDV files verified: {result.cdv_files_checked}",
+                parent=self.root,
+            )
+        else:
+            # Create a dialog with scrollable text
+            dialog = tk.Toplevel(self.root)
+            dialog.title("Verification Results")
+            dialog.geometry("700x500")
+            dialog.transient(self.root)
+
+            # Summary label
+            summary = (
+                f"Found {result.total_issues} issue(s)\n"
+                f"MDB issues: {len(result.mdb_issues)} (of {result.total_addresses} addresses)\n"
+                f"CDV issues: {len(result.cdv_issues)} (in {result.cdv_files_checked} files)"
+            )
+            ttk.Label(dialog, text=summary, padding=10).pack(fill=tk.X)
+
+            # Scrollable text area
+            text_area = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, width=80, height=25)
+            text_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+            text_area.insert(tk.END, "\n".join(result.all_issues))
+            text_area.config(state=tk.DISABLED)
+
+            # Close button
+            ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=(0, 10))
+
+            dialog.grab_set()
+            dialog.focus_set()
+
     def _create_menu_bar(self):
         """Create the application menu bar."""
         menubar = tk.Menu(self.root)
@@ -379,6 +435,9 @@ class ClickNickApp:
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Address Editor...", command=self._open_address_editor)
         tools_menu.add_command(label="Dataview Editor...", command=self._open_dataview_editor)
+        if _DEV_MODE:
+            tools_menu.add_separator()
+            tools_menu.add_command(label="Verify MDB & CDV...", command=self._verify_mdb_and_cdv)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
