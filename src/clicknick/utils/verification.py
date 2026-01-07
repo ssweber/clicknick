@@ -10,13 +10,24 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..models.address_row import get_addr_key, is_xd_yd_hidden_slot, parse_addr_key
-from ..models.constants import ADDRESS_RANGES, NON_EDITABLE_TYPES, PAIRED_RETENTIVE_TYPES
+from ..models.constants import (
+    ADDRESS_RANGES,
+    FLOAT_MAX,
+    FLOAT_MIN,
+    INT2_MAX,
+    INT2_MIN,
+    INT_MAX,
+    INT_MIN,
+    NON_EDITABLE_TYPES,
+    PAIRED_RETENTIVE_TYPES,
+)
 from ..models.dataview_row import (
     MEMORY_TYPE_TO_CODE,
     TypeCode,
     get_type_code_for_address,
     is_address_writable,
     parse_address,
+    storage_to_display,
 )
 from ..models.validation import validate_initial_value, validate_nickname
 
@@ -25,28 +36,34 @@ if TYPE_CHECKING:
     from ..models.address_row import AddressRow
 
 
+# Memory types where underscore-prefixed nicknames are expected (system-defined)
+SYSTEM_NICKNAME_TYPES: frozenset[str] = frozenset({"SC", "SD", "X"})
+
+
 @dataclass
 class VerificationResult:
     """Results from verification process."""
 
     mdb_issues: list[str] = field(default_factory=list)
     cdv_issues: list[str] = field(default_factory=list)
+    # Separate list for system nickname issues (underscore prefix in SC/SD/X)
+    system_nickname_issues: list[str] = field(default_factory=list)
     total_addresses: int = 0
     cdv_files_checked: int = 0
 
     @property
     def total_issues(self) -> int:
-        """Total number of issues found."""
+        """Total number of actionable issues (excludes system nickname issues)."""
         return len(self.mdb_issues) + len(self.cdv_issues)
 
     @property
     def all_issues(self) -> list[str]:
-        """All issues combined."""
+        """All actionable issues combined."""
         return self.mdb_issues + self.cdv_issues
 
     @property
     def passed(self) -> bool:
-        """True if no issues found."""
+        """True if no actionable issues found."""
         return self.total_issues == 0
 
 
@@ -93,7 +110,7 @@ def _check_retentive_pairs(all_rows: dict[int, AddressRow]) -> list[str]:
     return issues
 
 
-def verify_mdb_addresses(shared_data: SharedAddressData) -> list[str]:
+def verify_mdb_addresses(shared_data: SharedAddressData) -> tuple[list[str], list[str]]:
     """Verify all MDB addresses for validity.
 
     Checks:
@@ -108,9 +125,11 @@ def verify_mdb_addresses(shared_data: SharedAddressData) -> list[str]:
         shared_data: The SharedAddressData containing all addresses
 
     Returns:
-        List of issue strings (empty if all valid)
+        Tuple of (issues, system_nickname_issues) where system_nickname_issues
+        contains "Cannot start with _" errors for SC/SD/X types.
     """
     issues: list[str] = []
+    system_nickname_issues: list[str] = []
     all_rows = shared_data.all_rows
 
     # Build nickname dict for duplicate checking
@@ -143,7 +162,13 @@ def verify_mdb_addresses(shared_data: SharedAddressData) -> list[str]:
         # 3. Validate nickname and initial value
         nick_valid, nick_error = validate_nickname(row.nickname, all_nicknames, addr_key)
         if not nick_valid:
-            issues.append(f"MDB: {display} nickname invalid: {nick_error}")
+            # Separate out "Cannot start with _" for system types (SC/SD/X)
+            if nick_error == "Cannot start with _" and row.memory_type in SYSTEM_NICKNAME_TYPES:
+                system_nickname_issues.append(
+                    f"MDB: {display} nickname '{row.nickname}' starts with underscore"
+                )
+            else:
+                issues.append(f"MDB: {display} nickname invalid: {nick_error}")
 
         init_valid, init_error = validate_initial_value(row.initial_value, row.data_type)
         if not init_valid:
@@ -152,8 +177,10 @@ def verify_mdb_addresses(shared_data: SharedAddressData) -> list[str]:
         # 4. NON_EDITABLE_TYPES should have empty or "0" initial_value
         if row.memory_type in NON_EDITABLE_TYPES:
             if row.initial_value not in ("", "0"):
+                nick_part = f" nickname '{row.nickname}'" if row.nickname else ""
                 issues.append(
-                    f"MDB: {display} is NON_EDITABLE but has initial_value='{row.initial_value}'"
+                    f"MDB: {display}{nick_part} is NON_EDITABLE but has "
+                    f"initial_value='{row.initial_value}'"
                 )
 
         # 5. XD/YD hidden slots shouldn't have nicknames
@@ -166,7 +193,7 @@ def verify_mdb_addresses(shared_data: SharedAddressData) -> list[str]:
     # 6. Check T/TD and CT/CTD retentive consistency
     issues.extend(_check_retentive_pairs(all_rows))
 
-    return issues
+    return issues, system_nickname_issues
 
 
 def _validate_cdv_new_value(
@@ -178,16 +205,12 @@ def _validate_cdv_new_value(
 ) -> list[str]:
     """Validate a CDV new_value against its type code.
 
-    CDV stores values in specific formats:
-    - BIT: "0" or "1"
-    - INT: unsigned 32-bit (with sign extension for negatives)
-    - INT2: unsigned 32-bit
-    - HEX: decimal representation of hex value
-    - FLOAT: IEEE 754 32-bit integer representation
-    - TXT: ASCII code
+    Validates both:
+    1. Storage format is valid (can be stored in CDV file)
+    2. Display value is within PLC's logical range
 
     Args:
-        new_value: The new value string from CDV
+        new_value: The new value string from CDV (in storage format)
         type_code: The type code for this address
         address: The address string (for error messages)
         filename: The CDV filename (for error messages)
@@ -197,62 +220,78 @@ def _validate_cdv_new_value(
         List of issue strings
     """
     issues: list[str] = []
+    prefix = f"CDV {filename} row {row_num}: {address}"
 
     try:
         if type_code == TypeCode.BIT:
             if new_value not in ("0", "1"):
-                issues.append(
-                    f"CDV {filename} row {row_num}: {address} new_value '{new_value}' "
-                    f"invalid for BIT (must be 0 or 1)"
-                )
+                issues.append(f"{prefix} new_value '{new_value}' invalid for BIT (must be 0 or 1)")
 
         elif type_code == TypeCode.INT:
-            # Stored as unsigned 32-bit, should be valid integer
             val = int(new_value)
-            # Check it's a reasonable unsigned 32-bit value
+            # Check storage format is valid (unsigned 32-bit)
             if val < 0 or val > 0xFFFFFFFF:
-                issues.append(
-                    f"CDV {filename} row {row_num}: {address} new_value '{new_value}' "
-                    f"out of range for INT storage"
-                )
+                issues.append(f"{prefix} new_value '{new_value}' out of range for INT storage")
+            else:
+                # Convert to display and check logical range
+                display_val = storage_to_display(new_value, type_code)
+                try:
+                    int_val = int(display_val)
+                    if int_val < INT_MIN or int_val > INT_MAX:
+                        issues.append(
+                            f"{prefix} new_value converts to {int_val}, "
+                            f"outside INT range ({INT_MIN} to {INT_MAX})"
+                        )
+                except ValueError:
+                    issues.append(f"{prefix} new_value '{new_value}' failed to convert to INT")
 
         elif type_code == TypeCode.INT2:
             val = int(new_value)
             if val < 0 or val > 0xFFFFFFFF:
-                issues.append(
-                    f"CDV {filename} row {row_num}: {address} new_value '{new_value}' "
-                    f"out of range for INT2 storage"
-                )
+                issues.append(f"{prefix} new_value '{new_value}' out of range for INT2 storage")
+            else:
+                # Convert to display and check logical range
+                display_val = storage_to_display(new_value, type_code)
+                try:
+                    int_val = int(display_val)
+                    if int_val < INT2_MIN or int_val > INT2_MAX:
+                        issues.append(
+                            f"{prefix} new_value converts to {int_val}, "
+                            f"outside INT2 range ({INT2_MIN} to {INT2_MAX})"
+                        )
+                except ValueError:
+                    issues.append(f"{prefix} new_value '{new_value}' failed to convert to INT2")
 
         elif type_code == TypeCode.HEX:
             val = int(new_value)
             if val < 0 or val > 0xFFFF:
-                issues.append(
-                    f"CDV {filename} row {row_num}: {address} new_value '{new_value}' "
-                    f"out of range for HEX (0-65535)"
-                )
+                issues.append(f"{prefix} new_value '{new_value}' out of range for HEX (0-65535)")
 
         elif type_code == TypeCode.FLOAT:
-            # Should be valid integer (IEEE 754 representation)
             val = int(new_value)
             if val < 0 or val > 0xFFFFFFFF:
-                issues.append(
-                    f"CDV {filename} row {row_num}: {address} new_value '{new_value}' "
-                    f"invalid for FLOAT storage"
-                )
+                issues.append(f"{prefix} new_value '{new_value}' invalid for FLOAT storage")
+            else:
+                # Convert to display and check logical range
+                display_val = storage_to_display(new_value, type_code)
+                try:
+                    float_val = float(display_val)
+                    if float_val < FLOAT_MIN or float_val > FLOAT_MAX:
+                        issues.append(
+                            f"{prefix} new_value converts to {float_val}, outside FLOAT range"
+                        )
+                except ValueError:
+                    issues.append(f"{prefix} new_value '{new_value}' failed to convert to FLOAT")
 
         elif type_code == TypeCode.TXT:
             val = int(new_value)
             if val < 0 or val > 127:
                 issues.append(
-                    f"CDV {filename} row {row_num}: {address} new_value '{new_value}' "
-                    f"out of range for TXT (0-127 ASCII)"
+                    f"{prefix} new_value '{new_value}' out of range for TXT (0-127 ASCII)"
                 )
 
     except ValueError:
-        issues.append(
-            f"CDV {filename} row {row_num}: {address} new_value '{new_value}' is not a valid number"
-        )
+        issues.append(f"{prefix} new_value '{new_value}' is not a valid number")
 
     return issues
 
@@ -395,7 +434,7 @@ def run_verification(
     result.total_addresses = len(shared_data.all_rows)
 
     # Verify MDB addresses
-    result.mdb_issues = verify_mdb_addresses(shared_data)
+    result.mdb_issues, result.system_nickname_issues = verify_mdb_addresses(shared_data)
 
     # Verify CDV files
     result.cdv_issues, result.cdv_files_checked = verify_cdv_files(project_path)
