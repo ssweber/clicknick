@@ -4,7 +4,8 @@
       "Bash(make)",
       "Bash(make test:*)",
       "Bash(make lint:*)",
-      "WebFetch(domain:ragardner.github.io)"
+      "WebFetch(domain:ragardner.github.io)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

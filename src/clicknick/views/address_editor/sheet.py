@@ -25,6 +25,9 @@ class AddressEditorSheet(Sheet):
     # Columns where find/replace is allowed (Nickname and Comment only)
     _SEARCHABLE_COLS = {COL_NICKNAME, COL_COMMENT}
 
+    # Find window width in characters (default tksheet is 23)
+    _FIND_WINDOW_CHAR_WIDTH = 36
+
     def _compile_pattern(self, pattern: str) -> re.Pattern | None:
         """Compile a regex pattern, returning None on error.
 
@@ -319,6 +322,23 @@ class AddressEditorSheet(Sheet):
         else:
             messagebox.showinfo("Replace All", "No matches found.", parent=self)
 
+    def _get_find_window_dimensions_coords_wider(
+        self, w_width: int | None = None
+    ) -> tuple[int, int, int, int]:
+        """Return find window dimensions with wider width for regex patterns."""
+        MT = self.MT
+        if w_width is None:
+            w_width = MT.winfo_width()
+        # Use wider character count than default (23 -> _FIND_WINDOW_CHAR_WIDTH)
+        width = min(MT.char_width_fn("X") * self._FIND_WINDOW_CHAR_WIDTH, w_width - 7)
+        height = MT.min_row_height
+        if MT.find_window.window and MT.find_window.window.replace_visible:
+            height *= 2
+        xpos = w_width * MT.find_window_left_x_pc
+        xpos = min(xpos, w_width - width - 7)
+        xpos = max(0, xpos)
+        return width, height, MT.canvasx(xpos), MT.canvasy(7)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Override the internal main table's redraw_corner method
@@ -329,6 +349,9 @@ class AddressEditorSheet(Sheet):
         self.MT.find_match = self._regex_find_match
         self.MT.replace_next = self._regex_replace_next
         self.MT.replace_all = self._regex_replace_all
+
+        # Override find window dimensions for wider search box
+        self.MT.get_find_window_dimensions_coords = self._get_find_window_dimensions_coords_wider
 
     def add_begin_right_click(self, callback) -> None:
         """Add a right-click handler that runs BEFORE the popup menu is built.
