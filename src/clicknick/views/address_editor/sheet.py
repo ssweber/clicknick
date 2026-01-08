@@ -273,9 +273,9 @@ class AddressEditorSheet(Sheet):
             # Get current cell value
             current = str(self.MT.get_cell_data(r, c, True) or "")
 
-            # Perform regex replacement
+            # Perform regex replacement (count=1 to avoid double-match on patterns like .*)
             try:
-                new_value = compiled.sub(replace_str, current)
+                new_value = compiled.sub(replace_str, current, count=1)
             except re.error as e:
                 messagebox.showerror(
                     "Regex Error", f"Invalid replacement pattern: {e}", parent=self
