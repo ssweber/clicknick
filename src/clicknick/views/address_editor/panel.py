@@ -506,6 +506,68 @@ class AddressPanel(ttk.Frame):
 
         return set()
 
+    def _find_paired_tag_row(self, row_idx: int, tag: BlockTag) -> int | None:
+        """Find the row index of the paired block tag.
+
+        Args:
+            row_idx: Index of the row containing the tag
+            tag: Parsed BlockTag from the comment
+
+        Returns:
+            Row index of the paired tag, or None if not found
+        """
+        if not tag.name or tag.tag_type == "self-closing":
+            return None
+
+        if tag.tag_type == "open":
+            # Search forward for matching close tag
+            for i in range(row_idx + 1, len(self.rows)):
+                other_tag = parse_block_tag(self.rows[i].comment)
+                if other_tag.name == tag.name and other_tag.tag_type == "close":
+                    return i
+        elif tag.tag_type == "close":
+            # Search backward for matching open tag
+            for i in range(row_idx - 1, -1, -1):
+                other_tag = parse_block_tag(self.rows[i].comment)
+                if other_tag.name == tag.name and other_tag.tag_type == "open":
+                    return i
+        return None
+
+    def _update_paired_tag(
+        self, paired_row_idx: int, old_tag: BlockTag, new_name: str | None
+    ) -> None:
+        """Update the paired tag's comment to match a rename or deletion.
+
+        Args:
+            paired_row_idx: Index of the row with the paired tag
+            old_tag: The original tag that was modified (to determine paired type)
+            new_name: New block name, or None to delete the tag
+        """
+        paired_row = self.rows[paired_row_idx]
+        paired_tag = parse_block_tag(paired_row.comment)
+
+        if new_name is None:
+            # Delete: replace tag with remaining text (if any)
+            new_comment = paired_tag.remaining_text
+        else:
+            # Rename: build new tag with same type
+            if paired_tag.tag_type == "close":
+                new_tag_str = f"</{new_name}>"
+            else:  # open
+                # Preserve bg attribute if present
+                if paired_tag.bg_color:
+                    new_tag_str = f'<{new_name} bg="{paired_tag.bg_color}">'
+                else:
+                    new_tag_str = f"<{new_name}>"
+            remaining = paired_tag.remaining_text
+            new_comment = new_tag_str + (" " + remaining if remaining else "")
+
+        # Update the row's comment
+        paired_row.comment = new_comment
+
+        # Update sheet cell
+        self.sheet.set_cell_data(paired_row_idx, self.COL_COMMENT, new_comment)
+
     def _on_sheet_modified(self, event) -> None:
         """Handle sheet modification events (called AFTER changes are applied).
 
@@ -595,6 +657,19 @@ class AddressPanel(ttk.Frame):
                     # Find ranges affected by both old and new tags
                     modified_data_indices.update(self._find_block_range(data_idx, old_tag))
                     modified_data_indices.update(self._find_block_range(data_idx, new_tag))
+
+                    # Auto-update paired tag on rename or delete
+                    if old_tag.name and old_tag.tag_type in ("open", "close"):
+                        paired_row_idx = self._find_paired_tag_row(data_idx, old_tag)
+                        if paired_row_idx is not None:
+                            if not new_tag.name:
+                                # Tag was deleted - delete paired tag too
+                                self._update_paired_tag(paired_row_idx, old_tag, None)
+                                modified_data_indices.add(paired_row_idx)
+                            elif new_tag.name != old_tag.name:
+                                # Tag was renamed - rename paired tag too
+                                self._update_paired_tag(paired_row_idx, old_tag, new_tag.name)
+                                modified_data_indices.add(paired_row_idx)
 
             elif col == self.COL_INIT_VALUE:
                 # Skip if type doesn't allow editing initial value
