@@ -74,11 +74,6 @@ class AddressPanel(ttk.Frame):
             return False
         return MEMORY_TYPE_TO_DATA_TYPE.get(self.memory_type, 0) == DataType.BIT
 
-    def _on_close_clicked(self) -> None:
-        """Handle close button click."""
-        if self.on_close:
-            self.on_close(self)
-
     def _get_init_value_hint(self, data_type: int) -> str:
         """Get the hint text for initial value based on data type.
 
@@ -917,27 +912,6 @@ class AddressPanel(ttk.Frame):
 
     def _create_widgets(self) -> None:
         """Create all panel widgets."""
-        # Header frame with title and optional close button
-        header = ttk.Frame(self)
-        header.pack(fill=tk.X, padx=5, pady=(5, 2))
-
-        # Title shows combined types if applicable
-        if self.combined_types and len(self.combined_types) > 1:
-            title_text = "/".join(self.combined_types) + " Addresses"
-        else:
-            title_text = f"{self.memory_type} Addresses"
-
-        ttk.Label(
-            header,
-            text=title_text,
-            font=("TkDefaultFont", 10, "bold"),
-        ).pack(side=tk.LEFT)
-
-        # Close button (X) - only if callback provided
-        if self.on_close:
-            close_btn = ttk.Button(header, text="X", width=2, command=self._on_close_clicked)
-            close_btn.pack(side=tk.RIGHT)
-
         # Filter controls frame
         filter_frame = ttk.Frame(self)
         filter_frame.pack(fill=tk.X, padx=5, pady=2)
@@ -1086,7 +1060,6 @@ class AddressPanel(ttk.Frame):
         combined_types: list[str] | None = None,
         on_nickname_changed: Callable[[str, int, str, str], None] | None = None,
         on_data_changed: Callable[[], None] | None = None,
-        on_close: Callable[[AddressPanel], None] | None = None,
         on_validate_affected: Callable[[str, str], set[int]] | None = None,
         is_duplicate_fn: Callable[[str, int], bool] | None = None,
         is_unified: bool = False,
@@ -1100,7 +1073,6 @@ class AddressPanel(ttk.Frame):
             combined_types: List of types to show interleaved (e.g., ["T", "TD"])
             on_nickname_changed: Callback when a nickname changes (memory_type, addr_key, old, new).
             on_data_changed: Callback when any data changes (for multi-window sync).
-            on_close: Callback when panel close button is clicked.
             on_validate_affected: Callback to validate rows affected by nickname change (old, new).
                 Returns set of validated addr_keys. Used for O(1) targeted validation.
             is_duplicate_fn: O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
@@ -1113,7 +1085,6 @@ class AddressPanel(ttk.Frame):
         self.combined_types = combined_types  # None means single type
         self.on_nickname_changed = on_nickname_changed
         self.on_data_changed = on_data_changed
-        self.on_close = on_close
         self.on_validate_affected = on_validate_affected
         self.is_duplicate_fn = is_duplicate_fn
         self.is_unified = is_unified

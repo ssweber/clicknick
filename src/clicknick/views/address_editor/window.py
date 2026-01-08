@@ -1144,7 +1144,6 @@ class AddressEditorWindow(tk.Toplevel):
                 combined_types=None,
                 on_nickname_changed=self._handle_nickname_changed,
                 on_data_changed=self._handle_data_changed,
-                on_close=None,
                 on_validate_affected=self.shared_data.validate_affected_rows,
                 is_duplicate_fn=self.shared_data.is_duplicate_nickname,
                 is_unified=True,
