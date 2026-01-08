@@ -240,14 +240,56 @@ class AddressPanel(ttk.Frame):
             # Row is not visible in current filter - clear saved selection
             pass
 
+    def _text_matches_filter(
+        self, text: str, filter_text: str, anchor_start: bool, anchor_end: bool
+    ) -> bool:
+        """Check if text matches the filter with optional anchors.
+
+        Args:
+            text: The text to check (already lowercased)
+            filter_text: The filter pattern (already lowercased, anchors stripped)
+            anchor_start: If True, pattern must match at start of text
+            anchor_end: If True, pattern must match at end of text
+
+        Returns:
+            True if text matches the filter pattern
+        """
+        if anchor_start and anchor_end:
+            # Exact match
+            return text == filter_text
+        elif anchor_start:
+            # Match at beginning
+            return text.startswith(filter_text)
+        elif anchor_end:
+            # Match at end
+            return text.endswith(filter_text)
+        else:
+            # Contains match (default)
+            return filter_text in text
+
     def _apply_filters(self) -> None:
-        """Apply current filter settings using tksheet's display_rows()."""
+        """Apply current filter settings using tksheet's display_rows().
+
+        Supports anchor patterns:
+        - ^pattern - matches at start of field
+        - pattern$ - matches at end of field
+        - ^pattern$ - exact match
+        """
         # Save current selection before changing filter
         self._save_selection()
 
         # Text filter only applies when "Filter:" checkbox is enabled
         filter_enabled = self.filter_enabled_var.get()
-        filter_text = self.filter_var.get().lower() if filter_enabled else ""
+        raw_filter = self.filter_var.get() if filter_enabled else ""
+
+        # Parse anchors from filter text
+        anchor_start = raw_filter.startswith("^")
+        anchor_end = raw_filter.endswith("$")
+        filter_text = raw_filter.lower()
+        if anchor_start:
+            filter_text = filter_text[1:]
+        if anchor_end:
+            filter_text = filter_text[:-1]
 
         # Checkbox filters always apply (independent of text filter toggle)
         hide_empty = self.hide_empty_var.get()
@@ -269,11 +311,16 @@ class AddressPanel(ttk.Frame):
             for i, row in enumerate(self.rows):
                 # Filter by text (matches address, nickname, or comment)
                 if filter_text:
-                    if (
-                        filter_text not in row.display_address.lower()
-                        and filter_text not in row.nickname.lower()
-                        and filter_text not in row.comment.lower()
-                    ):
+                    addr_match = self._text_matches_filter(
+                        row.display_address.lower(), filter_text, anchor_start, anchor_end
+                    )
+                    nick_match = self._text_matches_filter(
+                        row.nickname.lower(), filter_text, anchor_start, anchor_end
+                    )
+                    comment_match = self._text_matches_filter(
+                        row.comment.lower(), filter_text, anchor_start, anchor_end
+                    )
+                    if not (addr_match or nick_match or comment_match):
                         continue
 
                 # Hide empty rows (no nickname)
@@ -999,6 +1046,8 @@ class AddressPanel(ttk.Frame):
             "sort_columns",
             "undo",
         )
+        # Unbind Ctrl+Space from sheet - we use it for filter toggle at window level
+        self.sheet.unbind("<Control-space>")
 
         # Bind right-click to dynamically show/hide "Discard changes" menu item
         self.sheet.add_begin_right_click(self._on_right_click)

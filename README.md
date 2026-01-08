@@ -79,6 +79,7 @@ python -m clicknick
 - Bulk editing – Edit before saving, copy/paste multiple cells, live duplicate detection and validation
 - Fill Down – Select rows to auto-increment nicknames (e.g., `Alm1` → `Alm2`, `Alm3`...)
 - Clone Structure – Replicate a pattern of nicknames (e.g., `Alm1_ID`, `Alm1_Val` → `Alm2_ID`, `Alm2_Val`...)
+- Filter anchors: Use `^pattern` to match start, `pattern$` to match end, `^pattern$` for exact match
 - Shortcuts: Ctrl+F (Find) / Ctrl+R (Replace)
     - Scope: Case-sensitive. Searches **Nickname** and **Comment** columns only. Supports `Find in Selection`.
     - **Regex Tips:**

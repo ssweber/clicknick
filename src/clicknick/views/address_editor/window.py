@@ -979,7 +979,7 @@ class AddressEditorWindow(tk.Toplevel):
         """Handle selection from outline tree.
 
         For single leaf nodes (exact nickname match): scrolls to address.
-        For folder nodes (multiple children): filters by path prefix.
+        For folder nodes (multiple children): filters by path prefix using ^ anchor.
 
         Args:
             path: Filter prefix for folders or exact nickname for leaves
@@ -1000,15 +1000,26 @@ class AddressEditorWindow(tk.Toplevel):
             # If path matches the nickname exactly, just scroll (don't filter)
             if path == nickname:
                 panel.scroll_to_address(address, memory_type)
+                panel.sheet.focus_set()
                 return
 
-        # Folder node - filter by path prefix and scroll to first
+        # Folder node - clear checkbox filters and apply prefix filter
+        # Clear checkbox filters that would hide matching rows
+        panel.hide_empty_var.set(False)
+        panel.hide_assigned_var.set(False)
+        panel.show_unsaved_only_var.set(False)
+
+        # Enable text filter and set prefix pattern with ^ anchor
+        panel.filter_enabled_var.set(True)
         if path:
-            panel.filter_var.set(path)
-            panel._apply_filters()
+            panel.filter_var.set(f"^{path}")
+        panel._apply_filters()
 
         memory_type, address = leaves[0]
         panel.scroll_to_address(address, memory_type)
+
+        # Focus the sheet for immediate keyboard navigation/editing
+        panel.sheet.focus_set()
 
     def _on_block_select(self, leaves: list[tuple[str, int]]) -> None:
         """Handle selection from block panel.
@@ -1028,6 +1039,9 @@ class AddressEditorWindow(tk.Toplevel):
         # Jump to first address in the block
         memory_type, address = leaves[0]
         panel.scroll_to_address(address, memory_type)
+
+        # Focus the sheet for immediate keyboard navigation/editing
+        panel.sheet.focus_set()
 
     def _toggle_nav(self) -> None:
         """Toggle the outline window visibility."""
