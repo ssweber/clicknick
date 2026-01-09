@@ -73,7 +73,7 @@ src/clicknick/
 - `address_row.py` - `AddressRow` dataclass with dirty tracking, validation, CRUD helpers
 - `nickname.py` - `Nickname` dataclass for autocomplete (lightweight, immutable)
 - `dataview_row.py` - `DataviewRow` dataclass for CDV files
-- `blocktag.py` - BlockTag model for block-level tagging in comments
+- `blocktag.py` - Contains BlockTag dataclass, parsing functions, and block matching utilities for block-level tagging in comments.
 - `validation.py` - Nickname and initial value validation functions
 
 **`data/`** - Data loading and shared state
