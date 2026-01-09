@@ -1215,6 +1215,7 @@ class AddressPanel(ttk.Frame):
 
         Parses block tags from row comments to determine which rows
         should have colored row indices. Nested blocks override outer blocks.
+        Only colors rows matching the block's memory_type (for interleaved views).
 
         Returns:
             Dict mapping row index (in self.rows) to bg color string.
@@ -1237,6 +1238,9 @@ class AddressPanel(ttk.Frame):
         row_colors: dict[int, str] = {}
         for block in colored_ranges:
             for idx in range(block.start_idx, block.end_idx + 1):
+                # Only color rows matching the block's memory_type (for interleaved views)
+                if block.memory_type and self.rows[idx].memory_type != block.memory_type:
+                    continue
                 row_colors[idx] = block.bg_color  # type: ignore[assignment]
 
         # Cache the result

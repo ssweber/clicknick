@@ -326,10 +326,41 @@ class DataviewEditorWindow(tk.Toplevel):
     def _on_block_select(self, leaves: list[tuple[str, int]]) -> None:
         """Handle block selection from NavWindow - insert all block addresses.
 
+        For T/CT blocks, offers to include paired TD/CTD addresses (interleaved).
+
         Args:
             leaves: List of (memory_type, address) tuples for all addresses in the block
         """
-        self._insert_addresses(leaves)
+        if not leaves:
+            return
+
+        # Check if this is a T or CT block (all addresses same type for a block)
+        memory_types = {mem_type for mem_type, _ in leaves}
+        paired_type_map = {"T": "TD", "CT": "CTD"}
+
+        # If it's a T or CT block, offer to include paired type
+        include_paired = False
+        paired_type = None
+        for mem_type in memory_types:
+            if mem_type in paired_type_map:
+                paired_type = paired_type_map[mem_type]
+                include_paired = messagebox.askyesno(
+                    "Include Paired Type",
+                    f"Also insert {paired_type} addresses with this {mem_type} block?",
+                    parent=self,
+                )
+                break  # Only one type per block
+
+        # Build address list, interleaving if paired type requested
+        if include_paired and paired_type:
+            addresses_to_insert = []
+            for orig_type, address in leaves:
+                addresses_to_insert.append((orig_type, address))
+                addresses_to_insert.append((paired_type, address))
+        else:
+            addresses_to_insert = list(leaves)
+
+        self._insert_addresses(addresses_to_insert)
 
     def _toggle_nav(self) -> None:
         """Toggle the navigation window visibility."""

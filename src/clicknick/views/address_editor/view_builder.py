@@ -220,6 +220,7 @@ def compute_block_colors(rows: list[AddressRow]) -> dict[int, str]:
 
     Parses block tags from row comments to determine which rows
     should have colored row indices. Nested blocks override outer blocks.
+    Only colors rows matching the block's memory_type (for interleaved views).
 
     Args:
         rows: List of AddressRow to process
@@ -241,6 +242,9 @@ def compute_block_colors(rows: list[AddressRow]) -> dict[int, str]:
     row_colors: dict[int, str] = {}
     for block in colored_ranges:
         for idx in range(block.start_idx, block.end_idx + 1):
+            # Only color rows matching the block's memory_type (for interleaved views)
+            if block.memory_type and rows[idx].memory_type != block.memory_type:
+                continue
             row_colors[idx] = block.bg_color  # type: ignore[assignment]
 
     return row_colors

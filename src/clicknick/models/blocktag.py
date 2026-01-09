@@ -30,6 +30,7 @@ class BlockRange:
     end_idx: int  # Same as start_idx for self-closing tags
     name: str
     bg_color: str | None
+    memory_type: str | None = None  # Memory type for filtering in interleaved views
 
 
 @dataclass
@@ -333,7 +334,7 @@ def compute_all_block_ranges(rows: list[HasComment]) -> list[BlockRange]:
         stack_key = (memory_type, tag.name)
 
         if tag.tag_type == "self-closing":
-            ranges.append(BlockRange(row_idx, row_idx, tag.name, tag.bg_color))
+            ranges.append(BlockRange(row_idx, row_idx, tag.name, tag.bg_color, memory_type))
         elif tag.tag_type == "open":
             if stack_key not in open_tags:
                 open_tags[stack_key] = []
@@ -341,12 +342,12 @@ def compute_all_block_ranges(rows: list[HasComment]) -> list[BlockRange]:
         elif tag.tag_type == "close":
             if stack_key in open_tags and open_tags[stack_key]:
                 start_idx, bg_color = open_tags[stack_key].pop()
-                ranges.append(BlockRange(start_idx, row_idx, tag.name, bg_color))
+                ranges.append(BlockRange(start_idx, row_idx, tag.name, bg_color, memory_type))
 
     # Handle unclosed tags as singular points
-    for (_mem_type, name), stack in open_tags.items():
+    for (mem_type, name), stack in open_tags.items():
         for start_idx, bg_color in stack:
-            ranges.append(BlockRange(start_idx, start_idx, name, bg_color))
+            ranges.append(BlockRange(start_idx, start_idx, name, bg_color, mem_type))
 
     # Sort by start index
     ranges.sort(key=lambda r: r.start_idx)
