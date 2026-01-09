@@ -473,6 +473,9 @@ class AddressPanel(ttk.Frame):
     def _find_block_range(self, row_idx: int, tag: BlockTag) -> set[int]:
         """Find the range of row indices affected by a block tag.
 
+        Uses nesting depth to correctly match tags when there are multiple
+        blocks with the same name (nested or separate sections).
+
         Args:
             row_idx: Index of the row containing the tag
             tag: Parsed BlockTag from the comment
@@ -487,20 +490,32 @@ class AddressPanel(ttk.Frame):
             return {row_idx}
 
         if tag.tag_type == "open":
-            # Search forward for matching close tag
+            # Search forward for matching close tag, respecting nesting
+            depth = 1
             for i in range(row_idx + 1, len(self.rows)):
                 other_tag = parse_block_tag(self.rows[i].comment)
-                if other_tag.name == tag.name and other_tag.tag_type == "close":
-                    return set(range(row_idx, i + 1))
+                if other_tag.name == tag.name:
+                    if other_tag.tag_type == "open":
+                        depth += 1
+                    elif other_tag.tag_type == "close":
+                        depth -= 1
+                        if depth == 0:
+                            return set(range(row_idx, i + 1))
             # No close found - just the opening row
             return {row_idx}
 
         if tag.tag_type == "close":
-            # Search backward for matching open tag
+            # Search backward for matching open tag, respecting nesting
+            depth = 1
             for i in range(row_idx - 1, -1, -1):
                 other_tag = parse_block_tag(self.rows[i].comment)
-                if other_tag.name == tag.name and other_tag.tag_type == "open":
-                    return set(range(i, row_idx + 1))
+                if other_tag.name == tag.name:
+                    if other_tag.tag_type == "close":
+                        depth += 1
+                    elif other_tag.tag_type == "open":
+                        depth -= 1
+                        if depth == 0:
+                            return set(range(i, row_idx + 1))
             # No open found - just the closing row
             return {row_idx}
 
@@ -508,6 +523,9 @@ class AddressPanel(ttk.Frame):
 
     def _find_paired_tag_row(self, row_idx: int, tag: BlockTag) -> int | None:
         """Find the row index of the paired block tag.
+
+        Uses nesting depth to correctly match tags when there are multiple
+        blocks with the same name (nested or separate sections).
 
         Args:
             row_idx: Index of the row containing the tag
@@ -520,17 +538,29 @@ class AddressPanel(ttk.Frame):
             return None
 
         if tag.tag_type == "open":
-            # Search forward for matching close tag
+            # Search forward for matching close tag, respecting nesting
+            depth = 1
             for i in range(row_idx + 1, len(self.rows)):
                 other_tag = parse_block_tag(self.rows[i].comment)
-                if other_tag.name == tag.name and other_tag.tag_type == "close":
-                    return i
+                if other_tag.name == tag.name:
+                    if other_tag.tag_type == "open":
+                        depth += 1
+                    elif other_tag.tag_type == "close":
+                        depth -= 1
+                        if depth == 0:
+                            return i
         elif tag.tag_type == "close":
-            # Search backward for matching open tag
+            # Search backward for matching open tag, respecting nesting
+            depth = 1
             for i in range(row_idx - 1, -1, -1):
                 other_tag = parse_block_tag(self.rows[i].comment)
-                if other_tag.name == tag.name and other_tag.tag_type == "open":
-                    return i
+                if other_tag.name == tag.name:
+                    if other_tag.tag_type == "close":
+                        depth += 1
+                    elif other_tag.tag_type == "open":
+                        depth -= 1
+                        if depth == 0:
+                            return i
         return None
 
     def _update_paired_tag(
