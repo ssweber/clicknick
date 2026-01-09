@@ -80,12 +80,9 @@ class AddressEditorWindow(tk.Toplevel):
         if self._nav_window is not None and self._nav_window.winfo_viewable():
             self.after_idle(self._refresh_navigation)
 
-        # NOTE: We intentionally do NOT call notify_data_changed here.
-        # Other windows already received notification via _handle_data_changed
-        # and validated their panels. The validation flags are on shared
-        # AddressRow objects, so other windows see the updated state.
-        # Calling notify_data_changed again would trigger redundant
-        # refresh_from_external calls (~300ms wasted).
+        # NOTE: We do NOT call notify_data_changed here.
+        # Other windows were already notified via _handle_nickname_changed.
+        # Calling it again would trigger redundant refresh_from_external calls.
 
     def _schedule_revalidation(self) -> None:
         """Schedule a debounced revalidation of all panels."""
@@ -95,37 +92,6 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Schedule revalidation after 50ms idle
         self._revalidate_timer = self.after(50, self._do_revalidation)
-
-    def _handle_nickname_changed(
-        self, memory_type: str, addr_key: int, old_nick: str, new_nick: str
-    ) -> None:
-        """Handle nickname change from any panel.
-
-        Uses debouncing to batch rapid changes (like Replace All) and avoid
-        expensive revalidation for each individual cell change.
-
-        Args:
-            memory_type: The memory type of the panel that triggered the change
-            addr_key: The address key that changed
-            old_nick: The old nickname value
-            new_nick: The new nickname value
-        """
-        # Update shared data registry immediately
-        self.shared_data.update_nickname(addr_key, old_nick, new_nick)
-
-        # Track this panel as already validated (in _on_sheet_modified)
-        self._recently_validated_panels.add(memory_type)
-
-        # Schedule debounced revalidation
-        self._pending_revalidate = True
-        self._schedule_revalidation()
-
-    def _handle_data_changed(self) -> None:
-        """Handle any data change from any panel (comment, init value, retentive)."""
-        self._update_status()
-
-        # Notify other windows (pass self so we skip our own notification)
-        self.shared_data.notify_data_changed(sender=self)
 
     # --- Tab Management Methods ---
 
@@ -142,6 +108,53 @@ class AddressEditorWindow(tk.Toplevel):
         except Exception:
             pass
         return None
+
+    def _handle_nickname_changed(
+        self, memory_type: str, addr_key: int, old_nick: str, new_nick: str
+    ) -> None:
+        """Handle nickname change from any panel.
+
+        Updates the shared nickname registry immediately. Tab refresh and
+        window notification happen via _handle_data_changed which is called
+        right after this by the panel.
+
+        Uses debouncing to batch rapid changes (like Replace All) and avoid
+        expensive revalidation for each individual cell change.
+
+        Args:
+            memory_type: The memory type of the panel that triggered the change
+            addr_key: The address key that changed
+            old_nick: The old nickname value
+            new_nick: The new nickname value
+        """
+        # Update shared data registry immediately (updates skeleton row + nickname index)
+        self.shared_data.update_nickname(addr_key, old_nick, new_nick)
+
+        # Track this panel as already validated (in _on_sheet_modified)
+        self._recently_validated_panels.add(memory_type)
+
+        # Schedule debounced revalidation
+        self._pending_revalidate = True
+        self._schedule_revalidation()
+
+    def _handle_data_changed(self) -> None:
+        """Handle any data change from any panel (comment, init value, retentive).
+
+        With skeleton architecture, all tabs share the same row objects.
+        When one tab edits a row, we need to refresh displays in other tabs
+        of THIS window (not just other windows).
+        """
+        # Refresh all OTHER tabs in this window to show the change
+        current_panel = self._get_current_panel()
+        for _tab_id, (panel, _state) in self._tabs.items():
+            if panel is not current_panel:
+                # Just refresh display - skeleton row already has new data
+                panel.refresh_from_external(skip_validation=True)
+
+        self._update_status()
+
+        # Notify other windows (pass self so they refresh too)
+        self.shared_data.notify_data_changed(sender=self)
 
     def _get_selected_row_indices(self) -> list[int]:
         """Get selected row indices from the current panel.
@@ -617,7 +630,12 @@ class AddressEditorWindow(tk.Toplevel):
             messagebox.showerror("Save Error", str(e), parent=self)
 
     def _refresh_all(self) -> None:
-        """Refresh all tab panels from the database."""
+        """Refresh all tab panels by discarding changes.
+
+        With skeleton architecture, discard_all_changes() resets skeleton rows
+        in-place and notifies all observers. Panels refresh automatically via
+        _on_shared_data_changed().
+        """
         if self.shared_data.has_unsaved_changes():
             result = messagebox.askyesno(
                 "Unsaved Changes",
@@ -628,28 +646,12 @@ class AddressEditorWindow(tk.Toplevel):
                 return
 
         try:
-            # Discard shared data - this will notify all windows
+            # Discard shared data - resets skeleton rows and notifies all windows
+            # _on_shared_data_changed() will refresh all panels automatically
             self.shared_data.discard_all_changes()
-
-            # Update local nicknames reference
-            self.all_nicknames = self.shared_data.all_nicknames
-
-            # Rebuild unified view and refresh all tabs
-            unified_view = build_unified_view(
-                self.shared_data.all_rows,
-                self.all_nicknames,
+            self.status_var.set(
+                f"Refreshed - {len(self.shared_data.all_nicknames)} nicknames loaded"
             )
-            self.shared_data.set_unified_view(unified_view)
-            self.shared_data.set_rows("unified", unified_view.rows)
-
-            # Refresh all tab panels
-            for _tab_id, (panel, _state) in self._tabs.items():
-                panel._all_nicknames = self.all_nicknames
-                panel.section_boundaries = unified_view.section_boundaries
-                panel.rebuild_from_view(unified_view)
-
-            self._update_status()
-            self.status_var.set(f"Refreshed - {len(self.all_nicknames)} nicknames loaded")
 
         except Exception as e:
             messagebox.showerror("Refresh Error", str(e), parent=self)
@@ -1285,9 +1287,9 @@ class AddressEditorWindow(tk.Toplevel):
     def _on_shared_data_changed(self, sender: object = None) -> None:
         """Handle notification that shared data has changed.
 
-        Called when another window modifies the shared data, or when
-        external changes are detected in the MDB file.
-        Refreshes all tab panels to show the updated data.
+        With skeleton architecture, all panels share the same AddressRow objects.
+        When skeleton rows are updated in-place, we just refresh displays.
+        No need to rebuild views since row object identity never changes.
 
         Args:
             sender: The object that triggered the change (if any)
@@ -1299,32 +1301,14 @@ class AddressEditorWindow(tk.Toplevel):
         # Update local reference to nicknames
         self.all_nicknames = self.shared_data.all_nicknames
 
-        # Check if unified view was cleared (e.g., after discard_all_changes)
-        unified_view = self.shared_data.get_unified_view()
-
-        if unified_view is None:
-            # View was cleared - rebuild from fresh data
-            unified_view = build_unified_view(
-                self.shared_data.all_rows,
-                self.all_nicknames,
-            )
-            self.shared_data.set_unified_view(unified_view)
-            self.shared_data.set_rows("unified", unified_view.rows)
-
-        # Update all tab panels
+        # Update all tab panels - skeleton rows are already updated in-place
         for _tab_id, (panel, _state) in self._tabs.items():
             panel._all_nicknames = self.all_nicknames
-
-            if panel.rows is not unified_view.rows:
-                # Panel has stale rows - rebuild from unified view
-                panel.section_boundaries = unified_view.section_boundaries
-                panel.rebuild_from_view(unified_view)
-            else:
-                # Normal refresh - just sync display
-                # If sender is another window, skip validation (they already did it)
-                # If sender is None (external MDB change), we need to validate
-                skip_validation = sender is not None
-                panel.refresh_from_external(skip_validation=skip_validation)
+            # Simple refresh - skeleton rows are shared, just sync display
+            # If sender is another window, skip validation (they already did it)
+            # If sender is None (external MDB change), we need to validate
+            skip_validation = sender is not None
+            panel.refresh_from_external(skip_validation=skip_validation)
 
         # Refresh outline if visible (deferred until idle)
         if self._nav_window is not None and self._nav_window.winfo_viewable():

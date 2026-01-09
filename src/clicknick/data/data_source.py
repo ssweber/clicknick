@@ -112,7 +112,7 @@ def load_addresses_from_mdb_dump(csv_path: str) -> dict[int, AddressRow]:
                 comment=comment,
                 original_comment=comment,
                 used=False,  # MDB dump doesn't reliably have this
-                exists_in_mdb=bool(nickname or comment),
+                exists_in_mdb=True,
                 data_type=data_type,
                 initial_value=initial_value,
                 original_initial_value=initial_value,
@@ -269,9 +269,7 @@ class CsvDataSource(DataSource):
                         comment=comment,
                         original_comment=comment,
                         used=False,  # CSV has no used field
-                        exists_in_mdb=bool(
-                            nickname or comment
-                        ),  # Consider it "exists" if has content
+                        exists_in_mdb=True,
                         data_type=data_type,
                         initial_value=initial_value,
                         original_initial_value=initial_value,

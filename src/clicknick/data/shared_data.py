@@ -8,11 +8,17 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from ..models.address_row import AddressRow
+from ..models.address_row import AddressRow, get_addr_key, is_xd_yd_hidden_slot
 from ..models.blocktag import compute_all_block_ranges
+from ..models.constants import (
+    ADDRESS_RANGES,
+    DEFAULT_RETENTIVE,
+    MEMORY_TYPE_TO_DATA_TYPE,
+    DataType,
+)
+from ..models.validation import validate_nickname
 from .data_source import DataSource
 
 if TYPE_CHECKING:
@@ -20,34 +26,6 @@ if TYPE_CHECKING:
 
 # File monitoring interval in milliseconds
 FILE_MONITOR_INTERVAL_MS = 2000
-
-
-@dataclass
-class TypeView:
-    """Cached view data for a memory type (built once, shared by all panels).
-
-    This contains pre-computed display data that would otherwise be
-    recalculated by each AddressPanel independently.
-    """
-
-    # The type key (e.g., "X", "T/TD")
-    type_key: str
-
-    # Ordered list of AddressRow references (shared with SharedAddressData)
-    rows: list[AddressRow]
-
-    # Display data arrays (parallel to rows)
-    # Each inner list = [used_display, nickname, comment, init_value_display, retentive_display]
-    display_data: list[list[Any]] = field(default_factory=list)
-
-    # Row index labels (e.g., "X001", "T1", "TD1")
-    index_labels: list[str] = field(default_factory=list)
-
-    # Block colors computed from comments (row_idx -> hex_color)
-    block_colors: dict[int, str] = field(default_factory=dict)
-
-    # Combined types if this is an interleaved view (e.g., ["T", "TD"])
-    combined_types: list[str] | None = None
 
 
 class SharedAddressData:
@@ -71,6 +49,41 @@ class SharedAddressData:
         # When data changes in any window, all observers are notified
     """
 
+    # --- Skeleton Architecture ---
+
+    def _create_skeleton(self) -> dict[int, AddressRow]:
+        """Create static skeleton of all possible AddressRow objects.
+
+        Creates one AddressRow per valid address slot across all memory types.
+        These objects are created once and reused for the lifetime of the app.
+        All tabs and windows reference these same objects.
+
+        Returns:
+            Dict mapping addr_key to skeleton AddressRow objects
+        """
+        skeleton: dict[int, AddressRow] = {}
+
+        for mem_type, (start, end) in ADDRESS_RANGES.items():
+            default_data_type = MEMORY_TYPE_TO_DATA_TYPE.get(mem_type, DataType.BIT)
+            default_retentive = DEFAULT_RETENTIVE.get(mem_type, False)
+
+            for addr in range(start, end + 1):
+                # Skip hidden XD/YD slots (odd addresses >= 3)
+                if is_xd_yd_hidden_slot(mem_type, addr):
+                    continue
+
+                addr_key = get_addr_key(mem_type, addr)
+                skeleton[addr_key] = AddressRow(
+                    memory_type=mem_type,
+                    address=addr,
+                    exists_in_mdb=False,
+                    data_type=default_data_type,
+                    retentive=default_retentive,
+                    original_retentive=default_retentive,
+                )
+
+        return skeleton
+
     def __init__(self, data_source: DataSource):
         """Initialize the shared data store.
 
@@ -80,7 +93,8 @@ class SharedAddressData:
         self._data_source = data_source
 
         # Data storage - shared across all windows
-        self.all_rows: dict[int, AddressRow] = {}  # AddrKey -> AddressRow
+        # Create skeleton of ALL possible addresses at startup
+        self.all_rows: dict[int, AddressRow] = self._create_skeleton()
         self.rows_by_type: dict[str, list[AddressRow]] = {}
 
         # Reverse index: nickname -> set of addr_keys that have this nickname
@@ -106,9 +120,6 @@ class SharedAddressData:
         self._monitor_after_id: str | None = None
         self._monitoring_active = False
 
-        # Cached views by type key (e.g., "X", "T/TD")
-        self._views: dict[str, TypeView] = {}
-
         # Cached unified view (all memory types in one view)
         self._unified_view: UnifiedView | None = None
 
@@ -126,28 +137,6 @@ class SharedAddressData:
         """Remove an observer callback."""
         if callback in self._observers:
             self._observers.remove(callback)
-
-    # --- View Management ---
-
-    def get_view(self, type_key: str) -> TypeView | None:
-        """Get the cached view for a memory type.
-
-        Args:
-            type_key: The memory type key (e.g., "X", "T/TD")
-
-        Returns:
-            TypeView if cached, None otherwise
-        """
-        return self._views.get(type_key)
-
-    def set_view(self, type_key: str, view: TypeView) -> None:
-        """Store a view for a memory type.
-
-        Args:
-            type_key: The memory type key
-            view: The TypeView to cache
-        """
-        self._views[type_key] = view
 
     # --- Unified View Management ---
 
@@ -173,6 +162,74 @@ class SharedAddressData:
         Call this when data changes to force rebuild on next access.
         """
         self._unified_view = None
+
+    def _hydrate_from_db_data(self, db_rows: dict[int, AddressRow]) -> None:
+        """Update skeleton rows in-place with database data.
+
+        Transfers data from loaded AddressRow objects into existing skeleton
+        rows. This preserves object identity so all tabs share the same rows.
+
+        Args:
+            db_rows: AddressRow objects loaded from database
+        """
+        for addr_key, db_row in db_rows.items():
+            if addr_key in self.all_rows:
+                row = self.all_rows[addr_key]
+                # Transfer content fields
+                row.nickname = db_row.nickname
+                row.comment = db_row.comment
+                row.used = db_row.used
+                row.data_type = db_row.data_type
+                row.initial_value = db_row.initial_value
+                row.retentive = db_row.retentive
+                row.exists_in_mdb = True
+                # Set originals to match (row is "clean")
+                row.original_nickname = db_row.nickname
+                row.original_comment = db_row.comment
+                row.original_initial_value = db_row.initial_value
+                row.original_retentive = db_row.retentive
+                # Preserve loaded_with_error state from data source
+                if db_row.loaded_with_error:
+                    row.loaded_with_error = True
+
+    def _mark_loaded_with_errors(self) -> None:
+        """Mark X/SC/SD rows that loaded with invalid nicknames.
+
+        These memory types allow nicknames that start with numbers in CLICK,
+        but we still want to flag them so users know they have non-standard names.
+        Called after hydration when all_nicknames is available.
+        """
+        all_nicks = self.all_nicknames
+        for row in self.all_rows.values():
+            if row.memory_type in ("X", "SC", "SD") and row.nickname:
+                is_valid, _ = validate_nickname(row.nickname, all_nicks, row.addr_key)
+                if not is_valid:
+                    row.loaded_with_error = True
+
+    def _reset_skeleton_row(self, row: AddressRow) -> None:
+        """Reset a skeleton row to empty state.
+
+        Used when a row is deleted externally or after full delete save.
+
+        Args:
+            row: The skeleton row to reset
+        """
+        row.nickname = ""
+        row.comment = ""
+        row.used = False
+        row.initial_value = ""
+        row.exists_in_mdb = False
+        # Reset originals
+        row.original_nickname = ""
+        row.original_comment = ""
+        row.original_initial_value = ""
+        # Keep original_retentive at default for memory type
+        row.loaded_with_error = False
+        # Reset validation state
+        row.is_valid = True
+        row.validation_error = ""
+        row.initial_value_valid = True
+        row.initial_value_error = ""
 
     def register_window(self, window) -> None:
         """Register an editor window for tracking.
@@ -296,12 +353,24 @@ class SharedAddressData:
                 self._nickname_lower_to_addrs[nick_lower].add(addr_key)
 
     def load_initial_data(self) -> None:
-        """Load all address data from data source."""
-        self.all_rows = self._data_source.load_all_addresses()
+        """Load all address data from data source into skeleton rows.
+
+        Hydrates the pre-created skeleton with database data. This preserves
+        object identity so all tabs share the same AddressRow instances.
+        """
+        # Load from data source (creates temporary AddressRow objects)
+        db_rows = self._data_source.load_all_addresses()
+
+        # Hydrate skeleton with loaded data (in-place update)
+        self._hydrate_from_db_data(db_rows)
+
         self._initialized = True
 
         # Build reverse index for O(1) duplicate detection
         self._rebuild_nickname_index()
+
+        # Mark X/SC/SD rows with invalid nicknames (needs all_nicknames)
+        self._mark_loaded_with_errors()
 
         # Store file path and initial modification time for monitoring
         self._file_path = self._data_source.file_path
@@ -435,18 +504,22 @@ class SharedAddressData:
         self._monitor_after_id = None
 
     def _reload_from_source(self) -> None:
-        """Reload data from data source, updating non-dirty cells."""
+        """Reload data from source, updating skeleton rows in-place.
+
+        With skeleton architecture, we never create/delete row objects.
+        We only update the data fields of existing skeleton rows.
+        """
         any_changes = False
 
         try:
-            # Reload all addresses
+            # Reload all addresses (creates temporary AddressRow objects)
             new_rows = self._data_source.load_all_addresses()
 
-            # Update existing rows from new data
+            # Update existing skeleton rows from new data
             for addr_key, new_row in new_rows.items():
                 if addr_key in self.all_rows:
-                    existing_row = self.all_rows[addr_key]
-                    # Convert new_row to dict format for update_from_db
+                    skeleton_row = self.all_rows[addr_key]
+                    # Use update_from_db for proper dirty field handling
                     db_data = {
                         "nickname": new_row.nickname,
                         "comment": new_row.comment,
@@ -455,42 +528,26 @@ class SharedAddressData:
                         "initial_value": new_row.initial_value,
                         "retentive": new_row.retentive,
                     }
-                    if existing_row.update_from_db(db_data):
+                    if skeleton_row.update_from_db(db_data):
                         any_changes = True
-                else:
-                    # New row added externally
-                    self.all_rows[addr_key] = new_row
-                    any_changes = True
-
-            # Check for rows deleted externally
-            for addr_key in list(self.all_rows.keys()):
-                if addr_key not in new_rows:
-                    row = self.all_rows[addr_key]
-                    if not row.is_dirty:
-                        del self.all_rows[addr_key]
+                    # Mark as existing in MDB
+                    if not skeleton_row.exists_in_mdb:
+                        skeleton_row.exists_in_mdb = True
                         any_changes = True
 
-            # Also update rows_by_type if loaded
-            for _type_name, rows in self.rows_by_type.items():
-                for row in rows:
-                    if row.addr_key in new_rows:
-                        new_row = new_rows[row.addr_key]
-                        db_data = {
-                            "nickname": new_row.nickname,
-                            "comment": new_row.comment,
-                            "used": new_row.used,
-                            "data_type": new_row.data_type,
-                            "initial_value": new_row.initial_value,
-                            "retentive": new_row.retentive,
-                        }
-                        if row.update_from_db(db_data):
-                            any_changes = True
+            # Reset rows no longer in DB (if not dirty)
+            for addr_key, skeleton_row in self.all_rows.items():
+                if addr_key not in new_rows and skeleton_row.exists_in_mdb:
+                    if not skeleton_row.is_dirty:
+                        self._reset_skeleton_row(skeleton_row)
+                        any_changes = True
 
         except Exception:
             # Load error, skip this reload
             return
 
         if any_changes:
+            self._rebuild_nickname_index()
             self.notify_data_changed()
 
     def _check_file_modified(self) -> None:
@@ -614,6 +671,9 @@ class SharedAddressData:
     def save_all_changes(self) -> int:
         """Save changes to data source.
 
+        With skeleton architecture, all rows are in all_rows (skeleton).
+        We save dirty rows and reset fully-deleted rows to empty state.
+
         Returns:
             Number of changes saved
 
@@ -624,67 +684,50 @@ class SharedAddressData:
         if self._data_source.is_read_only:
             raise RuntimeError("Data source is read-only")
 
-        # Build complete row set: start with all_rows, overlay with panel rows
-        # (Panel rows may have edits that aren't in all_rows)
-        rows_to_save: dict[int, AddressRow] = {}
-        all_dirty_rows: list[AddressRow] = []
+        # Collect dirty skeleton rows
+        dirty_rows = [row for row in self.all_rows.values() if row.is_dirty]
 
-        # First, add all original rows
-        for addr_key, row in self.all_rows.items():
-            rows_to_save[addr_key] = row
-
-        # Then overlay with panel rows (which have any edits)
-        for rows in self.rows_by_type.values():
-            for row in rows:
-                rows_to_save[row.addr_key] = row
-                if row.is_dirty:
-                    all_dirty_rows.append(row)
-
-        if not all_dirty_rows:
+        if not dirty_rows:
             return 0
 
         # Capture rows that will be fully deleted (before mark_saved resets dirty state)
-        rows_to_remove = [row for row in all_dirty_rows if row.needs_full_delete]
+        rows_to_reset = [row for row in dirty_rows if row.needs_full_delete]
 
-        # Pass all rows - data source decides what to save
+        # Pass all skeleton rows - data source decides what to save
         # (MDB saves only dirty rows, CSV rewrites all rows with content)
-        count = self._data_source.save_changes(list(rows_to_save.values()))
+        count = self._data_source.save_changes(list(self.all_rows.values()))
 
-        # Mark dirty rows as saved & upsert in all_rows
-        for row in all_dirty_rows:
+        # Mark dirty rows as saved
+        for row in dirty_rows:
             row.mark_saved()
-            self.all_rows[row.addr_key] = row
 
-        # Remove fully-deleted rows from all_rows
-        for row in rows_to_remove:
-            if row.addr_key in self.all_rows:
-                del self.all_rows[row.addr_key]
+        # Reset fully-deleted rows to skeleton state (don't delete from skeleton)
+        for row in rows_to_reset:
+            self._reset_skeleton_row(row)
 
-        # Update modified time
+        # Update modified time to prevent immediate reload
         if self._file_path and os.path.exists(self._file_path):
             self._last_mtime = os.path.getmtime(self._file_path)
 
-        # Update modified time
-        if self._file_path and os.path.exists(self._file_path):
-            self._last_mtime = os.path.getmtime(self._file_path)
+        # Rebuild nickname index
+        self._rebuild_nickname_index()
 
         self.notify_data_changed()
         return count
 
     def discard_all_changes(self) -> None:
-        """Discard all changes by resetting rows to original values.
+        """Discard all changes by resetting skeleton rows to original values.
 
-        This is much faster than reloading from database since we just
-        reset the in-memory rows using their stored original values.
+        With skeleton architecture, we just iterate over all_rows and
+        call discard() on dirty rows. Much faster than DB reload.
         """
-        # Reset all dirty rows in-place
-        for rows in self.rows_by_type.values():
-            for row in rows:
-                if row.is_dirty:
-                    row.discard()
-                    # Sync all_rows to match (for all_nicknames property)
-                    if row.addr_key in self.all_rows:
-                        self.all_rows[row.addr_key].nickname = row.nickname
+        # Reset all dirty skeleton rows in-place
+        for row in self.all_rows.values():
+            if row.is_dirty:
+                row.discard()
+
+        # Rebuild nickname index since nicknames may have reverted
+        self._rebuild_nickname_index()
 
         self.notify_data_changed()
 

@@ -792,6 +792,7 @@ class AddressPanel(ttk.Frame):
 
         modified_indices: set[int] = set()
         nickname_changes: list[tuple[int, str, str]] = []
+        block_tag_modified = False
 
         for display_row in selected:
             data_idx = self._get_data_index(display_row)
@@ -1309,15 +1310,6 @@ class AddressPanel(ttk.Frame):
         if not skip_validation:
             self._validate_all()
 
-        self._refresh_display()
-
-    def rebuild_from_view(self, view):
-        """Rebuild panel data from a view object."""
-        self.rows = view.rows
-        self._invalidate_block_colors_cache()
-        self._validate_all()
-        self._populate_sheet_data()
-        self._apply_filters()
         self._refresh_display()
 
     def get_dirty_rows(self) -> list[AddressRow]:
