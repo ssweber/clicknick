@@ -125,11 +125,15 @@ src/clicknick/
 
 ### Data Flow
 
+**Static Skeleton Architecture:**
+The Address Editor uses a "skeleton" of persistent `AddressRow` objects. All tabs and windows reference the **same** row objects, so edits are instantly visible everywhere.
+
 **Initialization (on connect_to_instance):**
 1. `SharedAddressData` created with `MdbDataSource` or `CsvDataSource`
-2. `load_initial_data()` populates `all_rows: dict[int, AddressRow]`
-3. `start_file_monitoring()` begins polling for external MDB/CSV changes
-4. `NicknameManager.set_shared_data()` wires it as observer for cache invalidation
+2. `_create_skeleton()` creates ~17,000 empty `AddressRow` objects (one per valid PLC address)
+3. `load_initial_data()` hydrates skeleton rows in-place from database (not replace)
+4. `start_file_monitoring()` begins polling for external MDB/CSV changes
+5. `NicknameManager.set_shared_data()` wires it as observer for cache invalidation
 
 **Autocomplete Flow:**
 1. `ClickWindowDetector` polls for Click.exe child windows (instruction dialogs)
@@ -137,18 +141,30 @@ src/clicknick/
 3. `NicknameManager.get_filtered_nicknames()` builds/uses cached `Nickname` list from `SharedAddressData.all_rows`
 4. Selection inserts address via Win32 `set_control_text`
 
-**Change Propagation:**
-1. Address Editor or external MDB change triggers `SharedAddressData.notify_data_changed()`
-2. All observers notified (NicknameManager, AddressEditorWindows, SharedDataviewData)
-3. NicknameManager invalidates its nickname cache, rebuilt on next filter request
-4. SharedDataviewData triggers `refresh_nicknames_from_shared()` on DataviewEditorWindow
+**Edit Flow (Skeleton Architecture):**
+1. User edits a cell in Tab A → skeleton `AddressRow` object is modified directly
+2. `_handle_data_changed()` refreshes all OTHER tabs in the same window
+3. `notify_data_changed(sender=self)` notifies other windows to refresh
+4. All panels call `refresh_from_external()` which repaints from skeleton data
+5. **Key insight**: No row objects are created/replaced; UI just repaints existing objects
+
+**External Change Flow:**
+1. File monitor detects MDB modification (every 2 seconds)
+2. `_reload_from_source()` updates skeleton rows in-place via `row.update_from_db()`
+3. Dirty fields are preserved (user edits not overwritten)
+4. `notify_data_changed()` triggers UI refresh across all windows/tabs
+
+**Save/Discard Flow:**
+- **Save**: Dirty skeleton rows written to DB, then `row.mark_saved()` resets dirty tracking
+- **Discard**: `row.discard()` reverts each dirty row to original values in-place
 
 ### Address Editor Architecture
 
 The Address Editor uses a **unified tabbed interface** where each tab displays ALL memory types in a single scrollable panel:
 
 **Unified View Model:**
-- `UnifiedView` (in `view_builder.py`) contains all `AddressRow` objects for all memory types in display order
+- `UnifiedView` (in `view_builder.py`) contains **references** to skeleton `AddressRow` objects (not copies)
+- `build_unified_view()` creates an ordered list referencing skeleton rows from `SharedAddressData.all_rows`
 - `section_boundaries: dict[str, int]` maps type keys (e.g., "X", "T/TD", "DS") to starting row indices
 - Memory types are ordered: X, Y, C, T/TD, CT/CTD, SC, DS, DD, DH, DF, XD, YD, SD, TXT
 - Combined types (T/TD, CT/CTD) interleave rows: T1, TD1, T2, TD2, ...
