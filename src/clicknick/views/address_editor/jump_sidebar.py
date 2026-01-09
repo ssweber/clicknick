@@ -173,7 +173,7 @@ class JumpButton(ttk.Frame):
         self.button = ttk.Button(
             self,
             text=self.display_text,
-            width=10,  # Narrower button
+            width=8,  # Narrower button
             command=self._on_click,
         )
         self.button.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -300,7 +300,7 @@ class JumpSidebar(ttk.Frame):
         on_address_jump: Callable,
         shared_data=None,
     ):
-        super().__init__(parent, width=100)  # Narrower sidebar
+        super().__init__(parent, width=70)  # Narrower sidebar
         self.pack_propagate(False)  # Maintain fixed width
 
         self.on_type_select = on_type_select
