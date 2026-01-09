@@ -13,7 +13,13 @@ from typing import TYPE_CHECKING
 from tksheet import num2alpha
 
 from ...models.address_row import AddressRow
-from ...models.blocktag import BlockTag, parse_block_tag
+from ...models.blocktag import (
+    BlockTag,
+    compute_all_block_ranges,
+    find_block_range_indices,
+    find_paired_tag_index,
+    parse_block_tag,
+)
 from ...models.constants import (
     FLOAT_MAX,
     FLOAT_MIN,
@@ -473,9 +479,6 @@ class AddressPanel(ttk.Frame):
     def _find_block_range(self, row_idx: int, tag: BlockTag) -> set[int]:
         """Find the range of row indices affected by a block tag.
 
-        Uses nesting depth to correctly match tags when there are multiple
-        blocks with the same name (nested or separate sections).
-
         Args:
             row_idx: Index of the row containing the tag
             tag: Parsed BlockTag from the comment
@@ -483,49 +486,14 @@ class AddressPanel(ttk.Frame):
         Returns:
             Set of row indices that need restyling due to this block tag
         """
-        if not tag.name or not tag.tag_type:
+        result = find_block_range_indices(self.rows, row_idx, tag)
+        if result is None:
             return set()
-
-        if tag.tag_type == "self-closing":
-            return {row_idx}
-
-        if tag.tag_type == "open":
-            # Search forward for matching close tag, respecting nesting
-            depth = 1
-            for i in range(row_idx + 1, len(self.rows)):
-                other_tag = parse_block_tag(self.rows[i].comment)
-                if other_tag.name == tag.name:
-                    if other_tag.tag_type == "open":
-                        depth += 1
-                    elif other_tag.tag_type == "close":
-                        depth -= 1
-                        if depth == 0:
-                            return set(range(row_idx, i + 1))
-            # No close found - just the opening row
-            return {row_idx}
-
-        if tag.tag_type == "close":
-            # Search backward for matching open tag, respecting nesting
-            depth = 1
-            for i in range(row_idx - 1, -1, -1):
-                other_tag = parse_block_tag(self.rows[i].comment)
-                if other_tag.name == tag.name:
-                    if other_tag.tag_type == "close":
-                        depth += 1
-                    elif other_tag.tag_type == "open":
-                        depth -= 1
-                        if depth == 0:
-                            return set(range(i, row_idx + 1))
-            # No open found - just the closing row
-            return {row_idx}
-
-        return set()
+        start, end = result
+        return set(range(start, end + 1))
 
     def _find_paired_tag_row(self, row_idx: int, tag: BlockTag) -> int | None:
         """Find the row index of the paired block tag.
-
-        Uses nesting depth to correctly match tags when there are multiple
-        blocks with the same name (nested or separate sections).
 
         Args:
             row_idx: Index of the row containing the tag
@@ -534,34 +502,7 @@ class AddressPanel(ttk.Frame):
         Returns:
             Row index of the paired tag, or None if not found
         """
-        if not tag.name or tag.tag_type == "self-closing":
-            return None
-
-        if tag.tag_type == "open":
-            # Search forward for matching close tag, respecting nesting
-            depth = 1
-            for i in range(row_idx + 1, len(self.rows)):
-                other_tag = parse_block_tag(self.rows[i].comment)
-                if other_tag.name == tag.name:
-                    if other_tag.tag_type == "open":
-                        depth += 1
-                    elif other_tag.tag_type == "close":
-                        depth -= 1
-                        if depth == 0:
-                            return i
-        elif tag.tag_type == "close":
-            # Search backward for matching open tag, respecting nesting
-            depth = 1
-            for i in range(row_idx - 1, -1, -1):
-                other_tag = parse_block_tag(self.rows[i].comment)
-                if other_tag.name == tag.name:
-                    if other_tag.tag_type == "close":
-                        depth += 1
-                    elif other_tag.tag_type == "open":
-                        depth -= 1
-                        if depth == 0:
-                            return i
-        return None
+        return find_paired_tag_index(self.rows, row_idx, tag)
 
     def _update_paired_tag(
         self, paired_row_idx: int, old_tag: BlockTag, new_name: str | None
@@ -1282,48 +1223,21 @@ class AddressPanel(ttk.Frame):
         if self._block_colors_cache is not None:
             return self._block_colors_cache
 
-        # Build list of colored blocks: (start_idx, end_idx, bg_color)
-        # We use row indices not addresses for easier lookup
-        colored_blocks: list[tuple[int, int | None, str]] = []
+        # Get all block ranges using centralized function
+        ranges = compute_all_block_ranges(self.rows)
 
-        # Stack for tracking open tags: name -> [(start_idx, bg_color), ...]
-        open_tags: dict[str, list[tuple[int, str | None]]] = {}
-
-        for row_idx, row in enumerate(self.rows):
-            block_tag = parse_block_tag(row.comment)
-            if not block_tag.name:
-                continue
-
-            if block_tag.tag_type == "self-closing":
-                if block_tag.bg_color:
-                    colored_blocks.append((row_idx, row_idx, block_tag.bg_color))
-            elif block_tag.tag_type == "open":
-                if block_tag.name not in open_tags:
-                    open_tags[block_tag.name] = []
-                open_tags[block_tag.name].append((row_idx, block_tag.bg_color))
-            elif block_tag.tag_type == "close":
-                if block_tag.name in open_tags and open_tags[block_tag.name]:
-                    start_idx, start_bg_color = open_tags[block_tag.name].pop()
-                    if start_bg_color:
-                        colored_blocks.append((start_idx, row_idx, start_bg_color))
-
-        # Handle unclosed tags as singular points
-        for stack in open_tags.values():
-            for start_idx, bg_color in stack:
-                if bg_color:
-                    colored_blocks.append((start_idx, start_idx, bg_color))
+        # Filter to only blocks with colors
+        colored_ranges = [r for r in ranges if r.bg_color]
 
         # Build row_idx -> color map, with inner blocks overriding outer
-        # Sort by range size descending (larger ranges first), then by start index
+        # Sort by range size descending (larger ranges first)
         # This ensures inner (smaller) blocks are processed last and override
-        colored_blocks.sort(key=lambda b: (-(b[1] - b[0]) if b[1] else 0, b[0]))
+        colored_ranges.sort(key=lambda r: -(r.end_idx - r.start_idx))
 
         row_colors: dict[int, str] = {}
-        for start_idx, end_idx, bg_color in colored_blocks:
-            if end_idx is None:
-                end_idx = start_idx
-            for idx in range(start_idx, end_idx + 1):
-                row_colors[idx] = bg_color
+        for block in colored_ranges:
+            for idx in range(block.start_idx, block.end_idx + 1):
+                row_colors[idx] = block.bg_color  # type: ignore[assignment]
 
         # Cache the result
         self._block_colors_cache = row_colors

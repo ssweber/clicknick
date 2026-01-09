@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from ..models.address_row import AddressRow
-from ..models.blocktag import parse_block_tag
+from ..models.blocktag import compute_all_block_ranges
 from .data_source import DataSource
 
 if TYPE_CHECKING:
@@ -556,34 +556,19 @@ class SharedAddressData:
         if not rows:
             return []
 
-        # Collect all block tags
-        # Stack stores (address, bg_color) tuples for each block name
-        open_tags: dict[str, list[tuple[int, str | None]]] = {}
+        # Use centralized block matching
+        ranges = compute_all_block_ranges(rows)
+
+        # Convert row indices to addresses
         blocks: list[tuple[int, int | None, str, str | None]] = []
-
-        for row in rows:
-            block_tag = parse_block_tag(row.comment)
-            if not block_tag.name:
-                continue
-
-            if block_tag.tag_type == "self-closing":
-                # Singular point - no end address
-                blocks.append((row.address, None, block_tag.name, block_tag.bg_color))
-            elif block_tag.tag_type == "open":
-                # Push to stack for this block name (with bg color)
-                if block_tag.name not in open_tags:
-                    open_tags[block_tag.name] = []
-                open_tags[block_tag.name].append((row.address, block_tag.bg_color))
-            elif block_tag.tag_type == "close":
-                # Pop from stack and create range
-                if block_tag.name in open_tags and open_tags[block_tag.name]:
-                    start_addr, start_bg_color = open_tags[block_tag.name].pop()
-                    blocks.append((start_addr, row.address, block_tag.name, start_bg_color))
-
-        # Any unclosed opening tags become singular points
-        for block_name, addr_color_pairs in open_tags.items():
-            for addr, bg_color in addr_color_pairs:
-                blocks.append((addr, None, block_name, bg_color))
+        for block in ranges:
+            start_addr = rows[block.start_idx].address
+            # Self-closing or unclosed tags have same start/end index
+            if block.start_idx == block.end_idx:
+                end_addr = None
+            else:
+                end_addr = rows[block.end_idx].address
+            blocks.append((start_addr, end_addr, block.name, block.bg_color))
 
         return sorted(blocks, key=lambda x: x[0])
 

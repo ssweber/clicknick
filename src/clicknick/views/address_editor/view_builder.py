@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from ...data.shared_data import TypeView
 from ...models.address_row import AddressRow, is_xd_yd_hidden_slot
-from ...models.blocktag import parse_block_tag
+from ...models.blocktag import compute_all_block_ranges
 from ...models.constants import (
     ADDRESS_RANGES,
     DEFAULT_RETENTIVE,
@@ -227,47 +227,21 @@ def compute_block_colors(rows: list[AddressRow]) -> dict[int, str]:
     Returns:
         Dict mapping row index to bg color string
     """
-    # Build list of colored blocks: (start_idx, end_idx, bg_color)
-    colored_blocks: list[tuple[int, int | None, str]] = []
+    # Get all block ranges using centralized function
+    ranges = compute_all_block_ranges(rows)
 
-    # Stack for tracking open tags: name -> [(start_idx, bg_color), ...]
-    open_tags: dict[str, list[tuple[int, str | None]]] = {}
-
-    for row_idx, row in enumerate(rows):
-        block_tag = parse_block_tag(row.comment)
-        if not block_tag.name:
-            continue
-
-        if block_tag.tag_type == "self-closing":
-            if block_tag.bg_color:
-                colored_blocks.append((row_idx, row_idx, block_tag.bg_color))
-        elif block_tag.tag_type == "open":
-            if block_tag.name not in open_tags:
-                open_tags[block_tag.name] = []
-            open_tags[block_tag.name].append((row_idx, block_tag.bg_color))
-        elif block_tag.tag_type == "close":
-            if block_tag.name in open_tags and open_tags[block_tag.name]:
-                start_idx, start_bg_color = open_tags[block_tag.name].pop()
-                if start_bg_color:
-                    colored_blocks.append((start_idx, row_idx, start_bg_color))
-
-    # Handle unclosed tags as singular points
-    for stack in open_tags.values():
-        for start_idx, bg_color in stack:
-            if bg_color:
-                colored_blocks.append((start_idx, start_idx, bg_color))
+    # Filter to only blocks with colors
+    colored_ranges = [r for r in ranges if r.bg_color]
 
     # Build row_idx -> color map, with inner blocks overriding outer
-    # Sort by range size descending (larger ranges first), then by start index
+    # Sort by range size descending (larger ranges first)
     # This ensures inner (smaller) blocks are processed last and override
-    colored_blocks.sort(key=lambda b: (-(b[1] - b[0]) if b[1] else 0, b[0]))
+    colored_ranges.sort(key=lambda r: -(r.end_idx - r.start_idx))
 
     row_colors: dict[int, str] = {}
-    for start_idx, end_idx, bg_color in colored_blocks:
-        if end_idx is None:
-            end_idx = start_idx
-        for idx in range(start_idx, end_idx + 1):
-            row_colors[idx] = bg_color
+    for block in colored_ranges:
+        for idx in range(block.start_idx, block.end_idx + 1):
+            row_colors[idx] = block.bg_color  # type: ignore[assignment]
 
     return row_colors
 

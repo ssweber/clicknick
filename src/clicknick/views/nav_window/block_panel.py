@@ -10,7 +10,7 @@ from collections.abc import Callable
 from tkinter import ttk
 
 from ...models.address_row import AddressRow
-from ...models.blocktag import parse_block_tag
+from ...models.blocktag import compute_all_block_ranges
 from ...widgets.colors import get_block_color_hex
 
 
@@ -110,34 +110,17 @@ class BlockPanel(ttk.Frame):
         for item in self.tree.get_children():
             self.tree.delete(item)
 
-        # Sort all rows by address key to process ranges linearly
+        # Convert dict to sorted list for index-based processing
         sorted_keys = sorted(all_rows.keys())
+        rows_list = [all_rows[key] for key in sorted_keys]
 
-        active_blocks: dict[str, dict] = {}  # Name -> {color, rows[]}
+        # Use centralized block matching
+        ranges = compute_all_block_ranges(rows_list)
 
-        for key in sorted_keys:
-            row = all_rows[key]
-            tag = parse_block_tag(row.comment)
-
-            if tag.tag_type == "self-closing":
-                # Render singular block immediately
-                self._render_block(tag.name, tag.bg_color, [row])
-
-            elif tag.tag_type == "open":
-                # Start tracking a range
-                active_blocks[tag.name] = {"color": tag.bg_color, "rows": [row]}
-
-            elif tag.tag_type == "close":
-                # Close and render the range
-                if tag.name in active_blocks:
-                    data = active_blocks.pop(tag.name)
-                    data["rows"].append(row)
-                    self._render_block(tag.name, data["color"], data["rows"])
-
-            else:
-                # Add row to any currently open blocks (nested support or overlap)
-                for data in active_blocks.values():
-                    data["rows"].append(row)
+        # Render each block
+        for block in ranges:
+            block_rows = rows_list[block.start_idx : block.end_idx + 1]
+            self._render_block(block.name, block.bg_color, block_rows)
 
     def refresh(self, all_rows: dict[int, AddressRow]) -> None:
         """Refresh the tree with updated data."""
