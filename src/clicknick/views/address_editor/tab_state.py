@@ -21,9 +21,7 @@ class TabState:
     # Filter settings
     filter_enabled: bool = True  # Filter checkbox state
     filter_text: str = ""
-    hide_empty: bool = False
-    hide_assigned: bool = False
-    show_unsaved_only: bool = False
+    row_filter: str = "all"  # "all", "content", "changed", "errors"
 
     # Column visibility
     hide_used_column: bool = False
@@ -44,9 +42,7 @@ class TabState:
         return TabState(
             filter_enabled=self.filter_enabled,
             filter_text=self.filter_text,
-            hide_empty=self.hide_empty,
-            hide_assigned=self.hide_assigned,
-            show_unsaved_only=self.show_unsaved_only,
+            row_filter=self.row_filter,
             hide_used_column=self.hide_used_column,
             hide_init_ret_columns=self.hide_init_ret_columns,
             scroll_row_index=self.scroll_row_index,

@@ -1003,11 +1003,8 @@ class AddressEditorWindow(tk.Toplevel):
                 panel.sheet.focus_set()
                 return
 
-        # Folder node - clear checkbox filters and apply prefix filter
-        # Clear checkbox filters that would hide matching rows
-        panel.hide_empty_var.set(False)
-        panel.hide_assigned_var.set(False)
-        panel.show_unsaved_only_var.set(False)
+        # Folder node - clear row filters and apply prefix filter
+        panel.row_filter_var.set("all")
 
         # Enable text filter and set prefix pattern with ^ anchor
         panel.filter_enabled_var.set(True)
@@ -1089,9 +1086,7 @@ class AddressEditorWindow(tk.Toplevel):
         # Apply filter settings
         panel.filter_enabled_var.set(state.filter_enabled)
         panel.filter_var.set(state.filter_text)
-        panel.hide_empty_var.set(state.hide_empty)
-        panel.hide_assigned_var.set(state.hide_assigned)
-        panel.show_unsaved_only_var.set(state.show_unsaved_only)
+        panel.row_filter_var.set(state.row_filter)
 
         # Apply column visibility
         panel.hide_used_var.set(state.hide_used_column)
@@ -1247,9 +1242,7 @@ class AddressEditorWindow(tk.Toplevel):
         """
         state.filter_enabled = panel.filter_enabled_var.get()
         state.filter_text = panel.filter_var.get()
-        state.hide_empty = panel.hide_empty_var.get()
-        state.hide_assigned = panel.hide_assigned_var.get()
-        state.show_unsaved_only = panel.show_unsaved_only_var.get()
+        state.row_filter = panel.row_filter_var.get()
         state.hide_used_column = panel.hide_used_var.get()
         state.hide_init_ret_columns = panel.hide_init_ret_var.get()
 

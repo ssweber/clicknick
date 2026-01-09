@@ -292,15 +292,11 @@ class AddressPanel(ttk.Frame):
         if anchor_end:
             filter_text = filter_text[:-1]
 
-        # Checkbox filters always apply (independent of text filter toggle)
-        hide_empty = self.hide_empty_var.get()
-        hide_assigned = self.hide_assigned_var.get()
-        show_unsaved_only = self.show_unsaved_only_var.get()
+        # Row filter: all, content, changed, errors
+        row_filter = self.row_filter_var.get()
 
         # Check if any filters are active
-        no_filters = (
-            not filter_text and not hide_empty and not hide_assigned and not show_unsaved_only
-        )
+        no_filters = not filter_text and row_filter == "all"
 
         if no_filters:
             # Show all rows
@@ -324,16 +320,12 @@ class AddressPanel(ttk.Frame):
                     if not (addr_match or nick_match or comment_match):
                         continue
 
-                # Hide empty rows (no nickname)
-                if hide_empty and row.is_empty:
+                # Row filter modes
+                if row_filter == "content" and row.is_empty:
                     continue
-
-                # Hide assigned rows (has nickname)
-                if hide_assigned and not row.is_empty:
+                if row_filter == "changed" and not row.is_dirty:
                     continue
-
-                # Show only unsaved (dirty) rows
-                if show_unsaved_only and not row.is_dirty:
+                if row_filter == "errors" and not row.has_reportable_error:
                     continue
 
                 self._displayed_rows.append(i)
@@ -979,29 +971,22 @@ class AddressPanel(ttk.Frame):
         # Vertical separator between text filter and checkbox filters
         ttk.Separator(filter_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
 
-        self.hide_empty_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            filter_frame,
-            text="Hide empty",
-            variable=self.hide_empty_var,
-            command=self._apply_filters,
-        ).pack(side=tk.LEFT, padx=(0, 5))
-
-        self.hide_assigned_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            filter_frame,
-            text="Hide assigned",
-            variable=self.hide_assigned_var,
-            command=self._apply_filters,
-        ).pack(side=tk.LEFT)
-
-        self.show_unsaved_only_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            filter_frame,
-            text="Unsaved only",
-            variable=self.show_unsaved_only_var,
-            command=self._apply_filters,
-        ).pack(side=tk.LEFT, padx=(5, 0))
+        # Row filter radio buttons: All, Content, Changed, Errors
+        ttk.Label(filter_frame, text="Show:").pack(side=tk.LEFT)
+        self.row_filter_var = tk.StringVar(value="all")
+        for value, text in [
+            ("all", "All"),
+            ("content", "Content"),
+            ("changed", "Changed"),
+            ("errors", "Errors"),
+        ]:
+            ttk.Radiobutton(
+                filter_frame,
+                text=text,
+                value=value,
+                variable=self.row_filter_var,
+                command=self._apply_filters,
+            ).pack(side=tk.LEFT, padx=(3, 0))
 
         ttk.Label(filter_frame, text="Columns:", font=("TkDefaultFont", 10, "bold")).pack(
             side=tk.LEFT, padx=(20, 0)
@@ -1397,8 +1382,7 @@ class AddressPanel(ttk.Frame):
         # Check if it's visible in current filter
         if row_idx not in self._displayed_rows:
             self.filter_var.set("")
-            self.hide_empty_var.set(False)
-            self.hide_assigned_var.set(False)
+            self.row_filter_var.set("all")
             self._apply_filters()
 
         try:
