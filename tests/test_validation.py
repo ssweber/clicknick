@@ -117,9 +117,7 @@ class TestValidateNickname:
         def custom_dup_check(nickname: str, exclude_addr_key: int) -> bool:
             return nickname.lower() == "taken"
 
-        is_valid, error = validate_nickname(
-            "Taken", {}, 100, is_duplicate_fn=custom_dup_check
-        )
+        is_valid, error = validate_nickname("Taken", {}, 100, is_duplicate_fn=custom_dup_check)
         assert is_valid is False
         assert "Duplicate" in error
 
@@ -129,9 +127,7 @@ class TestValidateNickname:
         def custom_dup_check(nickname: str, exclude_addr_key: int) -> bool:
             return False
 
-        is_valid, error = validate_nickname(
-            "AnyName", {}, 100, is_duplicate_fn=custom_dup_check
-        )
+        is_valid, error = validate_nickname("AnyName", {}, 100, is_duplicate_fn=custom_dup_check)
         assert is_valid is True
 
 

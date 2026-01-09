@@ -2,8 +2,6 @@
 
 from dataclasses import dataclass
 
-import pytest
-
 from clicknick.models.blocktag import (
     BlockRange,
     BlockTag,
