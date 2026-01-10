@@ -145,11 +145,14 @@ class AddressEditorWindow(tk.Toplevel):
         of THIS window (not just other windows).
 
         Performance optimization: instead of immediately refreshing all tabs,
+        mark non-visible tabs for deferred refresh. They'll refresh when selected.
         """
+        # Mark all OTHER tabs for deferred refresh instead of refreshing immediately
         current_panel = self._get_current_panel()
         for _tab_id, (panel, _state) in self._tabs.items():
             if panel is not current_panel:
                 # Defer refresh until tab is selected (performance optimization)
+                panel.deferred_refresh = True
 
         self._update_status()
 
