@@ -143,13 +143,13 @@ class AddressEditorWindow(tk.Toplevel):
         With skeleton architecture, all tabs share the same row objects.
         When one tab edits a row, we need to refresh displays in other tabs
         of THIS window (not just other windows).
+
+        Performance optimization: instead of immediately refreshing all tabs,
         """
-        # Refresh all OTHER tabs in this window to show the change
         current_panel = self._get_current_panel()
         for _tab_id, (panel, _state) in self._tabs.items():
             if panel is not current_panel:
-                # Just refresh display - skeleton row already has new data
-                panel.refresh_from_external(skip_validation=True)
+                # Defer refresh until tab is selected (performance optimization)
 
         self._update_status()
 
@@ -1235,6 +1235,10 @@ class AddressEditorWindow(tk.Toplevel):
         if panel:
             self._filter_enabled_var.set(panel.filter_enabled_var.get())
 
+            # Execute deferred refresh if needed (performance optimization)
+            if panel.deferred_refresh:
+                panel.refresh_from_external(skip_validation=True)
+                panel.deferred_refresh = False
     def _save_state_from_panel(self, panel: AddressPanel, state: TabState) -> None:
         """Save the current panel state to a TabState.
 

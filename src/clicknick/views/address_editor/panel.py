@@ -1139,6 +1139,11 @@ class AddressPanel(ttk.Frame):
         # Styler will be initialized after load_data() populates self.rows
         self._styler: AddressRowStyler | None = None
 
+        # Deferred refresh flag for performance optimization
+        # When True, this panel needs a refresh but hasn't been updated yet
+        # (typically because it's not the currently visible tab)
+        self.deferred_refresh = False
+
         self._create_widgets()
 
     def toggle_filter_enabled(self, enabled: bool) -> None:
