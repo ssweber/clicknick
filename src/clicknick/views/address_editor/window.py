@@ -489,7 +489,6 @@ class AddressEditorWindow(tk.Toplevel):
                     try:
                         init_val = int(tmpl["initial_value"])
                         if init_val == orig_num:
-                            # Increment initial_value to match the new number
                             row.initial_value = str(new_num)
                         else:
                             row.initial_value = tmpl["initial_value"]
@@ -671,19 +670,31 @@ class AddressEditorWindow(tk.Toplevel):
         """Check if any panel has unsaved changes."""
         return self.shared_data.has_unsaved_changes()
 
+
+    def _get_save_label(self) -> str:
+        """Get the appropriate label for save operation.
+
+        Returns:
+            'Sync' for MDB (changes sync to CLICK's temp DB), 'Save' for CSV
+        """
+        return "Sync" if self._is_using_mdb() else "Save"
+
     def _save_all(self) -> None:
         """Save all changes to database."""
+        save_label = self._get_save_label()
+        action_verb = "synced" if self._is_using_mdb() else "saved"
+
         # Check for validation errors (across all shared data)
         if self.shared_data.has_errors():
             messagebox.showerror(
                 "Validation Errors",
-                "Cannot save: there are validation errors. Please fix them first.",
+                f"Cannot {save_label.lower()}: there are validation errors. Please fix them first.",
                 parent=self,
             )
             return
 
         if not self.shared_data.has_unsaved_changes():
-            messagebox.showinfo("Save", "No changes to save.", parent=self)
+            messagebox.showinfo(save_label, f"No changes to {save_label.lower()}.", parent=self)
             return
 
         try:
@@ -693,11 +704,11 @@ class AddressEditorWindow(tk.Toplevel):
             for _tab_id, (panel, _state) in self._tabs.items():
                 panel._refresh_display()
 
-            self.status_var.set(f"Saved {count} changes")
-            messagebox.showinfo("Save", f"Successfully saved {count} changes.", parent=self)
+            self.status_var.set(f"{action_verb.capitalize()} {count} changes")
+            messagebox.showinfo(save_label, f"Successfully {action_verb} {count} changes.", parent=self)
 
         except Exception as e:
-            messagebox.showerror("Save Error", str(e), parent=self)
+            messagebox.showerror(f"{save_label} Error", str(e), parent=self)
 
     def _refresh_all(self) -> None:
         """Refresh all tab panels by discarding changes.
@@ -1393,14 +1404,15 @@ class AddressEditorWindow(tk.Toplevel):
     def _on_closing(self) -> None:
         """Handle window close - prompt to save if needed."""
         if self._has_unsaved_changes():
+            save_label = self._get_save_label()
             result = messagebox.askyesnocancel(
                 "Unsaved Changes",
-                "You have unsaved changes. Save before closing?",
+                f"You have unsaved changes. {save_label} before closing?",
                 parent=self,
             )
             if result is None:  # Cancel
                 return
-            if result:  # Yes - save
+            if result:  # Yes - save/sync
                 self._save_all()
                 # Check if save was successful (no more dirty rows)
                 if self._has_unsaved_changes():
@@ -1416,6 +1428,24 @@ class AddressEditorWindow(tk.Toplevel):
         self.shared_data.unregister_window(self)
 
         self.destroy()
+
+    def _update_save_ui_labels(self) -> None:
+        """Update Save/Sync labels in UI based on data source type."""
+        save_label = self._get_save_label()
+
+        # Update menu item
+        if hasattr(self, '_file_menu') and hasattr(self, '_save_menu_index'):
+            try:
+                self._file_menu.entryconfig(
+                    self._save_menu_index,
+                    label=f"{save_label} All"
+                )
+            except Exception:
+                pass
+
+        # Update button
+        if hasattr(self, 'save_btn'):
+            self.save_btn.configure(text=f"💾 {save_label} All")
 
     def _create_menu(self) -> None:
         """Create the menu bar."""
@@ -1553,8 +1583,9 @@ class AddressEditorWindow(tk.Toplevel):
             "Clone selected row pattern into empty rows below",
         )
 
-        # Save button (right side)
-        ttk.Button(footer, text="💾 Save All", command=self._save_all).pack(side=tk.RIGHT)
+        # Save button (right side) - will be updated after data loads
+        self.save_btn = ttk.Button(footer, text="💾 Save All", command=self._save_all)
+        self.save_btn.pack(side=tk.RIGHT)
 
     def _load_initial_data(self) -> None:
         """Load initial data from the database."""
@@ -1570,6 +1601,9 @@ class AddressEditorWindow(tk.Toplevel):
             self.all_nicknames = self.shared_data.all_nicknames
 
             self.status_var.set(f"Connected - {len(self.all_nicknames)} nicknames loaded")
+
+            # Update Save/Sync labels based on data source type
+            self._update_save_ui_labels()
 
             # Create first tab with fresh state
             self._create_new_tab(clone_from=None)
