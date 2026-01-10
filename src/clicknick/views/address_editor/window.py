@@ -428,6 +428,29 @@ class AddressEditorWindow(tk.Toplevel):
                 }
             )
 
+        # Check if we should ask about incrementing initial values
+        increment_initial_value = None
+        for tmpl in template:
+            if tmpl["nickname"] and tmpl["initial_value"]:
+                _, orig_num, _ = self._increment_nickname_suffix(tmpl["nickname"], 0)
+                if orig_num is not None:
+                    try:
+                        init_val = int(tmpl["initial_value"])
+                        if init_val == orig_num:
+                            # At least one initial value matches its array number - ask user
+                            result = messagebox.askyesno(
+                                "Increment Initial Values?",
+                                f"One or more initial values match their array numbers.\n\n"
+                                f"Do you want to increment them along with the nicknames?\n\n"
+                                f"Example: {tmpl['nickname']} with init={init_val} → "
+                                f"next clone gets init={init_val + 1}",
+                                parent=self,
+                            )
+                            increment_initial_value = result
+                            break  # Only ask once
+                    except ValueError:
+                        pass  # Non-integer initial value, skip
+
         # Perform the cloning
         for clone_num in range(1, num_clones + 1):
             for template_idx, tmpl in enumerate(template):
@@ -460,9 +483,9 @@ class AddressEditorWindow(tk.Toplevel):
                 if tmpl["comment"]:
                     row.comment = tmpl["comment"]
 
-                # Copy/increment initial_value
-                if tmpl["initial_value"] and orig_num is not None:
-                    # Check if initial_value matches the original pseudo-array number
+                # Copy/increment initial_value based on user's choice
+                if tmpl["initial_value"] and orig_num is not None and increment_initial_value is True:
+                    # User chose to increment - check if it matches
                     try:
                         init_val = int(tmpl["initial_value"])
                         if init_val == orig_num:
@@ -471,9 +494,9 @@ class AddressEditorWindow(tk.Toplevel):
                         else:
                             row.initial_value = tmpl["initial_value"]
                     except ValueError:
-                        # Non-integer initial_value, just copy as-is
                         row.initial_value = tmpl["initial_value"]
                 elif tmpl["initial_value"]:
+                    # Just copy as-is (user chose not to increment or no match)
                     row.initial_value = tmpl["initial_value"]
 
                 # Always copy retentive (it's a boolean)
@@ -524,16 +547,60 @@ class AddressEditorWindow(tk.Toplevel):
         first_row = panel.rows[first_row_idx]
         base_nickname = first_row.nickname
 
-        # Fill each row with incremented nickname
+        # Check if we should ask about incrementing initial value
+        increment_initial_value = None
+        if first_row.initial_value:
+            # Get the number from the nickname to compare with initial value
+            _, orig_num, _ = self._increment_nickname_suffix(base_nickname, 0)
+            if orig_num is not None:
+                try:
+                    init_val = int(first_row.initial_value)
+                    if init_val == orig_num:
+                        # Initial value matches the array number - ask user
+                        result = messagebox.askyesno(
+                            "Increment Initial Value?",
+                            f"The initial value ({init_val}) matches the array number.\n\n"
+                            f"Do you want to increment it along with the nickname?\n\n"
+                            f"Example: {base_nickname} with init={init_val} → "
+                            f"next row gets init={init_val + 1}",
+                            parent=self,
+                        )
+                        increment_initial_value = result
+                except ValueError:
+                    pass  # Non-integer initial value, don't ask
+
+        # Fill each row with incremented nickname, comment, initial_value, and retentive
         for i, display_idx in enumerate(rows_to_fill, start=1):
             row_idx = panel._displayed_rows[display_idx]
             row = panel.rows[row_idx]
 
-            new_nickname, _, _ = self._increment_nickname_suffix(base_nickname, i)
+            new_nickname, orig_num, new_num = self._increment_nickname_suffix(base_nickname, i)
 
-            # Update the row
+            # Update the row nickname
             old_nickname = row.nickname
             row.nickname = new_nickname
+
+            # Copy comment from first row
+            if first_row.comment:
+                row.comment = first_row.comment
+
+            # Copy/increment initial_value based on user's choice
+            if first_row.initial_value and orig_num is not None and increment_initial_value is True:
+                # User chose to increment - check if it matches
+                try:
+                    init_val = int(first_row.initial_value)
+                    if init_val == orig_num:
+                        row.initial_value = str(new_num)
+                    else:
+                        row.initial_value = first_row.initial_value
+                except ValueError:
+                    row.initial_value = first_row.initial_value
+            elif first_row.initial_value:
+                # Just copy as-is (user chose not to increment or no match)
+                row.initial_value = first_row.initial_value
+
+            # Always copy retentive (it's a boolean)
+            row.retentive = first_row.retentive
 
             # Update global nickname registry
             if new_nickname:
