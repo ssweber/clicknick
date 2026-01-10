@@ -11,6 +11,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import TYPE_CHECKING
 
+from ...data.data_source import CsvDataSource, MdbDataSource
 from ...data.shared_data import SharedAddressData
 
 if TYPE_CHECKING:
@@ -25,6 +26,8 @@ from ...models.blocktag import (
 )
 from ...widgets.add_block_dialog import AddBlockDialog
 from ...widgets.custom_notebook import CustomNotebook
+from ...widgets.export_csv_dialog import ExportCsvDialog
+from ...widgets.import_csv_dialog import ImportCsvDialog
 from ...widgets.new_tab_dialog import ask_new_tab
 from ..nav_window.window import NavWindow
 from .jump_sidebar import COMBINED_TYPES, JumpSidebar
@@ -484,7 +487,11 @@ class AddressEditorWindow(tk.Toplevel):
                     row.comment = tmpl["comment"]
 
                 # Copy/increment initial_value based on user's choice
-                if tmpl["initial_value"] and orig_num is not None and increment_initial_value is True:
+                if (
+                    tmpl["initial_value"]
+                    and orig_num is not None
+                    and increment_initial_value is True
+                ):
                     # User chose to increment - check if it matches
                     try:
                         init_val = int(tmpl["initial_value"])
@@ -670,6 +677,13 @@ class AddressEditorWindow(tk.Toplevel):
         """Check if any panel has unsaved changes."""
         return self.shared_data.has_unsaved_changes()
 
+    def _is_using_mdb(self) -> bool:
+        """Check if the data source is an MDB file (vs CSV).
+
+        Returns:
+            True if using MDB, False otherwise
+        """
+        return isinstance(self.shared_data._data_source, MdbDataSource)
 
     def _get_save_label(self) -> str:
         """Get the appropriate label for save operation.
@@ -705,7 +719,9 @@ class AddressEditorWindow(tk.Toplevel):
                 panel._refresh_display()
 
             self.status_var.set(f"{action_verb.capitalize()} {count} changes")
-            messagebox.showinfo(save_label, f"Successfully {action_verb} {count} changes.", parent=self)
+            messagebox.showinfo(
+                save_label, f"Successfully {action_verb} {count} changes.", parent=self
+            )
 
         except Exception as e:
             messagebox.showerror(f"{save_label} Error", str(e), parent=self)
@@ -764,6 +780,167 @@ class AddressEditorWindow(tk.Toplevel):
 
         except Exception as e:
             messagebox.showerror("Error", str(e), parent=self)
+
+    def _export_to_csv(self) -> None:
+        """Export address data to CSV file."""
+        # Show export dialog
+        dialog = ExportCsvDialog(self)
+        self.wait_window(dialog)
+
+        if dialog.result is None:
+            return
+
+        file_path, export_mode = dialog.result
+
+        try:
+            if export_mode == "all":
+                # Export all rows from shared data using CsvDataSource
+                csv_source = CsvDataSource(str(file_path))
+                count = csv_source.save_changes(list(self.shared_data.all_rows.values()))
+                messagebox.showinfo(
+                    "Export Complete",
+                    f"Successfully exported {count} rows to:\n{file_path}",
+                    parent=self,
+                )
+            elif export_mode == "visible":
+                # Export only visible rows from current panel
+                panel = self._get_current_panel()
+                if not panel:
+                    messagebox.showerror(
+                        "Export Error",
+                        "No active tab to export from.",
+                        parent=self,
+                    )
+                    return
+
+                # Get visible rows (respects current filters)
+                visible_rows = [panel.rows[idx] for idx in panel._displayed_rows]
+                csv_source = CsvDataSource(str(file_path))
+                count = csv_source.save_changes(visible_rows)
+                messagebox.showinfo(
+                    "Export Complete",
+                    f"Successfully exported {count} visible rows to:\n{file_path}",
+                    parent=self,
+                )
+
+        except Exception as e:
+            messagebox.showerror("Export Error", str(e), parent=self)
+
+    def _import_from_csv(self) -> None:
+        """Import address data from CSV file with merge options."""
+        # Show import dialog
+        dialog = ImportCsvDialog(self)
+        self.wait_window(dialog)
+
+        if dialog.result is None:
+            return
+
+        csv_path, selected_blocks, import_options_per_block = dialog.result
+
+        try:
+            # Apply merge to skeleton rows
+            updated_count = 0
+
+            for block in selected_blocks:
+                # Get merge options for this specific block
+                block_options = import_options_per_block.get(block.name, {})
+                nickname_mode = block_options.get("nickname", "Skip")
+                comment_mode = block_options.get("comment", "Skip")
+                init_val_mode = block_options.get("init_val", "Skip")
+                retentive_mode = block_options.get("retentive", "Skip")
+
+                # Process each row in this block
+                for csv_row in block.rows:
+                    addr_key = get_addr_key(csv_row.memory_type, csv_row.address)
+
+                    # Find skeleton row
+                    if addr_key not in self.shared_data.all_rows:
+                        continue
+
+                    skeleton_row = self.shared_data.all_rows[addr_key]
+
+                    # Apply nickname based on mode
+                    if nickname_mode == "Overwrite" and csv_row.nickname:
+                        old_nickname = skeleton_row.nickname
+                        skeleton_row.nickname = csv_row.nickname
+                        self.shared_data.update_nickname(addr_key, old_nickname, csv_row.nickname)
+                    elif (
+                        nickname_mode == "Merge" and csv_row.nickname and not skeleton_row.nickname
+                    ):
+                        # Only import if skeleton is empty
+                        old_nickname = skeleton_row.nickname
+                        skeleton_row.nickname = csv_row.nickname
+                        self.shared_data.update_nickname(addr_key, old_nickname, csv_row.nickname)
+
+                    # Apply comment based on mode
+                    if comment_mode == "Overwrite":
+                        skeleton_row.comment = csv_row.comment
+                    elif comment_mode == "Append":
+                        if skeleton_row.comment and csv_row.comment:
+                            skeleton_row.comment = f"{skeleton_row.comment} {csv_row.comment}"
+                        elif csv_row.comment:
+                            skeleton_row.comment = csv_row.comment
+                    elif comment_mode == "Block Tag":
+                        # Extract block tag from CSV, apply to skeleton (preserve other text)
+                        csv_block_tag = parse_block_tag(csv_row.comment)
+                        if csv_block_tag.name:
+                            # Strip existing block tag from skeleton
+                            skeleton_comment_no_tag = strip_block_tag(skeleton_row.comment)
+                            # Rebuild with CSV's block tag
+                            if csv_block_tag.tag_type == "open":
+                                new_tag = f"<{csv_block_tag.name}>"
+                            elif csv_block_tag.tag_type == "close":
+                                new_tag = f"</{csv_block_tag.name}>"
+                            elif csv_block_tag.tag_type == "self-closing":
+                                new_tag = f"<{csv_block_tag.name} />"
+                            else:
+                                new_tag = ""
+
+                            if new_tag:
+                                if skeleton_comment_no_tag:
+                                    skeleton_row.comment = f"{skeleton_comment_no_tag} {new_tag}"
+                                else:
+                                    skeleton_row.comment = new_tag
+
+                    # Apply initial value based on mode
+                    if init_val_mode == "Overwrite" and csv_row.initial_value:
+                        skeleton_row.initial_value = csv_row.initial_value
+                    elif (
+                        init_val_mode == "Merge"
+                        and csv_row.initial_value
+                        and not skeleton_row.initial_value
+                    ):
+                        skeleton_row.initial_value = csv_row.initial_value
+
+                    # Apply retentive based on mode
+                    if retentive_mode == "Overwrite":
+                        skeleton_row.retentive = csv_row.retentive
+                    elif retentive_mode == "Merge" and not skeleton_row.retentive:
+                        skeleton_row.retentive = csv_row.retentive
+
+                    updated_count += 1
+
+            # Refresh all panels
+            for _tab_id, (panel, _state) in self._tabs.items():
+                panel.refresh_from_external()
+
+            # Invalidate block colors cache
+            for _tab_id, (panel, _state) in self._tabs.items():
+                panel._invalidate_block_colors_cache()
+
+            # Notify data changed
+            self.shared_data.notify_data_changed(sender=self)
+
+            self._update_status()
+
+            messagebox.showinfo(
+                "Import Complete",
+                f"Successfully imported {updated_count} addresses from:\n{csv_path.name}",
+                parent=self,
+            )
+
+        except Exception as e:
+            messagebox.showerror("Import Error", str(e), parent=self)
 
     def _create_tooltip(self, widget: tk.Widget, text: str) -> None:
         """Create a simple tooltip for a widget.
@@ -1320,6 +1497,7 @@ class AddressEditorWindow(tk.Toplevel):
             if panel.deferred_refresh:
                 panel.refresh_from_external(skip_validation=True)
                 panel.deferred_refresh = False
+
     def _save_state_from_panel(self, panel: AddressPanel, state: TabState) -> None:
         """Save the current panel state to a TabState.
 
@@ -1434,17 +1612,14 @@ class AddressEditorWindow(tk.Toplevel):
         save_label = self._get_save_label()
 
         # Update menu item
-        if hasattr(self, '_file_menu') and hasattr(self, '_save_menu_index'):
+        if hasattr(self, "_file_menu") and hasattr(self, "_save_menu_index"):
             try:
-                self._file_menu.entryconfig(
-                    self._save_menu_index,
-                    label=f"{save_label} All"
-                )
+                self._file_menu.entryconfig(self._save_menu_index, label=f"{save_label} All")
             except Exception:
                 pass
 
         # Update button
-        if hasattr(self, 'save_btn'):
+        if hasattr(self, "save_btn"):
             self.save_btn.configure(text=f"💾 {save_label} All")
 
     def _create_menu(self) -> None:
@@ -1453,22 +1628,27 @@ class AddressEditorWindow(tk.Toplevel):
         self.config(menu=menubar)
 
         # File menu
-        file_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="File", menu=file_menu)
+        self._file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="File", menu=self._file_menu)
 
-        file_menu.add_command(
+        self._file_menu.add_command(
             label="New Tab", command=self._on_new_tab_clicked, accelerator="Ctrl+T"
         )
-        file_menu.add_separator()
-        file_menu.add_command(label="Refresh", command=self._refresh_all)
-        file_menu.add_command(label="Save All", command=self._save_all, accelerator="Ctrl+S")
-        file_menu.add_command(label="Discard Changes", command=self._discard_changes)
-        file_menu.add_separator()
-        file_menu.add_command(
+        self._file_menu.add_separator()
+        self._file_menu.add_command(label="Import from CSV...", command=self._import_from_csv)
+        self._file_menu.add_command(label="Export to CSV...", command=self._export_to_csv)
+        self._file_menu.add_separator()
+        self._file_menu.add_command(label="Refresh", command=self._refresh_all)
+        # Save menu item - will be updated after data loads
+        self._save_menu_index = self._file_menu.index("end") + 1
+        self._file_menu.add_command(label="Save All", command=self._save_all, accelerator="Ctrl+S")
+        self._file_menu.add_command(label="Discard Changes", command=self._discard_changes)
+        self._file_menu.add_separator()
+        self._file_menu.add_command(
             label="Close Tab", command=self._close_current_tab, accelerator="Ctrl+W"
         )
-        file_menu.add_separator()
-        file_menu.add_command(label="Close Window", command=self._on_closing)
+        self._file_menu.add_separator()
+        self._file_menu.add_command(label="Close Window", command=self._on_closing)
 
         # Edit menu
         edit_menu = tk.Menu(menubar, tearoff=0)
