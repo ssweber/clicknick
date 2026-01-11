@@ -26,6 +26,19 @@ class BlockPanel(ttk.Frame):
                 if self.on_select:
                     self.on_select(block_data)
 
+
+    def _toggle_sort(self) -> None:
+        """Toggle alphabetical sorting of blocks."""
+        self._sorted = not self._sorted
+        # Update button text to show current state
+        if self._sorted:
+            self.sort_button.config(text="Sort A→Z ✓")
+        else:
+            self.sort_button.config(text="Sort A→Z")
+        # Rebuild tree with current sort state
+        if self._cached_rows:
+            self.build_tree(self._cached_rows)
+
     def _create_widgets(self) -> None:
         header = ttk.Label(self, text="Memory Blocks", font=("TkDefaultFont", 9, "bold"))
         header.pack(fill=tk.X, padx=5, pady=(5, 2))
@@ -49,6 +62,13 @@ class BlockPanel(ttk.Frame):
 
         scrollbar.config(command=self.tree.yview)
         self.tree.bind("<Double-Button-1>", self._on_double_click)
+        # Sort button at bottom
+        self.sort_button = ttk.Button(
+            self,
+            text="Sort A→Z",
+            command=self._toggle_sort,
+        )
+        self.sort_button.pack(fill=tk.X, padx=5, pady=(2, 5))
 
     def __init__(
         self,
@@ -65,6 +85,8 @@ class BlockPanel(ttk.Frame):
         self.on_select = on_select
         self._block_data: dict[str, list[tuple[str, int]]] = {}
         self._configured_colors: set[str] = set()
+        self._sorted = False  # Track sort state
+        self._cached_rows: dict[int, AddressRow] | None = None  # Cache for re-sorting
 
         self._create_widgets()
 
@@ -106,6 +128,9 @@ class BlockPanel(ttk.Frame):
 
     def build_tree(self, all_rows: dict[int, AddressRow]) -> None:
         """Parse comments and rebuild the blocks tree."""
+        # Cache rows for re-sorting
+        self._cached_rows = all_rows
+
         self._block_data.clear()
         for item in self.tree.get_children():
             self.tree.delete(item)
@@ -116,6 +141,10 @@ class BlockPanel(ttk.Frame):
 
         # Use centralized block matching
         ranges = compute_all_block_ranges(rows_list)
+
+        # Sort blocks alphabetically if enabled
+        if self._sorted:
+            ranges = sorted(ranges, key=lambda block: block.name.lower())
 
         # Render each block
         for block in ranges:
