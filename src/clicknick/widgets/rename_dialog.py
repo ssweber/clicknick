@@ -32,22 +32,30 @@ class RenameDialog(tk.Toplevel):
 
     def _create_widgets(self) -> None:
         """Create dialog widgets."""
-        main_frame = ttk.Frame(self, padding=15)
+        # Subtle border frame (the only visible "edge")
+        border_frame = ttk.Frame(self, borderwidth=1, relief="solid")
+        border_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Compact main container
+        main_frame = ttk.Frame(border_frame, padding=6)  # Tight padding for minimal footprint
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Name entry (pre-filled with current name)
+        # Single horizontal row: entry + buttons
+        entry_row = ttk.Frame(main_frame)
+        entry_row.pack(fill=tk.X)
+
+        # Entry field (slightly smaller width for compactness)
         self.name_var = tk.StringVar(value=self.current_name)
-        self.name_entry = ttk.Entry(main_frame, textvariable=self.name_var, width=35)
-        self.name_entry.pack(fill=tk.X, pady=(0, 10))
+        self.name_entry = ttk.Entry(entry_row, textvariable=self.name_var, width=25)
+        self.name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # Buttons frame
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(fill=tk.X)
+        # Button container (tight spacing)
+        btn_frame = ttk.Frame(entry_row)
+        btn_frame.pack(side=tk.LEFT, padx=(4, 0))
 
-        ttk.Button(btn_frame, text="✓", command=self._on_ok, width=3).pack(side=tk.RIGHT)
-        ttk.Button(btn_frame, text="✗", command=self._on_cancel, width=3).pack(
-            side=tk.RIGHT, padx=(0, 5)
-        )
+        # Compact action buttons
+        ttk.Button(btn_frame, text="✓", command=self._on_ok, width=2).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="✗", command=self._on_cancel, width=2).pack(side=tk.LEFT, padx=(2, 0))
 
     def __init__(self, parent: tk.Widget, current_name: str, is_array: bool = False):
         """Initialize the rename dialog.
@@ -58,8 +66,11 @@ class RenameDialog(tk.Toplevel):
             is_array: True if this is an array node (has numeric children)
         """
         super().__init__(parent)
-        self.title("Rename")
-        self.resizable(False, False)
+        
+        # KEY: Remove all window decorations (title bar, borders, etc.)
+        self.overrideredirect(True)
+        
+        # Make it modal (blocks interaction with parent)
         self.transient(parent)
         self.grab_set()
 
@@ -69,16 +80,19 @@ class RenameDialog(tk.Toplevel):
 
         self._create_widgets()
 
-        # Center on parent
-        self.update_idletasks()
-        x = parent.winfo_rootx() + (parent.winfo_width() - self.winfo_width()) // 2
-        y = parent.winfo_rooty() + (parent.winfo_height() - self.winfo_height()) // 2
+        # Position at mouse cursor with slight offset
+        x = parent.winfo_pointerx() + 8
+        y = parent.winfo_pointery() + 8
         self.geometry(f"+{x}+{y}")
 
-        # Focus on name entry and select all text
+        # KEY: Raise to front and force focus
+        self.lift()
+        self.focus_force()
+
+        # Prepare entry widget
         self.name_entry.focus_set()
         self.name_entry.select_range(0, tk.END)
 
-        # Bind keys
+        # Keyboard shortcuts
         self.bind("<Return>", lambda e: self._on_ok())
         self.bind("<Escape>", lambda e: self._on_cancel())
