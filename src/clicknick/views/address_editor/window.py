@@ -1309,41 +1309,38 @@ class AddressEditorWindow(tk.Toplevel):
             new_text: New segment text
             is_array: True if renaming an array node
         """
-        from ...utils.rename_helpers import apply_rename
+        from ...utils.rename_helpers import build_rename_pattern
 
-        # Build mapping of all nicknames that need to be renamed
-        mapping = {}
-        for row in self.shared_data.all_rows.values():
-            if not row.nickname:
-                continue
+        # Build the regex pattern and replacement template
+        pattern, replacement_template = build_rename_pattern(prefix, old_text, is_array)
 
-            new_nickname = apply_rename(row.nickname, prefix, old_text, new_text, is_array)
-
-            if new_nickname != row.nickname:
-                mapping[row.nickname] = new_nickname
-
-        if not mapping:
-            messagebox.showinfo(
-                "No Matches", f"No nicknames match the pattern for '{old_text}'.", parent=self
-            )
-            return
+        # Format the replacement template with the new text
+        replacement = replacement_template.format(new_text=new_text)
 
         # Get the current panel
         panel = self._get_current_panel()
-        if panel and panel.is_unified:
-            # Use tksheet's replace_all to perform the rename
-            panel.sheet.replace_all(mapping, within=False)
+        if not panel or not panel.is_unified:
+            messagebox.showerror(
+                "No Active Panel", "Please open a tab to perform the rename.", parent=self
+            )
+            return
 
-        # Also update other tabs
-        self._handle_data_changed()
-        self._schedule_revalidation()
+        # Use the direct regex replacement method
+        replacements_made = panel.sheet.regex_replace_all_direct(
+            pattern, replacement, selection_only=False
+        )
 
         # Show confirmation
-        messagebox.showinfo(
-            "Rename Complete",
-            f"Renamed {len(mapping)} nickname{'s' if len(mapping) != 1 else ''}.",
-            parent=self,
-        )
+        if replacements_made > 0:
+            messagebox.showinfo(
+                "Rename Complete",
+                f"Renamed {replacements_made} nickname{'s' if replacements_made != 1 else ''}.",
+                parent=self,
+            )
+        else:
+            messagebox.showinfo(
+                "No Matches", f"No nicknames match the pattern for '{old_text}'.", parent=self
+            )
 
     def _toggle_nav(self) -> None:
         """Toggle the outline window visibility."""

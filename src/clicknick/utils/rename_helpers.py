@@ -27,22 +27,3 @@ def build_rename_pattern(prefix: str, current_text: str, is_array: bool) -> tupl
 
     return pattern, replacement_template
 
-
-def apply_rename(
-    nickname: str, prefix: str, current_text: str, new_text: str, is_array: bool
-) -> str:
-    """Apply a rename operation to a nickname.
-
-    Args:
-        nickname: The nickname to potentially rename
-        prefix: The path prefix (e.g., "Tank_" for renaming Pump in Tank_Pump_Speed)
-        current_text: The current segment text to replace
-        new_text: The new text to replace it with
-        is_array: True if renaming an array node
-
-    Returns:
-        The renamed nickname, or the original if no match
-    """
-    pattern, replacement_template = build_rename_pattern(prefix, current_text, is_array)
-    replacement = replacement_template.format(new_text=new_text)
-    return re.sub(pattern, replacement, nickname)

@@ -203,32 +203,29 @@ class AddressEditorSheet(Sheet):
         if not found_next and not self.MT.find_window.window.find_in_selection:
             self.MT.deselect()
 
-    def _regex_replace_all(self, event: tk.Misc | None = None) -> None:
-        """Replace all matches using regex substitution.
+    def regex_replace_all_direct(
+        self, find_str: str, replace_str: str, selection_only: bool = False
+    ) -> int:
+        """Perform regex replacement directly with given pattern and replacement.
 
-        Supports backreferences in the replacement string.
+        Args:
+            find_str: The regex pattern to find
+            replace_str: The replacement string (supports backreferences like \\1, \\2)
+            selection_only: If True, only replace in current selection
+
+        Returns:
+            Number of replacements made
+
+        Raises:
+            None - errors are shown to user via messagebox
         """
-        find_window = getattr(self.MT, "find_window", None)
-        if not find_window:
-            return
-
-        pattern = find_window.get()
-        if not pattern:
-            return
+        if not find_str:
+            return 0
 
         # Compile and validate the pattern
-        compiled = self._compile_pattern(pattern)
+        compiled = self._compile_pattern(find_str)
         if compiled is None:
-            return
-
-        replace_str = ""
-        if hasattr(find_window, "window") and find_window.window:
-            replace_str = find_window.window.get_replace()
-
-        # Check if we should only search in selection
-        find_in_selection = False
-        if hasattr(find_window, "window") and find_window.window:
-            find_in_selection = getattr(find_window.window, "find_in_selection", False)
+            return 0
 
         # Initialize event data for batch changes
         event_data = self.MT.new_event_dict("edit_table")
@@ -236,7 +233,7 @@ class AddressEditorSheet(Sheet):
 
         # Get the range of cells to search
         # Selection boxes store DISPLAY indices, so we need to convert to data indices
-        if find_in_selection and self.MT.selection_boxes:
+        if selection_only and self.MT.selection_boxes:
             from itertools import chain
 
             from tksheet.functions import box_gen_coords
@@ -289,7 +286,7 @@ class AddressEditorSheet(Sheet):
                 continue
 
             # Check if this cell matches the pattern
-            if not self._regex_find_match(pattern, r, c):
+            if not self._regex_find_match(find_str, r, c):
                 continue
 
             # Get current cell value
@@ -302,7 +299,7 @@ class AddressEditorSheet(Sheet):
                 messagebox.showerror(
                     "Regex Error", f"Invalid replacement pattern: {e}", parent=self
                 )
-                return
+                return 0
 
             # Skip if no change
             if new_value == current:
@@ -337,7 +334,37 @@ class AddressEditorSheet(Sheet):
             self.MT.sheet_modified(event_data)
             self.emit_event("<<SheetModified>>", event_data)
 
-            replacements_made = len(event_data["cells"]["table"])
+            return len(event_data["cells"]["table"])
+        else:
+            return 0
+
+    def _regex_replace_all(self, event: tk.Misc | None = None) -> None:
+        """Replace all matches using regex substitution.
+
+        Supports backreferences in the replacement string.
+        """
+        find_window = getattr(self.MT, "find_window", None)
+        if not find_window:
+            return
+
+        pattern = find_window.get()
+        if not pattern:
+            return
+
+        replace_str = ""
+        if hasattr(find_window, "window") and find_window.window:
+            replace_str = find_window.window.get_replace()
+
+        # Check if we should only search in selection
+        find_in_selection = False
+        if hasattr(find_window, "window") and find_window.window:
+            find_in_selection = getattr(find_window.window, "find_in_selection", False)
+
+        # Call the direct replacement method
+        replacements_made = self.regex_replace_all_direct(pattern, replace_str, find_in_selection)
+
+        # Show result message
+        if replacements_made > 0:
             messagebox.showinfo(
                 "Replace All", f"Replaced {replacements_made} occurrence(s).", parent=self
             )
