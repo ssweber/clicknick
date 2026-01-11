@@ -26,4 +26,3 @@ def build_rename_pattern(prefix: str, current_text: str, is_array: bool) -> tupl
         replacement_template = r"\1{new_text}\3"
 
     return pattern, replacement_template
-

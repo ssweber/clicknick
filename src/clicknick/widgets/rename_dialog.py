@@ -55,7 +55,9 @@ class RenameDialog(tk.Toplevel):
 
         # Compact action buttons
         ttk.Button(btn_frame, text="✓", command=self._on_ok, width=2).pack(side=tk.LEFT)
-        ttk.Button(btn_frame, text="✗", command=self._on_cancel, width=2).pack(side=tk.LEFT, padx=(2, 0))
+        ttk.Button(btn_frame, text="✗", command=self._on_cancel, width=2).pack(
+            side=tk.LEFT, padx=(2, 0)
+        )
 
     def __init__(self, parent: tk.Widget, current_name: str, is_array: bool = False):
         """Initialize the rename dialog.
@@ -66,10 +68,10 @@ class RenameDialog(tk.Toplevel):
             is_array: True if this is an array node (has numeric children)
         """
         super().__init__(parent)
-        
+
         # KEY: Remove all window decorations (title bar, borders, etc.)
         self.overrideredirect(True)
-        
+
         # Make it modal (blocks interaction with parent)
         self.transient(parent)
         self.grab_set()

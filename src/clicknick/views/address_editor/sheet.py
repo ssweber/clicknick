@@ -203,6 +203,75 @@ class AddressEditorSheet(Sheet):
         if not found_next and not self.MT.find_window.window.find_in_selection:
             self.MT.deselect()
 
+    def _regex_replace_all(self, event: tk.Misc | None = None) -> None:
+        """Replace all matches using regex substitution.
+
+        Supports backreferences in the replacement string.
+        """
+        find_window = getattr(self.MT, "find_window", None)
+        if not find_window:
+            return
+
+        pattern = find_window.get()
+        if not pattern:
+            return
+
+        replace_str = ""
+        if hasattr(find_window, "window") and find_window.window:
+            replace_str = find_window.window.get_replace()
+
+        # Check if we should only search in selection
+        find_in_selection = False
+        if hasattr(find_window, "window") and find_window.window:
+            find_in_selection = getattr(find_window.window, "find_in_selection", False)
+
+        # Call the direct replacement method
+        replacements_made = self.regex_replace_all_direct(pattern, replace_str, find_in_selection)
+
+        # Show result message
+        if replacements_made > 0:
+            messagebox.showinfo(
+                "Replace All", f"Replaced {replacements_made} occurrence(s).", parent=self
+            )
+        else:
+            messagebox.showinfo("Replace All", "No matches found.", parent=self)
+
+    def _get_find_window_dimensions_coords_wider(
+        self, w_width: int | None = None
+    ) -> tuple[int, int, int, int]:
+        """Return find window dimensions with wider width for regex patterns."""
+        MT = self.MT
+        if w_width is None:
+            w_width = MT.winfo_width()
+        # Use wider character count than default (23 -> _FIND_WINDOW_CHAR_WIDTH)
+        width = min(MT.char_width_fn("X") * self._FIND_WINDOW_CHAR_WIDTH, w_width - 7)
+        height = MT.min_row_height
+        if MT.find_window.window and MT.find_window.window.replace_visible:
+            height *= 2
+        xpos = w_width * MT.find_window_left_x_pc
+        xpos = min(xpos, w_width - width - 7)
+        xpos = max(0, xpos)
+        return width, height, MT.canvasx(xpos), MT.canvasy(7)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Cell notes cache for custom corner rendering
+        # Maps (row, col) -> CellNote for symbol determination
+        self.cell_notes: dict[tuple[int, int], CellNote] = {}
+
+        # Override the internal main table's redraw_corner method
+        self.MT.redraw_corner = self.custom_redraw_corner
+
+        # Override find/replace methods with regex-enabled versions
+        self.MT.find_next = self._regex_find_next
+        self.MT.find_match = self._regex_find_match
+        self.MT.replace_next = self._regex_replace_next
+        self.MT.replace_all = self._regex_replace_all
+
+        # Override find window dimensions for wider search box
+        self.MT.get_find_window_dimensions_coords = self._get_find_window_dimensions_coords_wider
+
     def regex_replace_all_direct(
         self, find_str: str, replace_str: str, selection_only: bool = False
     ) -> int:
@@ -337,75 +406,6 @@ class AddressEditorSheet(Sheet):
             return len(event_data["cells"]["table"])
         else:
             return 0
-
-    def _regex_replace_all(self, event: tk.Misc | None = None) -> None:
-        """Replace all matches using regex substitution.
-
-        Supports backreferences in the replacement string.
-        """
-        find_window = getattr(self.MT, "find_window", None)
-        if not find_window:
-            return
-
-        pattern = find_window.get()
-        if not pattern:
-            return
-
-        replace_str = ""
-        if hasattr(find_window, "window") and find_window.window:
-            replace_str = find_window.window.get_replace()
-
-        # Check if we should only search in selection
-        find_in_selection = False
-        if hasattr(find_window, "window") and find_window.window:
-            find_in_selection = getattr(find_window.window, "find_in_selection", False)
-
-        # Call the direct replacement method
-        replacements_made = self.regex_replace_all_direct(pattern, replace_str, find_in_selection)
-
-        # Show result message
-        if replacements_made > 0:
-            messagebox.showinfo(
-                "Replace All", f"Replaced {replacements_made} occurrence(s).", parent=self
-            )
-        else:
-            messagebox.showinfo("Replace All", "No matches found.", parent=self)
-
-    def _get_find_window_dimensions_coords_wider(
-        self, w_width: int | None = None
-    ) -> tuple[int, int, int, int]:
-        """Return find window dimensions with wider width for regex patterns."""
-        MT = self.MT
-        if w_width is None:
-            w_width = MT.winfo_width()
-        # Use wider character count than default (23 -> _FIND_WINDOW_CHAR_WIDTH)
-        width = min(MT.char_width_fn("X") * self._FIND_WINDOW_CHAR_WIDTH, w_width - 7)
-        height = MT.min_row_height
-        if MT.find_window.window and MT.find_window.window.replace_visible:
-            height *= 2
-        xpos = w_width * MT.find_window_left_x_pc
-        xpos = min(xpos, w_width - width - 7)
-        xpos = max(0, xpos)
-        return width, height, MT.canvasx(xpos), MT.canvasy(7)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # Cell notes cache for custom corner rendering
-        # Maps (row, col) -> CellNote for symbol determination
-        self.cell_notes: dict[tuple[int, int], CellNote] = {}
-
-        # Override the internal main table's redraw_corner method
-        self.MT.redraw_corner = self.custom_redraw_corner
-
-        # Override find/replace methods with regex-enabled versions
-        self.MT.find_next = self._regex_find_next
-        self.MT.find_match = self._regex_find_match
-        self.MT.replace_next = self._regex_replace_next
-        self.MT.replace_all = self._regex_replace_all
-
-        # Override find window dimensions for wider search box
-        self.MT.get_find_window_dimensions_coords = self._get_find_window_dimensions_coords_wider
 
     def add_begin_right_click(self, callback) -> None:
         """Add a right-click handler that runs BEFORE the popup menu is built.
