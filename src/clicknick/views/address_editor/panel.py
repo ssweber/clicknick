@@ -1059,7 +1059,7 @@ class AddressPanel(ttk.Frame):
         self.sheet.add_begin_right_click(self._on_right_click)
 
         # Set column widths (address is in row index now)
-        self.sheet.set_column_widths([40, 200, 400, 90, 30])
+        self.sheet.set_column_widths([40, 200, 400, 90, 50])
         self.sheet.row_index(70)  # Set row index width
         self.sheet.readonly_columns([self.COL_USED])
 
@@ -1138,6 +1138,11 @@ class AddressPanel(ttk.Frame):
 
         # Styler will be initialized after load_data() populates self.rows
         self._styler: AddressRowStyler | None = None
+
+        # Deferred refresh flag for performance optimization
+        # When True, this panel needs a refresh but hasn't been updated yet
+        # (typically because it's not the currently visible tab)
+        self.deferred_refresh = False
 
         self._create_widgets()
 

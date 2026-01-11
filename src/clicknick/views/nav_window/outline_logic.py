@@ -91,6 +91,8 @@ class DisplayItem:
     leaf: tuple[str, int] | None = None  # (memory_type, address) for leaf nodes
     addr_key: int | None = None
     children: list[DisplayItem] = field(default_factory=list)
+    is_array: bool = False  # True if this node has array brackets in text
+    base_text: str = ""  # Text without brackets (e.g., "Motor" from "Motor[1-2]")
 
     @property
     def has_children(self) -> bool:
@@ -298,6 +300,39 @@ def _get_array_range(node: TreeNode) -> str:
     return f"[{indices[0]}-{indices[-1]}]"
 
 
+def _make_display_item(
+    text: str,
+    full_path: str = "",
+    leaf: tuple[str, int] | None = None,
+    addr_key: int | None = None,
+    children: list[DisplayItem] | None = None,
+) -> DisplayItem:
+    """Create a DisplayItem with proper metadata extraction.
+
+    Args:
+        text: Display text (may contain array brackets)
+        full_path: Full path for filtering
+        leaf: Leaf data (memory_type, address)
+        addr_key: Address key
+        children: Child items
+
+    Returns:
+        DisplayItem with is_array and base_text properly set
+    """
+    is_array = "[" in text and "]" in text
+    base_text = text.split("[")[0] if is_array else text
+
+    return DisplayItem(
+        text=text,
+        full_path=full_path,
+        leaf=leaf,
+        addr_key=addr_key,
+        children=children or [],
+        is_array=is_array,
+        base_text=base_text,
+    )
+
+
 def _sort_children_underscore_last(child_order: list[str]) -> list[str]:
     """Sort children so underscore nodes come last, preserving order otherwise."""
     regular = [name for name in child_order if name != "_"]
@@ -412,7 +447,9 @@ def _flatten_mixed_array(name: str, node: TreeNode, parent_path: str) -> list[Di
             for num_name in numeric_children
         ]
         items.append(
-            DisplayItem(text=f"{name}{array_range}", full_path=array_base, children=array_children)
+            _make_display_item(
+                text=f"{name}{array_range}", full_path=array_base, children=array_children
+            )
         )
 
     # Emit non-numeric children collapsed with parent name
@@ -543,7 +580,7 @@ def _flatten_node_children(node: TreeNode, parent_path: str = "") -> list[Displa
                         for num_name in numeric_children
                     ]
                     items.append(
-                        DisplayItem(
+                        _make_display_item(
                             text=f"{name}{array_range}",
                             full_path=array_base,
                             children=array_children,

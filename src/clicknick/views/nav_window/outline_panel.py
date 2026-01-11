@@ -11,6 +11,7 @@ from collections.abc import Callable
 from tkinter import ttk
 
 from ...models.address_row import AddressRow
+from ...widgets.rename_dialog import RenameDialog
 from .outline_logic import (
     FLAT_MEMORY_TYPES,
     MEMORY_TYPE_ORDER,
@@ -39,6 +40,102 @@ class OutlinePanel(ttk.Frame):
             if leaves:
                 self.on_select(item.full_path, leaves)
 
+    def _on_right_click(self, event) -> None:
+        """Handle right-click on tree item."""
+        # Select the item under the cursor
+        iid = self.tree.identify_row(event.y)
+        if not iid:
+            return
+
+        self.tree.selection_set(iid)
+        self._selected_iid = iid
+
+        # Show context menu
+        self._context_menu.post(event.x_root, event.y_root)
+
+    def _extract_current_text(self, item: DisplayItem) -> str:
+        """Extract the current text (for items without base_text set).
+
+        Args:
+            item: The DisplayItem to analyze
+
+        Returns:
+            The base text of the node
+        """
+        text = item.text
+
+        # For leaf nodes or collapsed nodes, use the last segment
+        if "_" in text:
+            parts = text.split("_")
+            return parts[-1] if parts else text
+        return text
+
+    def _extract_prefix(self, item: DisplayItem, current_text: str) -> str:
+        """Extract the prefix path for a node.
+
+        Args:
+            item: The DisplayItem being renamed
+            current_text: The current text of the node
+
+        Returns:
+            The prefix path (e.g., "Tank_" for renaming Pump in Tank_Pump_Speed)
+        """
+        full_path = item.full_path
+
+        if not full_path:
+            return ""
+
+        # For array nodes displayed as "Motor[1-2]", full_path is just "Motor"
+        if full_path == current_text or full_path.startswith(current_text):
+            return ""
+
+        # For leaves, full_path is the complete nickname
+        if item.is_leaf:
+            if full_path.endswith(current_text):
+                return full_path[: -len(current_text)]
+            parts = full_path.rsplit("_", 1)
+            return parts[0] + "_" if len(parts) > 1 else ""
+
+        # For folders, full_path ends with underscore
+        if full_path.endswith("_"):
+            prefix_candidate = full_path[: -len(current_text) - 1]
+            if prefix_candidate and not prefix_candidate.endswith("_"):
+                prefix_candidate += "_"
+            return prefix_candidate if prefix_candidate != "_" else ""
+
+        # Default: try to extract from full_path
+        if current_text in full_path:
+            idx = full_path.rfind(current_text)
+            return full_path[:idx]
+
+        return ""
+
+    def _show_rename_dialog(self) -> None:
+        """Show rename dialog for the selected item."""
+        if not hasattr(self, "_selected_iid") or not self._selected_iid:
+            return
+
+        item = self._item_data.get(self._selected_iid)
+        if item is None:
+            return
+
+        # Use stored metadata (or fall back to extraction for compatibility)
+        current_text = item.base_text if item.base_text else self._extract_current_text(item)
+        is_array = item.is_array
+
+        # Determine the prefix path
+        prefix = self._extract_prefix(item, current_text)
+
+        # Show dialog
+        dialog = RenameDialog(self, current_text, is_array)
+        self.wait_window(dialog)
+
+        if dialog.result:
+            new_text = dialog.result
+            # Trigger rename callback
+            if self.on_rename:
+                self.on_rename(prefix, current_text, new_text, is_array)
+
     def _create_widgets(self) -> None:
         """Create the treeview widget."""
         header = ttk.Label(self, text="Outline", font=("TkDefaultFont", 9, "bold"))
@@ -62,11 +159,17 @@ class OutlinePanel(ttk.Frame):
 
         scrollbar.config(command=self.tree.yview)
         self.tree.bind("<Double-Button-1>", self._on_double_click)
+        self.tree.bind("<Button-3>", self._on_right_click)  # Right-click
+
+        # Create context menu
+        self._context_menu = tk.Menu(self.tree, tearoff=0)
+        self._context_menu.add_command(label="Rename", command=self._show_rename_dialog)
 
     def __init__(
         self,
         parent: tk.Widget,
         on_select: Callable[[str, list[tuple[str, int]]], None],
+        on_rename: Callable[[str, str, str, bool], None] | None = None,
     ):
         """Initialize the outline panel.
 
@@ -74,11 +177,13 @@ class OutlinePanel(ttk.Frame):
             parent: Parent widget
             on_select: Callback when item is selected (path, list of (memory_type, address))
                        Path is the filter prefix for folders or exact name for leaves.
+            on_rename: Callback when rename is performed (prefix, old_text, new_text, is_array)
         """
         super().__init__(parent, width=275)
         self.pack_propagate(False)
 
         self.on_select = on_select
+        self.on_rename = on_rename
         self._item_data: dict[str, DisplayItem] = {}  # iid -> DisplayItem
 
         self._create_widgets()

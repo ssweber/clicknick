@@ -11,6 +11,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import TYPE_CHECKING
 
+from ...data.data_source import CsvDataSource, MdbDataSource
 from ...data.shared_data import SharedAddressData
 
 if TYPE_CHECKING:
@@ -23,8 +24,11 @@ from ...models.blocktag import (
     strip_block_tag,
     validate_block_span,
 )
+from ...models.constants import DataType
 from ...widgets.add_block_dialog import AddBlockDialog
 from ...widgets.custom_notebook import CustomNotebook
+from ...widgets.export_csv_dialog import ExportCsvDialog
+from ...widgets.import_csv_dialog import ImportCsvDialog
 from ...widgets.new_tab_dialog import ask_new_tab
 from ..nav_window.window import NavWindow
 from .jump_sidebar import COMBINED_TYPES, JumpSidebar
@@ -143,13 +147,16 @@ class AddressEditorWindow(tk.Toplevel):
         With skeleton architecture, all tabs share the same row objects.
         When one tab edits a row, we need to refresh displays in other tabs
         of THIS window (not just other windows).
+
+        Performance optimization: instead of immediately refreshing all tabs,
+        mark non-visible tabs for deferred refresh. They'll refresh when selected.
         """
-        # Refresh all OTHER tabs in this window to show the change
+        # Mark all OTHER tabs for deferred refresh instead of refreshing immediately
         current_panel = self._get_current_panel()
         for _tab_id, (panel, _state) in self._tabs.items():
             if panel is not current_panel:
-                # Just refresh display - skeleton row already has new data
-                panel.refresh_from_external(skip_validation=True)
+                # Defer refresh until tab is selected (performance optimization)
+                panel.deferred_refresh = True
 
         self._update_status()
 
@@ -422,8 +429,32 @@ class AddressEditorWindow(tk.Toplevel):
                     "comment": row.comment,
                     "initial_value": row.initial_value,
                     "retentive": row.retentive,
+                    "data_type": row.data_type,
                 }
             )
+
+        # Check if we should ask about incrementing initial values
+        increment_initial_value = None
+        orig_num = None
+        increment_initial_value = False
+        for tmpl in template:
+            if tmpl["nickname"] and tmpl["initial_value"] and tmpl["data_type"] != DataType.BIT:
+                _, orig_num, _ = self._increment_nickname_suffix(tmpl["nickname"], 0)
+                if orig_num is not None:
+                    try:
+                        init_val = int(tmpl["initial_value"])
+                        if init_val == orig_num:
+                            # At least one initial value matches its array number - ask user
+                            result = messagebox.askyesno(
+                                "Increment Values?",
+                                f"Also increment initial values?\n\n"
+                                f"Example: {tmpl['nickname']} ({init_val}) → ({init_val + 1})",
+                                parent=self,
+                            )
+                            increment_initial_value = result
+                            break  # Only ask once
+                    except ValueError:
+                        pass  # Non-integer initial value, skip
 
         # Perform the cloning
         for clone_num in range(1, num_clones + 1):
@@ -457,20 +488,23 @@ class AddressEditorWindow(tk.Toplevel):
                 if tmpl["comment"]:
                     row.comment = tmpl["comment"]
 
-                # Copy/increment initial_value
-                if tmpl["initial_value"] and orig_num is not None:
-                    # Check if initial_value matches the original pseudo-array number
+                # Copy/increment initial_value based on user's choice
+                if (
+                    tmpl["initial_value"]
+                    and orig_num is not None
+                    and increment_initial_value is True
+                ):
+                    # User chose to increment - check if it matches
                     try:
                         init_val = int(tmpl["initial_value"])
                         if init_val == orig_num:
-                            # Increment initial_value to match the new number
                             row.initial_value = str(new_num)
                         else:
                             row.initial_value = tmpl["initial_value"]
                     except ValueError:
-                        # Non-integer initial_value, just copy as-is
                         row.initial_value = tmpl["initial_value"]
                 elif tmpl["initial_value"]:
+                    # Just copy as-is (user chose not to increment or no match)
                     row.initial_value = tmpl["initial_value"]
 
                 # Always copy retentive (it's a boolean)
@@ -521,16 +555,60 @@ class AddressEditorWindow(tk.Toplevel):
         first_row = panel.rows[first_row_idx]
         base_nickname = first_row.nickname
 
-        # Fill each row with incremented nickname
+        # Check if we should ask about incrementing initial value
+        increment_initial_value = None
+        orig_num = None
+        increment_initial_value = False
+        if first_row.initial_value and first_row.data_type != DataType.BIT:
+            # Get the number from the nickname to compare with initial value
+            _, orig_num, _ = self._increment_nickname_suffix(base_nickname, 0)
+            if orig_num is not None:
+                try:
+                    init_val = int(first_row.initial_value)
+                    if init_val == orig_num:
+                        # Initial value matches the array number - ask user
+                        result = messagebox.askyesno(
+                            "Increment Initial Value?",
+                            f"Also increment initial value?\n\n"
+                            f"Example: {base_nickname} ({init_val}) → ({init_val + 1})",
+                            parent=self,
+                        )
+                        increment_initial_value = result
+                except ValueError:
+                    pass  # Non-integer initial value, don't ask
+
+        # Fill each row with incremented nickname, comment, initial_value, and retentive
         for i, display_idx in enumerate(rows_to_fill, start=1):
             row_idx = panel._displayed_rows[display_idx]
             row = panel.rows[row_idx]
 
-            new_nickname, _, _ = self._increment_nickname_suffix(base_nickname, i)
+            new_nickname, orig_num, new_num = self._increment_nickname_suffix(base_nickname, i)
 
-            # Update the row
+            # Update the row nickname
             old_nickname = row.nickname
             row.nickname = new_nickname
+
+            # Copy comment from first row
+            if first_row.comment:
+                row.comment = first_row.comment
+
+            # Copy/increment initial_value based on user's choice
+            if first_row.initial_value and orig_num is not None and increment_initial_value is True:
+                # User chose to increment - check if it matches
+                try:
+                    init_val = int(first_row.initial_value)
+                    if init_val == orig_num:
+                        row.initial_value = str(new_num)
+                    else:
+                        row.initial_value = first_row.initial_value
+                except ValueError:
+                    row.initial_value = first_row.initial_value
+            elif first_row.initial_value:
+                # Just copy as-is (user chose not to increment or no match)
+                row.initial_value = first_row.initial_value
+
+            # Always copy retentive (it's a boolean)
+            row.retentive = first_row.retentive
 
             # Update global nickname registry
             if new_nickname:
@@ -601,19 +679,38 @@ class AddressEditorWindow(tk.Toplevel):
         """Check if any panel has unsaved changes."""
         return self.shared_data.has_unsaved_changes()
 
+    def _is_using_mdb(self) -> bool:
+        """Check if the data source is an MDB file (vs CSV).
+
+        Returns:
+            True if using MDB, False otherwise
+        """
+        return isinstance(self.shared_data._data_source, MdbDataSource)
+
+    def _get_save_label(self) -> str:
+        """Get the appropriate label for save operation.
+
+        Returns:
+            'Sync' for MDB (changes sync to CLICK's temp DB), 'Save' for CSV
+        """
+        return "Sync" if self._is_using_mdb() else "Save"
+
     def _save_all(self) -> None:
         """Save all changes to database."""
+        save_label = self._get_save_label()
+        action_verb = "synced" if self._is_using_mdb() else "saved"
+
         # Check for validation errors (across all shared data)
         if self.shared_data.has_errors():
             messagebox.showerror(
                 "Validation Errors",
-                "Cannot save: there are validation errors. Please fix them first.",
+                f"Cannot {save_label.lower()}: there are validation errors. Please fix them first.",
                 parent=self,
             )
             return
 
         if not self.shared_data.has_unsaved_changes():
-            messagebox.showinfo("Save", "No changes to save.", parent=self)
+            messagebox.showinfo(save_label, f"No changes to {save_label.lower()}.", parent=self)
             return
 
         try:
@@ -623,11 +720,13 @@ class AddressEditorWindow(tk.Toplevel):
             for _tab_id, (panel, _state) in self._tabs.items():
                 panel._refresh_display()
 
-            self.status_var.set(f"Saved {count} changes")
-            messagebox.showinfo("Save", f"Successfully saved {count} changes.", parent=self)
+            self.status_var.set(f"{action_verb.capitalize()} {count} changes")
+            messagebox.showinfo(
+                save_label, f"Successfully {action_verb} {count} changes.", parent=self
+            )
 
         except Exception as e:
-            messagebox.showerror("Save Error", str(e), parent=self)
+            messagebox.showerror(f"{save_label} Error", str(e), parent=self)
 
     def _refresh_all(self) -> None:
         """Refresh all tab panels by discarding changes.
@@ -683,6 +782,167 @@ class AddressEditorWindow(tk.Toplevel):
 
         except Exception as e:
             messagebox.showerror("Error", str(e), parent=self)
+
+    def _export_to_csv(self) -> None:
+        """Export address data to CSV file."""
+        # Show export dialog
+        dialog = ExportCsvDialog(self)
+        self.wait_window(dialog)
+
+        if dialog.result is None:
+            return
+
+        file_path, export_mode = dialog.result
+
+        try:
+            if export_mode == "all":
+                # Export all rows from shared data using CsvDataSource
+                csv_source = CsvDataSource(str(file_path))
+                count = csv_source.save_changes(list(self.shared_data.all_rows.values()))
+                messagebox.showinfo(
+                    "Export Complete",
+                    f"Successfully exported {count} rows to:\n{file_path}",
+                    parent=self,
+                )
+            elif export_mode == "visible":
+                # Export only visible rows from current panel
+                panel = self._get_current_panel()
+                if not panel:
+                    messagebox.showerror(
+                        "Export Error",
+                        "No active tab to export from.",
+                        parent=self,
+                    )
+                    return
+
+                # Get visible rows (respects current filters)
+                visible_rows = [panel.rows[idx] for idx in panel._displayed_rows]
+                csv_source = CsvDataSource(str(file_path))
+                count = csv_source.save_changes(visible_rows)
+                messagebox.showinfo(
+                    "Export Complete",
+                    f"Successfully exported {count} visible rows to:\n{file_path}",
+                    parent=self,
+                )
+
+        except Exception as e:
+            messagebox.showerror("Export Error", str(e), parent=self)
+
+    def _import_from_csv(self) -> None:
+        """Import address data from CSV file with merge options."""
+        # Show import dialog
+        dialog = ImportCsvDialog(self)
+        self.wait_window(dialog)
+
+        if dialog.result is None:
+            return
+
+        csv_path, selected_blocks, import_options_per_block = dialog.result
+
+        try:
+            # Apply merge to skeleton rows
+            updated_count = 0
+
+            for block in selected_blocks:
+                # Get merge options for this specific block
+                block_options = import_options_per_block.get(block.name, {})
+                nickname_mode = block_options.get("nickname", "Skip")
+                comment_mode = block_options.get("comment", "Skip")
+                init_val_mode = block_options.get("init_val", "Skip")
+                retentive_mode = block_options.get("retentive", "Skip")
+
+                # Process each row in this block
+                for csv_row in block.rows:
+                    addr_key = get_addr_key(csv_row.memory_type, csv_row.address)
+
+                    # Find skeleton row
+                    if addr_key not in self.shared_data.all_rows:
+                        continue
+
+                    skeleton_row = self.shared_data.all_rows[addr_key]
+
+                    # Apply nickname based on mode
+                    if nickname_mode == "Overwrite" and csv_row.nickname:
+                        old_nickname = skeleton_row.nickname
+                        skeleton_row.nickname = csv_row.nickname
+                        self.shared_data.update_nickname(addr_key, old_nickname, csv_row.nickname)
+                    elif (
+                        nickname_mode == "Merge" and csv_row.nickname and not skeleton_row.nickname
+                    ):
+                        # Only import if skeleton is empty
+                        old_nickname = skeleton_row.nickname
+                        skeleton_row.nickname = csv_row.nickname
+                        self.shared_data.update_nickname(addr_key, old_nickname, csv_row.nickname)
+
+                    # Apply comment based on mode
+                    if comment_mode == "Overwrite":
+                        skeleton_row.comment = csv_row.comment
+                    elif comment_mode == "Append":
+                        if skeleton_row.comment and csv_row.comment:
+                            skeleton_row.comment = f"{skeleton_row.comment} {csv_row.comment}"
+                        elif csv_row.comment:
+                            skeleton_row.comment = csv_row.comment
+                    elif comment_mode == "Block Tag":
+                        # Extract block tag from CSV, apply to skeleton (preserve other text)
+                        csv_block_tag = parse_block_tag(csv_row.comment)
+                        if csv_block_tag.name:
+                            # Strip existing block tag from skeleton
+                            skeleton_comment_no_tag = strip_block_tag(skeleton_row.comment)
+                            # Rebuild with CSV's block tag
+                            if csv_block_tag.tag_type == "open":
+                                new_tag = f"<{csv_block_tag.name}>"
+                            elif csv_block_tag.tag_type == "close":
+                                new_tag = f"</{csv_block_tag.name}>"
+                            elif csv_block_tag.tag_type == "self-closing":
+                                new_tag = f"<{csv_block_tag.name} />"
+                            else:
+                                new_tag = ""
+
+                            if new_tag:
+                                if skeleton_comment_no_tag:
+                                    skeleton_row.comment = f"{skeleton_comment_no_tag} {new_tag}"
+                                else:
+                                    skeleton_row.comment = new_tag
+
+                    # Apply initial value based on mode
+                    if init_val_mode == "Overwrite" and csv_row.initial_value:
+                        skeleton_row.initial_value = csv_row.initial_value
+                    elif (
+                        init_val_mode == "Merge"
+                        and csv_row.initial_value
+                        and not skeleton_row.initial_value
+                    ):
+                        skeleton_row.initial_value = csv_row.initial_value
+
+                    # Apply retentive based on mode
+                    if retentive_mode == "Overwrite":
+                        skeleton_row.retentive = csv_row.retentive
+                    elif retentive_mode == "Merge" and not skeleton_row.retentive:
+                        skeleton_row.retentive = csv_row.retentive
+
+                    updated_count += 1
+
+            # Notify data changed
+            self.shared_data.notify_data_changed()
+
+            self._update_status()
+
+            # Clear filter and switch to "Show: Changed"
+            panel = self._get_current_panel()
+            if panel:
+                panel.filter_enabled_var.set(False)
+                panel.filter_var.set("")
+                panel.row_filter_var.set("changed")
+                panel._apply_filters()
+
+            messagebox.showinfo(
+                "Import Complete",
+                f"Successfully imported {updated_count} addresses from:\n{csv_path.name}",
+                parent=self,
+            )
+
+        except Exception as e:
+            messagebox.showerror("Import Error", str(e), parent=self)
 
     def _create_tooltip(self, widget: tk.Widget, text: str) -> None:
         """Create a simple tooltip for a widget.
@@ -1042,6 +1302,55 @@ class AddressEditorWindow(tk.Toplevel):
         # Focus the sheet for immediate keyboard navigation/editing
         panel.sheet.focus_set()
 
+    def _on_rename(self, prefix: str, old_text: str, new_text: str, is_array: bool) -> None:
+        """Handle rename from outline tree.
+
+        Args:
+            prefix: Path prefix (e.g., "Tank_" for renaming Pump in Tank_Pump_Speed)
+            old_text: Current segment text
+            new_text: New segment text
+            is_array: True if renaming an array node
+        """
+        from ...utils.rename_helpers import build_rename_pattern
+
+        # Build the regex pattern and replacement template
+        pattern, replacement_template = build_rename_pattern(prefix, old_text, is_array)
+
+        # Format the replacement template with the new text
+        replacement = replacement_template.format(new_text=new_text)
+
+        # Get the current panel
+        panel = self._get_current_panel()
+        if not panel or not panel.is_unified:
+            messagebox.showerror(
+                "No Active Panel", "Please open a tab to perform the rename.", parent=self
+            )
+            return
+
+        # Use the direct regex replacement method
+        replacements_made = panel.sheet.regex_replace_all_direct(
+            pattern, replacement, selection_only=False
+        )
+
+        # Clear filter and switch to "Show: Changed"
+        if replacements_made > 0:
+            panel.filter_enabled_var.set(False)
+            panel.filter_var.set("")
+            panel.row_filter_var.set("changed")
+            panel._apply_filters()
+
+        # Show confirmation
+        if replacements_made > 0:
+            messagebox.showinfo(
+                "Rename Complete",
+                f"Renamed {replacements_made} nickname{'s' if replacements_made != 1 else ''}.",
+                parent=self,
+            )
+        else:
+            messagebox.showinfo(
+                "No Matches", f"No nicknames match the pattern for '{old_text}'.", parent=self
+            )
+
     def _toggle_nav(self) -> None:
         """Toggle the outline window visibility."""
         if self._nav_window is None:
@@ -1050,6 +1359,7 @@ class AddressEditorWindow(tk.Toplevel):
                 self,
                 on_outline_select=self._on_outline_select,
                 on_block_select=self._on_block_select,
+                on_rename=self._on_rename,
             )
             self._refresh_navigation()
             self._tag_browser_var.set(True)
@@ -1235,6 +1545,11 @@ class AddressEditorWindow(tk.Toplevel):
         if panel:
             self._filter_enabled_var.set(panel.filter_enabled_var.get())
 
+            # Execute deferred refresh if needed (performance optimization)
+            if panel.deferred_refresh:
+                panel.refresh_from_external(skip_validation=True)
+                panel.deferred_refresh = False
+
     def _save_state_from_panel(self, panel: AddressPanel, state: TabState) -> None:
         """Save the current panel state to a TabState.
 
@@ -1319,14 +1634,15 @@ class AddressEditorWindow(tk.Toplevel):
     def _on_closing(self) -> None:
         """Handle window close - prompt to save if needed."""
         if self._has_unsaved_changes():
+            save_label = self._get_save_label()
             result = messagebox.askyesnocancel(
                 "Unsaved Changes",
-                "You have unsaved changes. Save before closing?",
+                f"You have unsaved changes. {save_label} before closing?",
                 parent=self,
             )
             if result is None:  # Cancel
                 return
-            if result:  # Yes - save
+            if result:  # Yes - save/sync
                 self._save_all()
                 # Check if save was successful (no more dirty rows)
                 if self._has_unsaved_changes():
@@ -1343,28 +1659,48 @@ class AddressEditorWindow(tk.Toplevel):
 
         self.destroy()
 
+    def _update_save_ui_labels(self) -> None:
+        """Update Save/Sync labels in UI based on data source type."""
+        save_label = self._get_save_label()
+
+        # Update menu item
+        if hasattr(self, "_file_menu") and hasattr(self, "_save_menu_index"):
+            try:
+                self._file_menu.entryconfig(self._save_menu_index, label=f"{save_label} All")
+            except Exception:
+                pass
+
+        # Update button
+        if hasattr(self, "save_btn"):
+            self.save_btn.configure(text=f"💾 {save_label} All")
+
     def _create_menu(self) -> None:
         """Create the menu bar."""
         menubar = tk.Menu(self)
         self.config(menu=menubar)
 
         # File menu
-        file_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="File", menu=file_menu)
+        self._file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="File", menu=self._file_menu)
 
-        file_menu.add_command(
+        self._file_menu.add_command(
             label="New Tab", command=self._on_new_tab_clicked, accelerator="Ctrl+T"
         )
-        file_menu.add_separator()
-        file_menu.add_command(label="Refresh", command=self._refresh_all)
-        file_menu.add_command(label="Save All", command=self._save_all, accelerator="Ctrl+S")
-        file_menu.add_command(label="Discard Changes", command=self._discard_changes)
-        file_menu.add_separator()
-        file_menu.add_command(
+        self._file_menu.add_separator()
+        self._file_menu.add_command(label="Import from CSV...", command=self._import_from_csv)
+        self._file_menu.add_command(label="Export to CSV...", command=self._export_to_csv)
+        self._file_menu.add_separator()
+        self._file_menu.add_command(label="Refresh", command=self._refresh_all)
+        # Save menu item - will be updated after data loads
+        self._save_menu_index = self._file_menu.index("end") + 1
+        self._file_menu.add_command(label="Save All", command=self._save_all, accelerator="Ctrl+S")
+        self._file_menu.add_command(label="Discard Changes", command=self._discard_changes)
+        self._file_menu.add_separator()
+        self._file_menu.add_command(
             label="Close Tab", command=self._close_current_tab, accelerator="Ctrl+W"
         )
-        file_menu.add_separator()
-        file_menu.add_command(label="Close Window", command=self._on_closing)
+        self._file_menu.add_separator()
+        self._file_menu.add_command(label="Close Window", command=self._on_closing)
 
         # Edit menu
         edit_menu = tk.Menu(menubar, tearoff=0)
@@ -1479,8 +1815,9 @@ class AddressEditorWindow(tk.Toplevel):
             "Clone selected row pattern into empty rows below",
         )
 
-        # Save button (right side)
-        ttk.Button(footer, text="💾 Save All", command=self._save_all).pack(side=tk.RIGHT)
+        # Save button (right side) - will be updated after data loads
+        self.save_btn = ttk.Button(footer, text="💾 Save All", command=self._save_all)
+        self.save_btn.pack(side=tk.RIGHT)
 
     def _load_initial_data(self) -> None:
         """Load initial data from the database."""
@@ -1496,6 +1833,9 @@ class AddressEditorWindow(tk.Toplevel):
             self.all_nicknames = self.shared_data.all_nicknames
 
             self.status_var.set(f"Connected - {len(self.all_nicknames)} nicknames loaded")
+
+            # Update Save/Sync labels based on data source type
+            self._update_save_ui_labels()
 
             # Create first tab with fresh state
             self._create_new_tab(clone_from=None)
