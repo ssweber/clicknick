@@ -95,6 +95,11 @@ class AddressEditorSheet(Sheet):
 
         # Regex search instead of substring
         cell_str = str(value)
+
+        # Don't match empty cells with non-empty regex patterns (e.g., .*)
+        if not cell_str and find_str:
+            return False
+
         try:
             return bool(re.search(find_str, cell_str))
         except re.error:
@@ -126,6 +131,19 @@ class AddressEditorSheet(Sheet):
         # Get current selection
         sel = self.MT.selected
         if not sel:
+            # Check if "find in selection" is enabled but nothing is selected
+            find_in_selection = False
+            if hasattr(find_window, "window") and find_window.window:
+                find_in_selection = getattr(find_window.window, "find_in_selection", False)
+
+            if find_in_selection:
+                messagebox.showwarning(
+                    "Nothing Selected",
+                    "Please select a range of cells to search within.",
+                    parent=self,
+                )
+                return
+
             # No selection, find first match
             self.MT.find_next()
             return
