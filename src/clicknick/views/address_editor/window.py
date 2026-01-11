@@ -920,18 +920,18 @@ class AddressEditorWindow(tk.Toplevel):
 
                     updated_count += 1
 
-            # Refresh all panels
-            for _tab_id, (panel, _state) in self._tabs.items():
-                panel.refresh_from_external()
-
-            # Invalidate block colors cache
-            for _tab_id, (panel, _state) in self._tabs.items():
-                panel._invalidate_block_colors_cache()
-
             # Notify data changed
-            self.shared_data.notify_data_changed(sender=self)
+            self.shared_data.notify_data_changed()
 
             self._update_status()
+
+            # Clear filter and switch to "Show: Changed"
+            panel = self._get_current_panel()
+            if panel:
+                panel.filter_enabled_var.set(False)
+                panel.filter_var.set("")
+                panel.row_filter_var.set("changed")
+                panel._apply_filters()
 
             messagebox.showinfo(
                 "Import Complete",
@@ -1329,6 +1329,13 @@ class AddressEditorWindow(tk.Toplevel):
         replacements_made = panel.sheet.regex_replace_all_direct(
             pattern, replacement, selection_only=False
         )
+
+        # Clear filter and switch to "Show: Changed"
+        if replacements_made > 0:
+            panel.filter_enabled_var.set(False)
+            panel.filter_var.set("")
+            panel.row_filter_var.set("changed")
+            panel._apply_filters()
 
         # Show confirmation
         if replacements_made > 0:
