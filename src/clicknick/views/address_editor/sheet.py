@@ -401,7 +401,7 @@ class AddressEditorSheet(Sheet):
 
         Symbols:
         - ⚠ for error notes (validation errors)
-        - 💾 for dirty notes (original values)
+        - ✱ for dirty notes (original values)
 
         Symbol is determined from CellNote object in self.cell_notes cache.
         """
@@ -442,7 +442,7 @@ class AddressEditorSheet(Sheet):
                 iid,
                 text=symbol,
                 fill="black",
-                font=("Arial", 10, "bold"),
+                font=("Arial", 8),
                 state="normal",
                 tags=tags,
             )
@@ -450,6 +450,6 @@ class AddressEditorSheet(Sheet):
         else:
             # Create a new text object instead of a polygon
             iid = self.MT.create_text(
-                text_x, text_y, text=symbol, fill="black", font=("Arial", 10, "bold"), tags=tags
+                text_x, text_y, text=symbol, fill="black", font=("Arial", 8), tags=tags
             )
             self.MT.disp_corners.add(iid)

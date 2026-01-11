@@ -20,13 +20,13 @@ class CellNote:
         """Return symbol based on note type priority (error > dirty).
 
         Returns:
-            "⚠" for errors, "💾" for dirty, "⚠" as fallback
+            "⚠" for errors, "✱" for dirty, "ℹ️" as fallback
         """
         if self.error_note:
             return "⚠"
         elif self.dirty_note:
-            return "💾"
-        return "⚠"  # fallback
+            return "✱"
+        return "ℹ"  # fallback
 
     def __bool__(self) -> bool:
         """Return True if any note exists."""
