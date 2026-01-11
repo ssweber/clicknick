@@ -24,6 +24,7 @@ from ...models.blocktag import (
     strip_block_tag,
     validate_block_span,
 )
+from ...models.constants import DataType
 from ...widgets.add_block_dialog import AddBlockDialog
 from ...widgets.custom_notebook import CustomNotebook
 from ...widgets.export_csv_dialog import ExportCsvDialog
@@ -428,13 +429,16 @@ class AddressEditorWindow(tk.Toplevel):
                     "comment": row.comment,
                     "initial_value": row.initial_value,
                     "retentive": row.retentive,
+                    "data_type": row.data_type,
                 }
             )
 
         # Check if we should ask about incrementing initial values
         increment_initial_value = None
+        orig_num = None
+        increment_initial_value = False
         for tmpl in template:
-            if tmpl["nickname"] and tmpl["initial_value"]:
+            if tmpl["nickname"] and tmpl["initial_value"] and tmpl["data_type"] != DataType.BIT:
                 _, orig_num, _ = self._increment_nickname_suffix(tmpl["nickname"], 0)
                 if orig_num is not None:
                     try:
@@ -442,11 +446,9 @@ class AddressEditorWindow(tk.Toplevel):
                         if init_val == orig_num:
                             # At least one initial value matches its array number - ask user
                             result = messagebox.askyesno(
-                                "Increment Initial Values?",
-                                f"One or more initial values match their array numbers.\n\n"
-                                f"Do you want to increment them along with the nicknames?\n\n"
-                                f"Example: {tmpl['nickname']} with init={init_val} → "
-                                f"next clone gets init={init_val + 1}",
+                                "Increment Values?",
+                                f"Also increment initial values?\n\n"
+                                f"Example: {tmpl['nickname']} ({init_val}) → ({init_val + 1})",
                                 parent=self,
                             )
                             increment_initial_value = result
@@ -555,7 +557,9 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Check if we should ask about incrementing initial value
         increment_initial_value = None
-        if first_row.initial_value:
+        orig_num = None
+        increment_initial_value = False
+        if first_row.initial_value and first_row.data_type != DataType.BIT:
             # Get the number from the nickname to compare with initial value
             _, orig_num, _ = self._increment_nickname_suffix(base_nickname, 0)
             if orig_num is not None:
@@ -565,10 +569,8 @@ class AddressEditorWindow(tk.Toplevel):
                         # Initial value matches the array number - ask user
                         result = messagebox.askyesno(
                             "Increment Initial Value?",
-                            f"The initial value ({init_val}) matches the array number.\n\n"
-                            f"Do you want to increment it along with the nickname?\n\n"
-                            f"Example: {base_nickname} with init={init_val} → "
-                            f"next row gets init={init_val + 1}",
+                            f"Also increment initial value?\n\n"
+                            f"Example: {base_nickname} ({init_val}) → ({init_val + 1})",
                             parent=self,
                         )
                         increment_initial_value = result
