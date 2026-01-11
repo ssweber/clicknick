@@ -5,12 +5,16 @@ from __future__ import annotations
 import re
 import tkinter as tk
 from tkinter import messagebox
+from typing import TYPE_CHECKING
 
 from tksheet import Sheet
 from tksheet.formatters import data_to_str
 from tksheet.functions import bisect_in, try_binding
 
 from .panel_constants import COL_COMMENT, COL_NICKNAME
+
+if TYPE_CHECKING:
+    from .cell_note import CellNote
 
 
 class AddressEditorSheet(Sheet):
@@ -359,6 +363,11 @@ class AddressEditorSheet(Sheet):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # Cell notes cache for custom corner rendering
+        # Maps (row, col) -> CellNote for symbol determination
+        self.cell_notes: dict[tuple[int, int], CellNote] = {}
+
         # Override the internal main table's redraw_corner method
         self.MT.redraw_corner = self.custom_redraw_corner
 
@@ -388,22 +397,59 @@ class AddressEditorSheet(Sheet):
         self.MT.bind_class(custom_tag, "<Button-3>", callback)
 
     def custom_redraw_corner(self, x: float, y: float, tags: str | tuple[str]) -> None:
-        """Draw a warning symbol in cell corners instead of the default triangle."""
+        """Draw symbol in cell corners based on note type.
+
+        Symbols:
+        - ⚠ for error notes (validation errors)
+        - 💾 for dirty notes (original values)
+
+        Symbol is determined from CellNote object in self.cell_notes cache.
+        """
         # Position the symbol slightly offset from the top-right corner
-        text_x = x - 7
-        text_y = y + 7
+        text_x = x - 8
+        text_y = y + 10
+
+        # Parse row and column from tags
+        # tksheet passes format like: ('lift', 'c', '6_1') where '6_1' = row_col
+        # These are DISPLAY indices, need to convert to DATA indices
+        display_r, display_c = None, None
+        if isinstance(tags, (tuple, list)):
+            for tag in tags:
+                if isinstance(tag, str) and "_" in tag:
+                    # Parse format like '6_1' where 6=row, 1=col
+                    try:
+                        parts = tag.split("_")
+                        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                            display_r = int(parts[0])
+                            display_c = int(parts[1])
+                            break
+                    except (ValueError, IndexError):
+                        continue
+
+        # Convert display indices to data indices
+        symbol = "⚠"  # default
+        if display_r is not None and display_c is not None:
+            data_r = self.MT.datarn(display_r)
+            data_c = self.MT.datacn(display_c)
+            if (data_r, data_c) in self.cell_notes:
+                symbol = self.cell_notes[(data_r, data_c)].symbol
 
         if self.MT.hidd_corners:
             iid = self.MT.hidd_corners.pop()
             # Update position and properties for the symbol
             self.MT.coords(iid, text_x, text_y)
             self.MT.itemconfig(
-                iid, text="⚠", fill="black", font=("Arial", 10, "bold"), state="normal", tags=tags
+                iid,
+                text=symbol,
+                fill="black",
+                font=("Arial", 10, "bold"),
+                state="normal",
+                tags=tags,
             )
             self.MT.disp_corners.add(iid)
         else:
             # Create a new text object instead of a polygon
             iid = self.MT.create_text(
-                text_x, text_y, text="⚠", fill="black", font=("Arial", 10, "bold"), tags=tags
+                text_x, text_y, text=symbol, fill="black", font=("Arial", 10, "bold"), tags=tags
             )
             self.MT.disp_corners.add(iid)

@@ -10,6 +10,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from ...widgets.colors import get_block_color_hex
+from .cell_note import CellNote
 from .panel_constants import (
     COL_COMMENT,
     COL_INIT_VALUE,
@@ -77,7 +78,8 @@ class AddressRowStyler:
         self._get_block_colors = get_block_colors
 
         # Note cache to prevent redundant tksheet calls
-        self._note_cache: dict[tuple[int, int], str] = {}
+        # Maps (row, col) -> CellNote
+        self._note_cache: dict[tuple[int, int], CellNote] = {}
 
         # Track pending highlight clear callbacks
         self._pending_highlight_clears: dict[int, str] = {}  # data_idx -> after_id
@@ -194,18 +196,54 @@ class AddressRowStyler:
         for data_idx in displayed:
             self._apply_row_highlights(data_idx, block_colors)
 
-    def _compute_target_notes(self) -> dict[tuple[int, int], str]:
-        """Compute what notes should exist for displayed rows."""
-        target: dict[tuple[int, int], str] = {}
+    def _compute_target_notes(self) -> dict[tuple[int, int], CellNote]:
+        """Compute what notes should exist for displayed rows.
+
+        Returns:
+            Dict mapping (row, col) -> CellNote
+        """
+        target: dict[tuple[int, int], CellNote] = {}
         displayed = self._get_displayed_rows()
 
         rows = self._get_rows()
         for data_idx in displayed:
             row = rows[data_idx]
-            if row.has_reportable_error:
-                target[(data_idx, COL_NICKNAME)] = row.validation_error
-            if not row.initial_value_valid and row.initial_value != "":
-                target[(data_idx, COL_INIT_VALUE)] = row.initial_value_error
+
+            # Nickname note (error and/or dirty)
+            nick_error = row.validation_error if row.has_reportable_error else None
+            nick_dirty = (
+                row.original_nickname
+                if row.is_nickname_dirty and row.original_nickname is not None
+                else None
+            )
+            if nick_error or nick_dirty:
+                target[(data_idx, COL_NICKNAME)] = CellNote(
+                    error_note=nick_error, dirty_note=nick_dirty
+                )
+
+            # Init value note (error and/or dirty)
+            init_error = (
+                row.initial_value_error
+                if (not row.initial_value_valid and row.initial_value != "")
+                else None
+            )
+            init_dirty = (
+                row.original_initial_value
+                if (row.is_initial_value_dirty and row.original_initial_value is not None)
+                else None
+            )
+            if init_error or init_dirty:
+                target[(data_idx, COL_INIT_VALUE)] = CellNote(
+                    error_note=init_error, dirty_note=init_dirty
+                )
+
+            # Comment note (dirty only)
+            if row.is_comment_dirty and row.original_comment is not None:
+                target[(data_idx, COL_COMMENT)] = CellNote(dirty_note=row.original_comment)
+
+            # Retentive note (dirty only)
+            if row.is_retentive_dirty and row.original_retentive is not None:
+                target[(data_idx, COL_RETENTIVE)] = CellNote(dirty_note=str(row.original_retentive))
 
         return target
 
@@ -219,12 +257,18 @@ class AddressRowStyler:
             if cell_key not in target_notes:
                 self.sheet.note(cell_key[0], cell_key[1], note=None)
                 del self._note_cache[cell_key]
+                # Also remove from sheet's cell_notes cache
+                self.sheet.cell_notes.pop(cell_key, None)
 
         # Add/update notes that are in target
-        for cell_key, note_text in target_notes.items():
-            if self._note_cache.get(cell_key) != note_text:
-                self.sheet.note(cell_key[0], cell_key[1], note=note_text)
-                self._note_cache[cell_key] = note_text
+        for cell_key, cell_note in target_notes.items():
+            # Compare CellNote objects (using != checks error_note and dirty_note fields)
+            if self._note_cache.get(cell_key) != cell_note:
+                # Convert to string for tksheet
+                self.sheet.note(cell_key[0], cell_key[1], note=str(cell_note))
+                # Store CellNote in both caches
+                self._note_cache[cell_key] = cell_note
+                self.sheet.cell_notes[cell_key] = cell_note
 
     # --- Public API ---
 
@@ -247,27 +291,57 @@ class AddressRowStyler:
         """Update notes for a single row."""
         row = self._get_rows()[data_idx]
 
-        # Nickname note
-        nick_key = (data_idx, COL_NICKNAME)
-        if row.has_reportable_error:
-            note = row.validation_error
-            if self._note_cache.get(nick_key) != note:
-                self.sheet.note(data_idx, COL_NICKNAME, note=note)
-                self._note_cache[nick_key] = note
-        elif nick_key in self._note_cache:
-            self.sheet.note(data_idx, COL_NICKNAME, note=None)
-            del self._note_cache[nick_key]
+        # Helper to update a single cell note
+        def update_cell(col: int, error_note: str | None, dirty_note: str | None) -> None:
+            cell_key = (data_idx, col)
+            if error_note or dirty_note:
+                cell_note = CellNote(error_note=error_note, dirty_note=dirty_note)
+                if self._note_cache.get(cell_key) != cell_note:
+                    self.sheet.note(data_idx, col, note=str(cell_note))
+                    self._note_cache[cell_key] = cell_note
+                    self.sheet.cell_notes[cell_key] = cell_note
+            elif cell_key in self._note_cache:
+                self.sheet.note(data_idx, col, note=None)
+                del self._note_cache[cell_key]
+                self.sheet.cell_notes.pop(cell_key, None)
 
-        # Init value note
-        init_key = (data_idx, COL_INIT_VALUE)
-        if not row.initial_value_valid and row.initial_value != "":
-            note = row.initial_value_error
-            if self._note_cache.get(init_key) != note:
-                self.sheet.note(data_idx, COL_INIT_VALUE, note=note)
-                self._note_cache[init_key] = note
-        elif init_key in self._note_cache:
-            self.sheet.note(data_idx, COL_INIT_VALUE, note=None)
-            del self._note_cache[init_key]
+        # Nickname
+        nick_error = row.validation_error if row.has_reportable_error else None
+        nick_dirty = (
+            row.original_nickname
+            if (row.is_nickname_dirty and row.original_nickname is not None)
+            else None
+        )
+        update_cell(COL_NICKNAME, nick_error, nick_dirty)
+
+        # Init value
+        init_error = (
+            row.initial_value_error
+            if (not row.initial_value_valid and row.initial_value != "")
+            else None
+        )
+        init_dirty = (
+            row.original_initial_value
+            if (row.is_initial_value_dirty and row.original_initial_value is not None)
+            else None
+        )
+        update_cell(COL_INIT_VALUE, init_error, init_dirty)
+
+        # Comment
+        comment_dirty = (
+            row.original_comment
+            if (row.is_comment_dirty and row.original_comment is not None)
+            else None
+        )
+        update_cell(COL_COMMENT, None, comment_dirty)
+
+        # Retentive
+        retentive_dirty = (
+            str(row.original_retentive)
+            if (row.is_retentive_dirty and row.original_retentive is not None)
+            else None
+        )
+        update_cell(COL_RETENTIVE, None, retentive_dirty)
 
     def update_rows_styling(self, data_indices: set[int]) -> None:
         """Update styling for specific rows only (incremental update).
