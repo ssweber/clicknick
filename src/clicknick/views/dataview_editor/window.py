@@ -362,6 +362,11 @@ class DataviewEditorWindow(tk.Toplevel):
 
         self._insert_addresses(addresses_to_insert)
 
+    def _on_rename(self, prefix: str, old_text: str, new_text: str, is_array: bool) -> None:
+        """Handle rename from outline tree (not applicable for dataview editor)."""
+        # Dataview editor is read-only for address data, so we don't support rename
+        pass
+
     def _toggle_nav(self) -> None:
         """Toggle the navigation window visibility."""
         if self._nav_window is None:
@@ -370,6 +375,7 @@ class DataviewEditorWindow(tk.Toplevel):
                 self,
                 on_outline_select=self._on_outline_select,
                 on_block_select=self._on_block_select,
+                on_rename=self._on_rename,
             )
             self._refresh_navigation()
             self._tag_browser_var.set(True)

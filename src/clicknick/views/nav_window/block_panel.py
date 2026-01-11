@@ -64,7 +64,7 @@ class BlockPanel(ttk.Frame):
             sort_frame,
             text="A→Z",
             variable=self._sort_alphabetically,
-            command=self._on_sort_changed
+            command=self._on_sort_changed,
         )
         self._sort_check.pack(side=tk.LEFT)
 

@@ -1300,6 +1300,51 @@ class AddressEditorWindow(tk.Toplevel):
         # Focus the sheet for immediate keyboard navigation/editing
         panel.sheet.focus_set()
 
+    def _on_rename(self, prefix: str, old_text: str, new_text: str, is_array: bool) -> None:
+        """Handle rename from outline tree.
+
+        Args:
+            prefix: Path prefix (e.g., "Tank_" for renaming Pump in Tank_Pump_Speed)
+            old_text: Current segment text
+            new_text: New segment text
+            is_array: True if renaming an array node
+        """
+        from ...utils.rename_helpers import apply_rename
+
+        # Build mapping of all nicknames that need to be renamed
+        mapping = {}
+        for row in self.shared_data.all_rows.values():
+            if not row.nickname:
+                continue
+
+            new_nickname = apply_rename(row.nickname, prefix, old_text, new_text, is_array)
+
+            if new_nickname != row.nickname:
+                mapping[row.nickname] = new_nickname
+
+        if not mapping:
+            messagebox.showinfo(
+                "No Matches", f"No nicknames match the pattern for '{old_text}'.", parent=self
+            )
+            return
+
+        # Get the current panel
+        panel = self._get_current_panel()
+        if panel and panel.is_unified:
+            # Use tksheet's replace_all to perform the rename
+            panel.sheet.replace_all(mapping, within=False)
+
+        # Also update other tabs
+        self._handle_data_changed()
+        self._schedule_revalidation()
+
+        # Show confirmation
+        messagebox.showinfo(
+            "Rename Complete",
+            f"Renamed {len(mapping)} nickname{'s' if len(mapping) != 1 else ''}.",
+            parent=self,
+        )
+
     def _toggle_nav(self) -> None:
         """Toggle the outline window visibility."""
         if self._nav_window is None:
@@ -1308,6 +1353,7 @@ class AddressEditorWindow(tk.Toplevel):
                 self,
                 on_outline_select=self._on_outline_select,
                 on_block_select=self._on_block_select,
+                on_rename=self._on_rename,
             )
             self._refresh_navigation()
             self._tag_browser_var.set(True)
