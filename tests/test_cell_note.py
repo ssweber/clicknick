@@ -14,7 +14,7 @@ def test_cell_note_error_only():
 def test_cell_note_dirty_only():
     """Test CellNote with only dirty."""
     note = CellNote(dirty_note="old_value")
-    assert note.symbol == "💾"
+    assert note.symbol == "✱"
     assert str(note) == "Original: old_value"
     assert bool(note) is True
 
@@ -30,7 +30,7 @@ def test_cell_note_both():
 def test_cell_note_empty():
     """Test empty CellNote."""
     note = CellNote()
-    assert note.symbol == "⚠"  # fallback
+    assert note.symbol == "ℹ"  # fallback
     assert str(note) == ""
     assert bool(note) is False
 
