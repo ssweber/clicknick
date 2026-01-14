@@ -247,10 +247,11 @@ class ImportCsvDialog(tk.Toplevel):
         # Use yield_sheet_rows to get boolean checkbox states
         # get_index=True: Includes the index checkbox data
         # get_index_displayed=False: Returns the boolean True/False instead of text
-        for row_idx, row_data in enumerate(self.sheet.yield_sheet_rows(get_index=True, get_index_displayed=False)):
-            
+        for row_idx, row_data in enumerate(
+            self.sheet.yield_sheet_rows(get_index=True, get_index_displayed=False)
+        ):
             is_checked = row_data[0]  # This is the boolean state of the index checkbox
-            
+
             if not is_checked:
                 continue
 
