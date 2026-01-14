@@ -3,8 +3,14 @@
 Contains AddressRow dataclass, validation functions, and AddrKey calculations.
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ..data.shared_data import SharedAddressData
 
 from .constants import (
     _INDEX_TO_TYPE,
@@ -215,6 +221,47 @@ def normalize_address(address: str) -> str | None:
 
 
 # ==============================================================================
+# Edit Session Locking
+# ==============================================================================
+
+# Fields that require edit_session to modify (user-editable content)
+_LOCKED_FIELDS = frozenset(
+    {
+        "nickname",
+        "comment",
+        "initial_value",
+        "retentive",
+    }
+)
+
+# Fields that are always writable (metadata, validation state, etc.)
+_UNLOCKED_FIELDS = frozenset(
+    {
+        # Identity (set once during init)
+        "memory_type",
+        "address",
+        # Metadata fields (updated by system, not user edits)
+        "used",
+        "exists_in_mdb",
+        "data_type",
+        "loaded_with_error",
+        # Original value tracking (set by system during load/save)
+        "original_nickname",
+        "original_comment",
+        "original_initial_value",
+        "original_retentive",
+        # Validation state (computed, not user data)
+        "is_valid",
+        "validation_error",
+        "initial_value_valid",
+        "initial_value_error",
+        # Precomputed display properties
+        "block_color",
+    }
+)
+
+
+# ==============================================================================
 # Main Data Model
 # ==============================================================================
 
@@ -226,12 +273,18 @@ class AddressRow:
     This is the in-memory model for a single PLC address. It tracks both
     the current values and the original values (for dirty tracking).
 
+    IMPORTANT: Content fields (nickname, comment, initial_value, retentive)
+    can only be modified within a SharedAddressData.edit_session().
+    Attempting to modify these fields outside a session raises RuntimeError.
+
     Usage:
-        # Create a clean row (originals automatically set to match content)
+        # Create a row (during skeleton creation, before _parent is set)
         row = AddressRow("X", 1, nickname="Input1")
 
-        # Create a dirty row (explicit originals)
-        row = AddressRow("X", 1, nickname="Input1", original_nickname="OldName")
+        # Modify content fields (requires edit_session)
+        with shared_data.edit_session():
+            row.nickname = "NewName"
+            row.comment = "Updated comment"
     """
 
     # --- Identity ---
@@ -267,6 +320,13 @@ class AddressRow:
 
     # Track if row was loaded with invalid data (SC/SD often have system-set invalid nicknames)
     loaded_with_error: bool = field(default=False, compare=False)
+
+    # --- Precomputed Display Properties ---
+    # These are computed by services and read by UI (not part of dirty tracking)
+    block_color: str | None = field(default=None, compare=False, repr=False)
+
+    # --- Parent Reference (set after skeleton creation) ---
+    _parent: SharedAddressData | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self):
         """Capture initial values if originals were not explicitly provided."""
@@ -360,9 +420,41 @@ class AddressRow:
     # --- State Helper Properties ---
 
     @property
+    def is_interleaved_secondary(self) -> bool:
+        """True if this is a secondary type in an interleaved pair (TD, CTD).
+
+        In unified view, T/TD and CT/CTD rows are interleaved (T1, TD1, T2, TD2...).
+        The secondary types (TD, CTD) get alternating background color for visual
+        distinction. This property abstracts that logic from the view layer.
+        """
+        return self.memory_type in ("TD", "CTD")
+
+    @property
     def can_edit_initial_value(self) -> bool:
         """True if initial value can be edited for this memory type."""
         return self.memory_type not in NON_EDITABLE_TYPES
+
+    def is_initial_value_masked(self, effective_retentive: bool) -> bool:
+        """Check if initial value is masked (shows '-' and is read-only).
+
+        Initial value is masked when:
+        - Memory type allows editing (not in NON_EDITABLE_TYPES), AND
+        - Retentive is enabled (either on this row or its paired T/CT row)
+
+        For T/TD and CT/CTD pairs, retentive is stored on T/CT but affects
+        both rows' initial value editability. The caller must pass the
+        effective retentive value (from the paired row if applicable).
+
+        Args:
+            effective_retentive: The retentive value to check (from self or paired row)
+
+        Returns:
+            True if initial value should show '-' and reject edits
+        """
+        # NON_EDITABLE_TYPES (SC, SD, XD, YD) are never masked - they just can't be edited
+        if self.memory_type in NON_EDITABLE_TYPES:
+            return False
+        return effective_retentive
 
     @property
     def can_edit_retentive(self) -> bool:
@@ -571,3 +663,55 @@ class AddressRow:
 
         self.exists_in_mdb = True
         return changed
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Enforce edit_session requirement for content fields.
+
+        Content fields (nickname, comment, initial_value, retentive) can only
+        be modified when the parent SharedAddressData is in an edit_session.
+
+        Raises:
+            RuntimeError: If attempting to modify a locked field outside
+                         of an edit_session.
+        """
+        # Always allow unlocked fields and private/dunder fields
+        if name in _UNLOCKED_FIELDS or name.startswith("_"):
+            object.__setattr__(self, name, value)
+            return
+
+        # For locked fields, check if we're in an edit session
+        if name in _LOCKED_FIELDS:
+            # Get parent reference - may not exist during __init__
+            parent = self.__dict__.get("_parent")
+
+            if parent is None:
+                # During dataclass __init__ or before _parent is wired up
+                # Allow the assignment
+                object.__setattr__(self, name, value)
+                return
+
+            if not parent.is_editing:
+                raise RuntimeError(
+                    f"Cannot modify AddressRow.{name} outside of edit_session. "
+                    f"Use: with shared_data.edit_session(): row.{name} = value"
+                )
+
+            # Get old value for change tracking
+            old_value = self.__dict__.get(name)
+
+            # Set the value
+            object.__setattr__(self, name, value)
+
+            # Notify parent of change (if value actually changed)
+            if old_value != value:
+                parent.mark_changed(self.addr_key)
+                # Track nickname changes for reverse index updates
+                if name == "nickname":
+                    parent._record_nickname_change(self.addr_key, old_value or "")
+                # Track comment changes for paired tag sync
+                elif name == "comment":
+                    parent._record_comment_change(self.addr_key, old_value or "")
+            return
+
+        # For any other fields, just set them
+        object.__setattr__(self, name, value)

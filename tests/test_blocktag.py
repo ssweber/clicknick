@@ -111,6 +111,37 @@ class TestParseBlockTag:
         assert result.name is None
         assert result.tag_type is None
 
+    def test_opening_tag_after_text(self):
+        result = parse_block_tag("Leading text<Motor>")
+        assert result.name == "Motor"
+        assert result.tag_type == "open"
+        assert result.remaining_text == "Leading text"
+
+    def test_closing_tag_after_text(self):
+        result = parse_block_tag("Leading text </Motor>")
+        assert result.name == "Motor"
+        assert result.tag_type == "close"
+        assert result.remaining_text == "Leading text "
+
+    def test_self_closing_tag_after_text(self):
+        result = parse_block_tag("Leading text <Motor />")
+        assert result.name == "Motor"
+        assert result.tag_type == "self-closing"
+        assert result.remaining_text == "Leading text "
+
+    def test_tag_in_middle_of_text(self):
+        result = parse_block_tag("Before <Motor> After")
+        assert result.name == "Motor"
+        assert result.remaining_text == "Before  After"
+
+    def test_mathematical_inequality_not_a_tag(self):
+        """Angle brackets used for comparisons should not be parsed as tags."""
+        text = "The range can be Min < 5 > Max"
+        result = parse_block_tag(text)
+        assert result.name is None
+        assert result.tag_type is None
+        assert result.remaining_text == text
+
 
 class TestHelperFunctions:
     """Tests for is_block_tag, get_block_type, extract_block_name, strip_block_tag."""
@@ -126,6 +157,11 @@ class TestHelperFunctions:
 
     def test_is_block_tag_not_tag(self):
         assert is_block_tag("Just a comment") is False
+
+    def test_is_block_tag_with_surrounding_text(self):
+        assert is_block_tag("Text then <Motor>") is True
+        assert is_block_tag("<Motor> then text") is True
+        assert is_block_tag("Inequality < 5 > 2") is False
 
     def test_get_block_type_open(self):
         assert get_block_type("<Motor>") == "open"
@@ -159,6 +195,14 @@ class TestHelperFunctions:
 
     def test_strip_block_tag_empty(self):
         assert strip_block_tag("") == ""
+
+    def test_strip_block_tag_middle(self):
+        assert strip_block_tag("Before <Motor> After") == "Before  After"
+
+    def test_strip_block_tag_with_inequality(self):
+        # Should remain unchanged as there is no valid tag
+        text = "Value < 10"
+        assert strip_block_tag(text) == text
 
 
 # Helper dataclass for testing matching functions

@@ -13,24 +13,14 @@ from typing import TYPE_CHECKING
 from tksheet import num2alpha
 
 from ...models.address_row import AddressRow
-from ...models.blocktag import (
-    BlockTag,
-    compute_all_block_ranges,
-    find_block_range_indices,
-    find_paired_tag_index,
-    parse_block_tag,
-)
 from ...models.constants import (
-    FLOAT_MAX,
-    FLOAT_MIN,
-    INT2_MAX,
-    INT2_MIN,
-    INT_MAX,
-    INT_MIN,
+    BIT_ONLY_TYPES,
+    DATA_TYPE_HINTS,
     MEMORY_TYPE_TO_DATA_TYPE,
     NON_EDITABLE_TYPES,
     DataType,
 )
+from ...utils.filters import text_matches_filter
 from ...widgets.char_limit_tooltip import CharLimitTooltip
 from .panel_constants import (
     COL_COMMENT,
@@ -78,7 +68,7 @@ class AddressPanel(ttk.Frame):
         """
         if self.combined_types and len(self.combined_types) > 1:
             return False
-        return MEMORY_TYPE_TO_DATA_TYPE.get(self.memory_type, 0) == DataType.BIT
+        return self.memory_type in BIT_ONLY_TYPES
 
     def _get_init_value_hint(self, data_type: int) -> str:
         """Get the hint text for initial value based on data type.
@@ -89,20 +79,7 @@ class AddressPanel(ttk.Frame):
         Returns:
             Hint string describing valid range/values
         """
-        if data_type == DataType.BIT:
-            return "0 or 1"
-        elif data_type == DataType.INT:
-            return f"Range: {INT_MIN} to {INT_MAX}"
-        elif data_type == DataType.INT2:
-            return f"Range: {INT2_MIN} to {INT2_MAX}"
-        elif data_type == DataType.FLOAT:
-            return f"Range: {FLOAT_MIN:.2e} to {FLOAT_MAX:.2e}"
-        elif data_type == DataType.HEX:
-            return "Hex value (e.g., FF or 0xFF)"
-        elif data_type == DataType.TXT:
-            return "Text string"
-        else:
-            return "Enter initial value"
+        return DATA_TYPE_HINTS.get(data_type, "Enter initial value")
 
     def _toggle_init_ret_columns(self) -> None:
         """Toggle visibility of Init Value and Retentive columns."""
@@ -120,36 +97,6 @@ class AddressPanel(ttk.Frame):
             self.sheet.hide_columns(columns={self.COL_USED}, data_indexes=True)
         else:
             self.sheet.show_columns(columns={self.COL_USED})
-
-    def _update_status(self) -> None:
-        """Update the status label with current counts."""
-        total_visible = len(self._displayed_rows)
-        error_count = self.get_error_count()
-        modified_count = sum(1 for idx in self._displayed_rows if self.rows[idx].is_dirty)
-
-        self.status_label.config(
-            text=f"Rows: {total_visible} | Errors: {error_count} | Modified: {modified_count}"
-        )
-
-    def _refresh_display(self, modified_rows: set[int] | None = None) -> None:
-        """Refresh styling and status.
-
-        Args:
-            modified_rows: If provided, only refresh styling for these data indices.
-                           If None, performs full refresh (dehighlight_all + re-apply all).
-        """
-        if self._styler:
-            if modified_rows is not None:
-                # Incremental update - only refresh modified rows
-                self._styler.update_rows_styling(modified_rows)
-            else:
-                # Full refresh (for filter changes, etc.)
-                self._styler.apply_all_styling()
-        # Defer status update to avoid blocking the edit (iterates all rows)
-        self.after_idle(self._update_status)
-        # Use set_refresh_timer() instead of redraw() to prevent multiple redraws
-        # and ensure proper refresh after set_cell_data() calls
-        self.sheet.set_refresh_timer()
 
     def _get_data_index(self, display_idx: int) -> int | None:
         """Convert display row index to data row index.
@@ -241,33 +188,6 @@ class AddressPanel(ttk.Frame):
             # Row is not visible in current filter - clear saved selection
             pass
 
-    def _text_matches_filter(
-        self, text: str, filter_text: str, anchor_start: bool, anchor_end: bool
-    ) -> bool:
-        """Check if text matches the filter with optional anchors.
-
-        Args:
-            text: The text to check (already lowercased)
-            filter_text: The filter pattern (already lowercased, anchors stripped)
-            anchor_start: If True, pattern must match at start of text
-            anchor_end: If True, pattern must match at end of text
-
-        Returns:
-            True if text matches the filter pattern
-        """
-        if anchor_start and anchor_end:
-            # Exact match
-            return text == filter_text
-        elif anchor_start:
-            # Match at beginning
-            return text.startswith(filter_text)
-        elif anchor_end:
-            # Match at end
-            return text.endswith(filter_text)
-        else:
-            # Contains match (default)
-            return filter_text in text
-
     def _apply_filters(self) -> None:
         """Apply current filter settings using tksheet's display_rows().
 
@@ -308,13 +228,13 @@ class AddressPanel(ttk.Frame):
             for i, row in enumerate(self.rows):
                 # Filter by text (matches address, nickname, or comment)
                 if filter_text:
-                    addr_match = self._text_matches_filter(
+                    addr_match = text_matches_filter(
                         row.display_address.lower(), filter_text, anchor_start, anchor_end
                     )
-                    nick_match = self._text_matches_filter(
+                    nick_match = text_matches_filter(
                         row.nickname.lower(), filter_text, anchor_start, anchor_end
                     )
-                    comment_match = self._text_matches_filter(
+                    comment_match = text_matches_filter(
                         row.comment.lower(), filter_text, anchor_start, anchor_end
                     )
                     if not (addr_match or nick_match or comment_match):
@@ -334,202 +254,6 @@ class AddressPanel(ttk.Frame):
 
         # Restore selection after filter change
         self._restore_selection()
-
-    def _bulk_validate(self, event) -> object:
-        """Bulk validation handler for paste and multi-cell edits.
-
-        This is called BEFORE changes are applied to the sheet.
-        We can modify event.data to filter out invalid changes,
-        or return the event to accept all changes.
-
-        Args:
-            event: EventDataDict containing proposed changes
-
-        Returns:
-            The (possibly modified) event to apply changes, or None to reject all.
-        """
-        # For now, accept all changes - validation happens after in _on_sheet_modified
-        # We could add pre-validation here if needed (e.g., reject non-editable cells)
-
-        # Get the proposed changes
-        if not hasattr(event, "data") or not event.data:
-            return event
-
-        table_data = event.data.get("table", {})
-        if not table_data:
-            return event
-        # Filter out changes to non-editable cells
-        filtered_table = {}
-        for (display_row, col), value in table_data.items():
-            # Map display row to data row
-            data_idx = self._get_data_index(display_row)
-            if data_idx is None:
-                continue
-
-            address_row = self.rows[data_idx]
-
-            # Check if this column is editable for this row
-            if col == self.COL_USED:
-                # Read-only column - skip
-                continue
-            elif col == self.COL_INIT_VALUE and not address_row.can_edit_initial_value:
-                # Non-editable init value - skip
-                continue
-            elif col == self.COL_RETENTIVE and not address_row.can_edit_retentive:
-                # Non-editable retentive - skip
-                continue
-            else:
-                # Accept this change
-                filtered_table[(display_row, col)] = value
-
-        # Update event data with filtered changes
-        event.data["table"] = filtered_table
-
-        return event
-
-    def _build_row_display_data(self, row: AddressRow) -> list:
-        """Build display data array for a single row.
-
-        Args:
-            row: The AddressRow to build display data for
-
-        Returns:
-            List of display values for the row's columns
-        """
-
-        # Used column display
-        used_display = "\u2713" if row.used else ""
-
-        # Init value: logic to determine if we show "-", Checkbox (bool), or Text
-        paired_row = find_paired_row(row, self.rows)
-        effective_retentive = paired_row.retentive if paired_row else row.retentive
-
-        # If Retentive is ON and not exempt, force display to "-"
-        if effective_retentive and row.memory_type not in NON_EDITABLE_TYPES:
-            init_value_display = "-"
-        else:
-            # Otherwise show the underlying value
-            # For BIT types, return bool so tksheet knows to check/uncheck the checkbox
-            if row.data_type == DataType.BIT:
-                init_value_display = row.initial_value == "1"
-            else:
-                init_value_display = row.initial_value
-
-        # Retentive: TD/CTD rows share retentive with their paired T/CT row
-        retentive_display = effective_retentive
-
-        return [
-            used_display,
-            row.nickname,
-            row.comment,
-            init_value_display,
-            retentive_display,  # Boolean for checkbox
-        ]
-
-    def _update_row_display(self, data_idx: int) -> None:
-        """Update display data for a single row after changes.
-
-        Args:
-            data_idx: Index into self.rows (data index, not display index)
-        """
-        row = self.rows[data_idx]
-        display_data = self._build_row_display_data(row)
-
-        # Update each cell in the row
-        for col, value in enumerate(display_data):
-            # Special handling for Init Value to switch between Checkbox and Text
-            if col == self.COL_INIT_VALUE:
-                # Always attempt to delete existing checkbox in this cell to ensure clean state
-                self.sheet.delete_checkbox(data_idx, col)
-
-                if value == "-":
-                    # Just set the text "-"
-                    self.sheet.set_cell_data(data_idx, col, value)
-                elif row.data_type == DataType.BIT:
-                    # It's a BIT type and not masked -> Create Checkbox
-                    is_checked = value is True
-                    state = "normal" if row.can_edit_initial_value else "readonly"
-                    self.sheet.create_checkbox(
-                        r=data_idx,
-                        c=col,
-                        checked=is_checked,
-                        state=state,
-                        text="",
-                    )
-                    # Also set the data model to the boolean value
-                    self.sheet.set_cell_data(data_idx, col, is_checked)
-                else:
-                    # Standard value (Word/Float/Text) -> Just set data
-                    self.sheet.set_cell_data(data_idx, col, value)
-            else:
-                self.sheet.set_cell_data(data_idx, col, value)
-
-    def _invalidate_block_colors_cache(self) -> None:
-        """Invalidate the block colors cache (call when comments change)."""
-        self._block_colors_cache = None
-
-    def _find_block_range(self, row_idx: int, tag: BlockTag) -> set[int]:
-        """Find the range of row indices affected by a block tag.
-
-        Args:
-            row_idx: Index of the row containing the tag
-            tag: Parsed BlockTag from the comment
-
-        Returns:
-            Set of row indices that need restyling due to this block tag
-        """
-        result = find_block_range_indices(self.rows, row_idx, tag)
-        if result is None:
-            return set()
-        start, end = result
-        return set(range(start, end + 1))
-
-    def _find_paired_tag_row(self, row_idx: int, tag: BlockTag) -> int | None:
-        """Find the row index of the paired block tag.
-
-        Args:
-            row_idx: Index of the row containing the tag
-            tag: Parsed BlockTag from the comment
-
-        Returns:
-            Row index of the paired tag, or None if not found
-        """
-        return find_paired_tag_index(self.rows, row_idx, tag)
-
-    def _update_paired_tag(
-        self, paired_row_idx: int, old_tag: BlockTag, new_name: str | None
-    ) -> None:
-        """Update the paired tag's comment to match a rename or deletion.
-
-        Args:
-            paired_row_idx: Index of the row with the paired tag
-            old_tag: The original tag that was modified (to determine paired type)
-            new_name: New block name, or None to delete the tag
-        """
-        paired_row = self.rows[paired_row_idx]
-        paired_tag = parse_block_tag(paired_row.comment)
-
-        if new_name is None:
-            # Delete: replace tag with remaining text (if any)
-            new_comment = paired_tag.remaining_text
-        else:
-            # Rename: build new tag with same type
-            if paired_tag.tag_type == "close":
-                new_tag_str = f"</{new_name}>"
-            else:  # open
-                # Preserve bg attribute if present
-                if paired_tag.bg_color:
-                    new_tag_str = f'<{new_name} bg="{paired_tag.bg_color}">'
-                else:
-                    new_tag_str = f"<{new_name}>"
-            remaining = paired_tag.remaining_text
-            new_comment = new_tag_str + (" " + remaining if remaining else "")
-
-        # Update the row's comment
-        paired_row.comment = new_comment
-
-        # Update sheet cell
-        self.sheet.set_cell_data(paired_row_idx, self.COL_COMMENT, new_comment)
 
     def _on_sheet_modified(self, event) -> None:
         """Handle sheet modification events (called AFTER changes are applied).
@@ -552,187 +276,87 @@ class AddressPanel(ttk.Frame):
         if not table_cells:
             return
 
-        nickname_changed = False
-        data_changed = False
-        needs_revalidate = False
+        # Use edit_session for proper change tracking, validation, and notification
+        with self._shared_data.edit_session():
+            for (event_row, col), _old_value in table_cells.items():
+                data_idx = event_row
 
-        # Track old nicknames for cross-panel notification
-        nickname_changes: list[tuple[int, str, str]] = []  # (addr_key, old, new)
-
-        # Track which data rows were modified for display update
-        modified_data_indices: set[int] = set()
-
-        # Process each modified cell
-        for (event_row, col), old_value in table_cells.items():
-            data_idx = event_row
-
-            if data_idx is None or data_idx >= len(self.rows):
-                continue
-
-            address_row = self.rows[data_idx]
-
-            # Get the NEW value from the sheet using data index
-            new_value = self.sheet.get_cell_data(data_idx, col)
-
-            if col == self.COL_NICKNAME:
-                old_nickname = old_value if old_value else ""
-                new_nickname = new_value if new_value else ""
-
-                # Skip if no change
-                if new_nickname == address_row.nickname:
+                if data_idx is None or data_idx >= len(self.rows):
                     continue
 
-                # Update the row
-                address_row.nickname = new_nickname
-                modified_data_indices.add(data_idx)
+                address_row = self.rows[data_idx]
 
-                # Update global nickname registry
-                if old_nickname and address_row.addr_key in self._all_nicknames:
-                    del self._all_nicknames[address_row.addr_key]
-                if new_nickname:
-                    self._all_nicknames[address_row.addr_key] = new_nickname
+                # Get the NEW value from the sheet using data index
+                new_value = self.sheet.get_cell_data(data_idx, col)
 
-                nickname_changed = True
-                data_changed = True
+                if col == self.COL_NICKNAME:
+                    new_nickname = new_value if new_value else ""
 
-                # Queue notification for parent
-                nickname_changes.append((address_row.addr_key, old_nickname, new_nickname))
+                    # Skip if no change
+                    if new_nickname == address_row.nickname:
+                        continue
 
-            elif col == self.COL_COMMENT:
-                new_comment = new_value if new_value else ""
+                    # Directly set the nickname (edit_session tracks change)
+                    address_row.nickname = new_nickname
 
-                # Skip if no change
-                if new_comment == address_row.comment:
-                    continue
+                elif col == self.COL_COMMENT:
+                    new_comment = new_value if new_value else ""
 
-                # Check for block tags before and after change
-                old_tag = parse_block_tag(address_row.comment)
-                new_tag = parse_block_tag(new_comment)
+                    # Skip if no change
+                    if new_comment == address_row.comment:
+                        continue
 
-                # Update the row
-                address_row.comment = new_comment
-                modified_data_indices.add(data_idx)
-                data_changed = True
+                    # Directly set the comment (edit_session handles paired tag sync)
+                    address_row.comment = new_comment
 
-                # If block tags involved, expand modified indices to affected range
-                if old_tag.name or new_tag.name:
-                    self._invalidate_block_colors_cache()
-                    # Find ranges affected by both old and new tags
-                    modified_data_indices.update(self._find_block_range(data_idx, old_tag))
-                    modified_data_indices.update(self._find_block_range(data_idx, new_tag))
+                elif col == self.COL_INIT_VALUE:
+                    # Skip if type doesn't allow editing initial value
+                    if not address_row.can_edit_initial_value:
+                        continue
 
-                    # Auto-update paired tag on rename or delete
-                    if old_tag.name and old_tag.tag_type in ("open", "close"):
-                        paired_row_idx = self._find_paired_tag_row(data_idx, old_tag)
-                        if paired_row_idx is not None:
-                            if not new_tag.name:
-                                # Tag was deleted - delete paired tag too
-                                self._update_paired_tag(paired_row_idx, old_tag, None)
-                                modified_data_indices.add(paired_row_idx)
-                            elif new_tag.name != old_tag.name:
-                                # Tag was renamed - rename paired tag too
-                                self._update_paired_tag(paired_row_idx, old_tag, new_tag.name)
-                                modified_data_indices.add(paired_row_idx)
+                    # Check if row is masked by Retentive (showing "-")
+                    paired_row = find_paired_row(address_row, self.rows)
+                    effective_retentive = (
+                        paired_row.retentive if paired_row else address_row.retentive
+                    )
+                    if address_row.is_initial_value_masked(effective_retentive):
+                        # Revert the cell display back to "-"
+                        self.sheet.set_cell_data(data_idx, col, "-")
+                        continue
 
-            elif col == self.COL_INIT_VALUE:
-                # Skip if type doesn't allow editing initial value
-                if not address_row.can_edit_initial_value:
-                    continue
+                    # Standard update logic
+                    if address_row.data_type == DataType.BIT:
+                        new_init = "1" if bool(new_value) else "0"
+                    else:
+                        new_init = new_value if new_value else ""
 
-                # Check if row is currently masked by Retentive (showing "-")
-                # If so, revert any edit attempts immediately
-                paired_row = find_paired_row(address_row, self.rows)
-                effective_retentive = paired_row.retentive if paired_row else address_row.retentive
+                    # Skip if no change
+                    if new_init == address_row.initial_value:
+                        continue
 
-                if effective_retentive and address_row.memory_type not in NON_EDITABLE_TYPES:
-                    # User tried to edit a masked value. Revert visual to "-"
-                    # We add to modified_indices so _update_row_display restores the "-"
-                    modified_data_indices.add(data_idx)
-                    continue
+                    # Directly set the initial value
+                    address_row.initial_value = new_init
 
-                # Standard update logic
-                if address_row.data_type == DataType.BIT:
-                    new_init = "1" if bool(new_value) else "0"
-                else:
-                    new_init = new_value if new_value else ""
+                elif col == self.COL_RETENTIVE:
+                    # Skip if type doesn't allow editing retentive
+                    if not address_row.can_edit_retentive:
+                        continue
 
-                # Skip if no change
-                if new_init == address_row.initial_value:
-                    continue
+                    # Handle retentive checkbox toggle - value is boolean
+                    new_retentive = bool(new_value)
 
-                # Update the row
-                address_row.initial_value = new_init
-                modified_data_indices.add(data_idx)
-                data_changed = True
-                needs_revalidate = True
+                    # For TD/CTD rows, update the paired T/CT row instead
+                    paired_row = find_paired_row(address_row, self.rows)
+                    target_row = paired_row if paired_row else address_row
 
-            elif col == self.COL_RETENTIVE:
-                # Skip if type doesn't allow editing retentive
-                if not address_row.can_edit_retentive:
-                    continue
+                    # Skip if no change
+                    if new_retentive == target_row.retentive:
+                        continue
 
-                # Handle retentive checkbox toggle - value is boolean
-                new_retentive = bool(new_value)
+                    # Directly set the retentive flag on the target row
+                    target_row.retentive = new_retentive
 
-                # For TD/CTD rows, update the paired T/CT row instead
-                paired_row = find_paired_row(address_row, self.rows)
-                target_row = paired_row if paired_row else address_row
-
-                # Skip if no change
-                if new_retentive == target_row.retentive:
-                    continue
-
-                # Update the target row
-                target_row.retentive = new_retentive
-                modified_data_indices.add(data_idx)
-
-                # If we toggled retentive, we might need to update the paired row's display too
-                # (e.g. Toggled T retentive -> TD init value needs to show/hide "-")
-                if paired_row:
-                    # We need to find the data index of the paired row to refresh it
-                    # Simple linear search (optimization: map could be cached)
-                    for i, r in enumerate(self.rows):
-                        if r is paired_row:
-                            modified_data_indices.add(i)
-                            break
-
-                # Also if there is a pair that uses the same address but isn't the current row
-                # (e.g. We are on TD, we toggled Ret (which maps to T). We need to refresh T row too)
-                if self.combined_types and len(self.combined_types) > 1:
-                    for i, r in enumerate(self.rows):
-                        if r.address == address_row.address and r is not address_row:
-                            modified_data_indices.add(i)
-
-                data_changed = True
-
-        # Refresh display for all modified rows (handles toggling "-" vs Checkbox/Value)
-        for idx in modified_data_indices:
-            self._update_row_display(idx)
-
-        # IMPORTANT: Notify parent FIRST to update shared_data reverse index
-        # This must happen before validation so duplicate detection works correctly
-        if nickname_changes and self.on_nickname_changed:
-            for addr_key, old_nick, new_nick in nickname_changes:
-                self.on_nickname_changed(self.memory_type, addr_key, old_nick, new_nick)
-
-        # Targeted validation using the updated reverse index
-        if nickname_changed and self.on_validate_affected:
-            # Use O(1) targeted validation via shared_data reverse index
-            # This validates other affected rows (e.g., rows that had old nickname)
-            for _addr_key, old_nick, new_nick in nickname_changes:
-                self.on_validate_affected(old_nick, new_nick)
-
-        # Always validate the locally modified rows in THIS panel
-        # (on_validate_affected validates shared_data.all_rows, which may be different objects)
-        if nickname_changed or needs_revalidate:
-            for idx in modified_data_indices:
-                self.rows[idx].validate(self._all_nicknames, self.is_duplicate_fn)
-
-        # Refresh styling and status (incremental - only modified rows)
-        self._refresh_display(modified_rows=modified_data_indices)
-
-        if data_changed and self.on_data_changed:
-            self.on_data_changed()
+        # edit_session exited - validation and notification happened automatically
 
     def _discard_cell_changes(self) -> None:
         """Discard changes for the currently selected cell(s)."""
@@ -740,9 +364,8 @@ class AddressPanel(ttk.Frame):
         if not selected:
             return
 
-        modified_indices: set[int] = set()
-        nickname_changes: list[tuple[int, str, str]] = []
-
+        # Collect cells to discard first (before entering edit_session)
+        cells_to_discard: list[tuple[int, str]] = []
         for display_row, col in selected:
             data_idx = self._get_data_index(display_row)
             if data_idx is None:
@@ -752,37 +375,18 @@ class AddressPanel(ttk.Frame):
             if not field_name:
                 continue
 
-            row = self.rows[data_idx]
+            cells_to_discard.append((data_idx, field_name))
 
-            # Track nickname changes for reverse index update
-            if field_name == "nickname" and row.is_nickname_dirty:
-                old_nick = row.nickname
-                new_nick = row.original_nickname
-                nickname_changes.append((row.addr_key, old_nick, new_nick))
-
-            if row.discard_field(field_name):
-                modified_indices.add(data_idx)
-
-        if not modified_indices:
+        if not cells_to_discard:
             return
 
-        # Update displays
-        for idx in modified_indices:
-            self._update_row_display(idx)
+        # Use edit_session for proper change tracking and notification
+        with self._shared_data.edit_session():
+            for data_idx, _field_name in cells_to_discard:
+                row = self.rows[data_idx]
+                row.discard()
 
-        # Notify parent of nickname changes (for reverse index update)
-        if nickname_changes and self.on_nickname_changed:
-            for addr_key, old_nick, new_nick in nickname_changes:
-                self.on_nickname_changed(self.memory_type, addr_key, old_nick, new_nick)
-
-        # Re-validate affected rows
-        for idx in modified_indices:
-            self.rows[idx].validate(self._all_nicknames, self.is_duplicate_fn)
-
-        self._refresh_display(modified_rows=modified_indices)
-
-        if self.on_data_changed:
-            self.on_data_changed()
+        # edit_session exited - validation and notification happened automatically
 
     def _discard_row_changes(self) -> None:
         """Discard all changes for the currently selected row(s)."""
@@ -790,55 +394,27 @@ class AddressPanel(ttk.Frame):
         if not selected:
             return
 
-        modified_indices: set[int] = set()
-        nickname_changes: list[tuple[int, str, str]] = []
-        block_tag_modified = False
-
+        # Collect rows to discard first (before entering edit_session)
+        rows_to_discard: list[int] = []
         for display_row in selected:
             data_idx = self._get_data_index(display_row)
             if data_idx is None:
                 continue
 
             row = self.rows[data_idx]
-            if not row.is_dirty:
-                continue
+            if row.is_dirty:
+                rows_to_discard.append(data_idx)
 
-            # Track nickname changes for reverse index update
-            if row.is_nickname_dirty:
-                old_nick = row.nickname
-                new_nick = row.original_nickname
-                nickname_changes.append((row.addr_key, old_nick, new_nick))
-
-            if row.is_comment_dirty:
-                old_tag = parse_block_tag(row.comment)
-                new_tag = parse_block_tag(row.original_comment)
-                if old_tag.name or new_tag.name:
-                    block_tag_modified = True
-                    self._invalidate_block_colors_cache()
-
-            row.discard()
-            modified_indices.add(data_idx)
-
-        if not modified_indices:
+        if not rows_to_discard:
             return
 
-        # Update displays
-        for idx in modified_indices:
-            self._update_row_display(idx)
+        # Use edit_session for proper change tracking and notification
+        with self._shared_data.edit_session():
+            for data_idx in rows_to_discard:
+                row = self.rows[data_idx]
+                row.discard()
 
-        # Notify parent of nickname changes (for reverse index update)
-        if nickname_changes and self.on_nickname_changed:
-            for addr_key, old_nick, new_nick in nickname_changes:
-                self.on_nickname_changed(self.memory_type, addr_key, old_nick, new_nick)
-
-        # Re-validate affected rows
-        for idx in modified_indices:
-            self.rows[idx].validate(self._all_nicknames, self.is_duplicate_fn)
-
-        self._refresh_display(modified_rows=None if block_tag_modified else modified_indices)
-
-        if self.on_data_changed:
-            self.on_data_changed()
+        # edit_session exited - validation and notification happened automatically
 
     def _update_discard_menu(
         self, region: str, clicked_row: int | None, clicked_col: int | None
@@ -1066,10 +642,6 @@ class AddressPanel(ttk.Frame):
         # Set up header notes with hints
         self._setup_header_notes()
 
-        # Use bulk_table_edit_validation for paste operations ===
-        # This ensures the entire paste completes before validation runs
-        self.sheet.bulk_table_edit_validation(self._bulk_validate)
-
         # Bind to <<SheetModified>> for post-edit processing ===
         # This fires AFTER the sheet has been modified, not during
         self.sheet.bind("<<SheetModified>>", self._on_sheet_modified)
@@ -1088,10 +660,9 @@ class AddressPanel(ttk.Frame):
     def __init__(
         self,
         parent: tk.Widget,
+        shared_data,
         memory_type: str,
         combined_types: list[str] | None = None,
-        on_nickname_changed: Callable[[str, int, str, str], None] | None = None,
-        on_data_changed: Callable[[], None] | None = None,
         on_validate_affected: Callable[[str, str], set[int]] | None = None,
         is_duplicate_fn: Callable[[str, int], bool] | None = None,
         is_unified: bool = False,
@@ -1101,10 +672,9 @@ class AddressPanel(ttk.Frame):
 
         Args:
             parent: Parent widget
+            shared_data: SharedAddressData instance for accessing skeleton rows
             memory_type: The memory type to edit (X, Y, C, etc.)
             combined_types: List of types to show interleaved (e.g., ["T", "TD"])
-            on_nickname_changed: Callback when a nickname changes (memory_type, addr_key, old, new).
-            on_data_changed: Callback when any data changes (for multi-window sync).
             on_validate_affected: Callback to validate rows affected by nickname change (old, new).
                 Returns set of validated addr_keys. Used for O(1) targeted validation.
             is_duplicate_fn: O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
@@ -1113,24 +683,19 @@ class AddressPanel(ttk.Frame):
         """
         super().__init__(parent)
 
+        self._shared_data = shared_data
         self.memory_type = memory_type
         self.combined_types = combined_types  # None means single type
-        self.on_nickname_changed = on_nickname_changed
-        self.on_data_changed = on_data_changed
         self.on_validate_affected = on_validate_affected
         self.is_duplicate_fn = is_duplicate_fn
         self.is_unified = is_unified
         self.section_boundaries = section_boundaries or {}
 
         self.rows: list[AddressRow] = []
-        self._all_nicknames: dict[int, str] = {}
         self._displayed_rows: list[int] = []  # Data indices of currently displayed rows
 
         # Flag to suppress change notifications during programmatic updates
         self._suppress_notifications = False
-
-        # Cache for block colors (invalidated when comments change)
-        self._block_colors_cache: dict[int, str] | None = None
 
         # Track selected row for filter changes (actual row index in self.rows)
         self._selected_row_idx: int | None = None
@@ -1139,12 +704,129 @@ class AddressPanel(ttk.Frame):
         # Styler will be initialized after load_data() populates self.rows
         self._styler: AddressRowStyler | None = None
 
-        # Deferred refresh flag for performance optimization
-        # When True, this panel needs a refresh but hasn't been updated yet
-        # (typically because it's not the currently visible tab)
-        self.deferred_refresh = False
-
         self._create_widgets()
+
+    def _update_status(self) -> None:
+        """Update the status label with current counts."""
+        total_visible = len(self._displayed_rows)
+        error_count = self.get_error_count()
+        modified_count = sum(1 for idx in self._displayed_rows if self.rows[idx].is_dirty)
+
+        self.status_label.config(
+            text=f"Rows: {total_visible} | Errors: {error_count} | Modified: {modified_count}"
+        )
+
+    def _refresh_display(self, modified_rows: set[int] | None = None) -> None:
+        """Refresh styling and status.
+
+        Args:
+            modified_rows: If provided, only refresh styling for these data indices.
+                           If None, performs full refresh (dehighlight_all + re-apply all).
+        """
+        if self._styler:
+            if modified_rows is not None:
+                # Incremental update - only refresh modified rows
+                self._styler.update_rows_styling(modified_rows)
+            else:
+                # Full refresh (for filter changes, etc.)
+                self._styler.apply_all_styling()
+        # Defer status update to avoid blocking the edit (iterates all rows)
+        self.after_idle(self._update_status)
+        # Use set_refresh_timer() instead of redraw() to prevent multiple redraws
+        # and ensure proper refresh after set_cell_data() calls
+        self.sheet.set_refresh_timer()
+
+    def _build_row_display_data(self, row: AddressRow) -> list:
+        """Build display data array for a single row.
+
+        Args:
+            row: The AddressRow to build display data for
+
+        Returns:
+            List of display values for the row's columns
+        """
+
+        # Used column display
+        used_display = "\u2713" if row.used else ""
+
+        # Init value: logic to determine if we show "-", Checkbox (bool), or Text
+        paired_row = find_paired_row(row, self.rows)
+        effective_retentive = paired_row.retentive if paired_row else row.retentive
+
+        # If Retentive is ON and not exempt, force display to "-"
+        if effective_retentive and row.memory_type not in NON_EDITABLE_TYPES:
+            init_value_display = "-"
+        else:
+            # Otherwise show the underlying value
+            # For BIT types, return bool so tksheet knows to check/uncheck the checkbox
+            if row.data_type == DataType.BIT:
+                init_value_display = row.initial_value == "1"
+            else:
+                init_value_display = row.initial_value
+
+        # Retentive: TD/CTD rows share retentive with their paired T/CT row
+        retentive_display = effective_retentive
+
+        return [
+            used_display,
+            row.nickname,
+            row.comment,
+            init_value_display,
+            retentive_display,  # Boolean for checkbox
+        ]
+
+    def _update_row_display(self, data_idx: int) -> None:
+        """Update display data for a single row after changes.
+
+        Args:
+            data_idx: Index into self.rows (data index, not display index)
+        """
+        row = self.rows[data_idx]
+        display_data = self._build_row_display_data(row)
+
+        # Update each cell in the row
+        for col, value in enumerate(display_data):
+            # Special handling for Init Value to switch between Checkbox and Text
+            if col == self.COL_INIT_VALUE:
+                # Always attempt to delete existing checkbox in this cell to ensure clean state
+                self.sheet.delete_checkbox(data_idx, col)
+
+                if value == "-":
+                    # Just set the text "-"
+                    self.sheet.set_cell_data(data_idx, col, value)
+                elif row.data_type == DataType.BIT:
+                    # It's a BIT type and not masked -> Create Checkbox
+                    is_checked = value is True
+                    state = "normal" if row.can_edit_initial_value else "readonly"
+                    self.sheet.create_checkbox(
+                        r=data_idx,
+                        c=col,
+                        checked=is_checked,
+                        state=state,
+                        text="",
+                    )
+                    # Also set the data model to the boolean value
+                    self.sheet.set_cell_data(data_idx, col, is_checked)
+                else:
+                    # Standard value (Word/Float/Text) -> Just set data
+                    self.sheet.set_cell_data(data_idx, col, value)
+            else:
+                self.sheet.set_cell_data(data_idx, col, value)
+
+    def _keys_to_indices(self, addr_keys: set[int]) -> set[int]:
+        """Convert address keys to row indices in this panel.
+
+        Args:
+            addr_keys: Set of address keys
+
+        Returns:
+            Set of row indices in self.rows
+        """
+        indices = set()
+        for i, row in enumerate(self.rows):
+            if row.addr_key in addr_keys:
+                indices.add(i)
+        return indices
 
     def toggle_filter_enabled(self, enabled: bool) -> None:
         """Toggle filter enabled state.
@@ -1196,48 +878,6 @@ class AddressPanel(ttk.Frame):
         self._scroll_to_row(display_idx, align_top=True)
         return True
 
-    def _validate_all(self) -> None:
-        """Validate all rows against current nickname registry."""
-        for row in self.rows:
-            row.validate(self._all_nicknames, self.is_duplicate_fn)
-
-    def _get_block_colors_for_rows(self) -> dict[int, str]:
-        """Get block background colors for each row address (cached).
-
-        Parses block tags from row comments to determine which rows
-        should have colored row indices. Nested blocks override outer blocks.
-        Only colors rows matching the block's memory_type (for interleaved views).
-
-        Returns:
-            Dict mapping row index (in self.rows) to bg color string.
-        """
-        # Return cached value if available
-        if self._block_colors_cache is not None:
-            return self._block_colors_cache
-
-        # Get all block ranges using centralized function
-        ranges = compute_all_block_ranges(self.rows)
-
-        # Filter to only blocks with colors
-        colored_ranges = [r for r in ranges if r.bg_color]
-
-        # Build row_idx -> color map, with inner blocks overriding outer
-        # Sort by range size descending (larger ranges first)
-        # This ensures inner (smaller) blocks are processed last and override
-        colored_ranges.sort(key=lambda r: -(r.end_idx - r.start_idx))
-
-        row_colors: dict[int, str] = {}
-        for block in colored_ranges:
-            for idx in range(block.start_idx, block.end_idx + 1):
-                # Only color rows matching the block's memory_type (for interleaved views)
-                if block.memory_type and self.rows[idx].memory_type != block.memory_type:
-                    continue
-                row_colors[idx] = block.bg_color  # type: ignore[assignment]
-
-        # Cache the result
-        self._block_colors_cache = row_colors
-        return row_colors
-
     def _populate_sheet_data(self) -> None:
         """Populate sheet with ALL row data (called once at load time).
 
@@ -1269,12 +909,14 @@ class AddressPanel(ttk.Frame):
                         text="",
                     )
 
-    def initialize_from_view(self, rows: list, nicknames: dict):
-        """Initializes the panel with row data, performs validation, and sets up styling."""
-        self.rows = rows
-        self._all_nicknames = nicknames
+    def initialize_from_view(self, rows: list):
+        """Initializes the panel with row data and sets up styling.
 
-        self._validate_all()
+        Note: Validation is handled by edit_session during data loading,
+        so rows are already validated when this is called.
+        """
+        self.rows = rows
+
         self._populate_sheet_data()
         self._apply_filters()
 
@@ -1283,39 +925,49 @@ class AddressPanel(ttk.Frame):
             sheet=self.sheet,
             get_rows=lambda: self.rows,
             get_displayed_rows=lambda: self._displayed_rows,
-            get_block_colors=self._get_block_colors_for_rows,
         )
 
         self._refresh_display()
 
-    def revalidate(self) -> None:
-        """Re-validate all rows (called when global nicknames change)."""
-        self._validate_all()
-        self._refresh_display()
-
-    def refresh_from_external(self, skip_validation: bool = False) -> None:
+    def refresh_from_external(self) -> None:
         """Refresh all row displays after external data changes.
 
         Call this when AddressRow objects have been updated externally
         (e.g., via row.update_from_db()) to sync the sheet's cell data.
 
-        Args:
-            skip_validation: If True, skip _validate_all() because the sender
-                already validated the shared rows. Use when syncing from another
-                window's edit (not from external DB changes).
+        Note: Validation is handled by edit_session, so this only refreshes
+        the display without re-validating.
         """
-        # Invalidate block colors cache (comments may have changed)
-        self._invalidate_block_colors_cache()
-
         # Update all row displays to sync AddressRow data to sheet cells
         for data_idx in range(len(self.rows)):
             self._update_row_display(data_idx)
 
-        # Revalidate only if needed (external DB changes, not window sync)
-        if not skip_validation:
-            self._validate_all()
-
         self._refresh_display()
+
+    def refresh_targeted(self, addr_keys: set[int]) -> None:
+        """Refresh only specific rows after external data changes.
+
+        More efficient than refresh_from_external() when only a few rows changed.
+        Used by observer callbacks to handle targeted updates from edit_session.
+
+        Args:
+            addr_keys: Set of address keys that changed
+        """
+        if not addr_keys:
+            return
+
+        # Convert addr_keys to row indices in this panel
+        row_indices = self._keys_to_indices(addr_keys)
+
+        if not row_indices:
+            return
+
+        # Update display for affected rows only
+        for data_idx in row_indices:
+            self._update_row_display(data_idx)
+
+        # Refresh styling for affected rows only (validation already done by edit_session)
+        self._refresh_display(modified_rows=row_indices)
 
     def get_dirty_rows(self) -> list[AddressRow]:
         """Get all rows that have been modified."""

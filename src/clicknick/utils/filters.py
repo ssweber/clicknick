@@ -320,3 +320,35 @@ class ContainsPlusFilter(FilterBase):
             return self._filter_single_word(completion_list, search_words[0])
         else:
             return self._filter_multiple_words(completion_list, search_words)
+
+
+def text_matches_filter(text: str, filter_text: str, anchor_start: bool, anchor_end: bool) -> bool:
+    """Check if text matches the filter with optional anchors.
+
+    Used by Address Editor row filtering to support patterns like:
+    - ^pattern - matches at start of field
+    - pattern$ - matches at end of field
+    - ^pattern$ - exact match
+    - pattern - contains match (default)
+
+    Args:
+        text: The text to check (should be lowercased by caller)
+        filter_text: The filter pattern (should be lowercased, anchors stripped)
+        anchor_start: If True, pattern must match at start of text
+        anchor_end: If True, pattern must match at end of text
+
+    Returns:
+        True if text matches the filter pattern
+    """
+    if anchor_start and anchor_end:
+        # Exact match
+        return text == filter_text
+    elif anchor_start:
+        # Match at beginning
+        return text.startswith(filter_text)
+    elif anchor_end:
+        # Match at end
+        return text.endswith(filter_text)
+    else:
+        # Contains match (default)
+        return filter_text in text

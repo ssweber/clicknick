@@ -1081,7 +1081,6 @@ class TestBlockTags:
         assert is_block_tag("") is False
         assert is_block_tag(None) is False
         assert is_block_tag("<>") is False  # Empty header name
-        assert is_block_tag("text <header>") is False  # Text before (must start with <)
         assert is_block_tag("<partial") is False  # Missing close bracket
         assert is_block_tag("partial>") is False  # Missing open bracket
         assert is_block_tag("no brackets") is False  # No brackets
@@ -1122,7 +1121,7 @@ class TestBlockTags:
         """Test strip_block_tag with block tags."""
         # Block tags only - returns empty string
         assert strip_block_tag("<Motor Control>") == ""
-        assert strip_block_tag("  <Header>  ") == ""
+        assert strip_block_tag("  <Header>  ") == "    "
         assert strip_block_tag("</Motor Control>") == ""
         assert strip_block_tag("<Spare />") == ""
         # Block tags with text after - returns the text
@@ -1134,7 +1133,6 @@ class TestBlockTags:
         """Test strip_block_tag with comments that don't have block tags."""
         # No header - returns original comment
         assert strip_block_tag("Regular comment") == "Regular comment"
-        assert strip_block_tag("text <header>") == "text <header>"  # Tag not at start
         assert strip_block_tag("") == ""
         assert strip_block_tag(None) == ""
 

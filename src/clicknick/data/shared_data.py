@@ -7,7 +7,8 @@ with changes in one window automatically reflected in others.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 from ..models.address_row import AddressRow, get_addr_key, is_xd_yd_hidden_slot
@@ -73,7 +74,7 @@ class SharedAddressData:
                     continue
 
                 addr_key = get_addr_key(mem_type, addr)
-                skeleton[addr_key] = AddressRow(
+                row = AddressRow(
                     memory_type=mem_type,
                     address=addr,
                     exists_in_mdb=False,
@@ -81,6 +82,9 @@ class SharedAddressData:
                     retentive=default_retentive,
                     original_retentive=default_retentive,
                 )
+                # Wire up parent reference for edit session enforcement
+                row._parent = self
+                skeleton[addr_key] = row
 
         return skeleton
 
@@ -92,10 +96,20 @@ class SharedAddressData:
         """
         self._data_source = data_source
 
+        # Edit session state - must be set BEFORE skeleton creation
+        self._is_editing: bool = False
+        self._initializing: bool = True  # Allow skeleton creation without edit_session
+        self._current_changes: set[int] = set()  # addr_keys modified in current session
+        self._nickname_old_values: dict[int, str] = {}  # addr_key -> old nickname for index updates
+        self._comment_old_values: dict[int, str] = {}  # addr_key -> old comment for paired tag sync
+
         # Data storage - shared across all windows
         # Create skeleton of ALL possible addresses at startup
         self.all_rows: dict[int, AddressRow] = self._create_skeleton()
         self.rows_by_type: dict[str, list[AddressRow]] = {}
+
+        # Mark initialization complete - now edits require edit_session
+        self._initializing = False
 
         # Reverse index: nickname -> set of addr_keys that have this nickname
         # Used for O(1) duplicate detection instead of O(n) scan
@@ -128,6 +142,249 @@ class SharedAddressData:
         """Check if the data source supports the 'Used' field."""
         return self._data_source.supports_used_field
 
+    # --- Edit Session Management ---
+
+    @property
+    def is_editing(self) -> bool:
+        """Check if currently in an edit session or initializing.
+
+        Returns True if modifications to AddressRow content fields are allowed.
+        """
+        return self._is_editing or self._initializing
+
+    def mark_changed(self, addr_key: int) -> None:
+        """Record that a row was modified during this edit session.
+
+        Called automatically by AddressRow.__setattr__ when a locked field changes.
+
+        Args:
+            addr_key: The address key of the modified row
+        """
+        if self._is_editing:
+            self._current_changes.add(addr_key)
+
+    def _record_nickname_change(self, addr_key: int, old_nickname: str) -> None:
+        """Record a nickname change for index updates on session exit.
+
+        Only records the first old value if nickname is changed multiple times
+        in the same session, since we need to update from the original index state.
+
+        Args:
+            addr_key: The address key
+            old_nickname: The nickname value before the change
+        """
+        if self._is_editing and addr_key not in self._nickname_old_values:
+            self._nickname_old_values[addr_key] = old_nickname
+
+    def _record_comment_change(self, addr_key: int, old_comment: str) -> None:
+        """Record a comment change for paired tag sync on session exit.
+
+        Only records the first old value if comment is changed multiple times
+        in the same session, since we need the original value to detect tag renames.
+
+        Args:
+            addr_key: The address key
+            old_comment: The comment value before the change
+        """
+        if self._is_editing and addr_key not in self._comment_old_values:
+            self._comment_old_values[addr_key] = old_comment
+
+    def _update_nickname_indices(
+        self, affected: set[int], nickname_changes: dict[int, str]
+    ) -> None:
+        """Update nickname reverse indices after modifications.
+
+        Args:
+            affected: Set of addr_keys that were modified
+            nickname_changes: Map of addr_key -> old_nickname for rows with nickname changes
+        """
+        for addr_key, old_nickname in nickname_changes.items():
+            if addr_key in self.all_rows:
+                new_nickname = self.all_rows[addr_key].nickname
+                if old_nickname != new_nickname:
+                    self.update_nickname(addr_key, old_nickname, new_nickname)
+
+    def _validate_affected_rows(self, affected: set[int], nickname_changes: dict[int, str]) -> None:
+        """Validate rows affected by changes.
+
+        Also validates rows that share nicknames with changed rows
+        (to detect/clear duplicate errors).
+
+        Args:
+            affected: Set of addr_keys that were modified
+            nickname_changes: Map of addr_key -> old_nickname for rows with nickname changes
+        """
+        # Collect all nicknames involved for duplicate detection cascade
+        nicknames_to_check: set[str] = set()
+
+        for addr_key, old_nickname in nickname_changes.items():
+            if old_nickname:
+                nicknames_to_check.add(old_nickname.lower())
+            if addr_key in self.all_rows:
+                new_nick = self.all_rows[addr_key].nickname
+                if new_nick:
+                    nicknames_to_check.add(new_nick.lower())
+
+        # Find all rows with these nicknames (for duplicate detection)
+        keys_to_validate = affected.copy()
+        for nickname in nicknames_to_check:
+            keys_to_validate.update(self._nickname_lower_to_addrs.get(nickname, set()))
+
+        # Validate all affected rows
+        all_nicknames = self.all_nicknames
+        for addr_key in keys_to_validate:
+            if addr_key in self.all_rows:
+                self.all_rows[addr_key].validate(
+                    all_nicknames, is_duplicate_fn=self.is_duplicate_nickname
+                )
+
+    def _update_block_colors_if_needed(
+        self, affected: set[int], comment_changes: dict[int, str]
+    ) -> None:
+        """Update block colors if any comments were modified.
+
+        Args:
+            affected: Set of addr_keys that were modified
+            comment_changes: Dict of addr_key -> old_comment for rows with changes
+        """
+        from ..services.block_service import BlockService
+
+        if comment_changes:
+            # BlockService.update_colors returns additional affected keys
+            # Pass only the keys (set of addr_keys that changed)
+            additional = BlockService.update_colors(self, set(comment_changes.keys()))
+            affected.update(additional)
+
+    def _sync_dependencies(self) -> None:
+        """Sync interleaved pairs (T/TD, CT/CTD) during edit session exit.
+
+        When a T or CT row's retentive changes, the paired TD or CTD row
+        should be updated to match. This is called while still in editing
+        mode so modifications are allowed.
+
+        Any synced rows are automatically tracked via mark_changed().
+        """
+        from ..services.dependency_service import RowDependencyService
+
+        if not self._current_changes:
+            return
+
+        # Get snapshot of current changes (sync may add more)
+        keys_to_check = self._current_changes.copy()
+        RowDependencyService.sync_interleaved_pairs(self, keys_to_check)
+
+    def _sync_paired_block_tags(self) -> None:
+        """Sync paired block tags (opening/closing) during edit session exit.
+
+        When a user renames or deletes a block tag, the paired tag should
+        be updated to match. For example, renaming <Foo> to <Bar> also
+        renames </Foo> to </Bar>.
+
+        This is called while still in editing mode so modifications are allowed.
+        Any synced rows are automatically tracked via mark_changed().
+        """
+        from ..models.blocktag import parse_block_tag
+        from ..services.block_service import BlockService
+
+        if not self._comment_old_values:
+            return
+
+        # Get unified view for searching paired tags
+        view = self.get_unified_view()
+        if not view:
+            return
+
+        # Build addr_key -> row_idx map for the unified view
+        key_to_idx = {row.addr_key: idx for idx, row in enumerate(view.rows)}
+
+        # Copy to avoid modification during iteration (paired tag sync may add entries)
+        comment_changes = self._comment_old_values.copy()
+        for addr_key, old_comment in comment_changes.items():
+            row = self.all_rows.get(addr_key)
+            if not row:
+                continue
+
+            row_idx = key_to_idx.get(addr_key)
+            if row_idx is None:
+                continue
+
+            # Parse old and new block tags
+            old_tag = parse_block_tag(old_comment)
+            new_tag = parse_block_tag(row.comment)
+
+            # Check if block tag changed
+            if old_tag.name or new_tag.name:
+                BlockService.auto_update_paired_tag(view.rows, row_idx, old_tag, new_tag)
+
+    @contextmanager
+    def edit_session(self) -> Generator[SharedAddressData, None, None]:
+        """Context manager for modifying AddressRow objects.
+
+        All modifications to AddressRow content fields (nickname, comment,
+        initial_value, retentive) must happen within an edit_session.
+        On exit, the session automatically:
+        1. Syncs interleaved pairs (T/TD, CT/CTD retentive settings)
+        2. Updates nickname reverse indices for changed nicknames
+        3. Validates all affected rows
+        4. Updates block colors if comments changed
+        5. Broadcasts changes to all observers with specific indices
+
+        Usage:
+            with shared_data.edit_session():
+                row = shared_data.all_rows[addr_key]
+                row.nickname = "NewName"
+                row.comment = "New comment"
+            # Validation and notification happen automatically on exit
+
+        Yields:
+            Self (SharedAddressData instance)
+
+        Raises:
+            RuntimeError: If edit_session is nested (sessions cannot be nested)
+        """
+        if self._is_editing:
+            raise RuntimeError("Cannot nest edit_session calls")
+
+        self._is_editing = True
+        self._current_changes.clear()
+        self._nickname_old_values.clear()
+        self._comment_old_values.clear()
+
+        try:
+            yield self
+        finally:
+            # Phase 1: Sync dependencies (while still in editing mode)
+            # This may modify additional rows (paired T/TD, CT/CTD)
+            self._sync_dependencies()
+
+            # Phase 2: Sync paired block tags (while still in editing mode)
+            # When user renames <Foo> to <Bar>, also rename </Foo> to </Bar>
+            self._sync_paired_block_tags()
+
+            # Capture final state after sync
+            affected = self._current_changes.copy()
+            nickname_changes = self._nickname_old_values.copy()
+            comment_changes = self._comment_old_values.copy()
+
+            # Now lock editing - no more modifications allowed
+            self._is_editing = False
+            self._current_changes.clear()
+            self._nickname_old_values.clear()
+            self._comment_old_values.clear()
+
+            if affected:
+                # Phase 3: Update nickname reverse indices
+                self._update_nickname_indices(affected, nickname_changes)
+
+                # Phase 4: Validate affected rows (and rows sharing nicknames)
+                self._validate_affected_rows(affected, nickname_changes)
+
+                # Phase 5: Update block colors if any comments changed
+                self._update_block_colors_if_needed(affected, comment_changes)
+
+                # Phase 6: Broadcast changes with specific indices
+                self.notify_data_changed(affected_indices=affected)
+
     def add_observer(self, callback: Callable[[], None]) -> None:
         """Add an observer callback that will be called when data changes."""
         if callback not in self._observers:
@@ -155,13 +412,6 @@ class SharedAddressData:
             view: The UnifiedView to cache
         """
         self._unified_view = view
-
-    def invalidate_unified_view(self) -> None:
-        """Invalidate the cached unified view.
-
-        Call this when data changes to force rebuild on next access.
-        """
-        self._unified_view = None
 
     def _hydrate_from_db_data(self, db_rows: dict[int, AddressRow]) -> None:
         """Update skeleton rows in-place with database data.
@@ -313,7 +563,9 @@ class SharedAddressData:
         self._windows.clear()
         self.rows_by_type.clear()  # Clear cached data since DB is gone
 
-    def notify_data_changed(self, sender: object = None) -> None:
+    def notify_data_changed(
+        self, sender: object = None, affected_indices: set[int] | None = None
+    ) -> None:
         """Notify all observers that data has changed.
 
         Call this after modifying shared data to update all windows.
@@ -321,13 +573,19 @@ class SharedAddressData:
         Args:
             sender: The object that triggered the change (allows observers
                     to skip processing if they are the sender)
+            affected_indices: Set of addr_keys that changed. If None,
+                             indicates a full refresh is needed.
         """
-        # Invalidate unified view cache since data has changed
-        self.invalidate_unified_view()
-
         for callback in self._observers:
             try:
-                callback(sender)
+                # Try calling with affected_indices parameter
+                callback(sender, affected_indices)
+            except TypeError:
+                # Legacy callbacks that don't accept affected_indices
+                try:
+                    callback(sender)
+                except TypeError:
+                    callback()
             except Exception:
                 pass  # Don't let one observer's error break others
 
@@ -361,13 +619,12 @@ class SharedAddressData:
         # Load from data source (creates temporary AddressRow objects)
         db_rows = self._data_source.load_all_addresses()
 
-        # Hydrate skeleton with loaded data (in-place update)
-        self._hydrate_from_db_data(db_rows)
+        # Hydrate skeleton with loaded data using edit_session
+        # This handles change tracking, index updates, validation, and notification
+        with self.edit_session():
+            self._hydrate_from_db_data(db_rows)
 
         self._initialized = True
-
-        # Build reverse index for O(1) duplicate detection
-        self._rebuild_nickname_index()
 
         # Mark X/SC/SD rows with invalid nicknames (needs all_nicknames)
         self._mark_loaded_with_errors()
@@ -509,12 +766,15 @@ class SharedAddressData:
         With skeleton architecture, we never create/delete row objects.
         We only update the data fields of existing skeleton rows.
         """
-        any_changes = False
-
         try:
             # Reload all addresses (creates temporary AddressRow objects)
             new_rows = self._data_source.load_all_addresses()
+        except Exception:
+            # Load error, skip this reload
+            return
 
+        # Use edit_session for proper change tracking and notification
+        with self.edit_session():
             # Update existing skeleton rows from new data
             for addr_key, new_row in new_rows.items():
                 if addr_key in self.all_rows:
@@ -528,27 +788,15 @@ class SharedAddressData:
                         "initial_value": new_row.initial_value,
                         "retentive": new_row.retentive,
                     }
-                    if skeleton_row.update_from_db(db_data):
-                        any_changes = True
+                    skeleton_row.update_from_db(db_data)
                     # Mark as existing in MDB
-                    if not skeleton_row.exists_in_mdb:
-                        skeleton_row.exists_in_mdb = True
-                        any_changes = True
+                    skeleton_row.exists_in_mdb = True
 
             # Reset rows no longer in DB (if not dirty)
             for addr_key, skeleton_row in self.all_rows.items():
                 if addr_key not in new_rows and skeleton_row.exists_in_mdb:
                     if not skeleton_row.is_dirty:
                         self._reset_skeleton_row(skeleton_row)
-                        any_changes = True
-
-        except Exception:
-            # Load error, skip this reload
-            return
-
-        if any_changes:
-            self._rebuild_nickname_index()
-            self.notify_data_changed()
 
     def _check_file_modified(self) -> None:
         """Check if the data file has been modified and reload if so."""
@@ -664,9 +912,8 @@ class SharedAddressData:
                 self._nickname_lower_to_addrs[new_lower] = set()
             self._nickname_lower_to_addrs[new_lower].add(addr_key)
 
-        # Update the nickname in all_rows if it exists
-        if addr_key in self.all_rows:
-            self.all_rows[addr_key].nickname = new_nickname
+        # Note: We don't set row.nickname here - the caller already did that
+        # within an edit_session. This method only updates the reverse indices.
 
     def save_all_changes(self) -> int:
         """Save changes to data source.
@@ -697,22 +944,20 @@ class SharedAddressData:
         # (MDB saves only dirty rows, CSV rewrites all rows with content)
         count = self._data_source.save_changes(list(self.all_rows.values()))
 
-        # Mark dirty rows as saved
+        # Mark dirty rows as saved (sets original_* fields, which are unlocked)
         for row in dirty_rows:
             row.mark_saved()
 
-        # Reset fully-deleted rows to skeleton state (don't delete from skeleton)
-        for row in rows_to_reset:
-            self._reset_skeleton_row(row)
+        # Reset fully-deleted rows to skeleton state using edit_session
+        if rows_to_reset:
+            with self.edit_session():
+                for row in rows_to_reset:
+                    self._reset_skeleton_row(row)
 
         # Update modified time to prevent immediate reload
         if self._file_path and os.path.exists(self._file_path):
             self._last_mtime = os.path.getmtime(self._file_path)
 
-        # Rebuild nickname index
-        self._rebuild_nickname_index()
-
-        self.notify_data_changed()
         return count
 
     def discard_all_changes(self) -> None:
@@ -721,15 +966,11 @@ class SharedAddressData:
         With skeleton architecture, we just iterate over all_rows and
         call discard() on dirty rows. Much faster than DB reload.
         """
-        # Reset all dirty skeleton rows in-place
-        for row in self.all_rows.values():
-            if row.is_dirty:
-                row.discard()
-
-        # Rebuild nickname index since nicknames may have reverted
-        self._rebuild_nickname_index()
-
-        self.notify_data_changed()
+        # Use edit_session for proper change tracking and notification
+        with self.edit_session():
+            for row in self.all_rows.values():
+                if row.is_dirty:
+                    row.discard()
 
     def has_unsaved_changes(self) -> bool:
         """Check if any loaded type has unsaved changes."""
