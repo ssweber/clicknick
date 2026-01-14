@@ -240,27 +240,31 @@ class ImportCsvDialog(tk.Toplevel):
         if not self.csv_path or not self.all_blocks:
             return
 
-        # Get checked index checkboxes
-        checked_indices = self.sheet.get_index_checkboxes()
-
         # Get selected blocks and their options
         selected_blocks = []
         import_options_per_block = {}
 
-        for row in range(len(self.all_blocks)):
-            # Check if this row's index checkbox is checked
-            if row not in checked_indices or not checked_indices[row]:
+        # Use yield_sheet_rows to get boolean checkbox states
+        # get_index=True: Includes the index checkbox data
+        # get_index_displayed=False: Returns the boolean True/False instead of text
+        for row_idx, row_data in enumerate(self.sheet.yield_sheet_rows(get_index=True, get_index_displayed=False)):
+            
+            is_checked = row_data[0]  # This is the boolean state of the index checkbox
+            
+            if not is_checked:
                 continue
 
-            block = self.all_blocks[row]
+            # Because the index is the first element, the table columns are shifted by 1
+            # Example: row_data[1] is the first data column (Block Name)
+            block = self.all_blocks[row_idx]
             selected_blocks.append(block)
 
-            # Get merge options for this block
+            # Retrieve merge options using the +1 offset
             import_options_per_block[block.name] = {
-                "nickname": self.sheet.get_cell_data(row, COL_NICKNAME),
-                "comment": self.sheet.get_cell_data(row, COL_COMMENT),
-                "init_val": self.sheet.get_cell_data(row, COL_INIT_VAL),
-                "retentive": self.sheet.get_cell_data(row, COL_RETENTIVE),
+                "nickname": row_data[COL_NICKNAME + 1],
+                "comment": row_data[COL_COMMENT + 1],
+                "init_val": row_data[COL_INIT_VAL + 1],
+                "retentive": row_data[COL_RETENTIVE + 1],
             }
 
         if not selected_blocks:
@@ -271,7 +275,7 @@ class ImportCsvDialog(tk.Toplevel):
             )
             return
 
-        # Store result (now includes per-block options)
+        # Store result
         self.result = (self.csv_path, selected_blocks, import_options_per_block)
         self.destroy()
 
