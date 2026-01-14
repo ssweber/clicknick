@@ -32,9 +32,6 @@ if TYPE_CHECKING:
 # Number of data columns in the sheet
 NUM_COLUMNS = 5
 
-# Memory types that always get alternating color (second type in interleaved pairs)
-ALTERNATING_TYPES = {"TD", "CTD"}
-
 
 class AddressRowStyler:
     """Encapsulates ALL styling logic for AddressPanel sheets.
@@ -49,12 +46,11 @@ class AddressRowStyler:
     Usage:
         styler = AddressRowStyler(
             sheet=self.sheet,
-            rows=self.rows,
+            get_rows=lambda: self.rows,
             get_displayed_rows=lambda: self._displayed_rows,
-            get_block_colors=self._get_block_colors_for_rows,
         )
         styler.apply_all_styling()  # Full refresh
-        styler.update_row_styling(data_idx)  # Single row update
+        styler.update_rows_styling({data_idx})  # Single row update
     """
 
     def __init__(
@@ -62,7 +58,6 @@ class AddressRowStyler:
         sheet: Sheet,
         get_rows: Callable[[], list[AddressRow]],
         get_displayed_rows: Callable[[], list[int]],
-        get_block_colors: Callable[[], dict[int, str]] | None = None,
     ):
         """Initialize the styler.
 
@@ -70,12 +65,10 @@ class AddressRowStyler:
             sheet: The tksheet Sheet instance
             get_rows: Callable returning the current list of AddressRow
             get_displayed_rows: Callable returning current displayed row indices
-            get_block_colors: Optional callable returning row_idx -> color map
         """
         self.sheet = sheet
         self._get_rows = get_rows
         self._get_displayed_rows = get_displayed_rows
-        self._get_block_colors = get_block_colors
 
         # Note cache to prevent redundant tksheet calls
         # Maps (row, col) -> CellNote
@@ -87,15 +80,13 @@ class AddressRowStyler:
     def _apply_row_highlights(
         self,
         data_idx: int,
-        block_colors: dict[int, str] | None = None,
     ) -> None:
         """Apply highlights for a single row."""
         row = self._get_rows()[data_idx]
-        block_colors = block_colors or {}
 
-        # 1. Block color on row index
-        if data_idx in block_colors:
-            hex_color = get_block_color_hex(block_colors[data_idx])
+        # 1. Block color on row index (precomputed by BlockService)
+        if row.block_color:
+            hex_color = get_block_color_hex(row.block_color)
             if hex_color:
                 self.sheet.highlight_cells(
                     row=data_idx,
@@ -103,14 +94,9 @@ class AddressRowStyler:
                     canvas="row_index",
                 )
 
-        # 2. Combined type alternation (light blue for TD/CTD rows)
-        # In unified mode or combined panels, TD and CTD get alternating color
-        apply_alternating = False
-        if row.memory_type in ALTERNATING_TYPES:
-            # Unified mode - TD and CTD always get alternating color
-            apply_alternating = True
-
-        if apply_alternating:
+        # 2. Interleaved secondary type alternation (light blue for TD/CTD rows)
+        # In unified view, TD and CTD get alternating color for visual distinction
+        if row.is_interleaved_secondary:
             for col in range(NUM_COLUMNS):
                 self.sheet.highlight_cells(
                     row=data_idx,
@@ -191,10 +177,9 @@ class AddressRowStyler:
     def _apply_highlights(self) -> None:
         """Apply all highlight_cells calls for displayed rows."""
         displayed = self._get_displayed_rows()
-        block_colors = self._get_block_colors() if self._get_block_colors else {}
 
         for data_idx in displayed:
-            self._apply_row_highlights(data_idx, block_colors)
+            self._apply_row_highlights(data_idx)
 
     def _compute_target_notes(self) -> dict[tuple[int, int], CellNote]:
         """Compute what notes should exist for displayed rows.
@@ -351,13 +336,11 @@ class AddressRowStyler:
         Args:
             data_indices: Set of data row indices to update
         """
-        block_colors = self._get_block_colors() if self._get_block_colors else {}
-
         for data_idx in data_indices:
             # Clear existing highlights for this row
             self._clear_row_highlights(data_idx)
             # Re-apply highlights
-            self._apply_row_highlights(data_idx, block_colors)
+            self._apply_row_highlights(data_idx)
             # Update notes for this row
             self._update_row_notes(data_idx)
 
@@ -395,8 +378,7 @@ class AddressRowStyler:
             def clear_highlight() -> None:
                 self._clear_row_highlights(data_idx)
                 # Re-apply normal styling
-                block_colors = self._get_block_colors() if self._get_block_colors else {}
-                self._apply_row_highlights(data_idx, block_colors)
+                self._apply_row_highlights(data_idx)
                 self.sheet.set_refresh_timer()
                 # Remove from pending
                 if data_idx in self._pending_highlight_clears:

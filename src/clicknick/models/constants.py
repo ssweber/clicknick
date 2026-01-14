@@ -73,6 +73,19 @@ DATA_TYPE_DISPLAY: dict[int, str] = {
     DataType.HEX: "HEX",
     DataType.TXT: "TXT",
 }
+
+# Hint text for initial value fields by DataType
+DATA_TYPE_HINTS: dict[int, str] = {
+    DataType.BIT: "0 or 1",
+    DataType.INT: f"Range: {-32768} to {32767}",
+    DataType.INT2: f"Range: {-2147483648} to {2147483647}",
+    DataType.FLOAT: f"Range: {-3.4028235e38:.2e} to {3.4028235e38:.2e}",
+    DataType.HEX: "Hex value (e.g., FF or 0xFF)",
+    DataType.TXT: "Text string",
+}
+
+# Memory types that are exclusively BIT type (no combined types like T/TD)
+BIT_ONLY_TYPES: frozenset[str] = frozenset({"X", "Y", "C", "SC"})
 # DataType by memory type
 MEMORY_TYPE_TO_DATA_TYPE: dict[str, int] = {
     "X": DataType.BIT,

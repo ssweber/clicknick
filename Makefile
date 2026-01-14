@@ -15,7 +15,7 @@ lint:
 	uv run python devtools/lint.py
 
 test:
-	uv run pytest
+	uv run pytest --quiet --tb=short
 
 upgrade:
 	uv sync --upgrade

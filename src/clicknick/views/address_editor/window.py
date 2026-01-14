@@ -13,13 +13,14 @@ from typing import TYPE_CHECKING
 
 from ...data.data_source import CsvDataSource, MdbDataSource
 from ...data.shared_data import SharedAddressData
+from ...services import ImportService, RowService
 
 if TYPE_CHECKING:
     from ...models.address_row import AddressRow
 
 from ...models.address_row import get_addr_key
 from ...models.blocktag import (
-    PAIRED_BLOCK_TYPES,
+    format_block_tag,
     parse_block_tag,
     strip_block_tag,
     validate_block_span,
@@ -61,42 +62,6 @@ class AddressEditorWindow(tk.Toplevel):
         if self._nav_window is not None:
             self._nav_window.refresh(self.shared_data.all_rows)
 
-    def _do_revalidation(self) -> None:
-        """Perform the actual revalidation (called after debounce delay)."""
-        self._revalidate_timer = None
-
-        if not self._pending_revalidate:
-            return
-
-        self._pending_revalidate = False
-
-        # Revalidate all tab panels that weren't already validated
-        for tab_id, (panel, _state) in self._tabs.items():
-            if tab_id not in self._recently_validated_panels:
-                panel.revalidate()
-
-        # Clear the tracking set for next edit cycle
-        self._recently_validated_panels.clear()
-
-        self._update_status()
-
-        # Refresh outline if visible (live update, deferred until idle)
-        if self._nav_window is not None and self._nav_window.winfo_viewable():
-            self.after_idle(self._refresh_navigation)
-
-        # NOTE: We do NOT call notify_data_changed here.
-        # Other windows were already notified via _handle_nickname_changed.
-        # Calling it again would trigger redundant refresh_from_external calls.
-
-    def _schedule_revalidation(self) -> None:
-        """Schedule a debounced revalidation of all panels."""
-        # Cancel any existing timer
-        if self._revalidate_timer is not None:
-            self.after_cancel(self._revalidate_timer)
-
-        # Schedule revalidation after 50ms idle
-        self._revalidate_timer = self.after(50, self._do_revalidation)
-
     # --- Tab Management Methods ---
 
     def _get_current_panel(self) -> AddressPanel | None:
@@ -112,56 +77,6 @@ class AddressEditorWindow(tk.Toplevel):
         except Exception:
             pass
         return None
-
-    def _handle_nickname_changed(
-        self, memory_type: str, addr_key: int, old_nick: str, new_nick: str
-    ) -> None:
-        """Handle nickname change from any panel.
-
-        Updates the shared nickname registry immediately. Tab refresh and
-        window notification happen via _handle_data_changed which is called
-        right after this by the panel.
-
-        Uses debouncing to batch rapid changes (like Replace All) and avoid
-        expensive revalidation for each individual cell change.
-
-        Args:
-            memory_type: The memory type of the panel that triggered the change
-            addr_key: The address key that changed
-            old_nick: The old nickname value
-            new_nick: The new nickname value
-        """
-        # Update shared data registry immediately (updates skeleton row + nickname index)
-        self.shared_data.update_nickname(addr_key, old_nick, new_nick)
-
-        # Track this panel as already validated (in _on_sheet_modified)
-        self._recently_validated_panels.add(memory_type)
-
-        # Schedule debounced revalidation
-        self._pending_revalidate = True
-        self._schedule_revalidation()
-
-    def _handle_data_changed(self) -> None:
-        """Handle any data change from any panel (comment, init value, retentive).
-
-        With skeleton architecture, all tabs share the same row objects.
-        When one tab edits a row, we need to refresh displays in other tabs
-        of THIS window (not just other windows).
-
-        Performance optimization: instead of immediately refreshing all tabs,
-        mark non-visible tabs for deferred refresh. They'll refresh when selected.
-        """
-        # Mark all OTHER tabs for deferred refresh instead of refreshing immediately
-        current_panel = self._get_current_panel()
-        for _tab_id, (panel, _state) in self._tabs.items():
-            if panel is not current_panel:
-                # Defer refresh until tab is selected (performance optimization)
-                panel.deferred_refresh = True
-
-        self._update_status()
-
-        # Notify other windows (pass self so they refresh too)
-        self.shared_data.notify_data_changed(sender=self)
 
     def _get_selected_row_indices(self) -> list[int]:
         """Get selected row indices from the current panel.
@@ -218,13 +133,7 @@ class AddressEditorWindow(tk.Toplevel):
 
         Returns:
             Tuple of (can_fill, list of display row indices to fill, reason if can't fill).
-            can_fill is True if:
-            - Multiple rows are selected
-            - First row has a non-empty nickname containing a number
-            - All other rows have empty nicknames
         """
-        import re
-
         selected = self._get_selected_row_indices()
         if len(selected) < 2:
             return False, [], "Select multiple rows"
@@ -233,35 +142,21 @@ class AddressEditorWindow(tk.Toplevel):
         if not panel:
             return False, [], ""
 
-        # Get the first row's nickname
-        first_display_idx = selected[0]
-        if first_display_idx >= len(panel._displayed_rows):
-            return False, [], ""
-
-        first_row_idx = panel._displayed_rows[first_display_idx]
-        first_row = panel.rows[first_row_idx]
-        first_nickname = first_row.nickname
-
-        # First nickname must be non-empty
-        if not first_nickname:
-            return False, [], "First row must have a nickname"
-
-        # Check if nickname contains a number (rightmost will be incremented)
-        if not re.search(r"\d+", first_nickname):
-            return False, [], "First nickname must contain a number"
-
-        # Check that all other rows have empty nicknames
-        rows_to_fill = []
-        for display_idx in selected[1:]:
+        # Convert display indices to row objects
+        rows = []
+        for display_idx in selected:
             if display_idx >= len(panel._displayed_rows):
                 return False, [], ""
             row_idx = panel._displayed_rows[display_idx]
-            row = panel.rows[row_idx]
-            if row.nickname:  # Must be empty
-                return False, [], "Other selected rows must be empty"
-            rows_to_fill.append(display_idx)
+            rows.append(panel.rows[row_idx])
 
-        return True, rows_to_fill, ""
+        # Delegate business logic to service
+        can_fill, reason = RowService.can_fill_down(rows)
+        if not can_fill:
+            return False, [], reason
+
+        # Return display indices of rows to fill (excludes first row)
+        return True, selected[1:], ""
 
     def _update_fill_down_button_state(self) -> None:
         """Update the Fill Down button state."""
@@ -273,12 +168,7 @@ class AddressEditorWindow(tk.Toplevel):
 
         Returns:
             Tuple of (can_clone, reason if can't clone).
-            can_clone is True if:
-            - At least one row is selected
-            - At least one selected row has a nickname with a number
         """
-        import re
-
         selected = self._get_selected_row_indices()
         if not selected:
             return False, "Select rows to clone"
@@ -287,63 +177,21 @@ class AddressEditorWindow(tk.Toplevel):
         if not panel:
             return False, ""
 
-        # Check if at least one selected row has a nickname with a number
-        has_number = False
+        # Convert display indices to row objects
+        rows = []
         for display_idx in selected:
             if display_idx >= len(panel._displayed_rows):
                 continue
             row_idx = panel._displayed_rows[display_idx]
-            row = panel.rows[row_idx]
-            if row.nickname and re.search(r"\d+", row.nickname):
-                has_number = True
-                break
+            rows.append(panel.rows[row_idx])
 
-        if not has_number:
-            return False, "At least one nickname must contain a number"
-
-        return True, ""
+        # Delegate business logic to service
+        return RowService.can_clone_structure(rows)
 
     def _update_clone_button_state(self) -> None:
         """Update the Clone Structure button state."""
         can_clone, _ = self._can_clone_structure()
         self.clone_btn.configure(state="normal" if can_clone else "disabled")
-
-    def _increment_nickname_suffix(
-        self, nickname: str, increment: int
-    ) -> tuple[str, int | None, int | None]:
-        """Increment the rightmost number in a nickname.
-
-        E.g., "Building1_Alm1" with increment=1 -> ("Building1_Alm2", 1, 2)
-              "Building1_Alm" with increment=1 -> ("Building2_Alm", 1, 2)
-              "Tank_Level10" with increment=2 -> ("Tank_Level12", 10, 12)
-              "NoNumber" with increment=1 -> ("NoNumber", None, None)
-
-        Args:
-            nickname: The base nickname to increment
-            increment: How much to add to the number
-
-        Returns:
-            Tuple of (new_nickname, original_number, new_number).
-            Numbers are None if no number was found in the nickname.
-        """
-        import re
-
-        # Find all numbers in the nickname, use the rightmost one
-        matches = list(re.finditer(r"\d+", nickname))
-        if not matches:
-            return nickname, None, None
-
-        match = matches[-1]  # Rightmost number
-        num_str = match.group()
-        num = int(num_str)
-        new_num = num + increment
-
-        # Preserve leading zeros if any
-        new_num_str = str(new_num).zfill(len(num_str))
-
-        # Replace the rightmost number
-        new_nickname = nickname[: match.start()] + new_num_str + nickname[match.end() :]
-        return new_nickname, num, new_num
 
     def _on_clone_structure_clicked(self) -> None:
         """Handle Clone Structure button click."""
@@ -360,7 +208,7 @@ class AddressEditorWindow(tk.Toplevel):
         selected = self._get_selected_row_indices()
         block_size = len(selected)
 
-        # Ask for number of clones
+        # Ask for number of clones (UI concern)
         num_clones = simpledialog.askinteger(
             "Clone Structure",
             f"How many clones of the {block_size}-row structure?",
@@ -368,18 +216,14 @@ class AddressEditorWindow(tk.Toplevel):
             minvalue=1,
             maxvalue=100,
         )
-
         if not num_clones:
             return
 
-        # Get the last selected display index
+        # Validate destination rows (UI concern)
         last_display_idx = selected[-1]
-
-        # Check that destination rows exist and are empty
         dest_start = last_display_idx + 1
         dest_count = block_size * num_clones
 
-        # Check if we have enough rows
         if dest_start + dest_count > len(panel._displayed_rows):
             messagebox.showerror(
                 "Clone Error",
@@ -389,151 +233,56 @@ class AddressEditorWindow(tk.Toplevel):
             )
             return
 
-        # Get memory types from selected rows to validate against
-        selected_memory_types = set()
-        for display_idx in selected:
-            row_idx = panel._displayed_rows[display_idx]
-            row = panel.rows[row_idx]
-            selected_memory_types.add(row.memory_type)
+        # Get template and destination rows for validation
+        template_rows = [panel.rows[panel._displayed_rows[idx]] for idx in selected]
+        destination_rows = [
+            panel.rows[panel._displayed_rows[dest_start + i]] for i in range(dest_count)
+        ]
 
-        # Check that all destination rows are empty and same memory type
-        for i in range(dest_count):
-            dest_display_idx = dest_start + i
-            row_idx = panel._displayed_rows[dest_display_idx]
-            row = panel.rows[row_idx]
-            if row.nickname:
-                messagebox.showerror(
-                    "Clone Error",
-                    f"Destination row {row.display_address} is not empty. "
-                    "All destination rows must be empty.",
-                    parent=self,
-                )
-                return
-            if row.memory_type not in selected_memory_types:
-                messagebox.showerror(
-                    "Clone Error",
-                    f"Destination row {row.display_address} is a different memory type "
-                    f"({row.memory_type}). Clone cannot cross memory type boundaries.",
-                    parent=self,
-                )
-                return
+        # Validate destination rows via service
+        is_valid, error_msg = RowService.validate_clone_destination(template_rows, destination_rows)
+        if not is_valid:
+            messagebox.showerror("Clone Error", error_msg, parent=self)
+            return
 
-        # Build the template from selected rows (all attributes)
-        template = []
-        for display_idx in selected:
-            row_idx = panel._displayed_rows[display_idx]
-            row = panel.rows[row_idx]
-            template.append(
-                {
-                    "nickname": row.nickname,
-                    "comment": row.comment,
-                    "initial_value": row.initial_value,
-                    "retentive": row.retentive,
-                    "data_type": row.data_type,
-                }
-            )
-
-        # Check if we should ask about incrementing initial values
-        increment_initial_value = None
-        orig_num = None
+        # Ask user about incrementing initial values (UI concern)
         increment_initial_value = False
-        for tmpl in template:
-            if tmpl["nickname"] and tmpl["initial_value"] and tmpl["data_type"] != DataType.BIT:
-                _, orig_num, _ = self._increment_nickname_suffix(tmpl["nickname"], 0)
+        for display_idx in selected:
+            row_idx = panel._displayed_rows[display_idx]
+            row = panel.rows[row_idx]
+            if row.nickname and row.initial_value and row.data_type != DataType.BIT:
+                _, orig_num, _ = RowService.increment_nickname_suffix(row.nickname, 0)
                 if orig_num is not None:
                     try:
-                        init_val = int(tmpl["initial_value"])
+                        init_val = int(row.initial_value)
                         if init_val == orig_num:
-                            # At least one initial value matches its array number - ask user
                             result = messagebox.askyesno(
                                 "Increment Values?",
                                 f"Also increment initial values?\n\n"
-                                f"Example: {tmpl['nickname']} ({init_val}) → ({init_val + 1})",
+                                f"Example: {row.nickname} ({init_val}) → ({init_val + 1})",
                                 parent=self,
                             )
                             increment_initial_value = result
-                            break  # Only ask once
+                            break
                     except ValueError:
-                        pass  # Non-integer initial value, skip
+                        pass
 
-        # Perform the cloning
-        for clone_num in range(1, num_clones + 1):
-            for template_idx, tmpl in enumerate(template):
-                dest_display_idx = dest_start + (clone_num - 1) * block_size + template_idx
-                row_idx = panel._displayed_rows[dest_display_idx]
-                row = panel.rows[row_idx]
+        # Get template and destination keys
+        template_keys = [panel.rows[panel._displayed_rows[idx]].addr_key for idx in selected]
+        destination_keys = [
+            panel.rows[panel._displayed_rows[dest_start + i]].addr_key for i in range(dest_count)
+        ]
 
-                base_nickname = tmpl["nickname"]
-                if not base_nickname:
-                    # Empty row in template - still copy comment/initial_value/retentive
-                    if tmpl["comment"]:
-                        row.comment = tmpl["comment"]
-                    if tmpl["initial_value"]:
-                        row.initial_value = tmpl["initial_value"]
-                    # Always copy retentive (it's a boolean, so check is not None)
-                    row.retentive = tmpl["retentive"]
-                    panel._update_row_display(row_idx)
-                    continue
-
-                # Increment the rightmost number in nickname
-                new_nickname, orig_num, new_num = self._increment_nickname_suffix(
-                    base_nickname, clone_num
-                )
-
-                # Update the row nickname
-                old_nickname = row.nickname
-                row.nickname = new_nickname
-
-                # Copy comment
-                if tmpl["comment"]:
-                    row.comment = tmpl["comment"]
-
-                # Copy/increment initial_value based on user's choice
-                if (
-                    tmpl["initial_value"]
-                    and orig_num is not None
-                    and increment_initial_value is True
-                ):
-                    # User chose to increment - check if it matches
-                    try:
-                        init_val = int(tmpl["initial_value"])
-                        if init_val == orig_num:
-                            row.initial_value = str(new_num)
-                        else:
-                            row.initial_value = tmpl["initial_value"]
-                    except ValueError:
-                        row.initial_value = tmpl["initial_value"]
-                elif tmpl["initial_value"]:
-                    # Just copy as-is (user chose not to increment or no match)
-                    row.initial_value = tmpl["initial_value"]
-
-                # Always copy retentive (it's a boolean)
-                row.retentive = tmpl["retentive"]
-
-                # Update global nickname registry
-                panel._all_nicknames[row.addr_key] = new_nickname
-
-                # Update display
-                panel._update_row_display(row_idx)
-
-                # Notify parent of nickname change
-                if panel.on_nickname_changed:
-                    panel.on_nickname_changed(
-                        panel.memory_type, row.addr_key, old_nickname, new_nickname
-                    )
-
-        # Validate all affected rows
-        for clone_num in range(1, num_clones + 1):
-            for template_idx in range(block_size):
-                dest_display_idx = dest_start + (clone_num - 1) * block_size + template_idx
-                row_idx = panel._displayed_rows[dest_display_idx]
-                panel.rows[row_idx].validate(panel._all_nicknames, panel.is_duplicate_fn)
-
-        # Refresh display
-        panel._refresh_display()
-
-        if panel.on_data_changed:
-            panel.on_data_changed()
+        # Execute clone via service within edit_session
+        # edit_session handles validation, notification, and display refresh automatically
+        with self.shared_data.edit_session():
+            RowService.clone_structure(
+                self.shared_data,
+                template_keys,
+                destination_keys,
+                num_clones,
+                increment_initial_value,
+            )
 
         # Update status
         self._update_status()
@@ -549,94 +298,42 @@ class AddressEditorWindow(tk.Toplevel):
         if not panel:
             return
 
+        # Get source row
         selected = self._get_selected_row_indices()
         first_display_idx = selected[0]
         first_row_idx = panel._displayed_rows[first_display_idx]
         first_row = panel.rows[first_row_idx]
-        base_nickname = first_row.nickname
 
-        # Check if we should ask about incrementing initial value
-        increment_initial_value = None
-        orig_num = None
+        # Ask user about incrementing initial value (UI concern)
         increment_initial_value = False
         if first_row.initial_value and first_row.data_type != DataType.BIT:
-            # Get the number from the nickname to compare with initial value
-            _, orig_num, _ = self._increment_nickname_suffix(base_nickname, 0)
+            _, orig_num, _ = RowService.increment_nickname_suffix(first_row.nickname, 0)
             if orig_num is not None:
                 try:
                     init_val = int(first_row.initial_value)
                     if init_val == orig_num:
-                        # Initial value matches the array number - ask user
                         result = messagebox.askyesno(
                             "Increment Initial Value?",
                             f"Also increment initial value?\n\n"
-                            f"Example: {base_nickname} ({init_val}) → ({init_val + 1})",
+                            f"Example: {first_row.nickname} ({init_val}) → ({init_val + 1})",
                             parent=self,
                         )
                         increment_initial_value = result
                 except ValueError:
-                    pass  # Non-integer initial value, don't ask
+                    pass
 
-        # Fill each row with incremented nickname, comment, initial_value, and retentive
-        for i, display_idx in enumerate(rows_to_fill, start=1):
-            row_idx = panel._displayed_rows[display_idx]
-            row = panel.rows[row_idx]
+        # Get target keys (rows_to_fill already excludes the source row)
+        target_keys = [panel.rows[panel._displayed_rows[idx]].addr_key for idx in rows_to_fill]
 
-            new_nickname, orig_num, new_num = self._increment_nickname_suffix(base_nickname, i)
-
-            # Update the row nickname
-            old_nickname = row.nickname
-            row.nickname = new_nickname
-
-            # Copy comment from first row
-            if first_row.comment:
-                row.comment = first_row.comment
-
-            # Copy/increment initial_value based on user's choice
-            if first_row.initial_value and orig_num is not None and increment_initial_value is True:
-                # User chose to increment - check if it matches
-                try:
-                    init_val = int(first_row.initial_value)
-                    if init_val == orig_num:
-                        row.initial_value = str(new_num)
-                    else:
-                        row.initial_value = first_row.initial_value
-                except ValueError:
-                    row.initial_value = first_row.initial_value
-            elif first_row.initial_value:
-                # Just copy as-is (user chose not to increment or no match)
-                row.initial_value = first_row.initial_value
-
-            # Always copy retentive (it's a boolean)
-            row.retentive = first_row.retentive
-
-            # Update global nickname registry
-            if new_nickname:
-                panel._all_nicknames[row.addr_key] = new_nickname
-
-            # Update display
-            panel._update_row_display(row_idx)
-
-            # Notify parent of nickname change
-            if panel.on_nickname_changed:
-                panel.on_nickname_changed(
-                    panel.memory_type, row.addr_key, old_nickname, new_nickname
-                )
-
-        # Validate affected rows
-        if panel.on_validate_affected:
-            panel.on_validate_affected("", base_nickname)
-
-        # Validate all filled rows
-        for display_idx in rows_to_fill:
-            row_idx = panel._displayed_rows[display_idx]
-            panel.rows[row_idx].validate(panel._all_nicknames, panel.is_duplicate_fn)
-
-        # Refresh display
-        panel._refresh_display()
-
-        if panel.on_data_changed:
-            panel.on_data_changed()
+        # Execute fill down via service within edit_session
+        # edit_session handles validation, notification, and display refresh automatically
+        with self.shared_data.edit_session():
+            RowService.fill_down(
+                self.shared_data,
+                first_row.addr_key,
+                target_keys,
+                increment_initial_value,
+            )
 
         # Update button states
         self._update_fill_down_button_state()
@@ -715,10 +412,6 @@ class AddressEditorWindow(tk.Toplevel):
 
         try:
             count = self.shared_data.save_all_changes()
-
-            # Refresh all tab panels
-            for _tab_id, (panel, _state) in self._tabs.items():
-                panel._refresh_display()
 
             self.status_var.set(f"{action_verb.capitalize()} {count} changes")
             messagebox.showinfo(
@@ -840,90 +533,14 @@ class AddressEditorWindow(tk.Toplevel):
         csv_path, selected_blocks, import_options_per_block = dialog.result
 
         try:
-            # Apply merge to skeleton rows
-            updated_count = 0
+            # Apply merge via ImportService within edit_session
+            # edit_session handles validation and notification automatically
+            with self.shared_data.edit_session():
+                updated_count = ImportService.merge_blocks(
+                    self.shared_data, selected_blocks, import_options_per_block
+                )
 
-            for block in selected_blocks:
-                # Get merge options for this specific block
-                block_options = import_options_per_block.get(block.name, {})
-                nickname_mode = block_options.get("nickname", "Skip")
-                comment_mode = block_options.get("comment", "Skip")
-                init_val_mode = block_options.get("init_val", "Skip")
-                retentive_mode = block_options.get("retentive", "Skip")
-
-                # Process each row in this block
-                for csv_row in block.rows:
-                    addr_key = get_addr_key(csv_row.memory_type, csv_row.address)
-
-                    # Find skeleton row
-                    if addr_key not in self.shared_data.all_rows:
-                        continue
-
-                    skeleton_row = self.shared_data.all_rows[addr_key]
-
-                    # Apply nickname based on mode
-                    if nickname_mode == "Overwrite" and csv_row.nickname:
-                        old_nickname = skeleton_row.nickname
-                        skeleton_row.nickname = csv_row.nickname
-                        self.shared_data.update_nickname(addr_key, old_nickname, csv_row.nickname)
-                    elif (
-                        nickname_mode == "Merge" and csv_row.nickname and not skeleton_row.nickname
-                    ):
-                        # Only import if skeleton is empty
-                        old_nickname = skeleton_row.nickname
-                        skeleton_row.nickname = csv_row.nickname
-                        self.shared_data.update_nickname(addr_key, old_nickname, csv_row.nickname)
-
-                    # Apply comment based on mode
-                    if comment_mode == "Overwrite":
-                        skeleton_row.comment = csv_row.comment
-                    elif comment_mode == "Append":
-                        if skeleton_row.comment and csv_row.comment:
-                            skeleton_row.comment = f"{skeleton_row.comment} {csv_row.comment}"
-                        elif csv_row.comment:
-                            skeleton_row.comment = csv_row.comment
-                    elif comment_mode == "Block Tag":
-                        # Extract block tag from CSV, apply to skeleton (preserve other text)
-                        csv_block_tag = parse_block_tag(csv_row.comment)
-                        if csv_block_tag.name:
-                            # Strip existing block tag from skeleton
-                            skeleton_comment_no_tag = strip_block_tag(skeleton_row.comment)
-                            # Rebuild with CSV's block tag
-                            if csv_block_tag.tag_type == "open":
-                                new_tag = f"<{csv_block_tag.name}>"
-                            elif csv_block_tag.tag_type == "close":
-                                new_tag = f"</{csv_block_tag.name}>"
-                            elif csv_block_tag.tag_type == "self-closing":
-                                new_tag = f"<{csv_block_tag.name} />"
-                            else:
-                                new_tag = ""
-
-                            if new_tag:
-                                if skeleton_comment_no_tag:
-                                    skeleton_row.comment = f"{skeleton_comment_no_tag} {new_tag}"
-                                else:
-                                    skeleton_row.comment = new_tag
-
-                    # Apply initial value based on mode
-                    if init_val_mode == "Overwrite" and csv_row.initial_value:
-                        skeleton_row.initial_value = csv_row.initial_value
-                    elif (
-                        init_val_mode == "Merge"
-                        and csv_row.initial_value
-                        and not skeleton_row.initial_value
-                    ):
-                        skeleton_row.initial_value = csv_row.initial_value
-
-                    # Apply retentive based on mode
-                    if retentive_mode == "Overwrite":
-                        skeleton_row.retentive = csv_row.retentive
-                    elif retentive_mode == "Merge" and not skeleton_row.retentive:
-                        skeleton_row.retentive = csv_row.retentive
-
-                    updated_count += 1
-
-            # Notify data changed
-            self.shared_data.notify_data_changed()
+            # edit_session exited - validation and notification happened automatically
 
             self._update_status()
 
@@ -980,59 +597,6 @@ class AddressEditorWindow(tk.Toplevel):
         widget.bind("<Enter>", show_tooltip)
         widget.bind("<Leave>", hide_tooltip)
 
-    def _find_paired_row_idx(
-        self, panel: AddressPanel, row: AddressRow, row_idx: int
-    ) -> int | None:
-        """Find the index of the paired row for interleaved types (T+TD, CT+CTD).
-
-        For interleaved types, rows at the same address should share block tags.
-        This finds the partner row (e.g., TD1 for T1, or T1 for TD1).
-
-        Args:
-            panel: The panel containing the rows
-            row: The row to find a pair for
-            row_idx: Index of the row in panel.rows
-
-        Returns:
-            Index of the paired row, or None if no pair exists
-        """
-        # Check if this is a paired type
-        paired_type = None
-        for pair in PAIRED_BLOCK_TYPES:
-            if row.memory_type in pair:
-                # Find the other type in the pair
-                for t in pair:
-                    if t != row.memory_type:
-                        paired_type = t
-                        break
-                break
-
-        if not paired_type:
-            return None
-
-        # Search nearby for the paired row (interleaved, so should be adjacent)
-        # Check the row before and after
-        for offset in [-1, 1]:
-            check_idx = row_idx + offset
-            if 0 <= check_idx < len(panel.rows):
-                check_row = panel.rows[check_idx]
-                if check_row.memory_type == paired_type and check_row.address == row.address:
-                    return check_idx
-
-        return None
-
-    def _add_tag_to_row(self, row: AddressRow, tag: str) -> None:
-        """Add a block tag to a row's comment.
-
-        Args:
-            row: The row to modify
-            tag: The tag to add
-        """
-        if row.comment:
-            row.comment = f"{row.comment} {tag}"
-        else:
-            row.comment = tag
-
     def _on_add_block_clicked(self) -> None:
         """Handle Add Block button click."""
         selected_display_rows = self._get_selected_row_indices()
@@ -1084,72 +648,34 @@ class AddressEditorWindow(tk.Toplevel):
         first_row = panel.rows[first_row_idx]
         last_row = panel.rows[last_row_idx]
 
-        # Format tags with optional bg attribute
-        if color:
-            bg_attr = f' bg="{color}"'
-        else:
-            bg_attr = ""
+        # Helper to append tag to comment
+        def add_tag(row: AddressRow, tag: str) -> None:
+            row.comment = f"{row.comment} {tag}" if row.comment else tag
 
-        # Track all rows that need display updates
-        rows_to_update = set()
+        # Modify comments within edit_session
+        # edit_session automatically handles:
+        # - Interleaved pair sync (T1→TD1) via RowDependencyService
+        # - Validation, block colors, observer notification
+        with self.shared_data.edit_session():
+            if first_row_idx == last_row_idx:
+                # Single row - self-closing tag
+                tag = format_block_tag(block_name, "self-closing", color)
+                add_tag(first_row, tag)
+            else:
+                # Range - opening and closing tags
+                add_tag(first_row, format_block_tag(block_name, "open", color))
+                add_tag(last_row, format_block_tag(block_name, "close"))
 
-        if first_row_idx == last_row_idx:
-            # Single row - self-closing tag
-            tag = f"<{block_name}{bg_attr} />"
-            self._add_tag_to_row(first_row, tag)
-            rows_to_update.add(first_row_idx)
-
-            # Also add to paired row if interleaved type
-            paired_idx = self._find_paired_row_idx(panel, first_row, first_row_idx)
-            if paired_idx is not None:
-                self._add_tag_to_row(panel.rows[paired_idx], tag)
-                rows_to_update.add(paired_idx)
-        else:
-            # Range - opening and closing tags
-            open_tag = f"<{block_name}{bg_attr}>"
-            close_tag = f"</{block_name}>"
-
-            # Add opening tag to first row
-            self._add_tag_to_row(first_row, open_tag)
-            rows_to_update.add(first_row_idx)
-
-            # Also add opening tag to paired row at start address
-            first_paired_idx = self._find_paired_row_idx(panel, first_row, first_row_idx)
-            if first_paired_idx is not None:
-                self._add_tag_to_row(panel.rows[first_paired_idx], open_tag)
-                rows_to_update.add(first_paired_idx)
-
-            # Add closing tag to last row
-            self._add_tag_to_row(last_row, close_tag)
-            rows_to_update.add(last_row_idx)
-
-            # Also add closing tag to paired row at end address
-            last_paired_idx = self._find_paired_row_idx(panel, last_row, last_row_idx)
-            if last_paired_idx is not None:
-                self._add_tag_to_row(panel.rows[last_paired_idx], close_tag)
-                rows_to_update.add(last_paired_idx)
-
-        # Update the sheet's cell data for all modified rows
-        for row_idx in rows_to_update:
-            panel._update_row_display(row_idx)
-
-        # Invalidate block colors cache and refresh styling
-        panel._invalidate_block_colors_cache()
-        panel._refresh_display()
-
-        # Notify data changed
-        if panel.on_data_changed:
-            panel.on_data_changed()
-
-        # Update status
         self._update_status()
 
     def _on_remove_block_clicked(self) -> None:
         """Handle Remove Block button click.
 
         Removes the block tag from the selected row's comment.
-        If it's an opening tag, also removes the corresponding closing tag.
-        For interleaved types (T+TD, CT+CTD), also removes from paired rows.
+        edit_session automatically handles:
+        - Paired tag sync (removing closing tag when opening is removed)
+        - Interleaved pair sync (T1→TD1) via RowDependencyService
+        - Validation, block colors, observer notification
         """
         selected_display_rows = self._get_selected_row_indices()
         if not selected_display_rows:
@@ -1171,62 +697,11 @@ class AddressEditorWindow(tk.Toplevel):
         if block_tag.tag_type not in ("open", "self-closing"):
             return
 
-        block_name = block_tag.name
+        # Remove the tag - edit_session handles paired tag and interleaved sync
+        with self.shared_data.edit_session():
+            first_row.comment = strip_block_tag(first_row.comment)
 
-        # Track all rows that need display updates
-        rows_to_update = set()
-
-        # Remove the tag from the first row, keep remaining text
-        first_row.comment = strip_block_tag(first_row.comment)
-        rows_to_update.add(first_row_idx)
-
-        # Also remove from paired row at start address
-        first_paired_idx = self._find_paired_row_idx(panel, first_row, first_row_idx)
-        if first_paired_idx is not None:
-            paired_row = panel.rows[first_paired_idx]
-            paired_tag = parse_block_tag(paired_row.comment)
-            if paired_tag.name == block_name:
-                paired_row.comment = strip_block_tag(paired_row.comment)
-                rows_to_update.add(first_paired_idx)
-
-        # If it's an opening tag, find and remove the closing tag
-        if block_tag.tag_type == "open" and block_name:
-            # Search forward through rows for the matching closing tag
-            for search_idx in range(first_row_idx + 1, len(panel.rows)):
-                search_row = panel.rows[search_idx]
-                search_tag = parse_block_tag(search_row.comment)
-
-                if search_tag.tag_type == "close" and search_tag.name == block_name:
-                    # Found the matching closing tag - remove it
-                    search_row.comment = strip_block_tag(search_row.comment)
-                    rows_to_update.add(search_idx)
-
-                    # Also remove from paired row at end address
-                    end_paired_idx = self._find_paired_row_idx(panel, search_row, search_idx)
-                    if end_paired_idx is not None:
-                        end_paired_row = panel.rows[end_paired_idx]
-                        end_paired_tag = parse_block_tag(end_paired_row.comment)
-                        if end_paired_tag.name == block_name:
-                            end_paired_row.comment = strip_block_tag(end_paired_row.comment)
-                            rows_to_update.add(end_paired_idx)
-                    break
-
-        # Update the sheet's cell data for all modified rows
-        for row_idx in rows_to_update:
-            panel._update_row_display(row_idx)
-
-        # Invalidate block colors cache and refresh styling
-        panel._invalidate_block_colors_cache()
-        panel._refresh_display()
-
-        # Notify data changed
-        if panel.on_data_changed:
-            panel.on_data_changed()
-
-        # Update button state (will switch back to "Add Block")
         self._update_add_block_button_state()
-
-        # Update status
         self._update_status()
 
     def _on_block_button_clicked(self) -> None:
@@ -1447,10 +922,9 @@ class AddressEditorWindow(tk.Toplevel):
             # Create unified panel
             panel = AddressPanel(
                 self.notebook,
+                self.shared_data,
                 memory_type="unified",  # Special type for unified view
                 combined_types=None,
-                on_nickname_changed=self._handle_nickname_changed,
-                on_data_changed=self._handle_data_changed,
                 on_validate_affected=self.shared_data.validate_affected_rows,
                 is_duplicate_fn=self.shared_data.is_duplicate_nickname,
                 is_unified=True,
@@ -1458,7 +932,7 @@ class AddressEditorWindow(tk.Toplevel):
             )
 
             # Initialize panel with unified view data
-            panel.initialize_from_view(unified_view.rows, self.all_nicknames)
+            panel.initialize_from_view(unified_view.rows)
 
             # Store rows in shared_data for compatibility
             self.shared_data.set_rows("unified", unified_view.rows)
@@ -1545,11 +1019,6 @@ class AddressEditorWindow(tk.Toplevel):
         if panel:
             self._filter_enabled_var.set(panel.filter_enabled_var.get())
 
-            # Execute deferred refresh if needed (performance optimization)
-            if panel.deferred_refresh:
-                panel.refresh_from_external(skip_validation=True)
-                panel.deferred_refresh = False
-
     def _save_state_from_panel(self, panel: AddressPanel, state: TabState) -> None:
         """Save the current panel state to a TabState.
 
@@ -1599,7 +1068,9 @@ class AddressEditorWindow(tk.Toplevel):
         if panel:
             panel.toggle_filter_enabled(self._filter_enabled_var.get())
 
-    def _on_shared_data_changed(self, sender: object = None) -> None:
+    def _on_shared_data_changed(
+        self, sender: object = None, affected_indices: set[int] | None = None
+    ) -> None:
         """Handle notification that shared data has changed.
 
         With skeleton architecture, all panels share the same AddressRow objects.
@@ -1608,6 +1079,8 @@ class AddressEditorWindow(tk.Toplevel):
 
         Args:
             sender: The object that triggered the change (if any)
+            affected_indices: Set of addr_keys that changed. If None,
+                             indicates a full refresh is needed.
         """
         # Skip if this notification was triggered by our own change
         if sender is self:
@@ -1618,12 +1091,13 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Update all tab panels - skeleton rows are already updated in-place
         for _tab_id, (panel, _state) in self._tabs.items():
-            panel._all_nicknames = self.all_nicknames
-            # Simple refresh - skeleton rows are shared, just sync display
-            # If sender is another window, skip validation (they already did it)
-            # If sender is None (external MDB change), we need to validate
-            skip_validation = sender is not None
-            panel.refresh_from_external(skip_validation=skip_validation)
+            if affected_indices is not None:
+                # Targeted refresh - only update specific rows (validation done by edit_session)
+                panel.refresh_targeted(affected_indices)
+            else:
+                # Full refresh - needed for external MDB changes or unknown scope
+                # Validation is handled by edit_session
+                panel.refresh_from_external()
 
         # Refresh outline if visible (deferred until idle)
         if self._nav_window is not None and self._nav_window.winfo_viewable():
@@ -1922,15 +1396,7 @@ class AddressEditorWindow(tk.Toplevel):
         # Tab tracking: maps tab widget name to (panel, state) tuple
         self._tabs: dict[str, tuple[AddressPanel, TabState]] = {}
         self._tab_counter = 0  # For generating unique tab names
-        self.all_nicknames: dict[int, str] = {}
         self._nav_window: NavWindow | None = None
-
-        # Debounce timer for batching nickname changes (e.g., from Replace All)
-        self._revalidate_timer: str | None = None
-        self._pending_revalidate: bool = False
-        # Track panels that were already validated in _on_sheet_modified
-        # so _do_revalidation can skip them (they don't need re-validation)
-        self._recently_validated_panels: set[str] = set()
 
         self._create_menu()
         self._create_widgets()

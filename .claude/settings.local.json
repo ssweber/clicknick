@@ -5,7 +5,8 @@
       "Bash(make test:*)",
       "Bash(make lint:*)",
       "WebFetch(domain:ragardner.github.io)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(uv run pytest:*)"
     ]
   }
 }
