@@ -382,9 +382,9 @@ class AddressPanel(ttk.Frame):
 
         # Use edit_session for proper change tracking and notification
         with self._shared_data.edit_session():
-            for data_idx, _field_name in cells_to_discard:
+            for data_idx, field_name in cells_to_discard:
                 row = self.rows[data_idx]
-                row.discard()
+                row.discard_field(field_name)
 
         # edit_session exited - validation and notification happened automatically
 
