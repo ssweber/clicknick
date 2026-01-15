@@ -356,15 +356,14 @@ class AddressEditorWindow(tk.Toplevel):
 
     def _on_type_selected(self, type_name: str) -> None:
         """Handle type button click - scroll to section in current tab."""
-        # Scroll current panel to the selected memory type section
         panel = self._get_current_panel()
-        if panel and panel.is_unified:
+        if panel:
             panel.scroll_to_section(type_name)
 
     def _on_address_jump(self, type_name: str, address: int) -> None:
         """Handle address jump from submenu."""
         panel = self._get_current_panel()
-        if panel and panel.is_unified:
+        if panel:
             # For combined types (T/TD, CT/CTD), use the first sub-type
             if type_name in COMBINED_TYPES:
                 mem_type = COMBINED_TYPES[type_name][0]
@@ -726,7 +725,7 @@ class AddressEditorWindow(tk.Toplevel):
             return
 
         panel = self._get_current_panel()
-        if not panel or not panel.is_unified:
+        if not panel:
             return
 
         # Check if this is a single leaf (exact nickname match)
@@ -767,7 +766,7 @@ class AddressEditorWindow(tk.Toplevel):
             return
 
         panel = self._get_current_panel()
-        if not panel or not panel.is_unified:
+        if not panel:
             return
 
         # Jump to first address in the block
@@ -796,7 +795,7 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Get the current panel
         panel = self._get_current_panel()
-        if not panel or not panel.is_unified:
+        if not panel:
             messagebox.showerror(
                 "No Active Panel", "Please open a tab to perform the rename.", parent=self
             )
@@ -930,11 +929,8 @@ class AddressEditorWindow(tk.Toplevel):
             panel = AddressPanel(
                 self.notebook,
                 self.shared_data,
-                memory_type="unified",  # Special type for unified view
-                combined_types=None,
                 on_validate_affected=self.shared_data.validate_affected_rows,
                 is_duplicate_fn=self.shared_data.is_duplicate_nickname,
-                is_unified=True,
                 section_boundaries=unified_view.section_boundaries,
             )
 

@@ -1,4 +1,4 @@
-"""Single panel widget for editing addresses of one memory type.
+"""Unified panel widget for editing all PLC addresses.
 
 Uses tksheet for high-performance table display with virtual rows.
 """
@@ -14,9 +14,7 @@ from tksheet import num2alpha
 
 from ...models.address_row import AddressRow
 from ...models.constants import (
-    BIT_ONLY_TYPES,
     DATA_TYPE_HINTS,
-    MEMORY_TYPE_TO_DATA_TYPE,
     NON_EDITABLE_TYPES,
     DataType,
 )
@@ -46,12 +44,10 @@ if TYPE_CHECKING:
 
 
 class AddressPanel(ttk.Frame):
-    """Single panel for editing one memory type's addresses.
+    """Unified panel for editing all PLC addresses.
 
-    Displays ALL possible addresses for the memory type (virtual rows),
-    with existing nicknames from the database pre-filled.
-
-    Supports combined types (e.g., T+TD interleaved) via combined_types parameter.
+    Displays ALL possible addresses across all memory types in a single
+    scrollable view, with section boundaries for navigation.
     """
 
     # Column indices imported from panel_constants
@@ -60,26 +56,6 @@ class AddressPanel(ttk.Frame):
     COL_COMMENT = COL_COMMENT
     COL_INIT_VALUE = COL_INIT_VALUE
     COL_RETENTIVE = COL_RETENTIVE
-
-    def _is_bit_type_panel(self) -> bool:
-        """Check if this panel displays a single BIT-type memory (X, Y, C, SC).
-
-        Returns False for combined panels (T/TD, CT/CTD) since they mix BIT and non-BIT rows.
-        """
-        if self.combined_types and len(self.combined_types) > 1:
-            return False
-        return self.memory_type in BIT_ONLY_TYPES
-
-    def _get_init_value_hint(self, data_type: int) -> str:
-        """Get the hint text for initial value based on data type.
-
-        Args:
-            data_type: The data type code
-
-        Returns:
-            Hint string describing valid range/values
-        """
-        return DATA_TYPE_HINTS.get(data_type, "Enter initial value")
 
     def _toggle_init_ret_columns(self) -> None:
         """Toggle visibility of Init Value and Retentive columns."""
@@ -497,20 +473,18 @@ class AddressPanel(ttk.Frame):
             note="Nickname (≤24 chars, unique)",
         )
 
-        # Init Value column - hint depends on panel type
-        if self._is_bit_type_panel():
-            init_hint = "Initial value: 0 or 1 (checkbox)"
-        elif self.combined_types and len(self.combined_types) > 1:
-            primary_type = self.combined_types[0]
-            data_type = MEMORY_TYPE_TO_DATA_TYPE.get(primary_type, 0)
-            init_hint = f"Initial value\n{self._get_init_value_hint(data_type)}"
-        else:
-            data_type = MEMORY_TYPE_TO_DATA_TYPE.get(self.memory_type, 0)
-            init_hint = f"Initial value\n{self._get_init_value_hint(data_type)}"
-
+        # Init Value column - show all type hints
+        init_hints = [
+            f"BIT: {DATA_TYPE_HINTS[DataType.BIT]}",
+            f"INT: {DATA_TYPE_HINTS[DataType.INT]}",
+            f"INT2: {DATA_TYPE_HINTS[DataType.INT2]}",
+            f"FLOAT: {DATA_TYPE_HINTS[DataType.FLOAT]}",
+            f"HEX: {DATA_TYPE_HINTS[DataType.HEX]}",
+            f"TXT: {DATA_TYPE_HINTS[DataType.TXT]}",
+        ]
         self.sheet.note(
             self.sheet.span(num2alpha(self.COL_INIT_VALUE), header=True, table=False),
-            note=init_hint,
+            note="Initial value\n" + "\n".join(init_hints),
         )
 
         # Retentive column
@@ -661,34 +635,25 @@ class AddressPanel(ttk.Frame):
         self,
         parent: tk.Widget,
         shared_data,
-        memory_type: str,
-        combined_types: list[str] | None = None,
         on_validate_affected: Callable[[str, str], set[int]] | None = None,
         is_duplicate_fn: Callable[[str, int], bool] | None = None,
-        is_unified: bool = False,
         section_boundaries: dict[str, int] | None = None,
     ):
-        """Initialize the address panel.
+        """Initialize the unified address panel.
 
         Args:
             parent: Parent widget
             shared_data: SharedAddressData instance for accessing skeleton rows
-            memory_type: The memory type to edit (X, Y, C, etc.)
-            combined_types: List of types to show interleaved (e.g., ["T", "TD"])
             on_validate_affected: Callback to validate rows affected by nickname change (old, new).
                 Returns set of validated addr_keys. Used for O(1) targeted validation.
             is_duplicate_fn: O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
-            is_unified: If True, panel displays ALL memory types in one view.
-            section_boundaries: Maps type_key to starting row index (for unified mode).
+            section_boundaries: Maps type_key to starting row index for navigation.
         """
         super().__init__(parent)
 
         self._shared_data = shared_data
-        self.memory_type = memory_type
-        self.combined_types = combined_types  # None means single type
         self.on_validate_affected = on_validate_affected
         self.is_duplicate_fn = is_duplicate_fn
-        self.is_unified = is_unified
         self.section_boundaries = section_boundaries or {}
 
         self.rows: list[AddressRow] = []
@@ -838,7 +803,7 @@ class AddressPanel(ttk.Frame):
         self._apply_filters()
 
     def scroll_to_section(self, type_key: str) -> bool:
-        """Scroll to the start of a memory type section (unified mode only).
+        """Scroll to the start of a memory type section.
 
         Args:
             type_key: The memory type key (e.g., "X", "T/TD", "DS")
@@ -846,7 +811,7 @@ class AddressPanel(ttk.Frame):
         Returns:
             True if section was found and scrolled to, False otherwise
         """
-        if not self.is_unified or type_key not in self.section_boundaries:
+        if type_key not in self.section_boundaries:
             return False
 
         # Get the row index where this section starts
@@ -1002,7 +967,7 @@ class AddressPanel(ttk.Frame):
 
         Args:
             address: The address number to scroll to
-            memory_type: Optional memory type for combined panels
+            memory_type: Memory type to match (e.g., "X", "DS"). If None, matches first row.
             align_top: If True, ensure the address is at the top of the viewport.
                        If False (default), just ensure it's visible somewhere in the viewport.
 
@@ -1010,16 +975,15 @@ class AddressPanel(ttk.Frame):
             True if address was found and scrolled to
         """
         # Find the row index for this address
-        target_type = memory_type or self.memory_type
-
         row_idx = None
-        for i, row in enumerate(self.rows):
-            if row.address == address and row.memory_type == target_type:
-                row_idx = i
-                break
+        if memory_type:
+            for i, row in enumerate(self.rows):
+                if row.address == address and row.memory_type == memory_type:
+                    row_idx = i
+                    break
 
         if row_idx is None:
-            # Try without type match (for single-type panels)
+            # Try without type match (search all rows)
             for i, row in enumerate(self.rows):
                 if row.address == address:
                     row_idx = i

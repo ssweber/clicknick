@@ -76,12 +76,12 @@ DATA_TYPE_DISPLAY: dict[int, str] = {
 
 # Hint text for initial value fields by DataType
 DATA_TYPE_HINTS: dict[int, str] = {
-    DataType.BIT: "0 or 1",
+    DataType.BIT: "0 or 1 (checkbox)",
     DataType.INT: f"Range: {-32768} to {32767}",
     DataType.INT2: f"Range: {-2147483648} to {2147483647}",
-    DataType.FLOAT: f"Range: {-3.4028235e38:.2e} to {3.4028235e38:.2e}",
-    DataType.HEX: "Hex value (e.g., FF or 0xFF)",
-    DataType.TXT: "Text string",
+    DataType.FLOAT: f"Range: {-3.4028235E+38} to {3.4028235E+38}",
+    DataType.HEX: "Range: '0000' to 'FFFF'",
+    DataType.TXT: "Single ASCII char: eg 'A'",
 }
 
 # Memory types that are exclusively BIT type (no combined types like T/TD)
