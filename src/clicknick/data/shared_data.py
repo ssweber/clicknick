@@ -788,7 +788,10 @@ class SharedAddressData:
                         "initial_value": new_row.initial_value,
                         "retentive": new_row.retentive,
                     }
-                    skeleton_row.update_from_db(db_data)
+                    if skeleton_row.update_from_db(db_data):
+                        # MANUALLY MARK AS CHANGED:  
+                        # This ensures addr_key is added to self._current_changes  
+                        self.mark_changed(addr_key)
                     # Mark as existing in MDB
                     skeleton_row.exists_in_mdb = True
 
