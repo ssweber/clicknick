@@ -945,14 +945,17 @@ class SharedAddressData:
         count = self._data_source.save_changes(list(self.all_rows.values()))
 
         # Mark dirty rows as saved (sets original_* fields, which are unlocked)
-        for row in dirty_rows:
-            row.mark_saved()
+        with self.edit_session():
+            for row in dirty_rows:
+                row.mark_saved()
+                # MANUALLY MARK AS CHANGED:
+                # This ensures addr_key is added to self._current_changes
+                self.mark_changed(row.addr_key) 
 
-        # Reset fully-deleted rows to skeleton state using edit_session
-        if rows_to_reset:
-            with self.edit_session():
-                for row in rows_to_reset:
-                    self._reset_skeleton_row(row)
+            # Reset fully-deleted rows to skeleton state using edit_session
+            if rows_to_reset:
+                    for row in rows_to_reset:
+                        self._reset_skeleton_row(row)
 
         # Update modified time to prevent immediate reload
         if self._file_path and os.path.exists(self._file_path):
