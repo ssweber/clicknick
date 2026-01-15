@@ -773,6 +773,19 @@ class SharedAddressData:
             # Load error, skip this reload
             return
 
+        # Mark X/SC/SD rows with invalid nicknames BEFORE edit session.
+        # This must happen before edit_session because notify_data_changed
+        # triggers view redraws, which check loaded_with_error to suppress errors.
+        all_nicks = self.all_nicknames
+        for addr_key, new_row in new_rows.items():
+            if addr_key in self.all_rows:
+                skeleton_row = self.all_rows[addr_key]
+                if new_row.memory_type in ("X", "SC", "SD") and new_row.nickname:
+                    is_valid, _ = validate_nickname(new_row.nickname, all_nicks, addr_key)
+                    skeleton_row.loaded_with_error = not is_valid
+                else:
+                    skeleton_row.loaded_with_error = False
+
         # Use edit_session for proper change tracking and notification
         with self.edit_session():
             # Update existing skeleton rows from new data
@@ -789,8 +802,8 @@ class SharedAddressData:
                         "retentive": new_row.retentive,
                     }
                     if skeleton_row.update_from_db(db_data):
-                        # MANUALLY MARK AS CHANGED:  
-                        # This ensures addr_key is added to self._current_changes  
+                        # MANUALLY MARK AS CHANGED:
+                        # This ensures addr_key is added to self._current_changes
                         self.mark_changed(addr_key)
                     # Mark as existing in MDB
                     skeleton_row.exists_in_mdb = True
@@ -953,12 +966,12 @@ class SharedAddressData:
                 row.mark_saved()
                 # MANUALLY MARK AS CHANGED:
                 # This ensures addr_key is added to self._current_changes
-                self.mark_changed(row.addr_key) 
+                self.mark_changed(row.addr_key)
 
             # Reset fully-deleted rows to skeleton state using edit_session
             if rows_to_reset:
-                    for row in rows_to_reset:
-                        self._reset_skeleton_row(row)
+                for row in rows_to_reset:
+                    self._reset_skeleton_row(row)
 
         # Update modified time to prevent immediate reload
         if self._file_path and os.path.exists(self._file_path):
