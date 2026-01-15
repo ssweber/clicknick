@@ -48,7 +48,7 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
-_ARRAY_PATTERN = re.compile(r"^([A-Za-z]+)(\d+)$")
+_ARRAY_PATTERN = re.compile(r"^(_?[A-Za-z]+)(\d+)$")
 
 MEMORY_TYPE_ORDER = [
     "X",
@@ -127,14 +127,21 @@ def parse_segments(nickname: str) -> list[tuple[str, int | None]]:
 
     Single underscores split segments. Double underscores create an intermediate
     "_" node, grouping items that follow under a special underscore branch.
+    Leading single underscores are preserved (prefixed to first segment).
     Example: "Motor1_Speed" -> [("Motor", 1), ("Speed", None)]
     Example: "Mtr1__Debounce" -> [("Mtr", 1), ("_", None), ("Debounce", None)]
+    Example: "_IO1_Status" -> [("_IO", 1), ("Status", None)]
     """
     # Replace __ with placeholder to mark where _ nodes should be inserted
     placeholder = "\x00"
     temp = nickname.replace("__", placeholder)
 
+    # Check if we have a leading single underscore (after __ replacement)
+    # This happens when original starts with single _ but not __
+    has_leading_underscore = temp.startswith("_") and not nickname.startswith("__")
+
     segments = []
+    first_segment_added = False
     for part in temp.split("_"):
         if not part:
             continue
@@ -146,6 +153,13 @@ def parse_segments(nickname: str) -> list[tuple[str, int | None]]:
                 segments.append(("_", None))
             if not subpart:
                 continue
+
+            # Prepend underscore to first segment if original had leading _
+            if has_leading_underscore and not first_segment_added:
+                subpart = "_" + subpart
+
+            first_segment_added = True
+
             if match := _ARRAY_PATTERN.match(subpart):
                 segments.append((match.group(1), int(match.group(2))))
             else:
