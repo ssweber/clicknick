@@ -273,7 +273,11 @@ class AddressEditorSheet(Sheet):
         self.MT.get_find_window_dimensions_coords = self._get_find_window_dimensions_coords_wider
 
     def regex_replace_all_direct(
-        self, find_str: str, replace_str: str, selection_only: bool = False
+        self,
+        find_str: str,
+        replace_str: str,
+        selection_only: bool = False,
+        visible_rows_only: bool = True,
     ) -> int:
         """Perform regex replacement directly with given pattern and replacement.
 
@@ -281,6 +285,8 @@ class AddressEditorSheet(Sheet):
             find_str: The regex pattern to find
             replace_str: The replacement string (supports backreferences like \\1, \\2)
             selection_only: If True, only replace in current selection
+            visible_rows_only: If True (default), only replace in visible/non-filtered rows.
+                If False, replace in all rows including filtered ones.
 
         Returns:
             Number of replacements made
@@ -341,8 +347,8 @@ class AddressEditorSheet(Sheet):
                 start_c=0,
                 reverse=False,
             )
-            # Need to check visibility when iterating all data rows
-            check_visibility = True
+            # Check visibility when iterating all data rows (unless visible_rows_only is False)
+            check_visibility = visible_rows_only
 
         # Iterate through cells and collect replacements
         tree = self.MT.PAR.ops.treeview

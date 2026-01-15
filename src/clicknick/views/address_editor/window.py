@@ -804,7 +804,7 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Use the direct regex replacement method
         replacements_made = panel.sheet.regex_replace_all_direct(
-            pattern, replacement, selection_only=False
+            pattern, replacement, selection_only=False, visible_rows_only=False
         )
 
         # Clear filter and switch to "Show: Changed"
@@ -919,9 +919,10 @@ class AddressEditorWindow(tk.Toplevel):
                 )
                 self.shared_data.set_unified_view(unified_view)
                 self.shared_data.set_rows("unified", unified_view.rows)
-                
+
                 # FIX: Update colors now that the unified view rows are available
                 from ...services.block_service import BlockService
+
                 with self.shared_data.edit_session():
                     BlockService.update_colors(self.shared_data)
 
@@ -949,7 +950,7 @@ class AddressEditorWindow(tk.Toplevel):
 
             # Apply state to panel (filters, column visibility)
             self._apply_state_to_panel(panel, state)
-            
+
             # Initialize panel with unified view data
             panel.initialize_from_view(unified_view.rows)
 
