@@ -37,6 +37,37 @@ def find_item(items: list[DisplayItem], predicate) -> DisplayItem | None:
     return None
 
 
+class TestLeadingUnderscorePreservation:
+    """Tests for preserving leading underscores in nicknames."""
+
+    def test_leading_underscore_preserved_simple(self):
+        """Leading underscore should be preserved, not stripped."""
+        # _IO1 should parse to [("_IO", 1)] not [("IO", 1)]
+        assert parse_segments("_IO1") == [("_IO", 1)]
+
+    def test_leading_underscore_preserved_with_children(self):
+        """Leading underscore preserved when there are child segments."""
+        assert parse_segments("_IO1_Status") == [("_IO", 1), ("Status", None)]
+
+    def test_leading_underscore_no_array(self):
+        """Leading underscore without array index."""
+        assert parse_segments("_Config") == [("_Config", None)]
+
+    def test_leading_underscore_in_tree(self):
+        """Leading underscore tags should show with underscore in tree."""
+        entries = [
+            ("X", 1, "_IO1_Status", 1001),
+            ("X", 2, "_IO2_Status", 1002),
+        ]
+        root = build_tree(entries)
+        items = flatten_tree(root)
+
+        texts = get_all_texts(items)
+        # Should have _IO[1-2] not IO[1-2]
+        assert "_IO[1-2]" in texts
+        assert "IO[1-2]" not in texts
+
+
 class TestParseSegments:
     """Tests for parse_segments function."""
 
@@ -99,8 +130,8 @@ class TestParseSegments:
         assert parse_segments("A____B") == [("A", None), ("_", None), ("_", None), ("B", None)]
 
     def test_leading_underscore(self):
-        """Leading underscore is skipped (empty first segment)."""
-        assert parse_segments("_Motor") == [("Motor", None)]
+        """Leading underscore is preserved (prefixed to first segment)."""
+        assert parse_segments("_Motor") == [("_Motor", None)]
 
     def test_trailing_underscore(self):
         """Trailing underscore is skipped (empty last segment)."""
@@ -430,6 +461,85 @@ class TestTimerInterleaving:
         assert pump.text == "Pump"
         child_texts = [c.text for c in pump.children]
         assert child_texts == ["Run", "Stop", "Speed"]
+
+
+class TestArrayChildSingleChainCollapse:
+    """Tests for collapsing array children that have single-child chains.
+
+    When array indices have children without siblings, the entire chain
+    should collapse into a single display item like "1_ResumeFromPwrLoss"
+    rather than showing a nested structure.
+    """
+
+    def test_array_children_collapse_single_chain(self):
+        """Array children with single-child chains collapse entirely.
+
+        A_P1_ResumeFromPwrLoss and A_P2_PwrLossDebounce_Ts should show:
+        - A_P[1-2]
+          - 1_ResumeFromPwrLoss
+          - 2_PwrLossDebounce_Ts
+
+        NOT:
+        - A_P[1-2]
+          - 1
+            - ResumeFromPwrLoss
+          - 2
+            - PwrLossDebounce
+              - Ts
+        """
+        entries = [
+            ("C", 1, "A_P1_ResumeFromPwrLoss", 1001),
+            ("C", 2, "A_P2_PwrLossDebounce_Ts", 1002),
+        ]
+        root = build_tree(entries)
+        items = flatten_tree(root)
+
+        texts = get_all_texts(items)
+        # Both should be collapsed into single items
+        assert "1_ResumeFromPwrLoss" in texts
+        assert "2_PwrLossDebounce_Ts" in texts
+
+        # Should NOT have separate nodes for intermediate segments
+        assert "PwrLossDebounce" not in texts
+        assert "ResumeFromPwrLoss" not in texts  # Should only appear as "1_ResumeFromPwrLoss"
+
+    def test_array_children_with_shared_siblings_not_collapsed(self):
+        """Array children with shared siblings should NOT collapse.
+
+        If Motor1_Speed and Motor1_Temp both exist, they share the "1" parent,
+        so we should see (single-element array collapses):
+        - Motor1
+          - Speed
+          - Temp
+
+        NOT collapsed to Motor1_Speed, Motor1_Temp at same level.
+        """
+        entries = [
+            ("C", 1, "Motor1_Speed", 1001),
+            ("C", 2, "Motor1_Temp", 1002),
+        ]
+        root = build_tree(entries)
+        items = flatten_tree(root)
+
+        # Single-element array collapses, so Motor1 is the parent
+        texts = get_all_texts(items)
+        assert "Motor1" in texts
+        assert "Speed" in texts
+        assert "Temp" in texts
+
+    def test_array_children_different_depths_collapse(self):
+        """Array children with different depths but no siblings collapse."""
+        entries = [
+            ("C", 1, "Pump1_Active", 1001),  # Shallow: Pump -> 1 -> Active
+            ("C", 2, "Pump2_Status_Error", 1002),  # Deeper: Pump -> 2 -> Status -> Error
+        ]
+        root = build_tree(entries)
+        items = flatten_tree(root)
+
+        texts = get_all_texts(items)
+        # Both should collapse to leaf form
+        assert "1_Active" in texts
+        assert "2_Status_Error" in texts
 
 
 class TestSingleElementArrayCollapse:

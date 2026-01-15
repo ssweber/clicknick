@@ -403,36 +403,14 @@ def _flatten_array_index(name: str, child: TreeNode, parent_path: str) -> Displa
 
     Note: parent_path for array indices ends WITHOUT underscore (e.g., "Motor")
     because array indices join directly: "Motor" + "1" = "Motor1"
+
+    Delegates to _flatten_child_with_prefix which handles single-child chain
+    collapsing, so array indices like "2 -> Status -> Error" collapse to
+    "2_Status_Error".
     """
-    # Build path: parent + index (no underscore between them)
-    # e.g., "Motor" + "1" + "_" = "Motor1_"
-    current_path = f"{parent_path}{name}_"
-
-    if collapse_info := _get_collapsible_leaf(child):
-        child_name, leaf_child = collapse_info
-        leaf_tuple, addr_key = _extract_leaf_info(leaf_child.leaf)
-        # e.g., "Motor" + "1" + "_" + "Speed" = "Motor1_Speed"
-        full_path = f"{parent_path}{name}_{child_name}"
-        return DisplayItem(
-            text=f"{name}_{child_name}",
-            full_path=full_path,
-            leaf=leaf_tuple,
-            addr_key=addr_key,
-        )
-
-    if child.leaf is not None and not child.children:
-        leaf_tuple, addr_key = _extract_leaf_info(child.leaf)
-        # Leaf at array index - path is parent + index (no trailing underscore)
-        # e.g., "Motor" + "1" = "Motor1"
-        full_path = f"{parent_path}{name}"
-        return DisplayItem(text=name, full_path=full_path, leaf=leaf_tuple, addr_key=addr_key)
-
-    # Has children - recurse
-    return DisplayItem(
-        text=name,
-        full_path=current_path,
-        children=_flatten_node_children(child, current_path),
-    )
+    # Delegate to _flatten_child_with_prefix which handles all collapsing logic
+    items = _flatten_child_with_prefix(name, child, parent_path)
+    return items[0]
 
 
 def _flatten_mixed_array(name: str, node: TreeNode, parent_path: str) -> list[DisplayItem]:
