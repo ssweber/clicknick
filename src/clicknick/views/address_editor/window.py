@@ -918,6 +918,12 @@ class AddressEditorWindow(tk.Toplevel):
                     self.all_nicknames,
                 )
                 self.shared_data.set_unified_view(unified_view)
+                self.shared_data.set_rows("unified", unified_view.rows)
+                
+                # FIX: Update colors now that the unified view rows are available
+                from ...services.block_service import BlockService
+                with self.shared_data.edit_session():
+                    BlockService.update_colors(self.shared_data)
 
             # Create unified panel
             panel = AddressPanel(
@@ -931,12 +937,6 @@ class AddressEditorWindow(tk.Toplevel):
                 section_boundaries=unified_view.section_boundaries,
             )
 
-            # Initialize panel with unified view data
-            panel.initialize_from_view(unified_view.rows)
-
-            # Store rows in shared_data for compatibility
-            self.shared_data.set_rows("unified", unified_view.rows)
-
             # Add to notebook
             self.notebook.add(panel, text=tab_name)
 
@@ -949,6 +949,9 @@ class AddressEditorWindow(tk.Toplevel):
 
             # Apply state to panel (filters, column visibility)
             self._apply_state_to_panel(panel, state)
+            
+            # Initialize panel with unified view data
+            panel.initialize_from_view(unified_view.rows)
 
             # Bind selection events for Add Block button
             self._bind_panel_selection(panel)
