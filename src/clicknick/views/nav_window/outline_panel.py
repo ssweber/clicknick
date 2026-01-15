@@ -265,6 +265,47 @@ class OutlinePanel(ttk.Frame):
 
         self._render_flat_types(all_rows)
 
+    def _get_expanded_paths(self) -> set[str]:
+        """Get the full_path of all currently expanded nodes.
+
+        Returns:
+            Set of full_path strings for expanded nodes
+        """
+        expanded = set()
+        for iid in self._item_data:
+            if self.tree.item(iid, "open"):
+                item = self._item_data[iid]
+                if item.full_path:
+                    expanded.add(item.full_path)
+                else:
+                    # For flat type parent nodes (SC, SD), use the text
+                    expanded.add(self.tree.item(iid, "text"))
+        return expanded
+
+    def _restore_expanded_paths(self, expanded_paths: set[str]) -> None:
+        """Restore expanded state for nodes matching the given paths.
+
+        Args:
+            expanded_paths: Set of full_path strings to expand
+        """
+        for iid, item in self._item_data.items():
+            path_to_check = item.full_path if item.full_path else self.tree.item(iid, "text")
+            if path_to_check in expanded_paths:
+                self.tree.item(iid, open=True)
+
     def refresh(self, all_rows: dict[int, AddressRow]) -> None:
-        """Refresh the tree with updated data."""
+        """Refresh the tree with updated data, preserving expanded state and scroll."""
+        # Capture current state
+        expanded_paths = self._get_expanded_paths()
+        scroll_position = self.tree.yview()
+
+        # Rebuild tree
         self.build_tree(all_rows)
+
+        # Restore expanded state
+        if expanded_paths:
+            self._restore_expanded_paths(expanded_paths)
+
+        # Restore scroll position after tree is updated
+        if scroll_position != (0.0, 1.0):  # Only restore if not at default
+            self.tree.yview_moveto(scroll_position[0])
