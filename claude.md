@@ -43,10 +43,12 @@ uv tool install --editable .
 
 ### Optional: Context with RepoMapper
 
-When working on specific files, get targeted context:  
+When working on specific files, get targeted context:
 ```bash
 uv run repomapper src/clicknick/ --map-tokens 1500 --chat-files src/clicknick/specific_file.py
 ```
+
+**Note:** `--map-tokens` silently truncates output without indication. To ensure complete signatures for files you care about, always pass them explicitly via `--chat-files` (these get rank 20 and appear in full).
 
 Don't use RepoMapper for simple searches or finding definitions—use lsp (or grep/glob) for those instead.
 
