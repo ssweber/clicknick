@@ -41,14 +41,17 @@ uv run clicknick                # Run the app
 uv tool install --editable .
 ```
 
-### Optional: Context with RepoMapper
+### Optional: Codebase Context with RepoMapper
 
-When working on specific files, get targeted context:
+To understand how specific files fit into the broader codebase structure:
+
 ```bash
-uv run repomapper src/clicknick/ --map-tokens 1500 --chat-files src/clicknick/specific_file.py
+uv run repomapper src/clicknick/ --chat-files src/clicknick/specific_file.py
 ```
 
-Don't use RepoMapper for simple searches or finding definitions—use lsp (or grep/glob) for those instead.
+**Best Practices:**
+- Use `--outline` flag to display all classes, functions, and symbols
+- Reserve RepoMapper for structural context; use LSP, grep, or glob for simple searches
 
 ## Architecture
 
