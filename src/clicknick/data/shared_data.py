@@ -20,6 +20,7 @@ from ..models.constants import (
     DataType,
 )
 from ..models.validation import validate_nickname
+from ..services.nickname_index_service import NicknameIndexService
 from .data_source import DataSource
 
 if TYPE_CHECKING:
@@ -111,13 +112,8 @@ class SharedAddressData:
         # Mark initialization complete - now edits require edit_session
         self._initializing = False
 
-        # Reverse index: nickname -> set of addr_keys that have this nickname
-        # Used for O(1) duplicate detection instead of O(n) scan
-        self._nickname_to_addrs: dict[str, set[int]] = {}
-
-        # Lowercase reverse index for case-insensitive duplicate detection
-        # CLICK software treats nicknames as case-insensitive
-        self._nickname_lower_to_addrs: dict[str, set[int]] = {}
+        # Nickname index service for O(1) lookups and duplicate detection
+        self._nickname_service = NicknameIndexService()
 
         # Observer callbacks - called when data changes
         self._observers: list[Callable[[], None]] = []
@@ -228,7 +224,7 @@ class SharedAddressData:
         # Find all rows with these nicknames (for duplicate detection)
         keys_to_validate = affected.copy()
         for nickname in nicknames_to_check:
-            keys_to_validate.update(self._nickname_lower_to_addrs.get(nickname, set()))
+            keys_to_validate.update(self._nickname_service.get_addr_keys_insensitive(nickname))
 
         # Validate all affected rows
         all_nicknames = self.all_nicknames
@@ -596,19 +592,7 @@ class SharedAddressData:
 
     def _rebuild_nickname_index(self) -> None:
         """Rebuild the nickname -> addr_keys reverse index from all_rows."""
-        self._nickname_to_addrs.clear()
-        self._nickname_lower_to_addrs.clear()
-        for addr_key, row in self.all_rows.items():
-            if row.nickname:
-                # Exact case index
-                if row.nickname not in self._nickname_to_addrs:
-                    self._nickname_to_addrs[row.nickname] = set()
-                self._nickname_to_addrs[row.nickname].add(addr_key)
-                # Lowercase index for case-insensitive duplicate detection
-                nick_lower = row.nickname.lower()
-                if nick_lower not in self._nickname_lower_to_addrs:
-                    self._nickname_lower_to_addrs[nick_lower] = set()
-                self._nickname_lower_to_addrs[nick_lower].add(addr_key)
+        self._nickname_service.rebuild_index(self.all_rows.values())
 
     def load_initial_data(self) -> None:
         """Load all address data from data source into skeleton rows.
@@ -643,9 +627,7 @@ class SharedAddressData:
         Returns:
             Set of addr_keys (empty if nickname not found)
         """
-        if not nickname:
-            return set()
-        return self._nickname_to_addrs.get(nickname, set()).copy()
+        return self._nickname_service.get_addr_keys(nickname)
 
     def get_addr_keys_for_nickname_insensitive(self, nickname: str) -> set[int]:
         """Get all addr_keys that have a nickname matching case-insensitively.
@@ -656,9 +638,7 @@ class SharedAddressData:
         Returns:
             Set of addr_keys with any case variation of the nickname
         """
-        if not nickname:
-            return set()
-        return self._nickname_lower_to_addrs.get(nickname.lower(), set()).copy()
+        return self._nickname_service.get_addr_keys_insensitive(nickname)
 
     def is_duplicate_nickname(self, nickname: str, exclude_addr_key: int) -> bool:
         """Check if a nickname is used by any other address (case-insensitive).
@@ -674,16 +654,7 @@ class SharedAddressData:
         Returns:
             True if nickname is used by another address (case-insensitive match)
         """
-        if not nickname:
-            return False
-        nick_lower = nickname.lower()
-        addr_keys = self._nickname_lower_to_addrs.get(nick_lower, set())
-        # Duplicate if more than one addr_key, or one that isn't the excluded one
-        if len(addr_keys) > 1:
-            return True
-        if len(addr_keys) == 1 and exclude_addr_key not in addr_keys:
-            return True
-        return False
+        return self._nickname_service.is_duplicate(nickname, exclude_addr_key)
 
     def validate_affected_rows(self, old_nickname: str, new_nickname: str) -> set[int]:
         """Validate only the rows affected by a nickname change.
@@ -901,35 +872,7 @@ class SharedAddressData:
             old_nickname: The old nickname (for removal)
             new_nickname: The new nickname
         """
-        # Update reverse index: remove from old nickname's set
-        if old_nickname and old_nickname in self._nickname_to_addrs:
-            self._nickname_to_addrs[old_nickname].discard(addr_key)
-            # Clean up empty sets
-            if not self._nickname_to_addrs[old_nickname]:
-                del self._nickname_to_addrs[old_nickname]
-
-        # Update lowercase reverse index: remove from old nickname's set
-        if old_nickname:
-            old_lower = old_nickname.lower()
-            if old_lower in self._nickname_lower_to_addrs:
-                self._nickname_lower_to_addrs[old_lower].discard(addr_key)
-                if not self._nickname_lower_to_addrs[old_lower]:
-                    del self._nickname_lower_to_addrs[old_lower]
-
-        # Update reverse index: add to new nickname's set
-        if new_nickname:
-            if new_nickname not in self._nickname_to_addrs:
-                self._nickname_to_addrs[new_nickname] = set()
-            self._nickname_to_addrs[new_nickname].add(addr_key)
-
-            # Update lowercase reverse index
-            new_lower = new_nickname.lower()
-            if new_lower not in self._nickname_lower_to_addrs:
-                self._nickname_lower_to_addrs[new_lower] = set()
-            self._nickname_lower_to_addrs[new_lower].add(addr_key)
-
-        # Note: We don't set row.nickname here - the caller already did that
-        # within an edit_session. This method only updates the reverse indices.
+        self._nickname_service.update(addr_key, old_nickname, new_nickname)
 
     def save_all_changes(self) -> int:
         """Save changes to data source.

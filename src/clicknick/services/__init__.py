@@ -1,11 +1,11 @@
 """Service layer for business logic.
 
-This package contains stateless services that coordinate operations on
-AddressRow objects managed by SharedAddressData. Services separate business
-logic from UI concerns and provide clear contracts for operations.
+This package contains services that coordinate operations on AddressRow
+objects managed by SharedAddressData. Services separate business logic
+from UI concerns and provide clear contracts for operations.
 
 Services:
-- ValidationService: Coordinate validation of AddressRow objects
+- NicknameIndexService: O(1) nickname lookups and duplicate detection (stateful)
 - RowService: Multi-row operations (fill down, clone structure)
 - BlockService: Block tag color computation and updates
 - ImportService: CSV merge operations
@@ -19,9 +19,11 @@ handles validation and notification automatically.
 from .block_service import BlockService
 from .dependency_service import RowDependencyService
 from .import_service import ImportService
+from .nickname_index_service import NicknameIndexService
 from .row_service import RowService
 
 __all__ = [
+    "NicknameIndexService",
     "RowService",
     "BlockService",
     "ImportService",
