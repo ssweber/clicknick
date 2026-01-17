@@ -311,7 +311,7 @@ def _verify_single_cdv(cdv_path: Path) -> list[str]:
     filename = cdv_path.name
 
     try:
-        rows, has_new_values = load_cdv(cdv_path)
+        rows, has_new_values, _header = load_cdv(cdv_path)
     except Exception as e:
         issues.append(f"CDV {filename}: Error loading file - {e}")
         return issues

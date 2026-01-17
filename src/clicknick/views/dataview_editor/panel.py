@@ -423,7 +423,7 @@ class DataviewPanel(ttk.Frame):
             return
 
         try:
-            self.rows, self.has_new_values = load_cdv(self.file_path)
+            self.rows, self.has_new_values, self._header = load_cdv(self.file_path)
 
             # Populate nicknames and comments from lookup
             if self.nickname_lookup:
@@ -478,6 +478,7 @@ class DataviewPanel(ttk.Frame):
         # Data model
         self.rows: list[DataviewRow] = create_empty_dataview()
         self.has_new_values = False
+        self._header: str | None = None  # Original header from file
         self._is_dirty = False
 
         # Suppress notifications during programmatic updates
@@ -514,7 +515,7 @@ class DataviewPanel(ttk.Frame):
             # Check if any rows in the saveable range have new values
             saveable_rows = self.rows[:MAX_DATAVIEW_ROWS]
             self.has_new_values = any(r.new_value for r in saveable_rows if not r.is_empty)
-            save_cdv(self.file_path, self.rows, self.has_new_values)
+            save_cdv(self.file_path, self.rows, self.has_new_values, self._header)
             self._is_dirty = False
             self._update_status()
 
@@ -581,7 +582,7 @@ class DataviewPanel(ttk.Frame):
             return
 
         try:
-            self.rows, self.has_new_values = load_cdv(self.file_path)
+            self.rows, self.has_new_values, self._header = load_cdv(self.file_path)
 
             # Populate nicknames and comments from lookup
             if self.nickname_lookup:
