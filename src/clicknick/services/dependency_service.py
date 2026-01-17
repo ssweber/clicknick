@@ -12,20 +12,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..models.blocktag import format_block_tag, parse_block_tag
+from ..models.constants import INTERLEAVED_PAIRS
 
 if TYPE_CHECKING:
     from ..data.shared_data import SharedAddressData
     from ..models.address_row import AddressRow
-
-# Paired memory types that share retentive settings
-# T (Timer) pairs with TD (Timer Done)
-# CT (Counter) pairs with CTD (Counter Done)
-INTERLEAVED_PAIRS: dict[str, str] = {
-    "T": "TD",
-    "TD": "T",
-    "CT": "CTD",
-    "CTD": "CT",
-}
 
 
 def _sync_block_tag(source_comment: str, target_comment: str) -> str | None:

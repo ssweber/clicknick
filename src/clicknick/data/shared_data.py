@@ -11,7 +11,6 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 from ..models.address_row import AddressRow, get_addr_key, is_xd_yd_hidden_slot
-from ..models.blocktag import compute_all_block_ranges
 from ..models.constants import (
     ADDRESS_RANGES,
     DEFAULT_RETENTIVE,
@@ -19,6 +18,7 @@ from ..models.constants import (
     DataType,
 )
 from ..models.validation import validate_nickname
+from ..services.block_service import compute_all_block_ranges
 from ..services.nickname_index_service import NicknameIndexService
 from .data_source import DataSource
 from .file_monitor import FileMonitor
@@ -304,7 +304,7 @@ class SharedAddressData:
 
             # Check if block tag changed
             if old_tag.name or new_tag.name:
-                BlockService.auto_update_paired_tag(view.rows, row_idx, old_tag, new_tag)
+                BlockService.auto_update_matching_block_tag(view.rows, row_idx, old_tag, new_tag)
 
     @contextmanager
     def edit_session(self) -> Generator[SharedAddressData, None, None]:

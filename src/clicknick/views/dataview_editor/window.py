@@ -12,6 +12,7 @@ from tkinter import filedialog, messagebox, ttk
 from typing import TYPE_CHECKING
 
 from ...data.shared_dataview import SharedDataviewData
+from ...models.constants import INTERLEAVED_PAIRS
 from ...widgets.custom_notebook import CustomNotebook
 from ...widgets.new_dataview_dialog import NewDataviewDialog
 from ...widgets.nickname_combobox import NicknameCombobox
@@ -336,14 +337,14 @@ class DataviewEditorWindow(tk.Toplevel):
 
         # Check if this is a T or CT block (all addresses same type for a block)
         memory_types = {mem_type for mem_type, _ in leaves}
-        paired_type_map = {"T": "TD", "CT": "CTD"}
 
-        # If it's a T or CT block, offer to include paired type
+        # If it's a T or CT block, offer to include paired data type (TD/CTD)
         include_paired = False
         paired_type = None
         for mem_type in memory_types:
-            if mem_type in paired_type_map:
-                paired_type = paired_type_map[mem_type]
+            # Only prompt for bit types (T, CT), not data types (TD, CTD)
+            if mem_type in ("T", "CT"):
+                paired_type = INTERLEAVED_PAIRS[mem_type]
                 include_paired = messagebox.askyesno(
                     "Include Paired Type",
                     f"Also insert {paired_type} addresses with this {mem_type} block?",
