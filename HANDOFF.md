@@ -1,13 +1,6 @@
 # HANDOFF: SharedAddressData Refactoring Plan
 
-## Status: Draft - Needs Validation
-
-**Important:** This plan was drafted from repomapper signature analysis only. Before implementing, read the actual implementations to validate assumptions about method responsibilities and dependencies.
-
-Files to review:
-- `src/clicknick/data/shared_data.py` - The god object
-- `src/clicknick/services/block_service.py` - Block colors, paired tags
-- `src/clicknick/services/dependency_service.py` - Paired rows, sync logic
+## Status: In Progress
 
 ---
 
@@ -20,7 +13,7 @@ Files to review:
 | **Core State** | `_create_skeleton`, `_hydrate_from_db_data`, `get_rows`, `set_rows` | Keep |
 | **Edit Sessions** | `edit_session`, `is_editing`, `mark_changed` | Keep |
 | **Observer/Notify** | `add_observer`, `notify_data_changed`, `register_window` | Keep (consider extracting WindowRegistry later) |
-| **Nickname Index** | `_rebuild_nickname_index`, `get_addr_keys_for_nickname`, `is_duplicate_nickname`, `all_nicknames` | Extract |
+| **Nickname Index** | `_rebuild_nickname_index`, `get_addr_keys_for_nickname`, `is_duplicate_nickname`, `all_nicknames` | ✅ Extracted to NicknameIndexService |
 | **Validation** | `_validate_affected_rows`, `validate_affected_rows` | Extract |
 | **Block Sync** | `_update_block_colors_if_needed`, `_sync_paired_block_tags` | Duplicates BlockService |
 | **Dependency Sync** | `_sync_dependencies` | Duplicates RowDependencyService |
@@ -42,23 +35,18 @@ This split seems awkward - needs validation by reading the code.
 
 ## Refactoring Plan
 
-### Phase 1: Extract NicknameIndexService
+### Phase 1: Extract NicknameIndexService ✅ DONE
 
-**Risk:** Low
-**Value:** High - pure logic, easy to test
+**Commit:** `1b0c43a` - refact/Extract NicknameIndexService from SharedAddressData
 
-Create `services/nickname_index_service.py`:
+Created `services/nickname_index_service.py` with:
+- `rebuild_index(rows)` - rebuilds indices from rows
+- `get_addr_keys(nickname)` - exact case lookup
+- `get_addr_keys_insensitive(nickname)` - case-insensitive lookup
+- `is_duplicate(nickname, exclude_addr_key)` - O(1) duplicate detection
+- `update(addr_key, old_nickname, new_nickname)` - incremental index updates
 
-```python
-class NicknameIndexService:
-    def rebuild_index(self, rows: Iterable[AddressRow]) -> dict[str, set[int]]: ...
-    def get_addr_keys_for_nickname(self, nickname: str) -> set[int]: ...
-    def get_addr_keys_insensitive(self, nickname: str) -> set[int]: ...
-    def is_duplicate(self, nickname: str, exclude_addr_key: int) -> bool: ...
-    def validate_affected_rows(self, old_nickname: str, new_nickname: str) -> set[int]: ...
-```
-
-SharedAddressData keeps thin wrappers that delegate to this service.
+SharedAddressData now delegates via thin wrappers. 24 new tests added.
 
 ### Phase 2: Extract FileMonitor
 
@@ -124,16 +112,7 @@ def edit_session(self):
 
 ## Implementation Order
 
-1. **Phase 1** - NicknameIndexService (pure logic, no UI impact)
+1. ✅ **Phase 1** - NicknameIndexService (pure logic, no UI impact)
 2. **Phase 2** - FileMonitor (isolated, clear interface)
 3. **Phase 3** - Consolidate paired logic (requires deeper understanding)
 4. **Phase 4** - Simplify edit_session (ties everything together)
-
----
-
-## Before Starting
-
-1. Read `shared_data.py` methods listed above - understand actual responsibilities
-2. Read `block_service.py` and `dependency_service.py` - understand the paired logic split
-3. Trace through one `edit_session` call to understand the current flow
-4. Validate that the proposed extractions won't break the unidirectional data flow
