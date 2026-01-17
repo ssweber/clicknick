@@ -48,22 +48,18 @@ Created `services/nickname_index_service.py` with:
 
 SharedAddressData now delegates via thin wrappers. 24 new tests added.
 
-### Phase 2: Extract FileMonitor
+### Phase 2: Extract FileMonitor ✅ DONE
 
-**Risk:** Medium
-**Value:** Medium - clean boundary, isolated concern
+**Commit:** (pending) - refact/Extract FileMonitor from SharedAddressData
 
-Create `data/file_monitor.py`:
+Created `data/file_monitor.py` with:
+- `FileMonitor(file_path, on_modified)` - captures initial mtime
+- `start(tk_root)` - begins polling with tk.after()
+- `stop()` - cancels polling
+- `update_mtime()` - refresh stored mtime after saves (prevents false detection)
+- `is_active` property - check if monitoring is running
 
-```python
-class FileMonitor:
-    def __init__(self, file_path: str, on_modified: Callable[[], None]): ...
-    def start(self, tk_root) -> None: ...
-    def stop(self) -> None: ...
-    def _check_modified(self) -> None: ...
-```
-
-SharedAddressData creates and owns a FileMonitor instance.
+SharedAddressData now creates and owns a FileMonitor instance. 25 new tests added.
 
 ### Phase 3: Consolidate Paired/Interleaved Logic
 
@@ -113,6 +109,6 @@ def edit_session(self):
 ## Implementation Order
 
 1. ✅ **Phase 1** - NicknameIndexService (pure logic, no UI impact)
-2. **Phase 2** - FileMonitor (isolated, clear interface)
+2. ✅ **Phase 2** - FileMonitor (isolated, clear interface)
 3. **Phase 3** - Consolidate paired logic (requires deeper understanding)
 4. **Phase 4** - Simplify edit_session (ties everything together)
