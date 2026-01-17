@@ -6,7 +6,6 @@ with changes in one window automatically reflected in others.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
@@ -22,12 +21,10 @@ from ..models.constants import (
 from ..models.validation import validate_nickname
 from ..services.nickname_index_service import NicknameIndexService
 from .data_source import DataSource
+from .file_monitor import FileMonitor
 
 if TYPE_CHECKING:
     from ..views.address_editor.view_builder import UnifiedView
-
-# File monitoring interval in milliseconds
-FILE_MONITOR_INTERVAL_MS = 2000
 
 
 class SharedAddressData:
@@ -124,11 +121,8 @@ class SharedAddressData:
         # Track if initial data has been loaded
         self._initialized = False
 
-        # File monitoring state
-        self._file_path: str | None = None
-        self._last_mtime: float = 0.0
-        self._monitor_after_id: str | None = None
-        self._monitoring_active = False
+        # File monitoring (initialized in load_initial_data)
+        self._file_monitor: FileMonitor | None = None
 
         # Cached unified view (all memory types in one view)
         self._unified_view: UnifiedView | None = None
@@ -594,6 +588,60 @@ class SharedAddressData:
         """Rebuild the nickname -> addr_keys reverse index from all_rows."""
         self._nickname_service.rebuild_index(self.all_rows.values())
 
+    def _reload_from_source(self) -> None:
+        """Reload data from source, updating skeleton rows in-place.
+
+        With skeleton architecture, we never create/delete row objects.
+        We only update the data fields of existing skeleton rows.
+        """
+        try:
+            # Reload all addresses (creates temporary AddressRow objects)
+            new_rows = self._data_source.load_all_addresses()
+        except Exception:
+            # Load error, skip this reload
+            return
+
+        # Mark X/SC/SD rows with invalid nicknames BEFORE edit session.
+        # This must happen before edit_session because notify_data_changed
+        # triggers view redraws, which check loaded_with_error to suppress errors.
+        all_nicks = self.all_nicknames
+        for addr_key, new_row in new_rows.items():
+            if addr_key in self.all_rows:
+                skeleton_row = self.all_rows[addr_key]
+                if new_row.memory_type in ("X", "SC", "SD") and new_row.nickname:
+                    is_valid, _ = validate_nickname(new_row.nickname, all_nicks, addr_key)
+                    skeleton_row.loaded_with_error = not is_valid
+                else:
+                    skeleton_row.loaded_with_error = False
+
+        # Use edit_session for proper change tracking and notification
+        with self.edit_session():
+            # Update existing skeleton rows from new data
+            for addr_key, new_row in new_rows.items():
+                if addr_key in self.all_rows:
+                    skeleton_row = self.all_rows[addr_key]
+                    # Use update_from_db for proper dirty field handling
+                    db_data = {
+                        "nickname": new_row.nickname,
+                        "comment": new_row.comment,
+                        "used": new_row.used,
+                        "data_type": new_row.data_type,
+                        "initial_value": new_row.initial_value,
+                        "retentive": new_row.retentive,
+                    }
+                    if skeleton_row.update_from_db(db_data):
+                        # MANUALLY MARK AS CHANGED:
+                        # This ensures addr_key is added to self._current_changes
+                        self.mark_changed(addr_key)
+                    # Mark as existing in MDB
+                    skeleton_row.exists_in_mdb = True
+
+            # Reset rows no longer in DB (if not dirty)
+            for addr_key, skeleton_row in self.all_rows.items():
+                if addr_key not in new_rows and skeleton_row.exists_in_mdb:
+                    if not skeleton_row.is_dirty:
+                        self._reset_skeleton_row(skeleton_row)
+
     def load_initial_data(self) -> None:
         """Load all address data from data source into skeleton rows.
 
@@ -613,10 +661,11 @@ class SharedAddressData:
         # Mark X/SC/SD rows with invalid nicknames (needs all_nicknames)
         self._mark_loaded_with_errors()
 
-        # Store file path and initial modification time for monitoring
-        self._file_path = self._data_source.file_path
-        if self._file_path and os.path.exists(self._file_path):
-            self._last_mtime = os.path.getmtime(self._file_path)
+        # Create file monitor for detecting external changes
+        self._file_monitor = FileMonitor(
+            file_path=self._data_source.file_path,
+            on_modified=self._reload_from_source,
+        )
 
     def get_addr_keys_for_nickname(self, nickname: str) -> set[int]:
         """Get all addr_keys that have a specific nickname (exact case match).
@@ -700,108 +749,19 @@ class SharedAddressData:
         """Check if initial data has been loaded."""
         return self._initialized
 
-    def _schedule_file_check(self) -> None:
-        """Schedule the next file modification check."""
-        if not self._monitoring_active or not hasattr(self, "_tk_root"):
-            return
-        self._monitor_after_id = self._tk_root.after(
-            FILE_MONITOR_INTERVAL_MS, self._check_file_modified
-        )
-
     def start_file_monitoring(self, tk_root) -> None:
         """Start monitoring the mdb file for external changes.
 
         Args:
             tk_root: Tkinter root window (needed for after() scheduling)
         """
-        if self._monitoring_active:
-            return
-
-        self._tk_root = tk_root
-        self._monitoring_active = True
-        self._schedule_file_check()
+        if self._file_monitor:
+            self._file_monitor.start(tk_root)
 
     def stop_file_monitoring(self) -> None:
         """Stop file monitoring."""
-        self._monitoring_active = False
-        if self._monitor_after_id and hasattr(self, "_tk_root"):
-            try:
-                self._tk_root.after_cancel(self._monitor_after_id)
-            except Exception:
-                pass
-        self._monitor_after_id = None
-
-    def _reload_from_source(self) -> None:
-        """Reload data from source, updating skeleton rows in-place.
-
-        With skeleton architecture, we never create/delete row objects.
-        We only update the data fields of existing skeleton rows.
-        """
-        try:
-            # Reload all addresses (creates temporary AddressRow objects)
-            new_rows = self._data_source.load_all_addresses()
-        except Exception:
-            # Load error, skip this reload
-            return
-
-        # Mark X/SC/SD rows with invalid nicknames BEFORE edit session.
-        # This must happen before edit_session because notify_data_changed
-        # triggers view redraws, which check loaded_with_error to suppress errors.
-        all_nicks = self.all_nicknames
-        for addr_key, new_row in new_rows.items():
-            if addr_key in self.all_rows:
-                skeleton_row = self.all_rows[addr_key]
-                if new_row.memory_type in ("X", "SC", "SD") and new_row.nickname:
-                    is_valid, _ = validate_nickname(new_row.nickname, all_nicks, addr_key)
-                    skeleton_row.loaded_with_error = not is_valid
-                else:
-                    skeleton_row.loaded_with_error = False
-
-        # Use edit_session for proper change tracking and notification
-        with self.edit_session():
-            # Update existing skeleton rows from new data
-            for addr_key, new_row in new_rows.items():
-                if addr_key in self.all_rows:
-                    skeleton_row = self.all_rows[addr_key]
-                    # Use update_from_db for proper dirty field handling
-                    db_data = {
-                        "nickname": new_row.nickname,
-                        "comment": new_row.comment,
-                        "used": new_row.used,
-                        "data_type": new_row.data_type,
-                        "initial_value": new_row.initial_value,
-                        "retentive": new_row.retentive,
-                    }
-                    if skeleton_row.update_from_db(db_data):
-                        # MANUALLY MARK AS CHANGED:
-                        # This ensures addr_key is added to self._current_changes
-                        self.mark_changed(addr_key)
-                    # Mark as existing in MDB
-                    skeleton_row.exists_in_mdb = True
-
-            # Reset rows no longer in DB (if not dirty)
-            for addr_key, skeleton_row in self.all_rows.items():
-                if addr_key not in new_rows and skeleton_row.exists_in_mdb:
-                    if not skeleton_row.is_dirty:
-                        self._reset_skeleton_row(skeleton_row)
-
-    def _check_file_modified(self) -> None:
-        """Check if the data file has been modified and reload if so."""
-        if not self._monitoring_active:
-            return
-
-        try:
-            if self._file_path and os.path.exists(self._file_path):
-                current_mtime = os.path.getmtime(self._file_path)
-                if current_mtime > self._last_mtime:
-                    self._last_mtime = current_mtime
-                    self._reload_from_source()
-        except Exception:
-            # File might be locked during write, skip this check
-            pass
-
-        # Schedule next check
-        self._schedule_file_check()
+        if self._file_monitor:
+            self._file_monitor.stop()
 
     def get_rows(self, memory_type: str) -> list[AddressRow] | None:
         """Get rows for a memory type if already loaded.
@@ -917,8 +877,8 @@ class SharedAddressData:
                     self._reset_skeleton_row(row)
 
         # Update modified time to prevent immediate reload
-        if self._file_path and os.path.exists(self._file_path):
-            self._last_mtime = os.path.getmtime(self._file_path)
+        if self._file_monitor:
+            self._file_monitor.update_mtime()
 
         return count
 

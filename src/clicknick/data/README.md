@@ -292,12 +292,44 @@ def discard_changes(self):
     self.notify_data_changed(sender=None, changed_indices=dirty_indices)
 ```
 
+### `file_monitor.py` - FileMonitor
+
+Watches a file for external modifications and triggers a callback:
+
+```python
+class FileMonitor:
+    def __init__(self, file_path: str | None, on_modified: Callable[[], None]):
+        """Initialize with file path and callback."""
+
+    def start(self, tk_root) -> None:
+        """Start polling with tk.after()."""
+
+    def stop(self) -> None:
+        """Stop polling."""
+
+    def update_mtime(self) -> None:
+        """Refresh stored mtime after saving (prevents false detection)."""
+```
+
+**Usage:**
+```python
+monitor = FileMonitor(
+    file_path="/path/to/file.mdb",
+    on_modified=self._reload_from_source
+)
+monitor.start(tk_root)
+# ... after saving ...
+monitor.update_mtime()  # Prevent immediate reload
+# ... on shutdown ...
+monitor.stop()
+```
+
 ## Thread Safety
 
-**File monitoring runs on a background thread:**
-- `start_file_monitoring()` spawns a daemon thread
-- Thread polls file mtime every 2 seconds
-- On change, schedules reload on main thread via `app.after()`
+**File monitoring runs on the main thread:**
+- `start()` schedules polling via `tk.after()` (main thread)
+- Polls file mtime every 2 seconds
+- Callback runs on main thread
 - All data modifications happen on main thread
 
 ## Performance Optimizations
