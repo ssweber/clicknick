@@ -20,6 +20,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Development Commands
 
+**IMPORTANT: The working directory is already set to the project root. Do not use `cd` before commands.**
+
 **IMPORTANT: Always use `make` commands, not direct `uv run` commands.**
 
 ```bash
@@ -41,15 +43,15 @@ uv run clicknick                # Run the app
 uv tool install --editable .
 ```
 
-### Optional: Codebase Context with RepoMapper
-
-To understand how specific files fit into the broader codebase structure:
+### Codebase Context with RepoMapper
 
 ```bash
 uv run repomapper src/clicknick/ --map-tokens 1500 --chat-files src/clicknick/specific_file.py
 ```
 
-- Reserve RepoMapper for structural context; use LSP, grep, or glob for simple searches
+- **Architectural reviews** (separation of concerns, responsibility mapping): Use repomapper — method names reveal responsibilities without implementation noise
+- **Implementation work** (bug fixes, understanding logic): Read the actual file
+- Simple searches: Use grep or glob instead
 
 ## Architecture
 
