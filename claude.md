@@ -46,11 +46,9 @@ uv tool install --editable .
 To understand how specific files fit into the broader codebase structure:
 
 ```bash
-uv run repomapper src/clicknick/ --chat-files src/clicknick/specific_file.py
+uv run repomapper src/clicknick/ --map-tokens 1500 --chat-files src/clicknick/specific_file.py
 ```
 
-**Best Practices:**
-- Use `--outline` flag to display all classes, functions, and symbols
 - Reserve RepoMapper for structural context; use LSP, grep, or glob for simple searches
 
 ## Architecture
