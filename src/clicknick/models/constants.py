@@ -77,9 +77,9 @@ DATA_TYPE_DISPLAY: dict[int, str] = {
 # Hint text for initial value fields by DataType
 DATA_TYPE_HINTS: dict[int, str] = {
     DataType.BIT: "0 or 1 (checkbox)",
-    DataType.INT: f"Range: {-32768} to {32767}",
-    DataType.INT2: f"Range: {-2147483648} to {2147483647}",
-    DataType.FLOAT: f"Range: {-3.4028235E+38} to {3.4028235E+38}",
+    DataType.INT: "Range: `-32768` to `32767`",
+    DataType.INT2: "Range: `-2147483648` to `2147483647`",
+    DataType.FLOAT: "Range: `-3.4028235E+38` to `3.4028235E+38`",
     DataType.HEX: "Range: '0000' to 'FFFF'",
     DataType.TXT: "Single ASCII char: eg 'A'",
 }
