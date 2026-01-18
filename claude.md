@@ -78,17 +78,6 @@ src/clicknick/
 └── resources/             # Icons and static assets
 ```
 
-## Module Documentation
-
-For detailed information about each module, see:
-- **[models/](src/clicknick/models/README.md)** - Data models, validation, block tags
-- **[data/](src/clicknick/data/README.md)** - Shared state, data sources, observer pattern
-- **[services/](src/clicknick/services/README.md)** - Business logic layer
-- **[views/](src/clicknick/views/README.md)** - UI windows and panels
-- **[widgets/](src/clicknick/widgets/README.md)** - Reusable UI components
-- **[utils/](src/clicknick/utils/README.md)** - Filters, MDB operations, Win32 utilities
-- **[detection/](src/clicknick/detection/README.md)** - Window detection for Click.exe
-
 ## Key Architectural Patterns
 
 ### Unidirectional Data Flow
