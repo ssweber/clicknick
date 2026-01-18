@@ -252,6 +252,30 @@ class TestRoundTrip:
             temp_path.unlink(missing_ok=True)
 
 
+class TestExtendedHeader:
+    """Tests for CDV files with extended headers (column widths)."""
+
+    def test_extended_header_preserved(self):
+        """Test that extended headers with column widths are preserved on round-trip."""
+        extended_header = "0,0,0,559,653,94,138,94,94,94,75,50,75,75,30,78,64"
+        rows = create_empty_dataview()
+        rows[0].address = "X001"
+        rows[0].type_code = TypeCode.BIT
+
+        with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f:
+            temp_path = Path(f.name)
+
+        try:
+            save_cdv(temp_path, rows, has_new_values=False, header=extended_header)
+            loaded_rows, has_new_values, loaded_header = load_cdv(temp_path)
+
+            assert loaded_header == extended_header
+            assert has_new_values is False
+            assert loaded_rows[0].address == "X001"
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+
 class TestExportCdv:
     """Tests for exporting CDV files."""
 
