@@ -7,6 +7,88 @@ from ..detection.window_mapping import DATA_TYPES
 from .prefix_autocomplete import PrefixAutocomplete
 
 
+# Utility functions (no tkinter dependencies, easily testable)
+def normalize_nickname(nickname: str) -> str:
+    """Normalize nickname formats for common pasting patterns from pyrung DSL.
+
+    Converts:
+    - 'address_type[Numeral]' -> 'address_typeNumeral' (e.g., x[1] -> x1, CT[5] -> CT5)
+    - 'address_type.Nickname' -> 'Nickname' (e.g., x.Temperature -> Temperature)
+
+    Args:
+        nickname: The nickname to normalize
+
+    Returns:
+        The normalized nickname
+    """
+    if not nickname:
+        return nickname
+
+    # Pattern 1: address_type[Numeral] -> address_typeNumeral
+    bracket_match = re.match(r'^([a-zA-Z]+)\[(\d+)\]$', nickname)
+    if bracket_match:
+        prefix, digits = bracket_match.groups()
+        return prefix + digits
+
+    # Pattern 2: address_type.Nickname -> Nickname
+    dot_match = re.match(r'^([a-zA-Z]+)\.(.+)$', nickname)
+    if dot_match:
+        _, name = dot_match.groups()
+        return name
+
+    return nickname
+
+
+def is_possible_address_or_literal(search_text: str, strict: bool = False) -> bool:
+    """
+    Check if the input is a valid address or a supported literal value.
+
+    Returns True if:
+    1. Input is a prefix of any valid prefix (e.g., "C" or "CT" for prefix "CTD")
+    2. Input is a complete prefix optionally followed by digits (e.g., "CTD" or "CTD123")
+    3. Input starts with a single-quote
+    4. Input is numeric (int or float)
+
+    Args:
+        search_text (str): The input to check
+        strict: Only return True if a valid address or literal (eg C1, not just C)
+
+    Returns:
+        bool: True if the input is a valid address or numeric value, False otherwise
+    """
+    if not search_text:
+        return True
+
+    search_text = search_text.lower().strip()
+
+    # Check if the input is just numbers or numbers with a decimal point
+    if re.match(r"^[0-9]+(\.[0-9]*)?$", search_text):
+        return True
+
+    if search_text.startswith("'"):
+        return True
+
+    for prefix in DATA_TYPES.keys():
+        prefix = prefix.lower()
+        prefix_len = len(prefix)
+        search_len = len(search_text)
+        search_text_lower = search_text.lower()
+
+        # Case 1: Input is a prefix of the full prefix (e.g., "C" or "CT" for "CTD")
+        if not strict and prefix_len >= search_len and prefix[:search_len] == search_text:
+            return True
+
+        # Case 2: Input starts with the complete prefix and remainder is digits
+        if (
+            search_len > prefix_len
+            and search_text_lower[:prefix_len] == prefix
+            and search_text_lower[prefix_len:].isdigit()
+        ):
+            return True
+
+    return False
+
+
 class ComboboxTCLManager:
     """Manages TCL setup for enhanced combobox focus behavior."""
 
@@ -571,6 +653,19 @@ class NicknameCombobox(ttk.Combobox):
 
     # Public API methods
 
+    def _normalize_nickname(self, nickname: str) -> str:
+        """Normalize nickname formats for common pasting patterns.
+
+        Delegates to the standalone normalize_nickname function.
+
+        Args:
+            nickname: The nickname to normalize
+
+        Returns:
+            The normalized nickname
+        """
+        return normalize_nickname(nickname)
+
     def finalize_selection(self):
         """Process the selected item and notify via callback."""
         selected = self.get()
@@ -591,51 +686,16 @@ class NicknameCombobox(ttk.Combobox):
         """
         Check if the input is a valid address or a supported literal value.
 
-        Returns True if:
-        1. Input is a prefix of any valid prefix (e.g., "C" or "CT" for prefix "CTD")
-        2. Input is a complete prefix optionally followed by digits (e.g., "CTD" or "CTD123")
-        3. Input starts with a single-quote
-        4. Input is numeric (int or float)
-
+        Delegates to the standalone is_possible_address_or_literal function.
 
         Args:
-            input_text (str): The input to check
+            search_text (str): The input to check
             strict: Only return True if a valid address or literal (eg C1, not just C)
 
         Returns:
             bool: True if the input is a valid address or numeric value, False otherwise
         """
-        if not search_text:
-            return True
-
-        search_text = search_text.lower().strip()
-
-        # Check if the input is just numbers or numbers with a decimal point
-        if re.match(r"^[0-9]+(\.[0-9]*)?$", search_text):
-            return True
-
-        if search_text.startswith("'"):
-            return True
-
-        for prefix in DATA_TYPES.keys():
-            prefix = prefix.lower()
-            prefix_len = len(prefix)
-            search_len = len(search_text)
-            search_text_lower = search_text.lower()
-
-            # Case 1: Input is a prefix of the full prefix (e.g., "C" or "CT" for "CTD")
-            if not strict and prefix_len >= search_len and prefix[:search_len] == search_text:
-                return True
-
-            # Case 2: Input starts with the complete prefix and remainder is digits
-            if (
-                search_len > prefix_len
-                and search_text_lower[:prefix_len] == prefix
-                and search_text_lower[prefix_len:].isdigit()
-            ):
-                return True
-
-        return False
+        return is_possible_address_or_literal(search_text, strict=strict)
 
     def finalize_entry(self):
         """Finalize the entry selection and notify the callback.
@@ -659,7 +719,7 @@ class NicknameCombobox(ttk.Combobox):
 
         # Priority 1: Valid address/literal takes precedence
         if self.is_possible_address_or_literal(search_text, strict=True):
-            self.selection_callback(search_text)
+            self.selection_callback(self._normalize_nickname(search_text))
 
         # Priority 2: Single result with no explicit selection
         elif not selected and len(values) == 1:
@@ -671,7 +731,7 @@ class NicknameCombobox(ttk.Combobox):
 
         # Fallback: Use raw input text
         else:
-            self.selection_callback(self.get())
+            self.selection_callback(self._normalize_nickname(self.get()))
 
         self.master.withdraw()
 
