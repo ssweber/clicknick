@@ -129,7 +129,7 @@ def test_update_colors_clears_old_colors(shared_data):
     assert rows[2].block_color is None
 
 
-def test_auto_update_paired_tag_delete(shared_data):
+def test_auto_update_matching_block_tag_delete(shared_data):
     """Test auto-deleting paired tag when one is deleted."""
     view = shared_data.get_unified_view()
     rows = view.rows[:10]
@@ -148,14 +148,14 @@ def test_auto_update_paired_tag_delete(shared_data):
         new_tag = parse_block_tag(rows[0].comment)
 
         # Auto-update paired tag
-        paired_idx = BlockService.auto_update_paired_tag(rows, 0, old_tag, new_tag)
+        paired_idx = BlockService.auto_update_matching_block_tag(rows, 0, old_tag, new_tag)
 
     # Check paired tag was deleted
     assert paired_idx == 5
     assert rows[5].comment == ""
 
 
-def test_auto_update_paired_tag_rename(shared_data):
+def test_auto_update_matching_block_tag_rename(shared_data):
     """Test auto-renaming paired tag when one is renamed."""
     view = shared_data.get_unified_view()
     rows = view.rows[:10]
@@ -174,14 +174,14 @@ def test_auto_update_paired_tag_rename(shared_data):
         new_tag = parse_block_tag(rows[0].comment)
 
         # Auto-update paired tag
-        paired_idx = BlockService.auto_update_paired_tag(rows, 0, old_tag, new_tag)
+        paired_idx = BlockService.auto_update_matching_block_tag(rows, 0, old_tag, new_tag)
 
     # Check paired tag was renamed
     assert paired_idx == 5
     assert rows[5].comment == "</NewName>"
 
 
-def test_auto_update_paired_tag_preserve_remaining_text(shared_data):
+def test_auto_update_matching_block_tag_preserve_remaining_text(shared_data):
     """Test that remaining text is preserved when renaming."""
     view = shared_data.get_unified_view()
     rows = view.rows[:10]
@@ -199,13 +199,13 @@ def test_auto_update_paired_tag_preserve_remaining_text(shared_data):
         new_tag = parse_block_tag(rows[0].comment)
 
         # Auto-update
-        BlockService.auto_update_paired_tag(rows, 0, old_tag, new_tag)
+        BlockService.auto_update_matching_block_tag(rows, 0, old_tag, new_tag)
 
     # Check remaining text preserved
     assert "</Renamed> Extra text here" in rows[5].comment
 
 
-def test_auto_update_paired_tag_self_closing_no_pair(shared_data):
+def test_auto_update_matching_block_tag_self_closing_no_pair(shared_data):
     """Test that self-closing tags don't trigger paired updates."""
     view = shared_data.get_unified_view()
     rows = view.rows[:10]
@@ -222,7 +222,7 @@ def test_auto_update_paired_tag_self_closing_no_pair(shared_data):
         new_tag = parse_block_tag(rows[0].comment)
 
         # Try to auto-update (should return None - no pair)
-        paired_idx = BlockService.auto_update_paired_tag(rows, 0, old_tag, new_tag)
+        paired_idx = BlockService.auto_update_matching_block_tag(rows, 0, old_tag, new_tag)
 
     assert paired_idx is None
 

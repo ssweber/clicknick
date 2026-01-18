@@ -1,17 +1,209 @@
 """Block service for coordinating block tag operations and colors.
 
-This service wraps existing block tag parsing logic from models/blocktag.py
-and provides methods to update precomputed block colors on AddressRow objects.
+Contains multi-row block operations extracted from models/blocktag.py.
+Single-comment parsing remains in blocktag.py; this service handles
+operations that span multiple rows.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ..models.blocktag import BlockRange, HasComment, parse_block_tag
+from ..models.constants import INTERLEAVED_TYPE_PAIRS
+
 if TYPE_CHECKING:
     from ..data.shared_data import SharedAddressData
     from ..models.address_row import AddressRow
     from ..models.blocktag import BlockTag
+
+
+# =============================================================================
+# Multi-Row Block Operations (extracted from blocktag.py)
+# =============================================================================
+
+
+def find_paired_tag_index(
+    rows: list[HasComment], row_idx: int, tag: BlockTag | None = None
+) -> int | None:
+    """Find the row index of the paired open/close block tag.
+
+    Uses nesting depth to correctly match tags when there are multiple
+    blocks with the same name (nested or separate sections).
+
+    Only matches tags within the same memory_type (if available) to correctly
+    handle interleaved views like T/TD where each type has its own tags.
+
+    Args:
+        rows: List of objects with .comment and optional .memory_type attributes
+        row_idx: Index of the row containing the tag
+        tag: Parsed BlockTag, or None to parse from rows[row_idx].comment
+
+    Returns:
+        Row index of the paired tag, or None if not found
+    """
+    if tag is None:
+        tag = parse_block_tag(rows[row_idx].comment)
+
+    if not tag.name or tag.tag_type == "self-closing":
+        return None
+
+    # Get memory type of source row (if available) for filtering
+    source_type = getattr(rows[row_idx], "memory_type", None)
+
+    if tag.tag_type == "open":
+        # Search forward for matching close tag, respecting nesting
+        depth = 1
+        for i in range(row_idx + 1, len(rows)):
+            # Skip rows with different memory type
+            if source_type and getattr(rows[i], "memory_type", None) != source_type:
+                continue
+            other_tag = parse_block_tag(rows[i].comment)
+            if other_tag.name == tag.name:
+                if other_tag.tag_type == "open":
+                    depth += 1
+                elif other_tag.tag_type == "close":
+                    depth -= 1
+                    if depth == 0:
+                        return i
+    elif tag.tag_type == "close":
+        # Search backward for matching open tag, respecting nesting
+        depth = 1
+        for i in range(row_idx - 1, -1, -1):
+            # Skip rows with different memory type
+            if source_type and getattr(rows[i], "memory_type", None) != source_type:
+                continue
+            other_tag = parse_block_tag(rows[i].comment)
+            if other_tag.name == tag.name:
+                if other_tag.tag_type == "close":
+                    depth += 1
+                elif other_tag.tag_type == "open":
+                    depth -= 1
+                    if depth == 0:
+                        return i
+    return None
+
+
+def find_block_range_indices(
+    rows: list[HasComment], row_idx: int, tag: BlockTag | None = None
+) -> tuple[int, int] | None:
+    """Find the (start_idx, end_idx) range for a block tag.
+
+    Uses nesting depth to correctly match tags when there are multiple
+    blocks with the same name.
+
+    Args:
+        rows: List of objects with a .comment attribute
+        row_idx: Index of the row containing the tag
+        tag: Parsed BlockTag, or None to parse from rows[row_idx].comment
+
+    Returns:
+        Tuple of (start_idx, end_idx) inclusive, or None if tag is invalid
+    """
+    if tag is None:
+        tag = parse_block_tag(rows[row_idx].comment)
+
+    if not tag.name or not tag.tag_type:
+        return None
+
+    if tag.tag_type == "self-closing":
+        return (row_idx, row_idx)
+
+    if tag.tag_type == "open":
+        paired_idx = find_paired_tag_index(rows, row_idx, tag)
+        if paired_idx is not None:
+            return (row_idx, paired_idx)
+        # No close found - just the opening row
+        return (row_idx, row_idx)
+
+    if tag.tag_type == "close":
+        paired_idx = find_paired_tag_index(rows, row_idx, tag)
+        if paired_idx is not None:
+            return (paired_idx, row_idx)
+        # No open found - just the closing row
+        return (row_idx, row_idx)
+
+    return None
+
+
+def compute_all_block_ranges(rows: list[HasComment]) -> list[BlockRange]:
+    """Compute all block ranges from a list of rows using stack-based matching.
+
+    Correctly handles nested blocks and multiple blocks with the same name.
+    Only matches open/close tags within the same memory_type to handle
+    interleaved views like T/TD correctly.
+
+    Args:
+        rows: List of objects with .comment and optional .memory_type attributes
+
+    Returns:
+        List of BlockRange objects, sorted by start_idx
+    """
+    ranges: list[BlockRange] = []
+
+    # Stack for tracking open tags: (memory_type, name) -> [(start_idx, bg_color), ...]
+    # Using (memory_type, name) as key ensures T's <Timers> and TD's <Timers> are separate
+    open_tags: dict[tuple[str | None, str], list[tuple[int, str | None]]] = {}
+
+    for row_idx, row in enumerate(rows):
+        tag = parse_block_tag(row.comment)
+        if not tag.name:
+            continue
+
+        memory_type = getattr(row, "memory_type", None)
+        stack_key = (memory_type, tag.name)
+
+        if tag.tag_type == "self-closing":
+            ranges.append(BlockRange(row_idx, row_idx, tag.name, tag.bg_color, memory_type))
+        elif tag.tag_type == "open":
+            if stack_key not in open_tags:
+                open_tags[stack_key] = []
+            open_tags[stack_key].append((row_idx, tag.bg_color))
+        elif tag.tag_type == "close":
+            if stack_key in open_tags and open_tags[stack_key]:
+                start_idx, bg_color = open_tags[stack_key].pop()
+                ranges.append(BlockRange(start_idx, row_idx, tag.name, bg_color, memory_type))
+
+    # Handle unclosed tags as singular points
+    for (mem_type, name), stack in open_tags.items():
+        for start_idx, bg_color in stack:
+            ranges.append(BlockRange(start_idx, start_idx, name, bg_color, mem_type))
+
+    # Sort by start index
+    ranges.sort(key=lambda r: r.start_idx)
+    return ranges
+
+
+def validate_block_span(rows: list[AddressRow]) -> tuple[bool, str | None]:
+    """Validate that a block span doesn't cross memory type boundaries.
+
+    Blocks should only contain addresses of the same memory type,
+    with the exception of paired types (T+TD, CT+CTD) which are
+    interleaved and can share blocks.
+
+    Args:
+        rows: List of AddressRow objects that would be in the block
+
+    Returns:
+        Tuple of (is_valid, error_message).
+        - (True, None) if all rows have compatible memory types
+        - (False, error_message) if rows span incompatible memory types
+    """
+    if not rows:
+        return True, None
+
+    # Get unique memory types in the selection
+    memory_types = {row.memory_type for row in rows}
+
+    if len(memory_types) == 1:
+        return True, None
+
+    # Check if it's a valid paired type combination
+    if frozenset(memory_types) in INTERLEAVED_TYPE_PAIRS:
+        return True, None
+
+    types_str = ", ".join(sorted(memory_types))
+    return False, f"Blocks cannot span multiple memory types ({types_str})"
 
 
 class BlockService:
@@ -43,8 +235,6 @@ class BlockService:
         Returns:
             Set of ALL addr_keys affected (may be larger due to block ranges)
         """
-        from ..models.blocktag import compute_all_block_ranges
-
         # Get unified view (all rows in order)
         view = shared_data.get_unified_view()
         if not view:
@@ -77,16 +267,20 @@ class BlockService:
         return all_affected
 
     @staticmethod
-    def auto_update_paired_tag(
+    def auto_update_matching_block_tag(
         rows: list[AddressRow],
         row_idx: int,
         old_tag: BlockTag,
         new_tag: BlockTag | None,
     ) -> int | None:
-        """Auto-update or delete paired block tag.
+        """Auto-update or delete the matching open/close block tag.
 
-        When a user renames or deletes an opening/closing tag, automatically
-        update the paired tag to match. This keeps blocks synchronized.
+        When a user renames or deletes an opening tag (<Block>), automatically
+        update the matching closing tag (</Block>) to match, and vice versa.
+        This keeps block tag pairs synchronized.
+
+        Note: This handles block tag pairing (open↔close), NOT interleaved
+        type pairing (T↔TD). For interleaved pairs, see RowDependencyService.
 
         Args:
             rows: List of AddressRow objects
@@ -95,14 +289,14 @@ class BlockService:
             new_tag: The new block tag (or None if deleted)
 
         Returns:
-            Index of paired row if updated, None otherwise
+            Index of matching row if updated, None otherwise
         """
-        from ..models.blocktag import find_paired_tag_index, parse_block_tag, strip_block_tag
+        from ..models.blocktag import strip_block_tag
 
         if old_tag.tag_type not in ("open", "close"):
             return None
 
-        paired_idx = find_paired_tag_index(rows, row_idx, old_tag)
+        paired_idx = find_paired_tag_index(rows, row_idx, old_tag)  # Use module-level function
         if paired_idx is None:
             return None
 
@@ -130,55 +324,6 @@ class BlockService:
         return paired_idx
 
     @staticmethod
-    def find_interleaved_pair_idx(
-        rows: list[AddressRow],
-        row_idx: int,
-    ) -> int | None:
-        """Find the index of the paired row for interleaved types (T+TD, CT+CTD).
-
-        For interleaved types, rows at the same address should share block tags.
-        This finds the partner row (e.g., TD1 for T1, or T1 for TD1).
-
-        Args:
-            rows: List of AddressRow objects
-            row_idx: Index of the row in the list
-
-        Returns:
-            Index of the paired row, or None if no pair exists
-        """
-        from ..models.blocktag import PAIRED_BLOCK_TYPES
-
-        if row_idx < 0 or row_idx >= len(rows):
-            return None
-
-        row = rows[row_idx]
-
-        # Check if this is a paired type
-        paired_type = None
-        for pair in PAIRED_BLOCK_TYPES:
-            if row.memory_type in pair:
-                # Find the other type in the pair
-                for t in pair:
-                    if t != row.memory_type:
-                        paired_type = t
-                        break
-                break
-
-        if not paired_type:
-            return None
-
-        # Search nearby for the paired row (interleaved, so should be adjacent)
-        # Check the row before and after
-        for offset in [-1, 1]:
-            check_idx = row_idx + offset
-            if 0 <= check_idx < len(rows):
-                check_row = rows[check_idx]
-                if check_row.memory_type == paired_type and check_row.address == row.address:
-                    return check_idx
-
-        return None
-
-    @staticmethod
     def compute_block_colors_map(rows: list[AddressRow]) -> dict[int, str]:
         """Compute block color map for a list of rows.
 
@@ -191,9 +336,7 @@ class BlockService:
         Returns:
             Dict mapping row index (in rows list) to bg color string
         """
-        from ..models.blocktag import compute_all_block_ranges
-
-        ranges = compute_all_block_ranges(rows)
+        ranges = compute_all_block_ranges(rows)  # Use module-level function
 
         # Filter to only blocks with colors
         colored_ranges = [r for r in ranges if r.bg_color]

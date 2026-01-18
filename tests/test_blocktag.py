@@ -5,14 +5,16 @@ from dataclasses import dataclass
 from clicknick.models.blocktag import (
     BlockRange,
     BlockTag,
-    compute_all_block_ranges,
     extract_block_name,
-    find_block_range_indices,
-    find_paired_tag_index,
     get_block_type,
     is_block_tag,
     parse_block_tag,
     strip_block_tag,
+)
+from clicknick.services.block_service import (
+    compute_all_block_ranges,
+    find_block_range_indices,
+    find_paired_tag_index,
     validate_block_span,
 )
 

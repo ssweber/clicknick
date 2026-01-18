@@ -11,11 +11,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ...models.address_row import AddressRow, get_addr_key, is_xd_yd_hidden_slot
-from ...models.blocktag import compute_all_block_ranges
 from ...models.constants import (
     ADDRESS_RANGES,
     PAIRED_RETENTIVE_TYPES,
 )
+from ...services.block_service import compute_all_block_ranges
 
 if TYPE_CHECKING:
     pass

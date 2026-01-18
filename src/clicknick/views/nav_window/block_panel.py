@@ -10,7 +10,7 @@ from collections.abc import Callable
 from tkinter import ttk
 
 from ...models.address_row import AddressRow
-from ...models.blocktag import compute_all_block_ranges
+from ...services.block_service import compute_all_block_ranges
 from ...widgets.colors import get_block_color_hex
 
 

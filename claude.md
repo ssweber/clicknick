@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+**IMPORTANT: DON'T USE `cd` before commands. The working directory is already set to the project root.**
+**IMPORTANT: Always use `make` commands, not direct `uv run` commands.**
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
@@ -19,10 +22,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Python:** 3.11+ (only if using pip; uv manages Python automatically)
 
 ## Build & Development Commands
-
-**IMPORTANT: The working directory is already set to the project root. Do not use `cd` before commands.**
-
-**IMPORTANT: Always use `make` commands, not direct `uv run` commands.**
 
 ```bash
 # Install dependencies

@@ -21,16 +21,17 @@ from ...models.dataview_row import (
 )
 
 
-def load_cdv(path: Path | str) -> tuple[list[DataviewRow], bool]:
+def load_cdv(path: Path | str) -> tuple[list[DataviewRow], bool, str]:
     """Load a CDV file.
 
     Args:
         path: Path to the CDV file.
 
     Returns:
-        Tuple of (rows, has_new_values) where:
+        Tuple of (rows, has_new_values, header) where:
         - rows: List of DataviewRow objects (always MAX_DATAVIEW_ROWS length)
         - has_new_values: True if the dataview has new values set
+        - header: The original header line from the file
 
     Raises:
         FileNotFoundError: If the file doesn't exist.
@@ -47,7 +48,7 @@ def load_cdv(path: Path | str) -> tuple[list[DataviewRow], bool]:
     if not lines:
         raise ValueError(f"Empty CDV file: {path}")
 
-    # Parse header line
+    # Parse header line - preserve the original
     header = lines[0].strip()
     header_parts = [p.strip() for p in header.split(",")]
     if len(header_parts) < 1:
@@ -98,16 +99,22 @@ def load_cdv(path: Path | str) -> tuple[list[DataviewRow], bool]:
         if len(parts) > 2 and parts[2]:
             rows[i].new_value = parts[2]
 
-    return rows, has_new_values
+    return rows, has_new_values, header
 
 
-def save_cdv(path: Path | str, rows: list[DataviewRow], has_new_values: bool) -> None:
+def save_cdv(
+    path: Path | str,
+    rows: list[DataviewRow],
+    has_new_values: bool,
+    header: str | None = None,
+) -> None:
     """Save a CDV file.
 
     Args:
         path: Path to save the CDV file.
         rows: List of DataviewRow objects (may exceed MAX_DATAVIEW_ROWS).
         has_new_values: True if any rows have new values set.
+        header: Original header line to preserve. If None, uses default format.
 
     Note:
         Only the first MAX_DATAVIEW_ROWS (100) rows are saved to maintain
@@ -118,9 +125,12 @@ def save_cdv(path: Path | str, rows: list[DataviewRow], has_new_values: bool) ->
     # Build content
     lines: list[str] = []
 
-    # Header line
-    header_flag = -1 if has_new_values else 0
-    lines.append(f"{header_flag},0,0")
+    # Header line - use original if provided, otherwise build default
+    if header is not None:
+        lines.append(header)
+    else:
+        header_flag = -1 if has_new_values else 0
+        lines.append(f"{header_flag},0,0")
 
     # Data rows - only save first MAX_DATAVIEW_ROWS
     rows_to_save = list(rows[:MAX_DATAVIEW_ROWS])
@@ -145,7 +155,12 @@ def save_cdv(path: Path | str, rows: list[DataviewRow], has_new_values: bool) ->
     path.write_text(content, encoding="utf-16")
 
 
-def export_cdv(path: Path | str, rows: list[DataviewRow], has_new_values: bool) -> None:
+def export_cdv(
+    path: Path | str,
+    rows: list[DataviewRow],
+    has_new_values: bool,
+    header: str | None = None,
+) -> None:
     """Export a CDV file to a new location.
 
     This is identical to save_cdv but semantically indicates exporting
@@ -155,8 +170,9 @@ def export_cdv(path: Path | str, rows: list[DataviewRow], has_new_values: bool) 
         path: Path to export the CDV file.
         rows: List of DataviewRow objects.
         has_new_values: True if any rows have new values set.
+        header: Original header line to preserve. If None, uses default format.
     """
-    save_cdv(path, rows, has_new_values)
+    save_cdv(path, rows, has_new_values, header)
 
 
 def get_dataview_folder(project_path: Path | str) -> Path | None:

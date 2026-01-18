@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING
 from tksheet import Sheet, num2alpha
 
 from ..data.data_source import CsvDataSource
-from ..models.blocktag import BlockRange, compute_all_block_ranges
+from ..models.blocktag import BlockRange
+from ..services.block_service import compute_all_block_ranges
 
 if TYPE_CHECKING:
     from ..models.address_row import AddressRow

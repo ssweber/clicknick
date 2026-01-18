@@ -6,13 +6,11 @@ with changes in one window automatically reflected in others.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 from ..models.address_row import AddressRow, get_addr_key, is_xd_yd_hidden_slot
-from ..models.blocktag import compute_all_block_ranges
 from ..models.constants import (
     ADDRESS_RANGES,
     DEFAULT_RETENTIVE,
@@ -20,13 +18,13 @@ from ..models.constants import (
     DataType,
 )
 from ..models.validation import validate_nickname
+from ..services.block_service import compute_all_block_ranges
+from ..services.nickname_index_service import NicknameIndexService
 from .data_source import DataSource
+from .file_monitor import FileMonitor
 
 if TYPE_CHECKING:
     from ..views.address_editor.view_builder import UnifiedView
-
-# File monitoring interval in milliseconds
-FILE_MONITOR_INTERVAL_MS = 2000
 
 
 class SharedAddressData:
@@ -111,13 +109,8 @@ class SharedAddressData:
         # Mark initialization complete - now edits require edit_session
         self._initializing = False
 
-        # Reverse index: nickname -> set of addr_keys that have this nickname
-        # Used for O(1) duplicate detection instead of O(n) scan
-        self._nickname_to_addrs: dict[str, set[int]] = {}
-
-        # Lowercase reverse index for case-insensitive duplicate detection
-        # CLICK software treats nicknames as case-insensitive
-        self._nickname_lower_to_addrs: dict[str, set[int]] = {}
+        # Nickname index service for O(1) lookups and duplicate detection
+        self._nickname_service = NicknameIndexService()
 
         # Observer callbacks - called when data changes
         self._observers: list[Callable[[], None]] = []
@@ -128,11 +121,8 @@ class SharedAddressData:
         # Track if initial data has been loaded
         self._initialized = False
 
-        # File monitoring state
-        self._file_path: str | None = None
-        self._last_mtime: float = 0.0
-        self._monitor_after_id: str | None = None
-        self._monitoring_active = False
+        # File monitoring (initialized in load_initial_data)
+        self._file_monitor: FileMonitor | None = None
 
         # Cached unified view (all memory types in one view)
         self._unified_view: UnifiedView | None = None
@@ -228,7 +218,7 @@ class SharedAddressData:
         # Find all rows with these nicknames (for duplicate detection)
         keys_to_validate = affected.copy()
         for nickname in nicknames_to_check:
-            keys_to_validate.update(self._nickname_lower_to_addrs.get(nickname, set()))
+            keys_to_validate.update(self._nickname_service.get_addr_keys_insensitive(nickname))
 
         # Validate all affected rows
         all_nicknames = self.all_nicknames
@@ -314,7 +304,7 @@ class SharedAddressData:
 
             # Check if block tag changed
             if old_tag.name or new_tag.name:
-                BlockService.auto_update_paired_tag(view.rows, row_idx, old_tag, new_tag)
+                BlockService.auto_update_matching_block_tag(view.rows, row_idx, old_tag, new_tag)
 
     @contextmanager
     def edit_session(self) -> Generator[SharedAddressData, None, None]:
@@ -596,169 +586,7 @@ class SharedAddressData:
 
     def _rebuild_nickname_index(self) -> None:
         """Rebuild the nickname -> addr_keys reverse index from all_rows."""
-        self._nickname_to_addrs.clear()
-        self._nickname_lower_to_addrs.clear()
-        for addr_key, row in self.all_rows.items():
-            if row.nickname:
-                # Exact case index
-                if row.nickname not in self._nickname_to_addrs:
-                    self._nickname_to_addrs[row.nickname] = set()
-                self._nickname_to_addrs[row.nickname].add(addr_key)
-                # Lowercase index for case-insensitive duplicate detection
-                nick_lower = row.nickname.lower()
-                if nick_lower not in self._nickname_lower_to_addrs:
-                    self._nickname_lower_to_addrs[nick_lower] = set()
-                self._nickname_lower_to_addrs[nick_lower].add(addr_key)
-
-    def load_initial_data(self) -> None:
-        """Load all address data from data source into skeleton rows.
-
-        Hydrates the pre-created skeleton with database data. This preserves
-        object identity so all tabs share the same AddressRow instances.
-        """
-        # Load from data source (creates temporary AddressRow objects)
-        db_rows = self._data_source.load_all_addresses()
-
-        # Hydrate skeleton with loaded data using edit_session
-        # This handles change tracking, index updates, validation, and notification
-        with self.edit_session():
-            self._hydrate_from_db_data(db_rows)
-
-        self._initialized = True
-
-        # Mark X/SC/SD rows with invalid nicknames (needs all_nicknames)
-        self._mark_loaded_with_errors()
-
-        # Store file path and initial modification time for monitoring
-        self._file_path = self._data_source.file_path
-        if self._file_path and os.path.exists(self._file_path):
-            self._last_mtime = os.path.getmtime(self._file_path)
-
-    def get_addr_keys_for_nickname(self, nickname: str) -> set[int]:
-        """Get all addr_keys that have a specific nickname (exact case match).
-
-        Args:
-            nickname: The nickname to look up
-
-        Returns:
-            Set of addr_keys (empty if nickname not found)
-        """
-        if not nickname:
-            return set()
-        return self._nickname_to_addrs.get(nickname, set()).copy()
-
-    def get_addr_keys_for_nickname_insensitive(self, nickname: str) -> set[int]:
-        """Get all addr_keys that have a nickname matching case-insensitively.
-
-        Args:
-            nickname: The nickname to look up (any case)
-
-        Returns:
-            Set of addr_keys with any case variation of the nickname
-        """
-        if not nickname:
-            return set()
-        return self._nickname_lower_to_addrs.get(nickname.lower(), set()).copy()
-
-    def is_duplicate_nickname(self, nickname: str, exclude_addr_key: int) -> bool:
-        """Check if a nickname is used by any other address (case-insensitive).
-
-        O(1) lookup using the lowercase reverse index.
-        CLICK software treats nicknames as case-insensitive, so "Pump1" and "pump1"
-        are considered duplicates.
-
-        Args:
-            nickname: The nickname to check
-            exclude_addr_key: The addr_key to exclude from the check
-
-        Returns:
-            True if nickname is used by another address (case-insensitive match)
-        """
-        if not nickname:
-            return False
-        nick_lower = nickname.lower()
-        addr_keys = self._nickname_lower_to_addrs.get(nick_lower, set())
-        # Duplicate if more than one addr_key, or one that isn't the excluded one
-        if len(addr_keys) > 1:
-            return True
-        if len(addr_keys) == 1 and exclude_addr_key not in addr_keys:
-            return True
-        return False
-
-    def validate_affected_rows(self, old_nickname: str, new_nickname: str) -> set[int]:
-        """Validate only the rows affected by a nickname change.
-
-        Instead of validating all 4500+ rows, this only validates:
-        - Rows that had the old nickname (may no longer be duplicates)
-        - Rows that have the new nickname (may now be duplicates)
-
-        Uses case-insensitive lookup since CLICK treats nicknames as case-insensitive.
-        Uses O(1) duplicate checking via the reverse index.
-
-        Args:
-            old_nickname: The previous nickname value
-            new_nickname: The new nickname value
-
-        Returns:
-            Set of addr_keys that were validated
-        """
-        # Collect affected addr_keys (case-insensitive to catch all case variations)
-        affected_keys: set[int] = set()
-
-        if old_nickname:
-            affected_keys.update(self.get_addr_keys_for_nickname_insensitive(old_nickname))
-        if new_nickname:
-            affected_keys.update(self.get_addr_keys_for_nickname_insensitive(new_nickname))
-
-        if not affected_keys:
-            return set()
-
-        # Build all_nicknames dict for validation (needed by row.validate() for format checks)
-        all_nicknames = self.all_nicknames
-
-        # Validate affected rows using O(1) duplicate check
-        for addr_key in affected_keys:
-            if addr_key in self.all_rows:
-                self.all_rows[addr_key].validate(
-                    all_nicknames, is_duplicate_fn=self.is_duplicate_nickname
-                )
-
-        return affected_keys
-
-    def is_initialized(self) -> bool:
-        """Check if initial data has been loaded."""
-        return self._initialized
-
-    def _schedule_file_check(self) -> None:
-        """Schedule the next file modification check."""
-        if not self._monitoring_active or not hasattr(self, "_tk_root"):
-            return
-        self._monitor_after_id = self._tk_root.after(
-            FILE_MONITOR_INTERVAL_MS, self._check_file_modified
-        )
-
-    def start_file_monitoring(self, tk_root) -> None:
-        """Start monitoring the mdb file for external changes.
-
-        Args:
-            tk_root: Tkinter root window (needed for after() scheduling)
-        """
-        if self._monitoring_active:
-            return
-
-        self._tk_root = tk_root
-        self._monitoring_active = True
-        self._schedule_file_check()
-
-    def stop_file_monitoring(self) -> None:
-        """Stop file monitoring."""
-        self._monitoring_active = False
-        if self._monitor_after_id and hasattr(self, "_tk_root"):
-            try:
-                self._tk_root.after_cancel(self._monitor_after_id)
-            except Exception:
-                pass
-        self._monitor_after_id = None
+        self._nickname_service.rebuild_index(self.all_rows.values())
 
     def _reload_from_source(self) -> None:
         """Reload data from source, updating skeleton rows in-place.
@@ -814,23 +642,126 @@ class SharedAddressData:
                     if not skeleton_row.is_dirty:
                         self._reset_skeleton_row(skeleton_row)
 
-    def _check_file_modified(self) -> None:
-        """Check if the data file has been modified and reload if so."""
-        if not self._monitoring_active:
-            return
+    def load_initial_data(self) -> None:
+        """Load all address data from data source into skeleton rows.
 
-        try:
-            if self._file_path and os.path.exists(self._file_path):
-                current_mtime = os.path.getmtime(self._file_path)
-                if current_mtime > self._last_mtime:
-                    self._last_mtime = current_mtime
-                    self._reload_from_source()
-        except Exception:
-            # File might be locked during write, skip this check
-            pass
+        Hydrates the pre-created skeleton with database data. This preserves
+        object identity so all tabs share the same AddressRow instances.
+        """
+        # Load from data source (creates temporary AddressRow objects)
+        db_rows = self._data_source.load_all_addresses()
 
-        # Schedule next check
-        self._schedule_file_check()
+        # Hydrate skeleton with loaded data using edit_session
+        # This handles change tracking, index updates, validation, and notification
+        with self.edit_session():
+            self._hydrate_from_db_data(db_rows)
+
+        self._initialized = True
+
+        # Mark X/SC/SD rows with invalid nicknames (needs all_nicknames)
+        self._mark_loaded_with_errors()
+
+        # Create file monitor for detecting external changes
+        self._file_monitor = FileMonitor(
+            file_path=self._data_source.file_path,
+            on_modified=self._reload_from_source,
+        )
+
+    def get_addr_keys_for_nickname(self, nickname: str) -> set[int]:
+        """Get all addr_keys that have a specific nickname (exact case match).
+
+        Args:
+            nickname: The nickname to look up
+
+        Returns:
+            Set of addr_keys (empty if nickname not found)
+        """
+        return self._nickname_service.get_addr_keys(nickname)
+
+    def get_addr_keys_for_nickname_insensitive(self, nickname: str) -> set[int]:
+        """Get all addr_keys that have a nickname matching case-insensitively.
+
+        Args:
+            nickname: The nickname to look up (any case)
+
+        Returns:
+            Set of addr_keys with any case variation of the nickname
+        """
+        return self._nickname_service.get_addr_keys_insensitive(nickname)
+
+    def is_duplicate_nickname(self, nickname: str, exclude_addr_key: int) -> bool:
+        """Check if a nickname is used by any other address (case-insensitive).
+
+        O(1) lookup using the lowercase reverse index.
+        CLICK software treats nicknames as case-insensitive, so "Pump1" and "pump1"
+        are considered duplicates.
+
+        Args:
+            nickname: The nickname to check
+            exclude_addr_key: The addr_key to exclude from the check
+
+        Returns:
+            True if nickname is used by another address (case-insensitive match)
+        """
+        return self._nickname_service.is_duplicate(nickname, exclude_addr_key)
+
+    def validate_affected_rows(self, old_nickname: str, new_nickname: str) -> set[int]:
+        """Validate only the rows affected by a nickname change.
+
+        Instead of validating all 4500+ rows, this only validates:
+        - Rows that had the old nickname (may no longer be duplicates)
+        - Rows that have the new nickname (may now be duplicates)
+
+        Uses case-insensitive lookup since CLICK treats nicknames as case-insensitive.
+        Uses O(1) duplicate checking via the reverse index.
+
+        Args:
+            old_nickname: The previous nickname value
+            new_nickname: The new nickname value
+
+        Returns:
+            Set of addr_keys that were validated
+        """
+        # Collect affected addr_keys (case-insensitive to catch all case variations)
+        affected_keys: set[int] = set()
+
+        if old_nickname:
+            affected_keys.update(self.get_addr_keys_for_nickname_insensitive(old_nickname))
+        if new_nickname:
+            affected_keys.update(self.get_addr_keys_for_nickname_insensitive(new_nickname))
+
+        if not affected_keys:
+            return set()
+
+        # Build all_nicknames dict for validation (needed by row.validate() for format checks)
+        all_nicknames = self.all_nicknames
+
+        # Validate affected rows using O(1) duplicate check
+        for addr_key in affected_keys:
+            if addr_key in self.all_rows:
+                self.all_rows[addr_key].validate(
+                    all_nicknames, is_duplicate_fn=self.is_duplicate_nickname
+                )
+
+        return affected_keys
+
+    def is_initialized(self) -> bool:
+        """Check if initial data has been loaded."""
+        return self._initialized
+
+    def start_file_monitoring(self, tk_root) -> None:
+        """Start monitoring the mdb file for external changes.
+
+        Args:
+            tk_root: Tkinter root window (needed for after() scheduling)
+        """
+        if self._file_monitor:
+            self._file_monitor.start(tk_root)
+
+    def stop_file_monitoring(self) -> None:
+        """Stop file monitoring."""
+        if self._file_monitor:
+            self._file_monitor.stop()
 
     def get_rows(self, memory_type: str) -> list[AddressRow] | None:
         """Get rows for a memory type if already loaded.
@@ -901,35 +832,7 @@ class SharedAddressData:
             old_nickname: The old nickname (for removal)
             new_nickname: The new nickname
         """
-        # Update reverse index: remove from old nickname's set
-        if old_nickname and old_nickname in self._nickname_to_addrs:
-            self._nickname_to_addrs[old_nickname].discard(addr_key)
-            # Clean up empty sets
-            if not self._nickname_to_addrs[old_nickname]:
-                del self._nickname_to_addrs[old_nickname]
-
-        # Update lowercase reverse index: remove from old nickname's set
-        if old_nickname:
-            old_lower = old_nickname.lower()
-            if old_lower in self._nickname_lower_to_addrs:
-                self._nickname_lower_to_addrs[old_lower].discard(addr_key)
-                if not self._nickname_lower_to_addrs[old_lower]:
-                    del self._nickname_lower_to_addrs[old_lower]
-
-        # Update reverse index: add to new nickname's set
-        if new_nickname:
-            if new_nickname not in self._nickname_to_addrs:
-                self._nickname_to_addrs[new_nickname] = set()
-            self._nickname_to_addrs[new_nickname].add(addr_key)
-
-            # Update lowercase reverse index
-            new_lower = new_nickname.lower()
-            if new_lower not in self._nickname_lower_to_addrs:
-                self._nickname_lower_to_addrs[new_lower] = set()
-            self._nickname_lower_to_addrs[new_lower].add(addr_key)
-
-        # Note: We don't set row.nickname here - the caller already did that
-        # within an edit_session. This method only updates the reverse indices.
+        self._nickname_service.update(addr_key, old_nickname, new_nickname)
 
     def save_all_changes(self) -> int:
         """Save changes to data source.
@@ -974,8 +877,8 @@ class SharedAddressData:
                     self._reset_skeleton_row(row)
 
         # Update modified time to prevent immediate reload
-        if self._file_path and os.path.exists(self._file_path):
-            self._last_mtime = os.path.getmtime(self._file_path)
+        if self._file_monitor:
+            self._file_monitor.update_mtime()
 
         return count
 

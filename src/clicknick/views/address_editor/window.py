@@ -23,9 +23,9 @@ from ...models.blocktag import (
     format_block_tag,
     parse_block_tag,
     strip_block_tag,
-    validate_block_span,
 )
 from ...models.constants import DataType
+from ...services.block_service import validate_block_span
 from ...widgets.add_block_dialog import AddBlockDialog
 from ...widgets.custom_notebook import CustomNotebook
 from ...widgets.export_csv_dialog import ExportCsvDialog

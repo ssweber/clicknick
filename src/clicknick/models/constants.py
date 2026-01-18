@@ -125,8 +125,32 @@ FLOAT_MAX = 3.4028235e38
 # Memory types where InitialValue/Retentive cannot be edited
 # System types: values are fixed by CLICK software
 NON_EDITABLE_TYPES: frozenset[str] = frozenset({"SC", "SD", "XD", "YD"})
+# ==============================================================================
+# Interleaved Type Pairs (T↔TD, CT↔CTD)
+# ==============================================================================
+# These memory types are "paired" and interleaved in unified view:
+# - T (Timer bit) pairs with TD (Timer data/value)
+# - CT (Counter bit) pairs with CTD (Counter data/value)
+
+# Canonical set of interleaved type pairs
+INTERLEAVED_TYPE_PAIRS: frozenset[frozenset[str]] = frozenset(
+    {
+        frozenset({"T", "TD"}),
+        frozenset({"CT", "CTD"}),
+    }
+)
+
+# Bidirectional lookup for interleaved pairs
+INTERLEAVED_PAIRS: dict[str, str] = {
+    "T": "TD",
+    "TD": "T",
+    "CT": "CTD",
+    "CTD": "CT",
+}
+
 # Memory types that share retentive with their paired type (TD↔T, CTD↔CT)
 # Retentive edits on these types update the paired type instead
+# Note: One-directional (TD->T, CTD->CT) because retentive is stored on T/CT
 PAIRED_RETENTIVE_TYPES: dict[str, str] = {"TD": "T", "CTD": "CT"}
 # Default retentive values by memory type (from CLICK documentation)
 DEFAULT_RETENTIVE: dict[str, bool] = {
