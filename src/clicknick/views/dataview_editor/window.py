@@ -288,7 +288,7 @@ class DataviewEditorWindow(tk.Toplevel):
         if self._nav_window is None:
             return
 
-        address_shared = self.shared_data.address_shared_data
+        address_shared = self.shared_data._store
         if address_shared:
             self._nav_window.refresh(address_shared.all_rows)
 
@@ -300,7 +300,7 @@ class DataviewEditorWindow(tk.Toplevel):
         """
         from ...models.address_row import get_addr_key
 
-        address_shared = self.shared_data.address_shared_data
+        address_shared = self.shared_data._store
         if not address_shared:
             return
 
@@ -576,7 +576,7 @@ class DataviewEditorWindow(tk.Toplevel):
         Returns:
             List of matching nickname strings
         """
-        address_shared = self.shared_data.address_shared_data
+        address_shared = self.shared_data._store
         if not address_shared:
             return []
 
@@ -611,7 +611,7 @@ class DataviewEditorWindow(tk.Toplevel):
         if not nickname:
             return
 
-        address_shared = self.shared_data.address_shared_data
+        address_shared = self.shared_data._store
         if not address_shared:
             return
 

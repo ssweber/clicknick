@@ -180,13 +180,14 @@ def load_all_addresses(conn: MdbConnection) -> dict[int, AddressRow]:
 
 
 def save_changes(conn: MdbConnection, rows: Sequence[AddressRow]) -> int:
-    """Save all dirty rows to database.
+    """Save dirty rows to database.
 
-    Performs INSERT, UPDATE, DELETE, or clear based on row state.
+    Performs INSERT, UPDATE, or DELETE based on row state.
+    Caller is responsible for passing only dirty rows.
 
     Args:
         conn: Active database connection
-        rows: List of AddressRow objects to save (will filter to dirty ones)
+        rows: List of dirty AddressRow objects to save
 
     Returns:
         Number of rows modified
@@ -203,7 +204,8 @@ def save_changes(conn: MdbConnection, rows: Sequence[AddressRow]) -> int:
 
     try:
         for row in rows:
-            if row.needs_full_delete:
+            # All rows passed here are dirty (is_dirty=True)
+            if row.needs_full_delete(is_dirty=True):
                 # Delete the entire row from database
                 cursor.execute(
                     """
@@ -213,7 +215,7 @@ def save_changes(conn: MdbConnection, rows: Sequence[AddressRow]) -> int:
                 )
                 modified_count += 1
 
-            elif row.needs_insert:
+            elif row.needs_insert(is_dirty=True):
                 # Insert new row with all fields
                 cursor.execute(
                     """
@@ -233,7 +235,7 @@ def save_changes(conn: MdbConnection, rows: Sequence[AddressRow]) -> int:
                 )
                 modified_count += 1
 
-            elif row.needs_update:
+            elif row.needs_update(is_dirty=True):
                 # Update existing row (all editable fields)
                 cursor.execute(
                     """
@@ -243,23 +245,7 @@ def save_changes(conn: MdbConnection, rows: Sequence[AddressRow]) -> int:
                 )
                 modified_count += 1
 
-            elif row.needs_nickname_clear_only:
-                # Clear nickname (set to empty string, keep row for other fields)
-                cursor.execute(
-                    """
-                    UPDATE address SET Nickname = '' WHERE AddrKey = ?
-                """,
-                    (row.addr_key,),
-                )
-                modified_count += 1
-
         conn._conn.commit()
-
-        # Mark all modified rows as saved
-        for row in rows:
-            if row.is_dirty:
-                row.mark_saved()
-
         return modified_count
 
     except Exception:

@@ -42,16 +42,6 @@ uv run clicknick                # Run the app
 uv tool install --editable .
 ```
 
-### Codebase Context with RepoMapper
-
-```bash
-uv run repomapper src/clicknick/ --map-tokens 1500 --chat-files src/clicknick/specific_file.py
-```
-
-- **Architectural reviews** (separation of concerns, responsibility mapping): Use repomapper — method names reveal responsibilities without implementation noise
-- **Implementation work** (bug fixes, understanding logic): Read the actual file
-- Simple searches: Use grep or glob instead
-
 ## Architecture
 
 ### Entry Points

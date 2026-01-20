@@ -17,7 +17,7 @@ handles validation and notification automatically.
 """
 
 from .block_service import BlockService
-from .dependency_service import RowDependencyService
+# from .dependency_service import RowDependencyService
 from .import_service import ImportService
 from .nickname_index_service import NicknameIndexService
 from .row_service import RowService

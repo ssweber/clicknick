@@ -1,16 +1,12 @@
 """Data model for the Address Editor.
 
-Contains AddressRow dataclass, validation functions, and AddrKey calculations.
+Contains AddressRow frozen dataclass, validation functions, and AddrKey calculations.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from ..data.shared_data import SharedAddressData
 
 from .constants import (
     _INDEX_TO_TYPE,
@@ -221,126 +217,52 @@ def normalize_address(address: str) -> str | None:
 
 
 # ==============================================================================
-# Edit Session Locking
-# ==============================================================================
-
-# Fields that require edit_session to modify (user-editable content)
-_LOCKED_FIELDS = frozenset(
-    {
-        "nickname",
-        "comment",
-        "initial_value",
-        "retentive",
-    }
-)
-
-# Fields that are always writable (metadata, validation state, etc.)
-_UNLOCKED_FIELDS = frozenset(
-    {
-        # Identity (set once during init)
-        "memory_type",
-        "address",
-        # Metadata fields (updated by system, not user edits)
-        "used",
-        "exists_in_mdb",
-        "data_type",
-        "loaded_with_error",
-        # Original value tracking (set by system during load/save)
-        "original_nickname",
-        "original_comment",
-        "original_initial_value",
-        "original_retentive",
-        # Validation state (computed, not user data)
-        "is_valid",
-        "validation_error",
-        "initial_value_valid",
-        "initial_value_error",
-        # Precomputed display properties
-        "block_color",
-    }
-)
-
-
-# ==============================================================================
 # Main Data Model
 # ==============================================================================
 
 
-@dataclass
+@dataclass(frozen=True)
 class AddressRow:
-    """Represents a single address row in the editor.
+    """Immutable address row in the editor.
 
-    This is the in-memory model for a single PLC address. It tracks both
-    the current values and the original values (for dirty tracking).
-
-    IMPORTANT: Content fields (nickname, comment, initial_value, retentive)
-    can only be modified within a SharedAddressData.edit_session().
-    Attempting to modify these fields outside a session raises RuntimeError.
+    This is the in-memory model for a single PLC address. Being frozen,
+    new instances must be created for any changes using dataclasses.replace().
 
     Usage:
-        # Create a row (during skeleton creation, before _parent is set)
-        row = AddressRow("X", 1, nickname="Input1")
+        # Create a row
+        row = AddressRow(memory_type="X", address=1, nickname="Input1")
 
-        # Modify content fields (requires edit_session)
-        with shared_data.edit_session():
-            row.nickname = "NewName"
-            row.comment = "Updated comment"
+        # Modify by creating new instance
+        from dataclasses import replace
+        new_row = replace(row, nickname="NewName", comment="Updated")
     """
 
     # --- Identity ---
     memory_type: str  # 'X', 'Y', 'C', etc.
     address: int  # 1, 2, 3... (or 0 for XD/YD)
 
-    # --- Content ---
-    nickname: str = ""  # Current nickname or ""
-    comment: str = ""  # Address comment
-    initial_value: str = ""  # Current initial value (stored as string)
-    retentive: bool = False  # Current retentive setting
+    # --- Content (user-editable) ---
+    nickname: str = ""
+    comment: str = ""
+    initial_value: str = ""
+    retentive: bool = False
 
-    # --- Metadata ---
-    used: bool = False  # Whether address is used in program
-    exists_in_mdb: bool = False  # True if row was loaded from database
-    data_type: int = DataType.BIT  # DataType from MDB (0=bit, 1=int, etc.)
+    # --- Metadata (from DB, not user-editable) ---
+    used: bool = False
+    exists_in_mdb: bool = False
+    data_type: int = DataType.BIT
 
-    # --- Dirty Tracking (Original Values) ---
-    # These track the value at load-time to determine if the row is 'dirty'.
-    # default=None allows __post_init__ to automatically populate them from Content fields.
-    # repr=False keeps debugging output clean.
-    original_nickname: str | None = field(default=None, repr=False)
-    original_comment: str | None = field(default=None, repr=False)
-    original_initial_value: str | None = field(default=None, repr=False)
-    original_retentive: bool | None = field(default=None, repr=False)
-
-    # --- Validation State ---
-    # Computed state, not stored in comparisons
+    # --- Validation State (computed) ---
     is_valid: bool = field(default=True, compare=False)
     validation_error: str = field(default="", compare=False)
     initial_value_valid: bool = field(default=True, compare=False)
     initial_value_error: str = field(default="", compare=False)
 
-    # Track if row was loaded with invalid data (SC/SD often have system-set invalid nicknames)
+    # Track if row was loaded with invalid data
     loaded_with_error: bool = field(default=False, compare=False)
 
     # --- Precomputed Display Properties ---
-    # These are computed by services and read by UI (not part of dirty tracking)
     block_color: str | None = field(default=None, compare=False, repr=False)
-
-    # --- Parent Reference (set after skeleton creation) ---
-    _parent: SharedAddressData | None = field(default=None, init=False, repr=False, compare=False)
-
-    def __post_init__(self):
-        """Capture initial values if originals were not explicitly provided."""
-        if self.original_nickname is None:
-            self.original_nickname = self.nickname
-
-        if self.original_comment is None:
-            self.original_comment = self.comment
-
-        if self.original_initial_value is None:
-            self.original_initial_value = self.initial_value
-
-        if self.original_retentive is None:
-            self.original_retentive = self.retentive
 
     @property
     def addr_key(self) -> int:
@@ -384,38 +306,6 @@ class AddressRow:
             parts.append(f"= {self.initial_value}")
 
         return " ".join(parts)
-
-    # --- Dirty Checking Properties ---
-
-    @property
-    def is_dirty(self) -> bool:
-        """True if any field has been modified since load."""
-        return (
-            self.is_nickname_dirty
-            or self.is_comment_dirty
-            or self.is_initial_value_dirty
-            or self.is_retentive_dirty
-        )
-
-    @property
-    def is_nickname_dirty(self) -> bool:
-        """True if just the nickname has been modified."""
-        return self.nickname != self.original_nickname
-
-    @property
-    def is_comment_dirty(self) -> bool:
-        """True if just the comment has been modified."""
-        return self.comment != self.original_comment
-
-    @property
-    def is_initial_value_dirty(self) -> bool:
-        """True if the initial value has been modified."""
-        return self.initial_value != self.original_initial_value
-
-    @property
-    def is_retentive_dirty(self) -> bool:
-        """True if the retentive setting has been modified."""
-        return self.retentive != self.original_retentive
 
     # --- State Helper Properties ---
 
@@ -476,9 +366,9 @@ class AddressRow:
         """True if validation errors should be ignored (SC/SD loaded with invalid data).
 
         SC/SD addresses often have system-preset nicknames that violate validation rules.
-        If the row was loaded with errors and hasn't been modified, we ignore the errors.
+        If the row was loaded with errors, we ignore the errors for display purposes.
         """
-        return self.loaded_with_error and not self.is_nickname_dirty
+        return self.loaded_with_error
 
     @property
     def has_reportable_error(self):
@@ -494,42 +384,21 @@ class AddressRow:
             or self.retentive != DEFAULT_RETENTIVE.get(self.memory_type, False)
         )
 
-    # --- CRUD Helper Properties ---
+    # --- CRUD Helper Properties (for save logic) ---
 
-    @property
-    def needs_insert(self) -> bool:
+    def needs_insert(self, is_dirty: bool) -> bool:
         """True if dirty AND has content AND was virtual."""
-        return self.is_dirty and self.has_content and self.is_virtual
+        return is_dirty and self.has_content and self.is_virtual
 
-    @property
-    def needs_update(self) -> bool:
-        """True if dirty AND has content AND was NOT virtual AND not deleting."""
-        return self.is_dirty and self.has_content and not self.is_virtual
+    def needs_update(self, is_dirty: bool) -> bool:
+        """True if dirty AND has content AND was NOT virtual."""
+        return is_dirty and self.has_content and not self.is_virtual
 
-    @property
-    def needs_nickname_clear_only(self) -> bool:
-        """True if should clear nickname (but keep row for comment/used/initial value)."""
-        # Nickname was cleared, row existed, but has other content or is used
-        has_other_content = (
-            self.comment != ""
-            or self.used
-            or self.initial_value != ""
-            or self.retentive != DEFAULT_RETENTIVE.get(self.memory_type, False)
-        )
-        return (
-            self.is_nickname_dirty
-            and self.nickname == ""
-            and self.original_nickname != ""
-            and has_other_content
-        )
-
-    @property
-    def needs_full_delete(self) -> bool:
+    def needs_full_delete(self, is_dirty: bool) -> bool:
         """True if should DELETE the entire row from database."""
-        # Row existed, now completely empty and not used
         is_default_retentive = self.retentive == DEFAULT_RETENTIVE.get(self.memory_type, False)
         return (
-            self.is_dirty
+            is_dirty
             and self.nickname == ""
             and self.comment == ""
             and self.initial_value == ""
@@ -542,176 +411,29 @@ class AddressRow:
         self,
         all_nicknames: dict[int, str],
         is_duplicate_fn: Callable[[str, int], bool] | None = None,
-    ) -> None:
-        """Validate this row and update validation state.
+    ) -> tuple[bool, str, bool, str]:
+        """Validate this row and return validation state.
 
         Args:
             all_nicknames: Dict of addr_key -> nickname for uniqueness check
-            is_duplicate: Optional O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
-                If provided, uses this instead of O(n) scan of all_nicknames.
+            is_duplicate_fn: Optional O(1) duplicate checker function
+
+        Returns:
+            Tuple of (is_valid, validation_error, initial_value_valid, initial_value_error)
         """
         # Validate nickname
-        self.is_valid, self.validation_error = validate_nickname(
+        is_valid, validation_error = validate_nickname(
             self.nickname, all_nicknames, self.addr_key, is_duplicate_fn
         )
 
         # Validate initial value
-        self.initial_value_valid, self.initial_value_error = validate_initial_value(
+        initial_value_valid, initial_value_error = validate_initial_value(
             self.initial_value, self.data_type
         )
 
         # Overall validity includes both
-        if not self.initial_value_valid and self.is_valid:
-            self.is_valid = False
-            self.validation_error = self.initial_value_error
+        if not initial_value_valid and is_valid:
+            is_valid = False
+            validation_error = initial_value_error
 
-    def mark_saved(self) -> None:
-        """Call after successful save to reset dirty tracking."""
-        self.original_nickname = self.nickname
-        self.original_comment = self.comment
-        self.original_initial_value = self.initial_value
-        self.original_retentive = self.retentive
-        self.exists_in_mdb = True
-
-    def discard(self) -> None:
-        """Reset to original values, discarding any unsaved changes."""
-        self.nickname = self.original_nickname
-        self.comment = self.original_comment
-        self.initial_value = self.original_initial_value
-        self.retentive = self.original_retentive
-
-    def discard_field(self, field_name: str) -> bool:
-        """Reset a single field to its original value.
-
-        Args:
-            field_name: One of 'nickname', 'comment', 'initial_value', 'retentive'
-
-        Returns:
-            True if the field was dirty and has been discarded, False otherwise.
-        """
-        field_map = {
-            "nickname": ("nickname", "original_nickname"),
-            "comment": ("comment", "original_comment"),
-            "initial_value": ("initial_value", "original_initial_value"),
-            "retentive": ("retentive", "original_retentive"),
-        }
-
-        if field_name not in field_map:
-            return False
-
-        current_field, original_field = field_map[field_name]
-        current_val = getattr(self, current_field)
-        original_val = getattr(self, original_field)
-
-        if current_val != original_val:
-            setattr(self, current_field, original_val)
-            return True
-        return False
-
-    def update_from_db(self, db_data: dict) -> bool:
-        """Update from database data, handling dirty fields gracefully.
-
-        Used when external changes are detected in the mdb file.
-
-        For clean fields: updates both current and original to new value.
-        For dirty fields: only updates original (preserves user's edit, updates baseline).
-
-        This means:
-        - User edits are never lost due to external changes
-        - Discard will revert to the latest external value (not stale data)
-        - Save will overwrite the external change with user's edit
-
-        Args:
-            db_data: Dict with keys: nickname, comment, used, data_type,
-                    initial_value, retentive
-
-        Returns:
-            True if any field was updated
-        """
-        changed = False
-
-        # Always update 'used' since it's read-only in the editor
-        new_used = db_data.get("used", False)
-        if self.used != new_used:
-            self.used = new_used
-            changed = True
-
-        def _update_field(field_name: str, original_field: str, new_value) -> bool:
-            current_val = getattr(self, field_name)
-            original_val = getattr(self, original_field)
-            is_dirty = current_val != original_val
-
-            if is_dirty:
-                # Dirty: only update baseline (preserves user's edit)
-                if original_val != new_value:
-                    setattr(self, original_field, new_value)
-                    return True
-            else:
-                # Clean: update both current and original
-                if current_val != new_value:
-                    setattr(self, field_name, new_value)
-                    setattr(self, original_field, new_value)
-                    return True
-            return False
-
-        changed |= _update_field("nickname", "original_nickname", db_data.get("nickname", ""))
-        changed |= _update_field("comment", "original_comment", db_data.get("comment", ""))
-        changed |= _update_field(
-            "initial_value", "original_initial_value", db_data.get("initial_value", "")
-        )
-        changed |= _update_field("retentive", "original_retentive", db_data.get("retentive", False))
-
-        self.exists_in_mdb = True
-        return changed
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        """Enforce edit_session requirement for content fields.
-
-        Content fields (nickname, comment, initial_value, retentive) can only
-        be modified when the parent SharedAddressData is in an edit_session.
-
-        Raises:
-            RuntimeError: If attempting to modify a locked field outside
-                         of an edit_session.
-        """
-        # Always allow unlocked fields and private/dunder fields
-        if name in _UNLOCKED_FIELDS or name.startswith("_"):
-            object.__setattr__(self, name, value)
-            return
-
-        # For locked fields, check if we're in an edit session
-        if name in _LOCKED_FIELDS:
-            # Get parent reference - may not exist during __init__
-            parent = self.__dict__.get("_parent")
-
-            if parent is None:
-                # During dataclass __init__ or before _parent is wired up
-                # Allow the assignment
-                object.__setattr__(self, name, value)
-                return
-
-            if not parent.is_editing:
-                raise RuntimeError(
-                    f"Cannot modify AddressRow.{name} outside of edit_session. "
-                    f"Use: with shared_data.edit_session(): row.{name} = value"
-                )
-
-            # Get old value for change tracking
-            old_value = self.__dict__.get(name)
-
-            # Set the value
-            object.__setattr__(self, name, value)
-
-            # Notify parent of change (if value actually changed)
-            if old_value != value:
-                parent.mark_changed(self.addr_key)
-                # Track nickname changes for reverse index updates
-                if name == "nickname":
-                    parent._record_nickname_change(self.addr_key, old_value or "")
-                # Track comment changes for paired tag sync
-                elif name == "comment":
-                    parent._record_comment_change(self.addr_key, old_value or "")
-            return
-
-        # For any other fields, just set them
-        object.__setattr__(self, name, value)
+        return is_valid, validation_error, initial_value_valid, initial_value_error

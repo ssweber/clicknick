@@ -1,7 +1,5 @@
 """Tests for nickname_combobox utility functions."""
 
-import pytest
-
 from clicknick.widgets.nickname_combobox import (
     is_possible_address_or_literal,
     normalize_nickname,
@@ -238,10 +236,16 @@ class TestIsPossibleAddressOrLiteral:
 
         for prefix in valid_prefixes:
             # Non-strict: should match the prefix itself
-            assert is_possible_address_or_literal(prefix, strict=False) is True, f"{prefix} non-strict"
+            assert is_possible_address_or_literal(prefix, strict=False) is True, (
+                f"{prefix} non-strict"
+            )
             # Non-strict: should match with digits
-            assert is_possible_address_or_literal(f"{prefix}1", strict=False) is True, f"{prefix}1 non-strict"
+            assert is_possible_address_or_literal(f"{prefix}1", strict=False) is True, (
+                f"{prefix}1 non-strict"
+            )
             # Strict: should not match without digits
             assert is_possible_address_or_literal(prefix, strict=True) is False, f"{prefix} strict"
             # Strict: should match with digits
-            assert is_possible_address_or_literal(f"{prefix}1", strict=True) is True, f"{prefix}1 strict"
+            assert is_possible_address_or_literal(f"{prefix}1", strict=True) is True, (
+                f"{prefix}1 strict"
+            )

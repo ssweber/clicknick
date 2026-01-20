@@ -290,7 +290,7 @@ class ClickNickApp:
 
             AddressEditorWindow(
                 self.root,
-                shared_data=self._shared_address_data,
+                address_store=self._shared_address_data,
                 click_filename=self.connected_click_filename or "",
             )
 
@@ -336,7 +336,7 @@ class ClickNickApp:
             ):
                 self._dataview_editor_shared_data = SharedDataviewData(
                     project_path=project_path,
-                    address_shared_data=self._shared_address_data,
+                    address_store=self._shared_address_data,
                 )
                 self._dataview_editor_project_path = project_path
 
@@ -675,18 +675,18 @@ class ClickNickApp:
             return False
 
         try:
+            from .data.address_store import AddressStore
             from .data.data_source import CsvDataSource
-            from .data.shared_data import SharedAddressData
 
             data_source = CsvDataSource(csv_path)
-            self._shared_address_data = SharedAddressData(data_source)
+            self._shared_address_data = AddressStore(data_source)
             self._shared_address_data.load_initial_data()
             self._shared_data_source_path = csv_path
 
             # Start file monitoring for external changes
             self._shared_address_data.start_file_monitoring(self.root)
 
-            # Wire NicknameManager to use SharedAddressData
+            # Wire NicknameManager to use AddressStore
             self.nickname_manager.set_shared_data(self._shared_address_data)
 
             # Apply user's sorting preference
@@ -843,20 +843,20 @@ class ClickNickApp:
 
         # Create SharedAddressData for the new connection (ODBC available)
         from .data.data_source import MdbDataSource
-        from .data.shared_data import SharedAddressData
+        from .data.address_store import AddressStore
 
         data_source = MdbDataSource(
             click_pid=self.connected_click_pid,
             click_hwnd=self.connected_click_hwnd,
         )
-        self._shared_address_data = SharedAddressData(data_source)
+        self._shared_address_data = AddressStore(data_source)
         self._shared_address_data.load_initial_data()
         self._shared_data_source_path = f"mdb:{pid}:{hwnd}"
 
         # Start file monitoring for external changes
         self._shared_address_data.start_file_monitoring(self.root)
 
-        # Wire NicknameManager to use SharedAddressData
+        # Wire NicknameManager to use AddressStore
         self.nickname_manager.set_shared_data(self._shared_address_data)
 
         # Use centralized database loading method (now just starts monitoring)
@@ -970,13 +970,13 @@ class ClickNickApp:
                 # Recreate SharedAddressData for the new MDB file
                 if self.nickname_manager.has_access_driver():
                     from .data.data_source import MdbDataSource
-                    from .data.shared_data import SharedAddressData
+                    from .data.address_store import AddressStore
 
                     data_source = MdbDataSource(
                         click_pid=self.connected_click_pid,
                         click_hwnd=self.connected_click_hwnd,
                     )
-                    self._shared_address_data = SharedAddressData(data_source)
+                    self._shared_address_data = AddressStore(data_source)
                     self._shared_address_data.load_initial_data()
                     self._shared_data_source_path = (
                         f"mdb:{self.connected_click_pid}:{self.connected_click_hwnd}"

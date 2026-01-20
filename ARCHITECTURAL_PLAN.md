@@ -1,3 +1,4 @@
+@ -0,0 +1,481 @@
 # Architecture Plan: Base + Overlay Model
 
 ## Core Philosophy
@@ -62,37 +63,6 @@ class AddressRow:
 
 ---
 
-## 2. MutableRowBuilder (Edit Session Accumulator)
-
-During an edit session, changes accumulate in a mutable builder to avoid creating intermediate immutable objects during cascade syncs.
-
-```python
-@dataclass
-class MutableRowBuilder:
-    """Accumulates field changes during edit session, then freezes."""
-    addr_key: int
-    nickname: str | None = None   # None = unchanged from base
-    comment: str | None = None
-    initial_value: str | None = None
-    retentive: bool | None = None
-
-    def set_field(self, field: str, value: Any) -> None:
-        """Set a field value."""
-        setattr(self, field, value)
-
-    def freeze(self, base: AddressRow) -> AddressRow:
-        """Create immutable row by merging changes onto base."""
-        return dataclasses.replace(
-            base,
-            nickname=self.nickname if self.nickname is not None else base.nickname,
-            comment=self.comment if self.comment is not None else base.comment,
-            initial_value=self.initial_value if self.initial_value is not None else base.initial_value,
-            retentive=self.retentive if self.retentive is not None else base.retentive,
-        )
-```
-
----
-
 ## 3. Store Refactor (`AddressStore`)
 
 The Store becomes the "Merger." It holds the truth and the user's deviations from the truth.
@@ -102,16 +72,6 @@ The Store becomes the "Merger." It holds the truth and the user's deviations fro
 ```python
 MAX_UNDO_DEPTH = 50  # Maximum undo frames to retain
 ```
-
-### State Structure
-
-```python
-@dataclass
-class UndoFrame:
-    """Snapshot of user_overrides at a point in time."""
-    overrides: dict[int, AddressRow]  # Sparse: only modified rows
-    description: str                   # "Edit C1 nickname", "Fill down 50 rows"
-
 class AddressStore:
     # The three layers
     base_state: dict[int, AddressRow]      # Latest DB snapshot (all ~17k rows)
@@ -129,65 +89,6 @@ class AddressStore:
     _observers: list[Callable[[set[int]], None]]
 ```
 
-### Edit Session (with Cascade Support)
-
-```python
-@contextmanager
-def edit_session(self, description: str) -> Generator[EditSession, None, None]:
-    """
-    Context manager for batched edits with undo support.
-
-    All changes (including cascades) are accumulated, then:
-    1. Snapshot current overrides to undo stack
-    2. Freeze all builders into new override rows
-    3. Recompute visible_state for affected keys
-    4. Run validation
-    5. Notify observers
-    """
-    session = EditSession(self)
-    yield session
-
-    if not session.pending:
-        return  # No changes
-
-    # 1. Push undo frame BEFORE applying changes
-    self._push_undo_frame(description)
-
-    # 2. Apply cascades (T/TD sync, block tag sync)
-    self._apply_cascades(session.pending)
-
-    # 3. Freeze builders into user_overrides
-    affected_keys = set()
-    for key, builder in session.pending.items():
-        base = self.base_state[key]
-        new_override = builder.freeze(base)
-        self.user_overrides[key] = new_override
-        affected_keys.add(key)
-
-    # 4. Recompute visible_state
-    self._recompute_visible(affected_keys)
-
-    # 5. Validate affected rows
-    self._validate_rows(affected_keys)
-
-    # 6. Notify observers
-    self._notify_observers(affected_keys)
-
-def _push_undo_frame(self, description: str) -> None:
-    """Push current overrides to undo stack."""
-    frame = UndoFrame(
-        overrides=dict(self.user_overrides),  # Shallow copy (rows are immutable)
-        description=description,
-    )
-    self.undo_stack.append(frame)
-
-    # Enforce max depth
-    while len(self.undo_stack) > MAX_UNDO_DEPTH:
-        self.undo_stack.pop(0)
-
-    # New action clears redo
-    self.redo_stack.clear()
-```
 
 ### Silent Merge (External DB Updates)
 
@@ -408,17 +309,13 @@ def _apply_cascades(self, pending: dict[int, MutableRowBuilder]) -> None:
 
     # T/TD retentive sync
     for key, builder in list(pending.items()):
-        if builder.retentive is not None:
-            paired_key = self._get_paired_key(key)
-            if paired_key:
-                if paired_key not in pending:
-                    pending[paired_key] = MutableRowBuilder(addr_key=paired_key)
-                pending[paired_key].retentive = builder.retentive
+        # ... use service to sync, using MutableRowBuilder
+
 
     # Block tag sync (<Foo> -> </Foo>)
     for key, builder in list(pending.items()):
         if builder.comment is not None:
-            # ... detect tag rename, find closing tag, update pending
+            # ... use service to detect tag rename, find closing tag, update pending
             pass
 ```
 
@@ -428,19 +325,17 @@ When user undoes, both the original edit AND the cascade revert together.
 
 ## 6. Migration Plan
 
-### Phase 1: Create AddressStore (Parallel)
-- Create `AddressStore` class alongside existing `SharedAddressData`
-- Implement `base_state`, `user_overrides`, `visible_state`
-- Implement `edit_session` with undo/redo
-- Wire up to existing mutable `AddressRow` temporarily (store tracks keys, rows still mutate)
-- Add Ctrl+Z/Ctrl+Y bindings
-
-### Phase 2: Immutable AddressRow
+### Phase 1: Immutable AddressRow
 - Convert `AddressRow` to frozen dataclass
 - Remove `original_*` fields, `_parent`, `__setattr__` override
-- Create `MutableRowBuilder`
 - Update `AddressStore.edit_session` to use builders
 - Update cascade services to work with builders
+
+### Phase 2: Create AddressStore
+- Create `AddressStore` class 
+- Implement `base_state`, `user_overrides`, `visible_state`
+- Implement `edit_session` with undo/redo
+- Add Ctrl+Z/Ctrl+Y bindings
 
 ### Phase 3: View Migration
 - Change panels from `self.rows: list[AddressRow]` to `self.row_keys: list[int]`

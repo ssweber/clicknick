@@ -1,6 +1,6 @@
 """Shared data model for Dataview Editor window.
 
-Read-only shim over SharedAddressData for nickname lookups.
+Read-only shim over AddressStore for nickname lookups.
 Manages CDV file discovery and the single dataview editor window.
 """
 
@@ -19,32 +19,33 @@ from ..models.address_row import (
 from ..views.dataview_editor.cdv_file import get_dataview_folder, list_cdv_files
 
 if TYPE_CHECKING:
-    from .shared_data import SharedAddressData
+    from .data.address_store import AddressStore
+
 
 
 class SharedDataviewData:
     """Shared data for the Dataview Editor window.
 
     This class:
-    - Provides nickname lookup via SharedAddressData (read-only shim)
+    - Provides nickname lookup via AddressStore (read-only shim)
     - Manages CDV file discovery in the project's DataView folder
     - Tracks the single dataview editor window
-    - Observes SharedAddressData for automatic nickname refresh
+    - Observes AddressStore for automatic nickname refresh
     """
 
     def __init__(
         self,
         project_path: Path | None = None,
-        address_shared_data: SharedAddressData | None = None,
+        address_store: AddressStore | None = None,
     ):
         """Initialize the shared dataview data.
 
         Args:
             project_path: Path to the CLICK project folder
-            address_shared_data: SharedAddressData for nickname lookups
+            address_store: AddressStore for nickname lookups
         """
         self._project_path = project_path
-        self._address_shared_data: SharedAddressData | None = None
+        self._store: AddressStore | None = None
         self._dataview_folder: Path | None = None
 
         # Single window tracking (only one dataview editor at a time)
@@ -54,9 +55,9 @@ class SharedDataviewData:
         if project_path:
             self._dataview_folder = get_dataview_folder(project_path)
 
-        # Wire up to SharedAddressData if provided
-        if address_shared_data:
-            self.set_address_shared_data(address_shared_data)
+        # Wire up to AddressStore if provided
+        if address_store:
+            self.set_address_store(address_store)
 
     @property
     def dataview_folder(self) -> Path | None:
@@ -64,12 +65,12 @@ class SharedDataviewData:
         return self._dataview_folder
 
     @property
-    def address_shared_data(self) -> SharedAddressData | None:
-        """Get the SharedAddressData for nickname lookups."""
-        return self._address_shared_data
+    def address_store(self) -> AddressStore | None:
+        """Get the AddressStore for nickname lookups."""
+        return self._store
 
     def _on_address_data_changed(self, sender=None) -> None:
-        """Observer callback when SharedAddressData changes.
+        """Observer callback when AddressStore changes.
 
         Triggers nickname refresh in the dataview editor window.
         """
@@ -79,23 +80,23 @@ class SharedDataviewData:
             except Exception:
                 pass
 
-    def set_address_shared_data(self, data: SharedAddressData | None) -> None:
-        """Set the SharedAddressData for nickname lookups.
+    def set_address_store(self, data: AddressStore | None) -> None:
+        """Set the AddressStore for nickname lookups.
 
         Registers as observer to auto-refresh nicknames when address data changes.
 
         Args:
-            data: SharedAddressData instance or None to disconnect
+            data: AddressStore instance or None to disconnect
         """
         # Unregister from old shared data
-        if self._address_shared_data is not None:
-            self._address_shared_data.remove_observer(self._on_address_data_changed)
+        if self._store is not None:
+            self._store.remove_observer(self._on_address_data_changed)
 
-        self._address_shared_data = data
+        self._store = data
 
         # Register as observer on new shared data
-        if self._address_shared_data is not None:
-            self._address_shared_data.add_observer(self._on_address_data_changed)
+        if self._store is not None:
+            self._store.add_observer(self._on_address_data_changed)
 
     def get_cdv_files(self) -> list[Path]:
         """Get list of CDV files in the dataview folder.
@@ -116,7 +117,7 @@ class SharedDataviewData:
         Returns:
             Tuple of (nickname, comment) or None if not found.
         """
-        if self._address_shared_data:
+        if self._store:
             parsed = parse_address_display(address)
             if not parsed:
                 return None
@@ -124,8 +125,8 @@ class SharedDataviewData:
             memory_type, mdb_address = parsed
             addr_key = get_addr_key(memory_type, mdb_address)
 
-            if addr_key in self._address_shared_data.all_rows:
-                row = self._address_shared_data.all_rows[addr_key]
+            if addr_key in self._store.all_rows:
+                row = self._store.all_rows[addr_key]
                 return (row.nickname, row.comment)
 
         return None

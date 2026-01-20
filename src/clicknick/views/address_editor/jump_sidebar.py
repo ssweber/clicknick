@@ -259,17 +259,17 @@ class JumpSidebar(ttk.Frame):
             end_addr is None for self-closing (singular) blocks.
             bg_color is None if not specified.
         """
-        if not self.shared_data:
+        if not self._store:
             return []
 
         # Handle combined types (T/TD, CT/CTD)
         if type_name in COMBINED_TYPES:
             blocks = []
             for sub_type in COMBINED_TYPES[type_name]:
-                blocks.extend(self.shared_data.get_block_addresses(sub_type))
+                blocks.extend(self._store.get_block_addresses(sub_type))
             return sorted(blocks, key=lambda x: x[0])
 
-        return self.shared_data.get_block_addresses(type_name)
+        return self._store.get_block_addresses(type_name)
 
     def _create_buttons(self) -> None:
         """Create all type buttons."""
@@ -298,21 +298,21 @@ class JumpSidebar(ttk.Frame):
         parent: tk.Widget,
         on_type_select: Callable,
         on_address_jump: Callable,
-        shared_data=None,
+        address_store=None,
     ):
         super().__init__(parent, width=70)  # Narrower sidebar
         self.pack_propagate(False)  # Maintain fixed width
 
         self.on_type_select = on_type_select
         self.on_address_jump = on_address_jump
-        self.shared_data = shared_data
+        self._store = address_store
         self.buttons: dict[str, JumpButton] = {}
 
         self._create_buttons()
 
     def update_all_indicators(self) -> None:
         """Update status indicators on all buttons from shared data."""
-        if not self.shared_data:
+        if not self._store:
             return
 
         for type_name, btn in self.buttons.items():
@@ -321,10 +321,10 @@ class JumpSidebar(ttk.Frame):
                 modified = 0
                 errors = 0
                 for sub_type in COMBINED_TYPES[type_name]:
-                    modified += self.shared_data.get_modified_count_for_type(sub_type)
-                    errors += self.shared_data.get_error_count_for_type(sub_type)
+                    modified += self._store.get_modified_count_for_type(sub_type)
+                    errors += self._store.get_error_count_for_type(sub_type)
                 btn.update_status(modified, errors)
             else:
-                modified = self.shared_data.get_modified_count_for_type(type_name)
-                errors = self.shared_data.get_error_count_for_type(type_name)
+                modified = self._store.get_modified_count_for_type(type_name)
+                errors = self._store.get_error_count_for_type(type_name)
                 btn.update_status(modified, errors)

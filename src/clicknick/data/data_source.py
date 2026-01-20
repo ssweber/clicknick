@@ -290,13 +290,8 @@ class CsvDataSource(DataSource):
 
         Rewrites the entire CSV with all rows that have content.
         """
-        # Collect all rows with content
-        rows_to_write = []
-        for row in rows:
-            if row.needs_full_delete:
-                continue
-            if row.has_content:
-                rows_to_write.append(row)
+        # Collect all rows with content (CSV rewrites entire file)
+        rows_to_write = [row for row in rows if row.has_content]
 
         # Sort by memory type order and address
         rows_to_write.sort(
@@ -410,17 +405,15 @@ class MdbDataSource(DataSource):
             return load_all_addresses(conn)
 
     def save_changes(self, rows: Sequence[AddressRow]) -> int:
-        """Save dirty rows to the MDB database.
+        """Save rows to the MDB database.
 
-        Filters to only dirty rows before saving.
+        Caller is responsible for passing only dirty rows.
         """
-        # MDB only saves dirty rows
-        dirty_rows = [row for row in rows if row.is_dirty]
-        if not dirty_rows:
+        if not rows:
             return 0
 
         with MdbConnection(self._db_path) as conn:
-            return save_changes(conn, dirty_rows)
+            return save_changes(conn, rows)
 
     @property
     def supports_used_field(self) -> bool:

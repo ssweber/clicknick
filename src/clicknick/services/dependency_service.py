@@ -4,19 +4,13 @@ This service handles automatic synchronization of interleaved pairs (T/TD, CT/CT
 When a row in a pair is modified, the paired row is automatically updated to match
 certain fields (retentive, block tags).
 
-Called automatically by SharedAddressData during edit_session exit.
+Called automatically by AddressStore during edit_session exit.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from ..models.blocktag import format_block_tag, parse_block_tag
 from ..models.constants import INTERLEAVED_PAIRS
-
-if TYPE_CHECKING:
-    from ..data.shared_data import SharedAddressData
-    from ..models.address_row import AddressRow
 
 
 def _sync_block_tag(source_comment: str, target_comment: str) -> str | None:
@@ -56,89 +50,3 @@ def _sync_block_tag(source_comment: str, target_comment: str) -> str | None:
             return f"{target_remaining} {new_tag}"
         else:
             return new_tag
-
-
-class RowDependencyService:
-    """Synchronizes related rows in interleaved pairs.
-
-    In unified view, T/TD and CT/CTD rows are interleaved (T1, TD1, T2, TD2...).
-    When one row's retentive setting changes, the paired row should match.
-
-    All methods are static as the service is stateless.
-    """
-
-    @staticmethod
-    def find_paired_row(
-        shared_data: SharedAddressData,
-        row: AddressRow,
-    ) -> AddressRow | None:
-        """Find the paired row for an interleaved type.
-
-        Args:
-            shared_data: The SharedAddressData instance
-            row: The row to find a pair for
-
-        Returns:
-            The paired AddressRow, or None if no pair exists
-        """
-        paired_type = INTERLEAVED_PAIRS.get(row.memory_type)
-        if not paired_type:
-            return None
-
-        # Build the paired addr_key (same address, different type)
-        from ..models.address_row import get_addr_key
-
-        paired_key = get_addr_key(paired_type, row.address)
-        return shared_data.all_rows.get(paired_key)
-
-    @staticmethod
-    def sync_interleaved_pairs(
-        shared_data: SharedAddressData,
-        affected_keys: set[int],
-    ) -> set[int]:
-        """Sync retentive and comment for interleaved pairs.
-
-        When a T/TD or CT/CTD row is modified, the paired row should be
-        updated to match. This ensures interleaved pairs stay in sync for:
-        - Retentive settings (T1 and TD1 must have same retentive value)
-        - Comments/block tags (T1 and TD1 should share block membership)
-
-        Args:
-            shared_data: The SharedAddressData instance
-            affected_keys: Set of addr_keys that were modified
-
-        Returns:
-            Set of additional addr_keys that were synced (may be empty)
-        """
-        synced_keys: set[int] = set()
-
-        for addr_key in affected_keys:
-            row = shared_data.all_rows.get(addr_key)
-            if not row:
-                continue
-
-            # Only sync if this is an interleaved type
-            if row.memory_type not in INTERLEAVED_PAIRS:
-                continue
-
-            # Find the paired row
-            paired_row = RowDependencyService.find_paired_row(shared_data, row)
-            if not paired_row:
-                continue
-
-            # Skip if paired row was also edited (user explicitly set both)
-            if paired_row.addr_key in affected_keys:
-                continue
-
-            # Sync retentive if different
-            if paired_row.retentive != row.retentive:
-                paired_row.retentive = row.retentive
-                synced_keys.add(paired_row.addr_key)
-
-            # Sync block tag (preserves paired row's non-block comment text)
-            new_comment = _sync_block_tag(row.comment, paired_row.comment)
-            if new_comment is not None:
-                paired_row.comment = new_comment
-                synced_keys.add(paired_row.addr_key)
-
-        return synced_keys
