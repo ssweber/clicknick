@@ -56,7 +56,12 @@ src/clicknick/
 ├── app.py                 # Main ClickNickApp class
 ├── config.py              # AppSettings with persistence
 ├── models/                # Data models and constants
-├── data/                  # Data loading and shared state
+│   ├── address_row.py     # Frozen dataclass for address data
+│   └── mutable_row_builder.py  # Builder for accumulating changes
+├── data/                  # Data storage and state management
+│   ├── address_store.py   # Core store: base/overlay/visible layers, undo/redo
+│   ├── edit_session_new.py  # Context manager for atomic edits
+│   └── undo_frame.py      # Undo/redo snapshot storage
 ├── services/              # Business logic (pure Python, no tkinter)
 ├── utils/                 # Utilities (filters, MDB, Win32)
 ├── views/                 # Windows and panels (passive observers)
@@ -70,37 +75,43 @@ src/clicknick/
 
 ## Key Architectural Patterns
 
-### Unidirectional Data Flow
+### Immutable Base + Overlay Model
 
-The application uses a strict unidirectional data flow pattern:
+The application maintains three distinct data layers to cleanly separate database truth from user edits:
 
-1. **View** requests an edit via `SharedData.edit_session()`
-2. **Service** (or View) modifies **Model** properties inside the session
-3. **Model** marks itself as dirty and reports to the session
-4. **SharedData** closes session → validates → broadcasts changed indices
-5. **All Views** receive changed indices and redraw only those rows
+1. **Base Layer** (`base_state`) - Latest snapshot from the external database (source of truth)
+2. **Overlay Layer** (`user_overrides`) - Sparse dictionary of user modifications only
+3. **Visible Layer** (`visible_state`) - Computed projection of base + overrides
+
+**Core Principles:**
+- **Immutable Rows:** `AddressRow` is a frozen dataclass; changes create new instances via `dataclasses.replace()`
+- **Targeted Refresh:** Reference equality (`is`) used for fast dirty detection
+- **Undo/Redo:** Tracks overlay layer only (user intent), preserves 50-level history
+- **External Updates:** Database refreshes update base layer while preserving user overrides
+
+### Edit Session Pattern
+
+Edits flow through an edit session that accumulates changes atomically:
+
+1. **View** opens `AddressStore.edit_session(description)`
+2. **Service** accumulates changes via `session.set_field(addr_key, field, value)`
+3. Session uses `MutableRowBuilder` to accumulate changes per row
+4. **On exit:** Session freezes builders → updates overrides → pushes undo frame → notifies observers
+5. **All Views** receive changed `addr_keys` and refresh only those rows
 
 **The Rules:**
-1. **Models are Locked:** `AddressRow` raises `RuntimeError` if modified outside `edit_session`
-2. **SharedData is the Gatekeeper:** Only `SharedAddressData` can open `edit_session`
+1. **Models are Immutable:** `AddressRow` is `frozen=True`; all changes create new instances
+2. **AddressStore is the Gatekeeper:** Only `AddressStore` manages the three data layers
 3. **Services are Pure Logic:** Services **never** import `tkinter`
-4. **Views are Passive:** Views only read state and listen for `on_data_changed` signals
-
-### Static Skeleton Architecture
-
-The Address Editor uses a "skeleton" of persistent `AddressRow` objects:
-- ~17,000 empty `AddressRow` objects created at initialization (one per valid PLC address)
-- All tabs and windows reference the **same** row objects (not copies)
-- Edits to any row are instantly visible everywhere
-- Skeleton rows are hydrated in-place from database, not replaced
+4. **Views are Passive:** Views lookup rows via `store.visible_state[addr_key]` and listen for change notifications
 
 ### Observer Pattern
 
-All views register as observers with `SharedAddressData`:
-- `register_observer()` - Subscribe to data changes
-- `on_data_changed(sender, changed_indices)` - Receive change notifications
-- Views refresh only changed rows, not entire table
-- Sender excluded from notifications (no self-refresh)
+All views register as observers with `AddressStore`:
+- `add_observer(callback)` - Subscribe to data changes
+- `callback(changed_keys: set[int])` - Receive notifications with affected `addr_key` sets
+- Views refresh only changed rows using targeted updates
+- Reference equality (`visible is base`) enables fast dirty detection
 
 ## Key Dependencies
 
@@ -113,12 +124,41 @@ All views register as observers with `SharedAddressData`:
 
 Tests are in `tests/` and `src/` (pytest discovers both).
 
+**Core data tests:**
+- `test_address_store.py` - Store operations, undo/redo, base+overlay merging, cascades
+- `test_mutable_row_builder.py` - Builder pattern, freeze behavior, immutability
+- `test_address_model.py` - AddressRow validation, frozen dataclass behavior
+
 **Service tests** (fully unit testable without tkinter):
 - `test_block_service.py` - Block tag parsing, color assignment, range detection
-- `test_row_service.py` - Fill down, clone structure, dependency resolution
+- `test_row_service.py` - Fill down, clone structure, edit session integration
 - `test_blocktag.py` - Tag parsing edge cases
+- `test_dependency_service.py` - T/TD sync, cascade operations
 
 **Other tests:**
 - Filter tests cover abbreviation matching edge cases
-- Address model tests cover validation and dirty tracking
 - View tests are integration tests requiring tkinter
+
+## Key Implementation Notes
+
+### Working with AddressRow
+- `AddressRow` is immutable (`frozen=True`); use `dataclasses.replace()` for changes
+- Never modify row attributes directly; always use `AddressStore.edit_session()`
+- Access visible data via `store.visible_state[addr_key]`, not direct row references
+
+### Edit Sessions
+- All data modifications must go through `store.edit_session(description)`
+- Use `session.set_field(addr_key, field, value)` to accumulate changes
+- Multiple changes batched into single undo frame (e.g., fill-down 500 rows = 1 undo)
+- Cascades (T/TD sync, block tag sync) happen automatically within the session
+
+### Dirty State Detection
+- Check via `store.is_dirty(addr_key)`, not `row.is_dirty` property
+- Fast reference equality: `visible_row is base_row` means clean
+- Per-field dirty: `store.is_field_dirty(addr_key, "nickname")`
+
+### Undo/Redo
+- Tracks user intent (overlay layer) only, not database state
+- Max 50 undo frames (configurable via `MAX_UNDO_DEPTH`)
+- Undo after save restores unsaved state (overrides preserved)
+- Keyboard: Ctrl+Z (undo), Ctrl+Y (redo)
