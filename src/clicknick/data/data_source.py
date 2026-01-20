@@ -108,16 +108,12 @@ def load_addresses_from_mdb_dump(csv_path: str) -> dict[int, AddressRow]:
                 memory_type=mem_type,
                 address=address,
                 nickname=nickname,
-                original_nickname=nickname,
                 comment=comment,
-                original_comment=comment,
                 used=False,  # MDB dump doesn't reliably have this
                 exists_in_mdb=True,
                 data_type=data_type,
                 initial_value=initial_value,
-                original_initial_value=initial_value,
                 retentive=retentive,
-                original_retentive=retentive,
             )
 
             result[addr_key] = addr_row
@@ -265,16 +261,12 @@ class CsvDataSource(DataSource):
                         memory_type=mem_type,
                         address=address,
                         nickname=nickname,
-                        original_nickname=nickname,
                         comment=comment,
-                        original_comment=comment,
                         used=False,  # CSV has no used field
                         exists_in_mdb=True,
                         data_type=data_type,
                         initial_value=initial_value,
-                        original_initial_value=initial_value,
                         retentive=retentive,
-                        original_retentive=retentive,
                     )
 
                     result[addr_key] = addr_row
@@ -316,20 +308,22 @@ class CsvDataSource(DataSource):
                     # Convert data type to string
                     data_type_str = DATA_TYPE_CODE_TO_STR.get(row.data_type, "")
 
-                    # Format address with leading zeros for certain types
-                    if row.memory_type in ("X", "Y"):
-                        addr_str = f"{row.memory_type}{row.address:03d}"
+                    # Format initial value: use "0" for numeric types when empty, "" for TXT
+                    if row.initial_value:
+                        initial_value_str = str(row.initial_value)
+                    elif row.data_type == 6:  # TXT
+                        initial_value_str = ""
                     else:
-                        addr_str = f"{row.memory_type}{row.address}"
+                        initial_value_str = "0"
 
                     # 2. Construct the line manually
                     # We leave Address, DataType, InitialValue, and Retentive RAW.
                     # We wrap Nickname and Comment in our format_quoted helper.
                     line_parts = [
-                        addr_str,
+                        row.display_address,  # Handles XD/YD formatting (XD0u, XD1-8)
                         data_type_str,
                         format_quoted(row.nickname),
-                        str(row.initial_value) if row.initial_value is not None else "",
+                        initial_value_str,
                         "Yes" if row.retentive else "No",
                         format_quoted(row.comment),
                     ]
