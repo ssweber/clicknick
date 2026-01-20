@@ -13,10 +13,10 @@ Key behaviors:
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import replace
-from typing import TYPE_CHECKING, Generator
+from typing import TYPE_CHECKING
 
 from ..models.address_row import AddressRow, get_addr_key, is_xd_yd_hidden_slot
 from ..models.constants import (
@@ -142,6 +142,152 @@ class AddressStore:
 
         return skeleton
 
+    def _mark_loaded_with_errors(self) -> None:
+        """Mark X/SC/SD rows that loaded with invalid nicknames."""
+        all_nicks = self.all_nicknames
+        for addr_key, row in self.visible_state.items():
+            if row.memory_type in ("X", "SC", "SD") and row.nickname:
+                is_valid, _ = validate_nickname(row.nickname, all_nicks, addr_key)
+                if not is_valid:
+                    # Update both base and visible
+                    updated = replace(row, loaded_with_error=True)
+                    self.base_state[addr_key] = updated
+                    self.visible_state[addr_key] = updated
+
+    def _validate_row(self, addr_key: int, all_nicknames: dict[int, str] | None = None) -> None:
+        """Validate a single row and update its validation state."""
+        if all_nicknames is None:
+            all_nicknames = self.all_nicknames
+
+        row = self.visible_state.get(addr_key)
+        if not row:
+            return
+
+        from ..models.validation import validate_initial_value, validate_nickname
+
+        is_valid, error = validate_nickname(
+            row.nickname, all_nicknames, addr_key, self.is_duplicate_nickname
+        )
+        init_valid, init_error = validate_initial_value(row.initial_value, row.data_type)
+
+        # Combine validation results
+        if not init_valid and is_valid:
+            is_valid = False
+            error = init_error
+
+        # Only update if validation state changed
+        if row.is_valid != is_valid or row.validation_error != error:
+            updated = replace(
+                row,
+                is_valid=is_valid,
+                validation_error=error,
+                initial_value_valid=init_valid,
+                initial_value_error=init_error,
+            )
+            self.visible_state[addr_key] = updated
+            if addr_key in self.user_overrides:
+                self.user_overrides[addr_key] = updated
+
+    def _validate_all_rows(self) -> None:
+        """Validate all rows and update validation state."""
+        all_nicks = self.all_nicknames
+        for addr_key in self.visible_state:
+            self._validate_row(addr_key, all_nicks)
+
+    def _validate_affected_rows(self, affected: set[int], nickname_changes: dict[int, str]) -> None:
+        """Validate rows affected by changes."""
+        # Collect all nicknames involved for duplicate detection cascade
+        nicknames_to_check: set[str] = set()
+
+        for addr_key, old_nickname in nickname_changes.items():
+            if old_nickname:
+                nicknames_to_check.add(old_nickname.lower())
+            if addr_key in self.visible_state:
+                new_nick = self.visible_state[addr_key].nickname
+                if new_nick:
+                    nicknames_to_check.add(new_nick.lower())
+
+        # Find all rows with these nicknames
+        keys_to_validate = affected.copy()
+        for nickname in nicknames_to_check:
+            keys_to_validate.update(self._nickname_service.get_addr_keys_insensitive(nickname))
+
+        # Validate
+        all_nicks = self.all_nicknames
+        for addr_key in keys_to_validate:
+            self._validate_row(addr_key, all_nicks)
+
+    # --- Nickname Index ---
+
+    def _rebuild_nickname_index(self) -> None:
+        """Rebuild the nickname reverse index."""
+        self._nickname_service.rebuild_index(self.visible_state.values())
+
+    def _notify_observers(self, affected_keys: set[int] | None = None) -> None:
+        """Notify all observers of data changes."""
+        for callback in self._observers:
+            try:
+                callback(self, affected_keys)
+            except Exception:
+                pass  # Don't let one observer's error break others
+
+    def _on_database_update(self) -> None:
+        """Handle external database changes."""
+        try:
+            new_rows = self._data_source.load_all_addresses()
+        except Exception:
+            return
+
+        affected_keys: set[int] = set()
+
+        for addr_key, new_row in new_rows.items():
+            old_base = self.base_state.get(addr_key)
+
+            # Update base layer
+            if old_base:
+                updated_base = replace(
+                    old_base,
+                    nickname=new_row.nickname,
+                    comment=new_row.comment,
+                    used=new_row.used,
+                    data_type=new_row.data_type,
+                    initial_value=new_row.initial_value,
+                    retentive=new_row.retentive,
+                    exists_in_mdb=True,
+                )
+
+                # Check if base changed for rows with overrides
+                # (need to notify so cell notes update even if visible doesn't change)
+                base_changed = updated_base != old_base
+                self.base_state[addr_key] = updated_base
+
+                # Recompute visible
+                if addr_key in self.user_overrides:
+                    # User has edits: merge with override
+                    override = self.user_overrides[addr_key]
+                    new_visible = replace(
+                        updated_base,
+                        nickname=override.nickname,
+                        comment=override.comment,
+                        initial_value=override.initial_value,
+                        retentive=override.retentive,
+                    )
+                    # If base changed for a row with override, notify so cell notes update
+                    if base_changed:
+                        affected_keys.add(addr_key)
+                else:
+                    new_visible = updated_base
+
+                old_visible = self.visible_state.get(addr_key)
+                if new_visible != old_visible:
+                    self.visible_state[addr_key] = new_visible
+                    affected_keys.add(addr_key)
+
+        if affected_keys:
+            self._rebuild_nickname_index()
+            self._validate_affected_rows(affected_keys, {})
+            self._notify_observers(affected_keys)
+
     # --- Data Loading ---
 
     def load_initial_data(self) -> None:
@@ -193,126 +339,6 @@ class AddressStore:
             file_path=self._data_source.file_path,
             on_modified=self._on_database_update,
         )
-
-    def _mark_loaded_with_errors(self) -> None:
-        """Mark X/SC/SD rows that loaded with invalid nicknames."""
-        all_nicks = self.all_nicknames
-        for addr_key, row in self.visible_state.items():
-            if row.memory_type in ("X", "SC", "SD") and row.nickname:
-                is_valid, _ = validate_nickname(row.nickname, all_nicks, addr_key)
-                if not is_valid:
-                    # Update both base and visible
-                    updated = replace(row, loaded_with_error=True)
-                    self.base_state[addr_key] = updated
-                    self.visible_state[addr_key] = updated
-
-    def _validate_all_rows(self) -> None:
-        """Validate all rows and update validation state."""
-        all_nicks = self.all_nicknames
-        for addr_key in self.visible_state:
-            self._validate_row(addr_key, all_nicks)
-
-    def _validate_row(self, addr_key: int, all_nicknames: dict[int, str] | None = None) -> None:
-        """Validate a single row and update its validation state."""
-        if all_nicknames is None:
-            all_nicknames = self.all_nicknames
-
-        row = self.visible_state.get(addr_key)
-        if not row:
-            return
-
-        from ..models.validation import validate_initial_value, validate_nickname
-
-        is_valid, error = validate_nickname(
-            row.nickname, all_nicknames, addr_key, self.is_duplicate_nickname
-        )
-        init_valid, init_error = validate_initial_value(row.initial_value, row.data_type)
-
-        # Combine validation results
-        if not init_valid and is_valid:
-            is_valid = False
-            error = init_error
-
-        # Only update if validation state changed
-        if row.is_valid != is_valid or row.validation_error != error:
-            updated = replace(
-                row,
-                is_valid=is_valid,
-                validation_error=error,
-                initial_value_valid=init_valid,
-                initial_value_error=init_error,
-            )
-            self.visible_state[addr_key] = updated
-            if addr_key in self.user_overrides:
-                self.user_overrides[addr_key] = updated
-
-    # --- Edit Session ---
-
-    @contextmanager
-    def edit_session(self, description: str = "") -> Generator[EditSession, None, None]:
-        """Context manager for making changes with undo support.
-
-        All modifications should happen within an edit_session. On exit:
-        1. Pushes undo frame (before changes)
-        2. Applies cascades (T/TD sync, block tags)
-        3. Freezes builders into user_overrides
-        4. Recomputes visible_state
-        5. Validates affected rows
-        6. Updates block colors
-        7. Notifies observers
-
-        Args:
-            description: Human-readable description for undo menu
-
-        Yields:
-            EditSession for accumulating changes
-        """
-        if self._current_session is not None:
-            raise RuntimeError("Cannot nest edit_session calls")
-
-        session = EditSession(self, description)
-        self._current_session = session
-
-        try:
-            yield session
-        finally:
-            self._current_session = None
-
-            if not session.has_pending_changes():
-                return
-
-            # 1. Push undo frame BEFORE making changes
-            self.undo_stack.append(UndoFrame(
-                overrides=dict(self.user_overrides),
-                description=description,
-            ))
-            # Limit undo stack depth
-            while len(self.undo_stack) > MAX_UNDO_DEPTH:
-                self.undo_stack.pop(0)
-
-            # Clear redo stack (new edit invalidates redo history)
-            self.redo_stack.clear()
-
-            # 2. Apply cascades (T/TD sync, block tag sync)
-            self._apply_cascades(session)
-
-            # 3. Freeze builders into user_overrides
-            affected_keys = self._freeze_session(session)
-
-            # 4. Recompute visible_state for affected keys
-            self._recompute_visible(affected_keys)
-
-            # 5. Update nickname index
-            self._update_nickname_index(session.nickname_old_values)
-
-            # 6. Validate affected rows
-            self._validate_affected_rows(affected_keys, session.nickname_old_values)
-
-            # 7. Update block colors
-            affected_keys = self._update_block_colors(affected_keys, session.comment_old_values)
-
-            # 8. Notify observers
-            self._notify_observers(affected_keys)
 
     def _apply_cascades(self, session: EditSession) -> None:
         """Apply automatic syncs (T/TD, block tags) to pending changes."""
@@ -433,32 +459,11 @@ class AddressStore:
     def _update_nickname_index(self, nickname_changes: dict[int, str]) -> None:
         """Update nickname reverse index after changes."""
         for addr_key, old_nickname in nickname_changes.items():
-            new_nickname = self.visible_state[addr_key].nickname if addr_key in self.visible_state else ""
+            new_nickname = (
+                self.visible_state[addr_key].nickname if addr_key in self.visible_state else ""
+            )
             if old_nickname != new_nickname:
                 self._nickname_service.update(addr_key, old_nickname, new_nickname)
-
-    def _validate_affected_rows(self, affected: set[int], nickname_changes: dict[int, str]) -> None:
-        """Validate rows affected by changes."""
-        # Collect all nicknames involved for duplicate detection cascade
-        nicknames_to_check: set[str] = set()
-
-        for addr_key, old_nickname in nickname_changes.items():
-            if old_nickname:
-                nicknames_to_check.add(old_nickname.lower())
-            if addr_key in self.visible_state:
-                new_nick = self.visible_state[addr_key].nickname
-                if new_nick:
-                    nicknames_to_check.add(new_nick.lower())
-
-        # Find all rows with these nicknames
-        keys_to_validate = affected.copy()
-        for nickname in nicknames_to_check:
-            keys_to_validate.update(self._nickname_service.get_addr_keys_insensitive(nickname))
-
-        # Validate
-        all_nicks = self.all_nicknames
-        for addr_key in keys_to_validate:
-            self._validate_row(addr_key, all_nicks)
 
     def _update_block_colors(self, affected: set[int], comment_changes: dict[int, str]) -> set[int]:
         """Update block colors if comments changed.
@@ -505,6 +510,131 @@ class AddressStore:
 
         return all_affected
 
+    def _commit_session(self, session: EditSession, description: str) -> None:
+        """Commit pending changes from an edit session.
+
+        This method handles all the steps to finalize an edit session:
+        1. Push undo frame (before changes)
+        2. Apply cascades (T/TD sync, block tags)
+        3. Freeze builders into user_overrides
+        4. Recompute visible_state
+        5. Update nickname index
+        6. Validate affected rows
+        7. Update block colors
+        8. Notify observers
+        """
+        # 1. Push undo frame BEFORE making changes
+        self.undo_stack.append(
+            UndoFrame(
+                overrides=dict(self.user_overrides),
+                description=description,
+            )
+        )
+        # Limit undo stack depth
+        while len(self.undo_stack) > MAX_UNDO_DEPTH:
+            self.undo_stack.pop(0)
+
+        # Clear redo stack (new edit invalidates redo history)
+        self.redo_stack.clear()
+
+        # 2. Apply cascades (T/TD sync, block tag sync)
+        self._apply_cascades(session)
+
+        # 3. Freeze builders into user_overrides
+        affected_keys = self._freeze_session(session)
+
+        # 4. Recompute visible_state for affected keys
+        self._recompute_visible(affected_keys)
+
+        # 5. Update nickname index
+        self._update_nickname_index(session.nickname_old_values)
+
+        # 6. Validate affected rows
+        self._validate_affected_rows(affected_keys, session.nickname_old_values)
+
+        # 7. Update block colors
+        affected_keys = self._update_block_colors(affected_keys, session.comment_old_values)
+
+        # 8. Notify observers
+        self._notify_observers(affected_keys)
+
+    # --- Edit Session ---
+
+    @contextmanager
+    def edit_session(self, description: str = "") -> Generator[EditSession, None, None]:
+        """Context manager for making changes with undo support.
+
+        All modifications should happen within an edit_session. On exit:
+        1. Pushes undo frame (before changes)
+        2. Applies cascades (T/TD sync, block tags)
+        3. Freezes builders into user_overrides
+        4. Recomputes visible_state
+        5. Validates affected rows
+        6. Updates block colors
+        7. Notifies observers
+
+        Args:
+            description: Human-readable description for undo menu
+
+        Yields:
+            EditSession for accumulating changes
+        """
+        if self._current_session is not None:
+            raise RuntimeError("Cannot nest edit_session calls")
+
+        session = EditSession(self, description)
+        self._current_session = session
+
+        try:
+            yield session
+        finally:
+            self._current_session = None
+
+            if session.has_pending_changes():
+                self._commit_session(session, description)
+
+    def _recompute_all_block_colors(self, affected: set[int]) -> set[int]:
+        """Recompute block colors for entire unified view.
+
+        Used after discard/undo to ensure all block colors are correct.
+
+        Returns:
+            Updated set of affected keys
+        """
+        from ..services.block_service import compute_all_block_ranges
+
+        view = self.get_unified_view()
+        if not view:
+            return affected
+
+        # Refresh view rows from visible_state first
+        for idx, row in enumerate(view.rows):
+            current = self.visible_state.get(row.addr_key)
+            if current is not None and current is not row:
+                view.rows[idx] = current
+
+        # Compute all block ranges from current state
+        ranges = compute_all_block_ranges(view.rows)
+
+        # Build row_idx -> color map
+        color_map: dict[int, str | None] = {}
+        for r in ranges:
+            if r.bg_color:
+                for row_idx in range(r.start_idx, r.end_idx + 1):
+                    color_map[row_idx] = r.bg_color
+
+        # Update block_color on all visible rows
+        all_affected = set(affected)
+        for row_idx, row in enumerate(view.rows):
+            new_color = color_map.get(row_idx)
+            if row.block_color != new_color:
+                updated = replace(row, block_color=new_color)
+                self.visible_state[row.addr_key] = updated
+                view.rows[row_idx] = updated
+                all_affected.add(row.addr_key)
+
+        return all_affected
+
     # --- Undo/Redo ---
 
     def undo(self) -> bool:
@@ -517,10 +647,12 @@ class AddressStore:
             return False
 
         # Save current state to redo
-        self.redo_stack.append(UndoFrame(
-            overrides=dict(self.user_overrides),
-            description="",
-        ))
+        self.redo_stack.append(
+            UndoFrame(
+                overrides=dict(self.user_overrides),
+                description="",
+            )
+        )
 
         # Restore previous state
         frame = self.undo_stack.pop()
@@ -556,10 +688,12 @@ class AddressStore:
             return False
 
         # Save current to undo
-        self.undo_stack.append(UndoFrame(
-            overrides=dict(self.user_overrides),
-            description="",
-        ))
+        self.undo_stack.append(
+            UndoFrame(
+                overrides=dict(self.user_overrides),
+                description="",
+            )
+        )
 
         # Restore redo state
         frame = self.redo_stack.pop()
@@ -647,16 +781,8 @@ class AddressStore:
     def all_nicknames(self) -> dict[int, str]:
         """Get dict mapping addr_key to nickname."""
         return {
-            addr_key: row.nickname
-            for addr_key, row in self.visible_state.items()
-            if row.nickname
+            addr_key: row.nickname for addr_key, row in self.visible_state.items() if row.nickname
         }
-
-    # --- Nickname Index ---
-
-    def _rebuild_nickname_index(self) -> None:
-        """Rebuild the nickname reverse index."""
-        self._nickname_service.rebuild_index(self.visible_state.values())
 
     def get_addr_keys_for_nickname(self, nickname: str) -> set[int]:
         """Get addr_keys with exact nickname match."""
@@ -700,14 +826,6 @@ class AddressStore:
         """Remove observer callback."""
         if callback in self._observers:
             self._observers.remove(callback)
-
-    def _notify_observers(self, affected_keys: set[int] | None = None) -> None:
-        """Notify all observers of data changes."""
-        for callback in self._observers:
-            try:
-                callback(self, affected_keys)
-            except Exception:
-                pass  # Don't let one observer's error break others
 
     def notify_data_changed(
         self, sender: object = None, affected_indices: set[int] | None = None
@@ -786,74 +904,11 @@ class AddressStore:
         if self._file_monitor:
             self._file_monitor.stop()
 
-    def _on_database_update(self) -> None:
-        """Handle external database changes."""
-        try:
-            new_rows = self._data_source.load_all_addresses()
-        except Exception:
-            return
-
-        affected_keys: set[int] = set()
-
-        for addr_key, new_row in new_rows.items():
-            old_base = self.base_state.get(addr_key)
-
-            # Update base layer
-            if old_base:
-                updated_base = replace(
-                    old_base,
-                    nickname=new_row.nickname,
-                    comment=new_row.comment,
-                    used=new_row.used,
-                    data_type=new_row.data_type,
-                    initial_value=new_row.initial_value,
-                    retentive=new_row.retentive,
-                    exists_in_mdb=True,
-                )
-
-                # Check if base changed for rows with overrides
-                # (need to notify so cell notes update even if visible doesn't change)
-                base_changed = updated_base != old_base
-                self.base_state[addr_key] = updated_base
-
-                # Recompute visible
-                if addr_key in self.user_overrides:
-                    # User has edits: merge with override
-                    override = self.user_overrides[addr_key]
-                    new_visible = replace(
-                        updated_base,
-                        nickname=override.nickname,
-                        comment=override.comment,
-                        initial_value=override.initial_value,
-                        retentive=override.retentive,
-                    )
-                    # If base changed for a row with override, notify so cell notes update
-                    if base_changed:
-                        affected_keys.add(addr_key)
-                else:
-                    new_visible = updated_base
-
-                old_visible = self.visible_state.get(addr_key)
-                if new_visible != old_visible:
-                    self.visible_state[addr_key] = new_visible
-                    affected_keys.add(addr_key)
-
-        if affected_keys:
-            self._rebuild_nickname_index()
-            self._validate_affected_rows(affected_keys, {})
-            self._notify_observers(affected_keys)
-
     # --- Unified View ---
 
     def get_unified_view(self) -> UnifiedView | None:
         """Get the cached unified view."""
         return self._unified_view
-
-    def set_unified_view(self, view: UnifiedView) -> None:
-        """Store the unified view and apply initial block colors."""
-        self._unified_view = view
-        # Apply block colors computed during view building to visible_state
-        self._apply_initial_block_colors(view)
 
     def _apply_initial_block_colors(self, view: UnifiedView) -> None:
         """Apply block colors from unified view to visible_state rows.
@@ -871,6 +926,12 @@ class AddressStore:
                     self.visible_state[row.addr_key] = updated
                     # Also update the view's row reference
                     view.rows[row_idx] = updated
+
+    def set_unified_view(self, view: UnifiedView) -> None:
+        """Store the unified view and apply initial block colors."""
+        self._unified_view = view
+        # Apply block colors computed during view building to visible_state
+        self._apply_initial_block_colors(view)
 
     def get_rows(self, memory_type: str) -> list[AddressRow] | None:
         """Get rows for a memory type (compatibility)."""
@@ -945,48 +1006,6 @@ class AddressStore:
         # Notify
         self._notify_observers(affected_keys)
 
-    def _recompute_all_block_colors(self, affected: set[int]) -> set[int]:
-        """Recompute block colors for entire unified view.
-
-        Used after discard/undo to ensure all block colors are correct.
-
-        Returns:
-            Updated set of affected keys
-        """
-        from ..services.block_service import compute_all_block_ranges
-
-        view = self.get_unified_view()
-        if not view:
-            return affected
-
-        # Refresh view rows from visible_state first
-        for idx, row in enumerate(view.rows):
-            current = self.visible_state.get(row.addr_key)
-            if current is not None and current is not row:
-                view.rows[idx] = current
-
-        # Compute all block ranges from current state
-        ranges = compute_all_block_ranges(view.rows)
-
-        # Build row_idx -> color map
-        color_map: dict[int, str | None] = {}
-        for r in ranges:
-            if r.bg_color:
-                for row_idx in range(r.start_idx, r.end_idx + 1):
-                    color_map[row_idx] = r.bg_color
-
-        # Update block_color on all visible rows
-        all_affected = set(affected)
-        for row_idx, row in enumerate(view.rows):
-            new_color = color_map.get(row_idx)
-            if row.block_color != new_color:
-                updated = replace(row, block_color=new_color)
-                self.visible_state[row.addr_key] = updated
-                view.rows[row_idx] = updated
-                all_affected.add(row.addr_key)
-
-        return all_affected
-
     # --- Statistics ---
 
     def is_initialized(self) -> bool:
@@ -1008,9 +1027,7 @@ class AddressStore:
     def get_modified_count_for_type(self, memory_type: str) -> int:
         """Get count of modified rows for a memory type."""
         return sum(
-            1
-            for key in self.user_overrides
-            if self.visible_state[key].memory_type == memory_type
+            1 for key in self.user_overrides if self.visible_state[key].memory_type == memory_type
         )
 
     def get_error_count_for_type(self, memory_type: str) -> int:

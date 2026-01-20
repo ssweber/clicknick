@@ -36,7 +36,6 @@ def store():
 @pytest.fixture
 def store_with_data():
     """Create a store with pre-loaded data in base_state."""
-    from dataclasses import replace
 
     from clicknick.models.address_row import AddressRow
 
@@ -94,7 +93,7 @@ class TestEditSession:
 
     def test_edit_session_no_changes_no_undo(self, store):
         """Edit session with no changes should not push undo frame."""
-        with store.edit_session("Empty edit") as session:
+        with store.edit_session("Empty edit"):
             pass  # No changes
 
         assert len(store.undo_stack) == 0
@@ -424,7 +423,6 @@ class TestExternalDatabaseUpdate:
 
     def test_external_update_no_notification_when_no_change(self, store_with_data):
         """External update with no actual changes should not notify."""
-        addr_key = get_addr_key("X", 1)
         notifications = []
 
         def observer(sender, affected_keys):

@@ -10,7 +10,6 @@ Called automatically by AddressStore during edit_session exit.
 from __future__ import annotations
 
 from ..models.blocktag import format_block_tag, parse_block_tag
-from ..models.constants import INTERLEAVED_PAIRS
 
 
 def _sync_block_tag(source_comment: str, target_comment: str) -> str | None:

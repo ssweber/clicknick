@@ -274,7 +274,6 @@ class TestMdbDiscovery:
             conn.close()
 
 
-
 # Note: TestExternalMdbChanges class removed - external DB change detection
 # is now handled by AddressStore._on_database_update() with base/overlay architecture.
 # See test_address_store.py for tests of the new architecture.

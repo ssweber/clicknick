@@ -22,7 +22,6 @@ if TYPE_CHECKING:
     from .data.address_store import AddressStore
 
 
-
 class SharedDataviewData:
     """Shared data for the Dataview Editor window.
 

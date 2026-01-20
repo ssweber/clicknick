@@ -3,8 +3,7 @@
 import pytest
 
 from clicknick.data.address_store import AddressStore
-from clicknick.models.blocktag import parse_block_tag
-from clicknick.services.block_service import BlockService, compute_all_block_ranges
+from clicknick.services.block_service import compute_all_block_ranges
 from clicknick.views.address_editor.view_builder import build_unified_view
 
 
@@ -142,9 +141,6 @@ def test_auto_update_matching_block_tag_delete(store):
     # Refresh view
     view = store.get_unified_view()
     rows = view.rows[:10]
-
-    # Parse old tag
-    old_tag = parse_block_tag(store.visible_state[rows[0].addr_key].comment)
 
     # Delete opening tag - the cascade should auto-update paired tag
     with store.edit_session("Delete opening tag") as session:

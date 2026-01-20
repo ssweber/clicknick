@@ -12,11 +12,11 @@ from tkinter import messagebox, ttk
 from typing import TYPE_CHECKING
 
 from ...data.address_store import AddressStore
-from ...data.data_source import CsvDataSource, MdbDataSource
+from ...data.data_source import CsvDataSource
 from ...services import ImportService, RowService
 
 if TYPE_CHECKING:
-    from ...models.address_row import AddressRow
+    pass
 
 from ...models.address_row import get_addr_key
 from ...models.blocktag import (
@@ -41,6 +41,19 @@ from .view_builder import build_unified_view
 class AddressEditorWindow(tk.Toplevel):
     """Main window for the Address Editor."""
 
+    def _update_undo_redo_menu_states(self) -> None:
+        """Update Undo/Redo menu items enabled state based on undo/redo stacks."""
+        if not hasattr(self, "_edit_menu"):
+            return
+
+        # Update Undo menu item (index 0)
+        undo_state = "normal" if self._store.can_undo() else "disabled"
+        self._edit_menu.entryconfig(0, state=undo_state)
+
+        # Update Redo menu item (index 1)
+        redo_state = "normal" if self._store.can_redo() else "disabled"
+        self._edit_menu.entryconfig(1, state=redo_state)
+
     def _update_status(self) -> None:
         """Update the status bar with current state."""
         total_modified = self._store.get_total_modified_count()
@@ -56,6 +69,9 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Update sidebar button indicators
         self.sidebar.update_all_indicators()
+
+        # Update undo/redo menu states
+        self._update_undo_redo_menu_states()
 
     def _refresh_navigation(self) -> None:
         """Refresh the navigation dock with current data."""
@@ -447,9 +463,7 @@ class AddressEditorWindow(tk.Toplevel):
             # Discard shared data - resets skeleton rows and notifies all windows
             # _on_address_store_changed() will refresh all panels automatically
             self._store.discard_all_changes()
-            self.status_var.set(
-                f"Refreshed - {len(self._store.all_nicknames)} nicknames loaded"
-            )
+            self.status_var.set(f"Refreshed - {len(self._store.all_nicknames)} nicknames loaded")
 
         except Exception as e:
             messagebox.showerror("Refresh Error", str(e), parent=self)
@@ -671,8 +685,12 @@ class AddressEditorWindow(tk.Toplevel):
                 session.set_field(first_row.addr_key, "comment", new_comment)
             else:
                 # Range - opening and closing tags
-                open_comment = make_new_comment(first_row.comment, format_block_tag(block_name, "open", color))
-                close_comment = make_new_comment(last_row.comment, format_block_tag(block_name, "close"))
+                open_comment = make_new_comment(
+                    first_row.comment, format_block_tag(block_name, "open", color)
+                )
+                close_comment = make_new_comment(
+                    last_row.comment, format_block_tag(block_name, "close")
+                )
                 session.set_field(first_row.addr_key, "comment", open_comment)
                 session.set_field(last_row.addr_key, "comment", close_comment)
 
@@ -1154,6 +1172,20 @@ class AddressEditorWindow(tk.Toplevel):
         if hasattr(self, "save_btn"):
             self.save_btn.configure(text=f"💾 {save_label} All")
 
+    def _on_undo(self) -> None:
+        """Handle Ctrl+Z - undo last change."""
+        if self._store.undo():
+            desc = self._store.get_redo_description()
+            self.status_var.set(f"Undid: {desc}" if desc else "Undone")
+            self._update_status()
+
+    def _on_redo(self) -> None:
+        """Handle Ctrl+Y - redo last undone change."""
+        if self._store.redo():
+            desc = self._store.get_undo_description()
+            self.status_var.set(f"Redid: {desc}" if desc else "Redone")
+            self._update_status()
+
     def _create_menu(self) -> None:
         """Create the menu bar."""
         menubar = tk.Menu(self)
@@ -1183,11 +1215,16 @@ class AddressEditorWindow(tk.Toplevel):
         self._file_menu.add_command(label="Close Window", command=self._on_closing)
 
         # Edit menu
-        edit_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Edit", menu=edit_menu)
+        self._edit_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Edit", menu=self._edit_menu)
 
-        edit_menu.add_command(label="Fill Down", command=self._on_fill_down_clicked)
-        edit_menu.add_command(label="Clone Structure...", command=self._on_clone_structure_clicked)
+        self._edit_menu.add_command(label="Undo", command=self._on_undo, accelerator="Ctrl+Z")
+        self._edit_menu.add_command(label="Redo", command=self._on_redo, accelerator="Ctrl+Y")
+        self._edit_menu.add_separator()
+        self._edit_menu.add_command(label="Fill Down", command=self._on_fill_down_clicked)
+        self._edit_menu.add_command(
+            label="Clone Structure...", command=self._on_clone_structure_clicked
+        )
 
         # View menu
         view_menu = tk.Menu(menubar, tearoff=0)
@@ -1352,20 +1389,6 @@ class AddressEditorWindow(tk.Toplevel):
         # Mark as shown so we don't bother the user again
         flag_path.parent.mkdir(parents=True, exist_ok=True)
         flag_path.touch()
-
-    def _on_undo(self) -> None:
-        """Handle Ctrl+Z - undo last change."""
-        if self._store.undo():
-            desc = self._store.get_redo_description()
-            self.status_var.set(f"Undid: {desc}" if desc else "Undone")
-            self._update_status()
-
-    def _on_redo(self) -> None:
-        """Handle Ctrl+Y - redo last undone change."""
-        if self._store.redo():
-            desc = self._store.get_undo_description()
-            self.status_var.set(f"Redid: {desc}" if desc else "Redone")
-            self._update_status()
 
     def _get_window_title(self) -> str:
         """Generate window title based on Click project and data source."""

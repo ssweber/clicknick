@@ -842,8 +842,8 @@ class ClickNickApp:
             return
 
         # Create SharedAddressData for the new connection (ODBC available)
-        from .data.data_source import MdbDataSource
         from .data.address_store import AddressStore
+        from .data.data_source import MdbDataSource
 
         data_source = MdbDataSource(
             click_pid=self.connected_click_pid,
@@ -969,8 +969,8 @@ class ClickNickApp:
             else:
                 # Recreate SharedAddressData for the new MDB file
                 if self.nickname_manager.has_access_driver():
-                    from .data.data_source import MdbDataSource
                     from .data.address_store import AddressStore
+                    from .data.data_source import MdbDataSource
 
                     data_source = MdbDataSource(
                         click_pid=self.connected_click_pid,
