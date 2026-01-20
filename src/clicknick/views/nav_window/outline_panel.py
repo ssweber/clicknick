@@ -42,6 +42,9 @@ class OutlinePanel(ttk.Frame):
 
     def _on_right_click(self, event) -> None:
         """Handle right-click on tree item."""
+        if self.on_rename is None:
+            return
+        
         # Select the item under the cursor
         iid = self.tree.identify_row(event.y)
         if not iid:
