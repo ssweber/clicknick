@@ -349,11 +349,6 @@ class AddressRow:
         return self.memory_type not in NON_EDITABLE_TYPES
 
     @property
-    def is_virtual(self) -> bool:
-        """True if this row doesn't exist in MDB."""
-        return not self.exists_in_mdb
-
-    @property
     def is_empty(self) -> bool:
         """True if nickname is empty/unassigned."""
         return self.nickname == ""
@@ -382,14 +377,6 @@ class AddressRow:
         )
 
     # --- CRUD Helper Properties (for save logic) ---
-
-    def needs_insert(self, is_dirty: bool) -> bool:
-        """True if dirty AND has content AND was virtual."""
-        return is_dirty and self.has_content and self.is_virtual
-
-    def needs_update(self, is_dirty: bool) -> bool:
-        """True if dirty AND has content AND was NOT virtual."""
-        return is_dirty and self.has_content and not self.is_virtual
 
     def needs_full_delete(self, is_dirty: bool) -> bool:
         """True if should DELETE the entire row from database."""
