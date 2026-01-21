@@ -302,14 +302,6 @@ class TestAddressRow:
         row = AddressRow(memory_type="DS", address=100)
         assert row.addr_key == 0x6000064
 
-    def test_is_virtual(self):
-        """Test is_virtual when row doesn't exist in MDB."""
-        row = AddressRow(memory_type="X", address=1, exists_in_mdb=False)
-        assert row.is_virtual is True
-
-        row = AddressRow(memory_type="X", address=1, exists_in_mdb=True)
-        assert row.is_virtual is False
-
     def test_is_empty(self):
         """Test is_empty property."""
         row = AddressRow(memory_type="X", address=1, nickname="")
@@ -318,31 +310,9 @@ class TestAddressRow:
         row = AddressRow(memory_type="X", address=1, nickname="Name")
         assert row.is_empty is False
 
-    def test_needs_insert(self):
-        """Test needs_insert: dirty, has nickname, was virtual."""
-        # Virtual row (not in MDB) with new nickname - needs insert when dirty
-        row = AddressRow(memory_type="X", address=1, nickname="NewName", exists_in_mdb=False)
-        assert row.needs_insert(is_dirty=True) is True
-        assert row.needs_insert(is_dirty=False) is False
-
-        # Exists in MDB, so not virtual - needs update instead
-        row = AddressRow(memory_type="X", address=1, nickname="NewName", exists_in_mdb=True)
-        assert row.needs_insert(is_dirty=True) is False
-
-    def test_needs_update(self):
-        """Test needs_update: dirty, has nickname, was NOT virtual."""
-        # Exists in MDB (not virtual), needs update when dirty
-        row = AddressRow(memory_type="X", address=1, nickname="NewName", exists_in_mdb=True)
-        assert row.needs_update(is_dirty=True) is True
-        assert row.needs_update(is_dirty=False) is False
-
-        # Virtual row doesn't need update (needs insert instead)
-        row = AddressRow(memory_type="X", address=1, nickname="NewName", exists_in_mdb=False)
-        assert row.needs_update(is_dirty=True) is False
-
     def test_needs_full_delete(self):
         """Test needs_full_delete: dirty, empty content, exists in MDB."""
-        # Exists in MDB, all content cleared, not used - needs full delete
+        # All content cleared, not used - needs full delete
         row = AddressRow(
             memory_type="X",
             address=1,
@@ -351,7 +321,6 @@ class TestAddressRow:
             initial_value="",
             retentive=False,  # Default for X
             used=False,
-            exists_in_mdb=True,
         )
         assert row.needs_full_delete(is_dirty=True) is True
         assert row.needs_full_delete(is_dirty=False) is False
@@ -362,12 +331,7 @@ class TestAddressRow:
             address=1,
             nickname="",
             comment="Keep me",
-            exists_in_mdb=True,
         )
-        assert row.needs_full_delete(is_dirty=True) is False
-
-        # Virtual row - no delete needed
-        row = AddressRow(memory_type="X", address=1, nickname="", exists_in_mdb=False)
         assert row.needs_full_delete(is_dirty=True) is False
 
     def test_validate_method(self):
@@ -770,7 +734,6 @@ class TestAddressRowInitialValueRetentive:
             address=1,
             nickname="",
             initial_value="1",
-            exists_in_mdb=True,
         )
         assert row.needs_full_delete(is_dirty=True) is False
 
@@ -782,7 +745,6 @@ class TestAddressRowInitialValueRetentive:
             address=1,
             nickname="",
             retentive=True,  # Non-default
-            exists_in_mdb=True,
         )
         assert row.needs_full_delete(is_dirty=True) is False
 

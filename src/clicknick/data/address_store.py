@@ -136,7 +136,6 @@ class AddressStore:
                 row = AddressRow(
                     memory_type=mem_type,
                     address=addr,
-                    exists_in_mdb=False,
                     data_type=default_data_type,
                     retentive=default_retentive,
                 )
@@ -256,7 +255,6 @@ class AddressStore:
                     data_type=new_row.data_type,
                     initial_value=new_row.initial_value,
                     retentive=new_row.retentive,
-                    exists_in_mdb=True,
                 )
 
                 # Check if base changed for rows with overrides
@@ -320,7 +318,6 @@ class AddressStore:
                     data_type=db_row.data_type,
                     initial_value=db_row.initial_value,
                     retentive=db_row.retentive,
-                    exists_in_mdb=True,
                     loaded_with_error=db_row.loaded_with_error,
                 )
                 self.base_state[addr_key] = hydrated

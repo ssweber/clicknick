@@ -49,14 +49,12 @@ def store_with_data():
             address=1,
             nickname="Input1",
             comment="Button",
-            exists_in_mdb=True,
         ),
         addr_key_2: AddressRow(
             memory_type="X",
             address=2,
             nickname="Input2",
             comment="Switch",
-            exists_in_mdb=True,
         ),
     }
 
@@ -408,7 +406,6 @@ class TestExternalDatabaseUpdate:
             address=1,
             nickname="Input1",
             comment="ExternallyUpdatedComment",  # Changed externally
-            exists_in_mdb=True,
         )
         store_with_data._on_database_update()
 
@@ -454,7 +451,6 @@ class TestExternalDatabaseUpdate:
             address=1,
             nickname="Input1",
             comment="ExternallyUpdatedComment",
-            exists_in_mdb=True,
         )
         store_with_data._on_database_update()
 

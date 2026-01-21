@@ -249,7 +249,6 @@ class AddressRow:
 
     # --- Metadata (from DB, not user-editable) ---
     used: bool = False
-    exists_in_mdb: bool = False
     data_type: int = DataType.BIT
 
     # --- Validation State (computed) ---
