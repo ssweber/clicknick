@@ -152,7 +152,6 @@ class TestMutableRowBuilderCopy:
             comment="Comment",
             initial_value="100",
             retentive=True,
-            block_color="#FF0000",
         )
         copied = original.copy()
 
@@ -160,4 +159,3 @@ class TestMutableRowBuilderCopy:
         assert copied.comment == original.comment
         assert copied.initial_value == original.initial_value
         assert copied.retentive == original.retentive
-        assert copied.block_color == original.block_color

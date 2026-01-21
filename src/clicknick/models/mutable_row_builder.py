@@ -7,7 +7,7 @@ AddressRow via the freeze() method.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -34,9 +34,6 @@ class MutableRowBuilder:
     initial_value: str | None = None
     retentive: bool | None = None
 
-    # Metadata fields (can also be set via builder)
-    block_color: str | None = field(default=None, repr=False)
-
     def has_changes(self) -> bool:
         """Check if any fields have been set.
 
@@ -48,7 +45,6 @@ class MutableRowBuilder:
             or self.comment is not None
             or self.initial_value is not None
             or self.retentive is not None
-            or self.block_color is not None
         )
 
     def freeze(self, base: AddressRow) -> AddressRow:
@@ -74,8 +70,6 @@ class MutableRowBuilder:
             changes["initial_value"] = self.initial_value
         if self.retentive is not None:
             changes["retentive"] = self.retentive
-        if self.block_color is not None:
-            changes["block_color"] = self.block_color
 
         if not changes:
             return base
@@ -86,7 +80,7 @@ class MutableRowBuilder:
         """Get a field value by name.
 
         Args:
-            field_name: One of 'nickname', 'comment', 'initial_value', 'retentive', 'block_color'
+            field_name: One of 'nickname', 'comment', 'initial_value', 'retentive'
 
         Returns:
             The field value, or None if not set.
@@ -100,7 +94,7 @@ class MutableRowBuilder:
         """Set a field value by name.
 
         Args:
-            field_name: One of 'nickname', 'comment', 'initial_value', 'retentive', 'block_color'
+            field_name: One of 'nickname', 'comment', 'initial_value', 'retentive'
             value: The value to set.
 
         Raises:
@@ -119,5 +113,4 @@ class MutableRowBuilder:
             comment=self.comment,
             initial_value=self.initial_value,
             retentive=self.retentive,
-            block_color=self.block_color,
         )

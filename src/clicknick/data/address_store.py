@@ -102,6 +102,9 @@ class AddressStore:
         # Current edit session (for nested check)
         self._current_session: EditSession | None = None
 
+        # Block colors (separate from AddressRow to avoid row recreation)
+        self.block_colors: dict[int, str] = {}  # addr_key -> color_name
+
     @property
     def supports_used_field(self) -> bool:
         """Check if the data source supports the 'Used' field."""
@@ -443,7 +446,6 @@ class AddressStore:
                         comment=override.comment,
                         initial_value=override.initial_value,
                         retentive=override.retentive,
-                        block_color=override.block_color,
                         is_valid=override.is_valid,
                         validation_error=override.validation_error,
                         initial_value_valid=override.initial_value_valid,
@@ -497,15 +499,16 @@ class AddressStore:
                 for row_idx in range(r.start_idx, r.end_idx + 1):
                     color_map[row_idx] = r.bg_color
 
-        # Update block_color on visible rows
+        # Update block_colors dict
         all_affected = set(affected)
         for row_idx, row in enumerate(view.rows):
             new_color = color_map.get(row_idx)
-            if row.block_color != new_color:
-                updated = replace(row, block_color=new_color)
-                self.visible_state[row.addr_key] = updated
-                if row.addr_key in self.user_overrides:
-                    self.user_overrides[row.addr_key] = updated
+            old_color = self.block_colors.get(row.addr_key)
+            if old_color != new_color:
+                if new_color:
+                    self.block_colors[row.addr_key] = new_color
+                else:
+                    self.block_colors.pop(row.addr_key, None)
                 all_affected.add(row.addr_key)
 
         return all_affected
@@ -623,14 +626,16 @@ class AddressStore:
                 for row_idx in range(r.start_idx, r.end_idx + 1):
                     color_map[row_idx] = r.bg_color
 
-        # Update block_color on all visible rows
+        # Update block_colors dict
         all_affected = set(affected)
         for row_idx, row in enumerate(view.rows):
             new_color = color_map.get(row_idx)
-            if row.block_color != new_color:
-                updated = replace(row, block_color=new_color)
-                self.visible_state[row.addr_key] = updated
-                view.rows[row_idx] = updated
+            old_color = self.block_colors.get(row.addr_key)
+            if old_color != new_color:
+                if new_color:
+                    self.block_colors[row.addr_key] = new_color
+                else:
+                    self.block_colors.pop(row.addr_key, None)
                 all_affected.add(row.addr_key)
 
         return all_affected
@@ -730,6 +735,19 @@ class AddressStore:
     def can_redo(self) -> bool:
         """Check if redo is available."""
         return len(self.redo_stack) > 0
+
+    # --- Block Color Access ---
+
+    def get_block_color(self, addr_key: int) -> str | None:
+        """Get block color for an address.
+
+        Args:
+            addr_key: The address key
+
+        Returns:
+            Color name (e.g., 'Red', 'Blue') or None if no color
+        """
+        return self.block_colors.get(addr_key)
 
     # --- Dirty State Queries ---
 
@@ -911,7 +929,7 @@ class AddressStore:
         return self._unified_view
 
     def _apply_initial_block_colors(self, view: UnifiedView) -> None:
-        """Apply block colors from unified view to visible_state rows.
+        """Apply block colors from unified view to block_colors dict.
 
         Called once when unified view is first created to set initial colors.
         """
@@ -921,11 +939,8 @@ class AddressStore:
         for row_idx, color in view.block_colors.items():
             if row_idx < len(view.rows):
                 row = view.rows[row_idx]
-                if row.block_color != color:
-                    updated = replace(row, block_color=color)
-                    self.visible_state[row.addr_key] = updated
-                    # Also update the view's row reference
-                    view.rows[row_idx] = updated
+                if color:
+                    self.block_colors[row.addr_key] = color
 
     def set_unified_view(self, view: UnifiedView) -> None:
         """Store the unified view and apply initial block colors."""

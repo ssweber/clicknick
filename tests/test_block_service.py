@@ -51,16 +51,16 @@ def test_update_colors_single_block(store):
     rows = view.rows[:10]
 
     # Check colors were set on rows in the block
-    assert store.visible_state[rows[0].addr_key].block_color == "Red"
-    assert store.visible_state[rows[1].addr_key].block_color == "Red"
-    assert store.visible_state[rows[2].addr_key].block_color == "Red"
-    assert store.visible_state[rows[3].addr_key].block_color == "Red"
-    assert store.visible_state[rows[4].addr_key].block_color == "Red"
-    assert store.visible_state[rows[5].addr_key].block_color == "Red"
+    assert store.get_block_color(rows[0].addr_key) == "Red"
+    assert store.get_block_color(rows[1].addr_key) == "Red"
+    assert store.get_block_color(rows[2].addr_key) == "Red"
+    assert store.get_block_color(rows[3].addr_key) == "Red"
+    assert store.get_block_color(rows[4].addr_key) == "Red"
+    assert store.get_block_color(rows[5].addr_key) == "Red"
 
     # Check rows outside block have no color
-    assert store.visible_state[rows[6].addr_key].block_color is None
-    assert store.visible_state[rows[7].addr_key].block_color is None
+    assert store.get_block_color(rows[6].addr_key) is None
+    assert store.get_block_color(rows[7].addr_key) is None
 
 
 def test_update_colors_nested_blocks(store):
@@ -78,17 +78,17 @@ def test_update_colors_nested_blocks(store):
         session.set_field(rows[6].addr_key, "comment", "</Inner>")
 
     # Rows before inner block should be Red
-    assert store.visible_state[rows[1].addr_key].block_color == "Red"
-    assert store.visible_state[rows[2].addr_key].block_color == "Red"
+    assert store.get_block_color(rows[1].addr_key) == "Red"
+    assert store.get_block_color(rows[2].addr_key) == "Red"
 
     # Rows in inner block should be Blue (overrides Red)
-    assert store.visible_state[rows[3].addr_key].block_color == "Blue"
-    assert store.visible_state[rows[4].addr_key].block_color == "Blue"
-    assert store.visible_state[rows[6].addr_key].block_color == "Blue"
+    assert store.get_block_color(rows[3].addr_key) == "Blue"
+    assert store.get_block_color(rows[4].addr_key) == "Blue"
+    assert store.get_block_color(rows[6].addr_key) == "Blue"
 
     # Rows after inner block should be Red again
-    assert store.visible_state[rows[7].addr_key].block_color == "Red"
-    assert store.visible_state[rows[8].addr_key].block_color == "Red"
+    assert store.get_block_color(rows[7].addr_key) == "Red"
+    assert store.get_block_color(rows[8].addr_key) == "Red"
 
 
 def test_update_colors_self_closing_tag(store):
@@ -101,9 +101,9 @@ def test_update_colors_self_closing_tag(store):
         session.set_field(rows[3].addr_key, "comment", "<SingleRow bg='Green' />")
 
     # Only row 3 should have color
-    assert store.visible_state[rows[2].addr_key].block_color is None
-    assert store.visible_state[rows[3].addr_key].block_color == "Green"
-    assert store.visible_state[rows[4].addr_key].block_color is None
+    assert store.get_block_color(rows[2].addr_key) is None
+    assert store.get_block_color(rows[3].addr_key) == "Green"
+    assert store.get_block_color(rows[4].addr_key) is None
 
 
 def test_update_colors_clears_old_colors(store):
@@ -117,7 +117,7 @@ def test_update_colors_clears_old_colors(store):
         session.set_field(rows[5].addr_key, "comment", "</Block>")
 
     # Verify colors set
-    assert store.visible_state[rows[2].addr_key].block_color == "Red"
+    assert store.get_block_color(rows[2].addr_key) == "Red"
 
     # Remove block tags
     with store.edit_session("Remove block") as session:
@@ -125,7 +125,7 @@ def test_update_colors_clears_old_colors(store):
         session.set_field(rows[5].addr_key, "comment", "")
 
     # Colors should be cleared
-    assert store.visible_state[rows[2].addr_key].block_color is None
+    assert store.get_block_color(rows[2].addr_key) is None
 
 
 def test_auto_update_matching_block_tag_delete(store):

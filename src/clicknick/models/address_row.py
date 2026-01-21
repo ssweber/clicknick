@@ -261,9 +261,6 @@ class AddressRow:
     # Track if row was loaded with invalid data
     loaded_with_error: bool = field(default=False, compare=False)
 
-    # --- Precomputed Display Properties ---
-    block_color: str | None = field(default=None, compare=False, repr=False)
-
     @property
     def addr_key(self) -> int:
         """Get the AddrKey for this row."""

@@ -97,9 +97,10 @@ class AddressRowStyler:
         row = self._get_rows()[data_idx]
         addr_key = row.addr_key
 
-        # 1. Block color on row index (precomputed by BlockService)
-        if row.block_color:
-            hex_color = get_block_color_hex(row.block_color)
+        # 1. Block color on row index (from store's block_colors dict)
+        block_color = self._store.get_block_color(row.addr_key)
+        if block_color:
+            hex_color = get_block_color_hex(block_color)
             if hex_color:
                 self.sheet.highlight_cells(
                     row=data_idx,

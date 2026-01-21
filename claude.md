@@ -162,3 +162,9 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - Max 50 undo frames (configurable via `MAX_UNDO_DEPTH`)
 - Undo after save restores unsaved state (overrides preserved)
 - Keyboard: Ctrl+Z (undo), Ctrl+Y (redo)
+
+### Block Colors
+- Block colors are stored in `AddressStore.block_colors` dict, NOT in `AddressRow`
+- Access via `store.get_block_color(addr_key)` → returns color name or None
+- Colors are derived from comments (block tags) and recomputed automatically
+- Kept separate to avoid row recreation on color changes and exclude from undo/redo
