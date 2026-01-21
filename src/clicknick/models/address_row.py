@@ -271,6 +271,15 @@ class AddressRow:
         return format_address_display(self.memory_type, self.address)
 
     @property
+    def is_default_initial_value(self) -> str:
+        """Return True if the initial value is the default for its data type."""
+        return (
+            self.initial_value == ""
+            or not self.data_type == DataType.TXT
+            and str(self.initial_value) == "0"
+        )
+
+    @property
     def is_default_retentive(self) -> bool:
         """Return True if retentive matches the default for this memory_type."""
         default = DEFAULT_RETENTIVE.get(self.memory_type, False)
@@ -371,24 +380,15 @@ class AddressRow:
         return (
             self.nickname != ""
             or self.comment != ""
-            or self.initial_value != ""
-            or self.retentive != DEFAULT_RETENTIVE.get(self.memory_type, False)
+            or not self.is_default_initial_value
+            or not self.is_default_retentive
         )
 
     # --- CRUD Helper Properties (for save logic) ---
 
     def needs_full_delete(self, is_dirty: bool) -> bool:
         """True if should DELETE the entire row from database."""
-        is_default_retentive = self.retentive == DEFAULT_RETENTIVE.get(self.memory_type, False)
-        return (
-            is_dirty
-            and self.nickname == ""
-            and self.comment == ""
-            and self.initial_value == ""
-            and is_default_retentive
-            and not self.used
-            and not self.is_virtual
-        )
+        return is_dirty and not self.has_content and not self.used
 
     def validate(
         self,
