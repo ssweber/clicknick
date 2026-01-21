@@ -349,8 +349,8 @@ class AddressRow:
 
     @property
     def is_empty(self) -> bool:
-        """True if nickname is empty/unassigned."""
-        return self.nickname == ""
+        """True if row is empty"""
+        return not self.has_content
 
     @property
     def should_ignore_validation_error(self) -> bool:
