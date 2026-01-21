@@ -845,12 +845,6 @@ class AddressStore:
         if callback in self._observers:
             self._observers.remove(callback)
 
-    def notify_data_changed(
-        self, sender: object = None, affected_indices: set[int] | None = None
-    ) -> None:
-        """Notify observers (compatibility method)."""
-        self._notify_observers(affected_indices)
-
     # --- Window Management ---
 
     def register_window(self, window) -> None:
