@@ -9,15 +9,9 @@ from __future__ import annotations
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
-from typing import TYPE_CHECKING
 
 from ...data.address_store import AddressStore
 from ...data.data_source import CsvDataSource
-from ...services import ImportService, RowService
-
-if TYPE_CHECKING:
-    pass
-
 from ...models.address_row import get_addr_key
 from ...models.blocktag import (
     format_block_tag,
@@ -25,7 +19,9 @@ from ...models.blocktag import (
     strip_block_tag,
 )
 from ...models.constants import DataType
+from ...services import ImportService, RowService
 from ...services.block_service import validate_block_span
+from ...utils.rename_helpers import build_rename_pattern
 from ...widgets.add_block_dialog import AddBlockDialog
 from ...widgets.custom_notebook import CustomNotebook
 from ...widgets.export_csv_dialog import ExportCsvDialog
@@ -815,8 +811,6 @@ class AddressEditorWindow(tk.Toplevel):
             new_text: New segment text
             is_array: True if renaming an array node
         """
-        from ...utils.rename_helpers import build_rename_pattern
-
         # Build the regex pattern and replacement template
         pattern, replacement_template = build_rename_pattern(prefix, old_text, is_array)
 

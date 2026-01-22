@@ -3,6 +3,7 @@ from ctypes import windll
 from tkinter import PhotoImage, filedialog, font, ttk
 
 from .config import AppSettings
+from .data.address_store import AddressStore
 from .data.nickname_manager import NicknameManager
 from .detection.window_detector import ClickWindowDetector
 from .detection.window_mapping import CLICK_PLC_WINDOW_MAPPING
@@ -675,7 +676,6 @@ class ClickNickApp:
             return False
 
         try:
-            from .data.address_store import AddressStore
             from .data.data_source import CsvDataSource
 
             data_source = CsvDataSource(csv_path)
@@ -842,7 +842,6 @@ class ClickNickApp:
             return
 
         # Create SharedAddressData for the new connection (ODBC available)
-        from .data.address_store import AddressStore
         from .data.data_source import MdbDataSource
 
         data_source = MdbDataSource(
@@ -969,7 +968,6 @@ class ClickNickApp:
             else:
                 # Recreate SharedAddressData for the new MDB file
                 if self.nickname_manager.has_access_driver():
-                    from .data.address_store import AddressStore
                     from .data.data_source import MdbDataSource
 
                     data_source = MdbDataSource(

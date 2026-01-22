@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from ..models.blocktag import BlockRange, HasComment, parse_block_tag
+from ..models.blocktag import BlockRange, HasComment, parse_block_tag, strip_block_tag
 from ..models.constants import INTERLEAVED_TYPE_PAIRS
 
 if TYPE_CHECKING:
@@ -286,8 +286,6 @@ class BlockService:
         Returns:
             Tuple of (paired_row_index, new_comment) if updated, None otherwise
         """
-        from ..models.blocktag import strip_block_tag
-
         if old_tag.tag_type not in ("open", "close"):
             return None
 

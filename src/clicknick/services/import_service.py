@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ..models.address_row import get_addr_key
+from ..models.blocktag import parse_block_tag, strip_block_tag
+
 if TYPE_CHECKING:
     from ..data.shared_data import SharedAddressData
     from ..widgets.import_csv_dialog import BlockGroup
@@ -46,8 +49,6 @@ class ImportService:
         Returns:
             Count of rows processed
         """
-        from ..models.address_row import get_addr_key
-
         updated_count = 0
 
         for block in blocks:
@@ -95,8 +96,6 @@ class ImportService:
     @staticmethod
     def _apply_comment(skeleton_row, csv_row, mode: str) -> None:
         """Apply comment merge based on mode."""
-        from ..models.blocktag import parse_block_tag, strip_block_tag
-
         if mode == "Overwrite":
             skeleton_row.comment = csv_row.comment
         elif mode == "Append":

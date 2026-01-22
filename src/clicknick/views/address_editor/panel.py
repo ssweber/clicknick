@@ -31,6 +31,9 @@ from .row_styler import AddressRowStyler
 from .sheet import AddressEditorSheet
 from .view_builder import find_paired_row
 
+if TYPE_CHECKING:
+    from ...data.address_store import AddressStore
+
 # Mapping from column index to AddressRow field name for discard operations
 COL_TO_FIELD = {
     COL_NICKNAME: "nickname",
@@ -38,9 +41,6 @@ COL_TO_FIELD = {
     COL_INIT_VALUE: "initial_value",
     COL_RETENTIVE: "retentive",
 }
-
-if TYPE_CHECKING:
-    from ...data.address_store import AddressStore
 
 
 class AddressPanel(ttk.Frame):

@@ -19,13 +19,16 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from ..models.address_row import AddressRow, get_addr_key, is_xd_yd_hidden_slot
+from ..models.blocktag import parse_block_tag
 from ..models.constants import (
     ADDRESS_RANGES,
     DEFAULT_RETENTIVE,
+    INTERLEAVED_PAIRS,
     MEMORY_TYPE_TO_DATA_TYPE,
     DataType,
 )
-from ..models.validation import validate_nickname
+from ..models.validation import validate_initial_value, validate_nickname
+from ..services.block_service import BlockService, compute_all_block_ranges
 from ..services.nickname_index_service import NicknameIndexService
 from .data_source import DataSource
 from .edit_session_new import EditSession
@@ -164,8 +167,6 @@ class AddressStore:
         row = self.visible_state.get(addr_key)
         if not row:
             return
-
-        from ..models.validation import validate_initial_value, validate_nickname
 
         is_valid, error = validate_nickname(
             row.nickname, all_nicknames, addr_key, self.is_duplicate_nickname
@@ -342,10 +343,6 @@ class AddressStore:
 
     def _apply_cascades(self, session: EditSession) -> None:
         """Apply automatic syncs (T/TD, block tags) to pending changes."""
-        from ..models.blocktag import parse_block_tag
-        from ..models.constants import INTERLEAVED_PAIRS
-        from ..services.block_service import BlockService
-
         # Get snapshot of pending keys (cascades may add more)
         pending_keys = list(session.pending.keys())
 
@@ -485,8 +482,6 @@ class AddressStore:
                 view.rows[idx] = current
 
         # Compute all block ranges
-        from ..services.block_service import compute_all_block_ranges
-
         ranges = compute_all_block_ranges(view.rows)
 
         # Build row_idx -> color map
@@ -601,8 +596,6 @@ class AddressStore:
         Returns:
             Updated set of affected keys
         """
-        from ..services.block_service import compute_all_block_ranges
-
         view = self.get_unified_view()
         if not view:
             return affected
@@ -1053,8 +1046,6 @@ class AddressStore:
         self, memory_type: str
     ) -> list[tuple[int, int | None, str, str | None]]:
         """Get block definitions for a memory type."""
-        from ..services.block_service import compute_all_block_ranges
-
         unified_rows = self.rows_by_type.get("unified", [])
         rows = [r for r in unified_rows if r.memory_type == memory_type]
         if not rows:

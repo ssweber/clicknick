@@ -12,6 +12,7 @@ from tkinter import filedialog, messagebox, ttk
 from typing import TYPE_CHECKING
 
 from ...data.shared_dataview import SharedDataviewData
+from ...models.address_row import get_addr_key
 from ...models.constants import INTERLEAVED_PAIRS
 from ...widgets.custom_notebook import CustomNotebook
 from ...widgets.new_dataview_dialog import NewDataviewDialog
@@ -298,8 +299,6 @@ class DataviewEditorWindow(tk.Toplevel):
         Args:
             addresses: List of (memory_type, address) tuples to insert
         """
-        from ...models.address_row import get_addr_key
-
         address_shared = self.shared_data._store
         if not address_shared:
             return
