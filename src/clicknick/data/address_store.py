@@ -29,7 +29,6 @@ from ..models.constants import (
 )
 from ..models.validation import validate_initial_value, validate_nickname
 from ..services.block_service import BlockService, compute_all_block_ranges
-from ..services.dependency_service import _sync_block_tag
 from ..services.nickname_index_service import NicknameIndexService
 from .data_source import DataSource
 from .edit_session_new import EditSession
@@ -359,7 +358,7 @@ class AddressStore:
 
             paired_row = self.visible_state.get(paired_key)
             if paired_row:
-                synced = _sync_block_tag(comment, paired_row.comment)
+                synced = BlockService.apply_block_tag(comment, paired_row.comment)
                 if synced is not None:
                     session.get_builder(paired_key).comment = synced
 

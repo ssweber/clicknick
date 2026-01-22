@@ -150,7 +150,7 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - All data modifications must go through `store.edit_session(description)`
 - Use `session.set_field(addr_key, field, value)` to accumulate changes
 - Multiple changes batched into single undo frame (e.g., fill-down 500 rows = 1 undo)
-- Cascades (T/TD sync, block tag sync) happen automatically within the session
+- Cascades (T/TD|CT/CTD sync, block tag sync) happen automatically within the session
 
 ### Dirty State Detection
 - Check via `store.is_dirty(addr_key)`, not `row.is_dirty` property
