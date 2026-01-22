@@ -477,6 +477,75 @@ class ClickNickApp:
             dialog.grab_set()
             dialog.focus_set()
 
+    def _clean_mdb(self):
+        """Clean MDB database by removing empty, unused rows.
+
+        Only available in dev mode. Loads rows directly from MDB (no placeholders)
+        and deletes any rows where needs_full_delete is True (no content, not used).
+        """
+        if not self.connected_click_pid:
+            self._update_status("Connect to a ClickPLC window first", "error")
+            return
+
+        if self._shared_address_data is None:
+            self._update_status("No data loaded", "error")
+            return
+
+        from tkinter import messagebox
+
+        from .data.data_source import MdbDataSource
+
+        # Get the MDB path from the current data source
+        data_source = self._shared_address_data._data_source
+        if not hasattr(data_source, "file_path"):
+            self._update_status("Current data source has no file path", "error")
+            return
+
+        mdb_path = data_source.file_path
+
+        # Create a fresh MdbDataSource to load directly from MDB
+        try:
+            fresh_source = MdbDataSource(db_path=mdb_path)
+            all_rows = fresh_source.load_all_addresses()
+        except Exception as e:
+            self._update_status(f"Error loading MDB: {e}", "error")
+            return
+
+        # Find rows that need deletion (no content, not used)
+        rows_to_delete = [row for row in all_rows.values() if row.needs_full_delete(is_dirty=True)]
+
+        if not rows_to_delete:
+            messagebox.showinfo(
+                "Clean MDB",
+                "No empty, unused rows found to clean.",
+                parent=self.root,
+            )
+            return
+
+        # Confirm with user
+        if not messagebox.askyesno(
+            "Clean MDB",
+            f"Found {len(rows_to_delete)} empty, unused rows to delete.\n\n"
+            "These are rows in the database that have no nickname, no comment, "
+            "default initial value, default retentive, and are not used by the PLC program.\n\n"
+            "Proceed with deletion?",
+            parent=self.root,
+        ):
+            return
+
+        # Delete the rows
+        try:
+            deleted_count = fresh_source.save_changes(rows_to_delete)
+            messagebox.showinfo(
+                "Clean MDB",
+                f"Successfully deleted {deleted_count} rows from the MDB.",
+                parent=self.root,
+            )
+            # Refresh the shared address data to reflect the changes
+            self._shared_address_data.refresh_from_external()
+        except Exception as e:
+            self._update_status(f"Error cleaning MDB: {e}", "error")
+
     def _create_menu_bar(self):
         """Create the application menu bar."""
         menubar = tk.Menu(self.root)
@@ -497,6 +566,7 @@ class ClickNickApp:
         if _DEV_MODE:
             tools_menu.add_separator()
             tools_menu.add_command(label="Verify MDB & CDV...", command=self._verify_mdb_and_cdv)
+            tools_menu.add_command(label="Clean MDB...", command=self._clean_mdb)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
