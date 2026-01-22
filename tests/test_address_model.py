@@ -273,7 +273,7 @@ class TestValidateNickname:
 
 
 class TestAddressRow:
-    """Tests for AddressRow dataclass."""
+    """Tests for AddressRow frozen dataclass."""
 
     def test_basic_creation(self):
         """Test basic AddressRow creation."""
@@ -281,7 +281,6 @@ class TestAddressRow:
         assert row.memory_type == "X"
         assert row.address == 1
         assert row.nickname == "StartButton"
-        assert row.original_nickname == "StartButton"
 
     def test_display_address(self):
         """Test display_address property."""
@@ -303,36 +302,6 @@ class TestAddressRow:
         row = AddressRow(memory_type="DS", address=100)
         assert row.addr_key == 0x6000064
 
-    def test_is_dirty_when_modified(self):
-        """Test is_dirty when nickname differs from original."""
-        row = AddressRow(
-            memory_type="X", address=1, nickname="NewName", original_nickname="OldName"
-        )
-        assert row.is_dirty is True
-
-    def test_is_dirty_when_unchanged(self):
-        """Test is_dirty when nickname matches original."""
-        row = AddressRow(
-            memory_type="X", address=1, nickname="SameName", original_nickname="SameName"
-        )
-        assert row.is_dirty is False
-
-    def test_is_virtual_no_original(self):
-        """Test is_virtual when there's no original nickname."""
-        row = AddressRow(memory_type="X", address=1, nickname="", original_nickname="")
-        assert row.is_virtual is True
-
-    def test_is_virtual_has_original(self):
-        """Test is_virtual when row exists in MDB."""
-        row = AddressRow(
-            memory_type="X",
-            address=1,
-            nickname="Name",
-            original_nickname="Name",
-            exists_in_mdb=True,
-        )
-        assert row.is_virtual is False
-
     def test_is_empty(self):
         """Test is_empty property."""
         row = AddressRow(memory_type="X", address=1, nickname="")
@@ -341,101 +310,60 @@ class TestAddressRow:
         row = AddressRow(memory_type="X", address=1, nickname="Name")
         assert row.is_empty is False
 
-    def test_needs_insert(self):
-        """Test needs_insert: dirty, has nickname, was virtual."""
-        # Virtual row (not in MDB) with new nickname
-        row = AddressRow(memory_type="X", address=1, nickname="NewName", original_nickname="")
-        assert row.needs_insert is True
-
-        # Exists in MDB, so not virtual - needs update instead
-        row = AddressRow(
-            memory_type="X",
-            address=1,
-            nickname="NewName",
-            original_nickname="OldName",
-            exists_in_mdb=True,
-        )
-        assert row.needs_insert is False
-
-    def test_needs_update(self):
-        """Test needs_update: dirty, has nickname, was NOT virtual."""
-        # Exists in MDB (not virtual), nickname changed
-        row = AddressRow(
-            memory_type="X",
-            address=1,
-            nickname="NewName",
-            original_nickname="OldName",
-            exists_in_mdb=True,
-        )
-        assert row.needs_update is True
-
-        # Virtual row doesn't need update (needs insert instead)
-        row = AddressRow(memory_type="X", address=1, nickname="NewName", original_nickname="")
-        assert row.needs_update is False
-
-    def test_needs_nickname_clear_only(self):
-        """Test needs_nickname_clear_only: nickname cleared but has comment or is used (keep row)."""
-        # Exists in MDB, nickname cleared, but has comment - needs_nickname_clear_only (clear nickname, keep row)
+    def test_needs_full_delete(self):
+        """Test needs_full_delete: dirty, empty content, exists in MDB."""
+        # All content cleared, not used - needs full delete
         row = AddressRow(
             memory_type="X",
             address=1,
             nickname="",
-            original_nickname="OldName",
+            comment="",
+            initial_value="",
+            retentive=False,  # Default for X
+            used=False,
+        )
+        assert row.needs_full_delete(is_dirty=True) is True
+        assert row.needs_full_delete(is_dirty=False) is False
+
+        # Has comment - should NOT be fully deleted
+        row = AddressRow(
+            memory_type="X",
+            address=1,
+            nickname="",
             comment="Keep me",
-            exists_in_mdb=True,
         )
-        assert row.needs_nickname_clear_only is True
-
-        # Exists in MDB, nickname cleared, address is used - needs_nickname_clear_only (clear nickname, keep row)
-        row = AddressRow(
-            memory_type="X",
-            address=1,
-            nickname="",
-            original_nickname="OldName",
-            used=True,
-            exists_in_mdb=True,
-        )
-        assert row.needs_nickname_clear_only is True
-
-        # Exists in MDB, nickname cleared, no comment, not used - needs_full_delete instead
-        row = AddressRow(
-            memory_type="X",
-            address=1,
-            nickname="",
-            original_nickname="OldName",
-            exists_in_mdb=True,
-        )
-        assert row.needs_nickname_clear_only is False
-        assert row.needs_full_delete is True
-
-        # Virtual row with no nickname - no delete needed
-        row = AddressRow(memory_type="X", address=1, nickname="", original_nickname="")
-        assert row.needs_nickname_clear_only is False
-        assert row.needs_full_delete is False
-
-    def test_mark_saved(self):
-        """Test mark_saved updates original_nickname."""
-        row = AddressRow(
-            memory_type="X", address=1, nickname="NewName", original_nickname="OldName"
-        )
-        assert row.is_dirty is True
-
-        row.mark_saved()
-
-        assert row.original_nickname == "NewName"
-        assert row.is_dirty is False
+        assert row.needs_full_delete(is_dirty=True) is False
 
     def test_validate_method(self):
-        """Test validate method updates validation state."""
+        """Test validate method returns validation state."""
         row = AddressRow(memory_type="X", address=1, nickname="ValidName")
-        row.validate({})
-        assert row.is_valid is True
-        assert row.validation_error == ""
+        is_valid, error, init_valid, init_error = row.validate({})
+        assert is_valid is True
+        assert error == ""
 
         row = AddressRow(memory_type="X", address=1, nickname="_InvalidName")
-        row.validate({})
-        assert row.is_valid is False
-        assert "Cannot start with _" in row.validation_error
+        is_valid, error, init_valid, init_error = row.validate({})
+        assert is_valid is False
+        assert "Cannot start with _" in error
+
+    def test_frozen_dataclass(self):
+        """Test that AddressRow is frozen (immutable)."""
+        from dataclasses import FrozenInstanceError
+
+        row = AddressRow(memory_type="X", address=1, nickname="Test")
+        with pytest.raises(FrozenInstanceError):
+            row.nickname = "Changed"
+
+    def test_replace_creates_new_row(self):
+        """Test that dataclasses.replace creates a new immutable row."""
+        from dataclasses import replace
+
+        row = AddressRow(memory_type="X", address=1, nickname="Original")
+        new_row = replace(row, nickname="Changed")
+
+        assert row.nickname == "Original"  # Original unchanged
+        assert new_row.nickname == "Changed"
+        assert row is not new_row
 
 
 class TestAddressRanges:
@@ -718,44 +646,8 @@ class TestAddressRowInitialValueRetentive:
             address=1,
             data_type=DataType.INT,
             initial_value="100",
-            original_initial_value="100",
         )
         assert row.initial_value == "100"
-        assert row.is_initial_value_dirty is False
-
-    def test_row_initial_value_dirty(self):
-        """Test AddressRow detects dirty initial value."""
-        row = AddressRow(
-            memory_type="DS",
-            address=1,
-            data_type=DataType.INT,
-            initial_value="200",
-            original_initial_value="100",
-        )
-        assert row.is_initial_value_dirty is True
-        assert row.is_dirty is True
-
-    def test_row_with_retentive(self):
-        """Test AddressRow with retentive."""
-        row = AddressRow(
-            memory_type="DS",
-            address=1,
-            retentive=True,
-            original_retentive=True,
-        )
-        assert row.retentive is True
-        assert row.is_retentive_dirty is False
-
-    def test_row_retentive_dirty(self):
-        """Test AddressRow detects dirty retentive."""
-        row = AddressRow(
-            memory_type="DS",
-            address=1,
-            retentive=False,
-            original_retentive=True,
-        )
-        assert row.is_retentive_dirty is True
-        assert row.is_dirty is True
 
     def test_can_edit_initial_value_editable_type(self):
         """Test can_edit_initial_value for editable types."""
@@ -792,16 +684,16 @@ class TestAddressRowInitialValueRetentive:
         assert row.can_edit_retentive is False
 
     def test_validate_initial_value(self):
-        """Test validate updates initial value validation state."""
+        """Test validate returns initial value validation state."""
         row = AddressRow(
             memory_type="DS",
             address=1,
             data_type=DataType.INT,
             initial_value="100",
         )
-        row.validate({})
-        assert row.initial_value_valid is True
-        assert row.initial_value_error == ""
+        is_valid, error, init_valid, init_error = row.validate({})
+        assert init_valid is True
+        assert init_error == ""
 
     def test_validate_invalid_initial_value(self):
         """Test validate catches invalid initial value."""
@@ -811,28 +703,10 @@ class TestAddressRowInitialValueRetentive:
             data_type=DataType.INT,
             initial_value="abc",  # Invalid for int
         )
-        row.validate({})
-        assert row.initial_value_valid is False
-        assert row.is_valid is False  # Overall validity includes initial value
-        assert "integer" in row.initial_value_error
-
-    def test_mark_saved_includes_new_fields(self):
-        """Test mark_saved resets initial value and retentive dirty tracking."""
-        row = AddressRow(
-            memory_type="DS",
-            address=1,
-            initial_value="200",
-            original_initial_value="100",
-            retentive=True,
-            original_retentive=False,
-        )
-        assert row.is_dirty is True
-
-        row.mark_saved()
-
-        assert row.original_initial_value == "200"
-        assert row.original_retentive is True
-        assert row.is_dirty is False
+        is_valid, error, init_valid, init_error = row.validate({})
+        assert init_valid is False
+        assert is_valid is False  # Overall validity includes initial value
+        assert "integer" in init_error
 
     def test_has_content_with_initial_value(self):
         """Test has_content includes initial value."""
@@ -859,11 +733,9 @@ class TestAddressRowInitialValueRetentive:
             memory_type="X",
             address=1,
             nickname="",
-            original_nickname="Name",
             initial_value="1",
-            exists_in_mdb=True,
         )
-        assert row.needs_full_delete is False
+        assert row.needs_full_delete(is_dirty=True) is False
 
     def test_needs_full_delete_checks_retentive(self):
         """Test needs_full_delete considers non-default retentive."""
@@ -872,172 +744,9 @@ class TestAddressRowInitialValueRetentive:
             memory_type="X",  # Default is False
             address=1,
             nickname="",
-            original_nickname="Name",
             retentive=True,  # Non-default
-            exists_in_mdb=True,
         )
-        assert row.needs_full_delete is False
-
-
-class TestUpdateFromDb:
-    """Tests for AddressRow.update_from_db() method."""
-
-    def test_update_from_db_updates_non_dirty_nickname(self):
-        """Non-dirty nickname should be updated from db."""
-        row = AddressRow(
-            memory_type="X",
-            address=1,
-            nickname="OldName",
-            original_nickname="OldName",
-            exists_in_mdb=True,
-        )
-        assert row.is_nickname_dirty is False
-
-        changed = row.update_from_db({"nickname": "NewName", "comment": "", "used": False})
-
-        assert changed is True
-        assert row.nickname == "NewName"
-        assert row.original_nickname == "NewName"
-
-    def test_update_from_db_preserves_dirty_nickname(self):
-        """Dirty nickname value preserved, but original updated to new baseline."""
-        row = AddressRow(
-            memory_type="X",
-            address=1,
-            nickname="UserEdit",
-            original_nickname="OldName",
-            exists_in_mdb=True,
-        )
-        assert row.is_nickname_dirty is True
-
-        changed = row.update_from_db({"nickname": "DbChange", "comment": "", "used": False})
-
-        # User's edit preserved, but original updated to new DB value
-        assert changed is True
-        assert row.nickname == "UserEdit"
-        assert row.original_nickname == "DbChange"
-        # Still dirty (user edit != new baseline)
-        assert row.is_nickname_dirty is True
-
-    def test_update_from_db_updates_non_dirty_comment(self):
-        """Non-dirty comment should be updated from db."""
-        row = AddressRow(
-            memory_type="X",
-            address=1,
-            comment="Old comment",
-            original_comment="Old comment",
-            exists_in_mdb=True,
-        )
-        assert row.is_comment_dirty is False
-
-        changed = row.update_from_db({"nickname": "", "comment": "New comment", "used": False})
-
-        assert changed is True
-        assert row.comment == "New comment"
-        assert row.original_comment == "New comment"
-
-    def test_update_from_db_preserves_dirty_comment(self):
-        """Dirty comment value preserved, but original updated to new baseline."""
-        row = AddressRow(
-            memory_type="X",
-            address=1,
-            comment="User edit",
-            original_comment="Old comment",
-            exists_in_mdb=True,
-        )
-        assert row.is_comment_dirty is True
-
-        row.update_from_db({"nickname": "", "comment": "Db change", "used": False})
-
-        # User's edit preserved, but original updated to new DB value
-        assert row.comment == "User edit"
-        assert row.original_comment == "Db change"
-        # Still dirty (user edit != new baseline)
-        assert row.is_comment_dirty is True
-
-    def test_update_from_db_always_updates_used(self):
-        """Used flag is read-only in editor, so always update from db."""
-        row = AddressRow(
-            memory_type="X",
-            address=1,
-            used=False,
-            exists_in_mdb=True,
-        )
-
-        changed = row.update_from_db({"nickname": "", "comment": "", "used": True})
-
-        assert changed is True
-        assert row.used is True
-
-    def test_update_from_db_updates_initial_value_when_not_dirty(self):
-        """Non-dirty initial value should be updated from db."""
-        row = AddressRow(
-            memory_type="DS",
-            address=1,
-            initial_value="100",
-            original_initial_value="100",
-            exists_in_mdb=True,
-        )
-        assert row.is_initial_value_dirty is False
-
-        changed = row.update_from_db(
-            {
-                "nickname": "",
-                "comment": "",
-                "used": False,
-                "initial_value": "200",
-            }
-        )
-
-        assert changed is True
-        assert row.initial_value == "200"
-        assert row.original_initial_value == "200"
-
-    def test_update_from_db_preserves_dirty_initial_value(self):
-        """Dirty initial value should NOT be overwritten from db."""
-        row = AddressRow(
-            memory_type="DS",
-            address=1,
-            initial_value="999",
-            original_initial_value="100",
-            exists_in_mdb=True,
-        )
-        assert row.is_initial_value_dirty is True
-
-        row.update_from_db(
-            {
-                "nickname": "",
-                "comment": "",
-                "used": False,
-                "initial_value": "200",
-            }
-        )
-
-        # Initial value should NOT be changed since it was dirty
-        assert row.initial_value == "999"
-
-    def test_update_from_db_returns_false_when_no_changes(self):
-        """Should return False when db data matches current data."""
-        row = AddressRow(
-            memory_type="X",
-            address=1,
-            nickname="SameName",
-            original_nickname="SameName",
-            comment="Same comment",
-            original_comment="Same comment",
-            used=True,
-            exists_in_mdb=True,
-        )
-
-        changed = row.update_from_db(
-            {
-                "nickname": "SameName",
-                "comment": "Same comment",
-                "used": True,
-            }
-        )
-
-        assert changed is False
+        assert row.needs_full_delete(is_dirty=True) is False
 
 
 class TestBlockTags:

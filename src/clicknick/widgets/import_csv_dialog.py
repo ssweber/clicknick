@@ -11,6 +11,7 @@ from tksheet import Sheet, num2alpha
 
 from ..data.data_source import CsvDataSource
 from ..models.blocktag import BlockRange
+from ..models.constants import MEMORY_TYPE_BASES
 from ..services.block_service import compute_all_block_ranges
 
 if TYPE_CHECKING:
@@ -187,8 +188,6 @@ class ImportCsvDialog(tk.Toplevel):
             rows = list(address_dict.values())
 
             # Sort rows by memory type and address for consistent block detection
-            from ..models.constants import MEMORY_TYPE_BASES
-
             rows.sort(key=lambda r: (MEMORY_TYPE_BASES.get(r.memory_type, 0xFFFFFFFF), r.address))
 
             # Detect blocks

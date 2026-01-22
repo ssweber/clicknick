@@ -12,6 +12,7 @@ from tkinter import filedialog, messagebox, ttk
 from typing import TYPE_CHECKING
 
 from ...data.shared_dataview import SharedDataviewData
+from ...models.address_row import get_addr_key
 from ...models.constants import INTERLEAVED_PAIRS
 from ...widgets.custom_notebook import CustomNotebook
 from ...widgets.new_dataview_dialog import NewDataviewDialog
@@ -288,7 +289,7 @@ class DataviewEditorWindow(tk.Toplevel):
         if self._nav_window is None:
             return
 
-        address_shared = self.shared_data.address_shared_data
+        address_shared = self.shared_data._store
         if address_shared:
             self._nav_window.refresh(address_shared.all_rows)
 
@@ -298,9 +299,7 @@ class DataviewEditorWindow(tk.Toplevel):
         Args:
             addresses: List of (memory_type, address) tuples to insert
         """
-        from ...models.address_row import get_addr_key
-
-        address_shared = self.shared_data.address_shared_data
+        address_shared = self.shared_data._store
         if not address_shared:
             return
 
@@ -363,11 +362,6 @@ class DataviewEditorWindow(tk.Toplevel):
 
         self._insert_addresses(addresses_to_insert)
 
-    def _on_rename(self, prefix: str, old_text: str, new_text: str, is_array: bool) -> None:
-        """Handle rename from outline tree (not applicable for dataview editor)."""
-        # Dataview editor is read-only for address data, so we don't support rename
-        pass
-
     def _toggle_nav(self) -> None:
         """Toggle the navigation window visibility."""
         if self._nav_window is None:
@@ -376,7 +370,7 @@ class DataviewEditorWindow(tk.Toplevel):
                 self,
                 on_outline_select=self._on_outline_select,
                 on_block_select=self._on_block_select,
-                on_rename=self._on_rename,
+                on_rename=None,
             )
             self._refresh_navigation()
             self._tag_browser_var.set(True)
@@ -576,7 +570,7 @@ class DataviewEditorWindow(tk.Toplevel):
         Returns:
             List of matching nickname strings
         """
-        address_shared = self.shared_data.address_shared_data
+        address_shared = self.shared_data._store
         if not address_shared:
             return []
 
@@ -611,7 +605,7 @@ class DataviewEditorWindow(tk.Toplevel):
         if not nickname:
             return
 
-        address_shared = self.shared_data.address_shared_data
+        address_shared = self.shared_data._store
         if not address_shared:
             return
 

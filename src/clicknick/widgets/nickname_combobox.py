@@ -25,13 +25,13 @@ def normalize_nickname(nickname: str) -> str:
         return nickname
 
     # Pattern 1: address_type[Numeral] -> address_typeNumeral
-    bracket_match = re.match(r'^([a-zA-Z]+)\[(\d+)\]$', nickname)
+    bracket_match = re.match(r"^([a-zA-Z]+)\[(\d+)\]$", nickname)
     if bracket_match:
         prefix, digits = bracket_match.groups()
         return prefix + digits
 
     # Pattern 2: address_type.Nickname -> Nickname
-    dot_match = re.match(r'^([a-zA-Z]+)\.(.+)$', nickname)
+    dot_match = re.match(r"^([a-zA-Z]+)\.(.+)$", nickname)
     if dot_match:
         _, name = dot_match.groups()
         return name

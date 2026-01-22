@@ -7,13 +7,20 @@ operations that span multiple rows.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from ..models.blocktag import BlockRange, HasComment, parse_block_tag
+from ..models.blocktag import (
+    BlockRange,
+    HasComment,
+    format_block_tag,
+    parse_block_tag,
+    strip_block_tag,
+)
 from ..models.constants import INTERLEAVED_TYPE_PAIRS
 
 if TYPE_CHECKING:
-    from ..data.shared_data import SharedAddressData
+    from ..data.address_store import AddressStore
     from ..models.address_row import AddressRow
     from ..models.blocktag import BlockTag
 
@@ -210,25 +217,22 @@ class BlockService:
     """Coordinates block tag operations and precomputes block colors.
 
     Wraps existing block tag parsing logic from models/blocktag.py.
-    Updates AddressRow.block_color in-place for affected rows.
-
     All methods are static as the service is stateless.
     """
 
     @staticmethod
     def update_colors(
-        shared_data: SharedAddressData,
+        store: AddressStore,
         affected_keys: set[int] | None = None,
     ) -> set[int]:
-        """Update block_color on AddressRow objects after comment changes.
+        """Update block_color on visible rows after comment changes.
 
         When comments change, re-scan blocks and update precomputed colors
         on ALL rows in affected block ranges. This may affect more rows
-        than just those with comment changes (e.g., closing tag affects
-        all rows in the block).
+        than just those with comment changes.
 
         Args:
-            shared_data: The SharedAddressData instance
+            store: The AddressStore instance
             affected_keys: Optional set of addr_keys with comment changes.
                           If None, updates all rows (used on initial load).
 
@@ -236,31 +240,31 @@ class BlockService:
             Set of ALL addr_keys affected (may be larger due to block ranges)
         """
         # Get unified view (all rows in order)
-        view = shared_data.get_unified_view()
+        view = store.get_unified_view()
         if not view:
-            # No unified view yet - return affected keys as-is
             return affected_keys or set()
 
         # Compute all block ranges from current comments
         ranges = compute_all_block_ranges(view.rows)
 
         # Build row_idx -> color map (inner blocks override outer)
-        color_map: dict[int, str] = {}
+        color_map: dict[int, str | None] = {}
         for r in ranges:
             if r.bg_color:
                 for row_idx in range(r.start_idx, r.end_idx + 1):
-                    # Inner blocks override outer blocks
                     color_map[row_idx] = r.bg_color
 
-        # Update AddressRow.block_color for ALL rows
+        # Update block_color on visible rows
         all_affected = set()
         for row_idx, row in enumerate(view.rows):
             new_color = color_map.get(row_idx)
             if row.block_color != new_color:
-                row.block_color = new_color
+                updated = replace(row, block_color=new_color)
+                store.visible_state[row.addr_key] = updated
+                if row.addr_key in store.user_overrides:
+                    store.user_overrides[row.addr_key] = updated
                 all_affected.add(row.addr_key)
 
-        # If affected_keys was provided, include them (comment changes)
         if affected_keys:
             all_affected.update(affected_keys)
 
@@ -272,15 +276,12 @@ class BlockService:
         row_idx: int,
         old_tag: BlockTag,
         new_tag: BlockTag | None,
-    ) -> int | None:
+    ) -> tuple[int, str] | None:
         """Auto-update or delete the matching open/close block tag.
 
         When a user renames or deletes an opening tag (<Block>), automatically
         update the matching closing tag (</Block>) to match, and vice versa.
         This keeps block tag pairs synchronized.
-
-        Note: This handles block tag pairing (open↔close), NOT interleaved
-        type pairing (T↔TD). For interleaved pairs, see RowDependencyService.
 
         Args:
             rows: List of AddressRow objects
@@ -289,14 +290,12 @@ class BlockService:
             new_tag: The new block tag (or None if deleted)
 
         Returns:
-            Index of matching row if updated, None otherwise
+            Tuple of (paired_row_index, new_comment) if updated, None otherwise
         """
-        from ..models.blocktag import strip_block_tag
-
         if old_tag.tag_type not in ("open", "close"):
             return None
 
-        paired_idx = find_paired_tag_index(rows, row_idx, old_tag)  # Use module-level function
+        paired_idx = find_paired_tag_index(rows, row_idx, old_tag)
         if paired_idx is None:
             return None
 
@@ -304,7 +303,7 @@ class BlockService:
 
         if new_tag is None or not new_tag.name:
             # Tag was deleted - delete paired tag too
-            paired_row.comment = strip_block_tag(paired_row.comment)
+            new_comment = strip_block_tag(paired_row.comment)
         elif new_tag.name != old_tag.name:
             # Tag was renamed - rename paired tag too
             paired_tag = parse_block_tag(paired_row.comment)
@@ -319,9 +318,51 @@ class BlockService:
                 new_comment = prefix + new_tag.name + bg_attr + suffix
                 if paired_tag.remaining_text:
                     new_comment += " " + paired_tag.remaining_text
-                paired_row.comment = new_comment
+            else:
+                return None
+        else:
+            return None
 
-        return paired_idx
+        return (paired_idx, new_comment)
+
+    @staticmethod
+    def apply_block_tag(source_comment: str, target_comment: str) -> str | None:
+        """Apply block tag from source comment to target comment.
+
+        Preserves the target's non-block text while updating/adding/removing
+        the block tag to match the source.
+
+        Args:
+            source_comment: The comment to apply FROM (e.g., T1's comment)
+            target_comment: The comment to apply TO (e.g., TD1's comment)
+
+        Returns:
+            The updated target comment, or None if no change needed
+        """
+        source_tag = parse_block_tag(source_comment)
+        target_tag = parse_block_tag(target_comment)
+
+        # Check if block tags are already the same
+        if (
+            source_tag.name == target_tag.name
+            and source_tag.tag_type == target_tag.tag_type
+            and source_tag.bg_color == target_tag.bg_color
+        ):
+            return None  # No change needed
+
+        # Get target's non-block text (preserve it)
+        target_remaining = target_tag.remaining_text.strip()
+
+        if source_tag.name is None:
+            # Source has no block tag - remove from target
+            return target_remaining if target_remaining else ""
+        else:
+            # Source has a block tag - add/update on target
+            new_tag = format_block_tag(source_tag.name, source_tag.tag_type, source_tag.bg_color)
+            if target_remaining:
+                return f"{target_remaining} {new_tag}"
+            else:
+                return new_tag
 
     @staticmethod
     def compute_block_colors_map(rows: list[AddressRow]) -> dict[int, str]:
@@ -336,7 +377,7 @@ class BlockService:
         Returns:
             Dict mapping row index (in rows list) to bg color string
         """
-        ranges = compute_all_block_ranges(rows)  # Use module-level function
+        ranges = compute_all_block_ranges(rows)
 
         # Filter to only blocks with colors
         colored_ranges = [r for r in ranges if r.bg_color]

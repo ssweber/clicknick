@@ -31,6 +31,9 @@ from .row_styler import AddressRowStyler
 from .sheet import AddressEditorSheet
 from .view_builder import find_paired_row
 
+if TYPE_CHECKING:
+    from ...data.address_store import AddressStore
+
 # Mapping from column index to AddressRow field name for discard operations
 COL_TO_FIELD = {
     COL_NICKNAME: "nickname",
@@ -38,9 +41,6 @@ COL_TO_FIELD = {
     COL_INIT_VALUE: "initial_value",
     COL_RETENTIVE: "retentive",
 }
-
-if TYPE_CHECKING:
-    pass
 
 
 class AddressPanel(ttk.Frame):
@@ -219,7 +219,7 @@ class AddressPanel(ttk.Frame):
                 # Row filter modes
                 if row_filter == "content" and row.is_empty:
                     continue
-                if row_filter == "changed" and not row.is_dirty:
+                if row_filter == "changed" and not self._store.is_dirty(row.addr_key):
                     continue
                 if row_filter == "errors" and not row.has_reportable_error:
                     continue
@@ -253,7 +253,7 @@ class AddressPanel(ttk.Frame):
             return
 
         # Use edit_session for proper change tracking, validation, and notification
-        with self._shared_data.edit_session():
+        with self._store.edit_session("Edit cells"):
             for (event_row, col), _old_value in table_cells.items():
                 data_idx = event_row
 
@@ -261,6 +261,7 @@ class AddressPanel(ttk.Frame):
                     continue
 
                 address_row = self.rows[data_idx]
+                addr_key = address_row.addr_key
 
                 # Get the NEW value from the sheet using data index
                 new_value = self.sheet.get_cell_data(data_idx, col)
@@ -272,8 +273,8 @@ class AddressPanel(ttk.Frame):
                     if new_nickname == address_row.nickname:
                         continue
 
-                    # Directly set the nickname (edit_session tracks change)
-                    address_row.nickname = new_nickname
+                    # Use session to set the field
+                    self._store._current_session.set_field(addr_key, "nickname", new_nickname)
 
                 elif col == self.COL_COMMENT:
                     new_comment = new_value if new_value else ""
@@ -282,8 +283,8 @@ class AddressPanel(ttk.Frame):
                     if new_comment == address_row.comment:
                         continue
 
-                    # Directly set the comment (edit_session handles paired tag sync)
-                    address_row.comment = new_comment
+                    # Use session to set the field
+                    self._store._current_session.set_field(addr_key, "comment", new_comment)
 
                 elif col == self.COL_INIT_VALUE:
                     # Skip if type doesn't allow editing initial value
@@ -310,8 +311,8 @@ class AddressPanel(ttk.Frame):
                     if new_init == address_row.initial_value:
                         continue
 
-                    # Directly set the initial value
-                    address_row.initial_value = new_init
+                    # Use session to set the field
+                    self._store._current_session.set_field(addr_key, "initial_value", new_init)
 
                 elif col == self.COL_RETENTIVE:
                     # Skip if type doesn't allow editing retentive
@@ -324,23 +325,27 @@ class AddressPanel(ttk.Frame):
                     # For TD/CTD rows, update the paired T/CT row instead
                     paired_row = find_paired_row(address_row, self.rows)
                     target_row = paired_row if paired_row else address_row
+                    target_key = target_row.addr_key
 
                     # Skip if no change
                     if new_retentive == target_row.retentive:
                         continue
 
-                    # Directly set the retentive flag on the target row
-                    target_row.retentive = new_retentive
+                    # Use session to set the field on the target row
+                    self._store._current_session.set_field(target_key, "retentive", new_retentive)
 
         # edit_session exited - validation and notification happened automatically
 
     def _discard_cell_changes(self) -> None:
-        """Discard changes for the currently selected cell(s)."""
+        """Discard changes for the currently selected cell(s).
+
+        Note: With the new architecture, discarding restores the base_state value.
+        """
         selected = self.sheet.get_selected_cells()
         if not selected:
             return
 
-        # Collect cells to discard first (before entering edit_session)
+        # Collect cells to discard
         cells_to_discard: list[tuple[int, str]] = []
         for display_row, col in selected:
             data_idx = self._get_data_index(display_row)
@@ -351,18 +356,22 @@ class AddressPanel(ttk.Frame):
             if not field_name:
                 continue
 
-            cells_to_discard.append((data_idx, field_name))
+            row = self.rows[data_idx]
+            if self._store.is_field_dirty(row.addr_key, field_name):
+                cells_to_discard.append((data_idx, field_name))
 
         if not cells_to_discard:
             return
 
-        # Use edit_session for proper change tracking and notification
-        with self._shared_data.edit_session():
+        # Use edit_session to restore base values
+        with self._store.edit_session("Discard cell changes"):
             for data_idx, field_name in cells_to_discard:
                 row = self.rows[data_idx]
-                row.discard_field(field_name)
-
-        # edit_session exited - validation and notification happened automatically
+                addr_key = row.addr_key
+                base_row = self._store.base_state.get(addr_key)
+                if base_row:
+                    base_value = getattr(base_row, field_name)
+                    self._store._current_session.set_field(addr_key, field_name, base_value)
 
     def _discard_row_changes(self) -> None:
         """Discard all changes for the currently selected row(s)."""
@@ -370,7 +379,7 @@ class AddressPanel(ttk.Frame):
         if not selected:
             return
 
-        # Collect rows to discard first (before entering edit_session)
+        # Collect rows to discard
         rows_to_discard: list[int] = []
         for display_row in selected:
             data_idx = self._get_data_index(display_row)
@@ -378,19 +387,22 @@ class AddressPanel(ttk.Frame):
                 continue
 
             row = self.rows[data_idx]
-            if row.is_dirty:
+            if self._store.is_dirty(row.addr_key):
                 rows_to_discard.append(data_idx)
 
         if not rows_to_discard:
             return
 
-        # Use edit_session for proper change tracking and notification
-        with self._shared_data.edit_session():
+        # Use edit_session to restore base values
+        with self._store.edit_session("Discard row changes"):
             for data_idx in rows_to_discard:
                 row = self.rows[data_idx]
-                row.discard()
-
-        # edit_session exited - validation and notification happened automatically
+                addr_key = row.addr_key
+                base_row = self._store.base_state.get(addr_key)
+                if base_row:
+                    for field in ["nickname", "comment", "initial_value", "retentive"]:
+                        base_value = getattr(base_row, field)
+                        self._store._current_session.set_field(addr_key, field, base_value)
 
     def _update_discard_menu(
         self, region: str, clicked_row: int | None, clicked_col: int | None
@@ -410,16 +422,7 @@ class AddressPanel(ttk.Frame):
                 return
 
             row = self.rows[data_idx]
-            # Check if this specific field is dirty
-            is_dirty = False
-            if field_name == "nickname" and row.is_nickname_dirty:
-                is_dirty = True
-            elif field_name == "comment" and row.is_comment_dirty:
-                is_dirty = True
-            elif field_name == "initial_value" and row.is_initial_value_dirty:
-                is_dirty = True
-            elif field_name == "retentive" and row.is_retentive_dirty:
-                is_dirty = True
+            is_dirty = self._store.is_field_dirty(row.addr_key, field_name)
 
             if is_dirty:
                 self.sheet.popup_menu_add_command(
@@ -437,7 +440,8 @@ class AddressPanel(ttk.Frame):
             if data_idx is None:
                 return
 
-            if self.rows[data_idx].is_dirty:
+            row = self.rows[data_idx]
+            if self._store.is_dirty(row.addr_key):
                 self.sheet.popup_menu_add_command(
                     label="↩ Discard changes",
                     func=self._discard_row_changes,
@@ -634,7 +638,7 @@ class AddressPanel(ttk.Frame):
     def __init__(
         self,
         parent: tk.Widget,
-        shared_data,
+        store: AddressStore,
         on_validate_affected: Callable[[str, str], set[int]] | None = None,
         is_duplicate_fn: Callable[[str, int], bool] | None = None,
         section_boundaries: dict[str, int] | None = None,
@@ -643,7 +647,7 @@ class AddressPanel(ttk.Frame):
 
         Args:
             parent: Parent widget
-            shared_data: SharedAddressData instance for accessing skeleton rows
+            store: AddressStore instance for data management
             on_validate_affected: Callback to validate rows affected by nickname change (old, new).
                 Returns set of validated addr_keys. Used for O(1) targeted validation.
             is_duplicate_fn: O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
@@ -651,7 +655,7 @@ class AddressPanel(ttk.Frame):
         """
         super().__init__(parent)
 
-        self._shared_data = shared_data
+        self._store = store
         self.on_validate_affected = on_validate_affected
         self.is_duplicate_fn = is_duplicate_fn
         self.section_boundaries = section_boundaries or {}
@@ -675,7 +679,9 @@ class AddressPanel(ttk.Frame):
         """Update the status label with current counts."""
         total_visible = len(self._displayed_rows)
         error_count = self.get_error_count()
-        modified_count = sum(1 for idx in self._displayed_rows if self.rows[idx].is_dirty)
+        modified_count = sum(
+            1 for idx in self._displayed_rows if self._store.is_dirty(self.rows[idx].addr_key)
+        )
 
         self.status_label.config(
             text=f"Rows: {total_visible} | Errors: {error_count} | Modified: {modified_count}"
@@ -885,9 +891,10 @@ class AddressPanel(ttk.Frame):
         self._populate_sheet_data()
         self._apply_filters()
 
-        # Initialize styler
+        # Initialize styler with store reference
         self._styler = AddressRowStyler(
             sheet=self.sheet,
+            store=self._store,
             get_rows=lambda: self.rows,
             get_displayed_rows=lambda: self._displayed_rows,
         )
@@ -898,7 +905,7 @@ class AddressPanel(ttk.Frame):
         """Refresh all row displays after external data changes.
 
         Call this when AddressRow objects have been updated externally
-        (e.g., via row.update_from_db()) to sync the sheet's cell data.
+        to sync the sheet's cell data.
 
         Note: Validation is handled by edit_session, so this only refreshes
         the display without re-validating.
@@ -921,6 +928,14 @@ class AddressPanel(ttk.Frame):
         if not addr_keys:
             return
 
+        # Update the rows list from the store's visible_state
+        for i, row in enumerate(self.rows):
+            if row.addr_key in addr_keys:
+                # Get the updated row from the store
+                updated_row = self._store.visible_state.get(row.addr_key)
+                if updated_row:
+                    self.rows[i] = updated_row
+
         # Convert addr_keys to row indices in this panel
         row_indices = self._keys_to_indices(addr_keys)
 
@@ -936,7 +951,7 @@ class AddressPanel(ttk.Frame):
 
     def get_dirty_rows(self) -> list[AddressRow]:
         """Get all rows that have been modified."""
-        return [row for row in self.rows if row.is_dirty]
+        return [row for row in self.rows if self._store.is_dirty(row.addr_key)]
 
     def has_errors(self) -> bool:
         """Check if any rows have validation errors."""

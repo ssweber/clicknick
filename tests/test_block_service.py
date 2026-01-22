@@ -2,9 +2,8 @@
 
 import pytest
 
-from clicknick.data.shared_data import SharedAddressData
-from clicknick.models.blocktag import parse_block_tag
-from clicknick.services.block_service import BlockService
+from clicknick.data.address_store import AddressStore
+from clicknick.services.block_service import compute_all_block_ranges
 from clicknick.views.address_editor.view_builder import build_unified_view
 
 
@@ -12,233 +11,186 @@ class MockDataSource:
     """Mock data source for testing."""
 
     supports_used_field = True
+    file_path = "test.mdb"
+    is_read_only = False
 
-    def load_all(self):
+    def load_all_addresses(self):
         return {}
+
+    def save_changes(self, rows):
+        return 0
 
 
 @pytest.fixture
-def shared_data():
-    """Create a SharedAddressData instance with skeleton rows."""
+def store():
+    """Create an AddressStore instance with skeleton rows."""
     data_source = MockDataSource()
-    shared = SharedAddressData(data_source)
+    s = AddressStore(data_source)
+    s.load_initial_data()
 
     # Build and cache unified view (needed for block color updates)
-    view = build_unified_view(shared.all_rows, shared.all_nicknames)
-    shared.set_unified_view(view)
+    view = build_unified_view(s.visible_state, s.all_nicknames)
+    s.set_unified_view(view)
 
-    return shared
+    return s
 
 
-def test_update_colors_single_block(shared_data):
+def test_update_colors_single_block(store):
     """Test updating block colors for a single block."""
     # Get first few rows from unified view
-    view = shared_data.get_unified_view()
+    view = store.get_unified_view()
     rows = view.rows[:10]
 
-    # Add block tags to comments (must be in edit_session)
-    # Block colors are automatically updated when the session exits
-    with shared_data.edit_session():
-        rows[0].comment = "<TestBlock bg='Red'>"
-        rows[5].comment = "</TestBlock>"
+    # Add block tags to comments via edit_session
+    with store.edit_session("Add block") as session:
+        session.set_field(rows[0].addr_key, "comment", "<TestBlock bg='Red'>")
+        session.set_field(rows[5].addr_key, "comment", "</TestBlock>")
 
-    # Check colors were set on rows in the block (automatic via session)
-    assert rows[0].block_color == "Red"
-    assert rows[1].block_color == "Red"
-    assert rows[2].block_color == "Red"
-    assert rows[3].block_color == "Red"
-    assert rows[4].block_color == "Red"
-    assert rows[5].block_color == "Red"
+    # Refresh view reference after edit
+    view = store.get_unified_view()
+    rows = view.rows[:10]
+
+    # Check colors were set on rows in the block
+    assert store.get_block_color(rows[0].addr_key) == "Red"
+    assert store.get_block_color(rows[1].addr_key) == "Red"
+    assert store.get_block_color(rows[2].addr_key) == "Red"
+    assert store.get_block_color(rows[3].addr_key) == "Red"
+    assert store.get_block_color(rows[4].addr_key) == "Red"
+    assert store.get_block_color(rows[5].addr_key) == "Red"
 
     # Check rows outside block have no color
-    assert rows[6].block_color is None
-    assert rows[7].block_color is None
+    assert store.get_block_color(rows[6].addr_key) is None
+    assert store.get_block_color(rows[7].addr_key) is None
 
 
-def test_update_colors_nested_blocks(shared_data):
+def test_update_colors_nested_blocks(store):
     """Test that inner blocks override outer blocks."""
-    view = shared_data.get_unified_view()
+    view = store.get_unified_view()
     rows = view.rows[:10]
 
-    # Add block tags (must be in edit_session)
-    with shared_data.edit_session():
+    # Add block tags via edit_session
+    with store.edit_session("Add nested blocks") as session:
         # Outer block (Red)
-        rows[0].comment = "<Outer bg='Red'>"
-        rows[9].comment = "</Outer>"
-
+        session.set_field(rows[0].addr_key, "comment", "<Outer bg='Red'>")
+        session.set_field(rows[9].addr_key, "comment", "</Outer>")
         # Inner block (Blue)
-        rows[3].comment = "<Inner bg='Blue'>"
-        rows[6].comment = "</Inner>"
-
-    # Update colors
-    BlockService.update_colors(shared_data)
+        session.set_field(rows[3].addr_key, "comment", "<Inner bg='Blue'>")
+        session.set_field(rows[6].addr_key, "comment", "</Inner>")
 
     # Rows before inner block should be Red
-    assert rows[1].block_color == "Red"
-    assert rows[2].block_color == "Red"
+    assert store.get_block_color(rows[1].addr_key) == "Red"
+    assert store.get_block_color(rows[2].addr_key) == "Red"
 
     # Rows in inner block should be Blue (overrides Red)
-    assert rows[3].block_color == "Blue"
-    assert rows[4].block_color == "Blue"
-    assert rows[6].block_color == "Blue"
+    assert store.get_block_color(rows[3].addr_key) == "Blue"
+    assert store.get_block_color(rows[4].addr_key) == "Blue"
+    assert store.get_block_color(rows[6].addr_key) == "Blue"
 
     # Rows after inner block should be Red again
-    assert rows[7].block_color == "Red"
-    assert rows[8].block_color == "Red"
+    assert store.get_block_color(rows[7].addr_key) == "Red"
+    assert store.get_block_color(rows[8].addr_key) == "Red"
 
 
-def test_update_colors_self_closing_tag(shared_data):
+def test_update_colors_self_closing_tag(store):
     """Test self-closing block tags."""
-    view = shared_data.get_unified_view()
+    view = store.get_unified_view()
     rows = view.rows[:10]
 
-    # Self-closing tag colors only that row (must be in edit_session)
-    with shared_data.edit_session():
-        rows[3].comment = "<SingleRow bg='Green' />"
-
-    # Update colors
-    BlockService.update_colors(shared_data)
+    # Self-closing tag colors only that row
+    with store.edit_session("Add self-closing") as session:
+        session.set_field(rows[3].addr_key, "comment", "<SingleRow bg='Green' />")
 
     # Only row 3 should have color
-    assert rows[2].block_color is None
-    assert rows[3].block_color == "Green"
-    assert rows[4].block_color is None
+    assert store.get_block_color(rows[2].addr_key) is None
+    assert store.get_block_color(rows[3].addr_key) == "Green"
+    assert store.get_block_color(rows[4].addr_key) is None
 
 
-def test_update_colors_clears_old_colors(shared_data):
+def test_update_colors_clears_old_colors(store):
     """Test that removing block tags clears colors."""
-    view = shared_data.get_unified_view()
+    view = store.get_unified_view()
     rows = view.rows[:10]
 
-    # Add block (must be in edit_session)
-    with shared_data.edit_session():
-        rows[0].comment = "<Block bg='Red'>"
-        rows[5].comment = "</Block>"
-    BlockService.update_colors(shared_data)
+    # Add block
+    with store.edit_session("Add block") as session:
+        session.set_field(rows[0].addr_key, "comment", "<Block bg='Red'>")
+        session.set_field(rows[5].addr_key, "comment", "</Block>")
 
     # Verify colors set
-    assert rows[2].block_color == "Red"
+    assert store.get_block_color(rows[2].addr_key) == "Red"
 
-    # Remove block tags (must be in edit_session)
-    with shared_data.edit_session():
-        rows[0].comment = ""
-        rows[5].comment = ""
-    BlockService.update_colors(shared_data)
+    # Remove block tags
+    with store.edit_session("Remove block") as session:
+        session.set_field(rows[0].addr_key, "comment", "")
+        session.set_field(rows[5].addr_key, "comment", "")
 
     # Colors should be cleared
-    assert rows[2].block_color is None
+    assert store.get_block_color(rows[2].addr_key) is None
 
 
-def test_auto_update_matching_block_tag_delete(shared_data):
+def test_auto_update_matching_block_tag_delete(store):
     """Test auto-deleting paired tag when one is deleted."""
-    view = shared_data.get_unified_view()
+    view = store.get_unified_view()
     rows = view.rows[:10]
 
-    # Create a block (must be in edit_session)
-    with shared_data.edit_session():
-        rows[0].comment = "<Block>"
-        rows[5].comment = "</Block>"
+    # Create a block
+    with store.edit_session("Create block") as session:
+        session.set_field(rows[0].addr_key, "comment", "<Block>")
+        session.set_field(rows[5].addr_key, "comment", "</Block>")
 
-    # Parse old tag
-    old_tag = parse_block_tag(rows[0].comment)
+    # Refresh view
+    view = store.get_unified_view()
+    rows = view.rows[:10]
 
-    # Delete opening tag and auto-update paired tag (must be in edit_session)
-    with shared_data.edit_session():
-        rows[0].comment = ""
-        new_tag = parse_block_tag(rows[0].comment)
+    # Delete opening tag - the cascade should auto-update paired tag
+    with store.edit_session("Delete opening tag") as session:
+        session.set_field(rows[0].addr_key, "comment", "")
 
-        # Auto-update paired tag
-        paired_idx = BlockService.auto_update_matching_block_tag(rows, 0, old_tag, new_tag)
-
-    # Check paired tag was deleted
-    assert paired_idx == 5
-    assert rows[5].comment == ""
+    # Check paired tag was deleted by cascade
+    assert store.visible_state[rows[5].addr_key].comment == ""
 
 
-def test_auto_update_matching_block_tag_rename(shared_data):
+def test_auto_update_matching_block_tag_rename(store):
     """Test auto-renaming paired tag when one is renamed."""
-    view = shared_data.get_unified_view()
+    view = store.get_unified_view()
     rows = view.rows[:10]
 
-    # Create a block (must be in edit_session)
-    with shared_data.edit_session():
-        rows[0].comment = "<OldName>"
-        rows[5].comment = "</OldName>"
+    # Create a block
+    with store.edit_session("Create block") as session:
+        session.set_field(rows[0].addr_key, "comment", "<OldName>")
+        session.set_field(rows[5].addr_key, "comment", "</OldName>")
 
-    # Parse old tag
-    old_tag = parse_block_tag(rows[0].comment)
-
-    # Rename opening tag and auto-update (must be in edit_session)
-    with shared_data.edit_session():
-        rows[0].comment = "<NewName>"
-        new_tag = parse_block_tag(rows[0].comment)
-
-        # Auto-update paired tag
-        paired_idx = BlockService.auto_update_matching_block_tag(rows, 0, old_tag, new_tag)
+    # Rename opening tag - cascade should rename closing tag
+    with store.edit_session("Rename block") as session:
+        session.set_field(rows[0].addr_key, "comment", "<NewName>")
 
     # Check paired tag was renamed
-    assert paired_idx == 5
-    assert rows[5].comment == "</NewName>"
+    assert store.visible_state[rows[5].addr_key].comment == "</NewName>"
 
 
-def test_auto_update_matching_block_tag_preserve_remaining_text(shared_data):
-    """Test that remaining text is preserved when renaming."""
-    view = shared_data.get_unified_view()
-    rows = view.rows[:10]
-
-    # Create block with remaining text (must be in edit_session)
-    with shared_data.edit_session():
-        rows[0].comment = "<Block>"
-        rows[5].comment = "</Block>Extra text here"
-
-    old_tag = parse_block_tag(rows[0].comment)
-
-    # Rename and auto-update (must be in edit_session)
-    with shared_data.edit_session():
-        rows[0].comment = "<Renamed>"
-        new_tag = parse_block_tag(rows[0].comment)
-
-        # Auto-update
-        BlockService.auto_update_matching_block_tag(rows, 0, old_tag, new_tag)
-
-    # Check remaining text preserved
-    assert "</Renamed> Extra text here" in rows[5].comment
-
-
-def test_auto_update_matching_block_tag_self_closing_no_pair(shared_data):
-    """Test that self-closing tags don't trigger paired updates."""
-    view = shared_data.get_unified_view()
-    rows = view.rows[:10]
-
-    # Create self-closing tag (must be in edit_session)
-    with shared_data.edit_session():
-        rows[0].comment = "<Single />"
-
-    old_tag = parse_block_tag(rows[0].comment)
-
-    # Delete it (must be in edit_session)
-    with shared_data.edit_session():
-        rows[0].comment = ""
-        new_tag = parse_block_tag(rows[0].comment)
-
-        # Try to auto-update (should return None - no pair)
-        paired_idx = BlockService.auto_update_matching_block_tag(rows, 0, old_tag, new_tag)
-
-    assert paired_idx is None
-
-
-def test_compute_block_colors_map(shared_data):
+def test_compute_block_colors_map(store):
     """Test helper method for computing color map."""
-    view = shared_data.get_unified_view()
+    view = store.get_unified_view()
     rows = view.rows[:10]
 
-    # Add blocks (must be in edit_session)
-    with shared_data.edit_session():
-        rows[0].comment = "<Block bg='Red'>"
-        rows[5].comment = "</Block>"
+    # Add blocks
+    with store.edit_session("Add block") as session:
+        session.set_field(rows[0].addr_key, "comment", "<Block bg='Red'>")
+        session.set_field(rows[5].addr_key, "comment", "</Block>")
 
-    # Compute map (without modifying AddressRow objects)
-    color_map = BlockService.compute_block_colors_map(rows)
+    # Refresh view after edit
+    view = store.get_unified_view()
+    rows = view.rows[:10]
+
+    # Compute ranges
+    ranges = compute_all_block_ranges(rows)
+
+    # Build color map from ranges
+    color_map = {}
+    for r in ranges:
+        if r.bg_color:
+            for idx in range(r.start_idx, r.end_idx + 1):
+                color_map[idx] = r.bg_color
 
     # Check map has correct colors
     assert color_map[0] == "Red"

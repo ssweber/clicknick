@@ -1,8 +1,7 @@
 """Row service for multi-row operations on AddressRow objects.
 
 This service coordinates operations like Fill Down and Clone Structure that
-affect multiple rows. All operations modify skeleton rows in-place and return
-affected addr_keys for targeted UI updates.
+affect multiple rows. All operations use the store's edit_session for changes.
 """
 
 from __future__ import annotations
@@ -11,15 +10,16 @@ import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..data.shared_data import SharedAddressData
+    from ..data.address_store import AddressStore
+    from ..data.edit_session_new import EditSession
     from ..models.address_row import AddressRow
 
 
 class RowService:
-    """Coordinates multi-row operations on skeleton AddressRow objects.
+    """Coordinates multi-row operations on AddressRow objects.
 
     Handles Fill Down, Clone Structure, and nickname transformations.
-    All operations modify skeleton rows IN-PLACE and return affected keys.
+    All operations use EditSession for making changes.
 
     All methods are static as the service is stateless.
     """
@@ -166,7 +166,7 @@ class RowService:
 
     @staticmethod
     def fill_down(
-        shared_data: SharedAddressData,
+        store: AddressStore,
         source_key: int,
         target_keys: list[int],
         increment_initial_value: bool = False,
@@ -174,15 +174,12 @@ class RowService:
         """Fill down from source to target rows with incremented nicknames.
 
         This is a convenience wrapper around clone_structure for the special case
-        where the template is a single row. It delegates to clone_structure to
-        avoid code duplication.
+        where the template is a single row.
 
-        Copies nickname (incremented), comment, initial_value, and retentive
-        from source to all target rows. Optionally increments initial_value
-        if it matches the nickname's array number.
+        Must be called within an edit_session context.
 
         Args:
-            shared_data: The SharedAddressData instance
+            store: The AddressStore instance
             source_key: Source address key
             target_keys: List of target address keys
             increment_initial_value: If True and initial_value matches nickname number,
@@ -193,19 +190,49 @@ class RowService:
         """
         # Fill down is just clone_structure with a single-row template
         affected = RowService.clone_structure(
-            shared_data=shared_data,
+            store=store,
             template_keys=[source_key],
             destination_keys=target_keys,
             clone_count=len(target_keys),
             increment_initial_value=increment_initial_value,
         )
-        # Include source key for backward compatibility (original fill_down included it)
+        # Include source key for backward compatibility
         affected.add(source_key)
         return affected
 
     @staticmethod
+    def fill_down_with_session(
+        session: EditSession,
+        store: AddressStore,
+        source_key: int,
+        target_keys: list[int],
+        increment_initial_value: bool = False,
+    ) -> set[int]:
+        """Fill down using a provided edit session.
+
+        Args:
+            session: The active EditSession
+            store: The AddressStore instance
+            source_key: Source address key
+            target_keys: List of target address keys
+            increment_initial_value: If True and initial_value matches nickname number,
+                                      increment it along with nickname
+
+        Returns:
+            Set of affected addr_keys
+        """
+        return RowService.clone_structure_with_session(
+            session=session,
+            store=store,
+            template_keys=[source_key],
+            destination_keys=target_keys,
+            clone_count=len(target_keys),
+            increment_initial_value=increment_initial_value,
+        )
+
+    @staticmethod
     def clone_structure(
-        shared_data: SharedAddressData,
+        store: AddressStore,
         template_keys: list[int],
         destination_keys: list[int],
         clone_count: int,
@@ -213,14 +240,47 @@ class RowService:
     ) -> set[int]:
         """Clone a structure of rows with incremented nicknames.
 
-        Replicates a template of rows multiple times, incrementing nicknames
-        in each clone. Optionally increments initial_value if it matches
-        the nickname's array number.
+        Must be called within an edit_session context.
 
         Args:
-            shared_data: The SharedAddressData instance
+            store: The AddressStore instance
             template_keys: Source address keys (the template)
             destination_keys: Destination address keys (must be clone_count * len(template_keys))
+            clone_count: Number of times to clone the template
+            increment_initial_value: If True and initial_value matches nickname number,
+                                      increment it along with nickname
+
+        Returns:
+            Set of affected addr_keys (all destination rows)
+        """
+        if store._current_session is None:
+            raise RuntimeError("clone_structure must be called within an edit_session")
+
+        return RowService.clone_structure_with_session(
+            session=store._current_session,
+            store=store,
+            template_keys=template_keys,
+            destination_keys=destination_keys,
+            clone_count=clone_count,
+            increment_initial_value=increment_initial_value,
+        )
+
+    @staticmethod
+    def clone_structure_with_session(
+        session: EditSession,
+        store: AddressStore,
+        template_keys: list[int],
+        destination_keys: list[int],
+        clone_count: int,
+        increment_initial_value: bool = False,
+    ) -> set[int]:
+        """Clone a structure of rows with incremented nicknames using a provided session.
+
+        Args:
+            session: The active EditSession
+            store: The AddressStore instance
+            template_keys: Source address keys (the template)
+            destination_keys: Destination address keys
             clone_count: Number of times to clone the template
             increment_initial_value: If True and initial_value matches nickname number,
                                       increment it along with nickname
@@ -231,10 +291,10 @@ class RowService:
         affected = set()
         block_size = len(template_keys)
 
-        # Build template
+        # Build template from visible state
         template = []
         for key in template_keys:
-            row = shared_data.all_rows[key]
+            row = store.visible_state[key]
             template.append(
                 {
                     "nickname": row.nickname,
@@ -249,14 +309,13 @@ class RowService:
             for template_idx, tmpl in enumerate(template):
                 dest_idx = (clone_num - 1) * block_size + template_idx
                 dest_key = destination_keys[dest_idx]
-                dest_row = shared_data.all_rows[dest_key]
 
                 base_nickname = tmpl["nickname"]
                 if not base_nickname:
                     # Empty row in template - still copy comment/initial_value/retentive
-                    dest_row.comment = tmpl["comment"]
-                    dest_row.initial_value = tmpl["initial_value"]
-                    dest_row.retentive = tmpl["retentive"]
+                    session.set_field(dest_key, "comment", tmpl["comment"])
+                    session.set_field(dest_key, "initial_value", tmpl["initial_value"])
+                    session.set_field(dest_key, "retentive", tmpl["retentive"])
                     affected.add(dest_key)
                     continue
 
@@ -265,30 +324,26 @@ class RowService:
                     base_nickname, clone_num
                 )
 
-                # Update row
-                dest_row.nickname = new_nickname
-                dest_row.comment = tmpl["comment"]
+                # Update via session
+                session.set_field(dest_key, "nickname", new_nickname)
+                session.set_field(dest_key, "comment", tmpl["comment"])
 
                 # Copy/increment initial_value based on flag
                 if tmpl["initial_value"] and orig_num is not None and increment_initial_value:
-                    # User chose to increment - check if it matches
                     try:
                         init_val = int(tmpl["initial_value"])
                         if init_val == orig_num:
-                            dest_row.initial_value = str(new_num)
+                            session.set_field(dest_key, "initial_value", str(new_num))
                         else:
-                            dest_row.initial_value = tmpl["initial_value"]
+                            session.set_field(dest_key, "initial_value", tmpl["initial_value"])
                     except ValueError:
-                        dest_row.initial_value = tmpl["initial_value"]
+                        session.set_field(dest_key, "initial_value", tmpl["initial_value"])
                 else:
-                    # Just copy as-is
-                    dest_row.initial_value = tmpl["initial_value"]
+                    session.set_field(dest_key, "initial_value", tmpl["initial_value"])
 
                 # Always copy retentive
-                dest_row.retentive = tmpl["retentive"]
+                session.set_field(dest_key, "retentive", tmpl["retentive"])
 
-                # Note: Nickname index updates are handled automatically by edit_session
-                # through AddressRow.__setattr__ when nickname is set
                 affected.add(dest_key)
 
         return affected

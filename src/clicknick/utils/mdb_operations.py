@@ -169,7 +169,6 @@ def load_all_addresses(conn: MdbConnection) -> dict[int, AddressRow]:
             nickname=nickname or "",
             comment=comment or "",
             used=bool(used),
-            exists_in_mdb=True,
             data_type=final_data_type,
             initial_value=initial_value or "",
             retentive=final_retentive,
@@ -179,88 +178,94 @@ def load_all_addresses(conn: MdbConnection) -> dict[int, AddressRow]:
     return result
 
 
+def _delete_rows(cursor, rows: list[AddressRow]) -> int:
+    """Helper: Delete rows regardless of existence."""
+    # We can use executemany here for performance since the logic is simple
+    params = [(row.addr_key,) for row in rows]
+    cursor.executemany("DELETE FROM address WHERE AddrKey = ?", params)
+    return len(rows)  # Assuming success if no exception raised
+
+
+def _upsert_rows(cursor, rows: list[AddressRow]) -> int:
+    """Helper: Defensively Insert or Update rows."""
+    modified_count = 0
+
+    for row in rows:
+        # DEFENSIVE: Ignore 'exists_in_mdb' flag. Check the DB directly.
+        # This prevents "Duplicate Key" errors if our state is out of sync.
+        cursor.execute("SELECT Count(*) FROM address WHERE AddrKey = ?", (row.addr_key,))
+        count = cursor.fetchone()[0]
+
+        if count > 0:
+            # UPDATE
+            cursor.execute(
+                """
+                UPDATE address 
+                SET Nickname = ?, Comment = ?, InitialValue = ?, Retentive = ? 
+                WHERE AddrKey = ?
+                """,
+                (row.nickname, row.comment, row.initial_value, row.retentive, row.addr_key),
+            )
+        else:
+            # INSERT
+            cursor.execute(
+                """
+                INSERT INTO address (
+                    AddrKey, MemoryType, Address, DataType, 
+                    Nickname, Comment, InitialValue, Retentive
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    row.addr_key,
+                    row.memory_type,
+                    row.address,
+                    row.data_type,
+                    row.nickname,
+                    row.comment,
+                    row.initial_value,
+                    row.retentive,
+                ),
+            )
+        modified_count += 1
+
+    return modified_count
+
+
 def save_changes(conn: MdbConnection, rows: Sequence[AddressRow]) -> int:
-    """Save all dirty rows to database.
+    """Save dirty rows to database defensively.
 
-    Performs INSERT, UPDATE, DELETE, or clear based on row state.
-
-    Args:
-        conn: Active database connection
-        rows: List of AddressRow objects to save (will filter to dirty ones)
-
-    Returns:
-        Number of rows modified
-
-    Raises:
-        RuntimeError: If not connected
-        Exception: If any database operation fails (transaction rolled back)
+    Splits operations into Deletes and Upserts (Insert/Update) to handle
+    state synchronization issues robustly.
     """
     if not conn._conn:
         raise RuntimeError("Not connected to database")
 
+    # 1. Sort rows by intent
+    to_delete = []
+    to_upsert = []
+
+    for row in rows:
+        # Use existing logic to determine intent
+        if row.needs_full_delete(is_dirty=True):
+            to_delete.append(row)
+        else:
+            to_upsert.append(row)
+
     cursor = conn._conn.cursor()
-    modified_count = 0
+    total_modified = 0
 
     try:
-        for row in rows:
-            if row.needs_full_delete:
-                # Delete the entire row from database
-                cursor.execute(
-                    """
-                    DELETE FROM address WHERE AddrKey = ?
-                """,
-                    (row.addr_key,),
-                )
-                modified_count += 1
+        # 2. Handle Deletions (Batchable)
+        if to_delete:
+            total_modified += _delete_rows(cursor, to_delete)
 
-            elif row.needs_insert:
-                # Insert new row with all fields
-                cursor.execute(
-                    """
-                    INSERT INTO address (AddrKey, MemoryType, Address, DataType, Nickname, Comment, InitialValue, Retentive)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        row.addr_key,
-                        row.memory_type,
-                        row.address,
-                        row.data_type,
-                        row.nickname,
-                        row.comment,
-                        row.initial_value,
-                        row.retentive,
-                    ),
-                )
-                modified_count += 1
-
-            elif row.needs_update:
-                # Update existing row (all editable fields)
-                cursor.execute(
-                    """
-                    UPDATE address SET Nickname = ?, Comment = ?, InitialValue = ?, Retentive = ? WHERE AddrKey = ?
-                """,
-                    (row.nickname, row.comment, row.initial_value, row.retentive, row.addr_key),
-                )
-                modified_count += 1
-
-            elif row.needs_nickname_clear_only:
-                # Clear nickname (set to empty string, keep row for other fields)
-                cursor.execute(
-                    """
-                    UPDATE address SET Nickname = '' WHERE AddrKey = ?
-                """,
-                    (row.addr_key,),
-                )
-                modified_count += 1
+        # 3. Handle Upserts (Defensive Check-then-Act)
+        if to_upsert:
+            total_modified += _upsert_rows(cursor, to_upsert)
 
         conn._conn.commit()
-
-        # Mark all modified rows as saved
-        for row in rows:
-            if row.is_dirty:
-                row.mark_saved()
-
-        return modified_count
+        return total_modified
 
     except Exception:
         conn._conn.rollback()
