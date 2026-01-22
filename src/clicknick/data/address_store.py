@@ -29,6 +29,7 @@ from ..models.constants import (
 )
 from ..models.validation import validate_initial_value, validate_nickname
 from ..services.block_service import BlockService, compute_all_block_ranges
+from ..services.dependency_service import _sync_block_tag
 from ..services.nickname_index_service import NicknameIndexService
 from .data_source import DataSource
 from .edit_session_new import EditSession
@@ -343,7 +344,26 @@ class AddressStore:
 
     def _apply_cascades(self, session: EditSession) -> None:
         """Apply automatic syncs (T/TD, block tags) to pending changes."""
-        # Get snapshot of pending keys (cascades may add more)
+
+        def _sync_interleaved_pair(src_row: AddressRow, comment: str) -> None:
+            """Sync comment to the interleaved pair (e.g. T -> TD)."""
+            if src_row.memory_type not in INTERLEAVED_PAIRS:
+                return
+
+            paired_type = INTERLEAVED_PAIRS[src_row.memory_type]
+            paired_key = get_addr_key(paired_type, src_row.address)
+
+            # Only sync if the pair hasn't been modified in this session
+            if paired_key in session.pending:
+                return
+
+            paired_row = self.visible_state.get(paired_key)
+            if paired_row:
+                synced = _sync_block_tag(comment, paired_row.comment)
+                if synced is not None:
+                    session.get_builder(paired_key).comment = synced
+
+        # Process snapshot of pending keys (cascades may add new keys to pending)
         pending_keys = list(session.pending.keys())
 
         for addr_key in pending_keys:
@@ -352,54 +372,46 @@ class AddressStore:
             if not row:
                 continue
 
-            # T/TD retentive sync
+            # 1. Retentive sync for T/TD pairs
             if row.memory_type in INTERLEAVED_PAIRS and builder.retentive is not None:
                 paired_type = INTERLEAVED_PAIRS[row.memory_type]
                 paired_key = get_addr_key(paired_type, row.address)
 
-                # Skip if paired row was also edited
                 if paired_key not in session.pending:
-                    paired_builder = session.get_builder(paired_key)
-                    paired_builder.retentive = builder.retentive
+                    session.get_builder(paired_key).retentive = builder.retentive
 
-            # Block tag sync (comment cascade)
+            # 2. Comment cascades (Block tags and T/TD sync)
             if builder.comment is not None:
-                old_comment = session.comment_old_values.get(addr_key, row.comment)
                 new_comment = builder.comment
 
+                # Check for vertical block tag updates (Start/End tag consistency)
+                old_comment = session.comment_old_values.get(addr_key, row.comment)
                 old_tag = parse_block_tag(old_comment)
                 new_tag = parse_block_tag(new_comment)
 
-                # Check if block tag changed
                 if old_tag.name or new_tag.name:
                     # Get unified view for searching paired tags
                     view = self.get_unified_view()
                     if view:
-                        key_to_idx = {r.addr_key: idx for idx, r in enumerate(view.rows)}
+                        key_to_idx = {r.addr_key: i for i, r in enumerate(view.rows)}
                         row_idx = key_to_idx.get(addr_key)
+
                         if row_idx is not None:
                             result = BlockService.auto_update_matching_block_tag(
                                 view.rows, row_idx, old_tag, new_tag
                             )
-                            if result is not None:
-                                paired_idx, new_paired_comment = result
-                                paired_row = view.rows[paired_idx]
-                                paired_builder = session.get_builder(paired_row.addr_key)
-                                paired_builder.comment = new_paired_comment
+                            if result:
+                                match_idx, match_comment = result
+                                match_row = view.rows[match_idx]
 
-                # T/TD comment sync (block tags)
-                if row.memory_type in INTERLEAVED_PAIRS:
-                    from ..services.dependency_service import _sync_block_tag
+                                # Update the vertical match (the closing tag)
+                                session.get_builder(match_row.addr_key).comment = match_comment
 
-                    paired_type = INTERLEAVED_PAIRS[row.memory_type]
-                    paired_key = get_addr_key(paired_type, row.address)
-                    paired_row = self.visible_state.get(paired_key)
+                                # Sync the vertical match to *its* interleaved pair
+                                _sync_interleaved_pair(match_row, match_comment)
 
-                    if paired_row and paired_key not in session.pending:
-                        synced = _sync_block_tag(new_comment, paired_row.comment)
-                        if synced is not None:
-                            paired_builder = session.get_builder(paired_key)
-                            paired_builder.comment = synced
+                # Sync the current row to its interleaved pair
+                _sync_interleaved_pair(row, new_comment)
 
     def _freeze_session(self, session: EditSession) -> set[int]:
         """Freeze session builders into user_overrides.
