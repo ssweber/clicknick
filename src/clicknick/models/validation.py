@@ -1,6 +1,7 @@
 from collections.abc import Callable
 
 from .constants import (
+    COMMENT_MAX_LENGTH,
     FLOAT_MAX,
     FLOAT_MIN,
     FORBIDDEN_CHARS,
@@ -36,6 +37,24 @@ def validate_nickname_format(nickname: str) -> tuple[bool, str]:
         # Show first few invalid chars
         chars_display = "".join(sorted(invalid_chars)[:3])
         return False, f"Invalid: {chars_display}"
+
+    return True, ""
+
+
+def validate_comment(comment: str) -> tuple[bool, str]:
+    """Validate comment length.
+
+    Args:
+        comment: The comment to validate
+
+    Returns:
+        Tuple of (is_valid, error_message) - error_message is "" if valid
+    """
+    if comment == "":
+        return True, ""  # Empty is valid
+
+    if len(comment) > COMMENT_MAX_LENGTH:
+        return False, f"Too long ({len(comment)}/128)"
 
     return True, ""
 

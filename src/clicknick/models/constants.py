@@ -166,8 +166,8 @@ DEFAULT_RETENTIVE: dict[str, bool] = {
     "DF": True,
     "XD": False,  # Can't change
     "YD": False,  # Can't change
-    "TD": False,  # Can't change (stored elsewhere)
-    "CTD": True,  # Can't change (stored elsewhere)
+    "TD": False,  # See note
+    "CTD": True,  # See note
     "SD": False,  # Can't change
     "TXT": True,
 }

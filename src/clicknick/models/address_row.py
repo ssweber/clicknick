@@ -5,7 +5,6 @@ Contains AddressRow frozen dataclass, validation functions, and AddrKey calculat
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .constants import (
@@ -16,7 +15,6 @@ from .constants import (
     NON_EDITABLE_TYPES,
     DataType,
 )
-from .validation import validate_initial_value, validate_nickname
 
 # ==============================================================================
 # Helper Functions
@@ -254,6 +252,10 @@ class AddressRow:
     # --- Validation State (computed) ---
     is_valid: bool = field(default=True, compare=False)
     validation_error: str = field(default="", compare=False)
+    _nickname_valid: bool = field(default=True, compare=False)
+    nickname_error: str = field(default="", compare=False)
+    comment_valid: bool = field(default=True, compare=False)
+    comment_error: str = field(default="", compare=False)
     initial_value_valid: bool = field(default=True, compare=False)
     initial_value_error: str = field(default="", compare=False)
 
@@ -371,6 +373,11 @@ class AddressRow:
         return self.loaded_with_error
 
     @property
+    def nickname_valid(self) -> bool:
+        """True if nickname is valid or validation errors should be ignored."""
+        return self._nickname_valid or self.should_ignore_validation_error
+
+    @property
     def has_reportable_error(self):
         return not (self.is_valid or self.is_empty or self.should_ignore_validation_error)
 
@@ -389,34 +396,3 @@ class AddressRow:
     def needs_full_delete(self, is_dirty: bool) -> bool:
         """True if should DELETE the entire row from database."""
         return is_dirty and not self.has_content and not self.used
-
-    def validate(
-        self,
-        all_nicknames: dict[int, str],
-        is_duplicate_fn: Callable[[str, int], bool] | None = None,
-    ) -> tuple[bool, str, bool, str]:
-        """Validate this row and return validation state.
-
-        Args:
-            all_nicknames: Dict of addr_key -> nickname for uniqueness check
-            is_duplicate_fn: Optional O(1) duplicate checker function
-
-        Returns:
-            Tuple of (is_valid, validation_error, initial_value_valid, initial_value_error)
-        """
-        # Validate nickname
-        is_valid, validation_error = validate_nickname(
-            self.nickname, all_nicknames, self.addr_key, is_duplicate_fn
-        )
-
-        # Validate initial value
-        initial_value_valid, initial_value_error = validate_initial_value(
-            self.initial_value, self.data_type
-        )
-
-        # Overall validity includes both
-        if not initial_value_valid and is_valid:
-            is_valid = False
-            validation_error = initial_value_error
-
-        return is_valid, validation_error, initial_value_valid, initial_value_error

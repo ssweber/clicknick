@@ -13,6 +13,7 @@ from clicknick.models.blocktag import (
 )
 from clicknick.models.constants import (
     ADDRESS_RANGES,
+    COMMENT_MAX_LENGTH,
     DEFAULT_RETENTIVE,
     FORBIDDEN_CHARS,
     MEMORY_TYPE_BASES,
@@ -22,7 +23,11 @@ from clicknick.models.constants import (
     PAIRED_RETENTIVE_TYPES,
     DataType,
 )
-from clicknick.models.validation import validate_initial_value, validate_nickname
+from clicknick.models.validation import (
+    validate_comment,
+    validate_initial_value,
+    validate_nickname,
+)
 
 
 class TestAddrKeyCalculation:
@@ -272,6 +277,31 @@ class TestValidateNickname:
         assert "Invalid:" in error
 
 
+class TestValidateComment:
+    """Tests for comment validation."""
+
+    def test_empty_comment_is_valid(self):
+        """Empty comment is valid."""
+        is_valid, error = validate_comment("")
+        assert is_valid is True
+        assert error == ""
+
+    def test_max_length_exactly_128(self):
+        """Comment of exactly 128 characters is valid."""
+        comment = "A" * COMMENT_MAX_LENGTH
+        is_valid, error = validate_comment(comment)
+        assert is_valid is True
+        assert error == ""
+
+    def test_too_long_129_chars(self):
+        """Comment of 129 characters is too long."""
+        comment = "A" * 129
+        is_valid, error = validate_comment(comment)
+        assert is_valid is False
+        assert "Too long" in error
+        assert "129/128" in error
+
+
 class TestAddressRow:
     """Tests for AddressRow frozen dataclass."""
 
@@ -333,18 +363,6 @@ class TestAddressRow:
             comment="Keep me",
         )
         assert row.needs_full_delete(is_dirty=True) is False
-
-    def test_validate_method(self):
-        """Test validate method returns validation state."""
-        row = AddressRow(memory_type="X", address=1, nickname="ValidName")
-        is_valid, error, init_valid, init_error = row.validate({})
-        assert is_valid is True
-        assert error == ""
-
-        row = AddressRow(memory_type="X", address=1, nickname="_InvalidName")
-        is_valid, error, init_valid, init_error = row.validate({})
-        assert is_valid is False
-        assert "Cannot start with _" in error
 
     def test_frozen_dataclass(self):
         """Test that AddressRow is frozen (immutable)."""
@@ -682,31 +700,6 @@ class TestAddressRowInitialValueRetentive:
         """Test can_edit_retentive for non-editable types."""
         row = AddressRow(memory_type="SD", address=1)
         assert row.can_edit_retentive is False
-
-    def test_validate_initial_value(self):
-        """Test validate returns initial value validation state."""
-        row = AddressRow(
-            memory_type="DS",
-            address=1,
-            data_type=DataType.INT,
-            initial_value="100",
-        )
-        is_valid, error, init_valid, init_error = row.validate({})
-        assert init_valid is True
-        assert init_error == ""
-
-    def test_validate_invalid_initial_value(self):
-        """Test validate catches invalid initial value."""
-        row = AddressRow(
-            memory_type="DS",
-            address=1,
-            data_type=DataType.INT,
-            initial_value="abc",  # Invalid for int
-        )
-        is_valid, error, init_valid, init_error = row.validate({})
-        assert init_valid is False
-        assert is_valid is False  # Overall validity includes initial value
-        assert "integer" in init_error
 
     def test_has_content_with_initial_value(self):
         """Test has_content includes initial value."""

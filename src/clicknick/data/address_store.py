@@ -27,7 +27,7 @@ from ..models.constants import (
     MEMORY_TYPE_TO_DATA_TYPE,
     DataType,
 )
-from ..models.validation import validate_initial_value, validate_nickname
+from ..models.validation import validate_comment, validate_initial_value, validate_nickname
 from ..services.block_service import BlockService, compute_all_block_ranges
 from ..services.nickname_index_service import NicknameIndexService
 from .data_source import DataSource
@@ -168,22 +168,36 @@ class AddressStore:
         if not row:
             return
 
-        is_valid, error = validate_nickname(
+        nickname_valid, nickname_error = validate_nickname(
             row.nickname, all_nicknames, addr_key, self.is_duplicate_nickname
         )
+
+        # Validate comment
+        comment_valid, comment_error = validate_comment(row.comment)
+
+        # Validate initial value
         init_valid, init_error = validate_initial_value(row.initial_value, row.data_type)
 
-        # Combine validation results
-        if not init_valid and is_valid:
-            is_valid = False
-            error = init_error
+        # Overall validity
+        is_valid = nickname_valid and comment_valid and init_valid
 
         # Only update if validation state changed
-        if row.is_valid != is_valid or row.validation_error != error:
+        if (
+            row.is_valid != is_valid
+            or row._nickname_valid != nickname_valid
+            or row.nickname_error != nickname_error
+            or row.comment_valid != comment_valid
+            or row.comment_error != comment_error
+            or row.initial_value_valid != init_valid
+            or row.initial_value_error != init_error
+        ):
             updated = replace(
                 row,
                 is_valid=is_valid,
-                validation_error=error,
+                _nickname_valid=nickname_valid,
+                nickname_error=nickname_error,
+                comment_valid=comment_valid,
+                comment_error=comment_error,
                 initial_value_valid=init_valid,
                 initial_value_error=init_error,
             )
@@ -453,6 +467,10 @@ class AddressStore:
                         retentive=override.retentive,
                         is_valid=override.is_valid,
                         validation_error=override.validation_error,
+                        _nickname_valid=override._nickname_valid,
+                        nickname_error=override.nickname_error,
+                        comment_valid=override.comment_valid,
+                        comment_error=override.comment_error,
                         initial_value_valid=override.initial_value_valid,
                         initial_value_error=override.initial_value_error,
                     )
@@ -776,10 +794,7 @@ class AddressStore:
 
     def has_errors(self) -> bool:
         """Check if any visible rows have validation errors."""
-        return any(
-            not row.is_valid and row.nickname and not row.should_ignore_validation_error
-            for row in self.visible_state.values()
-        )
+        return any(row.has_reportable_error for row in self.visible_state.values())
 
     # --- Row Access ---
 
@@ -1028,11 +1043,7 @@ class AddressStore:
 
     def get_total_error_count(self) -> int:
         """Get total count of rows with errors."""
-        return sum(
-            1
-            for row in self.visible_state.values()
-            if not row.is_valid and row.nickname and not row.should_ignore_validation_error
-        )
+        return sum(1 for row in self.visible_state.values() if row.has_reportable_error)
 
     def get_modified_count_for_type(self, memory_type: str) -> int:
         """Get count of modified rows for a memory type."""
@@ -1045,10 +1056,7 @@ class AddressStore:
         return sum(
             1
             for row in self.visible_state.values()
-            if row.memory_type == memory_type
-            and not row.is_valid
-            and row.nickname
-            and not row.should_ignore_validation_error
+            if row.memory_type == memory_type and row.has_reportable_error
         )
 
     # --- Block Addresses (compatibility) ---

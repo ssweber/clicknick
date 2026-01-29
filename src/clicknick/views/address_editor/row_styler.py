@@ -118,7 +118,7 @@ class AddressRowStyler:
                 )
 
         # 3. Error highlighting (nickname column) - takes priority over dirty
-        if row.has_reportable_error:
+        if not row.nickname_valid and row.nickname:
             self.sheet.highlight_cells(
                 row=data_idx,
                 column=COL_NICKNAME,
@@ -134,8 +134,15 @@ class AddressRowStyler:
                 fg="black",
             )
 
-        # 4. Dirty comment gets light yellow background
-        if self._is_field_dirty(addr_key, "comment"):
+        # 4. Comment error or dirty highlighting
+        if not row.comment_valid and row.comment != "":
+            self.sheet.highlight_cells(
+                row=data_idx,
+                column=COL_COMMENT,
+                bg=COLOR_ERROR_BG,
+                fg="black",
+            )
+        elif self._is_field_dirty(addr_key, "comment"):
             self.sheet.highlight_cells(
                 row=data_idx,
                 column=COL_COMMENT,
@@ -209,7 +216,7 @@ class AddressRowStyler:
             addr_key = row.addr_key
 
             # Nickname note (error and/or dirty)
-            nick_error = row.validation_error if row.has_reportable_error else None
+            nick_error = row.nickname_error if (not row.nickname_valid and row.nickname) else None
             nick_dirty = None
             if self._is_field_dirty(addr_key, "nickname"):
                 base_nick = self._get_base_value(addr_key, "nickname")
@@ -236,11 +243,19 @@ class AddressRowStyler:
                     error_note=init_error, dirty_note=init_dirty
                 )
 
-            # Comment note (dirty only)
+            # Comment note (error and/or dirty)
+            comment_error = (
+                row.comment_error if (not row.comment_valid and row.comment != "") else None
+            )
+            comment_dirty = None
             if self._is_field_dirty(addr_key, "comment"):
                 base_comment = self._get_base_value(addr_key, "comment")
                 if base_comment is not None:
-                    target[(data_idx, COL_COMMENT)] = CellNote(dirty_note=str(base_comment))
+                    comment_dirty = str(base_comment)
+            if comment_error or comment_dirty:
+                target[(data_idx, COL_COMMENT)] = CellNote(
+                    error_note=comment_error, dirty_note=comment_dirty
+                )
 
             # Retentive note (dirty only)
             if self._is_field_dirty(addr_key, "retentive"):
@@ -295,7 +310,7 @@ class AddressRowStyler:
                 self.sheet.cell_notes.pop(cell_key, None)
 
         # Nickname
-        nick_error = row.validation_error if row.has_reportable_error else None
+        nick_error = row.nickname_error if (not row.nickname_valid and row.nickname) else None
         nick_dirty = None
         if self._is_field_dirty(addr_key, "nickname"):
             base_nick = self._get_base_value(addr_key, "nickname")
@@ -317,12 +332,13 @@ class AddressRowStyler:
         set_cell_note(COL_INIT_VALUE, init_error, init_dirty)
 
         # Comment
+        comment_error = row.comment_error if (not row.comment_valid and row.comment != "") else None
         comment_dirty = None
         if self._is_field_dirty(addr_key, "comment"):
             base_comment = self._get_base_value(addr_key, "comment")
             if base_comment is not None:
                 comment_dirty = str(base_comment)
-        set_cell_note(COL_COMMENT, None, comment_dirty)
+        set_cell_note(COL_COMMENT, comment_error, comment_dirty)
 
         # Retentive
         retentive_dirty = None
