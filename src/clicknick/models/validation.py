@@ -11,6 +11,7 @@ from .constants import (
     INT_MIN,
     NICKNAME_MAX_LENGTH,
     DataType,
+    RESERVED_NICKNAMES,
 )
 
 
@@ -31,6 +32,9 @@ def validate_nickname_format(nickname: str) -> tuple[bool, str]:
 
     if nickname.startswith("_"):
         return False, "Cannot start with _"
+
+    if nickname.lower() in RESERVED_NICKNAMES:
+        return False, "Reserved keyword"
 
     invalid_chars = set(nickname) & FORBIDDEN_CHARS
     if invalid_chars:

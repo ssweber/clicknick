@@ -115,6 +115,13 @@ COMMENT_MAX_LENGTH = 128
 # Characters forbidden in nicknames
 # Note: Space is allowed, hyphen (-) and period (.) are forbidden
 FORBIDDEN_CHARS = set("%\"<>!#$&'()*+-./:;=?@[\\]^`{|}~")
+
+RESERVED_NICKNAMES = {
+    "log", "sum", "sin", "asin", "rad", "cos", "acos", "sqrt", "deg", 
+    "tan", "atan", "ln", "pi", "mod", "and", "or", "xor", "lsh", "rsh", 
+    "lro", "rro", "log"
+}
+
 # Value ranges for validation
 INT_MIN = -32768
 INT_MAX = 32767
