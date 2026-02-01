@@ -84,8 +84,6 @@ DATA_TYPE_HINTS: dict[int, str] = {
     DataType.TXT: "Single ASCII char: eg 'A'",
 }
 
-# Memory types that are exclusively BIT type (no combined types like T/TD)
-BIT_ONLY_TYPES: frozenset[str] = frozenset({"X", "Y", "C", "SC"})
 # DataType by memory type
 MEMORY_TYPE_TO_DATA_TYPE: dict[str, int] = {
     "X": DataType.BIT,
@@ -117,9 +115,27 @@ COMMENT_MAX_LENGTH = 128
 FORBIDDEN_CHARS = set("%\"<>!#$&'()*+-./:;=?@[\\]^`{|}~")
 
 RESERVED_NICKNAMES = {
-    "log", "sum", "sin", "asin", "rad", "cos", "acos", "sqrt", "deg", 
-    "tan", "atan", "ln", "pi", "mod", "and", "or", "xor", "lsh", "rsh", 
-    "lro", "rro", "log"
+    "log",
+    "sum",
+    "sin",
+    "asin",
+    "rad",
+    "cos",
+    "acos",
+    "sqrt",
+    "deg",
+    "tan",
+    "atan",
+    "ln",
+    "pi",
+    "mod",
+    "and",
+    "or",
+    "xor",
+    "lsh",
+    "rsh",
+    "lro",
+    "rro",
 }
 
 # Value ranges for validation

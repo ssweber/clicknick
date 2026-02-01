@@ -10,8 +10,8 @@ from .constants import (
     INT_MAX,
     INT_MIN,
     NICKNAME_MAX_LENGTH,
-    DataType,
     RESERVED_NICKNAMES,
+    DataType,
 )
 
 
@@ -45,11 +45,19 @@ def validate_nickname_format(nickname: str) -> tuple[bool, str]:
     return True, ""
 
 
-def validate_comment(comment: str) -> tuple[bool, str]:
-    """Validate comment length.
+def validate_comment(
+    comment: str,
+    is_block_name_duplicate: Callable[[str, int], bool] | None = None,
+    current_addr_key: int = 0,
+) -> tuple[bool, str]:
+    """Validate comment length and block name uniqueness.
 
     Args:
         comment: The comment to validate
+        is_block_name_duplicate: Optional callback to check if a block name is already
+            in use. Signature: (block_name, exclude_addr_key) -> bool
+        current_addr_key: The addr_key of the row being validated (excluded from
+            duplicate check)
 
     Returns:
         Tuple of (is_valid, error_message) - error_message is "" if valid
@@ -59,6 +67,15 @@ def validate_comment(comment: str) -> tuple[bool, str]:
 
     if len(comment) > COMMENT_MAX_LENGTH:
         return False, f"Too long ({len(comment)}/128)"
+
+    # Check for duplicate block name if checker provided
+    if is_block_name_duplicate is not None:
+        # Import here to avoid circular dependency
+        from .blocktag import parse_block_tag
+
+        tag = parse_block_tag(comment)
+        if tag.name and is_block_name_duplicate(tag.name, current_addr_key):
+            return False, f"Duplicate block: {tag.name}"
 
     return True, ""
 

@@ -172,8 +172,10 @@ class AddressStore:
             row.nickname, all_nicknames, addr_key, self.is_duplicate_nickname
         )
 
-        # Validate comment
-        comment_valid, comment_error = validate_comment(row.comment)
+        # Validate comment (includes block name uniqueness check)
+        comment_valid, comment_error = validate_comment(
+            row.comment, self.is_duplicate_block_name, addr_key
+        )
 
         # Validate initial value
         init_valid, init_error = validate_initial_value(row.initial_value, row.data_type)
@@ -359,7 +361,12 @@ class AddressStore:
         """Apply automatic syncs (T/TD, block tags) to pending changes."""
 
         def _sync_interleaved_pair(src_row: AddressRow, comment: str) -> None:
-            """Sync comment to the interleaved pair (e.g. T -> TD)."""
+            """Sync comment to the interleaved pair (e.g. T -> TD).
+
+            For block tags, applies _D suffix transformation:
+            - T/CT blocks use base name (e.g., "Pumps")
+            - TD/CTD blocks use "_D" suffix (e.g., "Pumps_D")
+            """
             if src_row.memory_type not in INTERLEAVED_PAIRS:
                 return
 
@@ -372,7 +379,13 @@ class AddressStore:
 
             paired_row = self.visible_state.get(paired_key)
             if paired_row:
-                synced = BlockService.apply_block_tag(comment, paired_row.comment)
+                # Use suffix-aware sync for block tags
+                synced = BlockService.apply_block_tag_for_interleaved_pair(
+                    comment,
+                    paired_row.comment,
+                    src_row.memory_type,
+                    paired_type,
+                )
                 if synced is not None:
                     session.get_builder(paired_key).comment = synced
 
@@ -829,6 +842,37 @@ class AddressStore:
     def is_duplicate_nickname(self, nickname: str, exclude_addr_key: int) -> bool:
         """Check if nickname is used by another address."""
         return self._nickname_service.is_duplicate(nickname, exclude_addr_key)
+
+    def is_duplicate_block_name(self, block_name: str, exclude_addr_key: int) -> bool:
+        """Check if block name is used by another block definition.
+
+        Block names must be unique across all memory types. A "block definition"
+        is an opening tag (<Name>) or self-closing tag (<Name />). Closing tags
+        (</Name>) are NOT duplicates - they're supposed to match their opening tag.
+
+        Args:
+            block_name: The block name to check
+            exclude_addr_key: The addr_key to exclude (the row being validated)
+
+        Returns:
+            True if block name is already defined by another opening/self-closing tag
+        """
+        # First check: if current row has a closing tag, it's never a duplicate
+        current_row = self.visible_state.get(exclude_addr_key)
+        if current_row:
+            current_tag = parse_block_tag(current_row.comment)
+            if current_tag.tag_type == "close":
+                return False  # Closing tags are allowed to match their opening tag
+
+        # Only count opening and self-closing tags as block definitions
+        # Use visible_state directly (works during initial load before unified view exists)
+        for addr_key, row in self.visible_state.items():
+            if addr_key == exclude_addr_key:
+                continue
+            tag = parse_block_tag(row.comment)
+            if tag.name == block_name and tag.tag_type in ("open", "self-closing"):
+                return True
+        return False
 
     def update_nickname(self, addr_key: int, old_nickname: str, new_nickname: str) -> None:
         """Update nickname in the index."""
