@@ -27,9 +27,9 @@ from pyclickplc import (
     get_addr_key,
 )
 from pyclickplc.addresses import is_xd_yd_hidden_slot
+from pyclickplc.blocks import parse_block_tag
 
 from ..models.address_row import AddressRow
-from ..models.blocktag import parse_block_tag
 from ..models.validation import validate_comment, validate_initial_value, validate_nickname
 from ..services.block_service import BlockService, compute_all_block_ranges
 from ..services.nickname_index_service import NicknameIndexService

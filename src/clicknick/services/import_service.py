@@ -9,8 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pyclickplc import get_addr_key
-
-from ..models.blocktag import parse_block_tag, strip_block_tag
+from pyclickplc.blocks import parse_block_tag, strip_block_tag
 
 if TYPE_CHECKING:
     from ..data.shared_data import SharedAddressData

@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from ..models.blocktag import (
+from pyclickplc.blocks import (
     BlockRange,
     HasComment,
     compute_all_block_ranges,
@@ -24,9 +24,10 @@ from ..models.blocktag import (
 )
 
 if TYPE_CHECKING:
+    from pyclickplc.blocks import BlockTag
+
     from ..data.address_store import AddressStore
     from ..models.address_row import AddressRow
-    from ..models.blocktag import BlockTag
 
 
 # Re-export functions from blocktag for backwards compatibility

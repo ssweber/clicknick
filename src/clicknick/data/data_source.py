@@ -30,29 +30,9 @@ from ..utils.mdb_operations import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-# CSV column names (matching CLICK software export format)
-CSV_COLUMNS = ["Address", "Data Type", "Nickname", "Initial Value", "Retentive", "Address Comment"]
-
-# Data type string to code mapping
-DATA_TYPE_STR_TO_CODE: dict[str, int] = {
-    "BIT": 0,
-    "INT": 1,
-    "INT2": 2,
-    "FLOAT": 3,
-    "HEX": 4,
-    "TXT": 6,
-    "TEXT": 6,  # Alias
-}
-
-# Data type code to string mapping (for saving csv)
-DATA_TYPE_CODE_TO_STR: dict[int, str] = {
-    0: "BIT",
-    1: "INT",
-    2: "INT2",
-    3: "FLOAT",
-    4: "HEX",
-    6: "TEXT",  # Alias
-}
+from pyclickplc.nicknames import CSV_COLUMNS as CSV_COLUMNS
+from pyclickplc.nicknames import DATA_TYPE_CODE_TO_STR as DATA_TYPE_CODE_TO_STR
+from pyclickplc.nicknames import DATA_TYPE_STR_TO_CODE as DATA_TYPE_STR_TO_CODE
 
 # Regex for parsing address strings like "X001", "C100", "DS1000", "TD5"
 ADDRESS_PATTERN = re.compile(r"^([A-Z]+)(\d+)$")

@@ -12,15 +12,15 @@ from collections.abc import Callable
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from tksheet import Sheet
-
-from ...models.dataview_row import (
+from pyclickplc.dataview import (
     MAX_DATAVIEW_ROWS,
     DataviewRow,
     create_empty_dataview,
     get_type_code_for_address,
+    load_cdv,
+    save_cdv,
 )
-from .cdv_file import load_cdv, save_cdv
+from tksheet import Sheet
 
 # Column indices
 COL_ADDRESS = 0

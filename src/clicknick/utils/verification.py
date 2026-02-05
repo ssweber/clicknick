@@ -23,15 +23,15 @@ from pyclickplc import (
     parse_addr_key,
 )
 from pyclickplc.addresses import is_xd_yd_hidden_slot
-
-from ..models.dataview_row import (
+from pyclickplc.dataview import (
     MEMORY_TYPE_TO_CODE,
     TypeCode,
     get_type_code_for_address,
     is_address_writable,
-    parse_address,
     storage_to_display,
 )
+
+from ..models.dataview_row import parse_address
 from ..models.validation import validate_initial_value, validate_nickname
 
 if TYPE_CHECKING:
@@ -308,7 +308,7 @@ def _verify_single_cdv(cdv_path: Path) -> list[str]:
     Returns:
         List of issue strings
     """
-    from ..views.dataview_editor.cdv_file import load_cdv
+    from pyclickplc.dataview import load_cdv
 
     issues: list[str] = []
     filename = cdv_path.name
@@ -395,7 +395,7 @@ def verify_cdv_files(project_path: Path | str) -> tuple[list[str], int]:
     Returns:
         Tuple of (issues list, files checked count)
     """
-    from ..views.dataview_editor.cdv_file import (
+    from pyclickplc.dataview import (
         get_dataview_folder,
         list_cdv_files,
     )

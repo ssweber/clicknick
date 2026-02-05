@@ -65,7 +65,7 @@ def validate_comment(
     # Check for duplicate block name if checker provided
     if is_block_name_duplicate is not None:
         # Import here to avoid circular dependency
-        from .blocktag import parse_block_tag
+        from pyclickplc.blocks import parse_block_tag
 
         tag = parse_block_tag(comment)
         if tag.name and is_block_name_duplicate(tag.name, current_addr_key):

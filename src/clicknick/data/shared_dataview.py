@@ -16,8 +16,7 @@ from pyclickplc import (
 from pyclickplc import (
     normalize_address as _normalize_address,
 )
-
-from ..views.dataview_editor.cdv_file import get_dataview_folder, list_cdv_files
+from pyclickplc.dataview import get_dataview_folder, list_cdv_files
 
 if TYPE_CHECKING:
     from .data.address_store import AddressStore

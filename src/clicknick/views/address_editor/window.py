@@ -11,16 +11,17 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from pyclickplc import DataType, get_addr_key
+from pyclickplc.blocks import (
+    format_block_tag,
+    is_block_name_available,
+    parse_block_tag,
+    strip_block_tag,
+    validate_block_span,
+)
 
 from ...data.address_store import AddressStore
 from ...data.data_source import CsvDataSource
-from ...models.blocktag import (
-    format_block_tag,
-    parse_block_tag,
-    strip_block_tag,
-)
 from ...services import ImportService, RowService
-from ...services.block_service import is_block_name_available, validate_block_span
 from ...utils.rename_helpers import build_rename_pattern
 from ...widgets.add_block_dialog import AddBlockDialog
 from ...widgets.custom_notebook import CustomNotebook
