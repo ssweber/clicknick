@@ -286,7 +286,7 @@ def storage_to_display(value: str, type_code: int) -> str:
             return str(unsigned_val)
 
         elif type_code == TypeCode.HEX:
-            # HEX: Stored as decimal, display as 4-digit hex with leading zeros
+            # HEX: Display as 4-digit hex, uppercase, NO suffix.
             decimal_val = int(value)
             return format(decimal_val, "04X")
 
@@ -299,10 +299,12 @@ def storage_to_display(value: str, type_code: int) -> str:
             bytes_val = struct.pack(">I", int_val & 0xFFFFFFFF)
             # Interpret as big-endian float
             float_val = struct.unpack(">f", bytes_val)[0]
-            # Format nicely (avoid excessive decimals)
-            if float_val == int(float_val):
-                return str(int(float_val))
-            return f"{float_val:.6g}"
+            
+            # Use 'G' for general format:
+            # 1. Automatically uses Scientific notation for large numbers
+            # 2. Automatically trims trailing zeros for small numbers
+            # 3. Uppercase 'E'
+            return f"{float_val:.7G}"
 
         elif type_code == TypeCode.TXT:
             # TXT: Stored as ASCII code, display as character
@@ -369,7 +371,7 @@ def display_to_storage(value: str, type_code: int) -> str:
             return str(decimal_val)
 
         elif type_code == TypeCode.FLOAT:
-            # FLOAT: Convert to IEEE 754 32-bit integer representation
+            # Display (String) -> Float -> IEEE 754 Bytes -> Int -> Storage (String)
             import struct
 
             float_val = float(value)
