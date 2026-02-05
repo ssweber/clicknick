@@ -481,7 +481,7 @@ def validate_block_span(rows: list) -> tuple[bool, str | None]:
         - (True, None) if all rows have compatible memory types
         - (False, error_message) if rows span incompatible memory types
     """
-    from .constants import INTERLEAVED_TYPE_PAIRS
+    from pyclickplc import INTERLEAVED_TYPE_PAIRS
 
     if not rows:
         return True, None

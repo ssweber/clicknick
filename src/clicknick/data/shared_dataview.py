@@ -9,13 +9,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..models.address_row import (
+from pyclickplc import (
     get_addr_key,
     parse_address_display,
 )
-from ..models.address_row import (
+from pyclickplc import (
     normalize_address as _normalize_address,
 )
+
 from ..views.dataview_editor.cdv_file import get_dataview_folder, list_cdv_files
 
 if TYPE_CHECKING:

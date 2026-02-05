@@ -10,15 +10,15 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
+from pyclickplc import DataType, get_addr_key
+
 from ...data.address_store import AddressStore
 from ...data.data_source import CsvDataSource
-from ...models.address_row import get_addr_key
 from ...models.blocktag import (
     format_block_tag,
     parse_block_tag,
     strip_block_tag,
 )
-from ...models.constants import DataType
 from ...services import ImportService, RowService
 from ...services.block_service import is_block_name_available, validate_block_span
 from ...utils.rename_helpers import build_rename_pattern

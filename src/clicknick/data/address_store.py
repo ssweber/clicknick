@@ -18,15 +18,18 @@ from contextlib import contextmanager
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from ..models.address_row import AddressRow, get_addr_key, is_xd_yd_hidden_slot
-from ..models.blocktag import parse_block_tag
-from ..models.constants import (
-    ADDRESS_RANGES,
+from pyclickplc import (
+    BANKS,
     DEFAULT_RETENTIVE,
     INTERLEAVED_PAIRS,
     MEMORY_TYPE_TO_DATA_TYPE,
     DataType,
+    get_addr_key,
 )
+from pyclickplc.addresses import is_xd_yd_hidden_slot
+
+from ..models.address_row import AddressRow
+from ..models.blocktag import parse_block_tag
 from ..models.validation import validate_comment, validate_initial_value, validate_nickname
 from ..services.block_service import BlockService, compute_all_block_ranges
 from ..services.nickname_index_service import NicknameIndexService
@@ -126,11 +129,11 @@ class AddressStore:
         """
         skeleton: dict[int, AddressRow] = {}
 
-        for mem_type, (start, end) in ADDRESS_RANGES.items():
+        for mem_type, bank in BANKS.items():
             default_data_type = MEMORY_TYPE_TO_DATA_TYPE.get(mem_type, DataType.BIT)
             default_retentive = DEFAULT_RETENTIVE.get(mem_type, False)
 
-            for addr in range(start, end + 1):
+            for addr in range(bank.min_addr, bank.max_addr + 1):
                 # Skip hidden XD/YD slots
                 if is_xd_yd_hidden_slot(mem_type, addr):
                     continue

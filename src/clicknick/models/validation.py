@@ -1,18 +1,12 @@
 from collections.abc import Callable
 
-from .constants import (
+from pyclickplc import (
     COMMENT_MAX_LENGTH,
-    FLOAT_MAX,
-    FLOAT_MIN,
     FORBIDDEN_CHARS,
-    INT2_MAX,
-    INT2_MIN,
-    INT_MAX,
-    INT_MIN,
     NICKNAME_MAX_LENGTH,
     RESERVED_NICKNAMES,
-    DataType,
 )
+from pyclickplc import validate_initial_value as validate_initial_value
 
 
 def validate_nickname_format(nickname: str) -> tuple[bool, str]:
@@ -118,77 +112,4 @@ def validate_nickname(
             if addr_key != current_addr_key and existing_nick.lower() == nickname_lower:
                 return False, "Duplicate"
 
-    return True, ""
-
-
-def validate_initial_value(
-    initial_value: str,
-    data_type: int,
-) -> tuple[bool, str]:
-    """Validate an initial value against the data type rules.
-
-    Args:
-        initial_value: The initial value string to validate
-        data_type: The DataType number (0=bit, 1=int, 2=int2, 3=float, 4=hex, 6=txt)
-
-    Returns:
-        Tuple of (is_valid, error_message) - error_message is "" if valid
-    """
-    if initial_value == "":
-        return True, ""  # Empty is valid (means no initial value set)
-
-    if data_type == DataType.BIT:
-        if initial_value not in ("0", "1"):
-            return False, "Must be 0 or 1"
-        return True, ""
-
-    elif data_type == DataType.INT:
-        try:
-            val = int(initial_value)
-            if val < INT_MIN or val > INT_MAX:
-                return False, f"Range: {INT_MIN} to {INT_MAX}"
-            return True, ""
-        except ValueError:
-            return False, "Must be integer"
-
-    elif data_type == DataType.INT2:
-        try:
-            val = int(initial_value)
-            if val < INT2_MIN or val > INT2_MAX:
-                return False, f"Range: {INT2_MIN} to {INT2_MAX}"
-            return True, ""
-        except ValueError:
-            return False, "Must be integer"
-
-    elif data_type == DataType.FLOAT:
-        try:
-            val = float(initial_value)
-            # Allow scientific notation like -3.4028235E+38
-            if val < FLOAT_MIN or val > FLOAT_MAX:
-                return False, "Out of float range"
-            return True, ""
-        except ValueError:
-            return False, "Must be number"
-
-    elif data_type == DataType.HEX:
-        # Hex values should be 4 hex digits (0000 to FFFF)
-        if len(initial_value) > 4:
-            return False, "Max 4 hex digits"
-        try:
-            val = int(initial_value, 16)
-            if val < 0 or val > 0xFFFF:
-                return False, "Range: 0000 to FFFF"
-            return True, ""
-        except ValueError:
-            return False, "Must be hex (0-9, A-F)"
-
-    elif data_type == DataType.TXT:
-        # Single ASCII character (7-bit)
-        if len(initial_value) != 1:
-            return False, "Must be single char"
-        if ord(initial_value) > 127:
-            return False, "Must be ASCII"
-        return True, ""
-
-    # Unknown data type
     return True, ""

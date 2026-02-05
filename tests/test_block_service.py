@@ -459,7 +459,7 @@ def test_transform_block_name_td_to_t():
 def test_interleaved_pair_sync_adds_suffix(store):
     """Test that T → TD block sync adds _D suffix."""
     # Find T1 and TD1 rows
-    from clicknick.models.address_row import get_addr_key
+    from pyclickplc import get_addr_key
 
     t1_key = get_addr_key("T", 1)
     td1_key = get_addr_key("TD", 1)
@@ -475,7 +475,7 @@ def test_interleaved_pair_sync_adds_suffix(store):
 
 def test_interleaved_pair_sync_removes_suffix(store):
     """Test that TD → T block sync removes _D suffix."""
-    from clicknick.models.address_row import get_addr_key
+    from pyclickplc import get_addr_key
 
     t1_key = get_addr_key("T", 1)
     td1_key = get_addr_key("TD", 1)
@@ -491,7 +491,7 @@ def test_interleaved_pair_sync_removes_suffix(store):
 
 def test_interleaved_pair_sync_closing_tag_with_suffix(store):
     """Test that closing tags also get _D suffix transformation."""
-    from clicknick.models.address_row import get_addr_key
+    from pyclickplc import get_addr_key
 
     t1_key = get_addr_key("T", 1)
     t5_key = get_addr_key("T", 5)
@@ -513,7 +513,7 @@ def test_interleaved_pair_sync_closing_tag_with_suffix(store):
 
 def test_interleaved_pair_sync_ct_ctd(store):
     """Test that CT → CTD block sync works like T → TD."""
-    from clicknick.models.address_row import get_addr_key
+    from pyclickplc import get_addr_key
 
     ct1_key = get_addr_key("CT", 1)
     ctd1_key = get_addr_key("CTD", 1)

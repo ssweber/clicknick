@@ -11,13 +11,15 @@ import re
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from ..models.address_row import AddressRow, get_addr_key
-from ..models.constants import (
-    ADDRESS_RANGES,
+from pyclickplc import (
+    BANKS,
     DEFAULT_RETENTIVE,
     MEMORY_TYPE_BASES,
     MEMORY_TYPE_TO_DATA_TYPE,
+    get_addr_key,
 )
+
+from ..models.address_row import AddressRow
 from ..utils.mdb_operations import (
     MdbConnection,
     find_click_database,
@@ -81,7 +83,7 @@ def load_addresses_from_mdb_dump(csv_path: str) -> dict[int, AddressRow]:
                 continue
 
             mem_type = row.get("MemoryType", "").strip()
-            if mem_type not in ADDRESS_RANGES:
+            if mem_type not in BANKS:
                 continue
 
             try:
@@ -234,7 +236,7 @@ class CsvDataSource(DataSource):
                     mem_type, address = parsed
 
                     # Skip if memory type not recognized
-                    if mem_type not in ADDRESS_RANGES:
+                    if mem_type not in BANKS:
                         continue
 
                     # Get data type (default based on memory type)

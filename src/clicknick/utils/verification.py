@@ -9,9 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..models.address_row import get_addr_key, is_xd_yd_hidden_slot, parse_addr_key
-from ..models.constants import (
-    ADDRESS_RANGES,
+from pyclickplc import (
+    BANKS,
     FLOAT_MAX,
     FLOAT_MIN,
     INT2_MAX,
@@ -20,7 +19,11 @@ from ..models.constants import (
     INT_MIN,
     NON_EDITABLE_TYPES,
     PAIRED_RETENTIVE_TYPES,
+    get_addr_key,
+    parse_addr_key,
 )
+from pyclickplc.addresses import is_xd_yd_hidden_slot
+
 from ..models.dataview_row import (
     MEMORY_TYPE_TO_CODE,
     TypeCode,
@@ -86,11 +89,11 @@ def _check_retentive_pairs(all_rows: dict[int, AddressRow]) -> list[str]:
 
     for data_type, paired_type in PAIRED_RETENTIVE_TYPES.items():
         # Get address range for the data type
-        addr_range = ADDRESS_RANGES.get(data_type)
-        if not addr_range:
+        bank = BANKS.get(data_type)
+        if not bank:
             continue
 
-        min_addr, max_addr = addr_range
+        min_addr, max_addr = bank.min_addr, bank.max_addr
         for addr_num in range(min_addr, max_addr + 1):
             # Get the data row (TD or CTD)
             data_key = get_addr_key(data_type, addr_num)
@@ -151,9 +154,9 @@ def verify_mdb_addresses(shared_data: SharedAddressData) -> tuple[list[str], lis
             continue
 
         # 2. Check address is within valid range
-        addr_range = ADDRESS_RANGES.get(row.memory_type)
-        if addr_range:
-            min_addr, max_addr = addr_range
+        bank = BANKS.get(row.memory_type)
+        if bank:
+            min_addr, max_addr = bank.min_addr, bank.max_addr
             if not (min_addr <= row.address <= max_addr):
                 issues.append(f"MDB: {display} out of range (valid: {min_addr}-{max_addr})")
         else:
@@ -336,12 +339,12 @@ def _verify_single_cdv(cdv_path: Path) -> list[str]:
             continue
 
         # 3. Check address number is within range
-        addr_range = ADDRESS_RANGES.get(mem_type)
-        if addr_range:
+        bank = BANKS.get(mem_type)
+        if bank:
             try:
                 # Handle 'u' suffix for XD/YD upper bytes
                 addr_num = int(num_part.rstrip("uU"))
-                min_addr, max_addr = addr_range
+                min_addr, max_addr = bank.min_addr, bank.max_addr
                 if not (min_addr <= addr_num <= max_addr):
                     issues.append(
                         f"CDV {filename} row {row_num}: {row.address} out of range "

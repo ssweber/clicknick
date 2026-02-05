@@ -1,11 +1,12 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.11, <4.0"
 
 [[package]]
 name = "clicknick"
 source = { editable = "." }
 dependencies = [
+    { name = "pyclickplc" },
     { name = "pyodbc" },
     { name = "pywin32" },
     { name = "tksheet" },
@@ -23,6 +24,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "pyclickplc", editable = "../pyclickplc" },
     { name = "pyodbc", specifier = ">=5.3.0" },
     { name = "pywin32", specifier = ">=311" },
     { name = "tksheet", specifier = "==7.5.19" },
@@ -120,6 +122,22 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
+name = "pyclickplc"
+source = { editable = "../pyclickplc" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "codespell", specifier = ">=2.4.1" },
+    { name = "funlog", specifier = ">=0.2.0" },
+    { name = "pytest", specifier = ">=8.3.5" },
+    { name = "rich", specifier = ">=13.9.4" },
+    { name = "ruff", specifier = ">=0.11.0" },
+    { name = "ty", specifier = ">=0.0.14" },
 ]
 
 [[package]]

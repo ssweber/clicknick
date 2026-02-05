@@ -1,9 +1,9 @@
 """Tests for RowService."""
 
 import pytest
+from pyclickplc import get_addr_key
 
 from clicknick.data.address_store import AddressStore
-from clicknick.models.address_row import get_addr_key
 from clicknick.services.row_service import RowService
 
 

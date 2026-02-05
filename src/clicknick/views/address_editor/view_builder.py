@@ -10,11 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ...models.address_row import AddressRow, get_addr_key, is_xd_yd_hidden_slot
-from ...models.constants import (
-    ADDRESS_RANGES,
-    PAIRED_RETENTIVE_TYPES,
-)
+from pyclickplc import BANKS, PAIRED_RETENTIVE_TYPES, get_addr_key
+from pyclickplc.addresses import is_xd_yd_hidden_slot
+
+from ...models.address_row import AddressRow
 from ...services.block_service import compute_all_block_ranges
 
 if TYPE_CHECKING:
@@ -85,7 +84,8 @@ def build_single_type_rows(
     Returns:
         List of AddressRow references from the skeleton
     """
-    start, end = ADDRESS_RANGES[mem_type]
+    bank = BANKS[mem_type]
+    start, end = bank.min_addr, bank.max_addr
     rows = []
 
     for addr in range(start, end + 1):
@@ -125,10 +125,10 @@ def build_interleaved_rows(
     all_starts = []
     all_ends = []
     for mem_type in types:
-        if mem_type in ADDRESS_RANGES:
-            start, end = ADDRESS_RANGES[mem_type]
-            all_starts.append(start)
-            all_ends.append(end)
+        if mem_type in BANKS:
+            bank = BANKS[mem_type]
+            all_starts.append(bank.min_addr)
+            all_ends.append(bank.max_addr)
 
     if not all_starts:
         return []

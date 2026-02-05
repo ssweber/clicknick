@@ -10,14 +10,10 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
+from pyclickplc import DATA_TYPE_HINTS, NON_EDITABLE_TYPES, DataType
 from tksheet import num2alpha
 
 from ...models.address_row import AddressRow
-from ...models.constants import (
-    DATA_TYPE_HINTS,
-    NON_EDITABLE_TYPES,
-    DataType,
-)
 from ...utils.filters import text_matches_filter
 from ...widgets.char_limit_tooltip import CharLimitTooltip
 from .panel_constants import (

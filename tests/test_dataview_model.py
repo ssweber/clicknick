@@ -288,14 +288,14 @@ class TestStorageToDisplay:
         assert storage_to_display("4294967294", TypeCode.INT2) == "-2"
         # -1 stored as 4294967295
         assert storage_to_display("4294967295", TypeCode.INT2) == "-1"
-        
+
     def test_float_values(self):
         """Test FLOAT type (IEEE-754 32-bit)."""
         # DF3 "Pie" from data: 1078523331 -> ~3.14159
-        # Note: Float comparisons usually require approx matching, but 
+        # Note: Float comparisons usually require approx matching, but
         # storage_to_display likely returns a formatted string.
         # Ensure your logic handles the precision formatting used by your app (e.g., 2 decimals? 6?)
-        
+
         # 0 -> 0 (integer representation)
         assert storage_to_display("0", TypeCode.FLOAT) == "0"
 
@@ -306,7 +306,7 @@ class TestStorageToDisplay:
         # 0x40490F83 = 3.1415927...
         val = storage_to_display("1078523331", TypeCode.FLOAT)
         assert val.startswith("3.14")
-        
+
         # Negative Float (DF1 from data): 4286578685 -> 0xFF7FFFFD -> -3.4028235E38
         # Ensure it handles scientific notation if your display logic does
         assert "-" in storage_to_display("4286578685", TypeCode.FLOAT)
@@ -319,7 +319,7 @@ class TestStorageToDisplay:
         # Lowercase input
         assert display_to_storage("ffff", TypeCode.HEX) == "65535"
         assert display_to_storage("ff", TypeCode.HEX) == "255"
-        
+
         # 0x prefix variations
         assert display_to_storage("0XFFFF", TypeCode.HEX) == "65535"
 
@@ -334,10 +334,11 @@ class TestStorageToDisplay:
         """Test empty values return empty string."""
         assert storage_to_display("", TypeCode.INT) == ""
         assert storage_to_display("", TypeCode.HEX) == ""
-        
+
     def test_txt_space(self):
         # Space is ASCII 32
         assert storage_to_display("32", TypeCode.TXT) == " "
+
 
 class TestDisplayToStorage:
     """Tests for display_to_storage conversion."""
@@ -371,15 +372,15 @@ class TestDisplayToStorage:
         assert display_to_storage("-2147483648", TypeCode.INT2) == "2147483648"
         # -2 should become 4294967294
         assert display_to_storage("-2", TypeCode.INT2) == "4294967294"
-        
+
     def test_float_values(self):
         """Test FLOAT display to storage (String -> IEEE 32-bit int)."""
         # 0.0 -> 0
         assert display_to_storage("0.0", TypeCode.FLOAT) == "0"
-        
+
         # 1.0 -> 1065353216
         assert display_to_storage("1.0", TypeCode.FLOAT) == "1065353216"
-        
+
         # -1.0 -> 0xBF800000 -> 3212836864
         assert display_to_storage("-1.0", TypeCode.FLOAT) == "3212836864"
 
@@ -401,28 +402,28 @@ class TestDisplayToStorage:
         """Test empty values return empty string."""
         assert display_to_storage("", TypeCode.INT) == ""
         assert display_to_storage("", TypeCode.HEX) == ""
-        
+
     def test_txt_space(self):
         # Space is ASCII 32
         assert display_to_storage(" ", TypeCode.TXT) == "32"
-        
+
     def test_snapshot_data_consistency(self):
         """
         Validates values from the project snapshot.
         Note: We expect clean data (e.g., "FFFF") not view styling ("FFFFh").
         """
-        
+
         # --- FLOAT (IEEE-754 32-bit) ---
         # DF1: SmallestFloat (-3.402823E+38)
         assert storage_to_display("4286578685", TypeCode.FLOAT) == "-3.402823E+38"
-        
+
         # DF2: LargestFloat (3.402823E+38)
         assert storage_to_display("2139095037", TypeCode.FLOAT) == "3.402823E+38"
-        
+
         # DF3: Pie (3.14)
-        # Note: Raw 1078523331 is approx 3.141593. 
-        # If your UI shows exactly "3.14", it is truncating visually. 
-        # Python .7G will return 3.141593. 
+        # Note: Raw 1078523331 is approx 3.141593.
+        # If your UI shows exactly "3.14", it is truncating visually.
+        # Python .7G will return 3.141593.
         # We check startswith to allow for precision differences.
         assert storage_to_display("1078523331", TypeCode.FLOAT).startswith("3.14")
 
