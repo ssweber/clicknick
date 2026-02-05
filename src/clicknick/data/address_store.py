@@ -133,20 +133,27 @@ class AddressStore:
             default_data_type = MEMORY_TYPE_TO_DATA_TYPE.get(mem_type, DataType.BIT)
             default_retentive = DEFAULT_RETENTIVE.get(mem_type, False)
 
-            for addr in range(bank.min_addr, bank.max_addr + 1):
-                # Skip hidden XD/YD slots
-                if is_xd_yd_hidden_slot(mem_type, addr):
-                    continue
+            # Use valid_ranges for sparse banks (X/Y), full range for contiguous
+            if bank.valid_ranges is not None:
+                ranges = bank.valid_ranges
+            else:
+                ranges = ((bank.min_addr, bank.max_addr),)
 
-                addr_key = get_addr_key(mem_type, addr)
-                row = AddressRow(
-                    memory_type=mem_type,
-                    address=addr,
-                    data_type=default_data_type,
-                    retentive=default_retentive,
-                )
-                skeleton[addr_key] = row
-                self.row_order.append(addr_key)
+            for lo, hi in ranges:
+                for addr in range(lo, hi + 1):
+                    # Skip hidden XD/YD slots
+                    if is_xd_yd_hidden_slot(mem_type, addr):
+                        continue
+
+                    addr_key = get_addr_key(mem_type, addr)
+                    row = AddressRow(
+                        memory_type=mem_type,
+                        address=addr,
+                        data_type=default_data_type,
+                        retentive=default_retentive,
+                    )
+                    skeleton[addr_key] = row
+                    self.row_order.append(addr_key)
 
         return skeleton
 

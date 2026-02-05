@@ -85,17 +85,23 @@ def build_single_type_rows(
         List of AddressRow references from the skeleton
     """
     bank = BANKS[mem_type]
-    start, end = bank.min_addr, bank.max_addr
     rows = []
 
-    for addr in range(start, end + 1):
-        # Skip hidden XD/YD slots (odd addresses >= 3 are upper bytes not displayed)
-        if is_xd_yd_hidden_slot(mem_type, addr):
-            continue
+    # Use valid_ranges for sparse banks (X/Y), full range for contiguous
+    if bank.valid_ranges is not None:
+        ranges = bank.valid_ranges
+    else:
+        ranges = ((bank.min_addr, bank.max_addr),)
 
-        addr_key = get_addr_key(mem_type, addr)
-        if addr_key in all_rows:
-            rows.append(all_rows[addr_key])  # Reference, not copy
+    for lo, hi in ranges:
+        for addr in range(lo, hi + 1):
+            # Skip hidden XD/YD slots (odd addresses >= 3 are upper bytes not displayed)
+            if is_xd_yd_hidden_slot(mem_type, addr):
+                continue
+
+            addr_key = get_addr_key(mem_type, addr)
+            if addr_key in all_rows:
+                rows.append(all_rows[addr_key])  # Reference, not copy
 
     return rows
 
