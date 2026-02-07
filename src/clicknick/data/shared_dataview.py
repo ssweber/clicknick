@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from pyclickplc import (
     get_addr_key,
-    parse_address_display,
+    parse_address,
 )
 from pyclickplc import (
     normalize_address as _normalize_address,
@@ -117,7 +117,7 @@ class SharedDataviewData:
             Tuple of (nickname, comment) or None if not found.
         """
         if self._store:
-            parsed = parse_address_display(address)
+            parsed = parse_address(address)
             if not parsed:
                 return None
 

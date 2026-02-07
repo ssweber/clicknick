@@ -105,7 +105,7 @@ class TestAddrKeyCalculation:
 
     def test_xd_yd_display_functions(self):
         """Test XD/YD display address formatting and parsing."""
-        from pyclickplc import format_address_display, parse_address_display
+        from pyclickplc import format_address_display, parse_address
         from pyclickplc.addresses import (
             is_xd_yd_hidden_slot,
             is_xd_yd_upper_byte,
@@ -158,19 +158,20 @@ class TestAddrKeyCalculation:
         assert format_address_display("YD", 1) == "YD0u"
         assert format_address_display("DS", 100) == "DS100"  # Non-XD/YD unchanged
 
-        # Test parse_address_display
-        assert parse_address_display("XD0") == ("XD", 0)
-        assert parse_address_display("XD0u") == ("XD", 1)
-        assert parse_address_display("XD1") == ("XD", 2)
-        assert parse_address_display("XD2") == ("XD", 4)
-        assert parse_address_display("XD8") == ("XD", 16)
-        assert parse_address_display("YD0u") == ("YD", 1)
-        assert parse_address_display("YD8") == ("YD", 16)
-        assert parse_address_display("DS100") == ("DS", 100)
-        assert parse_address_display("X001") == ("X", 1)
-        assert parse_address_display("XD1u") is None  # Invalid: only XD0 has u variant
-        assert parse_address_display("INVALID") is None
-        assert parse_address_display("") is None
+        # Test parse_address
+        assert parse_address("XD0") == ("XD", 0)
+        assert parse_address("XD0u") == ("XD", 1)
+        assert parse_address("XD1") == ("XD", 2)
+        assert parse_address("XD2") == ("XD", 4)
+        assert parse_address("XD8") == ("XD", 16)
+        assert parse_address("YD0u") == ("YD", 1)
+        assert parse_address("YD8") == ("YD", 16)
+        assert parse_address("DS100") == ("DS", 100)
+        assert parse_address("X001") == ("X", 1)
+        with pytest.raises(ValueError):
+            assert parse_address("XD1u") is None  # Invalid: only XD0 has u variant
+            assert parse_address("INVALID") is None
+            assert parse_address("") is None
 
     def test_parse_addr_key_invalid_type_index(self):
         """Test that invalid type index raises KeyError."""

@@ -22,16 +22,16 @@ from pyclickplc import (
     get_addr_key,
     parse_addr_key,
 )
-from pyclickplc.addresses import is_xd_yd_hidden_slot
+from pyclickplc.addresses import is_xd_yd_hidden_slot, parse_address
 from pyclickplc.dataview import (
     MEMORY_TYPE_TO_CODE,
     TypeCode,
+    datatype_to_display,
     get_type_code_for_address,
     is_address_writable,
-    storage_to_display,
+    storage_to_datatype,
 )
 
-from ..models.dataview_row import parse_address
 from ..models.validation import validate_initial_value, validate_nickname
 
 if TYPE_CHECKING:
@@ -237,7 +237,7 @@ def _validate_cdv_new_value(
                 issues.append(f"{prefix} new_value '{new_value}' out of range for INT storage")
             else:
                 # Convert to display and check logical range
-                display_val = storage_to_display(new_value, type_code)
+                display_val = datatype_to_display(storage_to_datatype(new_value, type_code))
                 try:
                     int_val = int(display_val)
                     if int_val < INT_MIN or int_val > INT_MAX:
@@ -254,7 +254,7 @@ def _validate_cdv_new_value(
                 issues.append(f"{prefix} new_value '{new_value}' out of range for INT2 storage")
             else:
                 # Convert to display and check logical range
-                display_val = storage_to_display(new_value, type_code)
+                display_val = datatype_to_display(storage_to_datatype(new_value, type_code))
                 try:
                     int_val = int(display_val)
                     if int_val < INT2_MIN or int_val > INT2_MAX:
@@ -276,7 +276,7 @@ def _validate_cdv_new_value(
                 issues.append(f"{prefix} new_value '{new_value}' invalid for FLOAT storage")
             else:
                 # Convert to display and check logical range
-                display_val = storage_to_display(new_value, type_code)
+                display_val = datatype_to_display(storage_to_datatype(new_value, type_code))
                 try:
                     float_val = float(display_val)
                     if float_val < FLOAT_MIN or float_val > FLOAT_MAX:
