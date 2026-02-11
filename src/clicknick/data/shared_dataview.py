@@ -9,12 +9,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pyclickplc import (
+from pyclickplc.addresses import (
     get_addr_key,
-    parse_address,
-)
-from pyclickplc import (
     normalize_address as _normalize_address,
+    parse_address,
 )
 from pyclickplc.dataview import get_dataview_folder, list_cdv_files
 

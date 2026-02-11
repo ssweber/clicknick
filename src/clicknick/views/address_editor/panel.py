@@ -10,7 +10,7 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
-from pyclickplc import DATA_TYPE_HINTS, NON_EDITABLE_TYPES, DataType
+from pyclickplc.banks import DATA_TYPE_HINTS, NON_EDITABLE_TYPES, DataType
 from tksheet import num2alpha
 
 from ...models.address_row import AddressRow

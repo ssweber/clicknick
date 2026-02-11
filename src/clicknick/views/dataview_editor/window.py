@@ -11,7 +11,8 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import TYPE_CHECKING
 
-from pyclickplc import INTERLEAVED_PAIRS, get_addr_key
+from pyclickplc.addresses import get_addr_key
+from pyclickplc.banks import INTERLEAVED_PAIRS
 
 from ...data.shared_dataview import SharedDataviewData
 from ...widgets.custom_notebook import CustomNotebook

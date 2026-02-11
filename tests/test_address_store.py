@@ -1,7 +1,7 @@
 """Tests for AddressStore with base/overlay architecture."""
 
 import pytest
-from pyclickplc import get_addr_key
+from pyclickplc.addresses import get_addr_key
 
 from clicknick.data.address_store import AddressStore
 from clicknick.data.undo_frame import MAX_UNDO_DEPTH

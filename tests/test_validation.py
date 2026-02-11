@@ -1,7 +1,7 @@
 """Tests for validation.py - nickname and initial value validation."""
 
 import pytest
-from pyclickplc import DataType
+from pyclickplc.banks import DataType
 
 from clicknick.models.validation import (
     validate_initial_value,

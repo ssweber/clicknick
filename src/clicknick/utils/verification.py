@@ -9,28 +9,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pyclickplc import (
-    BANKS,
-    FLOAT_MAX,
-    FLOAT_MIN,
-    INT2_MAX,
-    INT2_MIN,
-    INT_MAX,
-    INT_MIN,
-    NON_EDITABLE_TYPES,
-    PAIRED_RETENTIVE_TYPES,
-    get_addr_key,
-    parse_addr_key,
-)
-from pyclickplc.addresses import is_xd_yd_hidden_slot, parse_address
-from pyclickplc.dataview import (
-    MEMORY_TYPE_TO_CODE,
-    TypeCode,
-    datatype_to_display,
-    get_type_code_for_address,
-    is_address_writable,
-    storage_to_datatype,
-)
+from pyclickplc.addresses import get_addr_key, is_xd_yd_hidden_slot, parse_addr_key
+from pyclickplc.banks import BANKS, NON_EDITABLE_TYPES, PAIRED_RETENTIVE_TYPES
+from pyclickplc.dataview import check_cdv_files
 
 from ..models.validation import validate_initial_value, validate_nickname
 
@@ -199,185 +180,6 @@ def verify_mdb_addresses(shared_data: SharedAddressData) -> tuple[list[str], lis
     return issues, system_nickname_issues
 
 
-def _validate_cdv_new_value(
-    new_value: str,
-    type_code: int,
-    address: str,
-    filename: str,
-    row_num: int,
-) -> list[str]:
-    """Validate a CDV new_value against its type code.
-
-    Validates both:
-    1. Storage format is valid (can be stored in CDV file)
-    2. Display value is within PLC's logical range
-
-    Args:
-        new_value: The new value string from CDV (in storage format)
-        type_code: The type code for this address
-        address: The address string (for error messages)
-        filename: The CDV filename (for error messages)
-        row_num: The row number (for error messages)
-
-    Returns:
-        List of issue strings
-    """
-    issues: list[str] = []
-    prefix = f"CDV {filename} row {row_num}: {address}"
-
-    try:
-        if type_code == TypeCode.BIT:
-            if new_value not in ("0", "1"):
-                issues.append(f"{prefix} new_value '{new_value}' invalid for BIT (must be 0 or 1)")
-
-        elif type_code == TypeCode.INT:
-            val = int(new_value)
-            # Check storage format is valid (unsigned 32-bit)
-            if val < 0 or val > 0xFFFFFFFF:
-                issues.append(f"{prefix} new_value '{new_value}' out of range for INT storage")
-            else:
-                # Convert to display and check logical range
-                display_val = datatype_to_display(storage_to_datatype(new_value, type_code))
-                try:
-                    int_val = int(display_val)
-                    if int_val < INT_MIN or int_val > INT_MAX:
-                        issues.append(
-                            f"{prefix} new_value converts to {int_val}, "
-                            f"outside INT range ({INT_MIN} to {INT_MAX})"
-                        )
-                except ValueError:
-                    issues.append(f"{prefix} new_value '{new_value}' failed to convert to INT")
-
-        elif type_code == TypeCode.INT2:
-            val = int(new_value)
-            if val < 0 or val > 0xFFFFFFFF:
-                issues.append(f"{prefix} new_value '{new_value}' out of range for INT2 storage")
-            else:
-                # Convert to display and check logical range
-                display_val = datatype_to_display(storage_to_datatype(new_value, type_code))
-                try:
-                    int_val = int(display_val)
-                    if int_val < INT2_MIN or int_val > INT2_MAX:
-                        issues.append(
-                            f"{prefix} new_value converts to {int_val}, "
-                            f"outside INT2 range ({INT2_MIN} to {INT2_MAX})"
-                        )
-                except ValueError:
-                    issues.append(f"{prefix} new_value '{new_value}' failed to convert to INT2")
-
-        elif type_code == TypeCode.HEX:
-            val = int(new_value)
-            if val < 0 or val > 0xFFFF:
-                issues.append(f"{prefix} new_value '{new_value}' out of range for HEX (0-65535)")
-
-        elif type_code == TypeCode.FLOAT:
-            val = int(new_value)
-            if val < 0 or val > 0xFFFFFFFF:
-                issues.append(f"{prefix} new_value '{new_value}' invalid for FLOAT storage")
-            else:
-                # Convert to display and check logical range
-                display_val = datatype_to_display(storage_to_datatype(new_value, type_code))
-                try:
-                    float_val = float(display_val)
-                    if float_val < FLOAT_MIN or float_val > FLOAT_MAX:
-                        issues.append(
-                            f"{prefix} new_value converts to {float_val}, outside FLOAT range"
-                        )
-                except ValueError:
-                    issues.append(f"{prefix} new_value '{new_value}' failed to convert to FLOAT")
-
-        elif type_code == TypeCode.TXT:
-            val = int(new_value)
-            if val < 0 or val > 127:
-                issues.append(
-                    f"{prefix} new_value '{new_value}' out of range for TXT (0-127 ASCII)"
-                )
-
-    except ValueError:
-        issues.append(f"{prefix} new_value '{new_value}' is not a valid number")
-
-    return issues
-
-
-def _verify_single_cdv(cdv_path: Path) -> list[str]:
-    """Verify a single CDV file.
-
-    Args:
-        cdv_path: Path to the CDV file
-
-    Returns:
-        List of issue strings
-    """
-    from pyclickplc.dataview import load_cdv
-
-    issues: list[str] = []
-    filename = cdv_path.name
-
-    try:
-        rows, has_new_values, _header = load_cdv(cdv_path)
-    except Exception as e:
-        issues.append(f"CDV {filename}: Error loading file - {e}")
-        return issues
-
-    for i, row in enumerate(rows):
-        if row.is_empty:
-            continue
-
-        row_num = i + 1
-
-        # 1. Check address format is valid
-        parsed = parse_address(row.address)
-        if not parsed:
-            issues.append(f"CDV {filename} row {row_num}: Invalid address format '{row.address}'")
-            continue
-
-        mem_type, num_part = parsed
-
-        # 2. Check memory type is known
-        if mem_type not in MEMORY_TYPE_TO_CODE:
-            issues.append(f"CDV {filename} row {row_num}: Unknown memory type '{mem_type}'")
-            continue
-
-        # 3. Check address number is within range
-        bank = BANKS.get(mem_type)
-        if bank:
-            try:
-                # Handle 'u' suffix for XD/YD upper bytes
-                addr_num = int(num_part.rstrip("uU"))
-                min_addr, max_addr = bank.min_addr, bank.max_addr
-                if not (min_addr <= addr_num <= max_addr):
-                    issues.append(
-                        f"CDV {filename} row {row_num}: {row.address} out of range "
-                        f"(valid: {min_addr}-{max_addr})"
-                    )
-            except ValueError:
-                issues.append(f"CDV {filename} row {row_num}: Invalid address number '{num_part}'")
-
-        # 4. Check type code matches expected
-        expected_code = get_type_code_for_address(row.address)
-        if expected_code is not None and row.type_code != expected_code:
-            issues.append(
-                f"CDV {filename} row {row_num}: Type code mismatch for {row.address} "
-                f"(has {row.type_code}, expected {expected_code})"
-            )
-
-        # 5. If new_value is set, validate format
-        if row.new_value:
-            new_value_issues = _validate_cdv_new_value(
-                row.new_value, row.type_code, row.address, filename, row_num
-            )
-            issues.extend(new_value_issues)
-
-            # 6. If new_value is set, address must be writable
-            if not is_address_writable(row.address):
-                issues.append(
-                    f"CDV {filename} row {row_num}: {row.address} has new_value "
-                    f"but address is not writable"
-                )
-
-    return issues
-
-
 def verify_cdv_files(project_path: Path | str) -> tuple[list[str], int]:
     """Verify all CDV files in a project's DataView folder.
 
@@ -395,29 +197,7 @@ def verify_cdv_files(project_path: Path | str) -> tuple[list[str], int]:
     Returns:
         Tuple of (issues list, files checked count)
     """
-    from pyclickplc.dataview import (
-        get_dataview_folder,
-        list_cdv_files,
-    )
-
-    issues: list[str] = []
-    files_checked = 0
-
-    try:
-        dataview_folder = get_dataview_folder(project_path)
-        if not dataview_folder:
-            return issues, files_checked
-
-        cdv_files = list_cdv_files(dataview_folder)
-        for cdv_path in cdv_files:
-            files_checked += 1
-            file_issues = _verify_single_cdv(cdv_path)
-            issues.extend(file_issues)
-
-    except Exception as e:
-        issues.append(f"CDV: Error accessing dataview folder - {e}")
-
-    return issues, files_checked
+    return check_cdv_files(project_path)
 
 
 def run_verification(

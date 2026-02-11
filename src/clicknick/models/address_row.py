@@ -8,13 +8,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from pyclickplc import (
+from pyclickplc.addresses import (
+    format_address_display,
+    get_addr_key,
+)
+from pyclickplc.banks import (
     DATA_TYPE_DISPLAY,
     DEFAULT_RETENTIVE,
     NON_EDITABLE_TYPES,
     DataType,
-    format_address_display,
-    get_addr_key,
 )
 
 

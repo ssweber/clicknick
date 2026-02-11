@@ -7,7 +7,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import TYPE_CHECKING
 
-from pyclickplc import MEMORY_TYPE_BASES
+from pyclickplc.banks import MEMORY_TYPE_BASES
 from pyclickplc.blocks import BlockRange, compute_all_block_ranges
 from tksheet import Sheet, num2alpha
 

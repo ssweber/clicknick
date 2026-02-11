@@ -18,15 +18,14 @@ from contextlib import contextmanager
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from pyclickplc import (
+from pyclickplc.addresses import get_addr_key, is_xd_yd_hidden_slot
+from pyclickplc.banks import (
     BANKS,
     DEFAULT_RETENTIVE,
     INTERLEAVED_PAIRS,
     MEMORY_TYPE_TO_DATA_TYPE,
     DataType,
-    get_addr_key,
 )
-from pyclickplc.addresses import is_xd_yd_hidden_slot
 from pyclickplc.blocks import parse_block_tag
 
 from ..models.address_row import AddressRow

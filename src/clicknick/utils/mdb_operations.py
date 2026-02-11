@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pyodbc
-from pyclickplc import DEFAULT_RETENTIVE, MEMORY_TYPE_TO_DATA_TYPE, DataType
+from pyclickplc.banks import DEFAULT_RETENTIVE, MEMORY_TYPE_TO_DATA_TYPE, DataType
 
 from ..models.address_row import AddressRow
 from .mdb_shared import create_access_connection, find_click_database

@@ -10,8 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from pyclickplc import BANKS, PAIRED_RETENTIVE_TYPES, get_addr_key
-from pyclickplc.addresses import is_xd_yd_hidden_slot
+from pyclickplc.addresses import get_addr_key, is_xd_yd_hidden_slot
+from pyclickplc.banks import BANKS, PAIRED_RETENTIVE_TYPES
 
 from ...models.address_row import AddressRow
 from ...services.block_service import compute_all_block_ranges

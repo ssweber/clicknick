@@ -1,12 +1,12 @@
 from collections.abc import Callable
 
-from pyclickplc import (
+from pyclickplc.validation import (
     COMMENT_MAX_LENGTH,
     FORBIDDEN_CHARS,
     NICKNAME_MAX_LENGTH,
     RESERVED_NICKNAMES,
+    validate_initial_value as validate_initial_value,
 )
-from pyclickplc import validate_initial_value as validate_initial_value
 
 
 def validate_nickname_format(nickname: str) -> tuple[bool, str]:

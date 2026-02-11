@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pyclickplc import get_addr_key
+from pyclickplc.addresses import get_addr_key
 from pyclickplc.blocks import parse_block_tag, strip_block_tag
 
 if TYPE_CHECKING:

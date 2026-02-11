@@ -11,7 +11,15 @@ from pyclickplc.dataview import MEMORY_TYPE_TO_CODE as MEMORY_TYPE_TO_CODE
 from pyclickplc.dataview import WRITABLE_SC as WRITABLE_SC
 from pyclickplc.dataview import WRITABLE_SD as WRITABLE_SD
 from pyclickplc.dataview import DataviewRow as DataviewRow
-from pyclickplc.dataview import TypeCode as TypeCode
 from pyclickplc.dataview import create_empty_dataview as create_empty_dataview
 from pyclickplc.dataview import get_type_code_for_address as get_type_code_for_address
 from pyclickplc.dataview import is_address_writable as is_address_writable
+
+
+class TypeCode:
+    BIT = MEMORY_TYPE_TO_CODE["X"]
+    INT = MEMORY_TYPE_TO_CODE["DS"]
+    INT2 = MEMORY_TYPE_TO_CODE["DD"]
+    HEX = MEMORY_TYPE_TO_CODE["DH"]
+    FLOAT = MEMORY_TYPE_TO_CODE["DF"]
+    TXT = MEMORY_TYPE_TO_CODE["TXT"]

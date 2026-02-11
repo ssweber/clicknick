@@ -10,7 +10,8 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from pyclickplc import DataType, get_addr_key
+from pyclickplc.addresses import get_addr_key
+from pyclickplc.banks import DataType
 from pyclickplc.blocks import (
     format_block_tag,
     is_block_name_available,

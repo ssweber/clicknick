@@ -1,20 +1,20 @@
 """Unit tests for address_editor.address_model module."""
 
 import pytest
-from pyclickplc import (
-    BANKS,
-    COMMENT_MAX_LENGTH,
-    DEFAULT_RETENTIVE,
-    FORBIDDEN_CHARS,
-    MEMORY_TYPE_BASES,
-    MEMORY_TYPE_TO_DATA_TYPE,
-    NICKNAME_MAX_LENGTH,
-    NON_EDITABLE_TYPES,
-    PAIRED_RETENTIVE_TYPES,
-    DataType,
+from pyclickplc.addresses import (
     get_addr_key,
     parse_addr_key,
 )
+from pyclickplc.banks import (
+    BANKS,
+    DEFAULT_RETENTIVE,
+    MEMORY_TYPE_BASES,
+    MEMORY_TYPE_TO_DATA_TYPE,
+    NON_EDITABLE_TYPES,
+    PAIRED_RETENTIVE_TYPES,
+    DataType,
+)
+from pyclickplc.validation import COMMENT_MAX_LENGTH, FORBIDDEN_CHARS, NICKNAME_MAX_LENGTH
 
 from clicknick.models.address_row import AddressRow
 from clicknick.models.blocktag import (
@@ -105,7 +105,7 @@ class TestAddrKeyCalculation:
 
     def test_xd_yd_display_functions(self):
         """Test XD/YD display address formatting and parsing."""
-        from pyclickplc import format_address_display, parse_address
+        from pyclickplc.addresses import format_address_display, parse_address
         from pyclickplc.addresses import (
             is_xd_yd_hidden_slot,
             is_xd_yd_upper_byte,

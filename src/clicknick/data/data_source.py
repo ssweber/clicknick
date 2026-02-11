@@ -11,12 +11,12 @@ import re
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from pyclickplc import (
+from pyclickplc.addresses import get_addr_key
+from pyclickplc.banks import (
     BANKS,
     DEFAULT_RETENTIVE,
     MEMORY_TYPE_BASES,
     MEMORY_TYPE_TO_DATA_TYPE,
-    get_addr_key,
 )
 
 from ..models.address_row import AddressRow
