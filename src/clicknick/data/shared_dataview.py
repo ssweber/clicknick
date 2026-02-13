@@ -14,7 +14,7 @@ from pyclickplc.addresses import (
     normalize_address as _normalize_address,
     parse_address,
 )
-from pyclickplc.dataview import get_dataview_folder, list_cdv_files
+from ..views.dataview_editor.cdv_file import get_dataview_folder, list_cdv_files
 
 if TYPE_CHECKING:
     from .data.address_store import AddressStore
@@ -205,3 +205,4 @@ class SharedDataviewData:
     def force_close_all_windows(self) -> None:
         """Force close the window. Alias for force_close_window()."""
         self.force_close_window()
+

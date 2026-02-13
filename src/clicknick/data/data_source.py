@@ -38,7 +38,7 @@ from pyclickplc.nicknames import DATA_TYPE_STR_TO_CODE as DATA_TYPE_STR_TO_CODE
 ADDRESS_PATTERN = re.compile(r"^([A-Z]+)(\d+)$")
 
 
-def load_addresses_from_mdb_dump(csv_path: str) -> dict[int, AddressRow]:
+def read_mdb_csv(csv_path: str) -> dict[int, AddressRow]:
     """Load addresses from MDB-format CSV (CLICK Address.csv export).
 
     The CLICK software exports Address.csv in MDB format with columns:
@@ -100,6 +100,13 @@ def load_addresses_from_mdb_dump(csv_path: str) -> dict[int, AddressRow]:
             result[addr_key] = addr_row
 
     return result
+
+
+
+
+def load_addresses_from_mdb_dump(csv_path: str) -> dict[int, AddressRow]:
+    """Backward-compatible alias for read_mdb_csv()."""
+    return read_mdb_csv(csv_path)
 
 
 class DataSource(ABC):
@@ -328,7 +335,7 @@ def convert_mdb_csv_to_user_csv(source_path: str, dest_path: str) -> None:
         dest_path: Path to write user-format CSV
     """
     # Load as AddressRows
-    addresses = load_addresses_from_mdb_dump(source_path)
+    addresses = read_mdb_csv(source_path)
 
     # Save using CsvDataSource (reuses existing save logic)
     csv_source = CsvDataSource(dest_path)
@@ -393,3 +400,6 @@ class MdbDataSource(DataSource):
     def supports_used_field(self) -> bool:
         """MDB has the Used field from the database."""
         return True
+
+
+

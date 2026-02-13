@@ -11,7 +11,13 @@ from clicknick.models.dataview_row import (
     TypeCode,
     create_empty_dataview,
 )
-from clicknick.views.dataview_editor.cdv_file import export_cdv, load_cdv, save_cdv
+from clicknick.views.dataview_editor.cdv_file import (
+    export_cdv,
+    get_dataview_folder,
+    list_cdv_files,
+    load_cdv,
+    save_cdv,
+)
 
 # Test files in the tests directory
 TEST_DIR = Path(__file__).parent
@@ -301,3 +307,30 @@ class TestExportCdv:
         finally:
             save_path.unlink(missing_ok=True)
             export_path.unlink(missing_ok=True)
+
+
+class TestDataviewFolderDiscovery:
+    """Tests for DataView folder discovery helpers."""
+
+    def test_get_dataview_folder_invalid_path(self, tmp_path):
+        assert get_dataview_folder(tmp_path / "missing") is None
+
+    def test_get_dataview_folder_found(self, tmp_path):
+        project = tmp_path / "ProjectA"
+        dataview = project / "CLICK (00010A98)" / "DataView"
+        dataview.mkdir(parents=True)
+
+        found = get_dataview_folder(project)
+        assert found == dataview
+
+    def test_list_cdv_files_sorted_and_filtered(self, tmp_path):
+        folder = tmp_path / "DataView"
+        folder.mkdir()
+
+        (folder / "zeta.cdv").write_text("", encoding="utf-8")
+        (folder / "Alpha.cdv").write_text("", encoding="utf-8")
+        (folder / "notes.txt").write_text("", encoding="utf-8")
+
+        files = list_cdv_files(folder)
+        assert [f.name for f in files] == ["Alpha.cdv", "zeta.cdv"]
+
