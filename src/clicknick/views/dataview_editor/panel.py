@@ -16,7 +16,7 @@ from pyclickplc.dataview import (
     MAX_DATAVIEW_ROWS,
     DataviewRow,
     create_empty_dataview,
-    get_type_code_for_address,
+    get_data_type_for_address,
     load_cdv,
     save_cdv,
 )
@@ -139,7 +139,7 @@ class DataviewPanel(ttk.Frame):
 
                 if new_address != row.address:
                     row.address = new_address
-                    row.update_type_code()
+                    row.update_data_type()
 
                     # Lookup nickname and comment
                     if new_address and self.nickname_lookup:
@@ -260,7 +260,7 @@ class DataviewPanel(ttk.Frame):
                 address = self.sheet.get_cell_data(row_idx, COL_ADDRESS) or ""
                 if address:
                     self.rows[row_idx].address = address.strip().upper()
-                    self.rows[row_idx].update_type_code()
+                    self.rows[row_idx].update_data_type()
                     if self.nickname_lookup:
                         result = self.nickname_lookup(self.rows[row_idx].address)
                         if result:
@@ -348,7 +348,7 @@ class DataviewPanel(ttk.Frame):
 
             # Fallback: basic validation without normalization
             normalized = value.upper()
-            if get_type_code_for_address(normalized) is None:
+            if get_data_type_for_address(normalized) is None:
                 return ""
             return normalized
 
@@ -681,7 +681,7 @@ class DataviewPanel(ttk.Frame):
         try:
             # Create new row
             new_row = DataviewRow(address=address)
-            new_row.update_type_code()
+            new_row.update_data_type()
 
             # Lookup nickname and comment
             if self.nickname_lookup:
@@ -731,7 +731,7 @@ class DataviewPanel(ttk.Frame):
         """Fill an existing empty row with the given address (no insertion)."""
         row = self.rows[idx]
         row.address = address
-        row.update_type_code()
+        row.update_data_type()
 
         # Lookup nickname and comment
         if self.nickname_lookup:

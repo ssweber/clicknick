@@ -8,7 +8,7 @@ import pytest
 from clicknick.models.dataview_row import (
     MAX_DATAVIEW_ROWS,
     DataviewRow,
-    TypeCode,
+    DataType,
     create_empty_dataview,
 )
 from clicknick.views.dataview_editor.cdv_file import (
@@ -39,22 +39,22 @@ class TestLoadCdv:
 
         # Check first few rows
         assert rows[0].address == "X001"
-        assert rows[0].type_code == TypeCode.BIT
+        assert rows[0].data_type == DataType.BIT
 
         assert rows[1].address == "X002"
-        assert rows[1].type_code == TypeCode.BIT
+        assert rows[1].data_type == DataType.BIT
 
         # Check a DS row
         ds_row = next(r for r in rows if r.address == "DS1")
-        assert ds_row.type_code == TypeCode.INT
+        assert ds_row.data_type == DataType.INT
 
         # Check a DF row
         df_row = next(r for r in rows if r.address == "DF1")
-        assert df_row.type_code == TypeCode.FLOAT
+        assert df_row.data_type == DataType.FLOAT
 
         # Check a TXT row
         txt_row = next(r for r in rows if r.address == "TXT1")
-        assert txt_row.type_code == TypeCode.TXT
+        assert txt_row.data_type == DataType.TXT
 
         # Check empty rows exist
         empty_count = sum(1 for r in rows if r.is_empty)
@@ -115,9 +115,9 @@ class TestSaveCdv:
         """Test saving a dataview with addresses."""
         rows = create_empty_dataview()
         rows[0].address = "X001"
-        rows[0].type_code = TypeCode.BIT
+        rows[0].data_type = DataType.BIT
         rows[1].address = "DS100"
-        rows[1].type_code = TypeCode.INT
+        rows[1].data_type = DataType.INT
 
         with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f:
             temp_path = Path(f.name)
@@ -129,9 +129,9 @@ class TestSaveCdv:
             loaded_rows, has_new_values, _header = load_cdv(temp_path)
 
             assert loaded_rows[0].address == "X001"
-            assert loaded_rows[0].type_code == TypeCode.BIT
+            assert loaded_rows[0].data_type == DataType.BIT
             assert loaded_rows[1].address == "DS100"
-            assert loaded_rows[1].type_code == TypeCode.INT
+            assert loaded_rows[1].data_type == DataType.INT
             assert has_new_values is False
         finally:
             temp_path.unlink(missing_ok=True)
@@ -140,10 +140,10 @@ class TestSaveCdv:
         """Test saving a dataview with new values."""
         rows = create_empty_dataview()
         rows[0].address = "X001"
-        rows[0].type_code = TypeCode.BIT
+        rows[0].data_type = DataType.BIT
         rows[0].new_value = "1"
         rows[1].address = "DS100"
-        rows[1].type_code = TypeCode.INT
+        rows[1].data_type = DataType.INT
         rows[1].new_value = "42"
 
         with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f:
@@ -230,7 +230,7 @@ class TestRoundTrip:
 
             for i, (orig, loaded) in enumerate(zip(original_rows, loaded_rows, strict=True)):
                 assert orig.address == loaded.address, f"Row {i} address mismatch"
-                assert orig.type_code == loaded.type_code, f"Row {i} type_code mismatch"
+                assert orig.data_type == loaded.data_type, f"Row {i} data_type mismatch"
                 assert orig.new_value == loaded.new_value, f"Row {i} new_value mismatch"
         finally:
             temp_path.unlink(missing_ok=True)
@@ -253,7 +253,7 @@ class TestRoundTrip:
 
             for i, (orig, loaded) in enumerate(zip(original_rows, loaded_rows, strict=True)):
                 assert orig.address == loaded.address, f"Row {i} address mismatch"
-                assert orig.type_code == loaded.type_code, f"Row {i} type_code mismatch"
+                assert orig.data_type == loaded.data_type, f"Row {i} data_type mismatch"
                 assert orig.new_value == loaded.new_value, f"Row {i} new_value mismatch"
         finally:
             temp_path.unlink(missing_ok=True)
@@ -267,7 +267,7 @@ class TestExtendedHeader:
         extended_header = "0,0,0,559,653,94,138,94,94,94,75,50,75,75,30,78,64"
         rows = create_empty_dataview()
         rows[0].address = "X001"
-        rows[0].type_code = TypeCode.BIT
+        rows[0].data_type = DataType.BIT
 
         with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f:
             temp_path = Path(f.name)
@@ -290,7 +290,7 @@ class TestExportCdv:
         """Test that export produces the same result as save."""
         rows = create_empty_dataview()
         rows[0].address = "Y001"
-        rows[0].type_code = TypeCode.BIT
+        rows[0].data_type = DataType.BIT
 
         with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f1:
             save_path = Path(f1.name)
@@ -342,18 +342,18 @@ class TestDataviewFolderDiscovery:
 
         rows_ok = create_empty_dataview()
         rows_ok[0].address = "X001"
-        rows_ok[0].type_code = TypeCode.BIT
+        rows_ok[0].data_type = DataType.BIT
         save_cdv(dataview_dir / "ok.cdv", rows_ok, has_new_values=False)
 
         rows_bad = create_empty_dataview()
         rows_bad[0].address = "DS1"
-        rows_bad[0].type_code = TypeCode.BIT
+        rows_bad[0].data_type = DataType.BIT
         save_cdv(dataview_dir / "bad.cdv", rows_bad, has_new_values=False)
 
         issues, checked = check_cdv_files(project)
         assert checked == 2
         assert len(issues) == 1
-        assert "Type code mismatch" in issues[0]
+        assert "Data type mismatch" in issues[0]
 
     def test_check_cdv_files_missing_folder(self, tmp_path):
         issues, checked = check_cdv_files(tmp_path / "NoProject")

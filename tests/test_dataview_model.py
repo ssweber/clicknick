@@ -4,55 +4,55 @@ from clicknick.models.dataview_row import (
     MAX_DATAVIEW_ROWS,
     WRITABLE_SC,
     WRITABLE_SD,
+    DataType,
     DataviewRow,
-    TypeCode,
     create_empty_dataview,
-    get_type_code_for_address,
+    get_data_type_for_address,
     is_address_writable,
 )
 
 
-class TestGetTypeCodeForAddress:
-    """Tests for get_type_code_for_address function."""
+class TestGetDataTypeForAddress:
+    """Tests for get_data_type_for_address function."""
 
     def test_bit_addresses(self):
         """Test BIT type addresses."""
-        assert get_type_code_for_address("X001") == TypeCode.BIT
-        assert get_type_code_for_address("Y001") == TypeCode.BIT
-        assert get_type_code_for_address("C1") == TypeCode.BIT
-        assert get_type_code_for_address("T1") == TypeCode.BIT
-        assert get_type_code_for_address("CT1") == TypeCode.BIT
-        assert get_type_code_for_address("SC1") == TypeCode.BIT
+        assert get_data_type_for_address("X001") == DataType.BIT
+        assert get_data_type_for_address("Y001") == DataType.BIT
+        assert get_data_type_for_address("C1") == DataType.BIT
+        assert get_data_type_for_address("T1") == DataType.BIT
+        assert get_data_type_for_address("CT1") == DataType.BIT
+        assert get_data_type_for_address("SC1") == DataType.BIT
 
     def test_int_addresses(self):
         """Test INT type addresses."""
-        assert get_type_code_for_address("DS1") == TypeCode.INT
-        assert get_type_code_for_address("TD1") == TypeCode.INT
-        assert get_type_code_for_address("SD1") == TypeCode.INT
+        assert get_data_type_for_address("DS1") == DataType.INT
+        assert get_data_type_for_address("TD1") == DataType.INT
+        assert get_data_type_for_address("SD1") == DataType.INT
 
     def test_int2_addresses(self):
         """Test INT2 type addresses."""
-        assert get_type_code_for_address("DD1") == TypeCode.INT2
-        assert get_type_code_for_address("CTD1") == TypeCode.INT2
+        assert get_data_type_for_address("DD1") == DataType.INT2
+        assert get_data_type_for_address("CTD1") == DataType.INT2
 
     def test_hex_addresses(self):
         """Test HEX type addresses."""
-        assert get_type_code_for_address("DH1") == TypeCode.HEX
-        assert get_type_code_for_address("XD0") == TypeCode.HEX
-        assert get_type_code_for_address("YD0") == TypeCode.HEX
+        assert get_data_type_for_address("DH1") == DataType.HEX
+        assert get_data_type_for_address("XD0") == DataType.HEX
+        assert get_data_type_for_address("YD0") == DataType.HEX
 
     def test_float_addresses(self):
         """Test FLOAT type addresses."""
-        assert get_type_code_for_address("DF1") == TypeCode.FLOAT
+        assert get_data_type_for_address("DF1") == DataType.FLOAT
 
     def test_txt_addresses(self):
         """Test TXT type addresses."""
-        assert get_type_code_for_address("TXT1") == TypeCode.TXT
+        assert get_data_type_for_address("TXT1") == DataType.TXT
 
     def test_invalid_address(self):
         """Test invalid address returns None."""
-        assert get_type_code_for_address("INVALID") is None
-        assert get_type_code_for_address("") is None
+        assert get_data_type_for_address("INVALID") is None
+        assert get_data_type_for_address("") is None
 
 
 class TestIsAddressWritable:
@@ -109,7 +109,7 @@ class TestDataviewRow:
         """Test default values."""
         row = DataviewRow()
         assert row.address == ""
-        assert row.type_code == 0
+        assert row.data_type is None
         assert row.new_value == ""
         assert row.nickname == ""
         assert row.comment == ""
@@ -149,27 +149,27 @@ class TestDataviewRow:
         row.address = "XD0u"
         assert row.address_number == "0u"
 
-    def test_update_type_code(self):
-        """Test update_type_code method."""
+    def test_update_data_type(self):
+        """Test update_data_type method."""
         row = DataviewRow(address="DS100")
-        assert row.update_type_code() is True
-        assert row.type_code == TypeCode.INT
+        assert row.update_data_type() is True
+        assert row.data_type == DataType.INT
 
         row.address = "INVALID"
-        assert row.update_type_code() is False
+        assert row.update_data_type() is False
 
     def test_clear(self):
         """Test clear method."""
         row = DataviewRow(
             address="X001",
-            type_code=TypeCode.BIT,
+            data_type=DataType.BIT,
             new_value="1",
             nickname="Test",
             comment="Comment",
         )
         row.clear()
         assert row.address == ""
-        assert row.type_code == 0
+        assert row.data_type is None
         assert row.new_value == ""
         assert row.nickname == ""
         assert row.comment == ""
