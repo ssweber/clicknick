@@ -5,6 +5,8 @@ from pyclickplc.validation import (
     FORBIDDEN_CHARS,
     NICKNAME_MAX_LENGTH,
     RESERVED_NICKNAMES,
+)
+from pyclickplc.validation import (
     validate_initial_value as validate_initial_value,
 )
 

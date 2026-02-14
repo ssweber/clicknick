@@ -102,8 +102,6 @@ def read_mdb_csv(csv_path: str) -> dict[int, AddressRow]:
     return result
 
 
-
-
 def load_addresses_from_mdb_dump(csv_path: str) -> dict[int, AddressRow]:
     """Backward-compatible alias for read_mdb_csv()."""
     return read_mdb_csv(csv_path)
@@ -400,6 +398,3 @@ class MdbDataSource(DataSource):
     def supports_used_field(self) -> bool:
         """MDB has the Used field from the database."""
         return True
-
-
-

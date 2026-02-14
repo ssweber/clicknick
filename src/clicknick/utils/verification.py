@@ -11,9 +11,9 @@ from typing import TYPE_CHECKING
 
 from pyclickplc.addresses import get_addr_key, is_xd_yd_hidden_slot, parse_addr_key
 from pyclickplc.banks import BANKS, NON_EDITABLE_TYPES, PAIRED_RETENTIVE_TYPES
-from pyclickplc.dataview import check_cdv_files
 
 from ..models.validation import validate_initial_value, validate_nickname
+from ..views.dataview_editor.cdv_file import check_cdv_files
 
 if TYPE_CHECKING:
     from ..data.shared_data import SharedAddressData

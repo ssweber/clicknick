@@ -11,9 +11,12 @@ from typing import TYPE_CHECKING
 
 from pyclickplc.addresses import (
     get_addr_key,
-    normalize_address as _normalize_address,
     parse_address,
 )
+from pyclickplc.addresses import (
+    normalize_address as _normalize_address,
+)
+
 from ..views.dataview_editor.cdv_file import get_dataview_folder, list_cdv_files
 
 if TYPE_CHECKING:
@@ -205,4 +208,3 @@ class SharedDataviewData:
     def force_close_all_windows(self) -> None:
         """Force close the window. Alias for force_close_window()."""
         self.force_close_window()
-

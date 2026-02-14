@@ -105,10 +105,11 @@ class TestAddrKeyCalculation:
 
     def test_xd_yd_display_functions(self):
         """Test XD/YD display address formatting and parsing."""
-        from pyclickplc.addresses import format_address_display, parse_address
         from pyclickplc.addresses import (
+            format_address_display,
             is_xd_yd_hidden_slot,
             is_xd_yd_upper_byte,
+            parse_address,
             xd_yd_display_to_mdb,
             xd_yd_mdb_to_display,
         )
