@@ -17,10 +17,10 @@ from pyclickplc.dataview import (
     DataviewRow,
     create_empty_dataview,
     get_data_type_for_address,
-    load_cdv,
-    save_cdv,
 )
 from tksheet import Sheet
+
+from .cdv_file import load_cdv, save_cdv
 
 # Column indices
 COL_ADDRESS = 0
@@ -155,7 +155,7 @@ class DataviewPanel(ttk.Frame):
 
                     # Clear new value if address changed and not writable
                     if not row.is_writable:
-                        row.new_value = ""
+                        row.new_value = None
 
                     # Update display for this row
                     self._update_row_display(row_idx)
@@ -514,7 +514,9 @@ class DataviewPanel(ttk.Frame):
         try:
             # Check if any rows in the saveable range have new values
             saveable_rows = self.rows[:MAX_DATAVIEW_ROWS]
-            self.has_new_values = any(r.new_value for r in saveable_rows if not r.is_empty)
+            self.has_new_values = any(
+                r.new_value is not None for r in saveable_rows if not r.is_empty
+            )
             save_cdv(self.file_path, self.rows, self.has_new_values, self._header)
             self._is_dirty = False
             self._update_status()

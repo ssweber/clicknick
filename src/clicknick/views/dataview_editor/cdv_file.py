@@ -4,9 +4,31 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pyclickplc.dataview import DataviewFile
 from pyclickplc.dataview import check_cdv_file as check_cdv_file
-from pyclickplc.dataview import load_cdv as load_cdv
-from pyclickplc.dataview import save_cdv as save_cdv
+from pyclickplc.dataview import read_cdv as read_cdv
+from pyclickplc.dataview import write_cdv as write_cdv
+
+
+def load_cdv(path: Path | str):
+    """Load wrapper returning legacy tuple shape for ClickNick internals."""
+    dataview = read_cdv(path)
+    return dataview.rows, dataview.has_new_values, dataview.header
+
+
+def save_cdv(
+    path: Path | str,
+    rows,
+    has_new_values: bool,
+    header: str | None = None,
+) -> None:
+    """Save wrapper accepting legacy args for ClickNick internals."""
+    dataview = DataviewFile(
+        rows=rows,
+        has_new_values=has_new_values,
+        header=header or f"{-1 if has_new_values else 0},0,0",
+    )
+    write_cdv(path, dataview)
 
 
 def export_cdv(
