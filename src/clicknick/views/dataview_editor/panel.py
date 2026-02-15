@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import os
 import tkinter as tk
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from tkinter import messagebox, ttk
 
+from pyclickplc.addresses import normalize_address
 from pyclickplc.dataview import (
     MAX_DATAVIEW_ROWS,
+    DataviewFile,
     DataviewRow,
     create_empty_dataview,
     get_data_type_for_address,
@@ -26,9 +28,20 @@ from .cdv_file import load_cdv, save_cdv
 COL_ADDRESS = 0
 COL_NICKNAME = 1
 COL_COMMENT = 2
+COL_NEW_VALUE = 3
+COL_WRITE = 4
+COL_LIVE = 5
+
+NUM_COLUMNS = 6
+
+PlcValue = bool | int | float | str
 
 # Color for overflow rows (index >= 100)
 COLOR_OVERFLOW_BG = "#e0e0e0"
+
+# Highlight for live value changes
+COLOR_LIVE_FLASH = "#90EE90"  # Light green
+LIVE_FLASH_DURATION_MS = 1500
 
 # File monitoring interval in milliseconds
 FILE_MONITOR_INTERVAL_MS = 2000
@@ -37,12 +50,70 @@ FILE_MONITOR_INTERVAL_MS = 2000
 class DataviewPanel(ttk.Frame):
     """Panel for editing a single DataView's addresses.
 
-    Displays rows with columns: Address, Nickname, Comment.
+    Displays rows with columns:
+    Address, Nickname, Comment, New Value, Write, Live.
     Target is 100 rows, but supports overflow (rows 100+) with grey background.
     Overflow rows are excluded from saves.
     Supports row reordering, insert/delete, cut/copy/paste, and address autocomplete.
-    New Value data is preserved internally for saving but not displayed.
+    New Value data is preserved internally and shown using DataviewFile helpers.
     """
+
+    def _canonical_address(self, address: str) -> str | None:
+        """Normalize an address for poll/write payloads."""
+        candidate = (address or "").strip()
+        if not candidate:
+            return None
+        normalized = self.address_normalizer(candidate) if self.address_normalizer else None
+        if not normalized:
+            normalized = normalize_address(candidate)
+        if not normalized:
+            return None
+        return normalized.upper()
+
+    @staticmethod
+    def _display_text(value: object) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    def _is_row_write_enabled(self, row: DataviewRow) -> bool:
+        """True when write controls should be interactive for a row."""
+        return bool(row.address.strip()) and row.is_writable
+
+    def _new_value_display(self, row: DataviewRow) -> str:
+        return DataviewFile.value_to_display(row.new_value, row.data_type)
+
+    def _live_value_display(self, row: DataviewRow) -> str:
+        address = self._canonical_address(row.address)
+        if not address:
+            return ""
+        value = self._live_values.get(address)
+        return DataviewFile.value_to_display(value, row.data_type)
+
+    def _sync_write_checkbox(self, row_idx: int) -> None:
+        """Refresh write checkbox cell for a row."""
+        row = self.rows[row_idx]
+        is_enabled = self._is_row_write_enabled(row)
+
+        # Keep checked state only when writes are allowed.
+        if not is_enabled:
+            self._write_checks[row_idx] = False
+
+        try:
+            self.sheet.delete_checkbox(row_idx, COL_WRITE)
+        except Exception:
+            pass
+
+        if is_enabled:
+            checked = bool(self._write_checks[row_idx])
+            self.sheet.create_checkbox(r=row_idx, c=COL_WRITE, checked=checked, text="")
+            self.sheet.set_cell_data(row_idx, COL_WRITE, checked)
+        else:
+            self.sheet.set_cell_data(row_idx, COL_WRITE, "")
+
+    def _notify_addresses_changed(self) -> None:
+        if self.on_addresses_changed:
+            self.on_addresses_changed(self)
 
     def _refresh_row_indices(self) -> None:
         """Refresh row index labels (1, 2, 3, ...)."""
@@ -54,7 +125,7 @@ class DataviewPanel(ttk.Frame):
         for i in range(len(self.rows)):
             if i >= MAX_DATAVIEW_ROWS:
                 # Apply grey background to all columns
-                for col in range(3):  # COL_ADDRESS, COL_NICKNAME, COL_COMMENT
+                for col in range(NUM_COLUMNS):
                     self.sheet.highlight_cells(
                         row=i,
                         column=col,
@@ -72,11 +143,23 @@ class DataviewPanel(ttk.Frame):
         self._suppress_notifications = True
         try:
             data = []
-            for row in self.rows:
-                # Build display row (New Value is kept internally but not displayed)
-                data.append([row.address, row.nickname, row.comment])
+            for i, row in enumerate(self.rows):
+                is_enabled = self._is_row_write_enabled(row)
+                checked = bool(self._write_checks[i]) if is_enabled else ""
+                data.append(
+                    [
+                        row.address,
+                        row.nickname,
+                        row.comment,
+                        self._new_value_display(row),
+                        checked,
+                        self._live_value_display(row),
+                    ]
+                )
 
             self.sheet.set_sheet_data(data, reset_col_positions=False)
+            for i in range(len(self.rows)):
+                self._sync_write_checkbox(i)
 
             # Set row index labels (1 to N)
             self._refresh_row_indices()
@@ -90,10 +173,12 @@ class DataviewPanel(ttk.Frame):
         """Update display for a single row."""
         row = self.rows[row_idx]
 
-        # Update cells (New Value is kept internally but not displayed)
         self.sheet.set_cell_data(row_idx, COL_ADDRESS, row.address)
         self.sheet.set_cell_data(row_idx, COL_NICKNAME, row.nickname)
         self.sheet.set_cell_data(row_idx, COL_COMMENT, row.comment)
+        self.sheet.set_cell_data(row_idx, COL_NEW_VALUE, self._new_value_display(row))
+        self.sheet.set_cell_data(row_idx, COL_LIVE, self._live_value_display(row))
+        self._sync_write_checkbox(row_idx)
 
     def _update_status(self) -> None:
         """Update the status label."""
@@ -126,6 +211,7 @@ class DataviewPanel(ttk.Frame):
             return
 
         data_changed = False
+        addresses_changed = False
 
         for (row_idx, col), _old_value in table_cells.items():
             if row_idx >= len(self.rows):
@@ -135,6 +221,7 @@ class DataviewPanel(ttk.Frame):
             new_value = self.sheet.get_cell_data(row_idx, col)
 
             if col == COL_ADDRESS:
+                old_address = row.address
                 new_address = (new_value or "").strip()
 
                 if new_address != row.address:
@@ -153,19 +240,55 @@ class DataviewPanel(ttk.Frame):
                         row.nickname = ""
                         row.comment = ""
 
-                    # Clear new value if address changed and not writable
-                    if not row.is_writable:
+                    # Clear stale runtime state when writability/address changes.
+                    if old_address != row.address:
+                        old_canonical = self._canonical_address(old_address)
+                        if old_canonical:
+                            self._live_values.pop(old_canonical, None)
+
+                    row.new_value = None
+                    self._write_checks[row_idx] = False
+                    if not self._is_row_write_enabled(row):
                         row.new_value = None
 
                     # Update display for this row
                     self._update_row_display(row_idx)
                     data_changed = True
+                    addresses_changed = True
+
+            elif col == COL_NEW_VALUE:
+                if not self._is_row_write_enabled(row):
+                    self._update_row_display(row_idx)
+                    continue
+
+                display_text = self._display_text(new_value)
+                old_native = row.new_value
+                try:
+                    DataviewFile.set_row_new_value_from_display(row, display_text)
+                except ValueError:
+                    self._update_row_display(row_idx)
+                    continue
+
+                normalized = self._new_value_display(row)
+                if self.sheet.get_cell_data(row_idx, COL_NEW_VALUE) != normalized:
+                    self.sheet.set_cell_data(row_idx, COL_NEW_VALUE, normalized)
+                if row.new_value != old_native:
+                    data_changed = True
+
+            elif col == COL_WRITE:
+                if self._is_row_write_enabled(row):
+                    self._write_checks[row_idx] = bool(new_value)
+                else:
+                    self._write_checks[row_idx] = False
+                self._sync_write_checkbox(row_idx)
 
         if data_changed:
             self._is_dirty = True
             self._update_status()
             if self.on_modified:
                 self.on_modified()
+        if addresses_changed:
+            self._notify_addresses_changed()
 
     def _on_rows_moved(self, event) -> None:
         """Handle row drag-and-drop reordering.
@@ -188,27 +311,37 @@ class DataviewPanel(ttk.Frame):
         # 2. Create the "Skeleton" List
         # Place the moved items exactly where they belong.
         new_rows = [None] * len(self.rows)
+        new_checks: list[bool | None] = [None] * len(self._write_checks)
         for old_idx, new_idx in mapping.items():
             new_rows[new_idx] = self.rows[old_idx]
+            new_checks[new_idx] = self._write_checks[old_idx]
 
         # 3. Collect the Unmoved Rows
         # Identify rows that weren't moved and reverse them so we can .pop() efficiently.
         remaining = [row for i, row in enumerate(self.rows) if i not in mapping]
         remaining.reverse()
+        remaining_checks = [check for i, check in enumerate(self._write_checks) if i not in mapping]
+        remaining_checks.reverse()
 
         # 4. Fill the Gaps
         # List comprehension: If the slot has a moved row, keep it.
         # If it's None, pop the next available unmoved row into it.
         self.rows = [row if row is not None else remaining.pop() for row in new_rows]
+        self._write_checks = [
+            check if check is not None else remaining_checks.pop() for check in new_checks
+        ]
 
         self._is_dirty = True
         self._update_status()
         self._refresh_row_indices()
         self._apply_overflow_styling()
+        for i in range(len(self.rows)):
+            self._sync_write_checkbox(i)
         self.sheet.refresh(redraw_header=False, redraw_row_index=True)
 
         if self.on_modified:
             self.on_modified()
+        self._notify_addresses_changed()
 
     def _trim_empty_rows_from_bottom(self) -> None:
         """Remove empty rows from bottom until total <= MAX_DATAVIEW_ROWS or no more empty.
@@ -222,6 +355,7 @@ class DataviewPanel(ttk.Frame):
                 if self.rows[i].is_empty:
                     # Delete from data model only (sheet already has the row)
                     del self.rows[i]
+                    del self._write_checks[i]
                     # Delete from sheet
                     self.sheet.delete_rows([i], emit_event=False)
                     found_empty = True
@@ -252,6 +386,7 @@ class DataviewPanel(ttk.Frame):
         # Insert new DataviewRow objects at the insertion point
         for i in range(num_added):
             self.rows.insert(data_idx + i, DataviewRow())
+            self._write_checks.insert(data_idx + i, False)
 
         # Sync data model with sheet data (for paste operations with data)
         for i in range(num_added):
@@ -270,25 +405,23 @@ class DataviewPanel(ttk.Frame):
         self._trim_empty_rows_from_bottom()
 
         # Update display
-        self._refresh_row_indices()
-        self._apply_overflow_styling()
+        self._populate_sheet()
         self._is_dirty = True
         self._update_status()
 
         if self.on_modified:
             self.on_modified()
+        self._notify_addresses_changed()
 
     def _pad_to_target(self) -> None:
         """Add empty rows at bottom until exactly MAX_DATAVIEW_ROWS rows exist."""
         while len(self.rows) < MAX_DATAVIEW_ROWS:
             self.rows.append(DataviewRow())
+            self._write_checks.append(False)
             # Add row to sheet at end
             row_idx = len(self.rows) - 1
             self.sheet.insert_rows(rows=1, idx=row_idx, emit_event=False)
-            # Set empty row data
-            self.sheet.set_cell_data(row_idx, COL_ADDRESS, "")
-            self.sheet.set_cell_data(row_idx, COL_NICKNAME, "")
-            self.sheet.set_cell_data(row_idx, COL_COMMENT, "")
+            self._update_row_display(row_idx)
 
     def _on_rows_deleted(self, event) -> None:
         """Handle row deletion events.
@@ -310,18 +443,19 @@ class DataviewPanel(ttk.Frame):
         for idx in deleted_indices:
             if isinstance(idx, int) and idx < len(self.rows):
                 del self.rows[idx]
+                del self._write_checks[idx]
 
         # Auto-pad: add empty rows if under 100
         self._pad_to_target()
 
         # Update display
-        self._refresh_row_indices()
-        self._apply_overflow_styling()
+        self._populate_sheet()
         self._is_dirty = True
         self._update_status()
 
         if self.on_modified:
             self.on_modified()
+        self._notify_addresses_changed()
 
     def _validate_edit(self, event) -> str:
         """Validate and normalize cell edits.
@@ -352,14 +486,33 @@ class DataviewPanel(ttk.Frame):
                 return ""
             return normalized
 
+        if hasattr(event, "column") and event.column == COL_NEW_VALUE:
+            row_idx = getattr(event, "row", None)
+            if row_idx is None or row_idx >= len(self.rows):
+                return event.value
+
+            row = self.rows[row_idx]
+            if not self._is_row_write_enabled(row):
+                return self._new_value_display(row)
+
+            display_text = self._display_text(event.value)
+            ok, _error = DataviewFile.validate_row_display(row, display_text)
+            if not ok:
+                return self._new_value_display(row)
+
+            parsed = DataviewFile.try_parse_display(display_text, row.data_type)
+            if not parsed.ok:
+                return self._new_value_display(row)
+            return DataviewFile.value_to_display(parsed.value, row.data_type)
+
         return event.value
 
     def _create_widgets(self) -> None:
         """Create all panel widgets."""
-        # Table (tksheet) - New Value is kept internally but not displayed
+        # Table (tksheet)
         self.sheet = Sheet(
             self,
-            headers=["Address", "Nickname", "Comment"],
+            headers=["Address", "Nickname", "Comment", "New Value", "Write", "Live"],
             show_row_index=True,
             height=400,
             width=700,
@@ -388,11 +541,11 @@ class DataviewPanel(ttk.Frame):
         )
 
         # Set column widths
-        self.sheet.set_column_widths([80, 180, 280])
+        self.sheet.set_column_widths([90, 170, 220, 120, 70, 120])
         self.sheet.row_index(40)  # Row index width (row numbers)
 
-        # Make Nickname and Comment columns read-only (populated from address lookup)
-        self.sheet.readonly_columns([COL_NICKNAME, COL_COMMENT])
+        # Read-only display columns.
+        self.sheet.readonly_columns([COL_NICKNAME, COL_COMMENT, COL_LIVE])
 
         # Set up edit validation and bind to modification events
         self.sheet.edit_validation(self._validate_edit)
@@ -424,6 +577,8 @@ class DataviewPanel(ttk.Frame):
 
         try:
             self.rows, self.has_new_values, self._header = load_cdv(self.file_path)
+            self._write_checks = [False] * len(self.rows)
+            self._live_values.clear()
 
             # Populate nicknames and comments from lookup
             if self.nickname_lookup:
@@ -453,6 +608,7 @@ class DataviewPanel(ttk.Frame):
         parent: tk.Widget,
         file_path: Path | None = None,
         on_modified: Callable[[], None] | None = None,
+        on_addresses_changed: Callable[[DataviewPanel], None] | None = None,
         nickname_lookup: Callable[[str], tuple[str, str] | None] | None = None,
         address_normalizer: Callable[[str], str | None] | None = None,
         name: str | None = None,
@@ -463,6 +619,7 @@ class DataviewPanel(ttk.Frame):
             parent: Parent widget
             file_path: Path to the CDV file (None for new unsaved dataview)
             on_modified: Callback when data is modified
+            on_addresses_changed: Callback when row addresses change
             nickname_lookup: Callback to lookup (nickname, comment) for an address
             address_normalizer: Callback to normalize address to canonical form (e.g., "x1" -> "X001")
             name: Custom name for new unsaved dataviews (used instead of "Untitled")
@@ -471,6 +628,7 @@ class DataviewPanel(ttk.Frame):
 
         self.file_path = file_path
         self.on_modified = on_modified
+        self.on_addresses_changed = on_addresses_changed
         self._custom_name = name
         self.nickname_lookup = nickname_lookup
         self.address_normalizer = address_normalizer
@@ -480,9 +638,14 @@ class DataviewPanel(ttk.Frame):
         self.has_new_values = False
         self._header: str | None = None  # Original header from file
         self._is_dirty = False
+        self._write_checks: list[bool] = [False] * len(self.rows)
+        self._live_values: dict[str, PlcValue] = {}
 
         # Suppress notifications during programmatic updates
         self._suppress_notifications = False
+
+        # Live value flash highlight tracking: row_idx -> after_id
+        self._live_flash_pending: dict[int, str] = {}
 
         # File monitoring state
         self._last_mtime: float = 0.0
@@ -585,6 +748,8 @@ class DataviewPanel(ttk.Frame):
 
         try:
             self.rows, self.has_new_values, self._header = load_cdv(self.file_path)
+            self._write_checks = [False] * len(self.rows)
+            self._live_values.clear()
 
             # Populate nicknames and comments from lookup
             if self.nickname_lookup:
@@ -693,19 +858,16 @@ class DataviewPanel(ttk.Frame):
 
             # Insert into data model
             self.rows.insert(idx, new_row)
+            self._write_checks.insert(idx, False)
 
             # Insert into sheet
             self.sheet.insert_rows(rows=1, idx=idx, emit_event=False)
-            self.sheet.set_cell_data(idx, COL_ADDRESS, new_row.address)
-            self.sheet.set_cell_data(idx, COL_NICKNAME, new_row.nickname)
-            self.sheet.set_cell_data(idx, COL_COMMENT, new_row.comment)
 
             # Auto-pad: trim empty rows from bottom if over 100
             self._trim_empty_rows_from_bottom()
 
             # Update display
-            self._refresh_row_indices()
-            self._apply_overflow_styling()
+            self._populate_sheet()
             self._is_dirty = True
             self._update_status()
 
@@ -728,6 +890,7 @@ class DataviewPanel(ttk.Frame):
 
         if self.on_modified:
             self.on_modified()
+        self._notify_addresses_changed()
 
     def _fill_row_at(self, address: str, idx: int) -> None:
         """Fill an existing empty row with the given address (no insertion)."""
@@ -752,6 +915,7 @@ class DataviewPanel(ttk.Frame):
 
         if self.on_modified:
             self.on_modified()
+        self._notify_addresses_changed()
 
     def _get_selected_row_index(self) -> int | None:
         """Get the index of the currently selected row, if any.
@@ -829,17 +993,132 @@ class DataviewPanel(ttk.Frame):
             row_idx: Index of the row to clear (0-99)
         """
         if 0 <= row_idx < len(self.rows):
+            old_canonical = self._canonical_address(self.rows[row_idx].address)
             self.rows[row_idx].clear()
+            self._write_checks[row_idx] = False
+            if old_canonical:
+                self._live_values.pop(old_canonical, None)
             self._update_row_display(row_idx)
             self._is_dirty = True
             self._update_status()
 
             if self.on_modified:
                 self.on_modified()
+            self._notify_addresses_changed()
 
     def get_selected_rows(self) -> list[int]:
         """Get indices of currently selected rows."""
         return list(self.sheet.get_selected_rows())
+
+    def get_poll_addresses(self) -> list[str]:
+        """Return valid unique poll addresses in table order."""
+        seen: set[str] = set()
+        addresses: list[str] = []
+        for row in self.rows:
+            canonical = self._canonical_address(row.address)
+            if not canonical or canonical in seen:
+                continue
+            seen.add(canonical)
+            addresses.append(canonical)
+        return addresses
+
+    def _flash_live_cell(self, row_idx: int) -> None:
+        """Briefly highlight a Live cell to indicate a value change."""
+        # Cancel any existing pending clear for this row
+        if row_idx in self._live_flash_pending:
+            try:
+                self.after_cancel(self._live_flash_pending[row_idx])
+            except Exception:
+                pass
+
+        self.sheet.highlight_cells(row=row_idx, column=COL_LIVE, bg=COLOR_LIVE_FLASH)
+
+        def _clear(idx: int = row_idx) -> None:
+            self._live_flash_pending.pop(idx, None)
+            try:
+                self.sheet.dehighlight_cells(row=idx, column=COL_LIVE)
+            except Exception:
+                pass
+
+        after_id = self.after(LIVE_FLASH_DURATION_MS, _clear)
+        self._live_flash_pending[row_idx] = after_id
+
+    def update_live_values(self, values: Mapping[str, PlcValue]) -> None:
+        """Update the Live column from a service callback payload."""
+        normalized: dict[str, PlcValue] = {}
+        for address, value in values.items():
+            canonical = self._canonical_address(address)
+            if canonical:
+                normalized[canonical] = value
+        self._live_values = normalized
+
+        for row_idx, row in enumerate(self.rows):
+            new_display = self._live_value_display(row)
+            old_display = self.sheet.get_cell_data(row_idx, COL_LIVE)
+            self.sheet.set_cell_data(row_idx, COL_LIVE, new_display)
+
+            # Flash cell if value actually changed and is non-empty
+            if new_display and new_display != old_display:
+                self._flash_live_cell(row_idx)
+
+    def clear_live_values(self) -> None:
+        """Clear the Live column for all rows."""
+        self._live_values.clear()
+        # Cancel all pending flash clears
+        for after_id in self._live_flash_pending.values():
+            try:
+                self.after_cancel(after_id)
+            except Exception:
+                pass
+        self._live_flash_pending.clear()
+        for row_idx in range(len(self.rows)):
+            self.sheet.set_cell_data(row_idx, COL_LIVE, "")
+            try:
+                self.sheet.dehighlight_cells(row=row_idx, column=COL_LIVE)
+            except Exception:
+                pass
+
+    def get_write_rows(self) -> list[tuple[str, PlcValue]]:
+        """Return checked writable rows with values."""
+        payload: list[tuple[str, PlcValue]] = []
+        for row_idx, row in enumerate(self.rows):
+            if not self._write_checks[row_idx]:
+                continue
+            if not self._is_row_write_enabled(row):
+                continue
+            if row.new_value is None:
+                continue
+            canonical = self._canonical_address(row.address)
+            if not canonical:
+                continue
+            payload.append((canonical, row.new_value))
+        return payload
+
+    def get_write_all_rows(self) -> list[tuple[str, PlcValue]]:
+        """Return all writable rows with non-empty values."""
+        payload: list[tuple[str, PlcValue]] = []
+        for row in self.rows:
+            if not self._is_row_write_enabled(row) or row.new_value is None:
+                continue
+            canonical = self._canonical_address(row.address)
+            if not canonical:
+                continue
+            payload.append((canonical, row.new_value))
+        return payload
+
+    def clear_write_checks(self) -> None:
+        """Clear all Write checkbox states."""
+        for row_idx in range(len(self._write_checks)):
+            self._write_checks[row_idx] = False
+            self._sync_write_checkbox(row_idx)
+
+    def set_modbus_columns_visible(self, visible: bool) -> None:
+        """Show or hide the Modbus-related columns (New Value, Write, Live)."""
+        columns = {COL_NEW_VALUE, COL_WRITE, COL_LIVE}
+        if visible:
+            self.sheet.show_columns(columns=columns)
+        else:
+            self.sheet.hide_columns(columns=columns, data_indexes=True)
 
     def refresh_nicknames(self) -> None:
         """Refresh all nickname and comment lookups."""

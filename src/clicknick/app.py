@@ -699,6 +699,13 @@ class ClickNickApp:
             return False
         return True
 
+    def _clear_connection_state(self) -> None:
+        """Clear the currently connected Click window metadata."""
+        self.connected_click_pid = None
+        self.connected_click_filename = None
+        self.connected_click_hwnd = None
+        self.using_database = False
+
     def refresh_click_instances(self):
         """Refresh the list of running Click.exe instances."""
         # Remember currently selected instance
@@ -968,21 +975,14 @@ class ClickNickApp:
         """Extract filename from window title using centralized parser."""
         return ClickWindowDetector.parse_click_filename(title)
 
-    def _clear_connection_state(self) -> None:
-        """Clear the currently connected Click window metadata."""
-        self.connected_click_pid = None
-        self.connected_click_filename = None
-        self.connected_click_hwnd = None
-        self.using_database = False
-
     def _handle_window_closed(self):
         """Handle when connected window is no longer available."""
         self._update_status("⚠ Connected ClickPLC window closed", "error")
         self.stop_monitoring(update_status=False)
 
-        source_is_mdb = isinstance(self._shared_data_source_path, str) and self._shared_data_source_path.startswith(
-            "mdb:"
-        )
+        source_is_mdb = isinstance(
+            self._shared_data_source_path, str
+        ) and self._shared_data_source_path.startswith("mdb:")
 
         # Force close editor windows only for MDB-backed data.
         if source_is_mdb and self._shared_address_data is not None:

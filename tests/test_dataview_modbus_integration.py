@@ -207,8 +207,7 @@ def _make_window_stub(
     window._modbus_host_var = FakeVar("127.0.0.1")
     window._modbus_port_var = FakeVar("502")
     window._modbus_toggle_var = FakeVar("Connect")
-    window._modbus_state_var = FakeVar("Disconnected")
-    window._modbus_error_var = FakeVar("")
+    window._set_modbus_error_text = lambda text="": None
     window.write_checked_button = FakeWidget()
     window.write_all_button = FakeWidget()
     window.modbus_connect_button = FakeWidget()

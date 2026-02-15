@@ -48,8 +48,8 @@ class DataviewEditorWindow(tk.Toplevel):
         else:
             self.title(base_title)
 
-        self.geometry("900x600")
-        self.minsize(600, 400)
+        self.geometry("800x600")
+        self.minsize(800, 400)
 
     def _refresh_file_list(self) -> None:
         """Refresh the file list from the dataview folder."""
@@ -103,11 +103,9 @@ class DataviewEditorWindow(tk.Toplevel):
     def _is_modbus_connected(self) -> bool:
         return self._connection_state == ConnectionState.CONNECTED
 
-    def _set_modbus_state_text(self, text: str) -> None:
-        self._modbus_state_var.set(text)
-
     def _set_modbus_error_text(self, text: str = "") -> None:
-        self._modbus_error_var.set(text)
+        if text:
+            messagebox.showerror("Modbus Error", text, parent=self)
 
     def _update_modbus_controls(self) -> None:
         """Refresh connection/write control state."""
@@ -117,7 +115,14 @@ class DataviewEditorWindow(tk.Toplevel):
         write_busy = self._modbus_write_busy
         action_busy = busy or write_busy
 
-        self._modbus_toggle_var.set("Disconnect" if connected else "Connect")
+        if connecting:
+            self._modbus_toggle_var.set("Connecting…")
+        elif connected and busy:
+            self._modbus_toggle_var.set("Disconnecting…")
+        elif connected:
+            self._modbus_toggle_var.set("Disconnect")
+        else:
+            self._modbus_toggle_var.set("Connect")
         self.write_checked_button.config(
             state=(tk.NORMAL if connected and not action_busy else tk.DISABLED)
         )
@@ -174,16 +179,6 @@ class DataviewEditorWindow(tk.Toplevel):
 
     def _apply_modbus_state(self, state: ConnectionState, error: Exception | None) -> None:
         self._connection_state = state
-
-        if state == ConnectionState.CONNECTING:
-            self._set_modbus_state_text("Connecting...")
-        elif state == ConnectionState.CONNECTED:
-            self._set_modbus_state_text("Connected")
-            self._set_modbus_error_text("")
-        elif state == ConnectionState.ERROR:
-            self._set_modbus_state_text("Error")
-        else:
-            self._set_modbus_state_text("Disconnected")
 
         if error is not None:
             self._set_modbus_error_text(str(error))
@@ -266,13 +261,12 @@ class DataviewEditorWindow(tk.Toplevel):
         self._modbus_busy = False
         if error is not None:
             self._connection_state = ConnectionState.ERROR
-            self._set_modbus_state_text("Error")
+
             self._set_modbus_error_text(str(error))
             self._update_modbus_controls()
             return
 
         self._connection_state = ConnectionState.CONNECTED
-        self._set_modbus_state_text("Connected")
         self._set_modbus_error_text("")
         self._sync_poll_addresses_from_active_tab(force=True)
         self._update_modbus_controls()
@@ -289,7 +283,6 @@ class DataviewEditorWindow(tk.Toplevel):
         service = self._ensure_modbus_service()
         self._modbus_busy = True
         self._connection_state = ConnectionState.CONNECTING
-        self._set_modbus_state_text("Connecting...")
         self._set_modbus_error_text("")
         self._update_modbus_controls()
 
@@ -315,7 +308,6 @@ class DataviewEditorWindow(tk.Toplevel):
     def _on_disconnect_modbus_complete(self, error: Exception | None) -> None:
         self._modbus_busy = False
         self._connection_state = ConnectionState.DISCONNECTED
-        self._set_modbus_state_text("Disconnected")
         self._set_modbus_error_text("" if error is None else str(error))
         self._update_modbus_controls()
 
@@ -337,7 +329,6 @@ class DataviewEditorWindow(tk.Toplevel):
 
         service = self._modbus
         self._modbus_busy = True
-        self._set_modbus_state_text("Disconnecting...")
         self._set_modbus_error_text("")
         self._clear_live_values_all_panels()
         self._update_modbus_controls()
@@ -370,6 +361,9 @@ class DataviewEditorWindow(tk.Toplevel):
     ) -> None:
         self._modbus_write_busy = False
         if error is not None:
+            # Transport-level failure — assume connection is lost.
+            self._connection_state = ConnectionState.DISCONNECTED
+            self._clear_live_values_all_panels()
             self._set_modbus_error_text(str(error))
             self._update_modbus_controls()
             return
@@ -445,6 +439,10 @@ class DataviewEditorWindow(tk.Toplevel):
             address_normalizer=self.shared_data.normalize_address,
         )
 
+        # Sync Modbus column visibility before adding tab
+        if not self._modbus_toolbar_var.get():
+            panel.set_modbus_columns_visible(False)
+
         # Add tab
         self.notebook.add(panel, text=file_path.stem)
         self.notebook.select(panel)
@@ -469,6 +467,10 @@ class DataviewEditorWindow(tk.Toplevel):
             address_normalizer=self.shared_data.normalize_address,
             name=name,
         )
+
+        # Sync Modbus column visibility before adding tab
+        if not self._modbus_toolbar_var.get():
+            panel.set_modbus_columns_visible(False)
 
         self.notebook.add(panel, text=name)
         self.notebook.select(panel)
@@ -723,11 +725,25 @@ class DataviewEditorWindow(tk.Toplevel):
             self._tag_browser_var.set(True)
 
     def _toggle_modbus_toolbar(self) -> None:
-        """Toggle Modbus toolbar visibility."""
-        if self._modbus_toolbar_var.get():
+        """Toggle Modbus toolbar and column visibility."""
+        visible = self._modbus_toolbar_var.get()
+
+        if visible:
             self.modbus_toolbar.pack(fill=tk.X, padx=5, pady=(2, 0), before=self.notebook)
         else:
             self.modbus_toolbar.pack_forget()
+
+        # Show/hide Modbus columns on all open panels
+        for panel in self._iter_open_panels():
+            panel.set_modbus_columns_visible(visible)
+
+        # Widen window when showing Modbus columns, shrink when hiding
+        if visible:
+            w = max(self.winfo_width(), 1100)
+            self.geometry(f"{w}x{self.winfo_height()}")
+        else:
+            w = max(self.winfo_width() - 300, 800)
+            self.geometry(f"{w}x{self.winfo_height()}")
 
     def _create_menu(self) -> None:
         """Create the menu bar."""
@@ -1026,9 +1042,19 @@ class DataviewEditorWindow(tk.Toplevel):
             side=tk.LEFT, padx=(0, 5)
         )
 
-        # Modbus toolbar (separate row, toggle-able via View menu)
+        # Modbus toggle (right side of toolbar)
+        modbus_cb = ttk.Checkbutton(
+            toolbar,
+            text="⚡ Modbus",
+            variable=self._modbus_toolbar_var,
+            command=self._toggle_modbus_toolbar,
+        )
+        modbus_cb.configure(style="Modbus.TCheckbutton")
+        ttk.Style().configure("Modbus.TCheckbutton", font=("TkDefaultFont", 9, "bold"))
+        modbus_cb.pack(side=tk.RIGHT, padx=(5, 0))
+
+        # Modbus toolbar (separate row, hidden by default)
         self.modbus_toolbar = ttk.Frame(self.content)
-        self.modbus_toolbar.pack(fill=tk.X, padx=5, pady=(2, 0))
 
         ttk.Label(self.modbus_toolbar, text="Host:").pack(side=tk.LEFT)
         self.host_entry = ttk.Entry(
@@ -1050,26 +1076,17 @@ class DataviewEditorWindow(tk.Toplevel):
         )
         self.modbus_connect_button.pack(side=tk.LEFT, padx=(0, 6))
 
-        ttk.Label(self.modbus_toolbar, textvariable=self._modbus_state_var).pack(
-            side=tk.LEFT, padx=(0, 8)
-        )
-        ttk.Label(
-            self.modbus_toolbar, textvariable=self._modbus_error_var, foreground="#aa3333"
-        ).pack(side=tk.LEFT, padx=(0, 8))
-
         self.write_checked_button = ttk.Button(
             self.modbus_toolbar,
-            text="Write Checked",
+            text="💾 Write",
             command=self._write_checked,
-            width=12,
         )
         self.write_checked_button.pack(side=tk.LEFT, padx=(0, 4))
 
         self.write_all_button = ttk.Button(
             self.modbus_toolbar,
-            text="Write All",
+            text="💾 Write All",
             command=self._write_all,
-            width=9,
         )
         self.write_all_button.pack(side=tk.LEFT)
 
@@ -1148,9 +1165,7 @@ class DataviewEditorWindow(tk.Toplevel):
         self._modbus_host_var = tk.StringVar(value="127.0.0.1")
         self._modbus_port_var = tk.StringVar(value="502")
         self._modbus_toggle_var = tk.StringVar(value="Connect")
-        self._modbus_state_var = tk.StringVar(value="Disconnected")
-        self._modbus_error_var = tk.StringVar(value="")
-        self._modbus_toolbar_var = tk.BooleanVar(value=True)
+        self._modbus_toolbar_var = tk.BooleanVar(value=False)
 
         # Configure window
         self._setup_window()
