@@ -714,6 +714,8 @@ class ClickNickApp:
             click_instances = self.detector.get_click_instances()
 
             if not click_instances:
+                self._clear_connection_state()
+                self._update_window_title()
                 self._update_status("⚠ No ClickPLC windows", "error")
                 self.start_button.state(["disabled"])  # Disable when no instances
                 return
@@ -765,7 +767,18 @@ class ClickNickApp:
             self._update_status("✓ CSV loaded", "connected")
             self.using_database = False
             self._update_window_title()
-            self.start_monitoring()
+            has_live_connection = bool(self.connected_click_pid and self.connected_click_hwnd) and (
+                self.detector.check_window_exists(self.connected_click_pid)
+            )
+            if has_live_connection:
+                self.start_monitoring()
+            else:
+                if self.monitoring:
+                    self.stop_monitoring(update_status=False)
+                if self.connected_click_pid or self.connected_click_hwnd:
+                    self._clear_connection_state()
+                    self.selected_instance_var.set("")
+                    self._update_window_title()
             return True
         except Exception as e:
             print(f"Error loading CSV: {e}")
@@ -878,10 +891,7 @@ class ClickNickApp:
             self.stop_monitoring()
 
         # Reset connection state
-        self.connected_click_pid = None
-        self.connected_click_filename = None
-        self.connected_click_hwnd = None
-        self.using_database = False
+        self._clear_connection_state()
 
         # Clear CSV path when switching instances
         self.csv_path_var.set("")
@@ -958,19 +968,35 @@ class ClickNickApp:
         """Extract filename from window title using centralized parser."""
         return ClickWindowDetector.parse_click_filename(title)
 
+    def _clear_connection_state(self) -> None:
+        """Clear the currently connected Click window metadata."""
+        self.connected_click_pid = None
+        self.connected_click_filename = None
+        self.connected_click_hwnd = None
+        self.using_database = False
+
     def _handle_window_closed(self):
         """Handle when connected window is no longer available."""
         self._update_status("⚠ Connected ClickPLC window closed", "error")
         self.stop_monitoring(update_status=False)
 
-        # Force close any open editor windows (can't save - DB is gone)
-        if self._shared_address_data is not None:
+        source_is_mdb = isinstance(self._shared_data_source_path, str) and self._shared_data_source_path.startswith(
+            "mdb:"
+        )
+
+        # Force close editor windows only for MDB-backed data.
+        if source_is_mdb and self._shared_address_data is not None:
             self._shared_address_data.force_close_all_windows()
             self._shared_address_data = None
             self._shared_data_source_path = None
 
-        # Disconnect NicknameManager from data
-        self.nickname_manager.set_shared_data(None)
+            # MDB data is no longer valid once the Click window is gone.
+            self.nickname_manager.set_shared_data(None)
+
+        # Always clear stale Click connection metadata.
+        self._clear_connection_state()
+        self.selected_instance_var.set("")
+        self._update_window_title()
 
         self.root.after(2000, self.refresh_click_instances)
 
