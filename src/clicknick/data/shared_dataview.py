@@ -37,22 +37,24 @@ class SharedDataviewData:
         self,
         project_path: Path | None = None,
         address_store: AddressStore | None = None,
+        dataview_folder: Path | None = None,
     ):
         """Initialize the shared dataview data.
 
         Args:
             project_path: Path to the CLICK project folder
             address_store: AddressStore for nickname lookups
+            dataview_folder: Explicit DataView folder override (e.g., CSV directory)
         """
         self._project_path = project_path
         self._store: AddressStore | None = None
-        self._dataview_folder: Path | None = None
+        self._dataview_folder: Path | None = dataview_folder
 
         # Single window tracking (only one dataview editor at a time)
         self._window = None
 
-        # Find dataview folder
-        if project_path:
+        # Find dataview folder from project if not explicitly provided
+        if self._dataview_folder is None and project_path:
             self._dataview_folder = get_dataview_folder(project_path)
 
         # Wire up to AddressStore if provided

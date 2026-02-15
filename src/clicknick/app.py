@@ -316,6 +316,15 @@ class ClickNickApp:
             # Get project path from connected Click window
             project_path = get_project_path_from_hwnd(self.connected_click_hwnd)
 
+            # When no CLICK project, use CSV directory for CDV file discovery
+            csv_fallback_folder = None
+            if project_path is None:
+                csv_path = self.csv_path_var.get()
+                if csv_path:
+                    from pathlib import Path
+
+                    csv_fallback_folder = Path(csv_path).parent
+
             # Create or reuse shared dataview data
             if not hasattr(self, "_dataview_editor_shared_data"):
                 self._dataview_editor_shared_data = None
@@ -330,6 +339,7 @@ class ClickNickApp:
                 self._dataview_editor_shared_data = SharedDataviewData(
                     project_path=project_path,
                     address_store=self._shared_address_data,
+                    dataview_folder=csv_fallback_folder,
                 )
                 self._dataview_editor_project_path = project_path
 
