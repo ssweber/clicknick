@@ -271,10 +271,6 @@ class ClickNickApp:
         Multiple windows can be opened and they will share the same data.
         Changes made in one window are automatically reflected in others.
         """
-        if not self.connected_click_pid:
-            self._update_status("Connect to a ClickPLC window first", "error")
-            return
-
         # Check for ODBC drivers (MDB mode requires them)
         csv_path = self.csv_path_var.get()
         if not csv_path and not self.nickname_manager.has_access_driver():
@@ -307,10 +303,6 @@ class ClickNickApp:
         The dataview editor allows creating and editing CLICK DataView files (.cdv).
         Only one DataviewEditorWindow can be open at a time.
         """
-        if not self.connected_click_pid:
-            self._update_status("Connect to a ClickPLC window first", "error")
-            return
-
         # Use the app-level SharedAddressData
         if self._shared_address_data is None:
             self._update_status("No data loaded", "error")
