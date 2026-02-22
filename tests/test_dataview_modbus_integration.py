@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from pyclickplc.addresses import normalize_address
-from pyclickplc.dataview import DataviewFile, DataviewRow
+from pyclickplc.dataview import DataviewFile, DataViewRecord
 
 from clicknick.views.dataview_editor.panel import (
     COL_NEW_VALUE,
@@ -172,7 +172,7 @@ class FakeModbusService:
         return list(self.write_result)
 
 
-def _make_panel_stub(rows: list[DataviewRow]) -> DataviewPanel:
+def _make_panel_stub(rows: list[DataViewRecord]) -> DataviewPanel:
     panel = DataviewPanel.__new__(DataviewPanel)
     panel.rows = rows
     panel.address_normalizer = normalize_address
@@ -220,8 +220,8 @@ def _make_window_stub(
     return window
 
 
-def _row(address: str, value=None) -> DataviewRow:
-    row = DataviewRow(address=address, new_value=value)
+def _row(address: str, value=None) -> DataViewRecord:
+    row = DataViewRecord(address=address, new_value=value)
     row.update_data_type()
     return row
 

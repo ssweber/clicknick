@@ -16,7 +16,7 @@ from pyclickplc.addresses import normalize_address
 from pyclickplc.dataview import (
     MAX_DATAVIEW_ROWS,
     DataviewFile,
-    DataviewRow,
+    DataViewRecord as DataViewRecord,
     create_empty_dataview,
     get_data_type_for_address,
 )
@@ -76,14 +76,14 @@ class DataviewPanel(ttk.Frame):
             return ""
         return str(value).strip()
 
-    def _is_row_write_enabled(self, row: DataviewRow) -> bool:
+    def _is_row_write_enabled(self, row: DataViewRecord) -> bool:
         """True when write controls should be interactive for a row."""
         return bool(row.address.strip()) and row.is_writable
 
-    def _new_value_display(self, row: DataviewRow) -> str:
+    def _new_value_display(self, row: DataViewRecord) -> str:
         return DataviewFile.value_to_display(row.new_value, row.data_type)
 
-    def _live_value_display(self, row: DataviewRow) -> str:
+    def _live_value_display(self, row: DataViewRecord) -> str:
         address = self._canonical_address(row.address)
         if not address:
             return ""
@@ -383,9 +383,9 @@ class DataviewPanel(ttk.Frame):
         data_idx = added.get("data_index", 0)
         num_added = added.get("num", 1)
 
-        # Insert new DataviewRow objects at the insertion point
+        # Insert new DataViewRecord objects at the insertion point
         for i in range(num_added):
-            self.rows.insert(data_idx + i, DataviewRow())
+            self.rows.insert(data_idx + i, DataViewRecord())
             self._write_checks.insert(data_idx + i, False)
 
         # Sync data model with sheet data (for paste operations with data)
@@ -416,7 +416,7 @@ class DataviewPanel(ttk.Frame):
     def _pad_to_target(self) -> None:
         """Add empty rows at bottom until exactly MAX_DATAVIEW_ROWS rows exist."""
         while len(self.rows) < MAX_DATAVIEW_ROWS:
-            self.rows.append(DataviewRow())
+            self.rows.append(DataViewRecord())
             self._write_checks.append(False)
             # Add row to sheet at end
             row_idx = len(self.rows) - 1
@@ -437,7 +437,7 @@ class DataviewPanel(ttk.Frame):
         if not deleted:
             return
 
-        # Remove DataviewRow objects that were deleted
+        # Remove DataViewRecord objects that were deleted
         # The 'deleted' dict maps old indices to row data
         deleted_indices = sorted(deleted.keys(), reverse=True)
         for idx in deleted_indices:
@@ -634,7 +634,7 @@ class DataviewPanel(ttk.Frame):
         self.address_normalizer = address_normalizer
 
         # Data model
-        self.rows: list[DataviewRow] = create_empty_dataview()
+        self.rows: list[DataViewRecord] = create_empty_dataview()
         self.has_new_values = False
         self._header: str | None = None  # Original header from file
         self._is_dirty = False
@@ -847,7 +847,7 @@ class DataviewPanel(ttk.Frame):
         self._suppress_notifications = True
         try:
             # Create new row
-            new_row = DataviewRow(address=address)
+            new_row = DataViewRecord(address=address)
             new_row.update_data_type()
 
             # Lookup nickname and comment
