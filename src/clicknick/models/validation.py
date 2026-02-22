@@ -1,44 +1,23 @@
 from collections.abc import Callable
 
-from pyclickplc.validation import (
-    COMMENT_MAX_LENGTH,
-    FORBIDDEN_CHARS,
-    NICKNAME_MAX_LENGTH,
-    RESERVED_NICKNAMES,
-)
-from pyclickplc.validation import (
-    validate_initial_value as validate_initial_value,
-)
+from pyclickplc.validation import COMMENT_MAX_LENGTH
+from pyclickplc.validation import validate_initial_value as validate_initial_value
+from pyclickplc.validation import validate_nickname as _pyclickplc_validate_nickname
 
 
-def validate_nickname_format(nickname: str) -> tuple[bool, str]:
+def validate_nickname_format(
+    nickname: str, *, is_system: bool = False
+) -> tuple[bool, str]:
     """Validate nickname format (length, characters, etc.) without uniqueness check.
 
     Args:
         nickname: The nickname to validate
+        is_system: If True, allow leading underscores (PLC system-generated names).
 
     Returns:
         Tuple of (is_valid, error_message) - error_message is "" if valid
     """
-    if nickname == "":
-        return True, ""  # Empty is valid (just means unassigned)
-
-    if len(nickname) > NICKNAME_MAX_LENGTH:
-        return False, f"Too long ({len(nickname)}/24)"
-
-    if nickname.startswith("_"):
-        return False, "Cannot start with _"
-
-    if nickname.lower() in RESERVED_NICKNAMES:
-        return False, "Reserved keyword"
-
-    invalid_chars = set(nickname) & FORBIDDEN_CHARS
-    if invalid_chars:
-        # Show first few invalid chars
-        chars_display = "".join(sorted(invalid_chars)[:3])
-        return False, f"Invalid: {chars_display}"
-
-    return True, ""
+    return _pyclickplc_validate_nickname(nickname, is_system=is_system)
 
 
 def validate_comment(
@@ -81,6 +60,8 @@ def validate_nickname(
     all_nicknames: dict[int, str],
     current_addr_key: int,
     is_duplicate_fn: Callable[[str, int], bool] | None = None,
+    *,
+    is_system: bool = False,
 ) -> tuple[bool, str]:
     """Validate a nickname against all rules.
 
@@ -90,12 +71,13 @@ def validate_nickname(
         current_addr_key: The addr_key of the row being validated (excluded from uniqueness)
         is_duplicate_fn: Optional O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
             If provided, uses this instead of O(n) scan of all_nicknames.
+        is_system: If True, allow leading underscores (PLC system-generated names).
 
     Returns:
         Tuple of (is_valid, error_message) - error_message is "" if valid
     """
     # Check format first
-    is_valid, error = validate_nickname_format(nickname)
+    is_valid, error = validate_nickname_format(nickname, is_system=is_system)
     if not is_valid:
         return is_valid, error
 

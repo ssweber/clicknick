@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from pyclickplc.addresses import get_addr_key, is_xd_yd_hidden_slot, parse_addr_key
 from pyclickplc.banks import BANKS, NON_EDITABLE_TYPES, PAIRED_RETENTIVE_TYPES
+from pyclickplc.validation import SYSTEM_NICKNAME_TYPES
 
 from ..models.validation import validate_initial_value, validate_nickname
 from ..views.dataview_editor.cdv_file import check_cdv_files
@@ -20,34 +21,25 @@ if TYPE_CHECKING:
     from ..models.address_row import AddressRow
 
 
-# Memory types where underscore-prefixed nicknames are expected (system-defined)
-SYSTEM_NICKNAME_TYPES: frozenset[str] = frozenset({"SC", "SD", "X"})
-
-
 @dataclass
 class VerificationResult:
     """Results from verification process."""
 
     mdb_issues: list[str] = field(default_factory=list)
     cdv_issues: list[str] = field(default_factory=list)
-    # Separate list for system nickname issues (underscore prefix in SC/SD/X)
-    system_nickname_issues: list[str] = field(default_factory=list)
     total_addresses: int = 0
     cdv_files_checked: int = 0
 
     @property
     def total_issues(self) -> int:
-        """Total number of actionable issues (excludes system nickname issues)."""
         return len(self.mdb_issues) + len(self.cdv_issues)
 
     @property
     def all_issues(self) -> list[str]:
-        """All actionable issues combined."""
         return self.mdb_issues + self.cdv_issues
 
     @property
     def passed(self) -> bool:
-        """True if no actionable issues found."""
         return self.total_issues == 0
 
 
@@ -94,13 +86,13 @@ def _check_retentive_pairs(all_rows: dict[int, AddressRow]) -> list[str]:
     return issues
 
 
-def verify_mdb_addresses(shared_data: SharedAddressData) -> tuple[list[str], list[str]]:
+def verify_mdb_addresses(shared_data: SharedAddressData) -> list[str]:
     """Verify all MDB addresses for validity.
 
     Checks:
     - addr_key can be parsed back correctly
     - Address is within valid range for memory type
-    - Nickname and initial value pass validation
+    - Nickname and initial value pass validation (system types allow leading _)
     - NON_EDITABLE_TYPES have empty or "0" initial_value
     - XD/YD hidden slots don't have nicknames
     - T/TD and CT/CTD pairs have matching retentive settings
@@ -109,11 +101,9 @@ def verify_mdb_addresses(shared_data: SharedAddressData) -> tuple[list[str], lis
         shared_data: The SharedAddressData containing all addresses
 
     Returns:
-        Tuple of (issues, system_nickname_issues) where system_nickname_issues
-        contains "Cannot start with _" errors for SC/SD/X types.
+        List of issue strings.
     """
     issues: list[str] = []
-    system_nickname_issues: list[str] = []
     all_rows = shared_data.all_rows
 
     # Build nickname dict for duplicate checking
@@ -144,22 +134,20 @@ def verify_mdb_addresses(shared_data: SharedAddressData) -> tuple[list[str], lis
             issues.append(f"MDB: Unknown memory type '{row.memory_type}' for address {row.address}")
 
         # 3. Validate nickname and initial value
-        nick_valid, nick_error = validate_nickname(row.nickname, all_nicknames, addr_key)
+        is_system = row.memory_type in SYSTEM_NICKNAME_TYPES
+        nick_valid, nick_error = validate_nickname(
+            row.nickname, all_nicknames, addr_key, is_system=is_system
+        )
         if not nick_valid:
-            # Separate out "Cannot start with _" for system types (SC/SD/X)
-            if nick_error == "Cannot start with _" and row.memory_type in SYSTEM_NICKNAME_TYPES:
-                system_nickname_issues.append(
-                    f"MDB: {display} nickname '{row.nickname}' starts with underscore"
-                )
-            else:
-                issues.append(f"MDB: {display} nickname invalid: {nick_error}")
+            issues.append(f"MDB: {display} nickname invalid: {nick_error}")
 
         init_valid, init_error = validate_initial_value(row.initial_value, row.data_type)
         if not init_valid:
             issues.append(f"MDB: {display} initial value invalid: {init_error}")
 
         # 4. NON_EDITABLE_TYPES should have empty or "0" initial_value
-        if row.memory_type in NON_EDITABLE_TYPES:
+        #    (system types like SC/SD can have PLC-preset initial values)
+        if row.memory_type in NON_EDITABLE_TYPES and not is_system:
             if row.initial_value not in ("", "0"):
                 nick_part = f" nickname '{row.nickname}'" if row.nickname else ""
                 issues.append(
@@ -177,7 +165,7 @@ def verify_mdb_addresses(shared_data: SharedAddressData) -> tuple[list[str], lis
     # 6. Check T/TD and CT/CTD retentive consistency
     issues.extend(_check_retentive_pairs(all_rows))
 
-    return issues, system_nickname_issues
+    return issues
 
 
 def verify_cdv_files(project_path: Path | str) -> tuple[list[str], int]:
@@ -217,7 +205,7 @@ def run_verification(
     result.total_addresses = len(shared_data.all_rows)
 
     # Verify MDB addresses
-    result.mdb_issues, result.system_nickname_issues = verify_mdb_addresses(shared_data)
+    result.mdb_issues = verify_mdb_addresses(shared_data)
 
     # Verify CDV files
     result.cdv_issues, result.cdv_files_checked = verify_cdv_files(project_path)

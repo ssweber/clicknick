@@ -158,10 +158,14 @@ class AddressStore:
 
     def _mark_loaded_with_errors(self) -> None:
         """Mark X/SC/SD rows that loaded with invalid nicknames."""
+        from pyclickplc.validation import SYSTEM_NICKNAME_TYPES
+
         all_nicks = self.all_nicknames
         for addr_key, row in self.visible_state.items():
-            if row.memory_type in ("X", "SC", "SD") and row.nickname:
-                is_valid, _ = validate_nickname(row.nickname, all_nicks, addr_key)
+            if row.memory_type in SYSTEM_NICKNAME_TYPES and row.nickname:
+                is_valid, _ = validate_nickname(
+                    row.nickname, all_nicks, addr_key, is_system=True
+                )
                 if not is_valid:
                     # Update both base and visible
                     updated = replace(row, loaded_with_error=True)
