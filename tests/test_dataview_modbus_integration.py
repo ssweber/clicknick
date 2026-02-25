@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from pyclickplc.addresses import normalize_address
-from pyclickplc.dataview import DataviewFile, DataViewRecord
+from pyclickplc.dataview import DataViewFile, DataViewRecord
 
 from clicknick.views.dataview_editor.panel import (
     COL_NEW_VALUE,
@@ -252,10 +252,10 @@ def test_panel_new_value_validation_uses_dataview_helpers(monkeypatch):
         calls["parse"] += 1
         return SimpleNamespace(ok=True, value=42, error="")
 
-    monkeypatch.setattr(DataviewFile, "validate_row_display", staticmethod(_validate))
-    monkeypatch.setattr(DataviewFile, "try_parse_display", staticmethod(_parse))
+    monkeypatch.setattr(DataViewFile, "validate_row_display", staticmethod(_validate))
+    monkeypatch.setattr(DataViewFile, "try_parse_display", staticmethod(_parse))
     monkeypatch.setattr(
-        DataviewFile, "value_to_display", staticmethod(lambda value, data_type: "42")
+        DataViewFile, "value_to_display", staticmethod(lambda value, data_type: "42")
     )
 
     event = SimpleNamespace(row=0, column=COL_NEW_VALUE, value=" 42 ")
@@ -272,7 +272,7 @@ def test_panel_sheet_modified_updates_new_value_from_display_helper(monkeypatch)
         called["set"] += 1
         row.new_value = int(display)
 
-    monkeypatch.setattr(DataviewFile, "set_row_new_value_from_display", staticmethod(_setter))
+    monkeypatch.setattr(DataViewFile, "set_row_new_value_from_display", staticmethod(_setter))
     event = SimpleNamespace(cells={"table": {(0, COL_NEW_VALUE): ""}})
 
     panel._on_sheet_modified(event)

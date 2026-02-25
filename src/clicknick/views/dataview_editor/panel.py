@@ -15,7 +15,7 @@ from tkinter import messagebox, ttk
 from pyclickplc.addresses import normalize_address
 from pyclickplc.dataview import (
     MAX_DATAVIEW_ROWS,
-    DataviewFile,
+    DataViewFile,
     DataViewRecord as DataViewRecord,
     create_empty_dataview,
     get_data_type_for_address,
@@ -55,7 +55,7 @@ class DataviewPanel(ttk.Frame):
     Target is 100 rows, but supports overflow (rows 100+) with grey background.
     Overflow rows are excluded from saves.
     Supports row reordering, insert/delete, cut/copy/paste, and address autocomplete.
-    New Value data is preserved internally and shown using DataviewFile helpers.
+    New Value data is preserved internally and shown using DataViewFile helpers.
     """
 
     def _canonical_address(self, address: str) -> str | None:
@@ -81,14 +81,14 @@ class DataviewPanel(ttk.Frame):
         return bool(row.address.strip()) and row.is_writable
 
     def _new_value_display(self, row: DataViewRecord) -> str:
-        return DataviewFile.value_to_display(row.new_value, row.data_type)
+        return DataViewFile.value_to_display(row.new_value, row.data_type)
 
     def _live_value_display(self, row: DataViewRecord) -> str:
         address = self._canonical_address(row.address)
         if not address:
             return ""
         value = self._live_values.get(address)
-        return DataviewFile.value_to_display(value, row.data_type)
+        return DataViewFile.value_to_display(value, row.data_type)
 
     def _sync_write_checkbox(self, row_idx: int) -> None:
         """Refresh write checkbox cell for a row."""
@@ -264,7 +264,7 @@ class DataviewPanel(ttk.Frame):
                 display_text = self._display_text(new_value)
                 old_native = row.new_value
                 try:
-                    DataviewFile.set_row_new_value_from_display(row, display_text)
+                    DataViewFile.set_row_new_value_from_display(row, display_text)
                 except ValueError:
                     self._update_row_display(row_idx)
                     continue
@@ -496,14 +496,14 @@ class DataviewPanel(ttk.Frame):
                 return self._new_value_display(row)
 
             display_text = self._display_text(event.value)
-            ok, _error = DataviewFile.validate_row_display(row, display_text)
+            ok, _error = DataViewFile.validate_row_display(row, display_text)
             if not ok:
                 return self._new_value_display(row)
 
-            parsed = DataviewFile.try_parse_display(display_text, row.data_type)
+            parsed = DataViewFile.try_parse_display(display_text, row.data_type)
             if not parsed.ok:
                 return self._new_value_display(row)
-            return DataviewFile.value_to_display(parsed.value, row.data_type)
+            return DataViewFile.value_to_display(parsed.value, row.data_type)
 
         return event.value
 

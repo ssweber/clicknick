@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pyclickplc.dataview import DataviewFile
+from pyclickplc.dataview import DataViewFile
 from pyclickplc.dataview import check_cdv_file as check_cdv_file
 from pyclickplc.dataview import read_cdv as read_cdv
 from pyclickplc.dataview import write_cdv as write_cdv
@@ -23,7 +23,7 @@ def save_cdv(
     header: str | None = None,
 ) -> None:
     """Save wrapper accepting legacy args for ClickNick internals."""
-    dataview = DataviewFile(
+    dataview = DataViewFile(
         rows=rows,
         has_new_values=has_new_values,
         header=header or f"{-1 if has_new_values else 0},0,0",

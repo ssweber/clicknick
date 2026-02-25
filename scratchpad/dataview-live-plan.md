@@ -34,10 +34,10 @@ File: `src/clicknick/views/dataview_editor/panel.py`
   - `New Value` (editable for writable rows only)
   - `Write` (checkbox)
   - `Live` (read-only)
-- Use explicit `DataviewFile` helpers for New Value and Live formatting/parsing:
-  - `DataviewFile.value_to_display(...)` for UI display text
-  - `DataviewFile.validate_row_display(...)` for edit validation
-  - `DataviewFile.try_parse_display(...)` or `DataviewFile.set_row_new_value_from_display(...)` for native value updates
+- Use explicit `DataViewFile` helpers for New Value and Live formatting/parsing:
+  - `DataViewFile.value_to_display(...)` for UI display text
+  - `DataViewFile.validate_row_display(...)` for edit validation
+  - `DataViewFile.try_parse_display(...)` or `DataViewFile.set_row_new_value_from_display(...)` for native value updates
 - Keep write checkboxes only on writable, non-empty-address rows.
 - Keep `New Value` effectively read-only for non-writable addresses.
 
@@ -119,7 +119,7 @@ File: `src/clicknick/views/dataview_editor/window.py`
 ## ClickNick Test Requirements
 
 1. Panel behavior
-- New Value edit validation and normalization uses `DataviewFile` helpers.
+- New Value edit validation and normalization uses `DataViewFile` helpers.
 - Write checkbox lifecycle tracks writability/address presence.
 - `get_write_rows()` and `get_write_all_rows()` include only writable rows.
 - `get_poll_addresses()` returns canonical uppercase, valid-only, de-duplicated addresses.
