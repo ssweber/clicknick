@@ -166,9 +166,9 @@ class AddressRow:
 
     @property
     def should_ignore_validation_error(self) -> bool:
-        """True if validation errors should be ignored (SC/SD loaded with invalid data).
+        """True if validation errors should be ignored for loaded system nicknames.
 
-        SC/SD addresses often have system-preset nicknames that violate validation rules.
+        Some SC/SD/X addresses can have PLC-generated nicknames with non-user format.
         If the row was loaded with errors, we ignore the errors for display purposes.
         """
         return self.loaded_with_error

@@ -5,6 +5,7 @@ from pyclickplc.addresses import get_addr_key
 
 from clicknick.data.address_store import AddressStore
 from clicknick.data.undo_frame import MAX_UNDO_DEPTH
+from clicknick.models.address_row import AddressRow
 
 
 class MockDataSource:
@@ -36,8 +37,6 @@ def store():
 @pytest.fixture
 def store_with_data():
     """Create a store with pre-loaded data in base_state."""
-
-    from clicknick.models.address_row import AddressRow
 
     # Create initial rows that simulate being loaded from database
     addr_key_1 = get_addr_key("X", 1)
@@ -368,6 +367,57 @@ class TestObservers:
             session.set_field(addr_key, "nickname", "NewName")
 
         assert len(notifications) == 0
+
+
+class TestSystemNicknameValidation:
+    """Regression tests for system nickname validation behavior."""
+
+    @pytest.mark.parametrize(
+        ("memory_type", "nickname"),
+        (
+            ("SC", "Comm/Port_1"),
+            ("SD", "_Fixed_Scan_Time(ms)"),
+            ("X", "_IO1_Module_Error"),
+        ),
+    )
+    def test_loaded_system_nickname_is_valid(self, memory_type, nickname):
+        """System nicknames from DB should not be reported as invalid."""
+        addr_key = get_addr_key(memory_type, 1)
+        data_source = MockDataSource(
+            {
+                addr_key: AddressRow(
+                    memory_type=memory_type,
+                    address=1,
+                    nickname=nickname,
+                )
+            }
+        )
+        store = AddressStore(data_source)
+        store.load_initial_data()
+
+        row = store.visible_state[addr_key]
+        assert row.nickname_valid is True
+        assert row.nickname_error == ""
+        assert row.is_valid is True
+
+    @pytest.mark.parametrize(
+        ("memory_type", "nickname"),
+        (
+            ("SC", "Comm/Port_1"),
+            ("SD", "_Fixed_Scan_Time(ms)"),
+            ("X", "_IO1_Module_Error"),
+        ),
+    )
+    def test_edited_system_nickname_is_valid(self, store, memory_type, nickname):
+        """Edits should validate system nickname formats with system rules."""
+        addr_key = get_addr_key(memory_type, 1)
+        with store.edit_session("Set system nickname") as session:
+            session.set_field(addr_key, "nickname", nickname)
+
+        row = store.visible_state[addr_key]
+        assert row.nickname_valid is True
+        assert row.nickname_error == ""
+        assert row.is_valid is True
 
 
 class TestExternalDatabaseUpdate:

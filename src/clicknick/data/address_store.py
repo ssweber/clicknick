@@ -27,6 +27,7 @@ from pyclickplc.banks import (
     DataType,
 )
 from pyclickplc.blocks import parse_block_tag
+from pyclickplc.validation import SYSTEM_NICKNAME_TYPES
 
 from ..models.address_row import AddressRow
 from ..models.validation import validate_comment, validate_initial_value, validate_nickname
@@ -158,8 +159,6 @@ class AddressStore:
 
     def _mark_loaded_with_errors(self) -> None:
         """Mark X/SC/SD rows that loaded with invalid nicknames."""
-        from pyclickplc.validation import SYSTEM_NICKNAME_TYPES
-
         all_nicks = self.all_nicknames
         for addr_key, row in self.visible_state.items():
             if row.memory_type in SYSTEM_NICKNAME_TYPES and row.nickname:
@@ -181,8 +180,13 @@ class AddressStore:
         if not row:
             return
 
+        is_system = row.memory_type in SYSTEM_NICKNAME_TYPES
         nickname_valid, nickname_error = validate_nickname(
-            row.nickname, all_nicknames, addr_key, self.is_duplicate_nickname
+            row.nickname,
+            all_nicknames,
+            addr_key,
+            self.is_duplicate_nickname,
+            is_system=is_system,
         )
 
         # Validate comment (includes block name uniqueness check)
