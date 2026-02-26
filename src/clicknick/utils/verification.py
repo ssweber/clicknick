@@ -134,9 +134,12 @@ def verify_mdb_addresses(shared_data: SharedAddressData) -> list[str]:
             issues.append(f"MDB: Unknown memory type '{row.memory_type}' for address {row.address}")
 
         # 3. Validate nickname and initial value
-        is_system = row.memory_type in SYSTEM_NICKNAME_TYPES
+        is_system_type = row.memory_type in SYSTEM_NICKNAME_TYPES
         nick_valid, nick_error = validate_nickname(
-            row.nickname, all_nicknames, addr_key, is_system=is_system
+            row.nickname,
+            all_nicknames,
+            addr_key,
+            system_bank=row.memory_type if is_system_type else None,
         )
         if not nick_valid:
             issues.append(f"MDB: {display} nickname invalid: {nick_error}")
@@ -147,7 +150,7 @@ def verify_mdb_addresses(shared_data: SharedAddressData) -> list[str]:
 
         # 4. NON_EDITABLE_TYPES should have empty or "0" initial_value
         #    (system types like SC/SD can have PLC-preset initial values)
-        if row.memory_type in NON_EDITABLE_TYPES and not is_system:
+        if row.memory_type in NON_EDITABLE_TYPES and not is_system_type:
             if row.initial_value not in ("", "0"):
                 nick_part = f" nickname '{row.nickname}'" if row.nickname else ""
                 issues.append(

@@ -6,18 +6,19 @@ from pyclickplc.validation import validate_nickname as _pyclickplc_validate_nick
 
 
 def validate_nickname_format(
-    nickname: str, *, is_system: bool = False
+    nickname: str, *, system_bank: str | None = None
 ) -> tuple[bool, str]:
     """Validate nickname format (length, characters, etc.) without uniqueness check.
 
     Args:
         nickname: The nickname to validate
-        is_system: If True, allow leading underscores (PLC system-generated names).
+        system_bank: Optional system bank hint (e.g. "SC", "SD", "X") for
+            pyclickplc's bank-specific system rules.
 
     Returns:
         Tuple of (is_valid, error_message) - error_message is "" if valid
     """
-    return _pyclickplc_validate_nickname(nickname, is_system=is_system)
+    return _pyclickplc_validate_nickname(nickname, system_bank=system_bank)
 
 
 def validate_comment(
@@ -61,7 +62,7 @@ def validate_nickname(
     current_addr_key: int,
     is_duplicate_fn: Callable[[str, int], bool] | None = None,
     *,
-    is_system: bool = False,
+    system_bank: str | None = None,
 ) -> tuple[bool, str]:
     """Validate a nickname against all rules.
 
@@ -71,13 +72,14 @@ def validate_nickname(
         current_addr_key: The addr_key of the row being validated (excluded from uniqueness)
         is_duplicate_fn: Optional O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
             If provided, uses this instead of O(n) scan of all_nicknames.
-        is_system: If True, allow leading underscores (PLC system-generated names).
+        system_bank: Optional system bank hint (e.g. "SC", "SD", "X") for
+            pyclickplc's bank-specific system rules.
 
     Returns:
         Tuple of (is_valid, error_message) - error_message is "" if valid
     """
     # Check format first
-    is_valid, error = validate_nickname_format(nickname, is_system=is_system)
+    is_valid, error = validate_nickname_format(nickname, system_bank=system_bank)
     if not is_valid:
         return is_valid, error
 

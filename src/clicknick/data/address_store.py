@@ -163,7 +163,10 @@ class AddressStore:
         for addr_key, row in self.visible_state.items():
             if row.memory_type in SYSTEM_NICKNAME_TYPES and row.nickname:
                 is_valid, _ = validate_nickname(
-                    row.nickname, all_nicks, addr_key, is_system=True
+                    row.nickname,
+                    all_nicks,
+                    addr_key,
+                    system_bank=row.memory_type,
                 )
                 if not is_valid:
                     # Update both base and visible
@@ -180,13 +183,29 @@ class AddressStore:
         if not row:
             return
 
-        is_system = row.memory_type in SYSTEM_NICKNAME_TYPES
+        base_row = self.base_state.get(addr_key)
+        is_loaded_base_nickname = (
+            base_row is not None and row.nickname != "" and base_row.nickname == row.nickname
+        )
+        system_bank: str | None = None
+        if row.memory_type in SYSTEM_NICKNAME_TYPES:
+            # System nickname handling is intentionally narrow: only allow
+            # unchanged loaded values from PLC metadata.
+            if row.memory_type == "X":
+                # X system nicknames are auto-generated _IO* signals.
+                if is_loaded_base_nickname and row.nickname.startswith("_IO"):
+                    system_bank = "X"
+            else:
+                # SC/SD system-style names are allowed only when unchanged from load.
+                if is_loaded_base_nickname:
+                    system_bank = row.memory_type
+
         nickname_valid, nickname_error = validate_nickname(
             row.nickname,
             all_nicknames,
             addr_key,
             self.is_duplicate_nickname,
-            is_system=is_system,
+            system_bank=system_bank,
         )
 
         # Validate comment (includes block name uniqueness check)
@@ -503,6 +522,8 @@ class AddressStore:
                         comment_error=override.comment_error,
                         initial_value_valid=override.initial_value_valid,
                         initial_value_error=override.initial_value_error,
+                        loaded_with_error=base.loaded_with_error
+                        and override.nickname == base.nickname,
                     )
                 else:
                     self.visible_state[addr_key] = override

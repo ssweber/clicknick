@@ -405,19 +405,131 @@ class TestSystemNicknameValidation:
         (
             ("SC", "Comm/Port_1"),
             ("SD", "_Fixed_Scan_Time(ms)"),
-            ("X", "_IO1_Module_Error"),
         ),
     )
-    def test_edited_system_nickname_is_valid(self, store, memory_type, nickname):
-        """Edits should validate system nickname formats with system rules."""
+    def test_user_entered_sc_sd_system_nickname_is_invalid(self, store, memory_type, nickname):
+        """SC/SD system-style nicknames should not be accepted as user edits."""
         addr_key = get_addr_key(memory_type, 1)
-        with store.edit_session("Set system nickname") as session:
+        with store.edit_session("Set SC/SD system nickname") as session:
             session.set_field(addr_key, "nickname", nickname)
+
+        row = store.visible_state[addr_key]
+        assert row.nickname_valid is False
+        assert row.nickname_error != ""
+        assert row.is_valid is False
+
+    @pytest.mark.parametrize(
+        ("memory_type", "base_nickname", "edited_nickname"),
+        (
+            ("SC", "Comm/Port_1", "Comm/Port_2"),
+            ("SD", "_Fixed_Scan_Time(ms)", "_Scan_Time(ms)"),
+        ),
+    )
+    def test_loaded_sc_sd_system_then_edited_is_invalid(
+        self, memory_type, base_nickname, edited_nickname
+    ):
+        """Loaded SC/SD system nickname is valid, but edited variant should fail."""
+        addr_key = get_addr_key(memory_type, 1)
+        data_source = MockDataSource(
+            {
+                addr_key: AddressRow(
+                    memory_type=memory_type,
+                    address=1,
+                    nickname=base_nickname,
+                )
+            }
+        )
+        store = AddressStore(data_source)
+        store.load_initial_data()
+
+        with store.edit_session("Edit loaded SC/SD system nickname") as session:
+            session.set_field(addr_key, "nickname", edited_nickname)
+
+        row = store.visible_state[addr_key]
+        assert row.nickname_valid is False
+        assert row.nickname_error != ""
+        assert row.is_valid is False
+
+    def test_loaded_x_io_nickname_stays_valid(self):
+        """Loaded X _IO nickname should be allowed as PLC-generated."""
+        addr_key = get_addr_key("X", 1)
+        data_source = MockDataSource(
+            {
+                addr_key: AddressRow(
+                    memory_type="X",
+                    address=1,
+                    nickname="_IO1_Module_Error",
+                )
+            }
+        )
+        store = AddressStore(data_source)
+        store.load_initial_data()
 
         row = store.visible_state[addr_key]
         assert row.nickname_valid is True
         assert row.nickname_error == ""
         assert row.is_valid is True
+
+    def test_user_entered_x_io_nickname_is_invalid(self, store):
+        """User-entered X _IO nickname should be rejected."""
+        addr_key = get_addr_key("X", 1)
+        with store.edit_session("Set X system nickname") as session:
+            session.set_field(addr_key, "nickname", "_IO1_Module_Error")
+
+        row = store.visible_state[addr_key]
+        assert row.nickname_valid is False
+        assert "Cannot start with _" in row.nickname_error
+        assert row.is_valid is False
+
+    def test_loaded_x_io_then_user_changes_nickname_is_invalid(self):
+        """Changing loaded _IO nickname to another _IO value should be rejected."""
+        addr_key = get_addr_key("X", 1)
+        data_source = MockDataSource(
+            {
+                addr_key: AddressRow(
+                    memory_type="X",
+                    address=1,
+                    nickname="_IO1_Module_Error",
+                )
+            }
+        )
+        store = AddressStore(data_source)
+        store.load_initial_data()
+
+        with store.edit_session("Change loaded _IO nickname") as session:
+            session.set_field(addr_key, "nickname", "_IO2_Module_Error")
+
+        row = store.visible_state[addr_key]
+        assert row.nickname_valid is False
+        assert "Cannot start with _" in row.nickname_error
+        assert row.is_valid is False
+
+    def test_user_edit_clears_loaded_error_mask_for_nickname(self):
+        """Editing nickname should stop masking old loaded validation errors."""
+        addr_key = get_addr_key("SC", 1)
+        data_source = MockDataSource(
+            {
+                addr_key: AddressRow(
+                    memory_type="SC",
+                    address=1,
+                    nickname="log",  # Reserved keyword
+                )
+            }
+        )
+        store = AddressStore(data_source)
+        store.load_initial_data()
+
+        loaded_row = store.visible_state[addr_key]
+        assert loaded_row.loaded_with_error is True
+        assert loaded_row.nickname_valid is True
+
+        with store.edit_session("Edit invalid loaded nickname") as session:
+            session.set_field(addr_key, "nickname", "_UserTyped")
+
+        edited_row = store.visible_state[addr_key]
+        assert edited_row.loaded_with_error is False
+        assert edited_row.nickname_valid is False
+        assert "Cannot start with _" in edited_row.nickname_error
 
 
 class TestExternalDatabaseUpdate:
