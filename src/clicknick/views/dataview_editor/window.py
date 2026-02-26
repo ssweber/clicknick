@@ -662,6 +662,19 @@ class DataviewEditorWindow(tk.Toplevel):
         """
         self._insert_addresses(leaves)
 
+    @staticmethod
+    def _get_paired_prompt_type(leaves: list[tuple[str, int]]) -> tuple[str, str] | None:
+        """Return (source_type, paired_type) when paired insert prompt should be shown."""
+        memory_types = {memory_type for memory_type, _address in leaves}
+        if len(memory_types) != 1:
+            return None
+
+        source_type = next(iter(memory_types))
+        if source_type not in ("T", "CT"):
+            return None
+
+        return source_type, INTERLEAVED_PAIRS[source_type]
+
     def _on_block_select(self, leaves: list[tuple[str, int]]) -> None:
         """Handle block selection from NavWindow - insert all block addresses.
 
@@ -673,22 +686,16 @@ class DataviewEditorWindow(tk.Toplevel):
         if not leaves:
             return
 
-        # Check if this is a T or CT block (all addresses same type for a block)
-        memory_types = {mem_type for mem_type, _ in leaves}
-
-        # If it's a T or CT block, offer to include paired data type (TD/CTD)
         include_paired = False
         paired_type = None
-        for mem_type in memory_types:
-            # Only prompt for bit types (T, CT), not data types (TD, CTD)
-            if mem_type in ("T", "CT"):
-                paired_type = INTERLEAVED_PAIRS[mem_type]
-                include_paired = messagebox.askyesno(
-                    "Include Paired Type",
-                    f"Also insert {paired_type} addresses with this {mem_type} block?",
-                    parent=self,
-                )
-                break  # Only one type per block
+        pair_prompt = self._get_paired_prompt_type(leaves)
+        if pair_prompt is not None:
+            source_type, paired_type = pair_prompt
+            include_paired = messagebox.askyesno(
+                "Include Paired Type",
+                f"Also insert {paired_type} addresses with this {source_type} block?",
+                parent=self,
+            )
 
         # Build address list, interleaving if paired type requested
         if include_paired and paired_type:

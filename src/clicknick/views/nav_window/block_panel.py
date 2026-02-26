@@ -12,6 +12,7 @@ from tkinter import ttk
 from ...models.address_row import AddressRow
 from ...services.block_service import compute_all_block_ranges
 from ...widgets.colors import get_block_color_hex
+from .block_logic import BlockTreeNode, build_block_tree
 
 
 class BlockPanel(ttk.Frame):
@@ -31,6 +32,22 @@ class BlockPanel(ttk.Frame):
         # Rebuild tree with current data if we have it cached
         if self._all_rows_cache is not None:
             self.build_tree(self._all_rows_cache)
+
+    def _get_expanded_node_ids(self) -> set[str]:
+        """Get currently expanded node ids (for restoring tree state)."""
+        expanded: set[str] = set()
+        for iid, node in self._node_data.items():
+            if node.children and self.tree.item(iid, "open"):
+                expanded.add(node.node_id)
+        return expanded
+
+    def _restore_expanded_node_ids(self, expanded_node_ids: set[str]) -> None:
+        """Restore expanded state for matching nodes."""
+        if not expanded_node_ids:
+            return
+        for iid, node in self._node_data.items():
+            if node.children and node.node_id in expanded_node_ids:
+                self.tree.item(iid, open=True)
 
     def _create_widgets(self) -> None:
         header = ttk.Label(self, text="Memory Blocks", font=("TkDefaultFont", 9, "bold"))
@@ -82,17 +99,15 @@ class BlockPanel(ttk.Frame):
         super().__init__(parent)
         self.on_select = on_select
         self._block_data: dict[str, list[tuple[str, int]]] = {}
+        self._node_data: dict[str, BlockTreeNode] = {}
         self._configured_colors: set[str] = set()
         self._sort_alphabetically = tk.BooleanVar(value=False)
         self._all_rows_cache: dict[int, AddressRow] | None = None
 
         self._create_widgets()
 
-    def _render_block(self, name: str, color_name: str | None, rows: list[AddressRow]) -> None:
-        """Insert a block summary row into the treeview."""
-        if not rows:
-            return
-
+    def _ensure_color_tag(self, color_name: str | None) -> str:
+        """Create/get a tree tag for a block background color."""
         # Convert color name to hex
         hex_color = None
         if color_name:
@@ -105,31 +120,42 @@ class BlockPanel(ttk.Frame):
             if tag_name not in self._configured_colors:
                 self.tree.tag_configure(tag_name, background=hex_color)
                 self._configured_colors.add(tag_name)
+        return tag_name
 
-        # Format like Sidebar (Name + Range)
-        start_row = rows[0]
-        end_row = rows[-1]
+    @staticmethod
+    def _format_node_text(node: BlockTreeNode) -> str:
+        """Format node text for display in treeview."""
+        if node.is_group:
+            return node.text
+        prefix = "📦" if len(node.addresses) > 1 else "■"
+        return f"{prefix} {node.text}"
 
-        # Single point vs Range
-        if len(rows) > 1:
-            prefix = "📦"
-            display_text = f"{name} ({start_row.display_address}-{end_row.display_address})"
-        else:
-            prefix = "■"
-            display_text = f"{name} ({start_row.display_address})"
+    def _insert_node(self, node: BlockTreeNode, parent_iid: str = "") -> None:
+        """Insert node and children recursively into the treeview."""
+        tag_name = self._ensure_color_tag(node.bg_color)
+        iid = self.tree.insert(
+            parent_iid,
+            tk.END,
+            text=self._format_node_text(node),
+            tags=(tag_name,),
+        )
+        self._node_data[iid] = node
 
-        # Insert as a single item
-        iid = self.tree.insert("", tk.END, text=f"{prefix} {display_text}", tags=(tag_name,))
+        if node.addresses:
+            self._block_data[iid] = list(node.addresses)
 
-        # Store all addresses in the block
-        self._block_data[iid] = [(row.memory_type, row.address) for row in rows]
+        for child in node.children:
+            self._insert_node(child, iid)
 
     def build_tree(self, all_rows: dict[int, AddressRow]) -> None:
         """Parse comments and rebuild the blocks tree."""
+        expanded_node_ids = self._get_expanded_node_ids()
+
         # Cache the data for re-sorting
         self._all_rows_cache = all_rows
 
         self._block_data.clear()
+        self._node_data.clear()
         for item in self.tree.get_children():
             self.tree.delete(item)
 
@@ -139,15 +165,15 @@ class BlockPanel(ttk.Frame):
 
         # Use centralized block matching
         ranges = compute_all_block_ranges(rows_list)
+        nodes = build_block_tree(
+            ranges,
+            rows_list,
+            sort_alphabetically=self._sort_alphabetically.get(),
+        )
+        for node in nodes:
+            self._insert_node(node)
 
-        # Sort alphabetically if requested
-        if self._sort_alphabetically.get():
-            ranges = sorted(ranges, key=lambda block: block.name.lower())
-
-        # Render each block
-        for block in ranges:
-            block_rows = rows_list[block.start_idx : block.end_idx + 1]
-            self._render_block(block.name, block.bg_color, block_rows)
+        self._restore_expanded_node_ids(expanded_node_ids)
 
     def refresh(self, all_rows: dict[int, AddressRow]) -> None:
         """Refresh the tree with updated data."""
