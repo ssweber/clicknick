@@ -1,303 +1,60 @@
-"""Tests for CDV file I/O."""
+"""Tests for ClickNick CDV file helper wrappers."""
 
-import tempfile
-from pathlib import Path
-
-import pytest
-
-from clicknick.models.dataview_row import (
-    MAX_DATAVIEW_ROWS,
-    DataviewRow,
-    TypeCode,
-    create_empty_dataview,
+from clicknick.models.dataview_row import DataType, create_empty_dataview
+from clicknick.views.dataview_editor.cdv_file import (
+    check_cdv_files,
+    get_dataview_folder,
+    list_cdv_files,
+    save_cdv,
 )
-from clicknick.views.dataview_editor.cdv_file import export_cdv, load_cdv, save_cdv
 
-# Test files in the tests directory
-TEST_DIR = Path(__file__).parent
-DATAVIEW1_PATH = TEST_DIR / "DataView1.cdv"
-DATAVIEW1_WITH_NEW_VALUES_PATH = TEST_DIR / "DataView1WithNewValues.cdv"
 
+class TestDataviewFolderDiscovery:
+    """Tests for DataView folder discovery helpers."""
 
-class TestLoadCdv:
-    """Tests for loading CDV files."""
+    def test_get_dataview_folder_invalid_path(self, tmp_path):
+        assert get_dataview_folder(tmp_path / "missing") is None
 
-    def test_load_dataview1(self):
-        """Test loading DataView1.cdv (no new values)."""
-        rows, has_new_values, header = load_cdv(DATAVIEW1_PATH)
+    def test_get_dataview_folder_found(self, tmp_path):
+        project = tmp_path / "ProjectA"
+        dataview = project / "CLICK (00010A98)" / "DataView"
+        dataview.mkdir(parents=True)
 
-        assert len(rows) == MAX_DATAVIEW_ROWS
-        assert has_new_values is False
-        assert header == "0,0,0"  # Original header preserved
+        found = get_dataview_folder(project)
+        assert found == dataview
 
-        # Check first few rows
-        assert rows[0].address == "X001"
-        assert rows[0].type_code == TypeCode.BIT
+    def test_list_cdv_files_sorted_and_filtered(self, tmp_path):
+        folder = tmp_path / "DataView"
+        folder.mkdir()
 
-        assert rows[1].address == "X002"
-        assert rows[1].type_code == TypeCode.BIT
+        (folder / "zeta.cdv").write_text("", encoding="utf-8")
+        (folder / "Alpha.cdv").write_text("", encoding="utf-8")
+        (folder / "notes.txt").write_text("", encoding="utf-8")
 
-        # Check a DS row
-        ds_row = next(r for r in rows if r.address == "DS1")
-        assert ds_row.type_code == TypeCode.INT
+        files = list_cdv_files(folder)
+        assert [f.name for f in files] == ["Alpha.cdv", "zeta.cdv"]
 
-        # Check a DF row
-        df_row = next(r for r in rows if r.address == "DF1")
-        assert df_row.type_code == TypeCode.FLOAT
+    def test_check_cdv_files_counts_and_aggregation(self, tmp_path):
+        project = tmp_path / "MyProject"
+        dataview_dir = project / "CLICK (00010A98)" / "DataView"
+        dataview_dir.mkdir(parents=True)
 
-        # Check a TXT row
-        txt_row = next(r for r in rows if r.address == "TXT1")
-        assert txt_row.type_code == TypeCode.TXT
+        rows_ok = create_empty_dataview()
+        rows_ok[0].address = "X001"
+        rows_ok[0].data_type = DataType.BIT
+        save_cdv(dataview_dir / "ok.cdv", rows_ok, has_new_values=False)
 
-        # Check empty rows exist
-        empty_count = sum(1 for r in rows if r.is_empty)
-        assert empty_count > 0
+        rows_bad = create_empty_dataview()
+        rows_bad[0].address = "DS1"
+        rows_bad[0].data_type = DataType.BIT
+        save_cdv(dataview_dir / "bad.cdv", rows_bad, has_new_values=False)
 
-    def test_load_dataview1_with_new_values(self):
-        """Test loading DataView1WithNewValues.cdv."""
-        rows, has_new_values, header = load_cdv(DATAVIEW1_WITH_NEW_VALUES_PATH)
+        issues, checked = check_cdv_files(project)
+        assert checked == 2
+        assert len(issues) == 1
+        assert "Data type mismatch" in issues[0]
 
-        assert len(rows) == MAX_DATAVIEW_ROWS
-        assert has_new_values is True
-        assert header == "-1,0,0"  # Original header preserved
-
-        # Check rows with new values
-        assert rows[0].address == "X001"
-        assert rows[0].new_value == "1"  # BIT on
-
-        assert rows[1].address == "X002"
-        assert rows[1].new_value == "0"  # BIT off
-
-        # DS with new value
-        ds1_row = next(r for r in rows if r.address == "DS1")
-        assert ds1_row.new_value == "1"
-
-        # DF with new value (float stored as int representation)
-        df1_row = next(r for r in rows if r.address == "DF1")
-        assert df1_row.new_value  # Should have a value
-
-    def test_load_nonexistent_file(self):
-        """Test loading a file that doesn't exist."""
-        with pytest.raises(FileNotFoundError):
-            load_cdv(TEST_DIR / "nonexistent.cdv")
-
-
-class TestSaveCdv:
-    """Tests for saving CDV files."""
-
-    def test_save_empty_dataview(self):
-        """Test saving an empty dataview."""
-        rows = create_empty_dataview()
-
-        with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f:
-            temp_path = Path(f.name)
-
-        try:
-            save_cdv(temp_path, rows, has_new_values=False)
-
-            # Load it back
-            loaded_rows, has_new_values, _header = load_cdv(temp_path)
-
-            assert len(loaded_rows) == MAX_DATAVIEW_ROWS
-            assert has_new_values is False
-            assert all(r.is_empty for r in loaded_rows)
-        finally:
-            temp_path.unlink(missing_ok=True)
-
-    def test_save_with_addresses(self):
-        """Test saving a dataview with addresses."""
-        rows = create_empty_dataview()
-        rows[0].address = "X001"
-        rows[0].type_code = TypeCode.BIT
-        rows[1].address = "DS100"
-        rows[1].type_code = TypeCode.INT
-
-        with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f:
-            temp_path = Path(f.name)
-
-        try:
-            save_cdv(temp_path, rows, has_new_values=False)
-
-            # Load it back
-            loaded_rows, has_new_values, _header = load_cdv(temp_path)
-
-            assert loaded_rows[0].address == "X001"
-            assert loaded_rows[0].type_code == TypeCode.BIT
-            assert loaded_rows[1].address == "DS100"
-            assert loaded_rows[1].type_code == TypeCode.INT
-            assert has_new_values is False
-        finally:
-            temp_path.unlink(missing_ok=True)
-
-    def test_save_with_new_values(self):
-        """Test saving a dataview with new values."""
-        rows = create_empty_dataview()
-        rows[0].address = "X001"
-        rows[0].type_code = TypeCode.BIT
-        rows[0].new_value = "1"
-        rows[1].address = "DS100"
-        rows[1].type_code = TypeCode.INT
-        rows[1].new_value = "42"
-
-        with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f:
-            temp_path = Path(f.name)
-
-        try:
-            save_cdv(temp_path, rows, has_new_values=True)
-
-            # Load it back
-            loaded_rows, has_new_values, _header = load_cdv(temp_path)
-
-            assert loaded_rows[0].address == "X001"
-            assert loaded_rows[0].new_value == "1"
-            assert loaded_rows[1].address == "DS100"
-            assert loaded_rows[1].new_value == "42"
-            assert has_new_values is True
-        finally:
-            temp_path.unlink(missing_ok=True)
-
-    def test_fewer_rows_pads_to_100(self):
-        """Test that saving with fewer rows pads to 100."""
-        rows = [DataviewRow(address="X001")]  # Only 1 row
-
-        with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f:
-            temp_path = Path(f.name)
-
-        try:
-            # Should not raise - pads with empty rows
-            save_cdv(temp_path, rows, has_new_values=False)
-
-            # Verify file was saved and has correct structure
-            loaded_rows, _, _header = load_cdv(temp_path)
-            assert len(loaded_rows) == 100
-            assert loaded_rows[0].address == "X001"
-            assert all(r.is_empty for r in loaded_rows[1:])
-        finally:
-            temp_path.unlink(missing_ok=True)
-
-    def test_overflow_rows_not_saved(self):
-        """Test that overflow rows (>100) are not saved."""
-        rows = create_empty_dataview()
-        rows[0].address = "X001"
-
-        # Add 5 overflow rows
-        for i in range(5):
-            overflow_row = DataviewRow(address=f"Y{i:03d}")
-            rows.append(overflow_row)
-
-        assert len(rows) == 105
-
-        with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f:
-            temp_path = Path(f.name)
-
-        try:
-            save_cdv(temp_path, rows, has_new_values=False)
-
-            # Verify only first 100 rows saved
-            loaded_rows, _, _header = load_cdv(temp_path)
-            assert len(loaded_rows) == 100
-            assert loaded_rows[0].address == "X001"
-            # Y000-Y004 should NOT be in loaded rows (they were overflow)
-            addresses = [r.address for r in loaded_rows if r.address]
-            assert "Y000" not in addresses
-        finally:
-            temp_path.unlink(missing_ok=True)
-
-
-class TestRoundTrip:
-    """Tests for round-trip loading and saving."""
-
-    def test_roundtrip_dataview1(self):
-        """Test round-trip load/save of DataView1.cdv."""
-        original_rows, original_has_new_values, original_header = load_cdv(DATAVIEW1_PATH)
-
-        with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f:
-            temp_path = Path(f.name)
-
-        try:
-            save_cdv(temp_path, original_rows, original_has_new_values, original_header)
-            loaded_rows, loaded_has_new_values, loaded_header = load_cdv(temp_path)
-
-            assert loaded_has_new_values == original_has_new_values
-            assert loaded_header == original_header
-
-            for i, (orig, loaded) in enumerate(zip(original_rows, loaded_rows, strict=True)):
-                assert orig.address == loaded.address, f"Row {i} address mismatch"
-                assert orig.type_code == loaded.type_code, f"Row {i} type_code mismatch"
-                assert orig.new_value == loaded.new_value, f"Row {i} new_value mismatch"
-        finally:
-            temp_path.unlink(missing_ok=True)
-
-    def test_roundtrip_dataview1_with_new_values(self):
-        """Test round-trip load/save of DataView1WithNewValues.cdv."""
-        original_rows, original_has_new_values, original_header = load_cdv(
-            DATAVIEW1_WITH_NEW_VALUES_PATH
-        )
-
-        with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f:
-            temp_path = Path(f.name)
-
-        try:
-            save_cdv(temp_path, original_rows, original_has_new_values, original_header)
-            loaded_rows, loaded_has_new_values, loaded_header = load_cdv(temp_path)
-
-            assert loaded_has_new_values == original_has_new_values
-            assert loaded_header == original_header
-
-            for i, (orig, loaded) in enumerate(zip(original_rows, loaded_rows, strict=True)):
-                assert orig.address == loaded.address, f"Row {i} address mismatch"
-                assert orig.type_code == loaded.type_code, f"Row {i} type_code mismatch"
-                assert orig.new_value == loaded.new_value, f"Row {i} new_value mismatch"
-        finally:
-            temp_path.unlink(missing_ok=True)
-
-
-class TestExtendedHeader:
-    """Tests for CDV files with extended headers (column widths)."""
-
-    def test_extended_header_preserved(self):
-        """Test that extended headers with column widths are preserved on round-trip."""
-        extended_header = "0,0,0,559,653,94,138,94,94,94,75,50,75,75,30,78,64"
-        rows = create_empty_dataview()
-        rows[0].address = "X001"
-        rows[0].type_code = TypeCode.BIT
-
-        with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f:
-            temp_path = Path(f.name)
-
-        try:
-            save_cdv(temp_path, rows, has_new_values=False, header=extended_header)
-            loaded_rows, has_new_values, loaded_header = load_cdv(temp_path)
-
-            assert loaded_header == extended_header
-            assert has_new_values is False
-            assert loaded_rows[0].address == "X001"
-        finally:
-            temp_path.unlink(missing_ok=True)
-
-
-class TestExportCdv:
-    """Tests for exporting CDV files."""
-
-    def test_export_is_same_as_save(self):
-        """Test that export produces the same result as save."""
-        rows = create_empty_dataview()
-        rows[0].address = "Y001"
-        rows[0].type_code = TypeCode.BIT
-
-        with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f1:
-            save_path = Path(f1.name)
-        with tempfile.NamedTemporaryFile(suffix=".cdv", delete=False) as f2:
-            export_path = Path(f2.name)
-
-        try:
-            save_cdv(save_path, rows, has_new_values=False)
-            export_cdv(export_path, rows, has_new_values=False)
-
-            save_content = save_path.read_bytes()
-            export_content = export_path.read_bytes()
-
-            assert save_content == export_content
-        finally:
-            save_path.unlink(missing_ok=True)
-            export_path.unlink(missing_ok=True)
+    def test_check_cdv_files_missing_folder(self, tmp_path):
+        issues, checked = check_cdv_files(tmp_path / "NoProject")
+        assert checked == 0
+        assert issues == []

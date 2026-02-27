@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from .constants import DEFAULT_RETENTIVE
+from pyclickplc.banks import DEFAULT_RETENTIVE
 
 
 @dataclass

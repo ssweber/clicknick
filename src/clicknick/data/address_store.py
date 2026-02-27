@@ -18,15 +18,18 @@ from contextlib import contextmanager
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from ..models.address_row import AddressRow, get_addr_key, is_xd_yd_hidden_slot
-from ..models.blocktag import parse_block_tag
-from ..models.constants import (
-    ADDRESS_RANGES,
+from pyclickplc.addresses import get_addr_key, is_xd_yd_hidden_slot
+from pyclickplc.banks import (
+    BANKS,
     DEFAULT_RETENTIVE,
     INTERLEAVED_PAIRS,
     MEMORY_TYPE_TO_DATA_TYPE,
     DataType,
 )
+from pyclickplc.blocks import parse_block_tag
+from pyclickplc.validation import SYSTEM_NICKNAME_TYPES
+
+from ..models.address_row import AddressRow
 from ..models.validation import validate_comment, validate_initial_value, validate_nickname
 from ..services.block_service import BlockService, compute_all_block_ranges
 from ..services.nickname_index_service import NicknameIndexService
@@ -126,24 +129,31 @@ class AddressStore:
         """
         skeleton: dict[int, AddressRow] = {}
 
-        for mem_type, (start, end) in ADDRESS_RANGES.items():
+        for mem_type, bank in BANKS.items():
             default_data_type = MEMORY_TYPE_TO_DATA_TYPE.get(mem_type, DataType.BIT)
             default_retentive = DEFAULT_RETENTIVE.get(mem_type, False)
 
-            for addr in range(start, end + 1):
-                # Skip hidden XD/YD slots
-                if is_xd_yd_hidden_slot(mem_type, addr):
-                    continue
+            # Use valid_ranges for sparse banks (X/Y), full range for contiguous
+            if bank.valid_ranges is not None:
+                ranges = bank.valid_ranges
+            else:
+                ranges = ((bank.min_addr, bank.max_addr),)
 
-                addr_key = get_addr_key(mem_type, addr)
-                row = AddressRow(
-                    memory_type=mem_type,
-                    address=addr,
-                    data_type=default_data_type,
-                    retentive=default_retentive,
-                )
-                skeleton[addr_key] = row
-                self.row_order.append(addr_key)
+            for lo, hi in ranges:
+                for addr in range(lo, hi + 1):
+                    # Skip hidden XD/YD slots
+                    if is_xd_yd_hidden_slot(mem_type, addr):
+                        continue
+
+                    addr_key = get_addr_key(mem_type, addr)
+                    row = AddressRow(
+                        memory_type=mem_type,
+                        address=addr,
+                        data_type=default_data_type,
+                        retentive=default_retentive,
+                    )
+                    skeleton[addr_key] = row
+                    self.row_order.append(addr_key)
 
         return skeleton
 
@@ -151,8 +161,13 @@ class AddressStore:
         """Mark X/SC/SD rows that loaded with invalid nicknames."""
         all_nicks = self.all_nicknames
         for addr_key, row in self.visible_state.items():
-            if row.memory_type in ("X", "SC", "SD") and row.nickname:
-                is_valid, _ = validate_nickname(row.nickname, all_nicks, addr_key)
+            if row.memory_type in SYSTEM_NICKNAME_TYPES and row.nickname:
+                is_valid, _ = validate_nickname(
+                    row.nickname,
+                    all_nicks,
+                    addr_key,
+                    system_bank=row.memory_type,
+                )
                 if not is_valid:
                     # Update both base and visible
                     updated = replace(row, loaded_with_error=True)
@@ -168,12 +183,35 @@ class AddressStore:
         if not row:
             return
 
+        base_row = self.base_state.get(addr_key)
+        is_loaded_base_nickname = (
+            base_row is not None and row.nickname != "" and base_row.nickname == row.nickname
+        )
+        system_bank: str | None = None
+        if row.memory_type in SYSTEM_NICKNAME_TYPES:
+            # System nickname handling is intentionally narrow: only allow
+            # unchanged loaded values from PLC metadata.
+            if row.memory_type == "X":
+                # X system nicknames are auto-generated _IO* signals.
+                if is_loaded_base_nickname and row.nickname.startswith("_IO"):
+                    system_bank = "X"
+            else:
+                # SC/SD system-style names are allowed only when unchanged from load.
+                if is_loaded_base_nickname:
+                    system_bank = row.memory_type
+
         nickname_valid, nickname_error = validate_nickname(
-            row.nickname, all_nicknames, addr_key, self.is_duplicate_nickname
+            row.nickname,
+            all_nicknames,
+            addr_key,
+            self.is_duplicate_nickname,
+            system_bank=system_bank,
         )
 
-        # Validate comment
-        comment_valid, comment_error = validate_comment(row.comment)
+        # Validate comment (includes block name uniqueness check)
+        comment_valid, comment_error = validate_comment(
+            row.comment, self.is_duplicate_block_name, addr_key
+        )
 
         # Validate initial value
         init_valid, init_error = validate_initial_value(row.initial_value, row.data_type)
@@ -359,7 +397,12 @@ class AddressStore:
         """Apply automatic syncs (T/TD, block tags) to pending changes."""
 
         def _sync_interleaved_pair(src_row: AddressRow, comment: str) -> None:
-            """Sync comment to the interleaved pair (e.g. T -> TD)."""
+            """Sync comment to the interleaved pair (e.g. T -> TD).
+
+            For block tags, applies _D suffix transformation:
+            - T/CT blocks use base name (e.g., "Pumps")
+            - TD/CTD blocks use "_D" suffix (e.g., "Pumps_D")
+            """
             if src_row.memory_type not in INTERLEAVED_PAIRS:
                 return
 
@@ -372,7 +415,13 @@ class AddressStore:
 
             paired_row = self.visible_state.get(paired_key)
             if paired_row:
-                synced = BlockService.apply_block_tag(comment, paired_row.comment)
+                # Use suffix-aware sync for block tags
+                synced = BlockService.apply_block_tag_for_interleaved_pair(
+                    comment,
+                    paired_row.comment,
+                    src_row.memory_type,
+                    paired_type,
+                )
                 if synced is not None:
                     session.get_builder(paired_key).comment = synced
 
@@ -473,6 +522,8 @@ class AddressStore:
                         comment_error=override.comment_error,
                         initial_value_valid=override.initial_value_valid,
                         initial_value_error=override.initial_value_error,
+                        loaded_with_error=base.loaded_with_error
+                        and override.nickname == base.nickname,
                     )
                 else:
                     self.visible_state[addr_key] = override
@@ -829,6 +880,37 @@ class AddressStore:
     def is_duplicate_nickname(self, nickname: str, exclude_addr_key: int) -> bool:
         """Check if nickname is used by another address."""
         return self._nickname_service.is_duplicate(nickname, exclude_addr_key)
+
+    def is_duplicate_block_name(self, block_name: str, exclude_addr_key: int) -> bool:
+        """Check if block name is used by another block definition.
+
+        Block names must be unique across all memory types. A "block definition"
+        is an opening tag (<Name>) or self-closing tag (<Name />). Closing tags
+        (</Name>) are NOT duplicates - they're supposed to match their opening tag.
+
+        Args:
+            block_name: The block name to check
+            exclude_addr_key: The addr_key to exclude (the row being validated)
+
+        Returns:
+            True if block name is already defined by another opening/self-closing tag
+        """
+        # First check: if current row has a closing tag, it's never a duplicate
+        current_row = self.visible_state.get(exclude_addr_key)
+        if current_row:
+            current_tag = parse_block_tag(current_row.comment)
+            if current_tag.tag_type == "close":
+                return False  # Closing tags are allowed to match their opening tag
+
+        # Only count opening and self-closing tags as block definitions
+        # Use visible_state directly (works during initial load before unified view exists)
+        for addr_key, row in self.visible_state.items():
+            if addr_key == exclude_addr_key:
+                continue
+            tag = parse_block_tag(row.comment)
+            if tag.name == block_name and tag.tag_type in ("open", "self-closing"):
+                return True
+        return False
 
     def update_nickname(self, addr_key: int, old_nickname: str, new_nickname: str) -> None:
         """Update nickname in the index."""

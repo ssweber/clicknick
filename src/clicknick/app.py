@@ -271,10 +271,6 @@ class ClickNickApp:
         Multiple windows can be opened and they will share the same data.
         Changes made in one window are automatically reflected in others.
         """
-        if not self.connected_click_pid:
-            self._update_status("Connect to a ClickPLC window first", "error")
-            return
-
         # Check for ODBC drivers (MDB mode requires them)
         csv_path = self.csv_path_var.get()
         if not csv_path and not self.nickname_manager.has_access_driver():
@@ -307,10 +303,6 @@ class ClickNickApp:
         The dataview editor allows creating and editing CLICK DataView files (.cdv).
         Only one DataviewEditorWindow can be open at a time.
         """
-        if not self.connected_click_pid:
-            self._update_status("Connect to a ClickPLC window first", "error")
-            return
-
         # Use the app-level SharedAddressData
         if self._shared_address_data is None:
             self._update_status("No data loaded", "error")
@@ -323,6 +315,15 @@ class ClickNickApp:
 
             # Get project path from connected Click window
             project_path = get_project_path_from_hwnd(self.connected_click_hwnd)
+
+            # When no CLICK project, use CSV directory for CDV file discovery
+            csv_fallback_folder = None
+            if project_path is None:
+                csv_path = self.csv_path_var.get()
+                if csv_path:
+                    from pathlib import Path
+
+                    csv_fallback_folder = Path(csv_path).parent
 
             # Create or reuse shared dataview data
             if not hasattr(self, "_dataview_editor_shared_data"):
@@ -338,6 +339,7 @@ class ClickNickApp:
                 self._dataview_editor_shared_data = SharedDataviewData(
                     project_path=project_path,
                     address_store=self._shared_address_data,
+                    dataview_folder=csv_fallback_folder,
                 )
                 self._dataview_editor_project_path = project_path
 
@@ -384,10 +386,7 @@ class ClickNickApp:
         project_path = get_project_path_from_hwnd(self.connected_click_hwnd)
         result = run_verification(self._shared_address_data, project_path)
 
-        # Check if we have only system nickname issues (no actionable issues)
-        has_only_system_issues = result.passed and result.system_nickname_issues
-
-        if result.passed and not result.system_nickname_issues:
+        if result.passed:
             messagebox.showinfo(
                 "Verification Complete",
                 f"All checks passed!\n\n"
@@ -402,77 +401,21 @@ class ClickNickApp:
             dialog.geometry("700x500")
             dialog.transient(self.root)
 
-            # Summary label at top
-            if has_only_system_issues:
-                summary = (
-                    f"No actionable issues found!\n"
-                    f"MDB addresses verified: {result.total_addresses}\n"
-                    f"CDV files verified: {result.cdv_files_checked}"
-                )
-            else:
-                summary = (
-                    f"Found {result.total_issues} issue(s)\n"
-                    f"MDB issues: {len(result.mdb_issues)} (of {result.total_addresses} addresses)\n"
-                    f"CDV issues: {len(result.cdv_issues)} (in {result.cdv_files_checked} files)"
-                )
+            summary = (
+                f"Found {result.total_issues} issue(s)\n"
+                f"MDB issues: {len(result.mdb_issues)} (of {result.total_addresses} addresses)\n"
+                f"CDV issues: {len(result.cdv_issues)} (in {result.cdv_files_checked} files)"
+            )
             ttk.Label(dialog, text=summary, padding=10).pack(fill=tk.X)
 
-            # Close button at bottom (pack first with side=BOTTOM)
             ttk.Button(dialog, text="Close", command=dialog.destroy).pack(
                 side=tk.BOTTOM, pady=(0, 10)
             )
 
-            # Collapsible section for system nickname issues (pack with side=BOTTOM)
-            if result.system_nickname_issues:
-                collapse_frame = ttk.Frame(dialog)
-                collapse_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 10))
-
-                # Container for the text area (above the button)
-                text_container = ttk.Frame(collapse_frame)
-
-                # Track expanded state
-                is_expanded = tk.BooleanVar(value=False)
-                system_text_area = None
-
-                def toggle_system_issues():
-                    nonlocal system_text_area
-                    if is_expanded.get():
-                        # Collapse
-                        text_container.pack_forget()
-                        toggle_btn.config(
-                            text=f"+ System nicknames starting with _ ({len(result.system_nickname_issues)})"
-                        )
-                        is_expanded.set(False)
-                    else:
-                        # Expand - pack container above button
-                        text_container.pack(side=tk.TOP, fill=tk.X, pady=(0, 5))
-                        if system_text_area is None:
-                            system_text_area = scrolledtext.ScrolledText(
-                                text_container, wrap=tk.WORD, width=80, height=8
-                            )
-                            system_text_area.insert(
-                                tk.END, "\n".join(result.system_nickname_issues)
-                            )
-                            system_text_area.config(state=tk.DISABLED)
-                            system_text_area.pack(fill=tk.X)
-                        toggle_btn.config(
-                            text=f"- System nicknames starting with _ ({len(result.system_nickname_issues)})"
-                        )
-                        is_expanded.set(True)
-
-                toggle_btn = ttk.Button(
-                    collapse_frame,
-                    text=f"+ System nicknames starting with _ ({len(result.system_nickname_issues)})",
-                    command=toggle_system_issues,
-                )
-                toggle_btn.pack(side=tk.BOTTOM, anchor=tk.W)
-
-            # Main scrollable text area for actionable issues (fills remaining space)
-            if result.all_issues:
-                text_area = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, width=80, height=20)
-                text_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
-                text_area.insert(tk.END, "\n".join(result.all_issues))
-                text_area.config(state=tk.DISABLED)
+            text_area = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, width=80, height=20)
+            text_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+            text_area.insert(tk.END, "\n".join(result.all_issues))
+            text_area.config(state=tk.DISABLED)
 
             dialog.grab_set()
             dialog.focus_set()
@@ -697,6 +640,13 @@ class ClickNickApp:
             return False
         return True
 
+    def _clear_connection_state(self) -> None:
+        """Clear the currently connected Click window metadata."""
+        self.connected_click_pid = None
+        self.connected_click_filename = None
+        self.connected_click_hwnd = None
+        self.using_database = False
+
     def refresh_click_instances(self):
         """Refresh the list of running Click.exe instances."""
         # Remember currently selected instance
@@ -712,6 +662,8 @@ class ClickNickApp:
             click_instances = self.detector.get_click_instances()
 
             if not click_instances:
+                self._clear_connection_state()
+                self._update_window_title()
                 self._update_status("⚠ No ClickPLC windows", "error")
                 self.start_button.state(["disabled"])  # Disable when no instances
                 return
@@ -763,7 +715,18 @@ class ClickNickApp:
             self._update_status("✓ CSV loaded", "connected")
             self.using_database = False
             self._update_window_title()
-            self.start_monitoring()
+            has_live_connection = bool(self.connected_click_pid and self.connected_click_hwnd) and (
+                self.detector.check_window_exists(self.connected_click_pid)
+            )
+            if has_live_connection:
+                self.start_monitoring()
+            else:
+                if self.monitoring:
+                    self.stop_monitoring(update_status=False)
+                if self.connected_click_pid or self.connected_click_hwnd:
+                    self._clear_connection_state()
+                    self.selected_instance_var.set("")
+                    self._update_window_title()
             return True
         except Exception as e:
             print(f"Error loading CSV: {e}")
@@ -876,10 +839,7 @@ class ClickNickApp:
             self.stop_monitoring()
 
         # Reset connection state
-        self.connected_click_pid = None
-        self.connected_click_filename = None
-        self.connected_click_hwnd = None
-        self.using_database = False
+        self._clear_connection_state()
 
         # Clear CSV path when switching instances
         self.csv_path_var.set("")
@@ -961,14 +921,23 @@ class ClickNickApp:
         self._update_status("⚠ Connected ClickPLC window closed", "error")
         self.stop_monitoring(update_status=False)
 
-        # Force close any open editor windows (can't save - DB is gone)
-        if self._shared_address_data is not None:
+        source_is_mdb = isinstance(
+            self._shared_data_source_path, str
+        ) and self._shared_data_source_path.startswith("mdb:")
+
+        # Force close editor windows only for MDB-backed data.
+        if source_is_mdb and self._shared_address_data is not None:
             self._shared_address_data.force_close_all_windows()
             self._shared_address_data = None
             self._shared_data_source_path = None
 
-        # Disconnect NicknameManager from data
-        self.nickname_manager.set_shared_data(None)
+            # MDB data is no longer valid once the Click window is gone.
+            self.nickname_manager.set_shared_data(None)
+
+        # Always clear stale Click connection metadata.
+        self._clear_connection_state()
+        self.selected_instance_var.set("")
+        self._update_window_title()
 
         self.root.after(2000, self.refresh_click_instances)
 

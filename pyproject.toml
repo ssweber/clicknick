@@ -37,11 +37,11 @@ classifiers = [
 # ---- Main dependencies ----
 
 dependencies = [
+    "pyclickplc",
     "pywin32 >= 311",
     "pyodbc >= 5.3.0",
     "tksheet == 7.5.19",
 ]
-
 
 # ---- Dev dependencies ----
 

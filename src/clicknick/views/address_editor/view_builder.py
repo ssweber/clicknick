@@ -10,11 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ...models.address_row import AddressRow, get_addr_key, is_xd_yd_hidden_slot
-from ...models.constants import (
-    ADDRESS_RANGES,
-    PAIRED_RETENTIVE_TYPES,
-)
+from pyclickplc.addresses import get_addr_key, is_xd_yd_hidden_slot
+from pyclickplc.banks import BANKS, PAIRED_RETENTIVE_TYPES
+
+from ...models.address_row import AddressRow
 from ...services.block_service import compute_all_block_ranges
 
 if TYPE_CHECKING:
@@ -85,17 +84,24 @@ def build_single_type_rows(
     Returns:
         List of AddressRow references from the skeleton
     """
-    start, end = ADDRESS_RANGES[mem_type]
+    bank = BANKS[mem_type]
     rows = []
 
-    for addr in range(start, end + 1):
-        # Skip hidden XD/YD slots (odd addresses >= 3 are upper bytes not displayed)
-        if is_xd_yd_hidden_slot(mem_type, addr):
-            continue
+    # Use valid_ranges for sparse banks (X/Y), full range for contiguous
+    if bank.valid_ranges is not None:
+        ranges = bank.valid_ranges
+    else:
+        ranges = ((bank.min_addr, bank.max_addr),)
 
-        addr_key = get_addr_key(mem_type, addr)
-        if addr_key in all_rows:
-            rows.append(all_rows[addr_key])  # Reference, not copy
+    for lo, hi in ranges:
+        for addr in range(lo, hi + 1):
+            # Skip hidden XD/YD slots (odd addresses >= 3 are upper bytes not displayed)
+            if is_xd_yd_hidden_slot(mem_type, addr):
+                continue
+
+            addr_key = get_addr_key(mem_type, addr)
+            if addr_key in all_rows:
+                rows.append(all_rows[addr_key])  # Reference, not copy
 
     return rows
 
@@ -125,10 +131,10 @@ def build_interleaved_rows(
     all_starts = []
     all_ends = []
     for mem_type in types:
-        if mem_type in ADDRESS_RANGES:
-            start, end = ADDRESS_RANGES[mem_type]
-            all_starts.append(start)
-            all_ends.append(end)
+        if mem_type in BANKS:
+            bank = BANKS[mem_type]
+            all_starts.append(bank.min_addr)
+            all_ends.append(bank.max_addr)
 
     if not all_starts:
         return []

@@ -9,13 +9,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..models.address_row import (
+from pyclickplc.addresses import (
     get_addr_key,
-    parse_address_display,
+    parse_address,
 )
-from ..models.address_row import (
+from pyclickplc.addresses import (
     normalize_address as _normalize_address,
 )
+
 from ..views.dataview_editor.cdv_file import get_dataview_folder, list_cdv_files
 
 if TYPE_CHECKING:
@@ -36,22 +37,24 @@ class SharedDataviewData:
         self,
         project_path: Path | None = None,
         address_store: AddressStore | None = None,
+        dataview_folder: Path | None = None,
     ):
         """Initialize the shared dataview data.
 
         Args:
             project_path: Path to the CLICK project folder
             address_store: AddressStore for nickname lookups
+            dataview_folder: Explicit DataView folder override (e.g., CSV directory)
         """
         self._project_path = project_path
         self._store: AddressStore | None = None
-        self._dataview_folder: Path | None = None
+        self._dataview_folder: Path | None = dataview_folder
 
         # Single window tracking (only one dataview editor at a time)
         self._window = None
 
-        # Find dataview folder
-        if project_path:
+        # Find dataview folder from project if not explicitly provided
+        if self._dataview_folder is None and project_path:
             self._dataview_folder = get_dataview_folder(project_path)
 
         # Wire up to AddressStore if provided
@@ -117,7 +120,7 @@ class SharedDataviewData:
             Tuple of (nickname, comment) or None if not found.
         """
         if self._store:
-            parsed = parse_address_display(address)
+            parsed = parse_address(address)
             if not parsed:
                 return None
 

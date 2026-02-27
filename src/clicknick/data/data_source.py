@@ -11,13 +11,15 @@ import re
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from ..models.address_row import AddressRow, get_addr_key
-from ..models.constants import (
-    ADDRESS_RANGES,
+from pyclickplc.addresses import get_addr_key
+from pyclickplc.banks import (
+    BANKS,
     DEFAULT_RETENTIVE,
     MEMORY_TYPE_BASES,
     MEMORY_TYPE_TO_DATA_TYPE,
 )
+
+from ..models.address_row import AddressRow
 from ..utils.mdb_operations import (
     MdbConnection,
     find_click_database,
@@ -28,35 +30,15 @@ from ..utils.mdb_operations import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-# CSV column names (matching CLICK software export format)
-CSV_COLUMNS = ["Address", "Data Type", "Nickname", "Initial Value", "Retentive", "Address Comment"]
-
-# Data type string to code mapping
-DATA_TYPE_STR_TO_CODE: dict[str, int] = {
-    "BIT": 0,
-    "INT": 1,
-    "INT2": 2,
-    "FLOAT": 3,
-    "HEX": 4,
-    "TXT": 6,
-    "TEXT": 6,  # Alias
-}
-
-# Data type code to string mapping (for saving csv)
-DATA_TYPE_CODE_TO_STR: dict[int, str] = {
-    0: "BIT",
-    1: "INT",
-    2: "INT2",
-    3: "FLOAT",
-    4: "HEX",
-    6: "TEXT",  # Alias
-}
+from pyclickplc.nicknames import CSV_COLUMNS as CSV_COLUMNS
+from pyclickplc.nicknames import DATA_TYPE_CODE_TO_STR as DATA_TYPE_CODE_TO_STR
+from pyclickplc.nicknames import DATA_TYPE_STR_TO_CODE as DATA_TYPE_STR_TO_CODE
 
 # Regex for parsing address strings like "X001", "C100", "DS1000", "TD5"
 ADDRESS_PATTERN = re.compile(r"^([A-Z]+)(\d+)$")
 
 
-def load_addresses_from_mdb_dump(csv_path: str) -> dict[int, AddressRow]:
+def read_mdb_csv(csv_path: str) -> dict[int, AddressRow]:
     """Load addresses from MDB-format CSV (CLICK Address.csv export).
 
     The CLICK software exports Address.csv in MDB format with columns:
@@ -81,7 +63,7 @@ def load_addresses_from_mdb_dump(csv_path: str) -> dict[int, AddressRow]:
                 continue
 
             mem_type = row.get("MemoryType", "").strip()
-            if mem_type not in ADDRESS_RANGES:
+            if mem_type not in BANKS:
                 continue
 
             try:
@@ -118,6 +100,11 @@ def load_addresses_from_mdb_dump(csv_path: str) -> dict[int, AddressRow]:
             result[addr_key] = addr_row
 
     return result
+
+
+def load_addresses_from_mdb_dump(csv_path: str) -> dict[int, AddressRow]:
+    """Backward-compatible alias for read_mdb_csv()."""
+    return read_mdb_csv(csv_path)
 
 
 class DataSource(ABC):
@@ -234,7 +221,7 @@ class CsvDataSource(DataSource):
                     mem_type, address = parsed
 
                     # Skip if memory type not recognized
-                    if mem_type not in ADDRESS_RANGES:
+                    if mem_type not in BANKS:
                         continue
 
                     # Get data type (default based on memory type)
@@ -346,7 +333,7 @@ def convert_mdb_csv_to_user_csv(source_path: str, dest_path: str) -> None:
         dest_path: Path to write user-format CSV
     """
     # Load as AddressRows
-    addresses = load_addresses_from_mdb_dump(source_path)
+    addresses = read_mdb_csv(source_path)
 
     # Save using CsvDataSource (reuses existing save logic)
     csv_source = CsvDataSource(dest_path)

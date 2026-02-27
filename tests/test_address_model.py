@@ -1,8 +1,22 @@
 """Unit tests for address_editor.address_model module."""
 
 import pytest
+from pyclickplc.addresses import (
+    get_addr_key,
+    parse_addr_key,
+)
+from pyclickplc.banks import (
+    BANKS,
+    DEFAULT_RETENTIVE,
+    MEMORY_TYPE_BASES,
+    MEMORY_TYPE_TO_DATA_TYPE,
+    NON_EDITABLE_TYPES,
+    PAIRED_RETENTIVE_TYPES,
+    DataType,
+)
+from pyclickplc.validation import COMMENT_MAX_LENGTH, FORBIDDEN_CHARS, NICKNAME_MAX_LENGTH
 
-from clicknick.models.address_row import AddressRow, get_addr_key, parse_addr_key
+from clicknick.models.address_row import AddressRow
 from clicknick.models.blocktag import (
     BlockTag,
     extract_block_name,
@@ -10,18 +24,6 @@ from clicknick.models.blocktag import (
     is_block_tag,
     parse_block_tag,
     strip_block_tag,
-)
-from clicknick.models.constants import (
-    ADDRESS_RANGES,
-    COMMENT_MAX_LENGTH,
-    DEFAULT_RETENTIVE,
-    FORBIDDEN_CHARS,
-    MEMORY_TYPE_BASES,
-    MEMORY_TYPE_TO_DATA_TYPE,
-    NICKNAME_MAX_LENGTH,
-    NON_EDITABLE_TYPES,
-    PAIRED_RETENTIVE_TYPES,
-    DataType,
 )
 from clicknick.models.validation import (
     validate_comment,
@@ -103,11 +105,11 @@ class TestAddrKeyCalculation:
 
     def test_xd_yd_display_functions(self):
         """Test XD/YD display address formatting and parsing."""
-        from clicknick.models.address_row import (
+        from pyclickplc.addresses import (
             format_address_display,
             is_xd_yd_hidden_slot,
             is_xd_yd_upper_byte,
-            parse_address_display,
+            parse_address,
             xd_yd_display_to_mdb,
             xd_yd_mdb_to_display,
         )
@@ -157,19 +159,20 @@ class TestAddrKeyCalculation:
         assert format_address_display("YD", 1) == "YD0u"
         assert format_address_display("DS", 100) == "DS100"  # Non-XD/YD unchanged
 
-        # Test parse_address_display
-        assert parse_address_display("XD0") == ("XD", 0)
-        assert parse_address_display("XD0u") == ("XD", 1)
-        assert parse_address_display("XD1") == ("XD", 2)
-        assert parse_address_display("XD2") == ("XD", 4)
-        assert parse_address_display("XD8") == ("XD", 16)
-        assert parse_address_display("YD0u") == ("YD", 1)
-        assert parse_address_display("YD8") == ("YD", 16)
-        assert parse_address_display("DS100") == ("DS", 100)
-        assert parse_address_display("X001") == ("X", 1)
-        assert parse_address_display("XD1u") is None  # Invalid: only XD0 has u variant
-        assert parse_address_display("INVALID") is None
-        assert parse_address_display("") is None
+        # Test parse_address
+        assert parse_address("XD0") == ("XD", 0)
+        assert parse_address("XD0u") == ("XD", 1)
+        assert parse_address("XD1") == ("XD", 2)
+        assert parse_address("XD2") == ("XD", 4)
+        assert parse_address("XD8") == ("XD", 16)
+        assert parse_address("YD0u") == ("YD", 1)
+        assert parse_address("YD8") == ("YD", 16)
+        assert parse_address("DS100") == ("DS", 100)
+        assert parse_address("X001") == ("X", 1)
+        with pytest.raises(ValueError):
+            assert parse_address("XD1u") is None  # Invalid: only XD0 has u variant
+            assert parse_address("INVALID") is None
+            assert parse_address("") is None
 
     def test_parse_addr_key_invalid_type_index(self):
         """Test that invalid type index raises KeyError."""
@@ -385,33 +388,33 @@ class TestAddressRow:
 
 
 class TestAddressRanges:
-    """Tests for ADDRESS_RANGES constant."""
+    """Tests for BANKS constant."""
 
     def test_all_types_have_ranges(self):
-        """All memory types should have defined ranges."""
-        assert len(ADDRESS_RANGES) == 16
+        """All memory types should have defined banks."""
+        assert len(BANKS) == 16
         for memory_type in MEMORY_TYPE_BASES:
-            assert memory_type in ADDRESS_RANGES
+            assert memory_type in BANKS
 
     def test_xd_yd_start_at_zero(self):
         """XD and YD should start at 0."""
-        assert ADDRESS_RANGES["XD"][0] == 0
-        assert ADDRESS_RANGES["YD"][0] == 0
+        assert BANKS["XD"].min_addr == 0
+        assert BANKS["YD"].min_addr == 0
 
     def test_other_types_start_at_one(self):
         """Most types should start at 1."""
-        for memory_type, (start, _) in ADDRESS_RANGES.items():
+        for memory_type, bank in BANKS.items():
             if memory_type not in ("XD", "YD"):
-                assert start == 1, f"{memory_type} should start at 1"
+                assert bank.min_addr == 1, f"{memory_type} should start at 1"
 
     def test_specific_ranges(self):
         """Test specific expected ranges."""
-        assert ADDRESS_RANGES["X"] == (1, 816)
-        assert ADDRESS_RANGES["Y"] == (1, 816)
-        assert ADDRESS_RANGES["C"] == (1, 2000)
-        assert ADDRESS_RANGES["DS"] == (1, 4500)
-        assert ADDRESS_RANGES["T"] == (1, 500)
-        assert ADDRESS_RANGES["CT"] == (1, 250)
+        assert (BANKS["X"].min_addr, BANKS["X"].max_addr) == (1, 816)
+        assert (BANKS["Y"].min_addr, BANKS["Y"].max_addr) == (1, 816)
+        assert (BANKS["C"].min_addr, BANKS["C"].max_addr) == (1, 2000)
+        assert (BANKS["DS"].min_addr, BANKS["DS"].max_addr) == (1, 4500)
+        assert (BANKS["T"].min_addr, BANKS["T"].max_addr) == (1, 500)
+        assert (BANKS["CT"].min_addr, BANKS["CT"].max_addr) == (1, 250)
 
 
 class TestValidateInitialValue:
@@ -926,3 +929,71 @@ class TestBlockTags:
             "",
             "#FFCCBC",
         )
+
+
+class TestAddressRowDerivedProperties:
+    """Tests for AddressRow derived properties: outline_suffix, is_initial_value_masked, is_interleaved_secondary."""
+
+    # --- outline_suffix ---
+
+    def test_outline_suffix_bit_default(self):
+        """BIT with default values shows just ': BIT'."""
+        row = AddressRow(memory_type="X", address=1, data_type=DataType.BIT)
+        assert row.outline_suffix == "  : BIT"
+
+    def test_outline_suffix_bit_retentive(self):
+        """BIT with non-default retentive shows '= Retentive'."""
+        row = AddressRow(memory_type="X", address=1, data_type=DataType.BIT, retentive=True)
+        assert row.outline_suffix == "  : BIT = Retentive"
+
+    def test_outline_suffix_bit_on(self):
+        """BIT with initial_value='1' shows '= ON'."""
+        row = AddressRow(memory_type="X", address=1, data_type=DataType.BIT, initial_value="1")
+        assert row.outline_suffix == "  : BIT = ON"
+
+    def test_outline_suffix_int_with_value(self):
+        """INT with non-default retentive shows '= <value>'."""
+        # DS default retentive is True; set retentive=False for non-default
+        row = AddressRow(
+            memory_type="DS", address=1, data_type=DataType.INT, initial_value="42", retentive=False
+        )
+        assert row.outline_suffix == "  : INT = 42"
+
+    # --- is_initial_value_masked ---
+
+    def test_is_initial_value_masked_non_editable(self):
+        """NON_EDITABLE_TYPES are never masked (they just can't be edited)."""
+        row = AddressRow(memory_type="SC", address=1, data_type=DataType.BIT)
+        assert row.is_initial_value_masked(effective_retentive=True) is False
+
+    def test_is_initial_value_masked_retentive_true(self):
+        """Editable type with effective_retentive=True is masked."""
+        row = AddressRow(memory_type="DS", address=1, data_type=DataType.INT)
+        assert row.is_initial_value_masked(effective_retentive=True) is True
+
+    def test_is_initial_value_masked_retentive_false(self):
+        """Editable type with effective_retentive=False is not masked."""
+        row = AddressRow(memory_type="DS", address=1, data_type=DataType.INT)
+        assert row.is_initial_value_masked(effective_retentive=False) is False
+
+    # --- is_interleaved_secondary ---
+
+    def test_is_interleaved_secondary_td(self):
+        """TD is a secondary interleaved type."""
+        row = AddressRow(memory_type="TD", address=1, data_type=DataType.INT)
+        assert row.is_interleaved_secondary is True
+
+    def test_is_interleaved_secondary_ctd(self):
+        """CTD is a secondary interleaved type."""
+        row = AddressRow(memory_type="CTD", address=1, data_type=DataType.INT2)
+        assert row.is_interleaved_secondary is True
+
+    def test_is_interleaved_secondary_t(self):
+        """T is NOT a secondary interleaved type (it's primary)."""
+        row = AddressRow(memory_type="T", address=1, data_type=DataType.BIT)
+        assert row.is_interleaved_secondary is False
+
+    def test_is_interleaved_secondary_ds(self):
+        """DS is NOT interleaved at all."""
+        row = AddressRow(memory_type="DS", address=1, data_type=DataType.INT)
+        assert row.is_interleaved_secondary is False

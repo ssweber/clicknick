@@ -1,55 +1,39 @@
 from collections.abc import Callable
 
-from .constants import (
-    COMMENT_MAX_LENGTH,
-    FLOAT_MAX,
-    FLOAT_MIN,
-    FORBIDDEN_CHARS,
-    INT2_MAX,
-    INT2_MIN,
-    INT_MAX,
-    INT_MIN,
-    NICKNAME_MAX_LENGTH,
-    DataType,
-    RESERVED_NICKNAMES,
-)
+from pyclickplc.validation import COMMENT_MAX_LENGTH
+from pyclickplc.validation import validate_initial_value as validate_initial_value
+from pyclickplc.validation import validate_nickname as _pyclickplc_validate_nickname
 
 
-def validate_nickname_format(nickname: str) -> tuple[bool, str]:
+def validate_nickname_format(
+    nickname: str, *, system_bank: str | None = None
+) -> tuple[bool, str]:
     """Validate nickname format (length, characters, etc.) without uniqueness check.
 
     Args:
         nickname: The nickname to validate
+        system_bank: Optional system bank hint (e.g. "SC", "SD", "X") for
+            pyclickplc's bank-specific system rules.
 
     Returns:
         Tuple of (is_valid, error_message) - error_message is "" if valid
     """
-    if nickname == "":
-        return True, ""  # Empty is valid (just means unassigned)
-
-    if len(nickname) > NICKNAME_MAX_LENGTH:
-        return False, f"Too long ({len(nickname)}/24)"
-
-    if nickname.startswith("_"):
-        return False, "Cannot start with _"
-
-    if nickname.lower() in RESERVED_NICKNAMES:
-        return False, "Reserved keyword"
-
-    invalid_chars = set(nickname) & FORBIDDEN_CHARS
-    if invalid_chars:
-        # Show first few invalid chars
-        chars_display = "".join(sorted(invalid_chars)[:3])
-        return False, f"Invalid: {chars_display}"
-
-    return True, ""
+    return _pyclickplc_validate_nickname(nickname, system_bank=system_bank)
 
 
-def validate_comment(comment: str) -> tuple[bool, str]:
-    """Validate comment length.
+def validate_comment(
+    comment: str,
+    is_block_name_duplicate: Callable[[str, int], bool] | None = None,
+    current_addr_key: int = 0,
+) -> tuple[bool, str]:
+    """Validate comment length and block name uniqueness.
 
     Args:
         comment: The comment to validate
+        is_block_name_duplicate: Optional callback to check if a block name is already
+            in use. Signature: (block_name, exclude_addr_key) -> bool
+        current_addr_key: The addr_key of the row being validated (excluded from
+            duplicate check)
 
     Returns:
         Tuple of (is_valid, error_message) - error_message is "" if valid
@@ -60,6 +44,15 @@ def validate_comment(comment: str) -> tuple[bool, str]:
     if len(comment) > COMMENT_MAX_LENGTH:
         return False, f"Too long ({len(comment)}/128)"
 
+    # Check for duplicate block name if checker provided
+    if is_block_name_duplicate is not None:
+        # Import here to avoid circular dependency
+        from pyclickplc.blocks import parse_block_tag
+
+        tag = parse_block_tag(comment)
+        if tag.name and is_block_name_duplicate(tag.name, current_addr_key):
+            return False, f"Duplicate block: {tag.name}"
+
     return True, ""
 
 
@@ -68,6 +61,8 @@ def validate_nickname(
     all_nicknames: dict[int, str],
     current_addr_key: int,
     is_duplicate_fn: Callable[[str, int], bool] | None = None,
+    *,
+    system_bank: str | None = None,
 ) -> tuple[bool, str]:
     """Validate a nickname against all rules.
 
@@ -77,12 +72,14 @@ def validate_nickname(
         current_addr_key: The addr_key of the row being validated (excluded from uniqueness)
         is_duplicate_fn: Optional O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
             If provided, uses this instead of O(n) scan of all_nicknames.
+        system_bank: Optional system bank hint (e.g. "SC", "SD", "X") for
+            pyclickplc's bank-specific system rules.
 
     Returns:
         Tuple of (is_valid, error_message) - error_message is "" if valid
     """
     # Check format first
-    is_valid, error = validate_nickname_format(nickname)
+    is_valid, error = validate_nickname_format(nickname, system_bank=system_bank)
     if not is_valid:
         return is_valid, error
 
@@ -101,77 +98,4 @@ def validate_nickname(
             if addr_key != current_addr_key and existing_nick.lower() == nickname_lower:
                 return False, "Duplicate"
 
-    return True, ""
-
-
-def validate_initial_value(
-    initial_value: str,
-    data_type: int,
-) -> tuple[bool, str]:
-    """Validate an initial value against the data type rules.
-
-    Args:
-        initial_value: The initial value string to validate
-        data_type: The DataType number (0=bit, 1=int, 2=int2, 3=float, 4=hex, 6=txt)
-
-    Returns:
-        Tuple of (is_valid, error_message) - error_message is "" if valid
-    """
-    if initial_value == "":
-        return True, ""  # Empty is valid (means no initial value set)
-
-    if data_type == DataType.BIT:
-        if initial_value not in ("0", "1"):
-            return False, "Must be 0 or 1"
-        return True, ""
-
-    elif data_type == DataType.INT:
-        try:
-            val = int(initial_value)
-            if val < INT_MIN or val > INT_MAX:
-                return False, f"Range: {INT_MIN} to {INT_MAX}"
-            return True, ""
-        except ValueError:
-            return False, "Must be integer"
-
-    elif data_type == DataType.INT2:
-        try:
-            val = int(initial_value)
-            if val < INT2_MIN or val > INT2_MAX:
-                return False, f"Range: {INT2_MIN} to {INT2_MAX}"
-            return True, ""
-        except ValueError:
-            return False, "Must be integer"
-
-    elif data_type == DataType.FLOAT:
-        try:
-            val = float(initial_value)
-            # Allow scientific notation like -3.4028235E+38
-            if val < FLOAT_MIN or val > FLOAT_MAX:
-                return False, "Out of float range"
-            return True, ""
-        except ValueError:
-            return False, "Must be number"
-
-    elif data_type == DataType.HEX:
-        # Hex values should be 4 hex digits (0000 to FFFF)
-        if len(initial_value) > 4:
-            return False, "Max 4 hex digits"
-        try:
-            val = int(initial_value, 16)
-            if val < 0 or val > 0xFFFF:
-                return False, "Range: 0000 to FFFF"
-            return True, ""
-        except ValueError:
-            return False, "Must be hex (0-9, A-F)"
-
-    elif data_type == DataType.TXT:
-        # Single ASCII character (7-bit)
-        if len(initial_value) != 1:
-            return False, "Must be single char"
-        if ord(initial_value) > 127:
-            return False, "Must be ASCII"
-        return True, ""
-
-    # Unknown data type
     return True, ""

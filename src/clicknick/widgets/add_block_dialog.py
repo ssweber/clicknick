@@ -1,5 +1,6 @@
 import random
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import messagebox, ttk
 
 from .colors import BLOCK_COLOR_NAMES, BLOCK_COLORS
@@ -34,6 +35,13 @@ class AddBlockDialog(tk.Toplevel):
         if not name:
             messagebox.showerror("Error", "Please enter a block name.", parent=self)
             return
+
+        # Check for duplicate name if validator provided
+        if self._validate_name is not None:
+            is_valid, error_msg = self._validate_name(name)
+            if not is_valid:
+                messagebox.showerror("Duplicate Block Name", error_msg, parent=self)
+                return
 
         self.result = (name, self._selected_color)
         self.destroy()
@@ -108,7 +116,19 @@ class AddBlockDialog(tk.Toplevel):
         )
         ttk.Button(btn_frame, text="Cancel", command=self._on_cancel, width=10).pack(side=tk.RIGHT)
 
-    def __init__(self, parent: tk.Widget):
+    def __init__(
+        self,
+        parent: tk.Widget,
+        validate_name: Callable[[str], tuple[bool, str]] | None = None,
+    ):
+        """Initialize the Add Block dialog.
+
+        Args:
+            parent: Parent widget
+            validate_name: Optional callback to validate block name.
+                Should return (is_valid, error_message).
+                If None, no validation is performed.
+        """
         super().__init__(parent)
         self.title("Add Block")
         self.resizable(False, False)
@@ -118,6 +138,7 @@ class AddBlockDialog(tk.Toplevel):
         self.result: tuple[str, str | None] | None = None  # (name, color) or None if cancelled
         self._selected_color: str | None = None
         self._color_buttons: dict[str, tk.Button] = {}
+        self._validate_name = validate_name
 
         self._create_widgets()
 

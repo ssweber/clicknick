@@ -10,17 +10,19 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from ...data.address_store import AddressStore
-from ...data.data_source import CsvDataSource
-from ...models.address_row import get_addr_key
-from ...models.blocktag import (
+from pyclickplc.addresses import get_addr_key
+from pyclickplc.banks import DataType
+from pyclickplc.blocks import (
     format_block_tag,
+    is_block_name_available,
     parse_block_tag,
     strip_block_tag,
+    validate_block_span,
 )
-from ...models.constants import DataType
+
+from ...data.address_store import AddressStore
+from ...data.data_source import CsvDataSource
 from ...services import ImportService, RowService
-from ...services.block_service import validate_block_span
 from ...utils.rename_helpers import build_rename_pattern
 from ...widgets.add_block_dialog import AddBlockDialog
 from ...widgets.custom_notebook import CustomNotebook
@@ -640,8 +642,17 @@ class AddressEditorWindow(tk.Toplevel):
             )
             return
 
-        # Show the Add Block dialog
-        dialog = AddBlockDialog(self)
+        # Create validation callback for duplicate block names
+        def validate_block_name(name: str) -> tuple[bool, str]:
+            view = self._store.get_unified_view()
+            if view is None:
+                return True, ""
+            if is_block_name_available(name, view.rows):
+                return True, ""
+            return False, f"Block name '{name}' already exists.\nBlock names must be unique."
+
+        # Show the Add Block dialog with validation
+        dialog = AddBlockDialog(self, validate_name=validate_block_name)
         self.wait_window(dialog)
 
         if dialog.result is None:

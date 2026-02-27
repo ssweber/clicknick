@@ -1,11 +1,12 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.11, <4.0"
 
 [[package]]
 name = "clicknick"
 source = { editable = "." }
 dependencies = [
+    { name = "pyclickplc" },
     { name = "pyodbc" },
     { name = "pywin32" },
     { name = "tksheet" },
@@ -23,6 +24,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "pyclickplc" },
     { name = "pyodbc", specifier = ">=5.3.0" },
     { name = "pywin32", specifier = ">=311" },
     { name = "tksheet", specifier = "==7.5.19" },
@@ -123,12 +125,33 @@ wheels = [
 ]
 
 [[package]]
+name = "pyclickplc"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pymodbus" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b5/ed/003596602158fbc859a03d7b710c9f9be3d35e3a5cadfd0a9906f08c1285/pyclickplc-0.1.0.tar.gz", hash = "sha256:e8832a81b92c829e5d0691c9516720af72cef7d8bdd794f785b16a034e4c118d", size = 122353, upload-time = "2026-02-27T14:23:49.066Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/06/34/92814d0c31dcbfa9e3861625cfd0b248249f5ac6d47c2030f09eeea226e8/pyclickplc-0.1.0-py3-none-any.whl", hash = "sha256:148d20d14b0a512cf610440b21ff49215c2d70471ddcf660b93e5d9407d0d6da", size = 49203, upload-time = "2026-02-27T14:23:47.605Z" },
+]
+
+[[package]]
 name = "pygments"
 version = "2.19.2"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/b0/77/a5b8c569bf593b0140bde72ea885a803b82086995367bf2037de0159d924/pygments-2.19.2.tar.gz", hash = "sha256:636cb2477cec7f8952536970bc533bc43743542f70392ae026374600add5b887", size = 4968631, upload-time = "2025-06-21T13:39:12.283Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c7/21/705964c7812476f378728bdf590ca4b771ec72385c533964653c68e86bdc/pygments-2.19.2-py3-none-any.whl", hash = "sha256:86540386c03d588bb81d44bc3928634ff26449851e99741617ecb9037ee5ec0b", size = 1225217, upload-time = "2025-06-21T13:39:07.939Z" },
+]
+
+[[package]]
+name = "pymodbus"
+version = "3.11.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/2a/af/bbb716301ab9c60f0702c3cdf72cc0e373286a5648fe16bc4431400489dc/pymodbus-3.11.4.tar.gz", hash = "sha256:6910e385cb6b2f983cd457e9ecee2ff580dbb23cf3d84aefec0845e71edd606a", size = 163422, upload-time = "2025-11-30T10:36:33.717Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/02/80/84c32440949c77f2c201c38e5fa56fd8f19da31bf24df55bdbdaba67767c/pymodbus-3.11.4-py3-none-any.whl", hash = "sha256:89865929f53bd5e32b4076dde00ee86d9b8afb1686832ed74e69d55df22729c3", size = 166002, upload-time = "2025-11-30T10:36:31.992Z" },
 ]
 
 [[package]]

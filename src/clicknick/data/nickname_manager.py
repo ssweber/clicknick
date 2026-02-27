@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..models.blocktag import strip_block_tag
+from pyclickplc.blocks import strip_block_tag
+
 from ..models.nickname import Nickname
 from ..utils.filters import ContainsFilter, ContainsPlusFilter, NoneFilter, PrefixFilter
 from ..utils.mdb_shared import has_access_driver
