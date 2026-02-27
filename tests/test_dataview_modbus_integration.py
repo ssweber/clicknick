@@ -91,6 +91,8 @@ class FakePanel:
         self.write_checks_cleared = 0
         self.last_live_values = None
         self.destroyed = False
+        self.save_calls = 0
+        self.export_calls: list[Path] = []
 
     def get_poll_addresses(self):
         return list(self._poll_addresses)
@@ -112,6 +114,15 @@ class FakePanel:
 
     def destroy(self):
         self.destroyed = True
+
+    def save(self):
+        self.save_calls += 1
+        self.is_dirty = False
+        return True
+
+    def export(self, path: Path):
+        self.export_calls.append(path)
+        return True
 
 
 class FakeNotebook:
@@ -473,3 +484,59 @@ def test_disconnect_clears_poll_and_live_values():
     assert window._modbus.disconnect_calls == 1
     assert panel1.live_cleared == 1
     assert panel2.live_cleared == 1
+
+
+def test_export_writes_copy_without_rebinding_tab_path(monkeypatch, tmp_path):
+    source_path = tmp_path / "source.cdv"
+    source_path.write_text("", encoding="utf-8")
+    export_dir = tmp_path / "export"
+    export_dir.mkdir()
+
+    panel = FakePanel("source")
+    panel.file_path = source_path
+
+    window = DataviewEditorWindow.__new__(DataviewEditorWindow)
+    window.shared_data = SimpleNamespace(dataview_folder=tmp_path / "DataView")
+    window._open_panels = {source_path: panel}
+    window._get_current_panel = lambda: panel
+    window._refresh_file_list = MagicMock()
+    window._update_tab_title = MagicMock()
+
+    monkeypatch.setattr(
+        "clicknick.views.dataview_editor.window.filedialog.askdirectory",
+        lambda **kwargs: str(export_dir),
+    )
+
+    window._export()
+
+    expected_export_path = export_dir / "source.cdv"
+    assert panel.export_calls == [expected_export_path]
+    assert panel.file_path == source_path
+    assert window._open_panels == {source_path: panel}
+    assert panel.save_calls == 0
+    assert window._update_tab_title.call_count == 0
+
+
+def test_panel_export_keeps_binding_and_dirty(monkeypatch, tmp_path):
+    panel = _make_panel_stub([_row("X001", True)])
+    panel.file_path = tmp_path / "bound.cdv"
+    panel._header = None
+    panel._is_dirty = True
+    panel.status_label = FakeWidget()
+
+    captured: dict[str, object] = {}
+
+    def _capture_export(path, rows, has_new_values, header):
+        captured["path"] = path
+        captured["rows"] = rows
+        captured["has_new_values"] = has_new_values
+        captured["header"] = header
+
+    monkeypatch.setattr("clicknick.views.dataview_editor.panel.export_cdv", _capture_export)
+
+    export_path = tmp_path / "copy.cdv"
+    assert panel.export(export_path) is True
+    assert captured["path"] == export_path
+    assert captured["has_new_values"] is True
+    assert panel.file_path == tmp_path / "bound.cdv"
+    assert panel.is_dirty is True

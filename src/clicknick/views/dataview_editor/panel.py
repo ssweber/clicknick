@@ -22,7 +22,7 @@ from pyclickplc.dataview import (
 )
 from tksheet import Sheet
 
-from .cdv_file import load_cdv, save_cdv
+from .cdv_file import export_cdv, load_cdv, save_cdv
 
 # Column indices
 COL_ADDRESS = 0
@@ -711,6 +711,25 @@ class DataviewPanel(ttk.Frame):
                 self.start_file_monitoring()
             return True
         return False
+
+    def export(self, path: Path) -> bool:
+        """Export a copy to ``path`` without changing panel file binding.
+
+        Unlike ``save_as()``, this does not change ``self.file_path``, does not
+        restart monitoring, and does not clear modified state.
+        """
+        try:
+            # Match save semantics: header reflects whether any saveable row has
+            # a New Value.
+            saveable_rows = self.rows[:MAX_DATAVIEW_ROWS]
+            has_new_values = any(
+                r.new_value is not None for r in saveable_rows if not r.is_empty
+            )
+            export_cdv(path, self.rows, has_new_values, self._header)
+            return True
+        except Exception as e:
+            self.status_label.config(text=f"Error exporting: {e}")
+            return False
 
     def _schedule_file_check(self) -> None:
         """Schedule the next file modification check."""

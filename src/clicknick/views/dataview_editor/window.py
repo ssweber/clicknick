@@ -550,8 +550,47 @@ class DataviewEditorWindow(tk.Toplevel):
 
     def _export(self) -> None:
         """Export the current dataview to a new location."""
-        # Same as Save As for now
-        self._save_as()
+        panel = self._get_current_panel()
+        if not panel:
+            return
+
+        initial_dir = self.shared_data.dataview_folder or Path.cwd()
+
+        # Use folder selection dialog
+        folder_path = filedialog.askdirectory(
+            parent=self,
+            title="Select Folder to Export DataView",
+            initialdir=initial_dir,
+        )
+
+        if not folder_path:
+            return
+
+        export_path = Path(folder_path) / f"{panel.name}.cdv"
+
+        # Exporting to the same bound path is equivalent to Save.
+        if panel.file_path and export_path == panel.file_path:
+            panel.save()
+            self._update_tab_title(panel)
+            return
+
+        if export_path.exists():
+            result = messagebox.askyesno(
+                "File Exists",
+                f"'{export_path.name}' already exists. Overwrite?",
+                parent=self,
+            )
+            if not result:
+                return
+
+        panel.export(export_path)
+
+        # Refresh file list if exported to dataview folder
+        if (
+            self.shared_data.dataview_folder
+            and export_path.parent == self.shared_data.dataview_folder
+        ):
+            self._refresh_file_list()
 
     def _close_tab_at_index(self, tab_index: int) -> None:
         """Close the tab at the given index.
