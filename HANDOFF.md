@@ -35,22 +35,27 @@ copy_to_clipboard(ClickCodec().encode(grid))
 
 Tests: `tests/ladder/test_model.py`, `tests/ladder/test_codec.py`
 
+## Capture Tool
+
+### devtools/capture.py (in clicknick repo)
+Reads Click clipboard, prints structural analysis, optionally saves .bin.
+```
+uv run devtools/capture.py              # report only (no save)
+uv run devtools/capture.py <label>      # report + save to scratchpad/captures/<label>.bin
+```
+
+Scans for: type IDs (0x27XX), operand strings (UTF-16LE address patterns),
+func codes, nickname flag. Diffs against template (grid region only).
+
+Captures saved to `scratchpad/captures/` (gitignored).
+
 ## Exploration Tools (in clickplc-tools repo)
 
 ### dump_click_clipboard.py
-Main capture/diff/report tool.
-```
-uv run dump_click_clipboard.py capture <label>    # capture + describe grid
-uv run dump_click_clipboard.py diff <a> <b>       # manual diff
-uv run dump_click_clipboard.py report             # full report
-```
+Full capture/diff/report tool (interactive grid descriptions, auto-diffs).
 
 ### hexcell.py
 Standalone cell inspector. Dumps individual 64-byte cells from captures.
-```
-uv run hexcell.py <label> <row> <col>
-uv run hexcell.py <label> all                     # cols 0,1,30,31 for rows 0-1
-```
 
 ### runggrid_construct.py (original prototype)
 Prototype with Construct structs (aspirational) + working template-based codec.
@@ -169,24 +174,44 @@ Normal cell structure resumes after spillover.
 `add_empty_row → vertical_wire: exactly 1 byte differs`
 Row 0, Col C, +0x26 = 0x01. The ┴ is implicit (no separate flag).
 
-### 10. Instruction Type IDs
-```
-0x2711 (10001) = ContactNO    function code "4097"
-0x2712 (10002) = ContactNC    function code "4098"
-0x2715 (10005) = Out (OTE)
-```
-Type ID location: Cell A +0x39 (low byte), +0x3A (high byte = 0x27)
+### 10. Instruction Stream Format
 
-### 11. Operand Encoding
-Operand string is **UTF-16LE** in Cell B of the instruction spillover.
-- "X001" = `58 00 30 00 30 00 31 00` starting at Cell B +0x09
-- To change X001→X002: patch Cell B +0x0F from `31`('1') to `32`('2')
-- Function code "4097"/"4098" as UTF-16LE at Cell B +0x23
+Instruction data is a **contiguous stream**, not fixed cells. All fields are located
+at fixed offsets **relative to the type ID marker** (0x27XX):
 
-Coil operand location (for 4-char operands):
-- "Y001" at Row 1 Cell B +0x02 = `0x12A2` (UTF-16LE, 4 chars)
-- Coil type ID at Row 1 Cell A +0x32 = `0x1292`
-- Coil function code "8193" at Row 1 Cell B +0x2E (NOT +0x30 as previously documented)
+```
+type_id + 0:   Type ID (2 bytes: low byte + 0x27)
+type_id + 16:  Operand string (UTF-16LE, variable length)
+type_id + 42:  Function code — contacts (UTF-16LE, 4 digits)
+type_id + 60:  Function code — coils (UTF-16LE, 4 digits)
+```
+
+These relative offsets are consistent across all instruction types and operand lengths.
+The absolute position of the type ID itself shifts based on preceding instruction data.
+
+The immediate flag inserts 2 extra bytes before the func code (shifting it to type+44).
+
+### 11. Instruction Type IDs and Function Codes
+
+| Instruction | Type ID | Func Code | Notes |
+|---|---|---|---|
+| NO | 0x2711 | 4097 | Normal open contact |
+| NC | 0x2712 | 4098 | Normal closed contact |
+| NO immediate | 0x2711 | 4099 | Func code at type+44 (shifted +2) |
+| NC immediate | 0x2712 | 4100 | Func code at type+44 (shifted +2) |
+| Rise (pos edge) | 0x2713 | 4101 | "Edge" type, func distinguishes direction |
+| Fall (neg edge) | 0x2713 | 4102 | Same type ID as rise |
+| Out (OTE) | 0x2715 | 8193 | Output coil |
+
+Pattern: Contact func codes are sequential 4097-4102. Rise and fall share type 0x2713
+("Edge") and are distinguished by func code only.
+
+### 12. Operand Encoding (UPDATED — stream-based)
+
+Operand string is **UTF-16LE** at type_id + 16 in the instruction stream.
+Variable-length operands shift all downstream data (see finding 17).
+
+All strings (operands, func codes, nicknames) are UTF-16LE encoded.
 
 ### 12. Nickname Encoding
 Nicknames stored as UTF-16LE in the instruction data stream, after coil data.
@@ -258,17 +283,17 @@ The clipboard format is **not** a fixed grid of 64-byte cells. Instruction data 
 a serialized stream where operand strings are stored at their actual length, and all
 downstream fields shift accordingly.
 
-**Evidence from captures with different operand lengths:**
+Stream-relative offsets (type_id + N) are constant, but the type_id's
+absolute position shifts based on preceding data:
 
-| Operand | Chars | Contact FC offset | Coil type offset | Coil FC offset |
-|---------|-------|-------------------|------------------|----------------|
-| X002    | 4     | CellB +0x23       | CellA +0x32      | CellB +0x2E    |
-| CT1     | 3     | CellB +0x21       | CellA +0x30      | CellB +0x2C    |
-| C1      | 2     | CellB +0x1F       | CellA +0x2E      | CellB +0x2A    |
+| Operand | Chars | Contact type abs | Coil type abs |
+|---------|-------|------------------|---------------|
+| X002    | 4     | 0x0A99           | 0x1292        |
+| CT1     | 3     | 0x0A99           | 0x1290        |
+| C1      | 2     | 0x0A99           | 0x128E        |
 
-**Shift formula:** Each char fewer than 4 shifts all subsequent offsets left by 2 bytes
-(one UTF-16LE char). The shift from the contact operand propagates through the coil
-instruction in the next row — confirming this is a stream, not independent cells.
+Contact type position is fixed (always row0 +0x39). The coil type position
+shifts left by 2 bytes per char the contact operand is shorter than 4.
 
 **Implication:** The current `ClickCodec` only works for 4-char operands (X###, Y###).
 Supporting variable-length operands (C#, CT#, DS#, etc.) requires either:
@@ -309,42 +334,40 @@ Confirmed working operand combinations (when operands exist in project):
 **STATUS: WORKING for 4-char operands (X###, Y###). Template-based paste confirmed.**
 
 Using `NO_X002_coil.AF.bin` as baseline template (ships with `clicknick.ladder`).
-These offsets are ONLY valid for 4-char operands. See finding 17 for variable-length.
 
-### Contact operand (change X register number)
-| What | Offset | Example |
-|------|--------|---------|
-| Operand digit in "X00N" | Cell B +0x0F = `0x0AAF` | `31`('1') for X001, `32`('2') for X002 |
+### Stream-relative offsets (from type ID)
 
-### Contact type (NO vs NC)
-| What | Offset | NO value | NC value |
-|------|--------|----------|----------|
-| Type ID low byte | Cell A +0x39 = `0x0A99` | `11` (0x2711) | `12` (0x2712) |
-| Function code digit | Cell B +0x29 = `0x0AC9` | `37`('7') = "4097" | `38`('8') = "4098" |
+| Field | Relative offset | Format |
+|-------|----------------|--------|
+| Type ID | +0 | 2 bytes: low byte + 0x27 |
+| Operand | +16 | UTF-16LE, variable length |
+| Contact func code | +42 | UTF-16LE, 4 digits |
+| Contact func code (immediate) | +44 | Shifted +2 by immediate flag |
+| Coil func code | +60 | UTF-16LE, 4 digits |
 
-### Coil operand
-| What | Offset | Example |
-|------|--------|---------|
-| Operand string | R1 Cell B +0x02 = `0x12A2` | "Y001" UTF-16LE |
-| Type ID | R1 Cell A +0x32 = `0x1292` | `15 27` = 0x2715 (Out) |
-| Function code | R1 Cell B +0x2E | "8193" UTF-16LE |
+### Template absolute offsets (4-char operands only)
 
-### Nickname (optional)
-| What | Offset | Format |
-|------|--------|--------|
-| Flag | `0x12F0` | `0x02`=none, `0x01`=has nickname |
-| Nickname chars | `0x12F4` | UTF-16LE, null-terminated |
-| Structural flags | +5 and +8 from `0x12F4` | Shift right by nickname byte length |
+| What | Absolute | Stream-relative |
+|------|----------|-----------------|
+| Contact type ID | `0x0A99` | contact type +0 |
+| Contact operand | `0x0AA9` | contact type +16 |
+| Contact func code | `0x0AC3` | contact type +42 |
+| Coil type ID | `0x1292` | coil type +0 |
+| Coil operand | `0x12A2` | coil type +16 |
+| Coil func code | `0x12CE` | coil type +60 |
+| Nickname flag | `0x12F0` | (fixed?) |
+| Nickname string | `0x12F4` | UTF-16LE, null-terminated |
 
 ---
 
 ## OPEN QUESTIONS
 
-1. **Cell format shift formula** — fields move with spillover count. Formula unknown.
+1. ~~**Cell format shift formula**~~ — ANSWERED. Fields are at fixed stream-relative
+   offsets from the type ID. See findings 10 and 17.
 
-2. **Mystery values in cells** — Cell B +0x03-0x04 contains `65 60` for X registers,
-   `67 60` for Y registers. These may be internal type/category IDs. Need to determine
-   if these are fixed per register bank or per operand, and whether they need patching.
+2. **Mystery values in stream** — `65 60` appears for X registers, `67 60` for Y.
+   These may be internal type/category IDs. Need to determine if these are fixed per
+   register bank or per operand, and whether they need patching.
 
 3. **Variable-length operand offset calculation** — confirmed that operand length
    shifts all downstream offsets (see finding 17). Need to determine the exact formula
@@ -408,23 +431,33 @@ vertical_wire                 [grid: same + ┬ down from row 0 col B]
 parallel_complete             [grid: X001/X002 parallel OR]
 ```
 
-### Phase 2 — IN PROGRESS (7 of 10 done)
+### Phase 2 — IN PROGRESS
 ```
-NO_X002_coil.AF               [grid: X002 + out(Y001)]  ← session 2 baseline, template for codec
+NO_X002_coil.AF               [grid: X002 + out(Y001)]  ← template for codec
 NC_X001_coil.AF               [grid: ~X001 + out(Y001)]
 nickname_X001                  [grid: X001('Test') + out(Y001)]
 format_test                   [grid: unknown — captured to discover clipboard format]
-NO_C1_coil_C2                  [grid: C1 + out(C2)]  ← 2-char operand, stream format proof
-NO_CT1_coil_C10                [grid: CT1 + out(C10)]  ← 3-char contact + 3-char coil
-single_NO_CT1                  [grid: single cell CT1 only]  ← 4096-byte single-cell format
+NO_C1_coil_C2                  [grid: C1 + out(C2)]  ← 2-char operand, stream proof
+NO_CT1_coil_C10                [grid: CT1 + out(C10)]  ← 3-char operands
+single_NO_CT1                  [grid: single cell CT1 only]  ← 4096-byte format
 ```
 
-### Phase 2 — REMAINING
-| #  | Label | Change | Reveals |
-|----|-------|--------|---------|
-| 11 | `latch_Y001` | latch() not out() | OTL coil type ID |
-| 12 | `reset_Y001` | reset() not out() | OTU coil type ID |
-| 14 | `two_series` | X001,X002 series | Series AND layout |
+### Phase 3 — Instruction variants (scratchpad/captures/)
+```
+rise_X001_coil_Y001            [type 0x2713 "Edge", func 4101]
+fall_X001_coil_Y001            [type 0x2713 "Edge", func 4102, 2 byte diff vs rise]
+NO_X001_immediate_coil_Y001    [type 0x2711, func 4099, stream shifted +2]
+NC_X001_immediate_coil_Y001    [type 0x2712, func 4100, stream shifted +2]
+```
+
+### Remaining captures needed
+| Label | Change | Reveals |
+|-------|--------|---------|
+| `latch_Y001` | latch() not out() | OTL coil type ID + func code |
+| `reset_Y001` | reset() not out() | OTU coil type ID + func code |
+| `out_Y001_Y002` | out(Y001:Y002) range | Range output encoding |
+| `out_Y001_immediate` | out(Y001) immediate | Coil immediate flag |
+| `two_series` | X001,X002 series | Series AND layout |
 
 ---
 
