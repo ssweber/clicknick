@@ -5,9 +5,7 @@ from pyclickplc.validation import validate_initial_value as validate_initial_val
 from pyclickplc.validation import validate_nickname as _pyclickplc_validate_nickname
 
 
-def validate_nickname_format(
-    nickname: str, *, system_bank: str | None = None
-) -> tuple[bool, str]:
+def validate_nickname_format(nickname: str, *, system_bank: str | None = None) -> tuple[bool, str]:
     """Validate nickname format (length, characters, etc.) without uniqueness check.
 
     Args:

@@ -33,22 +33,6 @@ class BlockPanel(ttk.Frame):
         if self._all_rows_cache is not None:
             self.build_tree(self._all_rows_cache)
 
-    def _get_expanded_node_ids(self) -> set[str]:
-        """Get currently expanded node ids (for restoring tree state)."""
-        expanded: set[str] = set()
-        for iid, node in self._node_data.items():
-            if node.children and self.tree.item(iid, "open"):
-                expanded.add(node.node_id)
-        return expanded
-
-    def _restore_expanded_node_ids(self, expanded_node_ids: set[str]) -> None:
-        """Restore expanded state for matching nodes."""
-        if not expanded_node_ids:
-            return
-        for iid, node in self._node_data.items():
-            if node.children and node.node_id in expanded_node_ids:
-                self.tree.item(iid, open=True)
-
     def _create_widgets(self) -> None:
         header = ttk.Label(self, text="Memory Blocks", font=("TkDefaultFont", 9, "bold"))
         header.pack(fill=tk.X, padx=5, pady=(5, 2))
@@ -105,6 +89,22 @@ class BlockPanel(ttk.Frame):
         self._all_rows_cache: dict[int, AddressRow] | None = None
 
         self._create_widgets()
+
+    def _get_expanded_node_ids(self) -> set[str]:
+        """Get currently expanded node ids (for restoring tree state)."""
+        expanded: set[str] = set()
+        for iid, node in self._node_data.items():
+            if node.children and self.tree.item(iid, "open"):
+                expanded.add(node.node_id)
+        return expanded
+
+    def _restore_expanded_node_ids(self, expanded_node_ids: set[str]) -> None:
+        """Restore expanded state for matching nodes."""
+        if not expanded_node_ids:
+            return
+        for iid, node in self._node_data.items():
+            if node.children and node.node_id in expanded_node_ids:
+                self.tree.item(iid, open=True)
 
     def _ensure_color_tag(self, color_name: str | None) -> str:
         """Create/get a tree tag for a block background color."""

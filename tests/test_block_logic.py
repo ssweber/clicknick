@@ -7,7 +7,9 @@ from clicknick.views.nav_window.block_logic import build_block_tree
 
 
 def _make_rows(addresses: list[tuple[str, int]]) -> list[AddressRow]:
-    return [AddressRow(memory_type=memory_type, address=address) for memory_type, address in addresses]
+    return [
+        AddressRow(memory_type=memory_type, address=address) for memory_type, address in addresses
+    ]
 
 
 class TestBuildBlockTree:

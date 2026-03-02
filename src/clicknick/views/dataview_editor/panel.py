@@ -16,9 +16,11 @@ from pyclickplc.addresses import normalize_address
 from pyclickplc.dataview import (
     MAX_DATAVIEW_ROWS,
     DataViewFile,
-    DataViewRecord as DataViewRecord,
     create_empty_dataview,
     get_data_type_for_address,
+)
+from pyclickplc.dataview import (
+    DataViewRecord as DataViewRecord,
 )
 from tksheet import Sheet
 
@@ -722,9 +724,7 @@ class DataviewPanel(ttk.Frame):
             # Match save semantics: header reflects whether any saveable row has
             # a New Value.
             saveable_rows = self.rows[:MAX_DATAVIEW_ROWS]
-            has_new_values = any(
-                r.new_value is not None for r in saveable_rows if not r.is_empty
-            )
+            has_new_values = any(r.new_value is not None for r in saveable_rows if not r.is_empty)
             export_cdv(path, self.rows, has_new_values, self._header)
             return True
         except Exception as e:

@@ -106,7 +106,9 @@ def _build_flat_node(entry: _BlockEntry) -> BlockTreeNode:
     )
 
 
-def _build_udt_node(base: str, entries: list[_BlockEntry], *, sort_alphabetically: bool) -> BlockTreeNode:
+def _build_udt_node(
+    base: str, entries: list[_BlockEntry], *, sort_alphabetically: bool
+) -> BlockTreeNode:
     """Create one UDT parent node and its field children."""
     field_order_map = group_udt_block_names(entry.name for entry in entries)
     field_order = list(field_order_map.get(base, ()))
@@ -124,7 +126,9 @@ def _build_udt_node(base: str, entries: list[_BlockEntry], *, sort_alphabeticall
         ordered_fields = sorted(by_field.keys(), key=str.lower)
     else:
         seen = set(field_order)
-        ordered_fields = field_order + [field for field in fallback_field_order if field not in seen]
+        ordered_fields = field_order + [
+            field for field in fallback_field_order if field not in seen
+        ]
 
     children: list[BlockTreeNode] = []
     for field in ordered_fields:
