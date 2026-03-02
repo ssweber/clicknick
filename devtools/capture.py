@@ -28,16 +28,24 @@ from clicknick.ladder.model import InstructionType
 
 CAPTURES_DIR = Path(__file__).resolve().parent.parent / "scratchpad" / "captures"
 GRID_START = min(ROW_STARTS.values())
+GRID_END = max(ROW_STARTS.values()) + COLS_PER_ROW * CELL_SIZE
 
 # --- Stream-relative offsets (from type ID byte) ---
 # These are consistent across all instruction types tested so far.
 TYPE_TO_OPERAND = 16  # type_id + 16 = operand start (UTF-16LE)
-TYPE_TO_FUNC_CONTACT = 42  # type_id + 42 = func code for contacts
-TYPE_TO_FUNC_COIL = 60  # type_id + 60 = func code for coils
+TYPE_TO_RANGE_OPERAND_BASE = 24  # second operand starts at 24 + 2*len(op1)
+TYPE_TO_FUNC_CONTACT = 42  # 4-char contact base (e.g. X001)
+TYPE_TO_FUNC_COIL = 60  # 4-char coil base (e.g. Y001)
 
 # Known type ID names
 TYPE_NAMES: dict[int, str] = {t.value: t.name for t in InstructionType}
-TYPE_NAMES.update({0x13: "EDGE (rise/fall)"})
+TYPE_NAMES.update(
+    {
+        0x13: "EDGE (rise/fall)",
+        0x16: "COIL_LATCH (set)",
+        0x17: "COIL_RESET",
+    }
+)
 
 # Known func codes (value -> description)
 FUNC_CODE_NAMES: dict[str, str] = {
@@ -48,10 +56,21 @@ FUNC_CODE_NAMES: dict[str, str] = {
     "4101": "Rise",
     "4102": "Fall",
     "8193": "Out",
+    "8195": "Latch (set)",
+    "8196": "Reset",
+    "8197": "Out immediate",
+    "8199": "Latch immediate",
+    "8200": "Reset immediate",
+    "8207": "Out range",
+    "8208": "Out range immediate",
+    "8213": "Latch range",
+    "8214": "Latch range immediate",
+    "8219": "Reset range",
+    "8220": "Reset range immediate",
 }
 
-# Operand pattern: 1-3 uppercase letters + 1-4 digits
-_OPERAND_RE = re.compile(r"^[A-Z]{1,3}\d{1,4}$")
+# Operand pattern: 1-3 uppercase letters + 1-4 digits (legacy) or 1-5 digits (new captures)
+_OPERAND_RE = re.compile(r"^[A-Z]{1,3}\d{1,5}$")
 
 
 def _read_utf16le(data: bytes, offset: int, max_chars: int = 8) -> str | None:
@@ -85,7 +104,8 @@ def locate(offset: int) -> str:
 def scan_type_ids(data: bytes) -> list[tuple[int, int, str]]:
     """Find all 0x27XX patterns in the grid region."""
     results = []
-    for i in range(GRID_START, len(data) - 1):
+    scan_end = min(len(data), GRID_END)
+    for i in range(GRID_START, scan_end - 1):
         if data[i + 1] == 0x27 and data[i] != 0x00:
             type_byte = data[i]
             name = TYPE_NAMES.get(type_byte, f"UNKNOWN_0x{type_byte:02X}")
@@ -110,18 +130,56 @@ def probe_instruction(data: bytes, type_offset: int, is_coil: bool = False) -> d
         info["operand_chars"] = len(operand)
     else:
         info["operand"] = None
+        info["operand_chars"] = 4  # Fallback to common X001/Y001 width for probing
 
-    # Func code — try standard offset first, then +2 (immediate flag shifts it)
-    fc_base = TYPE_TO_FUNC_COIL if is_coil else TYPE_TO_FUNC_CONTACT
-    for fc_delta in (fc_base, fc_base + 2):
+    # Optional second operand for range variants (e.g. out(Y001:Y002))
+    if is_coil:
+        op2_delta = TYPE_TO_RANGE_OPERAND_BASE + info["operand_chars"] * 2
+        op2_offset = type_offset + op2_delta
+        operand2 = _read_utf16le(data, op2_offset)
+        if operand2 and _OPERAND_RE.match(operand2):
+            info["operand2"] = operand2
+            info["operand2_delta"] = op2_delta
+            info["operand2_offset"] = op2_offset
+            info["operand2_chars"] = len(operand2)
+        else:
+            info["operand2_chars"] = 0
+
+    # Func code probing:
+    # Base delta is address-length dependent (older captures with short operands shift earlier).
+    # Contact base: 34 + 2*len(op1)
+    # Coil base:    52 + 2*len(op1) + 2*len(op2_if_range)
+    if is_coil:
+        fc_base = 52 + info["operand_chars"] * 2 + info.get("operand2_chars", 0) * 2
+        fc_scan_min, fc_scan_max = 52, 76
+    else:
+        fc_base = 34 + info["operand_chars"] * 2
+        fc_scan_min, fc_scan_max = 34, 48
+    info["func_base_delta"] = fc_base
+
+    # Prefer predicted normal/immediate positions, then scan fallback window.
+    fc_deltas = [fc_base, fc_base + 2]
+    for d in range(fc_scan_min, fc_scan_max + 1, 2):
+        if d not in fc_deltas:
+            fc_deltas.append(d)
+
+    func_candidates: list[tuple[int, str]] = []
+    for fc_delta in fc_deltas:
         fc_offset = type_offset + fc_delta
         fc_str = _read_utf16le(data, fc_offset, max_chars=4)
         if fc_str and fc_str.isdigit() and len(fc_str) == 4:
-            info["func_code"] = fc_str
-            info["func_code_offset"] = fc_offset
-            info["func_code_delta"] = fc_delta
-            info["func_code_name"] = FUNC_CODE_NAMES.get(fc_str, "UNKNOWN")
-            break
+            func_candidates.append((fc_delta, fc_str))
+
+    if func_candidates:
+        # Prefer known function codes, otherwise first 4-digit candidate.
+        fc_delta, fc_str = next(
+            ((d, s) for d, s in func_candidates if s in FUNC_CODE_NAMES),
+            func_candidates[0],
+        )
+        info["func_code"] = fc_str
+        info["func_code_offset"] = type_offset + fc_delta
+        info["func_code_delta"] = fc_delta
+        info["func_code_name"] = FUNC_CODE_NAMES.get(fc_str, "UNKNOWN")
 
     return info
 
@@ -187,22 +245,37 @@ def print_report(data: bytes, label: str | None = None) -> None:
             )
         else:
             print("  Operand:   (not found at type+16)")
+        if info.get("operand2"):
+            print(
+                f"  Operand 2: {info['operand2']!r:<8s} {info['operand2_chars']} chars"
+                f"          @ 0x{info['operand2_offset']:04X} (type+{info['operand2_delta']})"
+            )
 
         if info.get("func_code"):
             delta = info["func_code_delta"]
-            shifted = (
-                " (shifted +2, immediate?)"
-                if delta != (TYPE_TO_FUNC_COIL if is_coil else TYPE_TO_FUNC_CONTACT)
-                else ""
-            )
+            base = info.get("func_base_delta", TYPE_TO_FUNC_COIL if is_coil else TYPE_TO_FUNC_CONTACT)
+            shifted = ""
+            if delta != base:
+                rel = delta - base
+                hint = (
+                    ", immediate?"
+                    if rel == 2
+                    else ", range/alignment?"
+                    if rel >= 4
+                    else ", alignment?"
+                    if rel > 0
+                    else ""
+                )
+                shifted = f" (shifted +{rel}{hint})"
             print(
                 f"  Func code: {info['func_code']!r:<8s} {info['func_code_name']:<20s}"
                 f" @ 0x{info['func_code_offset']:04X} (type+{delta}){shifted}"
             )
         else:
-            print(
-                f"  Func code: (not found at type+{TYPE_TO_FUNC_COIL if is_coil else TYPE_TO_FUNC_CONTACT})"
-            )
+            if is_coil:
+                print("  Func code: (not found in type+52..type+76)")
+            else:
+                print("  Func code: (not found in type+34..type+48)")
 
     # Nickname
     flag, nickname = check_nickname(data)

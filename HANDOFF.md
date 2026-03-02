@@ -448,6 +448,7 @@ rise_X001_coil_Y001            [type 0x2713 "Edge", func 4101]
 fall_X001_coil_Y001            [type 0x2713 "Edge", func 4102, 2 byte diff vs rise]
 NO_X001_immediate_coil_Y001    [type 0x2711, func 4099, stream shifted +2]
 NC_X001_immediate_coil_Y001    [type 0x2712, func 4100, stream shifted +2]
+out_Y001_Y002                  [type 0x2715, func 8207, range operand — see finding 19]
 ```
 
 ### Remaining captures needed
