@@ -7,13 +7,24 @@ fields at known offsets. No Construct dependency.
 from __future__ import annotations
 
 from importlib import resources
+from typing import Final
 
-from .model import Coil, Contact, InstructionType, RungGrid
+from .model import (
+    COIL_FUNC_CODES,
+    CONTACT_FUNC_CODES,
+    OPERAND_RE,
+    Coil,
+    Contact,
+    InstructionType,
+    RungGrid,
+)
 
 BUFFER_SIZE = 8192  # 0x2000 — fixed clipboard size
 CELL_SIZE = 0x40  # 64 bytes per cell
 COLS_PER_ROW = 32  # A(0) through AF(31)
 ROW_STARTS = {0: 0x0A60, 1: 0x1260}
+GRID_START = min(ROW_STARTS.values())
+GRID_END = max(ROW_STARTS.values()) + COLS_PER_ROW * CELL_SIZE
 
 _template_cache: bytes | None = None
 
@@ -30,20 +41,104 @@ def _load_template() -> bytes:
     return _template_cache
 
 
-def _encode_operand(operand: str, expected_len: int = 4) -> bytes:
-    """Encode operand string as UTF-16LE."""
-    assert len(operand) == expected_len, f"Operand {operand!r} must be {expected_len} chars"
-    return operand.encode("utf-16-le")
+CONTACT_CODE_TO_FLAGS: Final[dict[str, tuple[InstructionType, bool]]] = {
+    code: (itype, immediate) for (itype, immediate), code in CONTACT_FUNC_CODES.items()
+}
+
+COIL_CODE_TO_FLAGS: Final[dict[str, tuple[InstructionType, bool, bool]]] = {
+    code: (itype, is_range, immediate)
+    for (itype, is_range, immediate), code in COIL_FUNC_CODES.items()
+}
+
+# Type+2..type+15 for known captures.
+_CONTACT_PREFIX: Final[bytes] = bytes.fromhex("00000100040000006560FFFFFFFF")
+_COIL_PREFIX: Final[bytes] = bytes.fromhex("00000100060000006660FFFFFFFF")
+
+# Common stream fragments discovered in captures.
+_BLOCK_AFTER_CONTACT_OP: Final[bytes] = bytes.fromhex("0000F511FFFFFFFF")
+_BLOCK_AFTER_COIL_OP: Final[bytes] = bytes.fromhex("00006760FFFFFFFF")
+_BLOCK_F8: Final[bytes] = bytes.fromhex("0000F811FFFFFFFF")
+_BLOCK_F5: Final[bytes] = bytes.fromhex("30000000F511FFFFFFFF")
+_FUNC_PRE_NORMAL: Final[bytes] = bytes.fromhex("300000001832FFFFFFFF")
+_FUNC_PRE_IMMEDIATE: Final[bytes] = bytes.fromhex("2D00310000001832FFFFFFFF")
+_FUNC_POST: Final[bytes] = bytes.fromhex("00000000FFFFFFFF")
 
 
-def _decode_operand(data: bytes) -> str:
-    """Decode UTF-16LE operand string."""
-    return data.decode("utf-16-le").rstrip("\x00")
+def _encode_utf16(value: str) -> bytes:
+    return value.encode("utf-16-le")
 
 
-def _encode_func_code(code: str) -> bytes:
-    """Encode function code string as UTF-16LE."""
-    return code.encode("utf-16-le")
+def _read_utf16_ascii(data: bytes, offset: int, max_chars: int = 8) -> str | None:
+    chars: list[str] = []
+    for i in range(max_chars):
+        pos = offset + i * 2
+        if pos + 1 >= len(data):
+            break
+        c = data[pos] | (data[pos + 1] << 8)
+        if c == 0:
+            break
+        if not (0x20 <= c < 0x7F):
+            return None
+        chars.append(chr(c))
+    return "".join(chars) if chars else None
+
+
+def _scan_type_offsets(data: bytes) -> list[int]:
+    offsets: list[int] = []
+    for i in range(GRID_START, min(len(data), GRID_END) - 1):
+        if data[i + 1] == 0x27 and data[i] != 0x00:
+            offsets.append(i)
+    return offsets
+
+
+def _decode_func_code_at(data: bytes, offset: int) -> str | None:
+    raw = _read_utf16_ascii(data, offset, max_chars=4)
+    if raw and len(raw) == 4 and raw.isdigit():
+        return raw
+    return None
+
+
+def _find_func_code(data: bytes, type_offset: int, deltas: list[int], known: set[str]) -> tuple[int, str]:
+    seen: set[int] = set()
+    for delta in deltas:
+        if delta in seen:
+            continue
+        seen.add(delta)
+        code = _decode_func_code_at(data, type_offset + delta)
+        if code in known:
+            return delta, code
+    raise ValueError(f"Could not locate known function code near type offset 0x{type_offset:04X}")
+
+
+def _build_contact_stream(contact: Contact) -> bytes:
+    op = _encode_utf16(contact.operand)
+    pre = _FUNC_PRE_IMMEDIATE if contact.immediate else _FUNC_PRE_NORMAL
+    func = _encode_utf16(contact.func_code)
+    return (
+        bytes((contact.type.value, 0x27))
+        + _CONTACT_PREFIX
+        + op
+        + _BLOCK_AFTER_CONTACT_OP
+        + pre
+        + func
+        + _FUNC_POST
+    )
+
+
+def _build_coil_stream(coil: Coil) -> bytes:
+    op1 = _encode_utf16(coil.operand)
+    pre = _FUNC_PRE_IMMEDIATE if coil.immediate else _FUNC_PRE_NORMAL
+    func = _encode_utf16(coil.func_code)
+    parts = [
+        bytes((coil.type.value, 0x27)),
+        _COIL_PREFIX,
+        op1,
+        _BLOCK_AFTER_COIL_OP,
+    ]
+    if coil.range_end is not None:
+        parts.append(_encode_utf16(coil.range_end))
+    parts.extend([_BLOCK_F8, _BLOCK_F5, pre, func, _FUNC_POST])
+    return b"".join(parts)
 
 
 class ClickCodec:
@@ -58,22 +153,14 @@ class ClickCodec:
 
         # Contact instruction (Row 0, Cells A-B)
         CONTACT_TYPE_ID = ROW_STARTS[0] + 0 * CELL_SIZE + 0x39
-        CONTACT_OPERAND = ROW_STARTS[0] + 1 * CELL_SIZE + 0x09
-        CONTACT_FUNC_CODE = ROW_STARTS[0] + 1 * CELL_SIZE + 0x23
 
-        # Coil instruction (Row 1, Cells A-B)
-        COIL_TYPE_ID = ROW_STARTS[1] + 0 * CELL_SIZE + 0x32
-        COIL_OPERAND = ROW_STARTS[1] + 1 * CELL_SIZE + 0x02
-        COIL_FUNC_CODE = ROW_STARTS[1] + 1 * CELL_SIZE + 0x2E
+        # Coil instruction baseline (Row 1, Cells A-B)
+        COIL_TYPE_ID_BASE = ROW_STARTS[1] + 0 * CELL_SIZE + 0x32
 
         # Nickname (Row 1, Col C area)
         NICKNAME_FLAG = 0x12F0
         NICKNAME_STRING = 0x12F4
         NICKNAME_MAX_CHARS = 8
-
-        # Sizes
-        OPERAND_CHARS = 4  # chars (8 bytes UTF-16LE)
-        FUNC_CODE_CHARS = 4
 
     def _patch_nickname(self, buf: bytearray, nickname: str) -> None:
         """Patch nickname into buffer. Handles structural flag shifting."""
@@ -99,27 +186,19 @@ class ClickCodec:
         buf = bytearray(_load_template())
         off = self.Offsets
 
-        # Contact type ID (low byte; high byte 0x27 stays from template)
-        buf[off.CONTACT_TYPE_ID] = grid.contact.type.value
+        contact_stream = _build_contact_stream(grid.contact)
+        contact_start = off.CONTACT_TYPE_ID
+        buf[contact_start : contact_start + len(contact_stream)] = contact_stream
 
-        # Contact operand
-        op = _encode_operand(grid.contact.operand, off.OPERAND_CHARS)
-        buf[off.CONTACT_OPERAND : off.CONTACT_OPERAND + len(op)] = op
+        # Coil type position shifts with contact stream size.
+        contact_delta = (len(grid.contact.operand) - 4) * 2 + (2 if grid.contact.immediate else 0)
+        coil_start = off.COIL_TYPE_ID_BASE + contact_delta
+        if coil_start != off.COIL_TYPE_ID_BASE:
+            buf[off.COIL_TYPE_ID_BASE] = 0x00
+            buf[off.COIL_TYPE_ID_BASE + 1] = 0x00
 
-        # Contact function code
-        fc = _encode_func_code(grid.contact.func_code)
-        buf[off.CONTACT_FUNC_CODE : off.CONTACT_FUNC_CODE + len(fc)] = fc
-
-        # Coil type ID
-        buf[off.COIL_TYPE_ID] = grid.coil.type.value
-
-        # Coil operand
-        cop = _encode_operand(grid.coil.operand, off.OPERAND_CHARS)
-        buf[off.COIL_OPERAND : off.COIL_OPERAND + len(cop)] = cop
-
-        # Coil function code
-        cfc = _encode_func_code(grid.coil.func_code)
-        buf[off.COIL_FUNC_CODE : off.COIL_FUNC_CODE + len(cfc)] = cfc
+        coil_stream = _build_coil_stream(grid.coil)
+        buf[coil_start : coil_start + len(coil_stream)] = coil_stream
 
         # Nickname
         if grid.nickname:
@@ -132,19 +211,66 @@ class ClickCodec:
         assert len(data) == BUFFER_SIZE
         off = self.Offsets
 
+        type_offsets = _scan_type_offsets(data)
+        if len(type_offsets) < 2:
+            raise ValueError("Could not locate contact and coil type markers in buffer")
+
+        contact_offset = type_offsets[0]
+        coil_offset = type_offsets[1]
+
         # Contact
-        type_byte = data[off.CONTACT_TYPE_ID]
-        contact_type = InstructionType(type_byte)
-        contact_op = _decode_operand(
-            data[off.CONTACT_OPERAND : off.CONTACT_OPERAND + off.OPERAND_CHARS * 2]
+        contact_type = InstructionType(data[contact_offset])
+        if contact_type not in (InstructionType.CONTACT_NO, InstructionType.CONTACT_NC):
+            raise ValueError(f"Unsupported contact type 0x27{data[contact_offset]:02X}")
+
+        contact_op = _read_utf16_ascii(data, contact_offset + 16)
+        if not contact_op or not OPERAND_RE.fullmatch(contact_op):
+            raise ValueError("Could not decode valid contact operand")
+
+        contact_base = 34 + len(contact_op) * 2
+        _, contact_code = _find_func_code(
+            data,
+            contact_offset,
+            [contact_base, contact_base + 2] + list(range(34, 50, 2)),
+            set(CONTACT_CODE_TO_FLAGS),
         )
-        contact = Contact(type=contact_type, operand=contact_op)
+        _, contact_immediate = CONTACT_CODE_TO_FLAGS[contact_code]
+        contact = Contact(type=contact_type, operand=contact_op, immediate=contact_immediate)
 
         # Coil
-        coil_type_byte = data[off.COIL_TYPE_ID]
-        coil_type = InstructionType(coil_type_byte)
-        coil_op = _decode_operand(data[off.COIL_OPERAND : off.COIL_OPERAND + off.OPERAND_CHARS * 2])
-        coil = Coil(type=coil_type, operand=coil_op)
+        coil_type = InstructionType(data[coil_offset])
+        if coil_type not in (
+            InstructionType.COIL_OUT,
+            InstructionType.COIL_LATCH,
+            InstructionType.COIL_RESET,
+        ):
+            raise ValueError(f"Unsupported coil type 0x27{data[coil_offset]:02X}")
+
+        coil_op = _read_utf16_ascii(data, coil_offset + 16)
+        if not coil_op or not OPERAND_RE.fullmatch(coil_op):
+            raise ValueError("Could not decode valid coil operand")
+
+        coil_base_normal = 52 + len(coil_op) * 2
+        _, coil_code = _find_func_code(
+            data,
+            coil_offset,
+            [coil_base_normal, coil_base_normal + 2] + list(range(52, 82, 2)),
+            set(COIL_CODE_TO_FLAGS),
+        )
+        code_type, code_is_range, code_immediate = COIL_CODE_TO_FLAGS[coil_code]
+        if code_type != coil_type:
+            raise ValueError(
+                f"Coil type mismatch: type 0x27{coil_type.value:02X}, func code {coil_code}"
+            )
+
+        range_end = None
+        if code_is_range:
+            op2_offset = coil_offset + 24 + len(coil_op) * 2
+            op2 = _read_utf16_ascii(data, op2_offset)
+            if not op2 or not OPERAND_RE.fullmatch(op2):
+                raise ValueError("Coil range function code found, but range end operand missing")
+            range_end = op2
+        coil = Coil(type=coil_type, operand=coil_op, range_end=range_end, immediate=code_immediate)
 
         # Nickname
         nickname = None

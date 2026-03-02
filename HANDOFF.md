@@ -448,16 +448,22 @@ rise_X001_coil_Y001            [type 0x2713 "Edge", func 4101]
 fall_X001_coil_Y001            [type 0x2713 "Edge", func 4102, 2 byte diff vs rise]
 NO_X001_immediate_coil_Y001    [type 0x2711, func 4099, stream shifted +2]
 NC_X001_immediate_coil_Y001    [type 0x2712, func 4100, stream shifted +2]
-out_Y001_Y002                  [type 0x2715, func 8207, range operand — see finding 19]
+out_Y001_immediate_v2          [type 0x2715, func 8197, immediate]
+out_Y001_Y002_v3               [type 0x2715, func 8207, range operand]
+out_Y001_Y002_immediate_v1     [type 0x2715, func 8208, range + immediate]
+latch_Y001_v1                  [type 0x2716, func 8195]
+set_Y1_immediate_v1            [type 0x2716, func 8199]
+set_Y1_Y2_v1                   [type 0x2716, func 8213]
+set_Y1_Y2_immediate_v1         [type 0x2716, func 8214]
+reset_Y001_v1                  [type 0x2717, func 8196]
+reset_Y1_immediate_v1          [type 0x2717, func 8200]
+reset_Y1_Y2_v1                 [type 0x2717, func 8219]
+reset_Y1_Y2_immediate_v1       [type 0x2717, func 8220]
 ```
 
 ### Remaining captures needed
 | Label | Change | Reveals |
 |-------|--------|---------|
-| `latch_Y001` | latch() not out() | OTL coil type ID + func code |
-| `reset_Y001` | reset() not out() | OTU coil type ID + func code |
-| `out_Y001_Y002` | out(Y001:Y002) range | Range output encoding |
-| `out_Y001_immediate` | out(Y001) immediate | Coil immediate flag |
 | `two_series` | X001,X002 series | Series AND layout |
 
 ---
