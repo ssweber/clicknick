@@ -308,6 +308,25 @@ Copying a single instruction cell (not a full rung) produces a **4096-byte** buf
 (half of a full rung's 8192). Same `CLICK` magic header. The instruction data appears
 at two locations: `0x02A9` and `0x0AA9` (offset `0x0800` apart), with identical content.
 
+### 19. Header Structural Table + Pointer/Rendering Coupling (NEW)
+
+Two-series immediate captures show a second metadata layer in the header region:
+
+- Repeating table at `0x0254 + n*0x40` for `n=0..31` (32 entries).
+- Entry bytes at offsets `+0x05`, `+0x11`, `+0x17` change with immediate placement:
+  - `X001,X002,->,:out(Y001)`: `+05=0x08`, `+11=0x11`, `+17=0x0B`
+  - `X001.immediate,X002,->,:out(Y001)`: `+05=0x00`, `+11=0x00`, `+17=0xF9`
+  - `X001,X002.immediate,->,:out(Y001)`: `+05=0x01`, `+11=0x02`, `+17=0xF9`
+  - `X001.immediate,X002.immediate,->,:out(Y001)`: `+05=0x02`, `+11=0x04`, `+17=0xF9`
+
+Pointer/rendering bytes at `0x00B8-0x00CF` also vary by variant:
+- Base/second-immediate/both-immediate captures: all zero in this region.
+- First-immediate capture: non-zero signature (`28 00 28 00 28 00 ... 17 00 E4 DE 73 01`).
+
+Implication: not all behavior is explained by stream offsets alone. Immediate changes
+can require header/table state changes; naive offset-shifting can produce invalid/crashing
+payloads even when instruction stream markers look correct.
+
 ### 16. Operand Project Validation
 Click silently drops operands that don't exist in the current project configuration.
 A pasted rung will show the instruction type (e.g., "out") but not the operand
@@ -378,9 +397,11 @@ Using `NO_X002_coil.AF.bin` as baseline template (ships with `clicknick.ladder`)
    with same type IDs (0x2711 NO, 0x2715 OUT). Operand string stored as-is. Still need
    DS, T, TD captures to confirm they follow the same pattern.
 
-5. **Pointer/rendering table** (0x00B8-0x01F7) — no longer blocking, but structure
-   still unknown. Template values from old sessions work. May become relevant when
-   supporting more rung structures.
+5. **Pointer/rendering table + header structural table** — PARTIALLY ANSWERED.
+   `0x0254 + n*0x40` contains per-entry structural metadata that changes with immediate
+   placement, and `0x00B8-0x00CF` may carry variant-dependent rendering bytes.
+   Full semantics remain unknown, but these blocks are now known to be relevant to
+   safe generation for series/immediate variants.
 
 6. **Single-cell paste** — can a 4096-byte single-cell buffer be pasted? Could enable
    pasting contacts and coils independently instead of full rungs.
@@ -398,8 +419,8 @@ The stream-based format (finding 17) is the main blocker for non-X/Y addresses.
 ### Expand supported instructions
 Continue captures:
 1. **Latch/Reset coils** — capture to get OTL/OTU type IDs
-2. **Series contacts** — `two_series` capture completed; codec now decodes series AND and encodes 2-contact
-   rungs from template (currently limited to 4-char non-immediate contacts).
+2. **Series contacts** — 2-contact series capture family completed (`none/first-immediate/second-immediate/both-immediate`);
+   codec decodes and encodes these via dedicated templates (currently 4-char contacts only).
 3. **Box instructions** — timers, math, move (wider cells, different spillover)
 
 ### CLI integration
@@ -447,6 +468,10 @@ single_NO_CT1                  [grid: single cell CT1 only]  ← 4096-byte forma
 ```
 rise_X001_coil_Y001            [type 0x2713 "Edge", func 4101]
 fall_X001_coil_Y001            [type 0x2713 "Edge", func 4102, 2 byte diff vs rise]
+two_series                     [X001,X002,->,:out(Y001)]
+two_series_immediate_native    [X001.immediate,X002,->,:out(Y001)]
+two_series_second_immediate_native [X001,X002.immediate,->,:out(Y001)]
+two_series_both_immediate_native [X001.immediate,X002.immediate,->,:out(Y001)]
 NO_X001_immediate_coil_Y001    [type 0x2711, func 4099, stream shifted +2]
 NC_X001_immediate_coil_Y001    [type 0x2712, func 4100, stream shifted +2]
 out_Y001_immediate_v2          [type 0x2715, func 8197, immediate]
@@ -465,7 +490,7 @@ reset_Y1_Y2_immediate_v1       [type 0x2717, func 8220]
 ### Remaining captures needed
 | Label | Change | Reveals |
 |-------|--------|---------|
-| (none for series) | `two_series` captured | Series AND layout decoded; 2-contact encode path implemented |
+| `two_series_short_operands` | `X1,X2,->,:out(Y001)` | Whether header/table logic can be generalized beyond 4-char series contacts |
 
 ---
 

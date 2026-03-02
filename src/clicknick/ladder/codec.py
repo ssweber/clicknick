@@ -28,6 +28,9 @@ GRID_END = max(ROW_STARTS.values()) + COLS_PER_ROW * CELL_SIZE
 
 _template_cache: bytes | None = None
 _two_series_template_cache: bytes | None = None
+_two_series_immediate_template_cache: bytes | None = None
+_two_series_second_immediate_template_cache: bytes | None = None
+_two_series_both_immediate_template_cache: bytes | None = None
 
 
 def _load_template() -> bytes:
@@ -52,6 +55,42 @@ def _load_two_series_template() -> bytes:
         )
         assert len(_two_series_template_cache) == BUFFER_SIZE
     return _two_series_template_cache
+
+
+def _load_two_series_immediate_template() -> bytes:
+    global _two_series_immediate_template_cache
+    if _two_series_immediate_template_cache is None:
+        _two_series_immediate_template_cache = (
+            resources.files("clicknick.ladder.resources")
+            .joinpath("NO_X001_immediate_X002_coil.AF.two_series.bin")
+            .read_bytes()
+        )
+        assert len(_two_series_immediate_template_cache) == BUFFER_SIZE
+    return _two_series_immediate_template_cache
+
+
+def _load_two_series_second_immediate_template() -> bytes:
+    global _two_series_second_immediate_template_cache
+    if _two_series_second_immediate_template_cache is None:
+        _two_series_second_immediate_template_cache = (
+            resources.files("clicknick.ladder.resources")
+            .joinpath("NO_X001_X002_immediate_coil.AF.two_series.bin")
+            .read_bytes()
+        )
+        assert len(_two_series_second_immediate_template_cache) == BUFFER_SIZE
+    return _two_series_second_immediate_template_cache
+
+
+def _load_two_series_both_immediate_template() -> bytes:
+    global _two_series_both_immediate_template_cache
+    if _two_series_both_immediate_template_cache is None:
+        _two_series_both_immediate_template_cache = (
+            resources.files("clicknick.ladder.resources")
+            .joinpath("NO_X001_immediate_X002_immediate_coil.AF.two_series.bin")
+            .read_bytes()
+        )
+        assert len(_two_series_both_immediate_template_cache) == BUFFER_SIZE
+    return _two_series_both_immediate_template_cache
 
 
 CONTACT_CODE_TO_FLAGS: Final[dict[str, tuple[InstructionType, bool]]] = {
@@ -221,10 +260,13 @@ class ClickCodec:
         # Contact instruction (Row 0, Cells A-B)
         CONTACT_TYPE_ID = ROW_STARTS[0] + 0 * CELL_SIZE + 0x39
         CONTACT2_TYPE_ID = ROW_STARTS[0] + 0xBE
+        CONTACT2_TYPE_ID_IMMEDIATE = ROW_STARTS[0] + 0xC0
 
         # Coil instruction baseline (Row 1, Cells A-B)
         COIL_TYPE_ID_BASE = ROW_STARTS[1] + 0 * CELL_SIZE + 0x32
         COIL_TYPE_ID_BASE_TWO_SERIES = ROW_STARTS[1] + 1 * CELL_SIZE + 0x37
+        COIL_TYPE_ID_BASE_TWO_SERIES_IMMEDIATE = ROW_STARTS[1] + 1 * CELL_SIZE + 0x39
+        COIL_TYPE_ID_BASE_TWO_SERIES_BOTH_IMMEDIATE = ROW_STARTS[1] + 1 * CELL_SIZE + 0x3B
 
         # Nickname (Row 1, Col C area)
         NICKNAME_FLAG = 0x12F0
@@ -269,19 +311,42 @@ class ClickCodec:
                 buf[off.COIL_TYPE_ID_BASE] = 0x00
                 buf[off.COIL_TYPE_ID_BASE + 1] = 0x00
         elif len(contacts) == 2:
-            # Current two-series template is validated for 4-char, non-immediate contacts.
+            # Current two-series templates are validated for 4-char contacts.
             for idx, contact in enumerate(contacts, start=1):
                 if len(contact.operand) != 4:
                     raise ValueError(f"Contact {idx} in two-series rung must be 4 chars for now")
-                if contact.immediate:
-                    raise ValueError("Immediate contacts in two-series rungs are not supported yet")
-
-            buf = bytearray(_load_two_series_template())
-            first_stream = _build_contact_stream(contacts[0])
-            second_stream = _build_contact_stream(contacts[1])
-            buf[off.CONTACT_TYPE_ID : off.CONTACT_TYPE_ID + len(first_stream)] = first_stream
-            buf[off.CONTACT2_TYPE_ID : off.CONTACT2_TYPE_ID + len(second_stream)] = second_stream
-            coil_start = off.COIL_TYPE_ID_BASE_TWO_SERIES
+            if contacts[0].immediate and contacts[1].immediate:
+                buf = bytearray(_load_two_series_both_immediate_template())
+                first_stream = _build_contact_stream(contacts[0])
+                second_stream = _build_contact_stream(contacts[1])
+                buf[off.CONTACT_TYPE_ID : off.CONTACT_TYPE_ID + len(first_stream)] = first_stream
+                buf[
+                    off.CONTACT2_TYPE_ID_IMMEDIATE : off.CONTACT2_TYPE_ID_IMMEDIATE + len(second_stream)
+                ] = second_stream
+                coil_start = off.COIL_TYPE_ID_BASE_TWO_SERIES_BOTH_IMMEDIATE
+            elif contacts[0].immediate:
+                buf = bytearray(_load_two_series_immediate_template())
+                first_stream = _build_contact_stream(contacts[0])
+                second_stream = _build_contact_stream(contacts[1])
+                buf[off.CONTACT_TYPE_ID : off.CONTACT_TYPE_ID + len(first_stream)] = first_stream
+                buf[
+                    off.CONTACT2_TYPE_ID_IMMEDIATE : off.CONTACT2_TYPE_ID_IMMEDIATE + len(second_stream)
+                ] = second_stream
+                coil_start = off.COIL_TYPE_ID_BASE_TWO_SERIES_IMMEDIATE
+            elif contacts[1].immediate:
+                buf = bytearray(_load_two_series_second_immediate_template())
+                first_stream = _build_contact_stream(contacts[0])
+                second_stream = _build_contact_stream(contacts[1])
+                buf[off.CONTACT_TYPE_ID : off.CONTACT_TYPE_ID + len(first_stream)] = first_stream
+                buf[off.CONTACT2_TYPE_ID : off.CONTACT2_TYPE_ID + len(second_stream)] = second_stream
+                coil_start = off.COIL_TYPE_ID_BASE_TWO_SERIES_IMMEDIATE
+            else:
+                buf = bytearray(_load_two_series_template())
+                first_stream = _build_contact_stream(contacts[0])
+                second_stream = _build_contact_stream(contacts[1])
+                buf[off.CONTACT_TYPE_ID : off.CONTACT_TYPE_ID + len(first_stream)] = first_stream
+                buf[off.CONTACT2_TYPE_ID : off.CONTACT2_TYPE_ID + len(second_stream)] = second_stream
+                coil_start = off.COIL_TYPE_ID_BASE_TWO_SERIES
         else:
             raise ValueError("Only 1 or 2 series contacts are currently supported")
 
