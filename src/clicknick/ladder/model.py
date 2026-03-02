@@ -153,13 +153,14 @@ class Coil:
 
 @dataclass
 class RungGrid:
-    """A single-row contact->wire->coil rung.
+    """A single-row rung with one or more series contacts and one output coil.
 
     This is the domain model. It knows nothing about bytes.
     """
 
     contact: Contact
     coil: Coil
+    series_contacts: list[Contact] | None = None
     nickname: str | None = None
 
     @classmethod
@@ -167,23 +168,36 @@ class RungGrid:
         """Parse simple rung CSV forms used by this module."""
         parts = [p.strip() for p in csv.split(",")]
 
-        contact = Contact.from_csv_token(parts[0])
-
         coil = None
+        contact_tokens: list[str] = []
         for part in parts:
             token = part.lstrip(":").strip()
             if token.startswith(("out(", "latch(", "reset(", "immediate(")):
                 coil = Coil.from_csv_token(token)
                 break
+            if token in {"", "->", "..."}:
+                continue
+            contact_tokens.append(token)
 
         if coil is None:
             raise ValueError(f"No coil found in: {csv!r}")
+        if not contact_tokens:
+            raise ValueError(f"No contact found in: {csv!r}")
 
-        return cls(contact=contact, coil=coil)
+        contacts = [Contact.from_csv_token(token) for token in contact_tokens]
+        return cls(contact=contacts[0], series_contacts=contacts[1:], coil=coil)
+
+    @property
+    def contacts(self) -> list[Contact]:
+        if self.series_contacts:
+            return [self.contact, *self.series_contacts]
+        return [self.contact]
 
     def to_csv(self) -> str:
-        return f"{self.contact.to_csv()},->,:{self.coil.to_csv()}"
+        contacts_csv = ",".join(contact.to_csv() for contact in self.contacts)
+        return f"{contacts_csv},->,:{self.coil.to_csv()}"
 
     def __repr__(self) -> str:
         nn = f", nickname={self.nickname!r}" if self.nickname else ""
-        return f"RungGrid({self.contact.to_csv()} -> {self.coil.to_csv()}{nn})"
+        contacts = ",".join(contact.to_csv() for contact in self.contacts)
+        return f"RungGrid({contacts} -> {self.coil.to_csv()}{nn})"

@@ -168,13 +168,24 @@ class TestRungGrid:
         g = RungGrid.from_csv("X001,->,:out(Y001)")
         assert g.contact.type == InstructionType.CONTACT_NO
         assert g.contact.operand == "X001"
+        assert g.series_contacts == []
         assert g.coil.operand == "Y001"
 
     def test_from_csv_nc(self):
         g = RungGrid.from_csv("~X003,->,:out(Y002)")
         assert g.contact.type == InstructionType.CONTACT_NC
         assert g.contact.operand == "X003"
+        assert g.series_contacts == []
         assert g.coil.operand == "Y002"
+
+    def test_from_csv_two_series_contacts(self):
+        g = RungGrid.from_csv("X001,X002,->,:out(Y001)")
+        assert [c.to_csv() for c in g.contacts] == ["X001", "X002"]
+        assert g.coil.to_csv() == "out(Y001)"
+
+    def test_to_csv_two_series_contacts(self):
+        g = RungGrid.from_csv("X001,~X002,->,:out(Y001)")
+        assert g.to_csv() == "X001,~X002,->,:out(Y001)"
 
     def test_from_csv_no_coil(self):
         with pytest.raises(ValueError, match="No coil found"):

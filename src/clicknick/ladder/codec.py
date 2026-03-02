@@ -27,6 +27,7 @@ GRID_START = min(ROW_STARTS.values())
 GRID_END = max(ROW_STARTS.values()) + COLS_PER_ROW * CELL_SIZE
 
 _template_cache: bytes | None = None
+_two_series_template_cache: bytes | None = None
 
 
 def _load_template() -> bytes:
@@ -39,6 +40,18 @@ def _load_template() -> bytes:
         )
         assert len(_template_cache) == BUFFER_SIZE
     return _template_cache
+
+
+def _load_two_series_template() -> bytes:
+    global _two_series_template_cache
+    if _two_series_template_cache is None:
+        _two_series_template_cache = (
+            resources.files("clicknick.ladder.resources")
+            .joinpath("NO_X001_X002_coil.AF.two_series.bin")
+            .read_bytes()
+        )
+        assert len(_two_series_template_cache) == BUFFER_SIZE
+    return _two_series_template_cache
 
 
 CONTACT_CODE_TO_FLAGS: Final[dict[str, tuple[InstructionType, bool]]] = {
@@ -141,6 +154,60 @@ def _build_coil_stream(coil: Coil) -> bytes:
     return b"".join(parts)
 
 
+def _decode_contact_at(data: bytes, contact_offset: int) -> Contact:
+    contact_type = InstructionType(data[contact_offset])
+    if contact_type not in (InstructionType.CONTACT_NO, InstructionType.CONTACT_NC):
+        raise ValueError(f"Unsupported contact type 0x27{data[contact_offset]:02X}")
+
+    contact_op = _read_utf16_ascii(data, contact_offset + 16)
+    if not contact_op or not OPERAND_RE.fullmatch(contact_op):
+        raise ValueError("Could not decode valid contact operand")
+
+    contact_base = 34 + len(contact_op) * 2
+    _, contact_code = _find_func_code(
+        data,
+        contact_offset,
+        [contact_base, contact_base + 2] + list(range(34, 50, 2)),
+        set(CONTACT_CODE_TO_FLAGS),
+    )
+    _, contact_immediate = CONTACT_CODE_TO_FLAGS[contact_code]
+    return Contact(type=contact_type, operand=contact_op, immediate=contact_immediate)
+
+
+def _decode_coil_at(data: bytes, coil_offset: int) -> Coil:
+    coil_type = InstructionType(data[coil_offset])
+    if coil_type not in (
+        InstructionType.COIL_OUT,
+        InstructionType.COIL_LATCH,
+        InstructionType.COIL_RESET,
+    ):
+        raise ValueError(f"Unsupported coil type 0x27{data[coil_offset]:02X}")
+
+    coil_op = _read_utf16_ascii(data, coil_offset + 16)
+    if not coil_op or not OPERAND_RE.fullmatch(coil_op):
+        raise ValueError("Could not decode valid coil operand")
+
+    coil_base_normal = 52 + len(coil_op) * 2
+    _, coil_code = _find_func_code(
+        data,
+        coil_offset,
+        [coil_base_normal, coil_base_normal + 2] + list(range(52, 82, 2)),
+        set(COIL_CODE_TO_FLAGS),
+    )
+    code_type, code_is_range, code_immediate = COIL_CODE_TO_FLAGS[coil_code]
+    if code_type != coil_type:
+        raise ValueError(f"Coil type mismatch: type 0x27{coil_type.value:02X}, func code {coil_code}")
+
+    range_end = None
+    if code_is_range:
+        op2_offset = coil_offset + 24 + len(coil_op) * 2
+        op2 = _read_utf16_ascii(data, op2_offset)
+        if not op2 or not OPERAND_RE.fullmatch(op2):
+            raise ValueError("Coil range function code found, but range end operand missing")
+        range_end = op2
+    return Coil(type=coil_type, operand=coil_op, range_end=range_end, immediate=code_immediate)
+
+
 class ClickCodec:
     """Translates RungGrid <-> 8192-byte clipboard buffer.
 
@@ -153,9 +220,11 @@ class ClickCodec:
 
         # Contact instruction (Row 0, Cells A-B)
         CONTACT_TYPE_ID = ROW_STARTS[0] + 0 * CELL_SIZE + 0x39
+        CONTACT2_TYPE_ID = ROW_STARTS[0] + 0xBE
 
         # Coil instruction baseline (Row 1, Cells A-B)
         COIL_TYPE_ID_BASE = ROW_STARTS[1] + 0 * CELL_SIZE + 0x32
+        COIL_TYPE_ID_BASE_TWO_SERIES = ROW_STARTS[1] + 1 * CELL_SIZE + 0x37
 
         # Nickname (Row 1, Col C area)
         NICKNAME_FLAG = 0x12F0
@@ -183,19 +252,38 @@ class ClickCodec:
 
     def encode(self, grid: RungGrid) -> bytes:
         """RungGrid -> 8192-byte clipboard buffer."""
-        buf = bytearray(_load_template())
         off = self.Offsets
+        contacts = grid.contacts
 
-        contact_stream = _build_contact_stream(grid.contact)
-        contact_start = off.CONTACT_TYPE_ID
-        buf[contact_start : contact_start + len(contact_stream)] = contact_stream
+        if len(contacts) == 1:
+            buf = bytearray(_load_template())
 
-        # Coil type position shifts with contact stream size.
-        contact_delta = (len(grid.contact.operand) - 4) * 2 + (2 if grid.contact.immediate else 0)
-        coil_start = off.COIL_TYPE_ID_BASE + contact_delta
-        if coil_start != off.COIL_TYPE_ID_BASE:
-            buf[off.COIL_TYPE_ID_BASE] = 0x00
-            buf[off.COIL_TYPE_ID_BASE + 1] = 0x00
+            contact_stream = _build_contact_stream(contacts[0])
+            contact_start = off.CONTACT_TYPE_ID
+            buf[contact_start : contact_start + len(contact_stream)] = contact_stream
+
+            # Coil type position shifts with contact stream size.
+            contact_delta = (len(contacts[0].operand) - 4) * 2 + (2 if contacts[0].immediate else 0)
+            coil_start = off.COIL_TYPE_ID_BASE + contact_delta
+            if coil_start != off.COIL_TYPE_ID_BASE:
+                buf[off.COIL_TYPE_ID_BASE] = 0x00
+                buf[off.COIL_TYPE_ID_BASE + 1] = 0x00
+        elif len(contacts) == 2:
+            # Current two-series template is validated for 4-char, non-immediate contacts.
+            for idx, contact in enumerate(contacts, start=1):
+                if len(contact.operand) != 4:
+                    raise ValueError(f"Contact {idx} in two-series rung must be 4 chars for now")
+                if contact.immediate:
+                    raise ValueError("Immediate contacts in two-series rungs are not supported yet")
+
+            buf = bytearray(_load_two_series_template())
+            first_stream = _build_contact_stream(contacts[0])
+            second_stream = _build_contact_stream(contacts[1])
+            buf[off.CONTACT_TYPE_ID : off.CONTACT_TYPE_ID + len(first_stream)] = first_stream
+            buf[off.CONTACT2_TYPE_ID : off.CONTACT2_TYPE_ID + len(second_stream)] = second_stream
+            coil_start = off.COIL_TYPE_ID_BASE_TWO_SERIES
+        else:
+            raise ValueError("Only 1 or 2 series contacts are currently supported")
 
         coil_stream = _build_coil_stream(grid.coil)
         buf[coil_start : coil_start + len(coil_stream)] = coil_stream
@@ -213,64 +301,38 @@ class ClickCodec:
 
         type_offsets = _scan_type_offsets(data)
         if len(type_offsets) < 2:
-            raise ValueError("Could not locate contact and coil type markers in buffer")
+            raise ValueError("Could not locate instruction type markers in buffer")
 
-        contact_offset = type_offsets[0]
-        coil_offset = type_offsets[1]
+        contacts: list[Contact] = []
+        coil: Coil | None = None
+        last_contact_offset: int | None = None
+        for type_offset in type_offsets:
+            try:
+                i_type = InstructionType(data[type_offset])
+            except ValueError:
+                continue
 
-        # Contact
-        contact_type = InstructionType(data[contact_offset])
-        if contact_type not in (InstructionType.CONTACT_NO, InstructionType.CONTACT_NC):
-            raise ValueError(f"Unsupported contact type 0x27{data[contact_offset]:02X}")
+            if i_type in (InstructionType.CONTACT_NO, InstructionType.CONTACT_NC):
+                candidate = _decode_contact_at(data, type_offset)
+                if (
+                    contacts
+                    and last_contact_offset is not None
+                    and type_offset - last_contact_offset == CELL_SIZE
+                    and candidate == contacts[-1]
+                ):
+                    continue
+                contacts.append(candidate)
+                last_contact_offset = type_offset
+                continue
 
-        contact_op = _read_utf16_ascii(data, contact_offset + 16)
-        if not contact_op or not OPERAND_RE.fullmatch(contact_op):
-            raise ValueError("Could not decode valid contact operand")
+            if i_type in (InstructionType.COIL_OUT, InstructionType.COIL_LATCH, InstructionType.COIL_RESET):
+                coil = _decode_coil_at(data, type_offset)
+                break
 
-        contact_base = 34 + len(contact_op) * 2
-        _, contact_code = _find_func_code(
-            data,
-            contact_offset,
-            [contact_base, contact_base + 2] + list(range(34, 50, 2)),
-            set(CONTACT_CODE_TO_FLAGS),
-        )
-        _, contact_immediate = CONTACT_CODE_TO_FLAGS[contact_code]
-        contact = Contact(type=contact_type, operand=contact_op, immediate=contact_immediate)
-
-        # Coil
-        coil_type = InstructionType(data[coil_offset])
-        if coil_type not in (
-            InstructionType.COIL_OUT,
-            InstructionType.COIL_LATCH,
-            InstructionType.COIL_RESET,
-        ):
-            raise ValueError(f"Unsupported coil type 0x27{data[coil_offset]:02X}")
-
-        coil_op = _read_utf16_ascii(data, coil_offset + 16)
-        if not coil_op or not OPERAND_RE.fullmatch(coil_op):
-            raise ValueError("Could not decode valid coil operand")
-
-        coil_base_normal = 52 + len(coil_op) * 2
-        _, coil_code = _find_func_code(
-            data,
-            coil_offset,
-            [coil_base_normal, coil_base_normal + 2] + list(range(52, 82, 2)),
-            set(COIL_CODE_TO_FLAGS),
-        )
-        code_type, code_is_range, code_immediate = COIL_CODE_TO_FLAGS[coil_code]
-        if code_type != coil_type:
-            raise ValueError(
-                f"Coil type mismatch: type 0x27{coil_type.value:02X}, func code {coil_code}"
-            )
-
-        range_end = None
-        if code_is_range:
-            op2_offset = coil_offset + 24 + len(coil_op) * 2
-            op2 = _read_utf16_ascii(data, op2_offset)
-            if not op2 or not OPERAND_RE.fullmatch(op2):
-                raise ValueError("Coil range function code found, but range end operand missing")
-            range_end = op2
-        coil = Coil(type=coil_type, operand=coil_op, range_end=range_end, immediate=code_immediate)
+        if not contacts:
+            raise ValueError("Could not decode any contact instructions")
+        if coil is None:
+            raise ValueError("Could not decode coil instruction")
 
         # Nickname
         nickname = None
@@ -278,4 +340,9 @@ class ClickCodec:
             nn_raw = data[off.NICKNAME_STRING : off.NICKNAME_STRING + off.NICKNAME_MAX_CHARS * 2]
             nickname = nn_raw.decode("utf-16-le").split("\x00")[0] or None
 
-        return RungGrid(contact=contact, coil=coil, nickname=nickname)
+        return RungGrid(
+            contact=contacts[0],
+            series_contacts=contacts[1:],
+            coil=coil,
+            nickname=nickname,
+        )

@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from clicknick.ladder.codec import BUFFER_SIZE, ClickCodec, _load_template
 from clicknick.ladder.model import Coil, Contact, InstructionType, RungGrid
 
@@ -80,6 +82,19 @@ class TestEncodeDecodeRoundTrip:
         ):
             decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
             assert decoded.to_csv() == csv
+
+    def test_two_series_contacts(self):
+        csv = "X001,X002,->,:out(Y001)"
+        decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
+        assert decoded.to_csv() == csv
+
+    def test_two_series_rejects_immediate_contact(self):
+        with pytest.raises(ValueError, match="Immediate contacts in two-series"):
+            codec.encode(RungGrid.from_csv("X001.immediate,X002,->,:out(Y001)"))
+
+    def test_two_series_rejects_non_4_char_contacts(self):
+        with pytest.raises(ValueError, match="must be 4 chars"):
+            codec.encode(RungGrid.from_csv("X1,X002,->,:out(Y001)"))
 
 
 class TestCaptureBackedDecode:
@@ -186,6 +201,12 @@ class TestCaptureBackedDecode:
         assert g.coil.type == InstructionType.COIL_OUT
         assert g.coil.operand == "C1901"
         assert g.coil.range_end == "C2000"
+
+    def test_decode_two_series_capture(self):
+        g = self._decode_capture("two_series.bin")
+        assert [c.to_csv() for c in g.contacts] == ["X001", "X002"]
+        assert g.coil.type == InstructionType.COIL_OUT
+        assert g.coil.operand == "Y001"
 
 
 class TestNickname:

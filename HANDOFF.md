@@ -398,7 +398,8 @@ The stream-based format (finding 17) is the main blocker for non-X/Y addresses.
 ### Expand supported instructions
 Continue captures:
 1. **Latch/Reset coils** — capture to get OTL/OTU type IDs
-2. **Series contacts** — capture `two_series` to understand AND layout
+2. **Series contacts** — `two_series` capture completed; codec now decodes series AND and encodes 2-contact
+   rungs from template (currently limited to 4-char non-immediate contacts).
 3. **Box instructions** — timers, math, move (wider cells, different spillover)
 
 ### CLI integration
@@ -464,7 +465,7 @@ reset_Y1_Y2_immediate_v1       [type 0x2717, func 8220]
 ### Remaining captures needed
 | Label | Change | Reveals |
 |-------|--------|---------|
-| `two_series` | X001,X002 series | Series AND layout |
+| (none for series) | `two_series` captured | Series AND layout decoded; 2-contact encode path implemented |
 
 ---
 
