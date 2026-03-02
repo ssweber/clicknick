@@ -162,7 +162,10 @@ reportUnreachable = false
 [tool.codespell]
 # Add here as needed:
 # ignore-words-list = "foo,bar"
-# skip = "foo.py,bar.py"
+skip = "src/clicknick/ladder/*"
+
+[tool.ssort]
+exclude = ["src/clicknick/ladder/**"]
 
 [tool.pytest.ini_options]
 python_files = ["*.py"]
