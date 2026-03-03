@@ -30,7 +30,7 @@ def test_total_columns_is_33() -> None:
 
 def test_parse_row_requires_33_columns() -> None:
     with pytest.raises(ValueError, match="Expected 33 columns"):
-        parse_row("R,X001,:out(Y001)", syntax="canonical")
+        parse_row("R,X001,:,out(Y001)", syntax="canonical")
 
 
 @pytest.mark.parametrize(

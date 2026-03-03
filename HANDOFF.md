@@ -26,10 +26,10 @@ from clicknick.ladder import ClickCodec, RungGrid, read_from_clipboard, copy_to_
 # Read from Click clipboard
 raw = read_from_clipboard()
 grid = ClickCodec().decode(raw)
-print(grid.to_csv())  # "X006,->,:out(Y006)"
+print(grid.to_csv())  # "X006,->,:,out(Y006)"
 
 # Encode and paste
-grid = RungGrid.from_csv("X001,->,:out(Y001)")
+grid = RungGrid.from_csv("X001,->,:,out(Y001)")
 copy_to_clipboard(ClickCodec().encode(grid))
 ```
 
@@ -66,8 +66,8 @@ The working parts have been moved to `clicknick.ladder`.
 Interactive input after each capture:
 ```
 start                        # begin a rung
-X001,->,:out(Y001)           # contact, wire-fill, output
-X002,...,:                    # contact, empty-fill, no output
+X001,->,:,out(Y001)           # contact, wire-fill, output
+X002,...,:,                   # contact, empty-fill, no output
                              # (empty line = blank row)
 start                        # another rung
 end                          # done
@@ -88,7 +88,7 @@ Target API:
 ```python
 from runggrid import RungGrid
 
-grid = RungGrid.from_csv("X001,->,:out(Y001)")
+grid = RungGrid.from_csv("X001,->,:,out(Y001)")
 grid.copy_to_clipboard()  # pastes into Click
 
 grid = RungGrid.from_clipboard(raw_bytes)
@@ -314,10 +314,10 @@ Two-series immediate captures show a second metadata layer in the header region:
 
 - Repeating table at `0x0254 + n*0x40` for `n=0..31` (32 entries).
 - Entry bytes at offsets `+0x05`, `+0x11`, `+0x17` change with immediate placement:
-  - `X001,X002,->,:out(Y001)`: `+05=0x08`, `+11=0x11`, `+17=0x0B`
-  - `X001.immediate,X002,->,:out(Y001)`: `+05=0x00`, `+11=0x00`, `+17=0xF9`
-  - `X001,X002.immediate,->,:out(Y001)`: `+05=0x01`, `+11=0x02`, `+17=0xF9`
-  - `X001.immediate,X002.immediate,->,:out(Y001)`: `+05=0x02`, `+11=0x04`, `+17=0xF9`
+  - `X001,X002,->,:,out(Y001)`: `+05=0x08`, `+11=0x11`, `+17=0x0B`
+  - `X001.immediate,X002,->,:,out(Y001)`: `+05=0x00`, `+11=0x00`, `+17=0xF9`
+  - `X001,X002.immediate,->,:,out(Y001)`: `+05=0x01`, `+11=0x02`, `+17=0xF9`
+  - `X001.immediate,X002.immediate,->,:,out(Y001)`: `+05=0x02`, `+11=0x04`, `+17=0xF9`
 
 Pointer/rendering bytes at `0x00B8-0x00CF` also vary by variant:
 - Base/second-immediate/both-immediate captures: all zero in this region.
@@ -340,11 +340,11 @@ without needing to restart. This enables full automation:
   pyrung DSL → write addresses to .mdb → generate clipboard bytes → paste into Click
 
 Confirmed working operand combinations (when operands exist in project):
-- `X001,->,:out(Y001)` — NO contact ✓
-- `~X001,->,:out(Y001)` — NC contact ✓
-- `X002,->,:out(Y002)` — different operands ✓
-- `X003,->,:out(Y003)` — operands added via Click UI with nicknames ✓
-- `X004,->,:out(Y004)` — operands added directly to .mdb via ClickNick ✓
+- `X001,->,:,out(Y001)` — NO contact ✓
+- `~X001,->,:,out(Y001)` — NC contact ✓
+- `X002,->,:,out(Y002)` — different operands ✓
+- `X003,->,:,out(Y003)` — operands added via Click UI with nicknames ✓
+- `X004,->,:,out(Y004)` — operands added directly to .mdb via ClickNick ✓
 
 ---
 
@@ -424,7 +424,7 @@ Continue captures:
 3. **Box instructions** — timers, math, move (wider cells, different spillover)
 
 ### CLI integration
-Add `clicknick paste "X001,->,:out(Y001)"` command:
+Add `clicknick paste "X001,->,:,out(Y001)"` command:
 1. Validate operands exist in AddressStore
 2. Add missing addresses to .mdb if needed
 3. Encode and paste
@@ -468,10 +468,10 @@ single_NO_CT1                  [grid: single cell CT1 only]  ← 4096-byte forma
 ```
 rise_X001_coil_Y001            [type 0x2713 "Edge", func 4101]
 fall_X001_coil_Y001            [type 0x2713 "Edge", func 4102, 2 byte diff vs rise]
-two_series                     [X001,X002,->,:out(Y001)]
-two_series_immediate_native    [X001.immediate,X002,->,:out(Y001)]
-two_series_second_immediate_native [X001,X002.immediate,->,:out(Y001)]
-two_series_both_immediate_native [X001.immediate,X002.immediate,->,:out(Y001)]
+two_series                     [X001,X002,->,:,out(Y001)]
+two_series_immediate_native    [X001.immediate,X002,->,:,out(Y001)]
+two_series_second_immediate_native [X001,X002.immediate,->,:,out(Y001)]
+two_series_both_immediate_native [X001.immediate,X002.immediate,->,:,out(Y001)]
 NO_X001_immediate_coil_Y001    [type 0x2711, func 4099, stream shifted +2]
 NC_X001_immediate_coil_Y001    [type 0x2712, func 4100, stream shifted +2]
 out_Y001_immediate_v2          [type 0x2715, func 8197, immediate]
@@ -490,7 +490,7 @@ reset_Y1_Y2_immediate_v1       [type 0x2717, func 8220]
 ### Remaining captures needed
 | Label | Change | Reveals |
 |-------|--------|---------|
-| `two_series_short_operands` | `X1,X2,->,:out(Y001)` | Whether header/table logic can be generalized beyond 4-char series contacts |
+| `two_series_short_operands` | `X1,X2,->,:,out(Y001)` | Whether header/table logic can be generalized beyond 4-char series contacts |
 
 ---
 

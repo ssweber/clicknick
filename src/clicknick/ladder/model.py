@@ -171,7 +171,10 @@ class RungGrid:
         coil = None
         contact_tokens: list[str] = []
         for part in parts:
-            token = part.lstrip(":").strip()
+            token = part.strip()
+            if token == ":":
+                continue
+
             if token.startswith(("out(", "latch(", "reset(", "immediate(")):
                 coil = Coil.from_csv_token(token)
                 break
@@ -195,7 +198,7 @@ class RungGrid:
 
     def to_csv(self) -> str:
         contacts_csv = ",".join(contact.to_csv() for contact in self.contacts)
-        return f"{contacts_csv},->,:{self.coil.to_csv()}"
+        return f"{contacts_csv},->,:,{self.coil.to_csv()}"
 
     def __repr__(self) -> str:
         nn = f", nickname={self.nickname!r}" if self.nickname else ""

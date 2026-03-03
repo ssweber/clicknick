@@ -165,67 +165,71 @@ class TestCoil:
 
 class TestRungGrid:
     def test_from_csv_basic(self):
-        g = RungGrid.from_csv("X001,->,:out(Y001)")
+        g = RungGrid.from_csv("X001,->,:,out(Y001)")
         assert g.contact.type == InstructionType.CONTACT_NO
         assert g.contact.operand == "X001"
         assert g.series_contacts == []
         assert g.coil.operand == "Y001"
 
+    def test_from_csv_rejects_legacy_prefixed_coil(self):
+        with pytest.raises(ValueError, match="No coil found"):
+            RungGrid.from_csv("X001,->,:out(Y001)")
+
     def test_from_csv_nc(self):
-        g = RungGrid.from_csv("~X003,->,:out(Y002)")
+        g = RungGrid.from_csv("~X003,->,:,out(Y002)")
         assert g.contact.type == InstructionType.CONTACT_NC
         assert g.contact.operand == "X003"
         assert g.series_contacts == []
         assert g.coil.operand == "Y002"
 
     def test_from_csv_two_series_contacts(self):
-        g = RungGrid.from_csv("X001,X002,->,:out(Y001)")
+        g = RungGrid.from_csv("X001,X002,->,:,out(Y001)")
         assert [c.to_csv() for c in g.contacts] == ["X001", "X002"]
         assert g.coil.to_csv() == "out(Y001)"
 
     def test_to_csv_two_series_contacts(self):
-        g = RungGrid.from_csv("X001,~X002,->,:out(Y001)")
-        assert g.to_csv() == "X001,~X002,->,:out(Y001)"
+        g = RungGrid.from_csv("X001,~X002,->,:,out(Y001)")
+        assert g.to_csv() == "X001,~X002,->,:,out(Y001)"
 
     def test_from_csv_no_coil(self):
         with pytest.raises(ValueError, match="No coil found"):
             RungGrid.from_csv("X001,->")
 
     def test_to_csv(self):
-        g = RungGrid.from_csv("X001,->,:out(Y001)")
-        assert g.to_csv() == "X001,->,:out(Y001)"
+        g = RungGrid.from_csv("X001,->,:,out(Y001)")
+        assert g.to_csv() == "X001,->,:,out(Y001)"
 
     def test_to_csv_contact_immediate(self):
-        g = RungGrid.from_csv("X001.immediate,->,:out(Y001)")
-        assert g.to_csv() == "X001.immediate,->,:out(Y001)"
+        g = RungGrid.from_csv("X001.immediate,->,:,out(Y001)")
+        assert g.to_csv() == "X001.immediate,->,:,out(Y001)"
 
     def test_reject_outer_immediate_wrapper_in_rung_csv(self):
         with pytest.raises(ValueError, match="inner wrapper"):
-            RungGrid.from_csv("X001,->,:immediate(out(Y1))")
+            RungGrid.from_csv("X001,->,:,immediate(out(Y1))")
 
     def test_to_csv_coil_range(self):
-        g = RungGrid.from_csv("X001,->,:out(Y1..Y2)")
-        assert g.to_csv() == "X001,->,:out(Y1..Y2)"
+        g = RungGrid.from_csv("X001,->,:,out(Y1..Y2)")
+        assert g.to_csv() == "X001,->,:,out(Y1..Y2)"
 
     def test_csv_round_trips(self):
         cases = [
-            "X001,->,:out(Y001)",
-            "~X003,->,:out(Y002)",
-            "X010,->,:out(Y100)",
-            "X1.immediate,->,:out(immediate(Y1))",
-            "~X3.immediate,->,:latch(immediate(Y1..Y2))",
-            "X001,->,:reset(Y1..Y2)",
+            "X001,->,:,out(Y001)",
+            "~X003,->,:,out(Y002)",
+            "X010,->,:,out(Y100)",
+            "X1.immediate,->,:,out(immediate(Y1))",
+            "~X3.immediate,->,:,latch(immediate(Y1..Y2))",
+            "X001,->,:,reset(Y1..Y2)",
         ]
         for csv in cases:
             g = RungGrid.from_csv(csv)
             assert g.to_csv() == csv
 
     def test_repr(self):
-        g = RungGrid.from_csv("X001,->,:out(Y001)")
+        g = RungGrid.from_csv("X001,->,:,out(Y001)")
         assert "X001" in repr(g)
         assert "out(Y001)" in repr(g)
 
     def test_repr_with_nickname(self):
-        g = RungGrid.from_csv("X001,->,:out(Y001)")
+        g = RungGrid.from_csv("X001,->,:,out(Y001)")
         g.nickname = "Start"
         assert "Start" in repr(g)

@@ -25,87 +25,87 @@ class TestTemplateRoundTrip:
 
 class TestEncodeDecodeRoundTrip:
     def test_no_contact_out(self):
-        grid = RungGrid.from_csv("X001,->,:out(Y001)")
+        grid = RungGrid.from_csv("X001,->,:,out(Y001)")
         data = codec.encode(grid)
         assert len(data) == BUFFER_SIZE
         decoded = codec.decode(data)
-        assert decoded.to_csv() == "X001,->,:out(Y001)"
+        assert decoded.to_csv() == "X001,->,:,out(Y001)"
 
     def test_nc_contact_out(self):
-        grid = RungGrid.from_csv("~X003,->,:out(Y002)")
+        grid = RungGrid.from_csv("~X003,->,:,out(Y002)")
         data = codec.encode(grid)
         decoded = codec.decode(data)
-        assert decoded.to_csv() == "~X003,->,:out(Y002)"
+        assert decoded.to_csv() == "~X003,->,:,out(Y002)"
 
     def test_contact_immediate(self):
-        grid = RungGrid.from_csv("X001.immediate,->,:out(Y001)")
+        grid = RungGrid.from_csv("X001.immediate,->,:,out(Y001)")
         data = codec.encode(grid)
         decoded = codec.decode(data)
         assert decoded.contact.immediate is True
-        assert decoded.to_csv() == "X001.immediate,->,:out(Y001)"
+        assert decoded.to_csv() == "X001.immediate,->,:,out(Y001)"
 
     def test_out_variants(self):
         for csv in (
-            "X001,->,:out(Y001)",
-            "X001,->,:out(immediate(Y001))",
-            "X001,->,:out(Y001..Y002)",
-            "X001,->,:out(immediate(Y001..Y002))",
+            "X001,->,:,out(Y001)",
+            "X001,->,:,out(immediate(Y001))",
+            "X001,->,:,out(Y001..Y002)",
+            "X001,->,:,out(immediate(Y001..Y002))",
         ):
             decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
             assert decoded.to_csv() == csv
 
     def test_latch_variants(self):
         for csv in (
-            "X001,->,:latch(Y001)",
-            "X001,->,:latch(immediate(Y001))",
-            "X001,->,:latch(Y001..Y002)",
-            "X001,->,:latch(immediate(Y001..Y002))",
+            "X001,->,:,latch(Y001)",
+            "X001,->,:,latch(immediate(Y001))",
+            "X001,->,:,latch(Y001..Y002)",
+            "X001,->,:,latch(immediate(Y001..Y002))",
         ):
             decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
             assert decoded.to_csv() == csv
 
     def test_reset_variants(self):
         for csv in (
-            "X001,->,:reset(Y001)",
-            "X001,->,:reset(immediate(Y001))",
-            "X001,->,:reset(Y001..Y002)",
-            "X001,->,:reset(immediate(Y001..Y002))",
+            "X001,->,:,reset(Y001)",
+            "X001,->,:,reset(immediate(Y001))",
+            "X001,->,:,reset(Y001..Y002)",
+            "X001,->,:,reset(immediate(Y001..Y002))",
         ):
             decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
             assert decoded.to_csv() == csv
 
     def test_range_short_and_long_addresses(self):
         for csv in (
-            "X001,->,:out(C1..C2)",
-            "X001,->,:out(C1..C2000)",
-            "X001,->,:out(C1901..C2000)",
+            "X001,->,:,out(C1..C2)",
+            "X001,->,:,out(C1..C2000)",
+            "X001,->,:,out(C1901..C2000)",
         ):
             decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
             assert decoded.to_csv() == csv
 
     def test_two_series_contacts(self):
-        csv = "X001,X002,->,:out(Y001)"
+        csv = "X001,X002,->,:,out(Y001)"
         decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
         assert decoded.to_csv() == csv
 
     def test_two_series_contacts_first_immediate(self):
-        csv = "X001.immediate,X002,->,:out(Y001)"
+        csv = "X001.immediate,X002,->,:,out(Y001)"
         decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
         assert decoded.to_csv() == csv
 
     def test_two_series_contacts_second_immediate(self):
-        csv = "X001,X002.immediate,->,:out(Y001)"
+        csv = "X001,X002.immediate,->,:,out(Y001)"
         decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
         assert decoded.to_csv() == csv
 
     def test_two_series_contacts_both_immediate(self):
-        csv = "X001.immediate,X002.immediate,->,:out(Y001)"
+        csv = "X001.immediate,X002.immediate,->,:,out(Y001)"
         decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
         assert decoded.to_csv() == csv
 
     def test_two_series_rejects_non_4_char_contacts(self):
         with pytest.raises(ValueError, match="must be 4 chars"):
-            codec.encode(RungGrid.from_csv("X1,X002,->,:out(Y001)"))
+            codec.encode(RungGrid.from_csv("X1,X002,->,:,out(Y001)"))
 
 
 class TestCaptureBackedDecode:
