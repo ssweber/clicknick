@@ -311,7 +311,34 @@ def print_report(data: bytes, label: str | None = None) -> None:
 def main() -> None:
     label = sys.argv[1] if len(sys.argv) > 1 else None
 
-    data = read_from_clipboard()
+    try:
+        data = read_from_clipboard()
+    except TypeError as exc:
+        # Most common case after a Click crash: private format 522 is absent.
+        try:
+            import win32clipboard
+
+            formats: list[int] = []
+            win32clipboard.OpenClipboard()
+            try:
+                fmt = 0
+                while True:
+                    fmt = win32clipboard.EnumClipboardFormats(fmt)
+                    if fmt == 0:
+                        break
+                    formats.append(fmt)
+            finally:
+                win32clipboard.CloseClipboard()
+        except Exception:
+            formats = []
+
+        print("Capture failed: Click clipboard format 522 is not available.")
+        print(f"Reason: {exc}")
+        if formats:
+            print("Available clipboard format IDs:", ", ".join(str(f) for f in formats))
+        else:
+            print("Clipboard currently appears empty or unavailable.")
+        raise SystemExit(1)
     print_report(data, label)
 
     if label:

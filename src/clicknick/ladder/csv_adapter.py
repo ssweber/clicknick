@@ -28,7 +28,14 @@ class UnsupportedComplexRungError(ValueError):
         return f"{self.reason}: {self.detail}"
 
 
-def _to_model_contact(contact: ContactCondition) -> Contact:
+def _to_model_contact(contact: ContactCondition | EdgeCondition) -> Contact:
+    if isinstance(contact, EdgeCondition):
+        return Contact(
+            type=InstructionType.CONTACT_EDGE,
+            operand=contact.operand,
+            immediate=False,
+            edge_kind=contact.kind,
+        )
     return Contact(
         type=InstructionType.CONTACT_NC if contact.negated else InstructionType.CONTACT_NO,
         operand=contact.operand,
@@ -61,7 +68,6 @@ def to_runggrid_if_simple(rung: RungAst) -> RungGrid:
         VerticalMidCondition,
         ComparisonCondition,
         GenericCondition,
-        EdgeCondition,
     )
     for idx, node in enumerate(row.condition_nodes):
         if isinstance(node, disallowed_condition_types):
@@ -71,7 +77,9 @@ def to_runggrid_if_simple(rung: RungAst) -> RungGrid:
             )
 
     contact_positions = [
-        idx for idx, node in enumerate(row.condition_nodes) if isinstance(node, ContactCondition)
+        idx
+        for idx, node in enumerate(row.condition_nodes)
+        if isinstance(node, (ContactCondition, EdgeCondition))
     ]
     if not contact_positions:
         raise _unsupported("no_contacts", "At least one contact is required")
@@ -93,7 +101,7 @@ def to_runggrid_if_simple(rung: RungAst) -> RungGrid:
     contacts = [
         _to_model_contact(node)
         for node in row.condition_nodes
-        if isinstance(node, ContactCondition)
+        if isinstance(node, (ContactCondition, EdgeCondition))
     ]
 
     trailing_nodes = row.condition_nodes[contact_positions[-1] + 1 :]

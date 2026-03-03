@@ -51,14 +51,25 @@ For each ID in the phase tables below:
 | `two_series_nc_no` | `~X001,X002,->,:,out(Y001)` | `two_series_nc_no_native` |
 | `two_series_nc_nc` | `~X001,~X002,->,:,out(Y001)` | `two_series_nc_nc_native` |
 
-## Phase 4 — Coil Variants
+## Phase 4 — Rise/Fall Edge Contacts
+
+These complete contact-family coverage.
+
+| ID | CSV | Native Label |
+|---|---|---|
+| `single_rise` | `rise(X001),->,:,out(Y001)` | `single_rise_native` |
+| `single_fall` | `fall(X001),->,:,out(Y001)` | `single_fall_native` |
+| `two_series_rise_no` | `rise(X001),X002,->,:,out(Y001)` | `two_series_rise_no_native` |
+| `two_series_fall_no` | `fall(X001),X002,->,:,out(Y001)` | `two_series_fall_no_native` |
+
+## Phase 5 — Coil Variants
 
 | ID | CSV | Native Label |
 |---|---|---|
 | `simple_latch` | `X001,->,:,latch(Y001)` | `simple_latch_native` |
 | `simple_reset` | `X001,->,:,reset(Y001)` | `simple_reset_native` |
 | `simple_out_immediate` | `X001,->,:,out(immediate(Y001))` | `simple_out_immediate_native` |
-| `simple_range_immediate` | `X001,->,:,out(immediate(C1..C2))` | `simple_range_immediate_native` |
+| `simple_range_immediate` | `X001,->,:,out(immediate(Y001..Y002))` | `simple_range_immediate_native` |
 
 ## Progress Snapshot
 

@@ -17,6 +17,9 @@ can generate clipboard-ready bytes for paste into Click from `RungGrid`.
   - `smoke_simple`
   - `smoke_immediate`
   - `smoke_two_series_short` (full `X001,X002,->,:,out(Y001)` now pastes)
+- `two_series_second_immediate` remains unresolved:
+  - malformed generation can paste as multiple split rungs with `NOP`
+  - Click may emit non-`8192` clipboard payloads (`20480`, `73728`) after split pasteback
 - Instruction stream placement remains the primary engineering area (especially broader
   operand-length and multi-contact generalization).
 
@@ -35,14 +38,11 @@ can generate clipboard-ready bytes for paste into Click from `RungGrid`.
   - `0x40` => 1 logical row
   - `0x60` => 2 logical rows
   - `0x80` => 3 logical rows
-- Observed non-volatile header family bytes at `+0x17/+0x18` (uniform across all 32 entries
-  within a capture family):
-  - simple + immediate: `0x05/0x01`
-  - two-series short: `0x15/0x01`
-  - coil range: `0xE1/0x00`
-  - empty/wire-full-row baseline captures: `0xEA/0x00`
-- Topology/instruction content still lives in grid + stream regions; these header family bytes
-  classify capture shape/family but do not encode per-cell wire layout.
+- Observed non-volatile header family bytes at `+0x17/+0x18` are capture-family classifiers
+  (uniform across all 32 entries in a given capture), but the decision table is incomplete.
+  Examples observed so far: `0x15/0x01`, `0x0D/0x01`, `0xEA/0x00`.
+- Topology/instruction content still lives in grid + stream regions; header family bytes alone
+  do not encode per-cell wire layout and are not sufficient to guarantee valid rung assembly.
 
 ### 3) Grid Layout
 
@@ -58,7 +58,17 @@ can generate clipboard-ready bytes for paste into Click from `RungGrid`.
 
 Corners are implicit from flag combinations on the same cell.
 
-### 5) Instruction Stream
+### 5) Additional Per-Cell Structural Control Bytes (New)
+
+- Wire flags are necessary but not sufficient.
+- Two-series immediate experiments show additional non-stream cell bytes participate in rung
+  assembly/linkage.
+- When these bytes are wrong, Click can split a single intended rung into multiple records/rungs
+  (with intermediate `NOP`), even when instruction markers and operands are otherwise valid.
+- Practical symptom: pasteback clipboard length changes from `8192` to multi-record sizes
+  (for example `20480` or `73728`) and coil markers may disappear from the first record.
+
+### 6) Instruction Stream
 
 - Instructions are serialized stream content; fields are stable at stream-relative offsets
   from the type marker (`0x27XX`).
@@ -120,6 +130,8 @@ Interpretation:
   bytes during transitional encoder experiments, not by missing per-row header writes.
 - This hypothesis is not mathematically impossible, but it is not supported by current capture
   diffs/pasteback behavior.
+- Important refinement: while the header table is not the per-row authority, grid-level control
+  bytes beyond `+0x19/+0x1D/+0x21` do affect assembly/segmentation behavior.
 
 ## Legacy Runtime Templates (Planned Removal Complete Path)
 
@@ -153,13 +165,15 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
 
 1. Header family bytes (`+0x17/+0x18`): exact semantics and complete decision table for all
    supported/unsupported rung families.
-2. Stream metadata bytes (`65 60`, `67 60`, related blocks): exact semantics and whether
+2. Per-cell structural control bytes in row0/row1 (beyond wire flags): which offsets are required
+   for valid single-rung assembly vs split-rung behavior.
+3. Stream metadata bytes (`65 60`, `67 60`, related blocks): exact semantics and whether
    all are mandatory per instruction family.
-3. Full stream placement formula coverage for broader two-series combinations with mixed
+4. Full stream placement formula coverage for broader two-series combinations with mixed
    operand lengths and immediate flags.
-4. Register-bank breadth validation beyond current proven sets (DS/T/TD families).
-5. Single-cell (`4096` byte) clipboard payload viability for independent cell pasting.
-6. Explicit multi-row generation API shape (if/when `RungGrid` should carry full topology).
+5. Register-bank breadth validation beyond current proven sets (DS/T/TD families).
+6. Single-cell (`4096` byte) clipboard payload viability for independent cell pasting.
+7. Explicit multi-row generation API shape (if/when `RungGrid` should carry full topology).
 
 ## Next Steps
 
@@ -173,12 +187,19 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
 - Expand computed placement coverage for operand-length and immediate combinations.
 - Remove residual assumptions tied to old fixed-offset variant behaviors.
 
-### 3) Capture Expansion
+### 3) Control-Byte Model Expansion
+
+- Use targeted control-byte diffing across captures to classify structural bytes that govern
+  rung assembly/linkage (not just wire flags).
+- Keep `two_series_second_immediate` as the reference failing case until it pastes/copies back
+  as a single `8192` record with coil intact.
+
+### 4) Capture Expansion
 
 - Add targeted captures for unresolved stream/operand/register-bank questions.
 - Promote new vetted captures into hermetic fixture set with manifest updates.
 
-### 4) CLI / Automation Integration
+### 5) CLI / Automation Integration
 
 - Build/extend `clicknick paste ...` flow:
   - validate/add operands in project data
@@ -191,5 +212,7 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
   - `scratchpad/capture-diff-results.md`
 - Capture checklist:
   - `scratchpad/capture-checklist.md`
+- Control-byte diff tool:
+  - `devtools/control_byte_diff.py`
 - Ladder module code:
   - `src/clicknick/ladder/`

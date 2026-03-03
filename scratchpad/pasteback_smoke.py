@@ -18,6 +18,7 @@ from pathlib import Path
 
 from clicknick.ladder import (
     ClickCodec,
+    InstructionType,
     RungGrid,
     copy_to_clipboard,
     header_structural_equal,
@@ -119,12 +120,46 @@ def _matrix_case(cases: list[dict[str, str]], case_id: str) -> dict[str, str]:
     raise ValueError(f"Unknown matrix id {case_id!r}")
 
 
+def _is_matrix_known_unsupported(entry: dict[str, str]) -> bool:
+    return bool(entry.get("known_unsupported"))
+
+
 def _type_markers(data: bytes) -> list[tuple[int, int]]:
     out: list[tuple[int, int]] = []
     for i in range(0x0A60, min(len(data), 0x1A60) - 1):
         if data[i + 1] == 0x27 and data[i] != 0x00:
             out.append((i, data[i]))
     return out
+
+
+def _clipboard_block_summary(data: bytes) -> list[dict[str, object]]:
+    """Summarize 8KiB clipboard blocks for non-single-rung captures."""
+    if len(data) % 8192 != 0:
+        return []
+    blocks: list[dict[str, object]] = []
+    for idx in range(len(data) // 8192):
+        chunk = data[idx * 8192 : (idx + 1) * 8192]
+        markers = [
+            (off, typ)
+            for off, typ in _type_markers(chunk)
+            if typ in (
+                InstructionType.CONTACT_NO.value,
+                InstructionType.CONTACT_NC.value,
+                InstructionType.CONTACT_EDGE.value,
+                InstructionType.COIL_OUT.value,
+                InstructionType.COIL_LATCH.value,
+                InstructionType.COIL_RESET.value,
+            )
+        ]
+        blocks.append(
+            {
+                "index": idx,
+                "row_class": f"0x{chunk[0x0254]:02X}",
+                "marker_count": len(markers),
+                "marker_types": [f"0x{typ:02X}" for _, typ in markers],
+            }
+        )
+    return blocks
 
 
 def cmd_list() -> int:
@@ -139,7 +174,13 @@ def cmd_matrix_list(matrix_file: str | None) -> int:
     print(f"Matrix: {path}")
     for entry in cases:
         native = entry.get("native_label", "")
-        print(f"{entry['id']}: {entry['csv']} {f'[native:{native}]' if native else ''}".rstrip())
+        flags: list[str] = []
+        if native:
+            flags.append(f"native:{native}")
+        if _is_matrix_known_unsupported(entry):
+            flags.append("known_unsupported")
+        suffix = f" [{' | '.join(flags)}]" if flags else ""
+        print(f"{entry['id']}: {entry['csv']}{suffix}")
     return 0
 
 
@@ -149,6 +190,10 @@ def cmd_matrix_status(matrix_file: str | None) -> int:
     print(f"Matrix status: {path}")
     for entry in cases:
         case_id = entry["id"]
+        if _is_matrix_known_unsupported(entry):
+            print(f"{case_id}: known-unsupported")
+            continue
+
         src_path, back_path, result_path = _paths(case_id)
         compare_path = _compare_path(case_id)
         status = "new"
@@ -186,6 +231,9 @@ def cmd_matrix_status(matrix_file: str | None) -> int:
 def cmd_matrix_prepare(case_id: str, matrix_file: str | None) -> int:
     path = Path(matrix_file) if matrix_file else MATRIX_PATH
     entry = _matrix_case(_load_matrix(path), case_id)
+    if _is_matrix_known_unsupported(entry):
+        print(f"Matrix id {case_id} is marked known_unsupported; skipping prepare.")
+        return 2
     print(f"Preparing matrix id {case_id}: {entry['csv']}")
     return cmd_prepare(case_id, entry["csv"])
 
@@ -193,6 +241,9 @@ def cmd_matrix_prepare(case_id: str, matrix_file: str | None) -> int:
 def cmd_matrix_verify(case_id: str, matrix_file: str | None) -> int:
     path = Path(matrix_file) if matrix_file else MATRIX_PATH
     entry = _matrix_case(_load_matrix(path), case_id)
+    if _is_matrix_known_unsupported(entry):
+        print(f"Matrix id {case_id} is marked known_unsupported; skipping verify.")
+        return 2
     print(f"Verifying matrix id {case_id}: {entry['csv']}")
     return cmd_verify(case_id, entry["csv"])
 
@@ -200,6 +251,9 @@ def cmd_matrix_verify(case_id: str, matrix_file: str | None) -> int:
 def cmd_matrix_compare(case_id: str, matrix_file: str | None) -> int:
     path = Path(matrix_file) if matrix_file else MATRIX_PATH
     entry = _matrix_case(_load_matrix(path), case_id)
+    if _is_matrix_known_unsupported(entry):
+        print(f"Matrix id {case_id} is marked known_unsupported; skipping compare.")
+        return 2
     native_label = entry.get("native_label")
     print(
         f"Comparing matrix id {case_id}: {entry['csv']} "
@@ -241,18 +295,25 @@ def cmd_verify(case: str, csv_override: str | None) -> int:
     back = read_from_clipboard()
     back_path.write_bytes(back)
 
-    header_ok = header_structural_equal(src, back)
-    topo_ok = parse_wire_topology(src) == parse_wire_topology(back)
+    single_rung = len(back) == 8192
+    header_ok = header_structural_equal(src, back) if single_rung else False
+    topo_ok = (parse_wire_topology(src) == parse_wire_topology(back)) if single_rung else False
 
     decode_ok = False
     decoded_csv: str
     decode_error: str | None = None
-    try:
-        decoded_csv = codec.decode(back).to_csv()
-        decode_ok = decoded_csv == expected_csv
-    except Exception as exc:  # pragma: no cover - diagnostic path
+    if single_rung:
+        try:
+            decoded_csv = codec.decode(back).to_csv()
+            decode_ok = decoded_csv == expected_csv
+        except Exception as exc:  # pragma: no cover - diagnostic path
+            decoded_csv = ""
+            decode_error = f"{type(exc).__name__}: {exc}"
+    else:
         decoded_csv = ""
-        decode_error = f"{type(exc).__name__}: {exc}"
+        decode_error = f"Expected 8192-byte single-rung clipboard payload, got {len(back)} bytes"
+
+    block_summary = _clipboard_block_summary(back) if not single_rung else []
 
     result = {
         "case": case,
@@ -267,9 +328,15 @@ def cmd_verify(case: str, csv_override: str | None) -> int:
         "source_file": str(src_path),
         "pasteback_file": str(back_path),
     }
+    if block_summary:
+        result["block_summary"] = block_summary
     result_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
 
     print(json.dumps(result, indent=2))
+    if block_summary:
+        print(
+            "Note: clipboard contains multiple 8KiB blocks. In Click, copy exactly one rung and rerun verify."
+        )
     print(f"Saved result: {result_path}")
     return 0 if (len(back) == 8192 and header_ok and topo_ok and decode_ok) else 1
 

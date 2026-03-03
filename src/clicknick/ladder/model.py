@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import IntEnum
+from typing import Literal
 
 
 class InstructionType(IntEnum):
@@ -15,6 +16,7 @@ class InstructionType(IntEnum):
 
     CONTACT_NO = 0x11  # 0x2711
     CONTACT_NC = 0x12  # 0x2712
+    CONTACT_EDGE = 0x13  # 0x2713 (rise/fall edge contacts)
     COIL_OUT = 0x15  # 0x2715
     COIL_LATCH = 0x16  # 0x2716
     COIL_RESET = 0x17  # 0x2717
@@ -27,6 +29,11 @@ CONTACT_FUNC_CODES: dict[tuple[InstructionType, bool], str] = {
     (InstructionType.CONTACT_NC, False): "4098",
     (InstructionType.CONTACT_NO, True): "4099",
     (InstructionType.CONTACT_NC, True): "4100",
+}
+
+CONTACT_EDGE_FUNC_CODES: dict[Literal["rise", "fall"], str] = {
+    "rise": "4101",
+    "fall": "4102",
 }
 
 COIL_FUNC_CODES: dict[tuple[InstructionType, bool, bool], str] = {
@@ -65,17 +72,26 @@ def _validate_operand(operand: str) -> str:
 class Contact:
     """A contact instruction (NO or NC)."""
 
-    type: InstructionType  # CONTACT_NO or CONTACT_NC
+    type: InstructionType  # CONTACT_NO, CONTACT_NC, or CONTACT_EDGE
     operand: str  # e.g. "X001"
     immediate: bool = False
+    edge_kind: Literal["rise", "fall"] | None = None
 
     @classmethod
     def from_csv_token(cls, token: str) -> Contact:
-        """Parse 'X001', '~X001', 'X001.immediate', or '~X001.immediate'."""
+        """Parse NO/NC/immediate forms plus edge forms `rise(...)`/`fall(...)`."""
         token = token.strip()
         immediate = token.endswith(".immediate")
         if immediate:
             token = token[: -len(".immediate")]
+
+        edge_match = re.fullmatch(r"(rise|fall)\((.+)\)", token)
+        if edge_match:
+            if immediate:
+                raise ValueError("Immediate edge contacts are unsupported")
+            edge_kind: Literal["rise", "fall"] = edge_match.group(1)  # type: ignore[assignment]
+            operand = _validate_operand(edge_match.group(2).strip())
+            return cls(InstructionType.CONTACT_EDGE, operand, immediate=False, edge_kind=edge_kind)
 
         if token.startswith("~"):
             return cls(InstructionType.CONTACT_NC, _validate_operand(token[1:]), immediate=immediate)
@@ -83,9 +99,19 @@ class Contact:
 
     @property
     def func_code(self) -> str:
+        if self.type == InstructionType.CONTACT_EDGE:
+            if self.edge_kind not in CONTACT_EDGE_FUNC_CODES:
+                raise ValueError("Edge contacts require edge_kind 'rise' or 'fall'")
+            if self.immediate:
+                raise ValueError("Immediate edge contacts are unsupported")
+            return CONTACT_EDGE_FUNC_CODES[self.edge_kind]
         return CONTACT_FUNC_CODES[(self.type, self.immediate)]
 
     def to_csv(self) -> str:
+        if self.type == InstructionType.CONTACT_EDGE:
+            if self.edge_kind not in CONTACT_EDGE_FUNC_CODES:
+                raise ValueError("Edge contacts require edge_kind 'rise' or 'fall'")
+            return f"{self.edge_kind}({self.operand})"
         prefix = "~" if self.type == InstructionType.CONTACT_NC else ""
         suffix = ".immediate" if self.immediate else ""
         return f"{prefix}{self.operand}{suffix}"

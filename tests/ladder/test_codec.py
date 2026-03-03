@@ -40,12 +40,41 @@ class TestDeterministicEncoding:
             assert data[entry_start + 0x17] == 0x15
             assert data[entry_start + 0x18] == 0x01
 
+    def test_encode_header_variant_for_two_series_second_immediate(self):
+        data = codec.encode(RungGrid.from_csv("X001,X002.immediate,->,:,out(Y001)"))
+        for column in range(HEADER_ENTRY_COUNT):
+            entry_start = HEADER_ENTRY_BASE + column * HEADER_ENTRY_SIZE
+            assert data[entry_start + 0x17] == 0x0D
+            assert data[entry_start + 0x18] == 0x01
+
+    def test_two_series_second_immediate_row1_col1_profile(self):
+        data = codec.encode(RungGrid.from_csv("X001,X002.immediate,->,:,out(Y001)"))
+        row0_col0 = 0x0A60
+        row0_col1 = 0x0AA0
+        row0_col2 = 0x0AE0
+        row0_col4 = 0x0B60
+        row1_col0 = 0x1260
+        row1_col1 = 0x12A0
+        assert data[row0_col0 + 0x05] == 0x0C
+        assert data[row0_col1 + 0x3E] == 0x04
+        assert data[row0_col2 + 0x0A] == 0x0C
+        assert data[row0_col2 + 0x12] == 0x01
+        assert data[row0_col4 + 0x02] == 0x00
+        assert data[row0_col4 + 0x04] == 0x01
+        assert data[row0_col4 + 0x05] == 0x04
+        assert data[row0_col4 + 0x11] == 0x0C
+        assert data[row1_col0 + 0x05] == 0x04
+        assert data[row1_col0 + 0x11] == 0x0C
+        assert data[row1_col1 + 0x05] == 0x04
+        assert data[row1_col1 + 0x11] == 0x0C
+        assert data[row1_col1 + 0x19] == 0x02
+
     def test_encode_header_variant_for_range_coil(self):
         data = codec.encode(RungGrid.from_csv("X001,->,:,out(C1..C2)"))
         for column in range(HEADER_ENTRY_COUNT):
             entry_start = HEADER_ENTRY_BASE + column * HEADER_ENTRY_SIZE
-            assert data[entry_start + 0x17] == 0xE1
-            assert data[entry_start + 0x18] == 0x00
+            assert data[entry_start + 0x17] == 0x15
+            assert data[entry_start + 0x18] == 0x01
 
 
 class TestEncodeDecodeRoundTrip:
@@ -68,6 +97,22 @@ class TestEncodeDecodeRoundTrip:
         decoded = codec.decode(data)
         assert decoded.contact.immediate is True
         assert decoded.to_csv() == "X001.immediate,->,:,out(Y001)"
+
+    def test_contact_rise(self):
+        grid = RungGrid.from_csv("rise(X001),->,:,out(Y001)")
+        data = codec.encode(grid)
+        decoded = codec.decode(data)
+        assert decoded.contact.type == InstructionType.CONTACT_EDGE
+        assert decoded.contact.edge_kind == "rise"
+        assert decoded.to_csv() == "rise(X001),->,:,out(Y001)"
+
+    def test_contact_fall(self):
+        grid = RungGrid.from_csv("fall(X001),->,:,out(Y001)")
+        data = codec.encode(grid)
+        decoded = codec.decode(data)
+        assert decoded.contact.type == InstructionType.CONTACT_EDGE
+        assert decoded.contact.edge_kind == "fall"
+        assert decoded.to_csv() == "fall(X001),->,:,out(Y001)"
 
     def test_out_variants(self):
         for csv in (
@@ -138,19 +183,66 @@ class TestEncodeDecodeRoundTrip:
         decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
         assert decoded.to_csv() == csv
 
+    def test_two_series_rise_then_no(self):
+        csv = "rise(X001),X002,->,:,out(Y001)"
+        decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
+        assert decoded.to_csv() == csv
+
     def test_two_series_accepts_non_4_char_contacts(self):
         csv = "X1,X002,->,:,out(Y001)"
         decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
         assert decoded.to_csv() == "X001,X002,->,:,out(Y001)"
 
-    def test_two_series_injects_second_contact_label_and_row1_metadata(self):
-        data = codec.encode(RungGrid.from_csv("X001,X002,->,:,out(Y001)"))
-        assert data[0x0B0A:0x0B1E] == "ContactNO\0".encode("utf-16-le")
-        assert data[0x1331] == 0x03
-        assert data[0x1335] == 0x02
-        assert data[0x1341] == 0x00
-        assert data[0x1347] == 0x01
-        assert data[0x134A] == 0x01
+    @pytest.mark.parametrize(
+        ("csv", "meta_shift"),
+        [
+            ("X001,X002,->,:,out(Y001)", 0),
+            ("X001.immediate,X002,->,:,out(Y001)", 2),
+            ("X001,X002.immediate,->,:,out(Y001)", 2),
+            ("X001.immediate,X002.immediate,->,:,out(Y001)", 4),
+        ],
+    )
+    def test_two_series_injects_second_contact_label_and_row1_metadata(self, csv: str, meta_shift: int):
+        data = codec.encode(RungGrid.from_csv(csv))
+        label = "ContactNO\0".encode("utf-16-le")
+        contact_offsets = [
+            i
+            for i in range(0x0A60, 0x1A60 - 1)
+            if data[i + 1] == 0x27 and data[i] in (0x11, 0x12, 0x13)
+        ]
+        assert len(contact_offsets) >= 2
+        second_offset = contact_offsets[1]
+        assert data[second_offset - len(label) : second_offset] == label
+        assert data[0x1331 + meta_shift] == 0x03
+        assert data[0x1335 + meta_shift] == 0x02
+        assert data[0x133E + meta_shift] == 0x01
+        assert data[0x1347 + meta_shift] == 0x01
+        assert data[0x134A + meta_shift] == 0x01
+
+    @pytest.mark.parametrize(
+        ("csv", "expected_col4_flags"),
+        [
+            ("X001,X002,->,:,out(Y001)", (True, False, False)),
+            ("X001.immediate,X002,->,:,out(Y001)", (True, True, False)),
+            ("X001,X002.immediate,->,:,out(Y001)", (True, True, False)),
+            ("X001.immediate,X002.immediate,->,:,out(Y001)", (False, True, False)),
+            ("rise(X001),X002,->,:,out(Y001)", (True, True, False)),
+        ],
+    )
+    def test_two_series_col4_topology_flags_by_contact_variant(
+        self,
+        csv: str,
+        expected_col4_flags: tuple[bool, bool, bool],
+    ):
+        data = codec.encode(RungGrid.from_csv(csv))
+        topo = codec.decode_wire_topology(data)
+        flags = topo.flags_at(0, 4)
+        assert flags is not None
+        assert (
+            flags.horizontal_left,
+            flags.horizontal_right,
+            flags.vertical_down,
+        ) == expected_col4_flags
 
 
 class TestCaptureBackedDecode:

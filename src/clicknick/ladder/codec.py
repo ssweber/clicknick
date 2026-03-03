@@ -48,6 +48,12 @@ _scaffold_cache: bytes | None = None
 CONTACT_CODE_TO_FLAGS: Final[dict[str, tuple[InstructionType, bool]]] = {
     code: (itype, immediate) for (itype, immediate), code in CONTACT_FUNC_CODES.items()
 }
+CONTACT_CODE_TO_FLAGS.update(
+    {
+        "4101": (InstructionType.CONTACT_EDGE, False),
+        "4102": (InstructionType.CONTACT_EDGE, False),
+    }
+)
 
 COIL_CODE_TO_FLAGS: Final[dict[str, tuple[InstructionType, bool, bool]]] = {
     code: (itype, is_range, immediate)
@@ -160,7 +166,11 @@ def _build_coil_stream(coil: Coil) -> bytes:
 
 def _decode_contact_at(data: bytes, contact_offset: int) -> Contact:
     contact_type = InstructionType(data[contact_offset])
-    if contact_type not in (InstructionType.CONTACT_NO, InstructionType.CONTACT_NC):
+    if contact_type not in (
+        InstructionType.CONTACT_NO,
+        InstructionType.CONTACT_NC,
+        InstructionType.CONTACT_EDGE,
+    ):
         raise ValueError(f"Unsupported contact type 0x27{data[contact_offset]:02X}")
 
     contact_op = _read_utf16_ascii(data, contact_offset + 16)
@@ -174,8 +184,21 @@ def _decode_contact_at(data: bytes, contact_offset: int) -> Contact:
         [contact_base, contact_base + 2] + list(range(34, 50, 2)),
         set(CONTACT_CODE_TO_FLAGS),
     )
-    _, contact_immediate = CONTACT_CODE_TO_FLAGS[contact_code]
-    return Contact(type=contact_type, operand=contact_op, immediate=contact_immediate)
+    code_type, contact_immediate = CONTACT_CODE_TO_FLAGS[contact_code]
+    if code_type != contact_type:
+        raise ValueError(
+            f"Contact type mismatch: type 0x27{contact_type.value:02X}, func code {contact_code}"
+        )
+
+    edge_kind = None
+    if contact_type == InstructionType.CONTACT_EDGE:
+        edge_kind = "rise" if contact_code == "4101" else "fall"
+    return Contact(
+        type=contact_type,
+        operand=contact_op,
+        immediate=contact_immediate,
+        edge_kind=edge_kind,
+    )
 
 
 def _decode_coil_at(data: bytes, coil_offset: int) -> Coil:
@@ -233,6 +256,7 @@ def _contact_stream_shift(contact: Contact) -> int:
         type=contact.type,
         operand=_canonicalize_operand_for_encoding(contact.operand),
         immediate=contact.immediate,
+        edge_kind=contact.edge_kind,
     )
     return len(_build_contact_stream(probe)) - _BASE_CONTACT_STREAM_LEN
 
@@ -255,8 +279,9 @@ def _canonicalize_operand_for_encoding(operand: str) -> str:
     return operand
 
 
-def _write_topology_for_simple_series(buf: bytearray, contact_count: int) -> None:
+def _write_topology_for_simple_series(buf: bytearray, contacts: list[Contact]) -> None:
     """Write row0 topology bytes for the simple series forms supported by RungGrid."""
+    contact_count = len(contacts)
     if contact_count not in (1, 2):
         return
 
@@ -270,12 +295,28 @@ def _write_topology_for_simple_series(buf: bytearray, contact_count: int) -> Non
     buf[col0 + CELL_HORIZONTAL_RIGHT_OFFSET] = 0x01
 
     if contact_count == 2:
+        first_contact, second_contact = contacts
+
         # Two-series capture pattern:
         # - col3 flags are emitted by stream bytes (do not overwrite)
-        # - cols4..31 carry horizontal-left
+        # - cols4..31 vary by contact family
+        left_value = 0xFF
+        right_value = 0x00
+
+        if first_contact.type == InstructionType.CONTACT_EDGE or second_contact.type == InstructionType.CONTACT_EDGE:
+            left_value = 0x01
+            right_value = 0x01
+        elif first_contact.immediate and second_contact.immediate:
+            left_value = 0x00
+            right_value = 0xFF
+        elif first_contact.immediate or second_contact.immediate:
+            left_value = 0xFF
+            right_value = 0x01
+
         for col in range(4, COLS_PER_ROW):
             start = cell_offset(0, col)
-            buf[start + CELL_HORIZONTAL_LEFT_OFFSET] = 0xFF
+            buf[start + CELL_HORIZONTAL_LEFT_OFFSET] = left_value
+            buf[start + CELL_HORIZONTAL_RIGHT_OFFSET] = right_value
 
 
 def _shift_region(buf: bytearray, *, start: int, delta: int) -> None:
@@ -300,14 +341,41 @@ def _shift_region(buf: bytearray, *, start: int, delta: int) -> None:
     buf[start:] = shifted
 
 
-def _patch_header_variant_bytes(buf: bytearray, *, contacts_count: int, has_coil_range: bool) -> None:
-    """Patch observed per-entry variant bytes in header table."""
-    if has_coil_range:
-        b17, b18 = 0xE1, 0x00
-    elif contacts_count == 2:
-        b17, b18 = 0x15, 0x01
+def _patch_header_variant_bytes(
+    buf: bytearray,
+    *,
+    contacts: list[Contact],
+    coil: Coil,
+) -> None:
+    """Patch observed per-entry variant bytes in header table.
+
+    Native captures show 0x05/0x01 for the strict baseline scaffold case only:
+    single NO contact + non-immediate OUT coil + no range.
+    Other supported instruction variants use 0x15/0x01.
+    """
+    first = contacts[0]
+    is_baseline_simple_out = (
+        len(contacts) == 1
+        and first.type == InstructionType.CONTACT_NO
+        and not first.immediate
+        and first.edge_kind is None
+        and coil.type == InstructionType.COIL_OUT
+        and not coil.immediate
+        and coil.range_end is None
+    )
+
+    if is_baseline_simple_out:
+        b17, b18 = (0x05, 0x01)
+    elif (
+        len(contacts) == 2
+        and not contacts[0].immediate
+        and contacts[1].immediate
+    ):
+        # Native recaptures for the second-immediate series variant normalize
+        # this family byte to 0x0D.
+        b17, b18 = (0x0D, 0x01)
     else:
-        b17, b18 = 0x05, 0x01
+        b17, b18 = (0x15, 0x01)
 
     for col in range(COLS_PER_ROW):
         entry_start = HEADER_ENTRY_BASE + col * CELL_SIZE
@@ -318,12 +386,16 @@ def _patch_header_variant_bytes(buf: bytearray, *, contacts_count: int, has_coil
 def _contact_label_for_type(contact_type: InstructionType) -> str:
     if contact_type == InstructionType.CONTACT_NO:
         return "ContactNO"
+    if contact_type == InstructionType.CONTACT_EDGE:
+        return "ContactNO"
     return "ContactNC"
 
 
 def _patch_two_series_structure(
     buf: bytearray,
     *,
+    first_shift: int,
+    second_shift: int,
     second_contact: Contact,
     second_type_offset: int,
 ) -> None:
@@ -341,13 +413,54 @@ def _patch_two_series_structure(
     cell4 = cell_offset(0, 4)
     buf[cell4 + 0x02] = 0x01
 
-    # Two-series row1/col3 metadata block is stable across native captures.
+    # Two-series row1/col3 metadata offsets shift with total contact stream expansion.
+    total_shift = first_shift + second_shift
     row1_col3 = cell_offset(1, 3)
-    buf[row1_col3 + 0x11] = 0x03
-    buf[row1_col3 + 0x15] = 0x02
-    buf[row1_col3 + 0x21] = 0x00
-    buf[row1_col3 + 0x27] = 0x01
-    buf[row1_col3 + 0x2A] = 0x01
+    for delta in (0, 2, 4):
+        buf[row1_col3 + 0x11 + delta] = 0x00
+        buf[row1_col3 + 0x15 + delta] = 0x00
+        buf[row1_col3 + 0x1E + delta] = 0x00
+        buf[row1_col3 + 0x27 + delta] = 0x00
+        buf[row1_col3 + 0x2A + delta] = 0x00
+    buf[row1_col3 + 0x11 + total_shift] = 0x03
+    buf[row1_col3 + 0x15 + total_shift] = 0x02
+    buf[row1_col3 + 0x1E + total_shift] = 0x01
+    buf[row1_col3 + 0x27 + total_shift] = 0x01
+    buf[row1_col3 + 0x2A + total_shift] = 0x01
+    # Keep this metadata byte clear; native captures keep it at zero.
+    buf[row1_col3 + 0x23] = 0x00
+
+    # For the second-immediate two-series profile, row1/col1 carries stable
+    # non-stream bytes that gate coil materialization in Click rendering.
+    if first_shift == 0 and second_shift == 2:
+        row0_col0 = cell_offset(0, 0)
+        row0_col1 = cell_offset(0, 1)
+        row0_col2 = cell_offset(0, 2)
+        row0_col4 = cell_offset(0, 4)
+        row1_col0 = cell_offset(1, 0)
+        row1_col1 = cell_offset(1, 1)
+        buf[row0_col0 + 0x05] = 0x0C
+        buf[row0_col1 + 0x3E] = 0x04
+        buf[row0_col2 + 0x0A] = 0x0C
+        buf[row0_col2 + 0x12] = 0x01
+        buf[row0_col4 + 0x02] = 0x00
+        buf[row0_col4 + 0x04] = 0x01
+        buf[row0_col4 + 0x05] = 0x04
+        buf[row0_col4 + 0x11] = 0x0C
+        buf[row1_col0 + 0x05] = 0x04
+        buf[row1_col0 + 0x11] = 0x0C
+        buf[row1_col1 + 0x05] = 0x04
+        buf[row1_col1 + 0x11] = 0x0C
+        buf[row1_col1 + 0x19] = 0x02
+
+
+def _clear_stale_type_marker(buf: bytearray, type_offset: int) -> None:
+    """Zero marker bytes at a known anchor if they currently look like 0x27XX."""
+    if type_offset < 0 or type_offset + 1 >= len(buf):
+        return
+    if buf[type_offset + 1] == 0x27:
+        buf[type_offset] = 0x00
+        buf[type_offset + 1] = 0x00
 
 
 class ClickCodec:
@@ -397,37 +510,45 @@ class ClickCodec:
         buf = _new_buffer(row_count=1)
         _patch_header_variant_bytes(
             buf,
-            contacts_count=len(contacts),
-            has_coil_range=grid.coil.range_end is not None,
+            contacts=contacts,
+            coil=grid.coil,
         )
+
+        # Clear scaffold markers that can become stale when stream anchors move.
+        _clear_stale_type_marker(buf, off.CONTACT2_TYPE_ID)
+        _clear_stale_type_marker(buf, off.COIL_TYPE_ID_BASE)
+        _clear_stale_type_marker(buf, off.COIL_TYPE_ID_BASE_TWO_SERIES)
 
         first_contact = contacts[0]
         first_shift = _contact_stream_shift(first_contact)
+        edge_shift = -0x0A if first_contact.type == InstructionType.CONTACT_EDGE else 0
+        first_type_offset = off.CONTACT_TYPE_ID + edge_shift
         # Single-contact immediate uses a +2 stream expansion that shifts a large
         # downstream region in native captures.
         if len(contacts) == 1 and first_shift > 0:
-            _shift_region(buf, start=off.CONTACT_TYPE_ID + 0x1F, delta=first_shift)
+            _shift_region(buf, start=first_type_offset + 0x1F, delta=first_shift)
         first_stream = _build_contact_stream(first_contact)
-        buf[off.CONTACT_TYPE_ID : off.CONTACT_TYPE_ID + len(first_stream)] = first_stream
+        buf[first_type_offset : first_type_offset + len(first_stream)] = first_stream
 
         if len(contacts) == 1:
-            coil_start = off.COIL_TYPE_ID_BASE + first_shift
+            coil_start = off.COIL_TYPE_ID_BASE + first_shift + edge_shift
         else:
             second_contact = contacts[1]
             second_shift = _contact_stream_shift(second_contact)
-            second_start = off.CONTACT2_TYPE_ID + first_shift
-            coil_start = off.COIL_TYPE_ID_BASE_TWO_SERIES + first_shift + second_shift
-            base_coil_after_first = off.COIL_TYPE_ID_BASE + first_shift
+            second_start = off.CONTACT2_TYPE_ID + first_shift + edge_shift
+            coil_start = off.COIL_TYPE_ID_BASE_TWO_SERIES + first_shift + second_shift + edge_shift
+            base_coil_after_first = off.COIL_TYPE_ID_BASE + first_shift + edge_shift
 
-            # Non-immediate two-series in native captures shifts the remainder of
-            # the stream/tail by a fixed insertion delta.
-            if first_shift == 0 and second_shift == 0:
-                _shift_region(buf, start=second_start, delta=coil_start - base_coil_after_first)
+            # Two-series captures shift the remainder of the stream/tail by the
+            # gap between single-contact and two-series coil anchors.
+            _shift_region(buf, start=second_start, delta=coil_start - base_coil_after_first)
 
             second_stream = _build_contact_stream(second_contact)
             buf[second_start : second_start + len(second_stream)] = second_stream
             _patch_two_series_structure(
                 buf,
+                first_shift=first_shift,
+                second_shift=second_shift,
                 second_contact=second_contact,
                 second_type_offset=second_start,
             )
@@ -436,7 +557,7 @@ class ClickCodec:
         buf[coil_start : coil_start + len(coil_stream)] = coil_stream
 
         # Rewrite canonical row0 topology after byte shifts.
-        _write_topology_for_simple_series(buf, len(contacts))
+        _write_topology_for_simple_series(buf, contacts)
 
         if grid.nickname:
             self._patch_nickname(buf, grid.nickname)
@@ -461,7 +582,11 @@ class ClickCodec:
             except ValueError:
                 continue
 
-            if i_type in (InstructionType.CONTACT_NO, InstructionType.CONTACT_NC):
+            if i_type in (
+                InstructionType.CONTACT_NO,
+                InstructionType.CONTACT_NC,
+                InstructionType.CONTACT_EDGE,
+            ):
                 candidate = _decode_contact_at(data, type_offset)
                 if (
                     contacts

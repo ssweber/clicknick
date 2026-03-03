@@ -41,6 +41,21 @@ def test_simple_rung_adapts_to_runggrid(tmp_path: Path) -> None:
     assert grid.coil.to_csv() == "out(immediate(Y001))"
 
 
+def test_edge_contact_rung_adapts_to_runggrid(tmp_path: Path) -> None:
+    csv_path = tmp_path / "main.csv"
+    conditions = _blank_conditions()
+    conditions[0] = "rise(X001)"
+    conditions[1] = "-"
+    conditions[2] = "X002"
+    _write_canonical(csv_path, [("R", conditions, "out(Y001)")])
+
+    rung = parse_csv_file(csv_path, syntax="canonical").rungs[0]
+    grid = to_runggrid_if_simple(rung)
+    assert grid.contact.to_csv() == "rise(X001)"
+    assert [c.to_csv() for c in grid.series_contacts or []] == ["X002"]
+    assert grid.coil.to_csv() == "out(Y001)"
+
+
 def test_multi_row_rung_rejected(tmp_path: Path) -> None:
     csv_path = tmp_path / "main.csv"
     c1 = _blank_conditions()

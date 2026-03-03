@@ -63,6 +63,30 @@
       "scenario": "nc_series_mix"
     },
     {
+      "id": "single_rise",
+      "csv": "rise(X001),->,:,out(Y001)",
+      "native_label": "single_rise_native",
+      "scenario": "edge_contact"
+    },
+    {
+      "id": "single_fall",
+      "csv": "fall(X001),->,:,out(Y001)",
+      "native_label": "single_fall_native",
+      "scenario": "edge_contact"
+    },
+    {
+      "id": "two_series_rise_no",
+      "csv": "rise(X001),X002,->,:,out(Y001)",
+      "native_label": "two_series_rise_no_native",
+      "scenario": "edge_contact"
+    },
+    {
+      "id": "two_series_fall_no",
+      "csv": "fall(X001),X002,->,:,out(Y001)",
+      "native_label": "two_series_fall_no_native",
+      "scenario": "edge_contact"
+    },
+    {
       "id": "simple_latch",
       "csv": "X001,->,:,latch(Y001)",
       "native_label": "simple_latch_native",
@@ -82,7 +106,7 @@
     },
     {
       "id": "simple_range_immediate",
-      "csv": "X001,->,:,out(immediate(C1..C2))",
+      "csv": "X001,->,:,out(immediate(Y001..Y002))",
       "native_label": "simple_range_immediate_native",
       "scenario": "coil_range_immediate"
     }

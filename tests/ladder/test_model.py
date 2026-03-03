@@ -34,6 +34,24 @@ class TestContact:
         with pytest.raises(ValueError, match="Invalid operand"):
             Contact.from_csv_token("XABC")
 
+    def test_from_csv_token_rise(self):
+        c = Contact.from_csv_token("rise(X001)")
+        assert c.type == InstructionType.CONTACT_EDGE
+        assert c.edge_kind == "rise"
+        assert c.operand == "X001"
+        assert c.immediate is False
+
+    def test_from_csv_token_fall(self):
+        c = Contact.from_csv_token("fall(X003)")
+        assert c.type == InstructionType.CONTACT_EDGE
+        assert c.edge_kind == "fall"
+        assert c.operand == "X003"
+        assert c.immediate is False
+
+    def test_from_csv_token_edge_immediate_rejected(self):
+        with pytest.raises(ValueError, match="Immediate edge contacts are unsupported"):
+            Contact.from_csv_token("rise(X001).immediate")
+
     def test_to_csv_no(self):
         c = Contact(InstructionType.CONTACT_NO, "X001")
         assert c.to_csv() == "X001"
@@ -41,6 +59,10 @@ class TestContact:
     def test_to_csv_nc(self):
         c = Contact(InstructionType.CONTACT_NC, "X003")
         assert c.to_csv() == "~X003"
+
+    def test_to_csv_edge(self):
+        c = Contact(InstructionType.CONTACT_EDGE, "X001", edge_kind="rise")
+        assert c.to_csv() == "rise(X001)"
 
     def test_func_code_no(self):
         c = Contact(InstructionType.CONTACT_NO, "X001")
@@ -57,6 +79,10 @@ class TestContact:
     def test_func_code_nc_immediate(self):
         c = Contact(InstructionType.CONTACT_NC, "X001", immediate=True)
         assert c.func_code == "4100"
+
+    def test_func_code_rise_fall(self):
+        assert Contact(InstructionType.CONTACT_EDGE, "X001", edge_kind="rise").func_code == "4101"
+        assert Contact(InstructionType.CONTACT_EDGE, "X001", edge_kind="fall").func_code == "4102"
 
     def test_to_csv_immediate(self):
         c = Contact(InstructionType.CONTACT_NO, "X001", immediate=True)
@@ -187,6 +213,12 @@ class TestRungGrid:
         assert [c.to_csv() for c in g.contacts] == ["X001", "X002"]
         assert g.coil.to_csv() == "out(Y001)"
 
+    def test_from_csv_rise_contact(self):
+        g = RungGrid.from_csv("rise(X001),->,:,out(Y001)")
+        assert g.contact.type == InstructionType.CONTACT_EDGE
+        assert g.contact.edge_kind == "rise"
+        assert g.to_csv() == "rise(X001),->,:,out(Y001)"
+
     def test_to_csv_two_series_contacts(self):
         g = RungGrid.from_csv("X001,~X002,->,:,out(Y001)")
         assert g.to_csv() == "X001,~X002,->,:,out(Y001)"
@@ -215,6 +247,8 @@ class TestRungGrid:
         cases = [
             "X001,->,:,out(Y001)",
             "~X003,->,:,out(Y002)",
+            "rise(X001),->,:,out(Y001)",
+            "fall(X003),->,:,out(Y001)",
             "X010,->,:,out(Y100)",
             "X1.immediate,->,:,out(immediate(Y1))",
             "~X3.immediate,->,:,latch(immediate(Y1..Y2))",
