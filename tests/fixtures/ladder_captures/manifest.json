@@ -123,6 +123,48 @@
       "source": "scratchpad/captures"
     },
     {
+      "fixture_file": "simple_latch_native.bin",
+      "capture_label": "simple_latch_native",
+      "scenario": "coil_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "simple_out_immediate_native.bin",
+      "capture_label": "simple_out_immediate_native",
+      "scenario": "coil_immediate",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "simple_range_immediate_native.bin",
+      "capture_label": "simple_range_immediate_native",
+      "scenario": "coil_range_immediate",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "simple_reset_native.bin",
+      "capture_label": "simple_reset_native",
+      "scenario": "coil_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "single_fall_native.bin",
+      "capture_label": "single_fall_native",
+      "scenario": "edge_contact",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "single_nc_native.bin",
+      "capture_label": "single_nc_native",
+      "scenario": "nc_contact",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "single_rise_native.bin",
+      "capture_label": "single_rise_native",
+      "scenario": "edge_contact",
+      "source": "scratchpad/captures"
+    },
+    {
       "fixture_file": "smoke_immediate_native.bin",
       "capture_label": "smoke_immediate_native",
       "scenario": "smoke_native",
@@ -156,6 +198,48 @@
       "fixture_file": "two_series_rung.bin",
       "capture_label": "two_series_rung",
       "scenario": "composed_rung",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "two_series_both_immediate_native.bin",
+      "capture_label": "two_series_both_immediate_native",
+      "scenario": "two_series_immediate_mix",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "two_series_fall_no_native.bin",
+      "capture_label": "two_series_fall_no_native",
+      "scenario": "edge_contact",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "two_series_first_immediate_native.bin",
+      "capture_label": "two_series_first_immediate_native",
+      "scenario": "two_series_immediate_mix",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "two_series_nc_nc_native.bin",
+      "capture_label": "two_series_nc_nc_native",
+      "scenario": "nc_series_mix",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "two_series_nc_no_native.bin",
+      "capture_label": "two_series_nc_no_native",
+      "scenario": "nc_series_mix",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "two_series_rise_no_native.bin",
+      "capture_label": "two_series_rise_no_native",
+      "scenario": "edge_contact",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "two_series_second_immediate_native.bin",
+      "capture_label": "two_series_second_immediate_native",
+      "scenario": "two_series_immediate_mix",
       "source": "scratchpad/captures"
     },
     {
