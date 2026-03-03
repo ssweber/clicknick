@@ -73,6 +73,10 @@ _FUNC_PRE_NORMAL: Final[bytes] = bytes.fromhex("300000001832FFFFFFFF")
 _FUNC_PRE_IMMEDIATE: Final[bytes] = bytes.fromhex("2D00310000001832FFFFFFFF")
 _FUNC_POST: Final[bytes] = bytes.fromhex("00000000FFFFFFFF")
 _BASE_CONTACT_STREAM_LEN: Final[int] = 58  # X001 non-immediate in scaffold baseline
+_CELL_CONTROL_A_OFFSET: Final[int] = 0x1A
+_CELL_CONTROL_B_OFFSET: Final[int] = 0x1B
+_CELL_PROFILE_05_OFFSET: Final[int] = 0x05
+_CELL_PROFILE_11_OFFSET: Final[int] = 0x11
 
 
 def _load_scaffold() -> bytes:
@@ -313,10 +317,56 @@ def _write_topology_for_simple_series(buf: bytearray, contacts: list[Contact]) -
             left_value = 0xFF
             right_value = 0x01
 
+        control_a, control_b = _two_series_control_profile_bytes(first_contact, second_contact)
+        profile_05, profile_11 = _two_series_profile_05_11_bytes(first_contact, second_contact)
         for col in range(4, COLS_PER_ROW):
             start = cell_offset(0, col)
             buf[start + CELL_HORIZONTAL_LEFT_OFFSET] = left_value
             buf[start + CELL_HORIZONTAL_RIGHT_OFFSET] = right_value
+            buf[start + _CELL_PROFILE_05_OFFSET] = profile_05
+            buf[start + _CELL_PROFILE_11_OFFSET] = profile_11
+            buf[start + _CELL_CONTROL_A_OFFSET] = control_a
+            buf[start + _CELL_CONTROL_B_OFFSET] = control_b
+
+        # Native two-series captures carry the same control profile at row1/col0.
+        row1_col0 = cell_offset(1, 0)
+        buf[row1_col0 + _CELL_PROFILE_05_OFFSET] = profile_05
+        buf[row1_col0 + _CELL_PROFILE_11_OFFSET] = profile_11
+        buf[row1_col0 + _CELL_CONTROL_A_OFFSET] = control_a
+        buf[row1_col0 + _CELL_CONTROL_B_OFFSET] = control_b
+
+
+def _two_series_control_profile_bytes(first: Contact, second: Contact) -> tuple[int, int]:
+    """Return the (0x1A, 0x1B) profile values for two-series wiring cells."""
+    if first.type == InstructionType.CONTACT_EDGE or second.type == InstructionType.CONTACT_EDGE:
+        return (0x00, 0x00)
+
+    if first.immediate and second.immediate:
+        return (0x00, 0xFF)
+
+    if first.immediate or second.immediate:
+        return (0xFF, 0xFF)
+
+    return (0xFF, 0x01)
+
+
+def _two_series_profile_05_11_bytes(first: Contact, second: Contact) -> tuple[int, int]:
+    """Return the (+0x05, +0x11) profile bytes for two-series wiring cells."""
+    if first.type == InstructionType.CONTACT_EDGE:
+        if first.edge_kind == "rise":
+            return (0x62, 0x01)
+        if first.edge_kind == "fall":
+            return (0x64, 0x01)
+        return (0x00, 0x01)
+
+    if first.immediate and not second.immediate:
+        return (0x25, 0x52)
+
+    if not first.immediate and second.immediate:
+        return (0x04, 0x0C)
+
+    # Includes both-immediate and fully non-immediate series profiles.
+    return (0x00, 0x00)
 
 
 def _shift_region(buf: bytearray, *, start: int, delta: int) -> None:

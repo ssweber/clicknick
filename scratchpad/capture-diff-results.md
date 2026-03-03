@@ -132,3 +132,97 @@ Interpretation:
 
 - Click accepts these wire topology flags as semantically valid and round-trips them unchanged.
 - Large raw byte drift outside normalized header/topology exists, but it is non-structural for wire semantics.
+
+## Two-Series Fragmentation Control-Byte Follow-Up (2026-03-03)
+
+Reference broken capture:
+
+- `scratchpad/captures/two_series_second_immediate_back_split_after_row0_profile.bin` (`20480` bytes)
+
+Generated patch-test payloads (first 8192-byte record patched; remaining bytes unchanged):
+
+- `..._patch_1a_ff.bin` (`+0x1A=0xFF` on occupied cells)
+- `..._patch_1b_01.bin` (`+0x1B=0x01` on occupied cells)
+- `..._patch_1a_ff_1b_01.bin` (combined)
+- `..._patch_1a_ff_1b_ff.bin` (combined using immediate-family `+0x1B`)
+
+Helper used:
+
+- `devtools/patch_capture_cells.py`
+
+### Native Two-Series Decision Table (`row0 col4..31` and `row1 col0`)
+
+Observed from fixture captures:
+
+- Normal two-series (`NO/NC`, non-immediate): `+0x1A=0xFF`, `+0x1B=0x01`
+- Any single immediate contact (first OR second): `+0x1A=0xFF`, `+0x1B=0xFF`
+- Both contacts immediate: `+0x1A=0x00`, `+0x1B=0xFF`
+- Edge-contact first (`rise`/`fall` + NO): `+0x1A=0x00`, `+0x1B=0x00`
+
+### `+0x17/+0x18` Note
+
+- `smoke_immediate_native` carries non-zero values where `smoke_simple_native` is zero.
+- In `two_series_second_immediate_native`, those same profile cells are zero.
+- Current evidence suggests `+0x17/+0x18` are instruction-family profile bytes, not required rung-membership/group bytes.
+
+### Important Confound in `...split_after_row0_profile.bin`
+
+For profile cells (`row0 col4..31`, `row1 col0`) in the first 8192-byte record:
+
+- `+0x19` and `+0x1D` are also zero (no horizontal wire flags), not just `+0x1A/+0x1B`.
+- `+0x04/+0x05/+0x09/+0x11/+0x1A/+0x1B/+0x1C/+0x25/+0x29` are all zero in that same profile region.
+
+Implication:
+
+- Patching only `+0x1A` on this artifact is not a clean isolation test for rung-membership bytes.
+- `+0x1B` broad-patch crashes were explained by stream overlap when patching every occupied cell.
+- Focused profile-only patching avoids stream corruption and should be used for next manual validation rounds.
+
+### Clean Isolation Harness (Generated 8192 Baseline)
+
+To avoid split-record confounds, generated payload variants were created from
+`ClickCodec.encode("X001,X002.immediate,->,:,out(Y001)")` (single 8192 bytes,
+all 3 type markers intact at `0x0A99`, `0x0B1E`, `0x12D9`):
+
+- `scratchpad/captures/two_series_second_immediate_generated_baseline.bin`
+- `scratchpad/captures/two_series_second_immediate_generated_patch_profile_1a_00.bin`
+- `scratchpad/captures/two_series_second_immediate_generated_patch_profile_1b_00.bin`
+- `scratchpad/captures/two_series_second_immediate_generated_patch_profile_1a_00_1b_00.bin`
+- `scratchpad/captures/two_series_second_immediate_generated_patch_profile_1a_ff_1b_01.bin`
+
+These mutate only profile cells (`row0 col4..31`, `row1 col0`) and keep stream bytes valid,
+so fragmentation outcome reflects control-byte semantics rather than missing-stream artifacts.
+
+## Pre-Grid Differential Ranking (2026-03-03, late session)
+
+Target comparison:
+
+- failing case: generated `X001,X002.immediate,->,:,out(Y001)` (`generated_v2`)
+- native reference: `two_series_second_immediate_native.bin`
+- analyzed region: `0x0000..0x0A5F` (pre-grid)
+
+Working control set used to filter common/non-gating drift:
+
+- `smoke_simple`
+- `smoke_immediate`
+- `smoke_two_series_short`
+
+Counts:
+
+- failing pre-grid mismatches: `114`
+- mismatches unique to failing case (absent in all 3 controls): `4`
+
+Unique failing offsets:
+
+- `0x006E`: generated `0x00`, native `0x61`
+- `0x0072`: generated `0x00`, native `0x79`
+- `0x0076`: generated `0x00`, native `0x65`
+- `0x007E`: generated `0x00`, native `0x1E`
+
+Artifacts:
+
+- ranked table: `scratchpad/pregrid_ranked_candidates.csv`
+- concise summary: `scratchpad/pregrid-candidate-results.md`
+- targeted test payload:
+  - `scratchpad/captures/two_series_second_immediate_generated_v2_patch_pregrid_focus4_native.bin`
+  - only those 4 pre-grid bytes patched to native; stream/grid markers remain intact

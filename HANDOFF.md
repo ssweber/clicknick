@@ -1,4 +1,4 @@
-# Click PLC Clipboard Reverse Engineering — Handoff v8
+# Click PLC Clipboard Reverse Engineering — Handoff v9
 
 Last validated: March 3, 2026
 
@@ -20,8 +20,78 @@ can generate clipboard-ready bytes for paste into Click from `RungGrid`.
 - `two_series_second_immediate` remains unresolved:
   - malformed generation can paste as multiple split rungs with `NOP`
   - Click may emit non-`8192` clipboard payloads (`20480`, `73728`) after split pasteback
+- New intermediate progress (March 3, 2026, afternoon):
+  - deterministic profile-cell fixes for `+0x05/+0x11` were added and validated against fixture tables
+  - failure mode improved from total fragmentation to a consistent two-rung split
+  - current split signature after pasteback is `12288` bytes with marker relocation:
+    - contact1 at `0x0A99`
+    - contact2 at `0x1B1E`
+    - coil at `0x22D9`
 - Instruction stream placement remains the primary engineering area (especially broader
   operand-length and multi-contact generalization).
+
+## New Findings (March 3, 2026 — v2 Isolation Pass)
+
+### A) `+0x1A/+0x1B` are not the primary split gate
+
+Using valid generated 8192 payloads (all 3 markers present) and mutating only profile cells
+(`row0 col4..31`, `row1 col0`):
+
+- `two_series_second_immediate_generated_v2_baseline.bin`
+- `..._patch_profile_1a_00.bin`
+- `..._patch_profile_1b_00.bin`
+
+All three paste back as `12288` and split into two rungs with the same marker relocation pattern.
+Interpretation: `+0x1A/+0x1B` influence profile/family behavior but do not by themselves determine
+single-rung assembly for this variant.
+
+### B) Row1/Row2 grid content is no longer the dominant unknown
+
+Two stronger controls were tested:
+
+- `..._patch_zero_row1tail_row2.bin` (zero row1 tail and row2)
+- `..._patch_row1row2_from_native.bin` (copy row1+row2 grid region exactly from native)
+
+Observed outcome (user-verified): still two rungs.
+
+Important implication:
+- Even with row1/row2 grid bytes forced to native, split persists.
+- Remaining blocker likely resides outside those row blocks (pre-grid metadata and/or header-family
+  bytes that were previously treated as non-structural, plus possible stream-to-grid coupling bytes
+  in the pre-grid region).
+
+### D) Pre-grid shortlist extracted by control-filtered ranking
+
+Method:
+- Compare failing `two_series_second_immediate` generated-v2 pre-grid bytes against native.
+- Remove offsets that also mismatch in known-working controls:
+  - `smoke_simple`
+  - `smoke_immediate`
+  - `smoke_two_series_short`
+
+Result:
+- Failing pre-grid mismatches: `114`
+- Unique-to-failing offsets after control filtering: `4`
+  - `0x006E`: gen `0x00`, native `0x61`
+  - `0x0072`: gen `0x00`, native `0x79`
+  - `0x0076`: gen `0x00`, native `0x65`
+  - `0x007E`: gen `0x00`, native `0x1E`
+
+Targeted payload generated for direct pasteback validation:
+- `scratchpad/captures/two_series_second_immediate_generated_v2_patch_pregrid_focus4_native.bin`
+
+### C) `+0x05/+0x11` profile table is now characterized for two-series fixtures
+
+Observed fixture-backed profile values in `row0 col4..31` and `row1 col0`:
+
+- non-immediate NO/NC series: `+0x05=0x00`, `+0x11=0x00`
+- first immediate only: `+0x05=0x25`, `+0x11=0x52`
+- second immediate only: `+0x05=0x04`, `+0x11=0x0C`
+- both immediate: `+0x05=0x00`, `+0x11=0x00`
+- rise first: `+0x05=0x62`, `+0x11=0x01`
+- fall first: `+0x05=0x64`, `+0x11=0x01`
+
+This table is implemented in deterministic encoder logic and covered by tests.
 
 ## Canonical Structural Findings
 
@@ -165,15 +235,17 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
 
 1. Header family bytes (`+0x17/+0x18`): exact semantics and complete decision table for all
    supported/unsupported rung families.
-2. Per-cell structural control bytes in row0/row1 (beyond wire flags): which offsets are required
-   for valid single-rung assembly vs split-rung behavior.
-3. Stream metadata bytes (`65 60`, `67 60`, related blocks): exact semantics and whether
+2. Pre-grid metadata (`0x0000..0x0253`) and header raw bytes (`0x0254..0x0A5F`): which bytes
+   still gate single-rung assembly for second-immediate despite row0/row1/row2 grid parity.
+3. Per-cell structural control bytes in row0/row1 (beyond wire flags): exact role now that
+   `+0x1A/+0x1B/+0x05/+0x11` alone do not eliminate splitting.
+4. Stream metadata bytes (`65 60`, `67 60`, related blocks): exact semantics and whether
    all are mandatory per instruction family.
-4. Full stream placement formula coverage for broader two-series combinations with mixed
+5. Full stream placement formula coverage for broader two-series combinations with mixed
    operand lengths and immediate flags.
-5. Register-bank breadth validation beyond current proven sets (DS/T/TD families).
-6. Single-cell (`4096` byte) clipboard payload viability for independent cell pasting.
-7. Explicit multi-row generation API shape (if/when `RungGrid` should carry full topology).
+6. Register-bank breadth validation beyond current proven sets (DS/T/TD families).
+7. Single-cell (`4096` byte) clipboard payload viability for independent cell pasting.
+8. Explicit multi-row generation API shape (if/when `RungGrid` should carry full topology).
 
 ## Next Steps
 
@@ -193,6 +265,13 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
   rung assembly/linkage (not just wire flags).
 - Keep `two_series_second_immediate` as the reference failing case until it pastes/copies back
   as a single `8192` record with coil intact.
+
+### 3a) Pre-Grid Metadata Differential (New Priority)
+
+- Compare generated-v2 payloads against native with row0/row1/row2 held equal, focusing only on:
+  - `0x0000..0x0253`
+  - raw header bytes at `0x0254..0x0A5F` (including previously masked volatile offsets)
+- Identify minimal byte set that flips behavior from `12288` split to `8192` single-rung.
 
 ### 4) Capture Expansion
 

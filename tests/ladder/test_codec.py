@@ -244,6 +244,60 @@ class TestEncodeDecodeRoundTrip:
             flags.vertical_down,
         ) == expected_col4_flags
 
+    @pytest.mark.parametrize(
+        ("csv", "expected_control"),
+        [
+            ("X001,X002,->,:,out(Y001)", (0xFF, 0x01)),
+            ("X001.immediate,X002,->,:,out(Y001)", (0xFF, 0xFF)),
+            ("X001,X002.immediate,->,:,out(Y001)", (0xFF, 0xFF)),
+            ("X001.immediate,X002.immediate,->,:,out(Y001)", (0x00, 0xFF)),
+            ("rise(X001),X002,->,:,out(Y001)", (0x00, 0x00)),
+            ("fall(X001),X002,->,:,out(Y001)", (0x00, 0x00)),
+        ],
+    )
+    def test_two_series_control_profile_bytes_by_contact_variant(
+        self,
+        csv: str,
+        expected_control: tuple[int, int],
+    ):
+        data = codec.encode(RungGrid.from_csv(csv))
+        row0_col4 = 0x0A60 + 4 * 0x40
+        row1_col0 = 0x1260
+        expected_1a, expected_1b = expected_control
+
+        assert data[row0_col4 + 0x1A] == expected_1a
+        assert data[row0_col4 + 0x1B] == expected_1b
+        assert data[row1_col0 + 0x1A] == expected_1a
+        assert data[row1_col0 + 0x1B] == expected_1b
+
+    @pytest.mark.parametrize(
+        ("csv", "expected_profile"),
+        [
+            ("X001,X002,->,:,out(Y001)", (0x00, 0x00)),
+            ("X001.immediate,X002,->,:,out(Y001)", (0x25, 0x52)),
+            ("X001,X002.immediate,->,:,out(Y001)", (0x04, 0x0C)),
+            ("X001.immediate,X002.immediate,->,:,out(Y001)", (0x00, 0x00)),
+            ("~X001,X002,->,:,out(Y001)", (0x00, 0x00)),
+            ("~X001,~X002,->,:,out(Y001)", (0x00, 0x00)),
+            ("rise(X001),X002,->,:,out(Y001)", (0x62, 0x01)),
+            ("fall(X001),X002,->,:,out(Y001)", (0x64, 0x01)),
+        ],
+    )
+    def test_two_series_profile_05_11_bytes_by_contact_variant(
+        self,
+        csv: str,
+        expected_profile: tuple[int, int],
+    ):
+        data = codec.encode(RungGrid.from_csv(csv))
+        row0_col4 = 0x0A60 + 4 * 0x40
+        row1_col0 = 0x1260
+        expected_05, expected_11 = expected_profile
+
+        assert data[row0_col4 + 0x05] == expected_05
+        assert data[row0_col4 + 0x11] == expected_11
+        assert data[row1_col0 + 0x05] == expected_05
+        assert data[row1_col0 + 0x11] == expected_11
+
 
 class TestCaptureBackedDecode:
     def _decode_fixture(self, filename: str) -> RungGrid:
