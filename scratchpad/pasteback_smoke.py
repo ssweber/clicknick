@@ -93,6 +93,7 @@ def cmd_prepare(case: str, csv_override: str | None) -> int:
 def cmd_verify(case: str, csv_override: str | None) -> int:
     csv = _csv_for_case(case, csv_override)
     codec = ClickCodec()
+    expected_csv = RungGrid.from_csv(csv).to_csv()
     src_path, back_path, result_path = _paths(case)
     if not src_path.exists():
         raise FileNotFoundError(
@@ -111,7 +112,7 @@ def cmd_verify(case: str, csv_override: str | None) -> int:
     decode_error: str | None = None
     try:
         decoded_csv = codec.decode(back).to_csv()
-        decode_ok = decoded_csv == csv
+        decode_ok = decoded_csv == expected_csv
     except Exception as exc:  # pragma: no cover - diagnostic path
         decoded_csv = ""
         decode_error = f"{type(exc).__name__}: {exc}"
@@ -119,6 +120,7 @@ def cmd_verify(case: str, csv_override: str | None) -> int:
     result = {
         "case": case,
         "csv": csv,
+        "expected_csv": expected_csv,
         "clipboard_len": len(back),
         "header_ok": header_ok,
         "topology_ok": topo_ok,

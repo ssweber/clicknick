@@ -172,6 +172,19 @@ class TestCaptureBackedDecode:
         assert g.coil.type == InstructionType.COIL_OUT
         assert g.coil.operand == "Y001"
 
+    @pytest.mark.parametrize(
+        ("filename", "expected_csv"),
+        [
+            ("smoke_simple_native.bin", "X001,->,:,out(Y001)"),
+            ("smoke_immediate_native.bin", "X001.immediate,->,:,out(Y001)"),
+            ("smoke_range_native.bin", "X001,->,:,out(C1..C2)"),
+            ("smoke_two_series_short_native.bin", "X001,X002,->,:,out(Y001)"),
+        ],
+    )
+    def test_decode_smoke_native_fixtures(self, filename: str, expected_csv: str):
+        g = self._decode_fixture(filename)
+        assert g.to_csv() == expected_csv
+
     @pytest.mark.parametrize("filename", ["out_af_only.bin", "no_a_only.bin", "totally_empty.bin"])
     def test_decode_invalid_capture_shapes(self, filename: str):
         with pytest.raises(ValueError):

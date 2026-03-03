@@ -123,6 +123,30 @@
       "source": "scratchpad/captures"
     },
     {
+      "fixture_file": "smoke_immediate_native.bin",
+      "capture_label": "smoke_immediate_native",
+      "scenario": "smoke_native",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "smoke_range_native.bin",
+      "capture_label": "smoke_range_native",
+      "scenario": "smoke_native",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "smoke_simple_native.bin",
+      "capture_label": "smoke_simple_native",
+      "scenario": "smoke_native",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "smoke_two_series_short_native.bin",
+      "capture_label": "smoke_two_series_short_native",
+      "scenario": "smoke_native",
+      "source": "scratchpad/captures"
+    },
+    {
       "fixture_file": "totally_empty.bin",
       "capture_label": "totally_empty",
       "scenario": "empty_baseline",
