@@ -18,6 +18,7 @@ from .model import (
     InstructionType,
     RungGrid,
 )
+from .topology import WireTopology, parse_wire_topology
 
 BUFFER_SIZE = 8192  # 0x2000 — fixed clipboard size
 CELL_SIZE = 0x40  # 64 bytes per cell
@@ -411,3 +412,7 @@ class ClickCodec:
             coil=coil,
             nickname=nickname,
         )
+
+    def decode_wire_topology(self, data: bytes) -> WireTopology:
+        """Decode per-cell wire topology flags from clipboard bytes."""
+        return parse_wire_topology(data)
