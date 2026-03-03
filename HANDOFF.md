@@ -1,4 +1,4 @@
-# Click PLC Clipboard Reverse Engineering — Handoff v9
+# Click PLC Clipboard Reverse Engineering — Handoff v10
 
 Last validated: March 3, 2026
 
@@ -79,6 +79,29 @@ Result:
 
 Targeted payload generated for direct pasteback validation:
 - `scratchpad/captures/two_series_second_immediate_generated_v2_patch_pregrid_focus4_native.bin`
+
+### E) Header-region gate confirmed
+
+Isolation tests on generated-v2 payloads established:
+
+- `0x0000..0x0253` (pre-header) native copy alone: still split (`12288`)
+- `0x0254..0x0A5F` (header region) native copy alone: single rung (`8192`)
+
+Within that header region for `two_series_second_immediate`, generated-v2 differed from native
+almost exclusively at:
+
+- entry `+0x05` (all 32 entries): generated `0x00`, native `0x04`
+- entry `+0x11` (all 32 entries): generated `0x00`, native `0x0B`
+- trailing byte `0x0A59`: generated `0x00`, native `0x04`
+
+Applying those bytes restores single-rung pasteback behavior.
+
+Encoder update now in place:
+
+- For second-immediate two-series (`X001,X002.immediate` family), deterministic encoder writes:
+  - header `+0x05 = 0x04`
+  - header `+0x11 = 0x0B`
+  - `0x0A59 = 0x04`
 
 ### C) `+0x05/+0x11` profile table is now characterized for two-series fixtures
 

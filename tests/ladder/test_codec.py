@@ -46,6 +46,9 @@ class TestDeterministicEncoding:
             entry_start = HEADER_ENTRY_BASE + column * HEADER_ENTRY_SIZE
             assert data[entry_start + 0x17] == 0x0D
             assert data[entry_start + 0x18] == 0x01
+            assert data[entry_start + 0x05] == 0x04
+            assert data[entry_start + 0x11] == 0x0B
+        assert data[0x0A59] == 0x04
 
     def test_two_series_second_immediate_row1_col1_profile(self):
         data = codec.encode(RungGrid.from_csv("X001,X002.immediate,->,:,out(Y001)"))

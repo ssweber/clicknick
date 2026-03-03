@@ -414,13 +414,15 @@ def _patch_header_variant_bytes(
         and coil.range_end is None
     )
 
-    if is_baseline_simple_out:
-        b17, b18 = (0x05, 0x01)
-    elif (
+    is_second_immediate_two_series = (
         len(contacts) == 2
         and not contacts[0].immediate
         and contacts[1].immediate
-    ):
+    )
+
+    if is_baseline_simple_out:
+        b17, b18 = (0x05, 0x01)
+    elif is_second_immediate_two_series:
         # Native recaptures for the second-immediate series variant normalize
         # this family byte to 0x0D.
         b17, b18 = (0x0D, 0x01)
@@ -431,6 +433,15 @@ def _patch_header_variant_bytes(
         entry_start = HEADER_ENTRY_BASE + col * CELL_SIZE
         buf[entry_start + 0x17] = b17
         buf[entry_start + 0x18] = b18
+        if is_second_immediate_two_series:
+            # These bytes were previously treated as volatile, but in this
+            # specific family they gate single-rung assembly in pasteback.
+            buf[entry_start + 0x05] = 0x04
+            buf[entry_start + 0x11] = 0x0B
+
+    if is_second_immediate_two_series:
+        # Trailing header-area profile byte mirrors entry +0x05 for this family.
+        buf[0x0A59] = 0x04
 
 
 def _contact_label_for_type(contact_type: InstructionType) -> str:
