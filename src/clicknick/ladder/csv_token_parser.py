@@ -36,48 +36,90 @@ def _split_top_level_csv_like(value: str) -> tuple[str, ...]:
     bracket_depth = 0
     brace_depth = 0
     in_quote = False
-    escaped = False
-
-    for idx, ch in enumerate(value):
+    idx = 0
+    while idx < len(value):
+        ch = value[idx]
         if in_quote:
-            if escaped:
-                escaped = False
-            elif ch == "\\":
-                escaped = True
-            elif ch == '"':
+            if ch == '"':
+                if idx + 1 < len(value) and value[idx + 1] == '"':
+                    idx += 2
+                    continue
                 in_quote = False
+            idx += 1
             continue
 
         if ch == '"':
             in_quote = True
+            idx += 1
             continue
         if ch == "(":
             paren_depth += 1
+            idx += 1
             continue
         if ch == ")":
             if paren_depth > 0:
                 paren_depth -= 1
+            idx += 1
             continue
         if ch == "[":
             bracket_depth += 1
+            idx += 1
             continue
         if ch == "]":
             if bracket_depth > 0:
                 bracket_depth -= 1
+            idx += 1
             continue
         if ch == "{":
             brace_depth += 1
+            idx += 1
             continue
         if ch == "}":
             if brace_depth > 0:
                 brace_depth -= 1
+            idx += 1
             continue
         if ch == "," and paren_depth == 0 and bracket_depth == 0 and brace_depth == 0:
             parts.append(value[start:idx].strip())
             start = idx + 1
 
+        idx += 1
+
+    if in_quote:
+        raise ValueError("Malformed AF token arguments: unmatched quote")
+
     parts.append(value[start:].strip())
     return tuple(parts)
+
+
+def _decode_af_string_literal(arg: str) -> str:
+    if not arg:
+        return arg
+
+    if not (arg.startswith('"') or arg.endswith('"')):
+        return arg
+
+    if len(arg) < 2 or not (arg.startswith('"') and arg.endswith('"')):
+        raise ValueError(f"Malformed AF quoted string argument: {arg!r}")
+
+    chars: list[str] = []
+    idx = 1
+    end = len(arg) - 1
+    while idx < end:
+        ch = arg[idx]
+        if ch != '"':
+            chars.append(ch)
+            idx += 1
+            continue
+
+        if idx + 1 < end and arg[idx + 1] == '"':
+            chars.append('"')
+            idx += 2
+            continue
+
+        raise ValueError(f"Malformed AF quoted string argument: {arg!r}")
+
+    return "".join(chars)
 
 
 def _parse_contact(token: str) -> ContactCondition | None:
@@ -154,5 +196,5 @@ def parse_af_token(token: str) -> AfNode:
 
     name = m.group(1)
     args_src = m.group(2).strip()
-    args = _split_top_level_csv_like(args_src)
+    args = tuple(_decode_af_string_literal(arg) for arg in _split_top_level_csv_like(args_src))
     return AfCall(name=name, args=args, known=name in KNOWN_AF_NAMES)

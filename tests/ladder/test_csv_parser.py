@@ -114,3 +114,19 @@ def test_token_typing_and_unknown_fallbacks(tmp_path: Path) -> None:
     assert af.name == "future_call"
     assert af.known is False
     assert af.args == ("1", "[2,3]")
+
+
+def test_csv_reader_then_af_parser_decodes_doubled_quotes(tmp_path: Path) -> None:
+    csv_path = tmp_path / "main.csv"
+    _write_canonical(
+        csv_path,
+        [
+            ("R", _mk_conditions({0: "X001"}), 'call("my""sub")'),
+        ],
+    )
+
+    row = parse_csv_file(csv_path, syntax="canonical").rows[0]
+    af = row.af_node
+    assert isinstance(af, AfCall)
+    assert af.name == "call"
+    assert af.args == ('my"sub',)
