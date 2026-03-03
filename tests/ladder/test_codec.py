@@ -33,6 +33,20 @@ class TestDeterministicEncoding:
                 entry_start : entry_start + HEADER_ENTRY_SIZE
             ]
 
+    def test_encode_header_variant_for_two_series(self):
+        data = codec.encode(RungGrid.from_csv("X001,X002,->,:,out(Y001)"))
+        for column in range(HEADER_ENTRY_COUNT):
+            entry_start = HEADER_ENTRY_BASE + column * HEADER_ENTRY_SIZE
+            assert data[entry_start + 0x17] == 0x15
+            assert data[entry_start + 0x18] == 0x01
+
+    def test_encode_header_variant_for_range_coil(self):
+        data = codec.encode(RungGrid.from_csv("X001,->,:,out(C1..C2)"))
+        for column in range(HEADER_ENTRY_COUNT):
+            entry_start = HEADER_ENTRY_BASE + column * HEADER_ENTRY_SIZE
+            assert data[entry_start + 0x17] == 0xE1
+            assert data[entry_start + 0x18] == 0x00
+
 
 class TestEncodeDecodeRoundTrip:
     def test_no_contact_out(self):
@@ -95,14 +109,14 @@ class TestEncodeDecodeRoundTrip:
             assert decoded.to_csv() == csv
 
     def test_short_operand_contact_variants(self):
-        for csv in (
-            "C1,->,:,out(Y001)",
-            "CT1,->,:,out(Y001)",
-            "X1,->,:,out(Y001)",
-            "X1.immediate,->,:,out(Y001)",
+        for csv, expected in (
+            ("C1,->,:,out(Y001)", "C1,->,:,out(Y001)"),
+            ("CT1,->,:,out(Y001)", "CT1,->,:,out(Y001)"),
+            ("X1,->,:,out(Y001)", "X001,->,:,out(Y001)"),
+            ("X1.immediate,->,:,out(Y001)", "X001.immediate,->,:,out(Y001)"),
         ):
             decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
-            assert decoded.to_csv() == csv
+            assert decoded.to_csv() == expected
 
     def test_two_series_contacts(self):
         csv = "X001,X002,->,:,out(Y001)"
@@ -127,7 +141,16 @@ class TestEncodeDecodeRoundTrip:
     def test_two_series_accepts_non_4_char_contacts(self):
         csv = "X1,X002,->,:,out(Y001)"
         decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
-        assert decoded.to_csv() == csv
+        assert decoded.to_csv() == "X001,X002,->,:,out(Y001)"
+
+    def test_two_series_injects_second_contact_label_and_row1_metadata(self):
+        data = codec.encode(RungGrid.from_csv("X001,X002,->,:,out(Y001)"))
+        assert data[0x0B0A:0x0B1E] == "ContactNO\0".encode("utf-16-le")
+        assert data[0x1331] == 0x03
+        assert data[0x1335] == 0x02
+        assert data[0x1341] == 0x00
+        assert data[0x1347] == 0x01
+        assert data[0x134A] == 0x01
 
 
 class TestCaptureBackedDecode:

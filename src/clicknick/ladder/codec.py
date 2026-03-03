@@ -21,9 +21,12 @@ from .model import (
     RungGrid,
 )
 from .topology import (
+    CELL_HORIZONTAL_LEFT_OFFSET,
+    CELL_HORIZONTAL_RIGHT_OFFSET,
     HEADER_ENTRY_BASE,
     HEADER_ROW_CLASS_OFFSET,
     WireTopology,
+    cell_offset,
     parse_wire_topology,
 )
 
@@ -63,6 +66,7 @@ _BLOCK_F5: Final[bytes] = bytes.fromhex("30000000F511FFFFFFFF")
 _FUNC_PRE_NORMAL: Final[bytes] = bytes.fromhex("300000001832FFFFFFFF")
 _FUNC_PRE_IMMEDIATE: Final[bytes] = bytes.fromhex("2D00310000001832FFFFFFFF")
 _FUNC_POST: Final[bytes] = bytes.fromhex("00000000FFFFFFFF")
+_BASE_CONTACT_STREAM_LEN: Final[int] = 58  # X001 non-immediate in scaffold baseline
 
 
 def _load_scaffold() -> bytes:
@@ -124,7 +128,7 @@ def _find_func_code(data: bytes, type_offset: int, deltas: list[int], known: set
 
 
 def _build_contact_stream(contact: Contact) -> bytes:
-    op = _encode_utf16(contact.operand)
+    op = _encode_utf16(_canonicalize_operand_for_encoding(contact.operand))
     pre = _FUNC_PRE_IMMEDIATE if contact.immediate else _FUNC_PRE_NORMAL
     func = _encode_utf16(contact.func_code)
     return (
@@ -139,7 +143,7 @@ def _build_contact_stream(contact: Contact) -> bytes:
 
 
 def _build_coil_stream(coil: Coil) -> bytes:
-    op1 = _encode_utf16(coil.operand)
+    op1 = _encode_utf16(_canonicalize_operand_for_encoding(coil.operand))
     pre = _FUNC_PRE_IMMEDIATE if coil.immediate else _FUNC_PRE_NORMAL
     func = _encode_utf16(coil.func_code)
     parts = [
@@ -149,7 +153,7 @@ def _build_coil_stream(coil: Coil) -> bytes:
         _BLOCK_AFTER_COIL_OP,
     ]
     if coil.range_end is not None:
-        parts.append(_encode_utf16(coil.range_end))
+        parts.append(_encode_utf16(_canonicalize_operand_for_encoding(coil.range_end)))
     parts.extend([_BLOCK_F8, _BLOCK_F5, pre, func, _FUNC_POST])
     return b"".join(parts)
 
@@ -224,8 +228,126 @@ def _new_buffer(*, row_count: int = 1) -> bytearray:
 
 
 def _contact_stream_shift(contact: Contact) -> int:
-    """Relative shift from 4-char non-immediate baseline."""
-    return (len(contact.operand) - 4) * 2 + (2 if contact.immediate else 0)
+    """Relative shift from scaffold baseline contact stream length."""
+    probe = Contact(
+        type=contact.type,
+        operand=_canonicalize_operand_for_encoding(contact.operand),
+        immediate=contact.immediate,
+    )
+    return len(_build_contact_stream(probe)) - _BASE_CONTACT_STREAM_LEN
+
+
+def _canonicalize_operand_for_encoding(operand: str) -> str:
+    """Canonicalize operand representation to match Click native stream forms.
+
+    Click encodes X/Y addresses as 3-digit decimals (e.g. X1 -> X001).
+    Other banks are kept as-is.
+    """
+    idx = 0
+    while idx < len(operand) and operand[idx].isalpha():
+        idx += 1
+    if idx == 0 or idx == len(operand):
+        return operand
+    prefix = operand[:idx]
+    digits = operand[idx:]
+    if prefix in {"X", "Y"} and digits.isdigit():
+        return f"{prefix}{int(digits):03d}"
+    return operand
+
+
+def _write_topology_for_simple_series(buf: bytearray, contact_count: int) -> None:
+    """Write row0 topology bytes for the simple series forms supported by RungGrid."""
+    if contact_count not in (1, 2):
+        return
+
+    # Do not mutate col1 topology bytes directly: for contact cells these offsets
+    # sit inside instruction stream bytes and can corrupt operands/func codes.
+    # We only force safe bytes outside instruction stream overlap.
+
+    # col0: horizontal wire
+    col0 = cell_offset(0, 0)
+    buf[col0 + CELL_HORIZONTAL_LEFT_OFFSET] = 0x01
+    buf[col0 + CELL_HORIZONTAL_RIGHT_OFFSET] = 0x01
+
+    if contact_count == 2:
+        # Two-series capture pattern:
+        # - col3 flags are emitted by stream bytes (do not overwrite)
+        # - cols4..31 carry horizontal-left
+        for col in range(4, COLS_PER_ROW):
+            start = cell_offset(0, col)
+            buf[start + CELL_HORIZONTAL_LEFT_OFFSET] = 0xFF
+
+
+def _shift_region(buf: bytearray, *, start: int, delta: int) -> None:
+    """Shift buffer[start:] right/left by delta bytes in place, zero-filling vacated space."""
+    if delta == 0:
+        return
+    if start < 0 or start >= len(buf):
+        return
+
+    tail = buf[start:]
+    if delta > 0:
+        if delta >= len(tail):
+            buf[start:] = b"\x00" * len(tail)
+            return
+        shifted = b"\x00" * delta + tail[:-delta]
+    else:
+        d = -delta
+        if d >= len(tail):
+            buf[start:] = b"\x00" * len(tail)
+            return
+        shifted = tail[d:] + b"\x00" * d
+    buf[start:] = shifted
+
+
+def _patch_header_variant_bytes(buf: bytearray, *, contacts_count: int, has_coil_range: bool) -> None:
+    """Patch observed per-entry variant bytes in header table."""
+    if has_coil_range:
+        b17, b18 = 0xE1, 0x00
+    elif contacts_count == 2:
+        b17, b18 = 0x15, 0x01
+    else:
+        b17, b18 = 0x05, 0x01
+
+    for col in range(COLS_PER_ROW):
+        entry_start = HEADER_ENTRY_BASE + col * CELL_SIZE
+        buf[entry_start + 0x17] = b17
+        buf[entry_start + 0x18] = b18
+
+
+def _contact_label_for_type(contact_type: InstructionType) -> str:
+    if contact_type == InstructionType.CONTACT_NO:
+        return "ContactNO"
+    return "ContactNC"
+
+
+def _patch_two_series_structure(
+    buf: bytearray,
+    *,
+    second_contact: Contact,
+    second_type_offset: int,
+) -> None:
+    """Patch deterministic non-stream bytes seen in native two-series captures."""
+    # Label immediately preceding the second contact type marker.
+    label = _encode_utf16(_contact_label_for_type(second_contact.type)) + b"\x00\x00"
+    label_start = second_type_offset - len(label)
+    if label_start >= 0:
+        buf[label_start : second_type_offset] = label
+
+    # Two-series row0 carries horizontal span with 0xFF conventions.
+    cell2 = cell_offset(0, 2)
+    buf[cell2 + 0x12 : cell2 + 0x16] = b"\x02\x00\x00\x00"
+
+    cell4 = cell_offset(0, 4)
+    buf[cell4 + 0x02] = 0x01
+
+    # Two-series row1/col3 metadata block is stable across native captures.
+    row1_col3 = cell_offset(1, 3)
+    buf[row1_col3 + 0x11] = 0x03
+    buf[row1_col3 + 0x15] = 0x02
+    buf[row1_col3 + 0x21] = 0x00
+    buf[row1_col3 + 0x27] = 0x01
+    buf[row1_col3 + 0x2A] = 0x01
 
 
 class ClickCodec:
@@ -273,20 +395,18 @@ class ClickCodec:
             raise ValueError("Only 1 or 2 series contacts are currently supported")
 
         buf = _new_buffer(row_count=1)
-
-        # Remove scaffold-native secondary markers that may become stale after
-        # length/immediate-driven stream shifts.
-        for pos in (
-            off.CONTACT2_TYPE_ID,
-            off.COIL_TYPE_ID_BASE,
-            off.COIL_TYPE_ID_BASE_TWO_SERIES,
-        ):
-            if 0 <= pos < len(buf) - 1 and buf[pos + 1] == 0x27:
-                buf[pos] = 0x00
-                buf[pos + 1] = 0x00
+        _patch_header_variant_bytes(
+            buf,
+            contacts_count=len(contacts),
+            has_coil_range=grid.coil.range_end is not None,
+        )
 
         first_contact = contacts[0]
         first_shift = _contact_stream_shift(first_contact)
+        # Single-contact immediate uses a +2 stream expansion that shifts a large
+        # downstream region in native captures.
+        if len(contacts) == 1 and first_shift > 0:
+            _shift_region(buf, start=off.CONTACT_TYPE_ID + 0x1F, delta=first_shift)
         first_stream = _build_contact_stream(first_contact)
         buf[off.CONTACT_TYPE_ID : off.CONTACT_TYPE_ID + len(first_stream)] = first_stream
 
@@ -296,12 +416,27 @@ class ClickCodec:
             second_contact = contacts[1]
             second_shift = _contact_stream_shift(second_contact)
             second_start = off.CONTACT2_TYPE_ID + first_shift
+            coil_start = off.COIL_TYPE_ID_BASE_TWO_SERIES + first_shift + second_shift
+            base_coil_after_first = off.COIL_TYPE_ID_BASE + first_shift
+
+            # Non-immediate two-series in native captures shifts the remainder of
+            # the stream/tail by a fixed insertion delta.
+            if first_shift == 0 and second_shift == 0:
+                _shift_region(buf, start=second_start, delta=coil_start - base_coil_after_first)
+
             second_stream = _build_contact_stream(second_contact)
             buf[second_start : second_start + len(second_stream)] = second_stream
-            coil_start = off.COIL_TYPE_ID_BASE_TWO_SERIES + first_shift + second_shift
+            _patch_two_series_structure(
+                buf,
+                second_contact=second_contact,
+                second_type_offset=second_start,
+            )
 
         coil_stream = _build_coil_stream(grid.coil)
         buf[coil_start : coil_start + len(coil_stream)] = coil_stream
+
+        # Rewrite canonical row0 topology after byte shifts.
+        _write_topology_for_simple_series(buf, len(contacts))
 
         if grid.nickname:
             self._patch_nickname(buf, grid.nickname)
