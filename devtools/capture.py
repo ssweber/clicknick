@@ -21,10 +21,10 @@ from clicknick.ladder.codec import (
     BUFFER_SIZE,
     CELL_SIZE,
     COLS_PER_ROW,
+    ClickCodec,
     ROW_STARTS,
-    _load_template,
 )
-from clicknick.ladder.model import InstructionType
+from clicknick.ladder.model import InstructionType, RungGrid
 
 CAPTURES_DIR = Path(__file__).resolve().parent.parent / "scratchpad" / "captures"
 GRID_START = min(ROW_STARTS.values())
@@ -287,14 +287,14 @@ def print_report(data: bytes, label: str | None = None) -> None:
     else:
         print()
 
-    # Template diff
+    # Baseline diff
     if len(data) == BUFFER_SIZE:
-        template = _load_template()
-        diffs = template_diff(data, template)
+        baseline = ClickCodec().encode(RungGrid.from_csv("X002,->,:,out(Y001)"))
+        diffs = template_diff(data, baseline)
         total = sum(
-            1 for i in range(GRID_START, min(len(data), len(template))) if data[i] != template[i]
+            1 for i in range(GRID_START, min(len(data), len(baseline))) if data[i] != baseline[i]
         )
-        print("\n--- Template Diff (vs NO_X002_coil.AF, grid only) ---")
+        print("\n--- Baseline Diff (vs deterministic X002 -> out(Y001), grid only) ---")
         print(f"  {total} byte diffs")
         for offset, old, new in diffs:
             old_ch = chr(old) if 0x20 <= old < 0x7F else "."

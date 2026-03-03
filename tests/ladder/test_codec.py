@@ -4,23 +4,34 @@ from pathlib import Path
 
 import pytest
 
-from clicknick.ladder.codec import BUFFER_SIZE, ClickCodec, _load_template
+from clicknick.ladder import codec as codec_module
+from clicknick.ladder.codec import BUFFER_SIZE, ClickCodec, _load_scaffold
 from clicknick.ladder.model import Coil, Contact, InstructionType, RungGrid
+from clicknick.ladder.topology import HEADER_ENTRY_BASE, HEADER_ENTRY_COUNT, HEADER_ENTRY_SIZE
 
 codec = ClickCodec()
-CAPTURES_DIR = Path(__file__).resolve().parents[2] / "scratchpad" / "captures"
+FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "ladder_captures"
 
 
-class TestTemplateRoundTrip:
-    def test_template_encodes_to_itself(self):
-        """Encoding template content (X002 NO -> out(Y001)) must reproduce the template."""
-        grid = RungGrid(
-            contact=Contact(InstructionType.CONTACT_NO, "X002"),
-            coil=Coil(InstructionType.COIL_OUT, "Y001"),
-        )
-        generated = codec.encode(grid)
-        template = _load_template()
-        assert generated == template
+class TestDeterministicEncoding:
+    def test_runtime_has_no_template_loader_functions(self):
+        assert not hasattr(codec_module, "_load_template")
+        assert not hasattr(codec_module, "_load_two_series_template")
+        assert not hasattr(codec_module, "_load_two_series_immediate_template")
+        assert not hasattr(codec_module, "_load_two_series_second_immediate_template")
+        assert not hasattr(codec_module, "_load_two_series_both_immediate_template")
+
+    def test_encode_sets_structural_header_table(self):
+        data = codec.encode(RungGrid.from_csv("X001,->,:,out(Y001)"))
+        assert len(data) == BUFFER_SIZE
+        assert data[:8] == b"CLICK   "
+        assert data[HEADER_ENTRY_BASE] == 0x40
+        scaffold = _load_scaffold()
+        for column in range(HEADER_ENTRY_COUNT):
+            entry_start = HEADER_ENTRY_BASE + column * HEADER_ENTRY_SIZE
+            assert data[entry_start : entry_start + HEADER_ENTRY_SIZE] == scaffold[
+                entry_start : entry_start + HEADER_ENTRY_SIZE
+            ]
 
 
 class TestEncodeDecodeRoundTrip:
@@ -83,6 +94,16 @@ class TestEncodeDecodeRoundTrip:
             decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
             assert decoded.to_csv() == csv
 
+    def test_short_operand_contact_variants(self):
+        for csv in (
+            "C1,->,:,out(Y001)",
+            "CT1,->,:,out(Y001)",
+            "X1,->,:,out(Y001)",
+            "X1.immediate,->,:,out(Y001)",
+        ):
+            decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
+            assert decoded.to_csv() == csv
+
     def test_two_series_contacts(self):
         csv = "X001,X002,->,:,out(Y001)"
         decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
@@ -103,133 +124,35 @@ class TestEncodeDecodeRoundTrip:
         decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
         assert decoded.to_csv() == csv
 
-    def test_two_series_rejects_non_4_char_contacts(self):
-        with pytest.raises(ValueError, match="must be 4 chars"):
-            codec.encode(RungGrid.from_csv("X1,X002,->,:,out(Y001)"))
+    def test_two_series_accepts_non_4_char_contacts(self):
+        csv = "X1,X002,->,:,out(Y001)"
+        decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
+        assert decoded.to_csv() == csv
 
 
 class TestCaptureBackedDecode:
-    def _decode_capture(self, filename: str) -> RungGrid:
-        data = (CAPTURES_DIR / filename).read_bytes()
+    def _decode_fixture(self, filename: str) -> RungGrid:
+        data = (FIXTURES_DIR / filename).read_bytes()
         return codec.decode(data)
 
-    def test_decode_contact_immediate_captures(self):
-        g = self._decode_capture("NO_X001_immediate_coil_Y001.bin")
-        assert g.contact.type == InstructionType.CONTACT_NO
-        assert g.contact.operand == "X001"
-        assert g.contact.immediate is True
-        assert g.coil.type == InstructionType.COIL_OUT
-        assert g.coil.operand == "Y001"
+    def test_decode_simple_rung_capture(self):
+        g = self._decode_fixture("simple_rung.bin")
+        assert g.to_csv() == "X001,->,:,out(Y001)"
 
-        g = self._decode_capture("NC_X001_immediate_coil_Y001.bin")
-        assert g.contact.type == InstructionType.CONTACT_NC
-        assert g.contact.operand == "X001"
-        assert g.contact.immediate is True
-        assert g.coil.type == InstructionType.COIL_OUT
-        assert g.coil.operand == "Y001"
-
-    def test_decode_out_captures(self):
-        g = self._decode_capture("out_Y001_immediate_v2.bin")
-        assert g.coil.type == InstructionType.COIL_OUT
-        assert g.coil.operand == "Y001"
-        assert g.coil.range_end is None
-        assert g.coil.immediate is True
-
-        g = self._decode_capture("out_Y001_Y002_v3.bin")
-        assert g.coil.type == InstructionType.COIL_OUT
-        assert g.coil.operand == "Y001"
-        assert g.coil.range_end == "Y002"
-        assert g.coil.immediate is False
-
-        g = self._decode_capture("out_Y001_Y002_immediate_v1.bin")
-        assert g.coil.type == InstructionType.COIL_OUT
-        assert g.coil.operand == "Y001"
-        assert g.coil.range_end == "Y002"
-        assert g.coil.immediate is True
-
-    def test_decode_latch_captures(self):
-        g = self._decode_capture("latch_Y001_v1.bin")
-        assert g.coil.type == InstructionType.COIL_LATCH
-        assert g.coil.operand == "Y001"
-        assert g.coil.range_end is None
-        assert g.coil.immediate is False
-
-        g = self._decode_capture("set_Y1_immediate_v1.bin")
-        assert g.coil.type == InstructionType.COIL_LATCH
-        assert g.coil.operand == "Y001"
-        assert g.coil.range_end is None
-        assert g.coil.immediate is True
-
-        g = self._decode_capture("set_Y1_Y2_v1.bin")
-        assert g.coil.type == InstructionType.COIL_LATCH
-        assert g.coil.operand == "Y001"
-        assert g.coil.range_end == "Y002"
-        assert g.coil.immediate is False
-
-        g = self._decode_capture("set_Y1_Y2_immediate_v1.bin")
-        assert g.coil.type == InstructionType.COIL_LATCH
-        assert g.coil.operand == "Y001"
-        assert g.coil.range_end == "Y002"
-        assert g.coil.immediate is True
-
-    def test_decode_reset_captures(self):
-        g = self._decode_capture("reset_Y001_v1.bin")
-        assert g.coil.type == InstructionType.COIL_RESET
-        assert g.coil.operand == "Y001"
-        assert g.coil.range_end is None
-        assert g.coil.immediate is False
-
-        g = self._decode_capture("reset_Y1_immediate_v1.bin")
-        assert g.coil.type == InstructionType.COIL_RESET
-        assert g.coil.operand == "Y001"
-        assert g.coil.range_end is None
-        assert g.coil.immediate is True
-
-        g = self._decode_capture("reset_Y1_Y2_v1.bin")
-        assert g.coil.type == InstructionType.COIL_RESET
-        assert g.coil.operand == "Y001"
-        assert g.coil.range_end == "Y002"
-        assert g.coil.immediate is False
-
-        g = self._decode_capture("reset_Y1_Y2_immediate_v1.bin")
-        assert g.coil.type == InstructionType.COIL_RESET
-        assert g.coil.operand == "Y001"
-        assert g.coil.range_end == "Y002"
-        assert g.coil.immediate is True
-
-    def test_decode_short_long_range_captures(self):
-        g = self._decode_capture("out_C1_C2_v3.bin")
-        assert g.coil.type == InstructionType.COIL_OUT
-        assert g.coil.operand == "C1"
-        assert g.coil.range_end == "C2"
-
-        g = self._decode_capture("out_C1_C2000_v1.bin")
-        assert g.coil.type == InstructionType.COIL_OUT
-        assert g.coil.operand == "C1"
-        assert g.coil.range_end == "C2000"
-
-        g = self._decode_capture("out_C1901_C2000_v1.bin")
-        assert g.coil.type == InstructionType.COIL_OUT
-        assert g.coil.operand == "C1901"
-        assert g.coil.range_end == "C2000"
+    def test_decode_contact_plus_output_capture(self):
+        g = self._decode_fixture("no_a_out_af.bin")
+        assert g.to_csv() == "X001,->,:,out(Y001)"
 
     def test_decode_two_series_capture(self):
-        g = self._decode_capture("two_series.bin")
+        g = self._decode_fixture("two_series_rung.bin")
         assert [c.to_csv() for c in g.contacts] == ["X001", "X002"]
         assert g.coil.type == InstructionType.COIL_OUT
         assert g.coil.operand == "Y001"
 
-    def test_decode_two_series_second_immediate_capture(self):
-        g = self._decode_capture("two_series_second_immediate_native.bin")
-        assert [c.to_csv() for c in g.contacts] == ["X001", "X002.immediate"]
-        assert g.coil.type == InstructionType.COIL_OUT
-        assert g.coil.operand == "Y001"
-
-    def test_decode_two_series_both_immediate_capture(self):
-        g = self._decode_capture("two_series_both_immediate_native.bin")
-        assert [c.to_csv() for c in g.contacts] == ["X001.immediate", "X002.immediate"]
-        assert g.coil.type == InstructionType.COIL_OUT
-        assert g.coil.operand == "Y001"
+    @pytest.mark.parametrize("filename", ["out_af_only.bin", "no_a_only.bin", "totally_empty.bin"])
+    def test_decode_invalid_capture_shapes(self, filename: str):
+        with pytest.raises(ValueError):
+            self._decode_fixture(filename)
 
 
 class TestNickname:

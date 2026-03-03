@@ -1,0 +1,204 @@
+{
+  "version": 1,
+  "description": "Hermetic ladder capture fixtures curated from vetted scratchpad captures.",
+  "entries": [
+    {
+      "fixture_file": "corner_b.bin",
+      "capture_label": "corner_b",
+      "scenario": "wire_topology",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "empty_nop.bin",
+      "capture_label": "empty_nop",
+      "scenario": "empty_baseline",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "latch_af_only.bin",
+      "capture_label": "latch_af_only",
+      "scenario": "coil_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "nc_a_immediate_only.bin",
+      "capture_label": "nc_a_immediate_only",
+      "scenario": "contact_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "nc_a_only.bin",
+      "capture_label": "nc_a_only",
+      "scenario": "contact_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "no_a_C1.bin",
+      "capture_label": "no_a_C1",
+      "scenario": "contact_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "no_a_immediate_only.bin",
+      "capture_label": "no_a_immediate_only",
+      "scenario": "contact_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "no_a_no_b.bin",
+      "capture_label": "no_a_no_b",
+      "scenario": "contact_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "no_a_no_c.bin",
+      "capture_label": "no_a_no_c",
+      "scenario": "contact_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "no_a_only.bin",
+      "capture_label": "no_a_only",
+      "scenario": "contact_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "no_a_out_af.bin",
+      "capture_label": "no_a_out_af",
+      "scenario": "contact_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "no_ae_only.bin",
+      "capture_label": "no_ae_only",
+      "scenario": "contact_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "no_c_immediate_only.bin",
+      "capture_label": "no_c_immediate_only",
+      "scenario": "contact_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "no_c_only.bin",
+      "capture_label": "no_c_only",
+      "scenario": "contact_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "no_p_only.bin",
+      "capture_label": "no_p_only",
+      "scenario": "contact_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "out_af_only.bin",
+      "capture_label": "out_af_only",
+      "scenario": "coil_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "parallel_rung.bin",
+      "capture_label": "parallel_rung",
+      "scenario": "composed_rung",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "pasteback_vert_b_with_horiz.bin",
+      "capture_label": "pasteback_vert_b_with_horiz",
+      "scenario": "pasteback_validation",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "reset_af_only.bin",
+      "capture_label": "reset_af_only",
+      "scenario": "coil_variant",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "simple_rung.bin",
+      "capture_label": "simple_rung",
+      "scenario": "composed_rung",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "totally_empty.bin",
+      "capture_label": "totally_empty",
+      "scenario": "empty_baseline",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "two_series_rung.bin",
+      "capture_label": "two_series_rung",
+      "scenario": "composed_rung",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "vert_b_3rows.bin",
+      "capture_label": "vert_b_3rows",
+      "scenario": "wire_topology",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "vert_b_only.bin",
+      "capture_label": "vert_b_only",
+      "scenario": "wire_topology",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "vert_b_with_horiz.bin",
+      "capture_label": "vert_b_with_horiz",
+      "scenario": "wire_topology",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "vert_d_only.bin",
+      "capture_label": "vert_d_only",
+      "scenario": "wire_topology",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "wire_a.bin",
+      "capture_label": "wire_a",
+      "scenario": "wire_topology",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "wire_a_and_e.bin",
+      "capture_label": "wire_a_and_e",
+      "scenario": "wire_topology",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "wire_ab.bin",
+      "capture_label": "wire_ab",
+      "scenario": "wire_topology",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "wire_abc.bin",
+      "capture_label": "wire_abc",
+      "scenario": "wire_topology",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "wire_abcde.bin",
+      "capture_label": "wire_abcde",
+      "scenario": "wire_topology",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "wire_c_only.bin",
+      "capture_label": "wire_c_only",
+      "scenario": "wire_topology",
+      "source": "scratchpad/captures"
+    },
+    {
+      "fixture_file": "wire_full_row.bin",
+      "capture_label": "wire_full_row",
+      "scenario": "wire_topology",
+      "source": "scratchpad/captures"
+    }
+  ]
+}

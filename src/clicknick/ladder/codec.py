@@ -1,7 +1,9 @@
 """ClickCodec — translates RungGrid to/from clipboard bytes.
 
-Template-based: loads a known-good capture and patches instruction-specific
-fields at known offsets. No Construct dependency.
+Single-scaffold encoder:
+- Starts from one canonical scaffold capture (`smoke_simple_native`)
+- Patches semantic regions (header row/class, instruction streams, nickname)
+- Avoids per-shape runtime templates
 """
 
 from __future__ import annotations
@@ -18,7 +20,12 @@ from .model import (
     InstructionType,
     RungGrid,
 )
-from .topology import WireTopology, parse_wire_topology
+from .topology import (
+    HEADER_ENTRY_BASE,
+    HEADER_ROW_CLASS_OFFSET,
+    WireTopology,
+    parse_wire_topology,
+)
 
 BUFFER_SIZE = 8192  # 0x2000 — fixed clipboard size
 CELL_SIZE = 0x40  # 64 bytes per cell
@@ -27,72 +34,13 @@ ROW_STARTS = {0: 0x0A60, 1: 0x1260}
 GRID_START = min(ROW_STARTS.values())
 GRID_END = max(ROW_STARTS.values()) + COLS_PER_ROW * CELL_SIZE
 
-_template_cache: bytes | None = None
-_two_series_template_cache: bytes | None = None
-_two_series_immediate_template_cache: bytes | None = None
-_two_series_second_immediate_template_cache: bytes | None = None
-_two_series_both_immediate_template_cache: bytes | None = None
+ROW_CLASS_BY_COUNT: Final[dict[int, int]] = {
+    1: 0x40,
+    2: 0x60,
+    3: 0x80,
+}
 
-
-def _load_template() -> bytes:
-    global _template_cache
-    if _template_cache is None:
-        _template_cache = (
-            resources.files("clicknick.ladder.resources")
-            .joinpath("NO_X002_coil.AF.bin")
-            .read_bytes()
-        )
-        assert len(_template_cache) == BUFFER_SIZE
-    return _template_cache
-
-
-def _load_two_series_template() -> bytes:
-    global _two_series_template_cache
-    if _two_series_template_cache is None:
-        _two_series_template_cache = (
-            resources.files("clicknick.ladder.resources")
-            .joinpath("NO_X001_X002_coil.AF.two_series.bin")
-            .read_bytes()
-        )
-        assert len(_two_series_template_cache) == BUFFER_SIZE
-    return _two_series_template_cache
-
-
-def _load_two_series_immediate_template() -> bytes:
-    global _two_series_immediate_template_cache
-    if _two_series_immediate_template_cache is None:
-        _two_series_immediate_template_cache = (
-            resources.files("clicknick.ladder.resources")
-            .joinpath("NO_X001_immediate_X002_coil.AF.two_series.bin")
-            .read_bytes()
-        )
-        assert len(_two_series_immediate_template_cache) == BUFFER_SIZE
-    return _two_series_immediate_template_cache
-
-
-def _load_two_series_second_immediate_template() -> bytes:
-    global _two_series_second_immediate_template_cache
-    if _two_series_second_immediate_template_cache is None:
-        _two_series_second_immediate_template_cache = (
-            resources.files("clicknick.ladder.resources")
-            .joinpath("NO_X001_X002_immediate_coil.AF.two_series.bin")
-            .read_bytes()
-        )
-        assert len(_two_series_second_immediate_template_cache) == BUFFER_SIZE
-    return _two_series_second_immediate_template_cache
-
-
-def _load_two_series_both_immediate_template() -> bytes:
-    global _two_series_both_immediate_template_cache
-    if _two_series_both_immediate_template_cache is None:
-        _two_series_both_immediate_template_cache = (
-            resources.files("clicknick.ladder.resources")
-            .joinpath("NO_X001_immediate_X002_immediate_coil.AF.two_series.bin")
-            .read_bytes()
-        )
-        assert len(_two_series_both_immediate_template_cache) == BUFFER_SIZE
-    return _two_series_both_immediate_template_cache
-
+_scaffold_cache: bytes | None = None
 
 CONTACT_CODE_TO_FLAGS: Final[dict[str, tuple[InstructionType, bool]]] = {
     code: (itype, immediate) for (itype, immediate), code in CONTACT_FUNC_CODES.items()
@@ -103,11 +51,11 @@ COIL_CODE_TO_FLAGS: Final[dict[str, tuple[InstructionType, bool, bool]]] = {
     for (itype, is_range, immediate), code in COIL_FUNC_CODES.items()
 }
 
-# Type+2..type+15 for known captures.
+# Type+2..type+15 stream prefixes seen in captures.
 _CONTACT_PREFIX: Final[bytes] = bytes.fromhex("00000100040000006560FFFFFFFF")
 _COIL_PREFIX: Final[bytes] = bytes.fromhex("00000100060000006660FFFFFFFF")
 
-# Common stream fragments discovered in captures.
+# Stream fragments observed around operands/function code blocks.
 _BLOCK_AFTER_CONTACT_OP: Final[bytes] = bytes.fromhex("0000F511FFFFFFFF")
 _BLOCK_AFTER_COIL_OP: Final[bytes] = bytes.fromhex("00006760FFFFFFFF")
 _BLOCK_F8: Final[bytes] = bytes.fromhex("0000F811FFFFFFFF")
@@ -115,6 +63,18 @@ _BLOCK_F5: Final[bytes] = bytes.fromhex("30000000F511FFFFFFFF")
 _FUNC_PRE_NORMAL: Final[bytes] = bytes.fromhex("300000001832FFFFFFFF")
 _FUNC_PRE_IMMEDIATE: Final[bytes] = bytes.fromhex("2D00310000001832FFFFFFFF")
 _FUNC_POST: Final[bytes] = bytes.fromhex("00000000FFFFFFFF")
+
+
+def _load_scaffold() -> bytes:
+    global _scaffold_cache
+    if _scaffold_cache is None:
+        _scaffold_cache = (
+            resources.files("clicknick.ladder")
+            .joinpath("resources/smoke_simple_native.scaffold.bin")
+            .read_bytes()
+        )
+        assert len(_scaffold_cache) == BUFFER_SIZE
+    return _scaffold_cache
 
 
 def _encode_utf16(value: str) -> bytes:
@@ -248,28 +208,41 @@ def _decode_coil_at(data: bytes, coil_offset: int) -> Coil:
     return Coil(type=coil_type, operand=coil_op, range_end=range_end, immediate=code_immediate)
 
 
-class ClickCodec:
-    """Translates RungGrid <-> 8192-byte clipboard buffer.
+def _row_class_for_count(row_count: int) -> int:
+    return ROW_CLASS_BY_COUNT.get(row_count, ROW_CLASS_BY_COUNT[1])
 
-    Template patching at known offsets. The Offsets inner class is
-    the single source of truth for all patch points.
-    """
+
+def _new_buffer(*, row_count: int = 1) -> bytearray:
+    """Build baseline 8192-byte clipboard payload from one canonical scaffold."""
+    buf = bytearray(_load_scaffold())
+    buf[0:8] = b"CLICK   "  # keep canonical magic fixed
+
+    # Keep scaffold header entry constants and only patch logical row class.
+    buf[HEADER_ENTRY_BASE + HEADER_ROW_CLASS_OFFSET] = _row_class_for_count(row_count)
+
+    return buf
+
+
+def _contact_stream_shift(contact: Contact) -> int:
+    """Relative shift from 4-char non-immediate baseline."""
+    return (len(contact.operand) - 4) * 2 + (2 if contact.immediate else 0)
+
+
+class ClickCodec:
+    """Translates RungGrid <-> 8192-byte clipboard buffer."""
 
     class Offsets:
-        """All patch points in one place. Derived from cell structure findings."""
+        """Anchor offsets for instruction stream placement."""
 
         # Contact instruction (Row 0, Cells A-B)
         CONTACT_TYPE_ID = ROW_STARTS[0] + 0 * CELL_SIZE + 0x39
         CONTACT2_TYPE_ID = ROW_STARTS[0] + 0xBE
-        CONTACT2_TYPE_ID_IMMEDIATE = ROW_STARTS[0] + 0xC0
 
-        # Coil instruction baseline (Row 1, Cells A-B)
+        # Coil instruction anchors
         COIL_TYPE_ID_BASE = ROW_STARTS[1] + 0 * CELL_SIZE + 0x32
         COIL_TYPE_ID_BASE_TWO_SERIES = ROW_STARTS[1] + 1 * CELL_SIZE + 0x37
-        COIL_TYPE_ID_BASE_TWO_SERIES_IMMEDIATE = ROW_STARTS[1] + 1 * CELL_SIZE + 0x39
-        COIL_TYPE_ID_BASE_TWO_SERIES_BOTH_IMMEDIATE = ROW_STARTS[1] + 1 * CELL_SIZE + 0x3B
 
-        # Nickname (Row 1, Col C area)
+        # Nickname area
         NICKNAME_FLAG = 0x12F0
         NICKNAME_STRING = 0x12F4
         NICKNAME_MAX_CHARS = 8
@@ -282,10 +255,9 @@ class ClickCodec:
 
         buf[off.NICKNAME_FLAG] = 0x01
 
-        # Structural flags at +5 and +8 from NICKNAME_STRING shift
-        # right by the nickname byte length
-        flag_offsets = (5, 8)  # relative to NICKNAME_STRING
-        clear_end = nn_len + max(flag_offsets) + 4  # margin
+        # Structural flags at +5 and +8 from NICKNAME_STRING shift by nickname byte length.
+        flag_offsets = (5, 8)
+        clear_end = nn_len + max(flag_offsets) + 4
 
         buf[off.NICKNAME_STRING : off.NICKNAME_STRING + clear_end] = b"\x00" * clear_end
         buf[off.NICKNAME_STRING : off.NICKNAME_STRING + nn_len] = nn_encoded
@@ -297,64 +269,40 @@ class ClickCodec:
         """RungGrid -> 8192-byte clipboard buffer."""
         off = self.Offsets
         contacts = grid.contacts
+        if len(contacts) not in (1, 2):
+            raise ValueError("Only 1 or 2 series contacts are currently supported")
+
+        buf = _new_buffer(row_count=1)
+
+        # Remove scaffold-native secondary markers that may become stale after
+        # length/immediate-driven stream shifts.
+        for pos in (
+            off.CONTACT2_TYPE_ID,
+            off.COIL_TYPE_ID_BASE,
+            off.COIL_TYPE_ID_BASE_TWO_SERIES,
+        ):
+            if 0 <= pos < len(buf) - 1 and buf[pos + 1] == 0x27:
+                buf[pos] = 0x00
+                buf[pos + 1] = 0x00
+
+        first_contact = contacts[0]
+        first_shift = _contact_stream_shift(first_contact)
+        first_stream = _build_contact_stream(first_contact)
+        buf[off.CONTACT_TYPE_ID : off.CONTACT_TYPE_ID + len(first_stream)] = first_stream
 
         if len(contacts) == 1:
-            buf = bytearray(_load_template())
-
-            contact_stream = _build_contact_stream(contacts[0])
-            contact_start = off.CONTACT_TYPE_ID
-            buf[contact_start : contact_start + len(contact_stream)] = contact_stream
-
-            # Coil type position shifts with contact stream size.
-            contact_delta = (len(contacts[0].operand) - 4) * 2 + (2 if contacts[0].immediate else 0)
-            coil_start = off.COIL_TYPE_ID_BASE + contact_delta
-            if coil_start != off.COIL_TYPE_ID_BASE:
-                buf[off.COIL_TYPE_ID_BASE] = 0x00
-                buf[off.COIL_TYPE_ID_BASE + 1] = 0x00
-        elif len(contacts) == 2:
-            # Current two-series templates are validated for 4-char contacts.
-            for idx, contact in enumerate(contacts, start=1):
-                if len(contact.operand) != 4:
-                    raise ValueError(f"Contact {idx} in two-series rung must be 4 chars for now")
-            if contacts[0].immediate and contacts[1].immediate:
-                buf = bytearray(_load_two_series_both_immediate_template())
-                first_stream = _build_contact_stream(contacts[0])
-                second_stream = _build_contact_stream(contacts[1])
-                buf[off.CONTACT_TYPE_ID : off.CONTACT_TYPE_ID + len(first_stream)] = first_stream
-                buf[
-                    off.CONTACT2_TYPE_ID_IMMEDIATE : off.CONTACT2_TYPE_ID_IMMEDIATE + len(second_stream)
-                ] = second_stream
-                coil_start = off.COIL_TYPE_ID_BASE_TWO_SERIES_BOTH_IMMEDIATE
-            elif contacts[0].immediate:
-                buf = bytearray(_load_two_series_immediate_template())
-                first_stream = _build_contact_stream(contacts[0])
-                second_stream = _build_contact_stream(contacts[1])
-                buf[off.CONTACT_TYPE_ID : off.CONTACT_TYPE_ID + len(first_stream)] = first_stream
-                buf[
-                    off.CONTACT2_TYPE_ID_IMMEDIATE : off.CONTACT2_TYPE_ID_IMMEDIATE + len(second_stream)
-                ] = second_stream
-                coil_start = off.COIL_TYPE_ID_BASE_TWO_SERIES_IMMEDIATE
-            elif contacts[1].immediate:
-                buf = bytearray(_load_two_series_second_immediate_template())
-                first_stream = _build_contact_stream(contacts[0])
-                second_stream = _build_contact_stream(contacts[1])
-                buf[off.CONTACT_TYPE_ID : off.CONTACT_TYPE_ID + len(first_stream)] = first_stream
-                buf[off.CONTACT2_TYPE_ID : off.CONTACT2_TYPE_ID + len(second_stream)] = second_stream
-                coil_start = off.COIL_TYPE_ID_BASE_TWO_SERIES_IMMEDIATE
-            else:
-                buf = bytearray(_load_two_series_template())
-                first_stream = _build_contact_stream(contacts[0])
-                second_stream = _build_contact_stream(contacts[1])
-                buf[off.CONTACT_TYPE_ID : off.CONTACT_TYPE_ID + len(first_stream)] = first_stream
-                buf[off.CONTACT2_TYPE_ID : off.CONTACT2_TYPE_ID + len(second_stream)] = second_stream
-                coil_start = off.COIL_TYPE_ID_BASE_TWO_SERIES
+            coil_start = off.COIL_TYPE_ID_BASE + first_shift
         else:
-            raise ValueError("Only 1 or 2 series contacts are currently supported")
+            second_contact = contacts[1]
+            second_shift = _contact_stream_shift(second_contact)
+            second_start = off.CONTACT2_TYPE_ID + first_shift
+            second_stream = _build_contact_stream(second_contact)
+            buf[second_start : second_start + len(second_stream)] = second_stream
+            coil_start = off.COIL_TYPE_ID_BASE_TWO_SERIES + first_shift + second_shift
 
         coil_stream = _build_coil_stream(grid.coil)
         buf[coil_start : coil_start + len(coil_stream)] = coil_stream
 
-        # Nickname
         if grid.nickname:
             self._patch_nickname(buf, grid.nickname)
 
@@ -400,7 +348,6 @@ class ClickCodec:
         if coil is None:
             raise ValueError("Could not decode coil instruction")
 
-        # Nickname
         nickname = None
         if data[off.NICKNAME_FLAG] == 0x01:
             nn_raw = data[off.NICKNAME_STRING : off.NICKNAME_STRING + off.NICKNAME_MAX_CHARS * 2]
