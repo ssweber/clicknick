@@ -13,6 +13,10 @@ can generate clipboard-ready bytes for paste into Click from `RungGrid`.
   `.bin` templates under `src/clicknick/ladder/resources`).
 - Header structural behavior is now treated as solved for current scope.
 - Wire topology cell flags are mapped and validated by pasteback.
+- Manual pasteback now succeeds for:
+  - `smoke_simple`
+  - `smoke_immediate`
+  - `smoke_two_series_short` (full `X001,X002,->,:,out(Y001)` now pastes)
 - Instruction stream placement remains the primary engineering area (especially broader
   operand-length and multi-contact generalization).
 
@@ -31,8 +35,14 @@ can generate clipboard-ready bytes for paste into Click from `RungGrid`.
   - `0x40` => 1 logical row
   - `0x60` => 2 logical rows
   - `0x80` => 3 logical rows
-- For one-row captures, normalized header entries are invariant across wire-only,
-  instruction-only, and immediate/non-immediate variants.
+- Observed non-volatile header family bytes at `+0x17/+0x18` (uniform across all 32 entries
+  within a capture family):
+  - simple + immediate: `0x05/0x01`
+  - two-series short: `0x15/0x01`
+  - coil range: `0xE1/0x00`
+  - empty/wire-full-row baseline captures: `0xEA/0x00`
+- Topology/instruction content still lives in grid + stream regions; these header family bytes
+  classify capture shape/family but do not encode per-cell wire layout.
 
 ### 3) Grid Layout
 
@@ -88,6 +98,29 @@ This is superseded by the normalized diff and pasteback evidence in
 Interpretation: header coupling is not a blocker for current codec goals; instruction
 stream and grid topology are the main work surfaces.
 
+## Hypothesis Check: Per-Row Header Descriptor Table
+
+Hypothesis reviewed:
+- `0x0254 + n*0x40` is a per-column table that encodes per-row state (`2` bytes per row).
+
+Current evidence status: **not supported**.
+
+What we observed:
+- The stable row-count indicator is a single global class byte at `0x0254` (`0x40/0x60/0x80`).
+- Per-entry `+0x0C..+0x0F` is a fixed column index dword.
+- Newly confirmed header family bytes `+0x17/+0x18` are global per-capture-family constants,
+  not row-addressed fields.
+- Wire topology authority remains in cell flags (`+0x19`, `+0x1D`, `+0x21`) with row stride
+  `0x800` and column stride `0x40`.
+
+Interpretation:
+- We do not currently see evidence for a "2 bytes per row per column" encoding model in this
+  header table.
+- The earlier ghost-row/red-invalid behavior is better explained by malformed stream/structural
+  bytes during transitional encoder experiments, not by missing per-row header writes.
+- This hypothesis is not mathematically impossible, but it is not supported by current capture
+  diffs/pasteback behavior.
+
 ## Legacy Runtime Templates (Planned Removal Complete Path)
 
 These files were legacy runtime templates and are tracked here for retirement context:
@@ -118,13 +151,15 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
 
 ## Open Questions
 
-1. Stream metadata bytes (`65 60`, `67 60`, related blocks): exact semantics and whether
+1. Header family bytes (`+0x17/+0x18`): exact semantics and complete decision table for all
+   supported/unsupported rung families.
+2. Stream metadata bytes (`65 60`, `67 60`, related blocks): exact semantics and whether
    all are mandatory per instruction family.
-2. Full stream placement formula coverage for broader two-series combinations with mixed
+3. Full stream placement formula coverage for broader two-series combinations with mixed
    operand lengths and immediate flags.
-3. Register-bank breadth validation beyond current proven sets (DS/T/TD families).
-4. Single-cell (`4096` byte) clipboard payload viability for independent cell pasting.
-5. Explicit multi-row generation API shape (if/when `RungGrid` should carry full topology).
+4. Register-bank breadth validation beyond current proven sets (DS/T/TD families).
+5. Single-cell (`4096` byte) clipboard payload viability for independent cell pasting.
+6. Explicit multi-row generation API shape (if/when `RungGrid` should carry full topology).
 
 ## Next Steps
 
