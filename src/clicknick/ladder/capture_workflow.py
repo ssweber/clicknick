@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -14,11 +16,31 @@ from .clipboard import copy_to_clipboard, read_from_clipboard
 from .codec import ClickCodec
 from .csv_shorthand import normalize_shorthand_row
 from .model import RungGrid
-from .topology import header_structural_equal, parse_wire_topology
+from .topology import HEADER_ENTRY_BASE, cell_offset, header_structural_equal, parse_wire_topology
 
 FIXTURE_MANIFEST_VERSION = 2
 FIXTURE_MANIFEST_DESCRIPTION = (
     "Hermetic ladder capture fixtures curated from vetted scratchpad captures."
+)
+PROFILE_REPORT_BUFFER_SIZE = 8192
+PROFILE_REPORT_TRAILER_OFFSET = 0x0A59
+PROFILE_REPORT_CELL_ROW = 0
+PROFILE_REPORT_CELL_COLUMN = 4
+PROFILE_REPORT_HEADER_FIELDS = (
+    "capture_label",
+    "capture_type",
+    "scenario",
+    "payload_file",
+    "record_len",
+    "cell_05",
+    "cell_11",
+    "cell_1a",
+    "cell_1b",
+    "header_05",
+    "header_11",
+    "header_17",
+    "header_18",
+    "trailer_0a59",
 )
 
 VerifyStatus = str
@@ -296,6 +318,81 @@ class CaptureWorkflow:
         )
         self._save_manifest(manifest)
         return {"entry": updated}
+
+    def _report_profile_row(self, entry: dict[str, Any]) -> dict[str, Any]:
+        payload_text = entry.get("payload_file")
+        if not payload_text:
+            raise ValueError(f"Entry has no payload_file: {entry['capture_label']}")
+
+        payload_path = self._resolve_user_path(payload_text)
+        if not payload_path.exists():
+            raise FileNotFoundError(f"Payload file not found: {payload_path}")
+
+        raw = payload_path.read_bytes()
+        data = raw[:PROFILE_REPORT_BUFFER_SIZE]
+
+        cell_base = cell_offset(PROFILE_REPORT_CELL_ROW, PROFILE_REPORT_CELL_COLUMN)
+        max_required_offset = max(
+            cell_base + 0x1B,
+            HEADER_ENTRY_BASE + 0x18,
+            PROFILE_REPORT_TRAILER_OFFSET,
+        )
+        if len(data) <= max_required_offset:
+            raise ValueError(
+                f"Payload too short for profile report ({entry['capture_label']}): "
+                f"{len(raw)} bytes"
+            )
+
+        def hx(value: int) -> str:
+            return f"0x{value:02X}"
+
+        return {
+            "capture_label": entry["capture_label"],
+            "capture_type": entry["capture_type"],
+            "scenario": entry["scenario"],
+            "payload_file": payload_text,
+            "record_len": len(raw),
+            "cell_05": hx(data[cell_base + 0x05]),
+            "cell_11": hx(data[cell_base + 0x11]),
+            "cell_1a": hx(data[cell_base + 0x1A]),
+            "cell_1b": hx(data[cell_base + 0x1B]),
+            "header_05": hx(data[HEADER_ENTRY_BASE + 0x05]),
+            "header_11": hx(data[HEADER_ENTRY_BASE + 0x11]),
+            "header_17": hx(data[HEADER_ENTRY_BASE + 0x17]),
+            "header_18": hx(data[HEADER_ENTRY_BASE + 0x18]),
+            "trailer_0a59": hx(data[PROFILE_REPORT_TRAILER_OFFSET]),
+        }
+
+    def report_profile(
+        self,
+        *,
+        label: str | None = None,
+        all_entries: bool = False,
+    ) -> list[dict[str, Any]]:
+        if all_entries == (label is not None):
+            raise ValueError("Specify exactly one of: --label or --all")
+
+        manifest = self._load_manifest()
+        if all_entries:
+            entries = [entry for entry in manifest["entries"] if entry.get("payload_file")]
+            if not entries:
+                raise ValueError("No manifest entries with payload_file were found")
+        else:
+            if label is None:
+                raise ValueError("--label is required when --all is not set")
+            entries = [capture_registry.find_entry(manifest, label)]
+
+        rows = [self._report_profile_row(entry) for entry in entries]
+        rows.sort(key=lambda row: row["capture_label"])
+        return rows
+
+    def report_profile_csv(self, rows: list[dict[str, Any]]) -> str:
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=list(PROFILE_REPORT_HEADER_FIELDS))
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: row.get(key, "") for key in PROFILE_REPORT_HEADER_FIELDS})
+        return buf.getvalue()
 
     def _prompt_yes_no(
         self,

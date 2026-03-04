@@ -8,6 +8,7 @@ from pathlib import Path
 
 from clicknick.ladder.capture_cli import main
 from clicknick.ladder.capture_workflow import CaptureWorkflow, CaptureWorkflowPaths
+from clicknick.ladder.topology import HEADER_ENTRY_BASE, cell_offset
 
 
 class _FakeClipboard:
@@ -50,8 +51,34 @@ def _input_iter(values: list[str]):
     return lambda _prompt="": next(iterator)
 
 
+def _profile_payload(
+    *,
+    cell_05: int,
+    cell_11: int,
+    cell_1a: int,
+    cell_1b: int,
+    header_05: int,
+    header_11: int,
+    header_17: int,
+    header_18: int,
+    trailer_0a59: int,
+) -> bytes:
+    data = bytearray(8192)
+    cell = cell_offset(0, 4)
+    data[cell + 0x05] = cell_05
+    data[cell + 0x11] = cell_11
+    data[cell + 0x1A] = cell_1a
+    data[cell + 0x1B] = cell_1b
+    data[HEADER_ENTRY_BASE + 0x05] = header_05
+    data[HEADER_ENTRY_BASE + 0x11] = header_11
+    data[HEADER_ENTRY_BASE + 0x17] = header_17
+    data[HEADER_ENTRY_BASE + 0x18] = header_18
+    data[0x0A59] = trailer_0a59
+    return bytes(data)
+
+
 def test_verify_run_copied_writes_back_bin_and_updates_manifest(tmp_path: Path) -> None:
-    fake = _FakeClipboard(read_payload=b"\xAB" * 8192)
+    fake = _FakeClipboard(read_payload=b"\xab" * 8192)
     workflow = _make_workflow(tmp_path, fake)
     output: list[str] = []
 
@@ -70,12 +97,12 @@ def test_verify_run_copied_writes_back_bin_and_updates_manifest(tmp_path: Path) 
     assert entry["verify_result_file"] is not None
     result_path = tmp_path / entry["verify_result_file"]
     assert result_path.exists()
-    assert result_path.read_bytes() == b"\xAB" * 8192
+    assert result_path.read_bytes() == b"\xab" * 8192
     assert fake.read_calls == 1
 
 
 def test_verify_run_crash_writes_no_back_bin(tmp_path: Path) -> None:
-    fake = _FakeClipboard(read_payload=b"\xCD" * 8192)
+    fake = _FakeClipboard(read_payload=b"\xcd" * 8192)
     workflow = _make_workflow(tmp_path, fake)
     output: list[str] = []
 
@@ -98,7 +125,7 @@ def test_verify_run_crash_writes_no_back_bin(tmp_path: Path) -> None:
 
 
 def test_verify_complete_crash_persists_state(tmp_path: Path) -> None:
-    fake = _FakeClipboard(read_payload=b"\xEE" * 8192)
+    fake = _FakeClipboard(read_payload=b"\xee" * 8192)
     workflow = _make_workflow(tmp_path, fake)
     output: list[str] = []
 
@@ -129,7 +156,7 @@ def test_verify_complete_crash_persists_state(tmp_path: Path) -> None:
 
 
 def test_json_output_shape_stability(tmp_path: Path) -> None:
-    fake = _FakeClipboard(read_payload=b"\xAA" * 8192)
+    fake = _FakeClipboard(read_payload=b"\xaa" * 8192)
     workflow = _make_workflow(tmp_path, fake)
     output: list[str] = []
 
@@ -150,7 +177,7 @@ def test_json_output_shape_stability(tmp_path: Path) -> None:
 
 
 def test_tui_native_capture_queue_walks_pending_entries_without_label_input(tmp_path: Path) -> None:
-    fake = _FakeClipboard(read_payload=b"\xBE" * 8192)
+    fake = _FakeClipboard(read_payload=b"\xbe" * 8192)
     workflow = _make_workflow(tmp_path, fake)
     workflow.entry_add(
         capture_type="native",
@@ -180,6 +207,100 @@ def test_tui_native_capture_queue_walks_pending_entries_without_label_input(tmp_
     second = workflow.entry_show(label="native_case_2")
     assert first["payload_file"] == "scratchpad/captures/native_case_1.bin"
     assert second["payload_file"] is None
-    assert (tmp_path / first["payload_file"]).read_bytes() == b"\xBE" * 8192
+    assert (tmp_path / first["payload_file"]).read_bytes() == b"\xbe" * 8192
     assert fake.read_calls == 1
     assert any("Pending native captures: 2" in line for line in output)
+
+
+def test_report_profile_single_label_json(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"")
+    workflow = _make_workflow(tmp_path, fake)
+    fake.read_payload = _profile_payload(
+        cell_05=0x04,
+        cell_11=0x0C,
+        cell_1a=0xFF,
+        cell_1b=0xFF,
+        header_05=0x0D,
+        header_11=0x0B,
+        header_17=0x15,
+        header_18=0x01,
+        trailer_0a59=0x04,
+    )
+    workflow.entry_capture(label="verify_case")
+    output: list[str] = []
+
+    rc = main(
+        ["report", "profile", "--label", "verify_case", "--json"],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    payload = json.loads(output[-1])
+    assert payload["ok"] is True
+    assert payload["action"] == "report.profile"
+    rows = payload["data"]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["capture_label"] == "verify_case"
+    assert row["cell_05"] == "0x04"
+    assert row["cell_11"] == "0x0C"
+    assert row["cell_1a"] == "0xFF"
+    assert row["cell_1b"] == "0xFF"
+    assert row["header_05"] == "0x0D"
+    assert row["header_11"] == "0x0B"
+    assert row["header_17"] == "0x15"
+    assert row["header_18"] == "0x01"
+    assert row["trailer_0a59"] == "0x04"
+
+
+def test_report_profile_all_csv(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"")
+    workflow = _make_workflow(tmp_path, fake)
+    workflow.entry_add(
+        capture_type="native",
+        label="native_case",
+        scenario="report",
+        description="extra payload for report",
+        rows=["R,X001,->,:,out(Y001)"],
+    )
+
+    fake.read_payload = _profile_payload(
+        cell_05=0x04,
+        cell_11=0x0C,
+        cell_1a=0xFF,
+        cell_1b=0xFF,
+        header_05=0x0D,
+        header_11=0x0B,
+        header_17=0x15,
+        header_18=0x01,
+        trailer_0a59=0x04,
+    )
+    workflow.entry_capture(label="verify_case")
+
+    fake.read_payload = _profile_payload(
+        cell_05=0x00,
+        cell_11=0x00,
+        cell_1a=0xFF,
+        cell_1b=0x01,
+        header_05=0x05,
+        header_11=0x00,
+        header_17=0x4E,
+        header_18=0x01,
+        trailer_0a59=0x00,
+    )
+    workflow.entry_capture(label="native_case")
+
+    output: list[str] = []
+    rc = main(
+        ["report", "profile", "--all", "--csv"],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    csv_text = output[-1]
+    lines = csv_text.splitlines()
+    assert lines[0].startswith("capture_label,capture_type,scenario,payload_file,record_len")
+    assert any(line.startswith("native_case,") for line in lines[1:])
+    assert any(line.startswith("verify_case,") for line in lines[1:])

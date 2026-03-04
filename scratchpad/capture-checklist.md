@@ -1,141 +1,187 @@
-# Click Header RE — Capture Checklist
+# Profile Byte Formula Investigation — Capture Checklist
 
-## How to Capture
+## Goal
 
-1. Build the rung in Click exactly as described
-2. Select the rung (Ctrl+A)
-3. Copy (Ctrl+C)
-4. Ensure the label exists in scratchpad manifest:
-   - `uv run clicknick-ladder-capture entry show --label <label>`
-5. Save clipboard payload to the entry:
-   - `uv run clicknick-ladder-capture entry capture --label <label>`
-6. Move to next capture
+Determine whether the per-cell profile bytes (`+0x05`, `+0x11`) and header family bytes
+(`+0x17`, `+0x18`, `0x0A59`) are computed from instruction properties rather than
+arbitrary per-variant constants.
 
-## Shorthand Reference
+## Current Status
 
-Condition columns (A–AE) use: `-` wire, `...` empty fill, `->` wire fill, instruction names.
-`:` separates conditions from output column AF.
-Rows separated by `/`.
+All requested native captures for this checklist are already present in
+`scratchpad/ladder_capture_manifest.json` as of 2026-03-04.
 
-## Phase 1 — Empty and Horizontal Wires
+## What We Know
 
-Goal: understand what the header records for wire presence per column.
+Current observed profile cell values (`+0x05`/`+0x11`) for two-series `row0 col4..31`:
 
-| # | Label | Build in Click | Shorthand |
-|---|-------|---------------|-----------|
-| 1 | `totally_empty` | Completely empty rung, no NOP | `...,:,...` |
-| 2 | `empty_nop` | Empty rung with default NOP in AF | `...,:,nop` |
-| 3 | `wire_a` | Draw one horizontal wire in column A only | `-,...,:,...` |
-| 4 | `wire_ab` | Horizontal wire in columns A and B | `-,-,...,:,...` |
-| 5 | `wire_abc` | Horizontal wire in A, B, C | `-,-,-,...,:,...` |
-| 6 | `wire_abcde` | Horizontal wire in A through E | `-,-,-,-,-,...,:,...` |
-| 7 | `wire_full_row` | Horizontal wire across all condition columns A–AE | `->,:,...` |
-| 8 | `wire_c_only` | Wire in column C only, A and B empty | `...,-,...,:,...` |
-| 9 | `wire_a_and_e` | Wire in A and E, B/C/D empty | `-,...,-,...,:,...` |
+| First Contact | Second Contact | +0x05 | +0x11 |
+|---|---|---|---|
+| NO | NO | 0x00 | 0x00 |
+| NO.imm | NO | 0x25 | 0x52 |
+| NO | NO.imm | 0x04 | 0x0C |
+| NO.imm | NO.imm | 0x00 | 0x00 |
+| rise | NO | 0x62 | 0x01 |
+| fall | NO | 0x64 | 0x01 |
 
-**After these 9:** diff headers. Which `0x0254 + n*0x40` entries light up? Do they match column positions? What does NOP add vs truly empty?
+Observations suggesting a formula:
 
-## Phase 2 — Vertical Wires, Junctions, and Multi-Row
+- Symmetric immediate pairs (both on or both off) produce `0x00/0x00` (cancellation).
+- Asymmetric pairs produce nonzero values that differ by position (not commutative).
+- Header `+0x17` progression: `0x05`, `0x0D`, `0x15` (step by 8).
+- `0x0A59` mirrors `+0x05` of the header entry for second-immediate.
 
-Goal: understand how the header encodes vertical connections and whether junctions are explicit or implicit.
+## Hypothesis
 
-Click allows both vertical and horizontal lines in the same cell. We need to capture them separately to see which flags are independent.
+These bytes are computed from per-contact properties (type, immediate flag, possibly
+operand bank/encoding class) combined with position index. The function is
+position-sensitive and equal inputs cancel to zero.
 
-Using `|` for vertical-only (no horizontal wire in cell).
+## One-Time Setup (Current CLI)
 
-| # | Label | Build in Click | Shorthand |
-|---|-------|---------------|-----------|
-| 10 | `vert_b_only` | Vertical line in B, no horizontal wires anywhere | Row 0: `...,\|,...,:,...` / Row 1: `...,\|,...,:,...` |
-| 11 | `vert_b_with_horiz` | Vertical + horizontal in B (┬/┴ junction) | Row 0: `...,T,...,:,...` / Row 1: `...,t,...,:,...` |
-| 12 | `corner_b` | Horizontal enters B, vertical goes down (┌) | Row 0: `-,r,...,:,...` / Row 1: `...,\|,...,:,...` |
-| 13 | `vert_d_only` | Vertical line in D, no horizontal | Row 0: `...,...,\|,...,:,...` / Row 1: `...,...,\|,...,:,...` |
+1. Confirm working-manifest entries are present:
+   - `uv run clicknick-ladder-capture entry list --type native`
+2. Optionally inspect a specific entry:
+   - `uv run clicknick-ladder-capture entry show --label <native_label>`
 
-**After these 4:** diff #10 vs #11. The difference is horizontal wire presence — isolates the vertical flag from the horizontal flag. Diff #10 vs #12 — does a corner look different from a straight vertical? If not, corners are implicit (renderer sees horizontal ending + vertical starting at same cell).
+## Per-Case Workflow
 
-Diff #10 vs #13 — same vertical pattern at different column. Entries should be identical but in different positions.
+No new captures are required for this checklist right now because they are already in
+`scratchpad/ladder_capture_manifest.json`.
 
-| # | Label | Build in Click | Shorthand |
-|---|-------|---------------|-----------|
-| 14 | `vert_b_3rows` | Vertical line in B spanning 3 rows | Row 0: `...,\|,...` / Row 1: `...,\|,...` / Row 2: `...,\|,...` |
+If any case needs to be re-captured:
 
-**After this:** which bytes in B's entry change when going from 2 rows to 3? That's the row stride.
+1. Build rung natively in Click.
+2. Copy rung to clipboard.
+3. Capture into existing manifest entry:
+   - `uv run clicknick-ladder-capture entry capture --label <native_label>`
+4. If you need verify metadata, run:
+   - `uv run clicknick-ladder-capture verify run --label <native_label>`
 
-**After these 4:** which bytes within each column's 64-byte entry change when rows are added?
+## Phase A — NC Position Variation
 
-## Phase 3 — Contacts (No Wires, No Coils)
+| ID | CSV | Native Label | Notes |
+|---|---|---|---|
+| `two_series_nc_no` | `~X001,X002,->,:,out(Y001)` | `two_series_nc_no_native` | captured |
+| `no_first_nc_second` | `X001,~X002,->,:,out(Y001)` | `no_first_nc_second_native` | captured |
+| `two_series_nc_nc` | `~X001,~X002,->,:,out(Y001)` | `two_series_nc_nc_native` | captured |
 
-Goal: what does an instruction add to the header vs a wire?
+## Phase B — NC x Immediate Cross
 
-| # | Label | Build in Click | Shorthand |
-|---|-------|---------------|-----------|
-| 15 | `no_a_only` | NO contact X001 in column A, nothing else | `X001,...,:,...` |
-| 16 | `no_c_only` | NO contact X001 in column C, nothing else | `...,X001,...,:,...` |
-| 17 | `nc_a_only` | NC contact X001 in column A, nothing else | `~X001,...,:,...` |
-| 18 | `no_a_no_c` | NO X001 in A, NO X002 in C | `X001,...,X002,...,:,...` |
+| ID | CSV | Native Label | Notes |
+|---|---|---|---|
+| `nc_first_imm_no_second` | `~X001.immediate,X002,->,:,out(Y001)` | `nc_first_imm_no_second_native` | captured |
+| `no_first_nc_second_imm` | `X001,~X002.immediate,->,:,out(Y001)` | `no_first_nc_second_imm_native` | captured |
+| `nc_first_imm_nc_second_imm` | `~X001.immediate,~X002.immediate,->,:,out(Y001)` | `nc_first_imm_nc_second_imm_native` | captured |
 
-**After these 4:** diff #15 vs #3 (contact vs wire in same column). What's the header delta? Diff #15 vs #17 — does instruction type matter?
+## Phase C — Operand Bank Variation (No Immediate on C Bank)
 
-## Phase 4 — Output Column
+Immediate mode is X-bank only for this investigation. `C1.immediate` and `C2.immediate`
+cases are intentionally removed.
 
-Goal: is AF's header entry independent of condition columns?
+| ID | CSV | Native Label | Notes |
+|---|---|---|---|
+| `c_first_no_second` | `C1,X002,->,:,out(Y001)` | `c_first_no_second_native` | captured |
+| `no_first_c_second` | `X001,C2,->,:,out(Y001)` | `no_first_c_second_native` | captured |
 
-| # | Label | Build in Click | Shorthand |
-|---|-------|---------------|-----------|
-| 19 | `out_af_only` | Out Y001 in AF, nothing in conditions | `...,:,out(Y001)` |
-| 20 | `no_a_out_af` | NO X001 in A + Out Y001 in AF, no wires | `X001,...,:,out(Y001)` |
-| 21 | `latch_af_only` | Latch Y001 in AF, nothing in conditions | `...,:,latch(Y001)` |
-| 22 | `reset_af_only` | Reset Y001 in AF, nothing in conditions | `...,:,reset(Y001)` |
+## Phase D — Edge in Second Position
 
-**After these 4:** diff #19 vs #21 vs #22 — does output type change the header? Diff #19 vs #20 — does adding a condition change AF's entry?
+| ID | CSV | Native Label | Notes |
+|---|---|---|---|
+| `no_first_rise_second` | `X001,rise(X002),->,:,out(Y001)` | `no_first_rise_second_native` | captured |
+| `no_first_fall_second` | `X001,fall(X002),->,:,out(Y001)` | `no_first_fall_second_native` | captured |
+| `rise_first_rise_second` | `rise(X001),rise(X002),->,:,out(Y001)` | `rise_first_rise_second_native` | captured |
 
-## Phase 5 — Simple Complete Rungs
+## Phase E — Header Family Byte Expansion
 
-Goal: confirm full-rung header = sum of parts.
+Collect `+0x17`/`+0x18` from every capture above.
 
-| # | Label | Build in Click | Shorthand |
-|---|-------|---------------|-----------|
-| 23 | `simple_rung` | NO X001, wire to AF, Out Y001 | `X001,->,:,out(Y001)` |
-| 24 | `two_series_rung` | NO X001, NO X002, wire to AF, Out Y001 | `X001,X002,->,:,out(Y001)` |
-| 25 | `parallel_rung` | X001 and X002 parallel OR into Out Y001 | Row 0: `X001,T,->,:,out(Y001)` / Row 1: `X002,t,...,:,...` |
+Currently known:
 
-**After these 3:** does header of #23 = header entries from individual captures combined? If yes, header is compositional and we can generate it from RungGrid.
+| Variant | +0x17 | +0x18 |
+|---|---|---|
+| simple NO (baseline) | 0x05 | 0x01 |
+| second immediate two-series | 0x0D | 0x01 |
+| everything else so far | 0x15 | 0x01 |
 
-## Bonus Captures — Extra Data Points
+## Analysis Protocol (Investigator)
 
-These are quick to do and could prevent wrong assumptions later.
+### Step 1: Build a Raw Table from Captured Labels
 
-| # | Label | Build in Click | Shorthand |
-|---|-------|---------------|-----------|
-| 26 | `no_ae_only` | NO contact X001 in last condition column AE | `...,X001,:,...` |
-| 27 | `no_p_only` | NO contact X001 in column P (middle of grid) | `...,X001,...,:,...` |
-| 28 | `no_a_C1` | NO C1 (2-char operand) in column A | `C1,...,:,...` |
-| 29 | `no_a_no_b` | NO X001 in A, NO X002 in B — can you even do this? | `X001,X002,...,:,...` |
+Run this from repo root to print per-label profile/header bytes using existing captures.
 
-- **#26 and #27:** rules out any special casing for early columns. Does column AE/P's header entry look the same as A's?
-- **#28:** same position as #14 but shorter operand. If header is identical, operand length is irrelevant to the header.
-- **#29:** if Click allows adjacent contacts, what does the header look like? If it doesn't allow it, that's useful to know too.
+```powershell
+@'
+import json
+from pathlib import Path
 
-## Analysis After Each Phase
+manifest = json.loads(Path("scratchpad/ladder_capture_manifest.json").read_text(encoding="utf-8"))
+labels = [
+    "two_series_nc_no_native",
+    "no_first_nc_second_native",
+    "two_series_nc_nc_native",
+    "nc_first_imm_no_second_native",
+    "no_first_nc_second_imm_native",
+    "nc_first_imm_nc_second_imm_native",
+    "c_first_no_second_native",
+    "no_first_c_second_native",
+    "no_first_rise_second_native",
+    "no_first_fall_second_native",
+    "rise_first_rise_second_native",
+]
+entries = {entry["capture_label"]: entry for entry in manifest["entries"]}
 
-```python
-# Extract and print non-zero header entries
-data = open("scratchpad/captures/<label>.bin", "rb").read()
-for n in range(32):
-    entry = data[0x254 + n*0x40 : 0x254 + (n+1)*0x40]
-    if any(entry):
-        print(f"Col {n:2d}: {entry.hex()}")
+print("label,cell_05,cell_11,cell_1a,cell_1b,header_05,header_11,header_17,header_18,trailer_0a59")
+for label in labels:
+    payload = Path(entries[label]["payload_file"]).read_bytes()[:8192]
+    cell = 0x0B60   # row0,col4
+    hdr = 0x0254    # header entry 0
+    print(
+        f"{label},"
+        f"0x{payload[cell + 0x05]:02X},"
+        f"0x{payload[cell + 0x11]:02X},"
+        f"0x{payload[cell + 0x1A]:02X},"
+        f"0x{payload[cell + 0x1B]:02X},"
+        f"0x{payload[hdr + 0x05]:02X},"
+        f"0x{payload[hdr + 0x11]:02X},"
+        f"0x{payload[hdr + 0x17]:02X},"
+        f"0x{payload[hdr + 0x18]:02X},"
+        f"0x{payload[0x0A59]:02X}"
+    )
+'@ | uv run python -
 ```
 
-Compare entries between captures. Look for:
-- Which entries are non-zero (column mapping)
-- Which bytes within an entry change (row mapping)
-- Whether the pattern is the same at different column positions (independence)
+`cell=0x0B60` is `row0,col4` and `hdr=0x0254` is header entry 0.
 
-## What We're Trying to Answer
+### Step 2: Test Cancellation Hypothesis
 
-- [ ] Does header entry N correspond to column N?
-- [ ] Does wire vs instruction produce different header entries?
-- [ ] Does instruction type (NO/NC/Rise) change the header?
-- [ ] Does output type (Out/Latch/Reset) change AF's header entry?
-- [ ] What's the per-row encoding within each 64-byte entry?
-- [ ] Is the header compositional (sum of parts = whole)?
+- Do symmetric pairs produce `0x00/0x00`?
+- Does `NC.imm + NC.imm` cancel like `NO.imm + NO.imm`?
+- Does `rise + rise` cancel?
+
+### Step 3: Test Position Effects
+
+- Compare first-slot vs second-slot immediate and edge variants.
+- If values are additive inverses mod 256, slot flips sign.
+- If magnitudes differ, slots likely have independent weights.
+
+### Step 4: Test Operand-Bank Dependence
+
+- Compare `C1/X002` and `X001/C2` against X-bank analogs.
+- If bytes match analogs, bank is probably not an input.
+- If bytes differ, compute deltas and correlate with encoding class/length.
+
+### Step 5: Propose Formula
+
+Attempt formulas for `+0x05` and `+0x11` using:
+
+- `contact_type_1`, `contact_type_2`
+- `immediate_1`, `immediate_2`
+- `operand_bank_1`, `operand_bank_2` (only if Step 4 shows dependence)
+
+Also test whether `+0x17` is a bitwise OR of per-contact feature flags.
+
+### Step 6: Validate
+
+Validate candidate formulas against all existing captures in the manifest.
+Any mismatch means the formula is incomplete.

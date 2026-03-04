@@ -17,7 +17,7 @@ def _add_json_flag(parser: argparse.ArgumentParser) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="clicknick-ladder-capture",
-        description="Unified ladder capture workflow (manifest, capture, verify, promote).",
+        description="Unified ladder capture workflow (manifest, capture, verify, promote, report).",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -93,6 +93,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_json_flag(p_verify_run)
 
+    p_report = sub.add_parser("report", help="Read-only reporting helpers")
+    report_sub = p_report.add_subparsers(dest="report_cmd", required=True)
+
+    p_report_profile = report_sub.add_parser(
+        "profile",
+        help="Extract profile/header bytes for one label or all captured entries",
+    )
+    target_group = p_report_profile.add_mutually_exclusive_group(required=True)
+    target_group.add_argument("--label", help="Capture label to inspect")
+    target_group.add_argument("--all", action="store_true", help="Inspect all entries with payloads")
+    format_group = p_report_profile.add_mutually_exclusive_group()
+    format_group.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")
+    format_group.add_argument("--csv", action="store_true", help="Emit CSV output")
+
     p_promote = sub.add_parser(
         "promote", help="Promote entry payload to fixture + fixture manifest v2"
     )
@@ -133,6 +147,21 @@ def _print_human(action: str, data: Any, output_fn: Callable[[str], None]) -> No
                 f"{entry['capture_label']}: type={entry['capture_type']} status={entry['verify_status']}"
             )
         return
+    if action == "report.profile":
+        if isinstance(data, str):
+            output_fn(data.rstrip("\n"))
+            return
+        rows = data
+        if not rows:
+            output_fn("No rows.")
+            return
+        for row in rows:
+            output_fn(
+                f"{row['capture_label']}: cell_05={row['cell_05']} cell_11={row['cell_11']} "
+                f"header_17={row['header_17']} header_18={row['header_18']} "
+                f"trailer_0a59={row['trailer_0a59']}"
+            )
+        return
     output_fn(json.dumps(data, indent=2))
 
 
@@ -143,6 +172,8 @@ def _action_name(args: argparse.Namespace) -> str:
         return f"entry.{args.entry_cmd}"
     if args.command == "verify":
         return f"verify.{args.verify_cmd}"
+    if args.command == "report":
+        return f"report.{args.report_cmd}"
     if args.command == "promote":
         return "promote"
     if args.command == "tui":
@@ -196,6 +227,12 @@ def _dispatch(
             input_fn=input_fn,
             output_fn=output_fn,
         )
+
+    if args.command == "report" and args.report_cmd == "profile":
+        rows = workflow.report_profile(label=args.label, all_entries=args.all)
+        if args.csv:
+            return workflow.report_profile_csv(rows)
+        return rows
 
     if args.command == "promote":
         return workflow.promote(
