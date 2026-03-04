@@ -35,6 +35,16 @@ def find_click_hwnd() -> int:
     """Find Click Programming Software's main window handle."""
     import win32gui
 
+    results = find_click_hwnds()
+    if not results:
+        raise RuntimeError("Click Programming Software not found. Is it running?")
+    return results[0]
+
+
+def find_click_hwnds() -> list[int]:
+    """Find all visible Click Programming Software main window handles."""
+    import win32gui
+
     results: list[int] = []
 
     def callback(hwnd, _):
@@ -43,9 +53,8 @@ def find_click_hwnd() -> int:
         return True
 
     win32gui.EnumWindows(callback, None)
-    if not results:
-        raise RuntimeError("Click Programming Software not found. Is it running?")
-    return results[0]
+    # Deterministic ordering simplifies click:<index> selection at call-sites.
+    return sorted(results)
 
 
 def _open_clipboard_with_retry(owner_hwnd: int | None = None) -> None:
@@ -72,9 +81,17 @@ def clear_clipboard(owner_hwnd: int | None = None) -> None:
         _user32.CloseClipboard()
 
 
-def copy_to_clipboard(data: bytes) -> None:
-    """Place bytes on clipboard in Click's private format (HWND-spoofed)."""
-    hwnd = find_click_hwnd()
+def copy_to_clipboard(data: bytes, owner_hwnd: int | None = None) -> None:
+    """Place bytes on clipboard in Click's private format.
+
+    Args:
+        data: Clipboard payload bytes.
+        owner_hwnd:
+            - None: auto-spoof first CLICK window HWND (current behavior).
+            - 0: no owner spoof (OpenClipboard(0)).
+            - non-zero: explicit owner HWND.
+    """
+    hwnd = find_click_hwnd() if owner_hwnd is None else owner_hwnd
     _open_clipboard_with_retry(hwnd)
     try:
         if not _user32.EmptyClipboard():

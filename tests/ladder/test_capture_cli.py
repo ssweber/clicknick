@@ -16,10 +16,12 @@ class _FakeClipboard:
     def __init__(self, read_payload: bytes = b"") -> None:
         self.read_payload = read_payload
         self.copied_payloads: list[bytes] = []
+        self.copied_owner_hwnds: list[int | None] = []
         self.read_calls = 0
 
-    def copy(self, payload: bytes) -> None:
+    def copy(self, payload: bytes, owner_hwnd: int | None = None) -> None:
         self.copied_payloads.append(payload)
+        self.copied_owner_hwnds.append(owner_hwnd)
 
     def read(self) -> bytes:
         self.read_calls += 1
@@ -162,6 +164,30 @@ def test_verify_prepare_no_ensure_flag_succeeds(tmp_path: Path) -> None:
     assert entry["verify_expected_rows"] == entry["rung_rows"]
 
 
+def test_verify_prepare_uid_forwarded_to_clipboard(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"\x11" * 8192)
+    workflow = _make_workflow(tmp_path, fake)
+    output: list[str] = []
+
+    rc = main(
+        [
+            "verify",
+            "prepare",
+            "--label",
+            "verify_case",
+            "--uid",
+            "0x1234",
+            "--no-ensure-mdb-addresses",
+        ],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    assert len(fake.copied_payloads) == 1
+    assert fake.copied_owner_hwnds == [0x1234]
+
+
 def test_verify_run_mdb_path_forwarded(tmp_path: Path) -> None:
     fake = _FakeClipboard(read_payload=b"\xaa" * 8192)
     seen_db_paths: list[str] = []
@@ -190,6 +216,23 @@ def test_verify_run_mdb_path_forwarded(tmp_path: Path) -> None:
 
     assert rc == 0
     assert seen_db_paths == [str(custom_mdb)]
+
+
+def test_verify_run_uid_forwarded_to_clipboard(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"\xaa" * 8192)
+    workflow = _make_workflow(tmp_path, fake)
+    output: list[str] = []
+
+    rc = main(
+        ["verify", "run", "--label", "verify_case", "--uid", "4660"],
+        workflow=workflow,
+        input_fn=_input_iter(["q", "", "", ""]),
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    assert len(fake.copied_payloads) == 1
+    assert fake.copied_owner_hwnds == [4660]
 
 
 def test_verify_prepare_ensure_failure_returns_error_without_clipboard_write(

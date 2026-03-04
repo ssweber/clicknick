@@ -528,3 +528,187 @@ Conclusion:
   - Click-safe path is now restricted back to `1..2` series contacts.
   - Attempting `>2` now fails fast with a clear error before any clipboard write.
 
+## Session-Counter Model (2026-03-04, late-night pass)
+
+Scope:
+
+- All `*_native.bin` in `scratchpad/captures` (`50` files).
+- Cross-check overlap against `tests/fixtures/ladder_captures` for same labels.
+
+### Strong header/trailer invariants
+
+For every decodeable instruction capture checked:
+
+1. Header-entry bytes are column-uniform for all 32 entries:
+   - `+0x05`, `+0x11`, `+0x17`, `+0x18` each had one constant value per file.
+2. Trailer mirror holds:
+   - `0x0A59 == header_entry0(+0x05)`.
+3. `+0x11` is affine in `+0x05` with family-specific bias:
+   - family `+0x17 = 0x4E` (and observed `0x43`): `+0x11 = 2*(+0x05) + 0x00 (mod 256)`
+   - family `+0x17 = 0x15`: `+0x11 = 2*(+0x05) + 0x07 (mod 256)`
+   - family `+0x17 = 0x0D` (single sample): `+0x11 = 2*(+0x05) + 0x03 (mod 256)`
+
+Interpretation:
+
+- `(+0x05,+0x11,+0x17,0x0A59)` behaves like a session/family seed tuple, not a direct rung-topology encoding.
+- This is consistent with same rung topology appearing under different seed families.
+
+### Same-rung cross-session proof point
+
+`two_series_nc_no_native.bin`:
+
+- scratchpad copy: `h05/h11/h17/h18/t59 = 00/00/4E/01/00`
+- fixture copy: `29/59/15/01/29`
+
+Both decode to `~X001,X002,->,:,out(Y001)`.
+
+Pairwise compare:
+
+- topology equal: `True`
+- header equal when masking `+0x05/+0x11/+0x17/+0x18`: `True`
+
+This supports session-derived seed drift rather than semantic drift.
+
+### Rule re-validation (first-two-contact profile bytes)
+
+Across all decodeable captures with at least two contacts in `scratchpad/captures`:
+
+- `row0,col4 +0x05/+0x11` first-two-contact rule matched `40/40`.
+- `row0,col4 +0x1A/+0x1B` two-series compositional rule matched `17/17` for exactly two contacts.
+- As expected, that `+0x1A/+0x1B` two-series rule does **not** extend to 3/5/8-series (`23/40` if applied blindly).
+
+### Row1 vs Row2 duplicate experiment design (for next capture pass)
+
+Goal: discriminate session-counter bytes from row-placement bytes.
+
+Capture sequence in one uninterrupted Click session:
+
+1. Copy a single rung from row1 (baseline).
+2. Duplicate same rung into row2 and copy only row2 rung.
+3. Copy rows1+2 together (two-row payload).
+
+Expected if session-counter hypothesis is right:
+
+- Steps 1 and 2:
+  - same decoded CSV/topology
+  - row class remains one-row
+  - seed tuple (`h05/h11/h17/t59`) advances, but masked structure stays equal.
+- Step 3:
+  - row class changes to two-row class (`0x60`) and topology changes by row-count.
+  - seed still advances independently.
+
+Analyzer prepared:
+
+- `devtools/analyze_session_counter.py`
+- Example:
+  - `uv run python devtools/analyze_session_counter.py --file <cap1.bin> --file <cap2.bin> --file <cap3.bin>`
+
+### Session-counter row-duplicate experiment result (captured)
+
+Labels:
+
+- `session_counter_row1_single_native`
+- `session_counter_row2_duplicate_native`
+- `session_counter_rows1_2_combined_native`
+
+Observed (`analyze_session_counter.py`):
+
+- Row1 single:
+  - `len=8192`, `row_class=0x40`, `h05/h11/h17/t59 = 00/00/4D/00`
+- Row2 duplicate (same rung only):
+  - `len=8192`, `row_class=0x40`, `h05/h11/h17/t59 = 01/02/4D/01`
+- Rows1+2 combined copy:
+  - `len=12288`, `row_class=0x80`, `h05/h11/h17/t59 = 00/00/4D/00`
+
+Pairwise interpretation:
+
+- Row1 single -> Row2 duplicate:
+  - topology equal
+  - `h05/h11/t59` advanced by `+1/+2/+1`
+  - structural header equal under masks (`+0x05/+0x11`, and `+0x05/+0x11/+0x17/+0x18`)
+  - This is direct evidence that these bytes include a session/capture counter component, independent of rung semantics.
+- Row1 single -> Rows1+2 combined:
+  - topology changed and row class changed (`0x40 -> 0x80`)
+  - masked structural headers are not equal
+  - This capture is a different record class (multi-row/multi-rung context), so it should not be used as a pure counter-isolation pair.
+
+New family note:
+
+- `h17 = 0x4D` appears as another session-family byte alongside previously seen `0x4E`, `0x15`, `0x0D`, etc.
+
+## Session-UID Isolation Pass (2026-03-04, follow-up)
+
+Scope:
+
+- Session-control captures for one fixed rung (`~X001,X002,->,:,out(Y001)`):
+  - `session_counter_row1_single_native`
+  - `session_counter_row2_duplicate_native`
+  - `session_counter_mono_01_native`
+  - `session_counter_mono_02_native`
+  - `session_counter_mono_03_native`
+  - `session_counter_crossapp_a_source_native`
+  - `session_counter_crossapp_b_pasteback_native`
+  - `session_counter_crossuid_yes_a_source_native`
+  - `session_counter_crossuid_yes_b_pasteback_native`
+- Analyzer invocation (payload-only to avoid verify backfill masking):
+  - `uv run python devtools/analyze_session_counter.py --source payload --label ...`
+
+### Header offset isolation result
+
+Across that fixed-topology set, only three entry-local header offsets varied:
+
+- `+0x05`
+- `+0x11`
+- `+0x17`
+
+All three were column-uniform across all 32 header entries in each file.
+
+No other header-entry offsets varied for this set.
+
+### Cross-app and cross-UID observations
+
+Same decoded topology, payload captures only:
+
+- Cross-app transfer:
+  - `A source`: `h17=0x58`
+  - `B pasteback`: `h17=0x32`
+- Cross-UID "YES" scenario:
+  - `A source`: `h17=0x88`
+  - `B pasteback payload`: `h17=0x20`
+
+In both cases, `h05/h11/t59` stayed `0x00/0x00/0x00` while `h17` changed.
+
+Interpretation:
+
+- `+0x17` is the strongest current candidate for a session/window-family UID byte (or direct function of it).
+
+### Counter-like bytes status update
+
+Row-duplicate pair still shows:
+
+- row1 -> row2: `h05/h11/t59 = +1/+2/+1`, with same topology.
+
+But monotonic same-window test (`mono_01 -> mono_02 -> mono_03`) showed no movement:
+
+- `h05/h11/t59` remained `0x00/0x00/0x00`.
+
+Interpretation:
+
+- `+0x05/+0x11` (and `0x0A59`) are volatile and non-structural, but current evidence does not support a simple "always monotonic per copy" model.
+- These bytes likely include additional state (selection/context class) besides pure copy count.
+
+### Verify-file caveat
+
+For labels with `verify_result_file`, auto label resolution can hide payload-session drift.
+
+Example (`session_counter_crossuid_yes_b_pasteback_native`):
+
+- payload file: `h17=0x20`
+- verify result file: `h17=0x88`
+
+Both decode to the same rung.
+
+Action taken:
+
+- `analyze_session_counter.py` now supports `--source {auto,payload,verify}` to make this explicit.
+

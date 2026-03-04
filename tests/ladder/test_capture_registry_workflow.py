@@ -23,10 +23,12 @@ class _FakeClipboard:
     def __init__(self, read_payload: bytes = b"") -> None:
         self.read_payload = read_payload
         self.copied_payloads: list[bytes] = []
+        self.copied_owner_hwnds: list[int | None] = []
         self.read_calls = 0
 
-    def copy(self, payload: bytes) -> None:
+    def copy(self, payload: bytes, owner_hwnd: int | None = None) -> None:
         self.copied_payloads.append(payload)
+        self.copied_owner_hwnds.append(owner_hwnd)
 
     def read(self) -> bytes:
         self.read_calls += 1
@@ -306,6 +308,27 @@ def test_verify_prepare_skips_ensure_when_disabled(tmp_path: Path) -> None:
     assert ensure_calls == 0
     assert len(fake.copied_payloads) == 1
     assert result["mdb_ensure"]["enabled"] is False
+
+
+def test_verify_prepare_forwards_owner_hwnd(tmp_path: Path) -> None:
+    fake = _FakeClipboard()
+    workflow = _make_workflow(tmp_path, fake)
+    workflow.entry_add(
+        capture_type="synthetic",
+        label="verify_case",
+        scenario="verify",
+        description="owner spoof forwarding",
+        rows=["R,X001,->,:,out(Y001)"],
+    )
+
+    workflow.verify_prepare(
+        label="verify_case",
+        owner_hwnd=0x1234,
+        ensure_mdb_addresses=False,
+    )
+
+    assert len(fake.copied_payloads) == 1
+    assert fake.copied_owner_hwnds == [0x1234]
 
 
 def test_verify_run_interactive_forwards_mdb_path_to_ensure(tmp_path: Path) -> None:

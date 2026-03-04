@@ -14,6 +14,15 @@ def _add_json_flag(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")
 
 
+def _parse_uid(raw: str) -> int:
+    try:
+        return int(raw, 0)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"Invalid UID/HWND {raw!r}; expected decimal or 0x-prefixed hex"
+        ) from exc
+
+
 def _parse_index_spec(spec: str, *, minimum: int, maximum: int) -> list[int]:
     selected: set[int] = set()
     for raw_part in spec.split(","):
@@ -86,6 +95,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify_prepare = verify_sub.add_parser("prepare", help="Load entry payload to clipboard")
     p_verify_prepare.add_argument("--label", required=True)
     p_verify_prepare.add_argument("--source", choices=["shorthand", "file"])
+    p_verify_prepare.add_argument(
+        "--uid",
+        type=_parse_uid,
+        help="Clipboard owner UID/HWND spoof target (decimal or 0xHEX); use 0 for no spoof",
+    )
     p_verify_prepare.add_argument("--mdb-path")
     p_verify_prepare.add_argument(
         "--no-ensure-mdb-addresses",
@@ -114,6 +128,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify_run = verify_sub.add_parser("run", help="Interactive verify workflow")
     p_verify_run.add_argument("--label", required=True)
     p_verify_run.add_argument("--source", choices=["shorthand", "file"])
+    p_verify_run.add_argument(
+        "--uid",
+        type=_parse_uid,
+        help="Clipboard owner UID/HWND spoof target (decimal or 0xHEX); use 0 for no spoof",
+    )
     p_verify_run.add_argument("--mdb-path")
     p_verify_run.add_argument(
         "--no-ensure-mdb-addresses",
@@ -287,6 +306,7 @@ def _dispatch(
         return workflow.verify_prepare(
             label=args.label,
             source=args.source,
+            owner_hwnd=args.uid,
             ensure_mdb_addresses=(not args.no_ensure_mdb_addresses),
             mdb_path=args.mdb_path,
         )
@@ -303,6 +323,7 @@ def _dispatch(
         return workflow.verify_run_interactive(
             label=args.label,
             source=args.source,
+            owner_hwnd=args.uid,
             ensure_mdb_addresses=(not args.no_ensure_mdb_addresses),
             mdb_path=args.mdb_path,
             status_default=args.status_default,

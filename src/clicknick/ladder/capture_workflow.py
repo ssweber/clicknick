@@ -118,7 +118,7 @@ class CaptureWorkflow:
         self,
         *,
         paths: CaptureWorkflowPaths | None = None,
-        copy_to_clipboard_fn: Callable[[bytes], None] = copy_to_clipboard,
+        copy_to_clipboard_fn: Callable[[bytes, int | None], None] = copy_to_clipboard,
         read_from_clipboard_fn: Callable[[], bytes] = read_from_clipboard,
         ensure_mdb_addresses_fn: Callable[[str, Sequence[str]], dict[str, Any]] = (
             ensure_addresses_exist
@@ -330,6 +330,7 @@ class CaptureWorkflow:
         *,
         label: str,
         source: str | None = None,
+        owner_hwnd: int | None = None,
         ensure_mdb_addresses: bool = True,
         mdb_path: str | None = None,
     ) -> dict[str, Any]:
@@ -364,7 +365,7 @@ class CaptureWorkflow:
                 "parsed_addresses": [],
             }
 
-        self._copy_to_clipboard(payload)
+        self._copy_to_clipboard(payload, owner_hwnd)
 
         updated = capture_registry.update_entry(
             manifest,
@@ -710,6 +711,7 @@ class CaptureWorkflow:
         *,
         label: str,
         source: str | None = None,
+        owner_hwnd: int | None = None,
         ensure_mdb_addresses: bool = True,
         mdb_path: str | None = None,
         status_default: str | None = None,
@@ -719,6 +721,7 @@ class CaptureWorkflow:
         prepare = self.verify_prepare(
             label=label,
             source=source,
+            owner_hwnd=owner_hwnd,
             ensure_mdb_addresses=ensure_mdb_addresses,
             mdb_path=mdb_path,
         )
