@@ -226,3 +226,29 @@ Artifacts:
 - targeted test payload:
   - `scratchpad/captures/two_series_second_immediate_generated_v2_patch_pregrid_focus4_native.bin`
   - only those 4 pre-grid bytes patched to native; stream/grid markers remain intact
+
+## Region Isolation Result (2026-03-03 final pass)
+
+On top of `generated_v2` with row1/row2 parity controls:
+
+- `..._patch_r12native_preheader_native.bin` (`0x0000..0x0253` copied from native) => still split (`12288`)
+- `..._patch_r12native_header_native.bin` (`0x0254..0x0A5F` copied from native) => single rung (`8192`)
+- `..._patch_r12native_pregrid_full_native.bin` (entire `0x0000..0x0A5F` copied) => single rung (`8192`)
+
+Conclusion:
+
+- The remaining split gate was in the header region (`0x0254..0x0A5F`), not pre-header.
+- For `two_series_second_immediate`, decisive bytes were header-entry `+0x05` and `+0x11`
+  across all 32 entries, plus trailing header-area byte `0x0A59`:
+  - `+0x05 = 0x04`
+  - `+0x11 = 0x0B`
+  - `0x0A59 = 0x04`
+
+Encoder status:
+
+- Deterministic encoder now writes these bytes for the second-immediate two-series family.
+- Validation payload: `scratchpad/captures/two_series_second_immediate_generated_v3_headerfix.bin`
+- Final recapture: `scratchpad/captures/two_series_second_immediate_back_after_generated_v3_headerfix.bin`
+  - length: `8192`
+  - markers: `0x0A99` (contact1), `0x0B1E` (contact2), `0x12D9` (coil)
+  - decode: `X001,X002.immediate,->,:,out(Y001)`

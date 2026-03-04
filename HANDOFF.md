@@ -17,9 +17,9 @@ can generate clipboard-ready bytes for paste into Click from `RungGrid`.
   - `smoke_simple`
   - `smoke_immediate`
   - `smoke_two_series_short` (full `X001,X002,->,:,out(Y001)` now pastes)
-- `two_series_second_immediate` remains unresolved:
-  - malformed generation can paste as multiple split rungs with `NOP`
-  - Click may emit non-`8192` clipboard payloads (`20480`, `73728`) after split pasteback
+- `two_series_second_immediate` is now resolved:
+  - final validation capture: `two_series_second_immediate_back_after_generated_v3_headerfix.bin`
+  - pasteback length `8192`, decodes as `X001,X002.immediate,->,:,out(Y001)`
 - New intermediate progress (March 3, 2026, afternoon):
   - deterministic profile-cell fixes for `+0x05/+0x11` were added and validated against fixture tables
   - failure mode improved from total fragmentation to a consistent two-rung split
@@ -95,6 +95,13 @@ almost exclusively at:
 - trailing byte `0x0A59`: generated `0x00`, native `0x04`
 
 Applying those bytes restores single-rung pasteback behavior.
+
+Final validation:
+
+- `two_series_second_immediate_generated_v3_headerfix.bin` pasted and copied back as
+  `two_series_second_immediate_back_after_generated_v3_headerfix.bin`
+- Result: `8192` bytes, marker triad at `0x0A99 / 0x0B1E / 0x12D9`, decode
+  `X001,X002.immediate,->,:,out(Y001)`
 
 Encoder update now in place:
 
@@ -258,17 +265,15 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
 
 1. Header family bytes (`+0x17/+0x18`): exact semantics and complete decision table for all
    supported/unsupported rung families.
-2. Pre-grid metadata (`0x0000..0x0253`) and header raw bytes (`0x0254..0x0A5F`): which bytes
-   still gate single-rung assembly for second-immediate despite row0/row1/row2 grid parity.
-3. Per-cell structural control bytes in row0/row1 (beyond wire flags): exact role now that
-   `+0x1A/+0x1B/+0x05/+0x11` alone do not eliminate splitting.
-4. Stream metadata bytes (`65 60`, `67 60`, related blocks): exact semantics and whether
+2. Per-cell structural control bytes in row0/row1 (beyond wire flags): exact role in broader
+   instruction families now that second-immediate is solved.
+3. Stream metadata bytes (`65 60`, `67 60`, related blocks): exact semantics and whether
    all are mandatory per instruction family.
-5. Full stream placement formula coverage for broader two-series combinations with mixed
+4. Full stream placement formula coverage for broader two-series combinations with mixed
    operand lengths and immediate flags.
-6. Register-bank breadth validation beyond current proven sets (DS/T/TD families).
-7. Single-cell (`4096` byte) clipboard payload viability for independent cell pasting.
-8. Explicit multi-row generation API shape (if/when `RungGrid` should carry full topology).
+5. Register-bank breadth validation beyond current proven sets (DS/T/TD families).
+6. Single-cell (`4096` byte) clipboard payload viability for independent cell pasting.
+7. Explicit multi-row generation API shape (if/when `RungGrid` should carry full topology).
 
 ## Next Steps
 
@@ -286,15 +291,15 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
 
 - Use targeted control-byte diffing across captures to classify structural bytes that govern
   rung assembly/linkage (not just wire flags).
-- Keep `two_series_second_immediate` as the reference failing case until it pastes/copies back
-  as a single `8192` record with coil intact.
+- Expand from second-immediate to remaining unresolved families using the same isolation method
+  (profile cells, then row blocks, then pre-grid/header partitions).
 
 ### 3a) Pre-Grid Metadata Differential (New Priority)
 
-- Compare generated-v2 payloads against native with row0/row1/row2 held equal, focusing only on:
-  - `0x0000..0x0253`
-  - raw header bytes at `0x0254..0x0A5F` (including previously masked volatile offsets)
-- Identify minimal byte set that flips behavior from `12288` split to `8192` single-rung.
+- Reuse this method for future failing families:
+  - compare generated payloads against native with row-block parity controls
+  - partition `0x0000..0x0A5F` into pre-header and header slices
+  - identify minimal decisive byte set and codify deterministic write rules
 
 ### 4) Capture Expansion
 
