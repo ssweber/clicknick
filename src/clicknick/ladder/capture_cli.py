@@ -30,7 +30,9 @@ def build_parser() -> argparse.ArgumentParser:
     entry_sub = p_entry.add_subparsers(dest="entry_cmd", required=True)
 
     p_entry_add = entry_sub.add_parser("add", help="Add a capture entry")
-    p_entry_add.add_argument("--type", required=True, choices=["native", "synthetic", "patch", "pasteback"])
+    p_entry_add.add_argument(
+        "--type", required=True, choices=["native", "synthetic", "patch", "pasteback"]
+    )
     p_entry_add.add_argument("--label", required=True)
     p_entry_add.add_argument("--scenario", required=True)
     p_entry_add.add_argument("--description", required=True)
@@ -41,14 +43,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_entry_list = entry_sub.add_parser("list", help="List capture entries")
     p_entry_list.add_argument("--type", choices=["native", "synthetic", "patch", "pasteback"])
-    p_entry_list.add_argument("--status", choices=["unverified", "verified_pass", "verified_fail", "blocked"])
+    p_entry_list.add_argument(
+        "--status", choices=["unverified", "verified_pass", "verified_fail", "blocked"]
+    )
     _add_json_flag(p_entry_list)
 
     p_entry_show = entry_sub.add_parser("show", help="Show one capture entry")
     p_entry_show.add_argument("--label", required=True)
     _add_json_flag(p_entry_show)
 
-    p_entry_capture = entry_sub.add_parser("capture", help="Capture current clipboard bytes for an entry")
+    p_entry_capture = entry_sub.add_parser(
+        "capture", help="Capture current clipboard bytes for an entry"
+    )
     p_entry_capture.add_argument("--label", required=True)
     p_entry_capture.add_argument("--output-file")
     _add_json_flag(p_entry_capture)
@@ -87,7 +93,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_json_flag(p_verify_run)
 
-    p_promote = sub.add_parser("promote", help="Promote entry payload to fixture + fixture manifest v2")
+    p_promote = sub.add_parser(
+        "promote", help="Promote entry payload to fixture + fixture manifest v2"
+    )
     p_promote.add_argument("--label", required=True)
     p_promote.add_argument("--fixture-file")
     p_promote.add_argument("--overwrite", action="store_true")

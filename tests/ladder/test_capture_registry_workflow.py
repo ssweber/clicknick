@@ -225,4 +225,6 @@ def test_fixture_manifest_upsert_and_codec_generatable_deterministic(tmp_path: P
     }
     assert promoted["capture_label"] == "smoke_simple_native"
     assert promoted["codec_generatable"] is True
-    assert first["fixture_entry"]["codec_generatable"] == second["fixture_entry"]["codec_generatable"]
+    assert (
+        first["fixture_entry"]["codec_generatable"] == second["fixture_entry"]["codec_generatable"]
+    )

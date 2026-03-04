@@ -85,7 +85,9 @@ class CaptureWorkflow:
         self._now_fn = now_fn or (lambda: datetime.now(UTC))
 
     def _now_iso(self) -> str:
-        return self._now_fn().astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        return (
+            self._now_fn().astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        )
 
     def _resolve_user_path(self, path_text: str) -> Path:
         path = Path(path_text)
@@ -145,7 +147,9 @@ class CaptureWorkflow:
         status: str | None = None,
     ) -> list[dict[str, Any]]:
         manifest = self._load_manifest()
-        return capture_registry.list_entries(manifest, capture_type=capture_type, verify_status=status)
+        return capture_registry.list_entries(
+            manifest, capture_type=capture_type, verify_status=status
+        )
 
     def entry_show(self, *, label: str) -> dict[str, Any]:
         manifest = self._load_manifest()
@@ -154,7 +158,9 @@ class CaptureWorkflow:
     def entry_capture(self, *, label: str, output_file: str | None = None) -> dict[str, Any]:
         data = self._read_from_clipboard()
         output_path = (
-            self._resolve_user_path(output_file) if output_file else (self.paths.captures_dir / f"{label}.bin")
+            self._resolve_user_path(output_file)
+            if output_file
+            else (self.paths.captures_dir / f"{label}.bin")
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(data)
@@ -182,9 +188,7 @@ class CaptureWorkflow:
             raise ValueError("Shorthand payload mode requires a non-empty AF instruction")
 
         contacts = [
-            token
-            for token in canonical.conditions
-            if token and token not in {"-", "|", "T"}
+            token for token in canonical.conditions if token and token not in {"-", "|", "T"}
         ]
         if not contacts:
             raise ValueError("Shorthand payload mode requires at least one contact condition")
@@ -337,7 +341,9 @@ class CaptureWorkflow:
         input_fn: Callable[[str], str],
         output_fn: Callable[[str], None],
     ) -> list[str]:
-        raw = input_fn("Press Enter to keep expected rows, or type 'edit' to override rows: ").strip()
+        raw = input_fn(
+            "Press Enter to keep expected rows, or type 'edit' to override rows: "
+        ).strip()
         if raw.lower() != "edit":
             return expected_rows
 
@@ -401,7 +407,9 @@ class CaptureWorkflow:
 
         if action == "c":
             clipboard_bytes = self._read_from_clipboard()
-            pasted = self._prompt_yes_no("Did Click paste the rung?", input_fn=input_fn, output_fn=output_fn)
+            pasted = self._prompt_yes_no(
+                "Did Click paste the rung?", input_fn=input_fn, output_fn=output_fn
+            )
             expected_match = False
             if pasted:
                 expected_match = self._prompt_yes_no(
@@ -539,9 +547,7 @@ class CaptureWorkflow:
         manifest = self._load_manifest()
         entry = capture_registry.find_entry(manifest, label)
 
-        promotable = (
-            entry["capture_type"] == "native" or entry["verify_status"] == "verified_pass"
-        )
+        promotable = entry["capture_type"] == "native" or entry["verify_status"] == "verified_pass"
         if not promotable:
             raise ValueError(
                 "Promotion blocked: non-native entries require verify_status=verified_pass"
@@ -667,7 +673,9 @@ def run_tui(
                             output_fn(f"  {row}")
 
                     while True:
-                        action = input_fn("Action ([Enter]/c capture, s skip, q quit): ").strip().lower()
+                        action = (
+                            input_fn("Action ([Enter]/c capture, s skip, q quit): ").strip().lower()
+                        )
                         if action in {"", "c", "s", "q"}:
                             break
                         output_fn("Please enter Enter/c, s, or q.")
@@ -679,9 +687,13 @@ def run_tui(
                         queue_stopped = True
                         break
 
-                    ready = input_fn(
-                        "In Click: copy this rung now. Press Enter to capture (s skip, q quit): "
-                    ).strip().lower()
+                    ready = (
+                        input_fn(
+                            "In Click: copy this rung now. Press Enter to capture (s skip, q quit): "
+                        )
+                        .strip()
+                        .lower()
+                    )
                     if ready in {"s", "skip"}:
                         skipped += 1
                         continue
@@ -695,7 +707,11 @@ def run_tui(
 
                 if queue_stopped:
                     remaining = len(
-                        [row for row in engine.entry_list(capture_type="native") if not row.get("payload_file")]
+                        [
+                            row
+                            for row in engine.entry_list(capture_type="native")
+                            if not row.get("payload_file")
+                        ]
                     )
                     output_fn(
                         f"Queue stopped. captured={captured} skipped={skipped} remaining={remaining}"
@@ -725,7 +741,10 @@ def run_tui(
         if choice == "4":
             label = input_fn("Label: ").strip()
             fixture_file = input_fn("Fixture file (blank for <label>.bin): ").strip() or None
-            overwrite = input_fn("Overwrite existing fixture? [y/N] ").strip().lower() in {"y", "yes"}
+            overwrite = input_fn("Overwrite existing fixture? [y/N] ").strip().lower() in {
+                "y",
+                "yes",
+            }
             try:
                 result = engine.promote(label=label, fixture_file=fixture_file, overwrite=overwrite)
                 output_fn(f"Promoted to {result['fixture_file']}")

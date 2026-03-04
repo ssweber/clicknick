@@ -137,9 +137,7 @@ class RowAst:
 
     def __post_init__(self) -> None:
         if len(self.condition_nodes) != len(self.canonical.conditions):
-            raise ValueError(
-                "RowAst.condition_nodes length must match canonical.conditions length"
-            )
+            raise ValueError("RowAst.condition_nodes length must match canonical.conditions length")
 
 
 @dataclass(frozen=True)

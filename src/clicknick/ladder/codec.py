@@ -125,7 +125,9 @@ def _decode_func_code_at(data: bytes, offset: int) -> str | None:
     return None
 
 
-def _find_func_code(data: bytes, type_offset: int, deltas: list[int], known: set[str]) -> tuple[int, str]:
+def _find_func_code(
+    data: bytes, type_offset: int, deltas: list[int], known: set[str]
+) -> tuple[int, str]:
     seen: set[int] = set()
     for delta in deltas:
         if delta in seen:
@@ -135,6 +137,24 @@ def _find_func_code(data: bytes, type_offset: int, deltas: list[int], known: set
         if code in known:
             return delta, code
     raise ValueError(f"Could not locate known function code near type offset 0x{type_offset:04X}")
+
+
+def _canonicalize_operand_for_encoding(operand: str) -> str:
+    """Canonicalize operand representation to match Click native stream forms.
+
+    Click encodes X/Y addresses as 3-digit decimals (e.g. X1 -> X001).
+    Other banks are kept as-is.
+    """
+    idx = 0
+    while idx < len(operand) and operand[idx].isalpha():
+        idx += 1
+    if idx == 0 or idx == len(operand):
+        return operand
+    prefix = operand[:idx]
+    digits = operand[idx:]
+    if prefix in {"X", "Y"} and digits.isdigit():
+        return f"{prefix}{int(digits):03d}"
+    return operand
 
 
 def _build_contact_stream(contact: Contact) -> bytes:
@@ -227,7 +247,9 @@ def _decode_coil_at(data: bytes, coil_offset: int) -> Coil:
     )
     code_type, code_is_range, code_immediate = COIL_CODE_TO_FLAGS[coil_code]
     if code_type != coil_type:
-        raise ValueError(f"Coil type mismatch: type 0x27{coil_type.value:02X}, func code {coil_code}")
+        raise ValueError(
+            f"Coil type mismatch: type 0x27{coil_type.value:02X}, func code {coil_code}"
+        )
 
     range_end = None
     if code_is_range:
@@ -265,77 +287,6 @@ def _contact_stream_shift(contact: Contact) -> int:
     return len(_build_contact_stream(probe)) - _BASE_CONTACT_STREAM_LEN
 
 
-def _canonicalize_operand_for_encoding(operand: str) -> str:
-    """Canonicalize operand representation to match Click native stream forms.
-
-    Click encodes X/Y addresses as 3-digit decimals (e.g. X1 -> X001).
-    Other banks are kept as-is.
-    """
-    idx = 0
-    while idx < len(operand) and operand[idx].isalpha():
-        idx += 1
-    if idx == 0 or idx == len(operand):
-        return operand
-    prefix = operand[:idx]
-    digits = operand[idx:]
-    if prefix in {"X", "Y"} and digits.isdigit():
-        return f"{prefix}{int(digits):03d}"
-    return operand
-
-
-def _write_topology_for_simple_series(buf: bytearray, contacts: list[Contact]) -> None:
-    """Write row0 topology bytes for the simple series forms supported by RungGrid."""
-    contact_count = len(contacts)
-    if contact_count not in (1, 2):
-        return
-
-    # Do not mutate col1 topology bytes directly: for contact cells these offsets
-    # sit inside instruction stream bytes and can corrupt operands/func codes.
-    # We only force safe bytes outside instruction stream overlap.
-
-    # col0: horizontal wire
-    col0 = cell_offset(0, 0)
-    buf[col0 + CELL_HORIZONTAL_LEFT_OFFSET] = 0x01
-    buf[col0 + CELL_HORIZONTAL_RIGHT_OFFSET] = 0x01
-
-    if contact_count == 2:
-        first_contact, second_contact = contacts
-
-        # Two-series capture pattern:
-        # - col3 flags are emitted by stream bytes (do not overwrite)
-        # - cols4..31 vary by contact family
-        left_value = 0xFF
-        right_value = 0x00
-
-        if first_contact.type == InstructionType.CONTACT_EDGE or second_contact.type == InstructionType.CONTACT_EDGE:
-            left_value = 0x01
-            right_value = 0x01
-        elif first_contact.immediate and second_contact.immediate:
-            left_value = 0x00
-            right_value = 0xFF
-        elif first_contact.immediate or second_contact.immediate:
-            left_value = 0xFF
-            right_value = 0x01
-
-        control_a, control_b = _two_series_control_profile_bytes(first_contact, second_contact)
-        profile_05, profile_11 = _two_series_profile_05_11_bytes(first_contact, second_contact)
-        for col in range(4, COLS_PER_ROW):
-            start = cell_offset(0, col)
-            buf[start + CELL_HORIZONTAL_LEFT_OFFSET] = left_value
-            buf[start + CELL_HORIZONTAL_RIGHT_OFFSET] = right_value
-            buf[start + _CELL_PROFILE_05_OFFSET] = profile_05
-            buf[start + _CELL_PROFILE_11_OFFSET] = profile_11
-            buf[start + _CELL_CONTROL_A_OFFSET] = control_a
-            buf[start + _CELL_CONTROL_B_OFFSET] = control_b
-
-        # Native two-series captures carry the same control profile at row1/col0.
-        row1_col0 = cell_offset(1, 0)
-        buf[row1_col0 + _CELL_PROFILE_05_OFFSET] = profile_05
-        buf[row1_col0 + _CELL_PROFILE_11_OFFSET] = profile_11
-        buf[row1_col0 + _CELL_CONTROL_A_OFFSET] = control_a
-        buf[row1_col0 + _CELL_CONTROL_B_OFFSET] = control_b
-
-
 def _two_series_control_profile_bytes(first: Contact, second: Contact) -> tuple[int, int]:
     """Return the (0x1A, 0x1B) profile values for two-series wiring cells."""
     if first.type == InstructionType.CONTACT_EDGE or second.type == InstructionType.CONTACT_EDGE:
@@ -367,6 +318,62 @@ def _two_series_profile_05_11_bytes(first: Contact, second: Contact) -> tuple[in
 
     # Includes both-immediate and fully non-immediate series profiles.
     return (0x00, 0x00)
+
+
+def _write_topology_for_simple_series(buf: bytearray, contacts: list[Contact]) -> None:
+    """Write row0 topology bytes for the simple series forms supported by RungGrid."""
+    contact_count = len(contacts)
+    if contact_count not in (1, 2):
+        return
+
+    # Do not mutate col1 topology bytes directly: for contact cells these offsets
+    # sit inside instruction stream bytes and can corrupt operands/func codes.
+    # We only force safe bytes outside instruction stream overlap.
+
+    # col0: horizontal wire
+    col0 = cell_offset(0, 0)
+    buf[col0 + CELL_HORIZONTAL_LEFT_OFFSET] = 0x01
+    buf[col0 + CELL_HORIZONTAL_RIGHT_OFFSET] = 0x01
+
+    if contact_count == 2:
+        first_contact, second_contact = contacts
+
+        # Two-series capture pattern:
+        # - col3 flags are emitted by stream bytes (do not overwrite)
+        # - cols4..31 vary by contact family
+        left_value = 0xFF
+        right_value = 0x00
+
+        if (
+            first_contact.type == InstructionType.CONTACT_EDGE
+            or second_contact.type == InstructionType.CONTACT_EDGE
+        ):
+            left_value = 0x01
+            right_value = 0x01
+        elif first_contact.immediate and second_contact.immediate:
+            left_value = 0x00
+            right_value = 0xFF
+        elif first_contact.immediate or second_contact.immediate:
+            left_value = 0xFF
+            right_value = 0x01
+
+        control_a, control_b = _two_series_control_profile_bytes(first_contact, second_contact)
+        profile_05, profile_11 = _two_series_profile_05_11_bytes(first_contact, second_contact)
+        for col in range(4, COLS_PER_ROW):
+            start = cell_offset(0, col)
+            buf[start + CELL_HORIZONTAL_LEFT_OFFSET] = left_value
+            buf[start + CELL_HORIZONTAL_RIGHT_OFFSET] = right_value
+            buf[start + _CELL_PROFILE_05_OFFSET] = profile_05
+            buf[start + _CELL_PROFILE_11_OFFSET] = profile_11
+            buf[start + _CELL_CONTROL_A_OFFSET] = control_a
+            buf[start + _CELL_CONTROL_B_OFFSET] = control_b
+
+        # Native two-series captures carry the same control profile at row1/col0.
+        row1_col0 = cell_offset(1, 0)
+        buf[row1_col0 + _CELL_PROFILE_05_OFFSET] = profile_05
+        buf[row1_col0 + _CELL_PROFILE_11_OFFSET] = profile_11
+        buf[row1_col0 + _CELL_CONTROL_A_OFFSET] = control_a
+        buf[row1_col0 + _CELL_CONTROL_B_OFFSET] = control_b
 
 
 def _shift_region(buf: bytearray, *, start: int, delta: int) -> None:
@@ -415,9 +422,7 @@ def _patch_header_variant_bytes(
     )
 
     is_second_immediate_two_series = (
-        len(contacts) == 2
-        and not contacts[0].immediate
-        and contacts[1].immediate
+        len(contacts) == 2 and not contacts[0].immediate and contacts[1].immediate
     )
 
     if is_baseline_simple_out:
@@ -465,7 +470,7 @@ def _patch_two_series_structure(
     label = _encode_utf16(_contact_label_for_type(second_contact.type)) + b"\x00\x00"
     label_start = second_type_offset - len(label)
     if label_start >= 0:
-        buf[label_start : second_type_offset] = label
+        buf[label_start:second_type_offset] = label
 
     # Two-series row0 carries horizontal span with 0xFF conventions.
     cell2 = cell_offset(0, 2)
@@ -660,7 +665,11 @@ class ClickCodec:
                 last_contact_offset = type_offset
                 continue
 
-            if i_type in (InstructionType.COIL_OUT, InstructionType.COIL_LATCH, InstructionType.COIL_RESET):
+            if i_type in (
+                InstructionType.COIL_OUT,
+                InstructionType.COIL_LATCH,
+                InstructionType.COIL_RESET,
+            ):
                 coil = _decode_coil_at(data, type_offset)
                 break
 

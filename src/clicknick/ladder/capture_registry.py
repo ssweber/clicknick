@@ -105,9 +105,13 @@ def validate_entry(entry: dict[str, Any]) -> None:
         raise ValueError("entry.verify_notes must be a string")
 
     _validate_enum("entry.capture_type", entry.get("capture_type"), CAPTURE_TYPES)
-    _validate_enum("entry.payload_source_mode", entry.get("payload_source_mode"), PAYLOAD_SOURCE_MODES)
+    _validate_enum(
+        "entry.payload_source_mode", entry.get("payload_source_mode"), PAYLOAD_SOURCE_MODES
+    )
     _validate_enum("entry.verify_status", entry.get("verify_status"), VERIFY_STATUSES)
-    _validate_enum("entry.verify_clipboard_event", entry.get("verify_clipboard_event"), VERIFY_EVENTS)
+    _validate_enum(
+        "entry.verify_clipboard_event", entry.get("verify_clipboard_event"), VERIFY_EVENTS
+    )
 
     for key in ("rung_rows", "verify_expected_rows", "verify_observed_rows"):
         value = entry.get(key)
@@ -252,7 +256,10 @@ def update_entry(
 ) -> dict[str, Any]:
     entry = find_entry(manifest, label)
     for key, value in changes.items():
-        if key in {"rung_rows", "verify_expected_rows", "verify_observed_rows"} and value is not None:
+        if (
+            key in {"rung_rows", "verify_expected_rows", "verify_observed_rows"}
+            and value is not None
+        ):
             if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
                 raise ValueError(f"{key} must be list[str]")
             entry[key] = canonicalize_rows(value)

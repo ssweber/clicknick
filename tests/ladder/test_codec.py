@@ -29,9 +29,10 @@ class TestDeterministicEncoding:
         scaffold = _load_scaffold()
         for column in range(HEADER_ENTRY_COUNT):
             entry_start = HEADER_ENTRY_BASE + column * HEADER_ENTRY_SIZE
-            assert data[entry_start : entry_start + HEADER_ENTRY_SIZE] == scaffold[
-                entry_start : entry_start + HEADER_ENTRY_SIZE
-            ]
+            assert (
+                data[entry_start : entry_start + HEADER_ENTRY_SIZE]
+                == scaffold[entry_start : entry_start + HEADER_ENTRY_SIZE]
+            )
 
     def test_encode_header_variant_for_two_series(self):
         data = codec.encode(RungGrid.from_csv("X001,X002,->,:,out(Y001)"))
@@ -230,7 +231,9 @@ class TestEncodeDecodeRoundTrip:
             ("X001.immediate,X002.immediate,->,:,out(Y001)", 4),
         ],
     )
-    def test_two_series_injects_second_contact_label_and_row1_metadata(self, csv: str, meta_shift: int):
+    def test_two_series_injects_second_contact_label_and_row1_metadata(
+        self, csv: str, meta_shift: int
+    ):
         data = codec.encode(RungGrid.from_csv(csv))
         label = "ContactNO\0".encode("utf-16-le")
         contact_offsets = [

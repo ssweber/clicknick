@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 MARKER_COLUMN = "marker"
 OUTPUT_COLUMN = "AF"
 

@@ -87,9 +87,7 @@ def extract_header_entries(data: bytes) -> tuple[bytes, ...]:
 
 def normalize_header_entry(entry: bytes) -> bytes:
     if len(entry) != HEADER_ENTRY_SIZE:
-        raise ValueError(
-            f"Header entry must be {HEADER_ENTRY_SIZE} bytes; got {len(entry)}"
-        )
+        raise ValueError(f"Header entry must be {HEADER_ENTRY_SIZE} bytes; got {len(entry)}")
     out = bytearray(entry)
     for off in HEADER_VOLATILE_BYTE_OFFSETS:
         out[off] = 0
@@ -146,9 +144,7 @@ def read_cell(data: bytes, row: int, column: int) -> bytes:
     start = cell_offset(row, column)
     end = start + CELL_SIZE
     if end > len(data):
-        raise IndexError(
-            f"Cell row={row} col={column} is outside buffer (len={len(data)})"
-        )
+        raise IndexError(f"Cell row={row} col={column} is outside buffer (len={len(data)})")
     return data[start:end]
 
 

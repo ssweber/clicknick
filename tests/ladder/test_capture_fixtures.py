@@ -81,9 +81,7 @@ def test_manifest_rung_rows_parse_and_marker_contract() -> None:
 
 def test_manifest_regression_examples_for_column_placement() -> None:
     manifest = _load_manifest()
-    entries_by_label = {
-        entry["capture_label"]: entry for entry in manifest["entries"]
-    }
+    entries_by_label = {entry["capture_label"]: entry for entry in manifest["entries"]}
 
     assert entries_by_label["no_c_only"]["rung_rows"] == ["R,,,X001,...,:,..."]
     assert entries_by_label["vert_b_3rows"]["rung_rows"] == [

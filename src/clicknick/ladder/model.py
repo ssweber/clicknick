@@ -94,7 +94,9 @@ class Contact:
             return cls(InstructionType.CONTACT_EDGE, operand, immediate=False, edge_kind=edge_kind)
 
         if token.startswith("~"):
-            return cls(InstructionType.CONTACT_NC, _validate_operand(token[1:]), immediate=immediate)
+            return cls(
+                InstructionType.CONTACT_NC, _validate_operand(token[1:]), immediate=immediate
+            )
         return cls(InstructionType.CONTACT_NO, _validate_operand(token), immediate=immediate)
 
     @property

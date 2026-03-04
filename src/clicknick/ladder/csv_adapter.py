@@ -105,10 +105,7 @@ def to_runggrid_if_simple(rung: RungAst) -> RungGrid:
     ]
 
     trailing_nodes = row.condition_nodes[contact_positions[-1] + 1 :]
-    if any(
-        not isinstance(node, (BlankCondition, HorizontalWire))
-        for node in trailing_nodes
-    ):
+    if any(not isinstance(node, (BlankCondition, HorizontalWire)) for node in trailing_nodes):
         raise _unsupported("complex_tail", "Trailing condition cells must be blank or wire")
 
     return RungGrid(contact=contacts[0], series_contacts=contacts[1:], coil=coil)
