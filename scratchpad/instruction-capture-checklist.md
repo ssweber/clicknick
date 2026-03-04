@@ -8,23 +8,27 @@ using repeatable matrix IDs.
 ## Matrix Source
 
 - Matrix file: `scratchpad/instruction-matrix.json`
-- Tool: `scratchpad/pasteback_smoke.py`
+- Tool: `clicknick-ladder-capture` (CLI) or `clicknick-ladder-capture tui`
 
 ## One-Time Setup
 
-1. `uv run python scratchpad/pasteback_smoke.py matrix list`
-2. Confirm all IDs are visible and match this checklist.
+1. `uv run clicknick-ladder-capture manifest init`
+2. Confirm each matrix/native case has a scratchpad entry:
+   - `uv run clicknick-ladder-capture entry list`
 
 ## Per-Case Workflow
 
 For each ID in the phase tables below:
 
-1. `uv run python scratchpad/pasteback_smoke.py matrix prepare --id <id>`
+1. Prepare payload to clipboard:
+   - `uv run clicknick-ladder-capture verify prepare --label <id_or_label> --source shorthand`
 2. In Click: paste rung, then copy that same rung back.
-3. `uv run python scratchpad/pasteback_smoke.py matrix verify --id <id>`
+3. Complete verification (interactive, crash-aware):
+   - `uv run clicknick-ladder-capture verify run --label <id_or_label>`
 4. Build the same rung natively in Click and capture it:
-   - `uv run devtools/capture.py <native_label>`
-5. `uv run python scratchpad/pasteback_smoke.py matrix compare --id <id>`
+   - `uv run clicknick-ladder-capture entry capture --label <native_label>`
+5. Promote eligible entries to hermetic fixtures:
+   - `uv run clicknick-ladder-capture promote --label <native_label> --overwrite`
 
 ## Phase 1 — Baseline Smoke
 
@@ -73,8 +77,8 @@ These complete contact-family coverage.
 
 ## Progress Snapshot
 
-- Quick status of prepared/verified/compared artifacts:
-  - `uv run python scratchpad/pasteback_smoke.py matrix status`
+- Quick status of manifest entries:
+  - `uv run clicknick-ladder-capture entry list`
 
 ## Promotion Gate (to Hermetic Fixtures)
 

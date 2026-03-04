@@ -5,8 +5,11 @@
 1. Build the rung in Click exactly as described
 2. Select the rung (Ctrl+A)
 3. Copy (Ctrl+C)
-4. Run: `uv run devtools/capture.py <label>`
-5. Move to next capture
+4. Ensure the label exists in scratchpad manifest:
+   - `uv run clicknick-ladder-capture entry show --label <label>`
+5. Save clipboard payload to the entry:
+   - `uv run clicknick-ladder-capture entry capture --label <label>`
+6. Move to next capture
 
 ## Shorthand Reference
 

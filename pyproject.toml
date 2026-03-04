@@ -58,6 +58,7 @@ dev = [
 [project.scripts]
 # Add script entry points here:
 clicknick-dev = "clicknick:main_dev"
+clicknick-ladder-capture = "clicknick.ladder.capture_cli:main"
 
 [project.gui-scripts] 
 clicknick = "clicknick:main"

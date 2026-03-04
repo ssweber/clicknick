@@ -21,7 +21,7 @@ Do this via a deterministic regen script, and update ladder token parsing to sup
 - `+` is no longer treated as a vertical token and falls back to generic/unsupported.
 
 ## Implementation Plan
-1. Add `devtools/update_ladder_capture_manifest.py` as the single source of truth for manifest enrichment.
+1. Add a single source of truth command for manifest enrichment.
 - Inputs:
 - `tests/fixtures/ladder_captures/manifest.json` (existing entry order and base fields retained)
 - `scratchpad/capture-checklist.md`
@@ -111,7 +111,7 @@ Do this via a deterministic regen script, and update ladder token parsing to sup
 - `+` falls back to generic token class (rejected for structured vertical semantics).
 
 9. Validation commands to run.
-- `uv run python devtools/update_ladder_capture_manifest.py`
+- `uv run clicknick-ladder-capture promote --label <label> --overwrite`
 - `uv run pytest tests/ladder/test_capture_fixtures.py tests/ladder/test_csv_token_parser.py tests/ladder/test_csv_parser.py tests/ladder/test_csv_shorthand.py`
 
 ## Test Cases and Scenarios

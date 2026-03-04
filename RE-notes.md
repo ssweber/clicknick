@@ -108,3 +108,41 @@ After deterministic encoder wrote these values for that family:
   - decode equals intended CSV
   - change covered by deterministic rule + automated tests
 
+## Current capture workflow (post-unification)
+Use the unified workflow engine so human and automation paths stay behaviorally identical.
+
+### Canonical manifests
+- Working state: `scratchpad/ladder_capture_manifest.json` (schema v2)
+- Hermetic fixture authority: `tests/fixtures/ladder_captures/manifest.json` (schema v2)
+
+### Primary commands
+1. Initialize working manifest:
+   - `uv run clicknick-ladder-capture manifest init`
+2. Add/update entries:
+   - `uv run clicknick-ladder-capture entry add --type native --label <label> --scenario <scenario> --description <desc> --row "R,X001,->,:,out(Y001)"`
+3. Capture native clipboard bytes to entry:
+   - `uv run clicknick-ladder-capture entry capture --label <label>`
+4. Verification (default human path):
+   - `uv run clicknick-ladder-capture verify run --label <label>`
+5. Automation/non-interactive verify update:
+   - `uv run clicknick-ladder-capture verify complete --label <label> --status blocked --clipboard-event crash --note "Click crash after paste"`
+6. Promotion to hermetic fixtures:
+   - `uv run clicknick-ladder-capture promote --label <label> --overwrite`
+
+### Verify event model
+- `copied`: clipboard read + back-bin capture
+- `crash`: no forced clipboard read, default status `blocked`
+- `cancelled`: records cancellation event; status defaults to unchanged
+
+### Promotion gate policy
+- `native` entries are promotable.
+- non-native entries require `verify_status=verified_pass`.
+- payload source for promotion:
+  1. `verify_result_file` if present
+  2. otherwise `payload_file`
+
+### Retired tools (do not use)
+- `devtools/capture.py`
+- `devtools/clipboard_load.py`
+- `devtools/update_ladder_capture_manifest.py`
+- `scratchpad/pasteback_smoke.py`
