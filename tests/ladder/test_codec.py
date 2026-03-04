@@ -79,6 +79,31 @@ class TestDeterministicEncoding:
             assert data[entry_start + 0x17] == 0x15
             assert data[entry_start + 0x18] == 0x01
 
+    @pytest.mark.parametrize(
+        ("csv", "expected_17_18"),
+        [
+            ("X001,X002,->,:,out(Y001)", (0x15, 0x01)),
+            ("X001.immediate,X002,->,:,out(Y001)", (0x15, 0x01)),
+            ("X001.immediate,X002.immediate,->,:,out(Y001)", (0x15, 0x01)),
+            ("X001,->,:,out(C1..C2)", (0x15, 0x01)),
+        ],
+    )
+    def test_header_gate_bytes_are_scaffold_for_non_second_immediate_two_series(
+        self,
+        csv: str,
+        expected_17_18: tuple[int, int],
+    ):
+        data = codec.encode(RungGrid.from_csv(csv))
+        scaffold = _load_scaffold()
+        expected_17, expected_18 = expected_17_18
+        for column in range(HEADER_ENTRY_COUNT):
+            entry_start = HEADER_ENTRY_BASE + column * HEADER_ENTRY_SIZE
+            assert data[entry_start + 0x17] == expected_17
+            assert data[entry_start + 0x18] == expected_18
+            assert data[entry_start + 0x05] == scaffold[entry_start + 0x05]
+            assert data[entry_start + 0x11] == scaffold[entry_start + 0x11]
+        assert data[0x0A59] == scaffold[0x0A59]
+
 
 class TestEncodeDecodeRoundTrip:
     def test_no_contact_out(self):
