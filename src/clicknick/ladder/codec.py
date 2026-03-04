@@ -73,6 +73,8 @@ _FUNC_PRE_NORMAL: Final[bytes] = bytes.fromhex("300000001832FFFFFFFF")
 _FUNC_PRE_IMMEDIATE: Final[bytes] = bytes.fromhex("2D00310000001832FFFFFFFF")
 _FUNC_POST: Final[bytes] = bytes.fromhex("00000000FFFFFFFF")
 _BASE_CONTACT_STREAM_LEN: Final[int] = 58  # X001 non-immediate in scaffold baseline
+_CONTACT_TAIL_SHIFT_BASE: Final[int] = 0x45
+_INTER_CONTACT_GAP: Final[int] = 0x4B
 _CELL_CONTROL_A_OFFSET: Final[int] = 0x1A
 _CELL_CONTROL_B_OFFSET: Final[int] = 0x1B
 _CELL_PROFILE_05_OFFSET: Final[int] = 0x05
@@ -334,7 +336,7 @@ def _two_series_profile_05_11_bytes(
 def _write_topology_for_simple_series(buf: bytearray, contacts: list[Contact]) -> None:
     """Write row0 topology bytes for the simple series forms supported by RungGrid."""
     contact_count = len(contacts)
-    if contact_count not in (1, 2):
+    if contact_count < 1:
         return
 
     # Do not mutate col1 topology bytes directly: for contact cells these offsets
@@ -392,6 +394,45 @@ def _write_topology_for_simple_series(buf: bytearray, contacts: list[Contact]) -
         buf[row1_col0 + _CELL_PROFILE_11_OFFSET] = profile_11
         buf[row1_col0 + _CELL_CONTROL_A_OFFSET] = control_a
         buf[row1_col0 + _CELL_CONTROL_B_OFFSET] = control_b
+
+
+def _patch_long_series_tail_profile(
+    buf: bytearray,
+    *,
+    contact_count: int,
+    contact_shifts: list[int],
+) -> None:
+    """Patch deterministic stable-tail profile bytes for contiguous 5/8-series forms.
+
+    Current reverse-engineering evidence supports these regions only for the
+    standard stream footprint (no per-contact stream-length shift).
+    """
+    if contact_count == 5:
+        row0_cols = range(14, COLS_PER_ROW)
+        row1_cols = range(0, 5)
+        first_off, second_off = 0x12, 0x1E
+    elif contact_count == 8:
+        row0_cols = range(25, COLS_PER_ROW)
+        row1_cols = range(0, 7)
+        first_off, second_off = 0x21, 0x2D
+    else:
+        return
+
+    if any(shift != 0 for shift in contact_shifts):
+        return
+
+    tail_first = buf[HEADER_ENTRY_BASE + 0x05]
+    tail_second = (buf[HEADER_ENTRY_BASE + 0x11] + 1) & 0xFF
+
+    for col in row0_cols:
+        start = cell_offset(0, col)
+        buf[start + first_off] = tail_first
+        buf[start + second_off] = tail_second
+
+    for col in row1_cols:
+        start = cell_offset(1, col)
+        buf[start + first_off] = tail_first
+        buf[start + second_off] = tail_second
 
 
 def _shift_region(buf: bytearray, *, start: int, delta: int) -> None:
@@ -588,8 +629,8 @@ class ClickCodec:
         """RungGrid -> 8192-byte clipboard buffer."""
         off = self.Offsets
         contacts = grid.contacts
-        if len(contacts) not in (1, 2):
-            raise ValueError("Only 1 or 2 series contacts are currently supported")
+        if not (1 <= len(contacts) <= 8):
+            raise ValueError("Only 1..8 contiguous series contacts are currently supported")
 
         buf = _new_buffer(row_count=1)
         _patch_header_variant_bytes(
@@ -607,6 +648,7 @@ class ClickCodec:
         first_shift = _contact_stream_shift(first_contact)
         edge_shift = -0x0A if first_contact.type == InstructionType.CONTACT_EDGE else 0
         first_type_offset = off.CONTACT_TYPE_ID + edge_shift
+        contact_shifts = [first_shift]
         # Single-contact immediate uses a +2 stream expansion that shifts a large
         # downstream region in native captures.
         if len(contacts) == 1 and first_shift > 0:
@@ -617,31 +659,48 @@ class ClickCodec:
         if len(contacts) == 1:
             coil_start = off.COIL_TYPE_ID_BASE + first_shift + edge_shift
         else:
-            second_contact = contacts[1]
-            second_shift = _contact_stream_shift(second_contact)
-            second_start = off.CONTACT2_TYPE_ID + first_shift + edge_shift
-            coil_start = off.COIL_TYPE_ID_BASE_TWO_SERIES + first_shift + second_shift + edge_shift
             base_coil_after_first = off.COIL_TYPE_ID_BASE + first_shift + edge_shift
+            next_contact_start = off.CONTACT2_TYPE_ID + first_shift + edge_shift
+            cumulative_coil_shift = 0
 
-            # Two-series captures shift the remainder of the stream/tail by the
-            # gap between single-contact and two-series coil anchors.
-            _shift_region(buf, start=second_start, delta=coil_start - base_coil_after_first)
+            for idx in range(1, len(contacts)):
+                contact = contacts[idx]
+                contact_shift = _contact_stream_shift(contact)
+                contact_shifts.append(contact_shift)
 
-            second_stream = _build_contact_stream(second_contact)
-            buf[second_start : second_start + len(second_stream)] = second_stream
-            _patch_two_series_structure(
-                buf,
-                first_shift=first_shift,
-                second_shift=second_shift,
-                second_contact=second_contact,
-                second_type_offset=second_start,
-            )
+                tail_shift = _CONTACT_TAIL_SHIFT_BASE + contact_shift
+                _shift_region(buf, start=next_contact_start, delta=tail_shift)
+                cumulative_coil_shift += tail_shift
+
+                stream = _build_contact_stream(contact)
+                buf[next_contact_start : next_contact_start + len(stream)] = stream
+
+                if idx == 1 and len(contacts) == 2:
+                    _patch_two_series_structure(
+                        buf,
+                        first_shift=first_shift,
+                        second_shift=contact_shift,
+                        second_contact=contact,
+                        second_type_offset=next_contact_start,
+                    )
+
+                if idx < len(contacts) - 1:
+                    next_contact_start += len(stream) + _INTER_CONTACT_GAP
+
+            coil_start = base_coil_after_first + cumulative_coil_shift
 
         coil_stream = _build_coil_stream(grid.coil)
+        if coil_start + len(coil_stream) > len(buf):
+            raise ValueError("Encoded coil stream exceeds fixed 8192-byte buffer")
         buf[coil_start : coil_start + len(coil_stream)] = coil_stream
 
         # Rewrite canonical row0 topology after byte shifts.
         _write_topology_for_simple_series(buf, contacts)
+        _patch_long_series_tail_profile(
+            buf,
+            contact_count=len(contacts),
+            contact_shifts=contact_shifts,
+        )
 
         if grid.nickname:
             self._patch_nickname(buf, grid.nickname)

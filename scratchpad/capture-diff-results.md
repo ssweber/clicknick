@@ -459,3 +459,49 @@ Suggested next investigator steps:
 2. Build per-column (not only `row0,col4`) modeling for 5/8-series to separate stream-overlap bytes from stable profile region bytes.
 3. Decide whether to extend encoder beyond 2-series now or defer until compare-family captures are added.
 
+## Per-Column Modeling Pass (2026-03-04, continuation)
+
+Scope:
+
+- Existing native captures in `series_length_and_gap_generalization`.
+- To avoid stream-anchor confounds, analysis was split by fixed contact count:
+  - 5-contact set: `five_series_no_no_no_no_no_native`, `five_series_gap_alternating_native`, `five_series_gap_front_loaded_native`
+  - 8-contact set: `eight_series_no_x8_native`, `eight_series_gap_alternating_native`, `eight_series_gap_staggered_native`, `eight_series_gap_split_blocks_native`
+
+### Findings
+
+1. Stream-overlap windows are count-dependent.
+   - 5-series: high-entropy row0 window is `col4..col13` (last contact marker reaches row0 col13).
+   - 8-series: high-entropy row0 window is `col4..col24` (last contact marker reaches row0 col23).
+
+2. Stable tail regions isolate deterministic family bytes.
+   - 5-series stable tail:
+     - row0 `col14..col31`
+     - row1 `col0..col4`
+     - only varying offsets per cell: `+0x12` and `+0x1E`
+     - per-capture constants:
+       - contiguous: `12/25`
+       - alternating gaps: `14/29`
+       - front-loaded gaps: `15/2B`
+   - 8-series stable tail:
+     - row0 `col25..col31`
+     - row1 `col0..col6`
+     - only varying offsets per cell: `+0x21` and `+0x2D`
+     - per-capture constants:
+       - contiguous: `13/27`
+       - alternating gaps: `16/2D`
+       - staggered gaps: `17/2F`
+       - split blocks: `18/31`
+
+3. Tail bytes follow one shifted header-seed rule.
+   - `tail_first = header_entry0(+0x05)`
+   - `tail_second = header_entry0(+0x11) + 1`
+   - Observed offset shifts:
+     - 5-series: logical `(+0x05,+0x11)` appears at `(+0x12,+0x1E)` (shift `+0x0D`)
+     - 8-series: logical `(+0x05,+0x11)` appears at `(+0x21,+0x2D)` (shift `+0x1C`)
+
+### Implication
+
+- For long-series modeling, treat early row0 columns as stream-overlap (non-stationary) and derive deterministic profile bytes from the stable tail region.
+- `row0,col4` alone is not sufficient once series length/gap layout increases.
+

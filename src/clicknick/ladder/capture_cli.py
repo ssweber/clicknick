@@ -14,6 +14,27 @@ def _add_json_flag(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")
 
 
+def _parse_index_spec(spec: str, *, minimum: int, maximum: int) -> list[int]:
+    selected: set[int] = set()
+    for raw_part in spec.split(","):
+        part = raw_part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            left_raw, right_raw = part.split("-", 1)
+            left = int(left_raw, 0)
+            right = int(right_raw, 0)
+            lo, hi = sorted((left, right))
+            for idx in range(lo, hi + 1):
+                if minimum <= idx <= maximum:
+                    selected.add(idx)
+            continue
+        idx = int(part, 0)
+        if minimum <= idx <= maximum:
+            selected.add(idx)
+    return sorted(selected)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="clicknick-ladder-capture",
@@ -107,6 +128,32 @@ def build_parser() -> argparse.ArgumentParser:
     format_group.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")
     format_group.add_argument("--csv", action="store_true", help="Emit CSV output")
 
+    p_report_profile_columns = report_sub.add_parser(
+        "profile-columns",
+        help="Extract selected per-cell profile bytes across rows/columns",
+    )
+    target_group = p_report_profile_columns.add_mutually_exclusive_group(required=True)
+    target_group.add_argument("--label", help="Capture label to inspect")
+    target_group.add_argument("--all", action="store_true", help="Inspect all entries with payloads")
+    p_report_profile_columns.add_argument(
+        "--rows",
+        default="0,1",
+        help="Row indices/ranges (default: 0,1). Example: 0-1",
+    )
+    p_report_profile_columns.add_argument(
+        "--cols",
+        default="0-31",
+        help="Column indices/ranges (default: 0-31). Example: 4-31",
+    )
+    p_report_profile_columns.add_argument(
+        "--offsets",
+        default="0x05,0x11,0x1A,0x1B",
+        help="Cell byte offsets (0x00-0x3F). Example: 0x05,0x11,0x1A,0x1B",
+    )
+    format_group = p_report_profile_columns.add_mutually_exclusive_group()
+    format_group.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")
+    format_group.add_argument("--csv", action="store_true", help="Emit CSV output")
+
     p_promote = sub.add_parser(
         "promote", help="Promote entry payload to fixture + fixture manifest v2"
     )
@@ -160,6 +207,22 @@ def _print_human(action: str, data: Any, output_fn: Callable[[str], None]) -> No
                 f"{row['capture_label']}: cell_05={row['cell_05']} cell_11={row['cell_11']} "
                 f"header_17={row['header_17']} header_18={row['header_18']} "
                 f"trailer_0a59={row['trailer_0a59']}"
+            )
+        return
+    if action == "report.profile-columns":
+        if isinstance(data, str):
+            output_fn(data.rstrip("\n"))
+            return
+        rows = data
+        if not rows:
+            output_fn("No rows.")
+            return
+        sample = rows[0]
+        cell_fields = sorted(key for key in sample.keys() if key.startswith("cell_"))
+        for row in rows:
+            rendered = " ".join(f"{key}={row[key]}" for key in cell_fields)
+            output_fn(
+                f"{row['capture_label']} r{row['row']} c{row['column']}: {rendered}"
             )
         return
     output_fn(json.dumps(data, indent=2))
@@ -233,6 +296,26 @@ def _dispatch(
         if args.csv:
             return workflow.report_profile_csv(rows)
         return rows
+    if args.command == "report" and args.report_cmd == "profile-columns":
+        rows = _parse_index_spec(args.rows, minimum=0, maximum=31)
+        cols = _parse_index_spec(args.cols, minimum=0, maximum=31)
+        offsets = _parse_index_spec(args.offsets, minimum=0, maximum=0x3F)
+        if not rows:
+            raise ValueError("No valid rows selected")
+        if not cols:
+            raise ValueError("No valid columns selected")
+        if not offsets:
+            raise ValueError("No valid offsets selected")
+        table = workflow.report_profile_columns(
+            label=args.label,
+            all_entries=args.all,
+            rows=rows,
+            cols=cols,
+            offsets=offsets,
+        )
+        if args.csv:
+            return workflow.report_profile_columns_csv(table, offsets=offsets)
+        return table
 
     if args.command == "promote":
         return workflow.promote(

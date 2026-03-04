@@ -304,3 +304,126 @@ def test_report_profile_all_csv(tmp_path: Path) -> None:
     assert lines[0].startswith("capture_label,capture_type,scenario,payload_file,record_len")
     assert any(line.startswith("native_case,") for line in lines[1:])
     assert any(line.startswith("verify_case,") for line in lines[1:])
+
+
+def test_report_profile_columns_single_label_json(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"")
+    workflow = _make_workflow(tmp_path, fake)
+    payload = bytearray(
+        _profile_payload(
+            cell_05=0x04,
+            cell_11=0x0C,
+            cell_1a=0xFF,
+            cell_1b=0xFF,
+            header_05=0x0D,
+            header_11=0x0B,
+            header_17=0x15,
+            header_18=0x01,
+            trailer_0a59=0x04,
+        )
+    )
+    row0_col0 = cell_offset(0, 0)
+    payload[row0_col0 + 0x05] = 0xAA
+    payload[row0_col0 + 0x11] = 0xBB
+    fake.read_payload = bytes(payload)
+    workflow.entry_capture(label="verify_case")
+    output: list[str] = []
+
+    rc = main(
+        [
+            "report",
+            "profile-columns",
+            "--label",
+            "verify_case",
+            "--rows",
+            "0",
+            "--cols",
+            "0,4",
+            "--offsets",
+            "0x05,0x11",
+            "--json",
+        ],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    payload_json = json.loads(output[-1])
+    assert payload_json["ok"] is True
+    assert payload_json["action"] == "report.profile-columns"
+    rows = payload_json["data"]
+    assert len(rows) == 2
+    assert rows[0]["row"] == 0
+    assert rows[0]["column"] == 0
+    assert rows[0]["cell_05"] == "0xAA"
+    assert rows[0]["cell_11"] == "0xBB"
+    assert rows[1]["row"] == 0
+    assert rows[1]["column"] == 4
+    assert rows[1]["cell_05"] == "0x04"
+    assert rows[1]["cell_11"] == "0x0C"
+
+
+def test_report_profile_columns_all_csv(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"")
+    workflow = _make_workflow(tmp_path, fake)
+    workflow.entry_add(
+        capture_type="native",
+        label="native_case",
+        scenario="report",
+        description="extra payload for profile-columns report",
+        rows=["R,X001,->,:,out(Y001)"],
+    )
+
+    fake.read_payload = _profile_payload(
+        cell_05=0x04,
+        cell_11=0x0C,
+        cell_1a=0xFF,
+        cell_1b=0xFF,
+        header_05=0x0D,
+        header_11=0x0B,
+        header_17=0x15,
+        header_18=0x01,
+        trailer_0a59=0x04,
+    )
+    workflow.entry_capture(label="verify_case")
+
+    fake.read_payload = _profile_payload(
+        cell_05=0x09,
+        cell_11=0x10,
+        cell_1a=0x00,
+        cell_1b=0x01,
+        header_05=0x11,
+        header_11=0x22,
+        header_17=0x4E,
+        header_18=0x01,
+        trailer_0a59=0x11,
+    )
+    workflow.entry_capture(label="native_case")
+
+    output: list[str] = []
+    rc = main(
+        [
+            "report",
+            "profile-columns",
+            "--all",
+            "--rows",
+            "0",
+            "--cols",
+            "4",
+            "--offsets",
+            "0x05,0x11",
+            "--csv",
+        ],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    csv_text = output[-1]
+    lines = csv_text.splitlines()
+    assert (
+        lines[0]
+        == "capture_label,capture_type,scenario,payload_file,record_len,row,column,cell_05,cell_11"
+    )
+    assert any(line.startswith("native_case,") and ",0,4,0x09,0x10" in line for line in lines[1:])
+    assert any(line.startswith("verify_case,") and ",0,4,0x04,0x0C" in line for line in lines[1:])

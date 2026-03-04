@@ -26,6 +26,9 @@ PROFILE_REPORT_BUFFER_SIZE = 8192
 PROFILE_REPORT_TRAILER_OFFSET = 0x0A59
 PROFILE_REPORT_CELL_ROW = 0
 PROFILE_REPORT_CELL_COLUMN = 4
+PROFILE_COLUMNS_DEFAULT_ROWS = (0, 1)
+PROFILE_COLUMNS_DEFAULT_COLS = tuple(range(32))
+PROFILE_COLUMNS_DEFAULT_OFFSETS = (0x05, 0x11, 0x1A, 0x1B)
 PROFILE_REPORT_HEADER_FIELDS = (
     "capture_label",
     "capture_type",
@@ -41,6 +44,15 @@ PROFILE_REPORT_HEADER_FIELDS = (
     "header_17",
     "header_18",
     "trailer_0a59",
+)
+PROFILE_COLUMNS_REPORT_BASE_FIELDS = (
+    "capture_label",
+    "capture_type",
+    "scenario",
+    "payload_file",
+    "record_len",
+    "row",
+    "column",
 )
 
 VerifyStatus = str
@@ -392,6 +404,111 @@ class CaptureWorkflow:
         writer.writeheader()
         for row in rows:
             writer.writerow({key: row.get(key, "") for key in PROFILE_REPORT_HEADER_FIELDS})
+        return buf.getvalue()
+
+    def _report_profile_columns_for_entry(
+        self,
+        entry: dict[str, Any],
+        *,
+        rows: list[int],
+        cols: list[int],
+        offsets: list[int],
+    ) -> list[dict[str, Any]]:
+        payload_text = entry.get("payload_file")
+        if not payload_text:
+            raise ValueError(f"Entry has no payload_file: {entry['capture_label']}")
+
+        payload_path = self._resolve_user_path(payload_text)
+        if not payload_path.exists():
+            raise FileNotFoundError(f"Payload file not found: {payload_path}")
+
+        raw = payload_path.read_bytes()
+        data = raw[:PROFILE_REPORT_BUFFER_SIZE]
+
+        max_required_offset = max(
+            cell_offset(row, col) + rel
+            for row in rows
+            for col in cols
+            for rel in offsets
+        )
+        if len(data) <= max_required_offset:
+            raise ValueError(
+                f"Payload too short for profile-columns report ({entry['capture_label']}): "
+                f"{len(raw)} bytes"
+            )
+
+        def hx(value: int) -> str:
+            return f"0x{value:02X}"
+
+        results: list[dict[str, Any]] = []
+        for row in rows:
+            for col in cols:
+                base = cell_offset(row, col)
+                out: dict[str, Any] = {
+                    "capture_label": entry["capture_label"],
+                    "capture_type": entry["capture_type"],
+                    "scenario": entry["scenario"],
+                    "payload_file": payload_text,
+                    "record_len": len(raw),
+                    "row": row,
+                    "column": col,
+                }
+                for rel in offsets:
+                    out[f"cell_{rel:02x}"] = hx(data[base + rel])
+                results.append(out)
+        return results
+
+    def report_profile_columns(
+        self,
+        *,
+        label: str | None = None,
+        all_entries: bool = False,
+        rows: list[int] | None = None,
+        cols: list[int] | None = None,
+        offsets: list[int] | None = None,
+    ) -> list[dict[str, Any]]:
+        if all_entries == (label is not None):
+            raise ValueError("Specify exactly one of: --label or --all")
+
+        rows = rows or list(PROFILE_COLUMNS_DEFAULT_ROWS)
+        cols = cols or list(PROFILE_COLUMNS_DEFAULT_COLS)
+        offsets = offsets or list(PROFILE_COLUMNS_DEFAULT_OFFSETS)
+
+        manifest = self._load_manifest()
+        if all_entries:
+            entries = [entry for entry in manifest["entries"] if entry.get("payload_file")]
+            if not entries:
+                raise ValueError("No manifest entries with payload_file were found")
+        else:
+            if label is None:
+                raise ValueError("--label is required when --all is not set")
+            entries = [capture_registry.find_entry(manifest, label)]
+
+        out: list[dict[str, Any]] = []
+        for entry in entries:
+            out.extend(
+                self._report_profile_columns_for_entry(
+                    entry,
+                    rows=rows,
+                    cols=cols,
+                    offsets=offsets,
+                )
+            )
+        out.sort(key=lambda row: (row["capture_label"], row["row"], row["column"]))
+        return out
+
+    def report_profile_columns_csv(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        offsets: list[int],
+    ) -> str:
+        fieldnames = [*PROFILE_COLUMNS_REPORT_BASE_FIELDS, *[f"cell_{rel:02x}" for rel in offsets]]
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: row.get(key, "") for key in fieldnames})
         return buf.getvalue()
 
     def _prompt_yes_no(
