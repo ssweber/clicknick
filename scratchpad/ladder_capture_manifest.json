@@ -13,7 +13,7 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
+      "payload_file": "scratchpad/captures/two_series_nc_no_native.bin",
       "verify_clipboard_event": null,
       "verify_status": "unverified",
       "verify_notes": "",
@@ -25,7 +25,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T15:37:04Z",
-      "updated_at": "2026-03-04T15:37:04Z"
+      "updated_at": "2026-03-04T15:50:27Z"
     },
     {
       "id": "9d9ae375-8606-49ad-8526-087d242e0c5b",
@@ -38,7 +38,7 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
+      "payload_file": "scratchpad/captures/no_first_nc_second_native.bin",
       "verify_clipboard_event": null,
       "verify_status": "unverified",
       "verify_notes": "",
@@ -50,7 +50,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T15:37:04Z",
-      "updated_at": "2026-03-04T15:37:04Z"
+      "updated_at": "2026-03-04T15:50:46Z"
     },
     {
       "id": "1e47d0f9-d977-4962-ba50-95f134df6800",
@@ -63,7 +63,7 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
+      "payload_file": "scratchpad/captures/two_series_nc_nc_native.bin",
       "verify_clipboard_event": null,
       "verify_status": "unverified",
       "verify_notes": "",
@@ -75,7 +75,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T15:37:04Z",
-      "updated_at": "2026-03-04T15:37:04Z"
+      "updated_at": "2026-03-04T15:51:02Z"
     },
     {
       "id": "127b0325-0e9c-4433-b922-324fb7a46e19",
@@ -88,7 +88,7 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
+      "payload_file": "scratchpad/captures/nc_first_imm_no_second_native.bin",
       "verify_clipboard_event": null,
       "verify_status": "unverified",
       "verify_notes": "",
@@ -100,7 +100,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T15:37:05Z",
-      "updated_at": "2026-03-04T15:37:05Z"
+      "updated_at": "2026-03-04T15:51:27Z"
     },
     {
       "id": "4284ea7a-196c-489b-bc0b-0ad7f632fe7b",
@@ -113,7 +113,7 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
+      "payload_file": "scratchpad/captures/no_first_nc_second_imm_native.bin",
       "verify_clipboard_event": null,
       "verify_status": "unverified",
       "verify_notes": "",
@@ -125,7 +125,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T15:37:05Z",
-      "updated_at": "2026-03-04T15:37:05Z"
+      "updated_at": "2026-03-04T15:51:45Z"
     },
     {
       "id": "9777e252-971e-490d-b003-5b350adbd3db",
@@ -138,7 +138,7 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
+      "payload_file": "scratchpad/captures/nc_first_imm_nc_second_imm_native.bin",
       "verify_clipboard_event": null,
       "verify_status": "unverified",
       "verify_notes": "",
@@ -150,7 +150,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T15:37:05Z",
-      "updated_at": "2026-03-04T15:37:05Z"
+      "updated_at": "2026-03-04T15:52:13Z"
     },
     {
       "id": "aa3a4f87-4ab3-4744-8f3c-18a7765fd6f1",
@@ -163,7 +163,7 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
+      "payload_file": "scratchpad/captures/c_first_no_second_native.bin",
       "verify_clipboard_event": null,
       "verify_status": "unverified",
       "verify_notes": "",
@@ -175,7 +175,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T15:37:06Z",
-      "updated_at": "2026-03-04T15:37:06Z"
+      "updated_at": "2026-03-04T15:52:33Z"
     },
     {
       "id": "3ee15d87-9a91-4ffc-bbea-6c3af21f6505",
@@ -188,7 +188,7 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
+      "payload_file": "scratchpad/captures/no_first_c_second_native.bin",
       "verify_clipboard_event": null,
       "verify_status": "unverified",
       "verify_notes": "",
@@ -200,57 +200,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T15:37:06Z",
-      "updated_at": "2026-03-04T15:37:06Z"
-    },
-    {
-      "id": "6b6ca428-d446-42a9-8a7d-5170eb2297d9",
-      "capture_label": "c_first_imm_no_second_native",
-      "capture_type": "native",
-      "scenario": "c_series_immediate_mix",
-      "description": "c_first_imm_no_second",
-      "rung_rows": [
-        "R,C1.immediate,X002,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
-      ],
-      "payload_source_mode": "shorthand",
-      "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
-      "verify_notes": "",
-      "verify_expected_rows": [
-        "R,C1.immediate,X002,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
-      ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
-      "promoted_fixture_file": null,
-      "created_at": "2026-03-04T15:37:06Z",
-      "updated_at": "2026-03-04T15:37:06Z"
-    },
-    {
-      "id": "bd289bc7-f255-4369-bf6a-6172f3de6f3a",
-      "capture_label": "no_first_c_second_imm_native",
-      "capture_type": "native",
-      "scenario": "c_series_immediate_mix",
-      "description": "no_first_c_second_imm",
-      "rung_rows": [
-        "R,X001,C2.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
-      ],
-      "payload_source_mode": "shorthand",
-      "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
-      "verify_notes": "",
-      "verify_expected_rows": [
-        "R,X001,C2.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
-      ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
-      "promoted_fixture_file": null,
-      "created_at": "2026-03-04T15:37:07Z",
-      "updated_at": "2026-03-04T15:37:07Z"
+      "updated_at": "2026-03-04T15:54:02Z"
     },
     {
       "id": "f86fd24d-8087-4825-9efc-67b62cd62693",
@@ -263,7 +213,7 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
+      "payload_file": "scratchpad/captures/no_first_rise_second_native.bin",
       "verify_clipboard_event": null,
       "verify_status": "unverified",
       "verify_notes": "",
@@ -275,7 +225,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T15:37:07Z",
-      "updated_at": "2026-03-04T15:37:07Z"
+      "updated_at": "2026-03-04T15:54:37Z"
     },
     {
       "id": "99ac5915-8d54-4a46-b7bc-104b44c7f5b7",
@@ -288,7 +238,7 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
+      "payload_file": "scratchpad/captures/no_first_fall_second_native.bin",
       "verify_clipboard_event": null,
       "verify_status": "unverified",
       "verify_notes": "",
@@ -300,7 +250,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T15:37:07Z",
-      "updated_at": "2026-03-04T15:37:07Z"
+      "updated_at": "2026-03-04T15:54:45Z"
     },
     {
       "id": "d7cdd138-47d5-4813-9703-ae70410fb997",
@@ -313,7 +263,7 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
+      "payload_file": "scratchpad/captures/rise_first_rise_second_native.bin",
       "verify_clipboard_event": null,
       "verify_status": "unverified",
       "verify_notes": "",
@@ -325,7 +275,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T15:37:08Z",
-      "updated_at": "2026-03-04T15:37:08Z"
+      "updated_at": "2026-03-04T15:55:02Z"
     }
   ]
 }
