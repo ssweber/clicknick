@@ -11,13 +11,13 @@ from .csv_ast import (
     AfNode,
     BlankCondition,
     ComparisonCondition,
-    ConditionNode,
+    ConditionCellNode,
     ContactCondition,
     EdgeCondition,
     GenericCondition,
-    VerticalMidCondition,
-    VerticalTopCondition,
-    WireCondition,
+    HorizontalWire,
+    JunctionDownWire,
+    VerticalPassThroughWire,
 )
 from .model import OPERAND_RE
 
@@ -156,16 +156,16 @@ def _parse_comparison(token: str) -> ComparisonCondition | None:
     return None
 
 
-def parse_condition_token(token: str) -> ConditionNode:
+def parse_condition_token(token: str) -> ConditionCellNode:
     text = token.strip()
     if text == "":
         return BlankCondition()
     if text == "-":
-        return WireCondition()
+        return HorizontalWire()
     if text == "T":
-        return VerticalTopCondition()
-    if text == "+":
-        return VerticalMidCondition()
+        return JunctionDownWire()
+    if text == "|":
+        return VerticalPassThroughWire()
 
     edge_match = _EDGE_RE.fullmatch(text)
     if edge_match:

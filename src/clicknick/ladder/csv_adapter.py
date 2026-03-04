@@ -11,10 +11,10 @@ from .csv_ast import (
     ContactCondition,
     EdgeCondition,
     GenericCondition,
+    HorizontalWire,
+    JunctionDownWire,
     RungAst,
-    VerticalMidCondition,
-    VerticalTopCondition,
-    WireCondition,
+    VerticalPassThroughWire,
 )
 from .model import Coil, Contact, InstructionType, RungGrid
 
@@ -64,8 +64,8 @@ def to_runggrid_if_simple(rung: RungAst) -> RungGrid:
         raise _unsupported("af_parse", f"Could not parse AF coil token: {exc}") from exc
 
     disallowed_condition_types = (
-        VerticalTopCondition,
-        VerticalMidCondition,
+        JunctionDownWire,
+        VerticalPassThroughWire,
         ComparisonCondition,
         GenericCondition,
     )
@@ -87,7 +87,7 @@ def to_runggrid_if_simple(rung: RungAst) -> RungGrid:
         raise _unsupported("too_many_contacts", "Only up to two series contacts are supported")
 
     first_contact_idx = contact_positions[0]
-    if any(isinstance(node, WireCondition) for node in row.condition_nodes[:first_contact_idx]):
+    if any(isinstance(node, HorizontalWire) for node in row.condition_nodes[:first_contact_idx]):
         raise _unsupported("leading_wire", "Wire before first contact is unsupported")
 
     if len(contact_positions) == 2:
@@ -95,7 +95,7 @@ def to_runggrid_if_simple(rung: RungAst) -> RungGrid:
         if right <= left + 1:
             raise _unsupported("not_series", "Two contacts must have wire cells between them")
         between = row.condition_nodes[left + 1 : right]
-        if any(not isinstance(node, WireCondition) for node in between):
+        if any(not isinstance(node, HorizontalWire) for node in between):
             raise _unsupported("not_series", "Cells between two contacts must be wire '-' cells")
 
     contacts = [
@@ -106,7 +106,7 @@ def to_runggrid_if_simple(rung: RungAst) -> RungGrid:
 
     trailing_nodes = row.condition_nodes[contact_positions[-1] + 1 :]
     if any(
-        not isinstance(node, (BlankCondition, WireCondition))
+        not isinstance(node, (BlankCondition, HorizontalWire))
         for node in trailing_nodes
     ):
         raise _unsupported("complex_tail", "Trailing condition cells must be blank or wire")

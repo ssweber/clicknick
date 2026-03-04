@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from clicknick.ladder.csv_ast import AfCall
-from clicknick.ladder.csv_token_parser import parse_af_token
+from clicknick.ladder.csv_ast import AfCall, GenericCondition, VerticalPassThroughWire
+from clicknick.ladder.csv_token_parser import parse_af_token, parse_condition_token
 
 
 @pytest.mark.parametrize(
@@ -54,3 +54,13 @@ def test_parse_af_token_rejects_malformed_quoted_strings(token: str) -> None:
     with pytest.raises(ValueError, match="Malformed AF"):
         parse_af_token(token)
 
+
+def test_parse_condition_token_accepts_pipe_for_vertical_mid() -> None:
+    condition = parse_condition_token("|")
+    assert isinstance(condition, VerticalPassThroughWire)
+
+
+def test_parse_condition_token_plus_falls_back_to_generic() -> None:
+    condition = parse_condition_token("+")
+    assert isinstance(condition, GenericCondition)
+    assert condition.raw == "+"

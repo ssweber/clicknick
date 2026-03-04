@@ -22,6 +22,11 @@ def test_shorthand_blank_fill_and_blank_af() -> None:
     assert row.af == ""
 
 
+def test_shorthand_blank_fill_allows_af_placeholder_macro() -> None:
+    row = normalize_shorthand_row("R,X001,...,:,...")
+    assert row.af == ""
+
+
 def test_missing_marker_rejected() -> None:
     with pytest.raises(ValueError, match="Invalid marker"):
         normalize_shorthand_row("X001,->,:,out(Y001)")

@@ -8,7 +8,6 @@ from typing import Literal
 
 from .csv_contract import CONDITION_COLUMNS
 
-
 KNOWN_AF_NAMES = {
     "out",
     "latch",
@@ -64,17 +63,17 @@ class BlankCondition:
 
 
 @dataclass(frozen=True)
-class WireCondition:
+class HorizontalWire:
     pass
 
 
 @dataclass(frozen=True)
-class VerticalTopCondition:
+class JunctionDownWire:
     pass
 
 
 @dataclass(frozen=True)
-class VerticalMidCondition:
+class VerticalPassThroughWire:
     pass
 
 
@@ -103,11 +102,11 @@ class GenericCondition:
     raw: str
 
 
-ConditionNode = (
+ConditionCellNode = (
     BlankCondition
-    | WireCondition
-    | VerticalTopCondition
-    | VerticalMidCondition
+    | HorizontalWire
+    | JunctionDownWire
+    | VerticalPassThroughWire
     | ContactCondition
     | EdgeCondition
     | ComparisonCondition
@@ -133,7 +132,7 @@ AfNode = AfBlank | AfCall
 @dataclass(frozen=True)
 class RowAst:
     canonical: CanonicalRow
-    condition_nodes: tuple[ConditionNode, ...]
+    condition_nodes: tuple[ConditionCellNode, ...]
     af_node: AfNode | None
 
     def __post_init__(self) -> None:

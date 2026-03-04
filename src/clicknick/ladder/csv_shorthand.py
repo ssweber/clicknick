@@ -40,8 +40,10 @@ def normalize_shorthand_row(row: str, strict: bool = True) -> CanonicalRow:
         raise ValueError("':' separator must be followed by exactly one AF field")
 
     af_raw = fields[-1].strip()
-    if _MACRO_WIRE_FILL in {marker, af_raw} or _MACRO_BLANK_FILL in {marker, af_raw}:
+    if marker in {_MACRO_WIRE_FILL, _MACRO_BLANK_FILL} or af_raw == _MACRO_WIRE_FILL:
         raise ValueError("Macros are only allowed in condition cells A..AE")
+    if af_raw == _MACRO_BLANK_FILL:
+        af_raw = ""
 
     condition_tokens = [token.strip() for token in fields[1:colon_idx]]
     macro_positions = [
