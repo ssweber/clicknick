@@ -505,3 +505,26 @@ Scope:
 - For long-series modeling, treat early row0 columns as stream-overlap (non-stationary) and derive deterministic profile bytes from the stable tail region.
 - `row0,col4` alone is not sufficient once series length/gap layout increases.
 
+## Regression Triage: Long-Series Crash (2026-03-04, late)
+
+Observed in manual Click verify runs:
+
+- Random and "safe" long-series synthetic payloads (`>2` contacts) consistently produced Click `"Out of Memory"` crashes.
+
+Codec vs native comparison for contiguous references:
+
+- `X001..X005 -> out(Y001)`:
+  - type marker offsets matched native exactly
+  - but header/profile family bytes diverged:
+    - generated: `hdr +0x05/+0x11/+0x17/+0x18 = 00/00/15/01`, `0x0A59=00`
+    - native: `12/24/4E/01`, `0x0A59=12`
+- `X001..X008 -> out(Y001)` showed the same pattern:
+  - generated `00/00/15/01`, native `13/26/4E/01`.
+
+Conclusion:
+
+- Long-series deterministic model is incomplete; stream placement alone is insufficient.
+- Safety rollback applied in encoder:
+  - Click-safe path is now restricted back to `1..2` series contacts.
+  - Attempting `>2` now fails fast with a clear error before any clipboard write.
+

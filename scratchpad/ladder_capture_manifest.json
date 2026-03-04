@@ -851,6 +851,1756 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T17:20:33Z",
       "updated_at": "2026-03-04T17:21:42Z"
+    },
+    {
+      "id": "ab182c8b-d53c-43a9-ae9a-07017da41514",
+      "capture_label": "rand_and_a_01",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_a_20260304",
+      "description": "Random AND series (random_and_batch_a_20260304)",
+      "rung_rows": [
+        "R,rise(Y102),C120,rise(T45),~C19,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "cancelled",
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,rise(Y102),C120,rise(T45),~C19,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T18:01:22Z"
+    },
+    {
+      "id": "0c69ddb8-b329-4477-9fe3-c224aff18956",
+      "capture_label": "rand_and_a_02",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_a_20260304",
+      "description": "Random AND series (random_and_batch_a_20260304)",
+      "rung_rows": [
+        "R,C52,~SC77,fall(CT61),rise(CT110),rise(C69),~CT76.immediate,fall(SC98),rise(Y093),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,C52,~SC77,fall(CT61),rise(CT110),rise(C69),~CT76.immediate,fall(SC98),rise(Y093),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "156635f9-1215-47d7-9e95-a65cd42af27f",
+      "capture_label": "rand_and_a_03",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_a_20260304",
+      "description": "Random AND series (random_and_batch_a_20260304)",
+      "rung_rows": [
+        "R,fall(SC85),~CT76.immediate,fall(X043),~C61,rise(C108),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,fall(SC85),~CT76.immediate,fall(X043),~C61,rise(C108),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "0efc5651-03cb-4c23-86c2-4dcc9c565b25",
+      "capture_label": "rand_and_a_04",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_a_20260304",
+      "description": "Random AND series (random_and_batch_a_20260304)",
+      "rung_rows": [
+        "R,~Y041,rise(C73),C4,fall(SC48),rise(C116),~CT111,fall(SC41),~C73.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,~Y041,rise(C73),C4,fall(SC48),rise(C116),~CT111,fall(SC41),~C73.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "819161f9-6731-4d87-a2e1-6e6e19d69dcd",
+      "capture_label": "rand_and_a_05",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_a_20260304",
+      "description": "Random AND series (random_and_batch_a_20260304)",
+      "rung_rows": [
+        "R,rise(Y059),fall(Y003),~T100.immediate,rise(C39),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,rise(Y059),fall(Y003),~T100.immediate,rise(C39),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "5d62d8f7-2d2e-4aa2-9793-2d615e898912",
+      "capture_label": "rand_and_a_06",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_a_20260304",
+      "description": "Random AND series (random_and_batch_a_20260304)",
+      "rung_rows": [
+        "R,~C93.immediate,fall(C82),fall(X048),rise(SC87),rise(X077),~SC84,rise(C67),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,~C93.immediate,fall(C82),fall(X048),rise(SC87),rise(X077),~SC84,rise(C67),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "bbfbf6fb-627d-4e29-9721-39c9bf578a36",
+      "capture_label": "rand_and_a_07",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_a_20260304",
+      "description": "Random AND series (random_and_batch_a_20260304)",
+      "rung_rows": [
+        "R,fall(T29),rise(X102),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,fall(T29),rise(X102),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "42e87abe-0023-4b54-9a66-2c7b3d5504a6",
+      "capture_label": "rand_and_a_08",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_a_20260304",
+      "description": "Random AND series (random_and_batch_a_20260304)",
+      "rung_rows": [
+        "R,fall(T103),C47.immediate,fall(Y069),fall(T86),~SC41.immediate,fall(X027),fall(T52),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,fall(T103),C47.immediate,fall(Y069),fall(T86),~SC41.immediate,fall(X027),fall(T52),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "766d6b68-a6b3-42a1-9f10-28e8a7d9d3a7",
+      "capture_label": "rand_and_a_09",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_a_20260304",
+      "description": "Random AND series (random_and_batch_a_20260304)",
+      "rung_rows": [
+        "R,~Y078,fall(X101),~C84,CT68,fall(X081),~T3,rise(T103),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,~Y078,fall(X101),~C84,CT68,fall(X081),~T3,rise(T103),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "d22d0ab0-3b36-4450-b65b-fb5adbfb7232",
+      "capture_label": "rand_and_a_10",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_a_20260304",
+      "description": "Random AND series (random_and_batch_a_20260304)",
+      "rung_rows": [
+        "R,rise(T55),~T34.immediate,SC51.immediate,fall(T86),CT61,Y033.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,rise(T55),~T34.immediate,SC51.immediate,fall(T86),CT61,Y033.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "670168fb-9b66-4109-82aa-8e4633769173",
+      "capture_label": "rand_and_b_01",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_b_20260304",
+      "description": "Random AND series (random_and_batch_b_20260304)",
+      "rung_rows": [
+        "R,SC46.immediate,fall(CT41),X036,C1.immediate,~C101.immediate,C14,SC91,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,SC46.immediate,fall(CT41),X036,C1.immediate,~C101.immediate,C14,SC91,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "80bb72e2-863f-4cef-b8da-2111e4390084",
+      "capture_label": "rand_and_b_02",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_b_20260304",
+      "description": "Random AND series (random_and_batch_b_20260304)",
+      "rung_rows": [
+        "R,fall(CT115),fall(SC18),Y009,SC97,X080,T120,X041.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,fall(CT115),fall(SC18),Y009,SC97,X080,T120,X041.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "4dca4024-719f-45e0-abc5-f797386a2c78",
+      "capture_label": "rand_and_b_03",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_b_20260304",
+      "description": "Random AND series (random_and_batch_b_20260304)",
+      "rung_rows": [
+        "R,fall(C108),Y051,fall(X021),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,fall(C108),Y051,fall(X021),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "c41d06b3-dda4-47f4-8f19-e9cefe48a106",
+      "capture_label": "rand_and_b_04",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_b_20260304",
+      "description": "Random AND series (random_and_batch_b_20260304)",
+      "rung_rows": [
+        "R,~C7,fall(T26),rise(X111),SC76.immediate,~CT48,Y032,CT62,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,~C7,fall(T26),rise(X111),SC76.immediate,~CT48,Y032,CT62,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "b8b5118e-ad42-4391-b380-97b3970e4bfd",
+      "capture_label": "rand_and_b_05",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_b_20260304",
+      "description": "Random AND series (random_and_batch_b_20260304)",
+      "rung_rows": [
+        "R,~X018,rise(C102),~SC51.immediate,T96.immediate,fall(Y021),X113.immediate,fall(CT20),rise(X068),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,~X018,rise(C102),~SC51.immediate,T96.immediate,fall(Y021),X113.immediate,fall(CT20),rise(X068),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "5e97fde6-c0f4-4f1f-9e4b-a1ffe0f46004",
+      "capture_label": "rand_and_b_06",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_b_20260304",
+      "description": "Random AND series (random_and_batch_b_20260304)",
+      "rung_rows": [
+        "R,C88.immediate,fall(SC1),C84.immediate,~CT107,fall(X095),CT9,~Y030.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,C88.immediate,fall(SC1),C84.immediate,~CT107,fall(X095),CT9,~Y030.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "4b632024-da32-4b18-86e1-70d5ad8d8371",
+      "capture_label": "rand_and_b_07",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_b_20260304",
+      "description": "Random AND series (random_and_batch_b_20260304)",
+      "rung_rows": [
+        "R,~CT105.immediate,rise(CT51),~SC13,rise(CT73),~CT57.immediate,fall(X032),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,~CT105.immediate,rise(CT51),~SC13,rise(CT73),~CT57.immediate,fall(X032),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "2ac83b27-681e-4578-996f-b6c43b083519",
+      "capture_label": "rand_and_b_08",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_b_20260304",
+      "description": "Random AND series (random_and_batch_b_20260304)",
+      "rung_rows": [
+        "R,fall(CT116),~C19.immediate,~X005,rise(CT101),fall(C20),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,fall(CT116),~C19.immediate,~X005,rise(CT101),fall(C20),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "8c840981-b36e-4e3c-a797-6c7f01976f98",
+      "capture_label": "rand_and_b_09",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_b_20260304",
+      "description": "Random AND series (random_and_batch_b_20260304)",
+      "rung_rows": [
+        "R,C47.immediate,C118.immediate,~X082,rise(SC46),fall(C103),SC34,CT79.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,C47.immediate,C118.immediate,~X082,rise(SC46),fall(C103),SC34,CT79.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "2f8ac7ae-c6c0-4219-9ce7-be17df9d96a8",
+      "capture_label": "rand_and_b_10",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_b_20260304",
+      "description": "Random AND series (random_and_batch_b_20260304)",
+      "rung_rows": [
+        "R,fall(SC22),rise(X055),~SC115.immediate,rise(CT71),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,fall(SC22),rise(X055),~SC115.immediate,rise(CT71),-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:58:14Z",
+      "updated_at": "2026-03-04T17:58:14Z"
+    },
+    {
+      "id": "a0160290-2c22-46f6-b810-b10897fc5027",
+      "capture_label": "rand_and_safe_x_01",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_safe_x_20260304",
+      "description": "Safe random AND batch (X NO contiguous, 5-series)",
+      "rung_rows": [
+        "R,X037,X038,X039,X040,X041,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "Crashed",
+      "verify_expected_rows": [
+        "R,X037,X038,X039,X040,X041,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:02:30Z",
+      "updated_at": "2026-03-04T18:19:59Z"
+    },
+    {
+      "id": "38294af0-577b-4a6a-bdeb-0bfc9d36766a",
+      "capture_label": "rand_and_safe_x_02",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_safe_x_20260304",
+      "description": "Safe random AND batch (X NO contiguous, 5-series)",
+      "rung_rows": [
+        "R,X037,X038,X039,X040,X041,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X037,X038,X039,X040,X041,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:02:30Z",
+      "updated_at": "2026-03-04T18:20:26Z"
+    },
+    {
+      "id": "4364be0a-4d78-454c-a47a-3741cb99be15",
+      "capture_label": "rand_and_safe_x_03",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_safe_x_20260304",
+      "description": "Safe random AND batch (X NO contiguous, 5-series)",
+      "rung_rows": [
+        "R,X027,X028,X029,X030,X031,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X027,X028,X029,X030,X031,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:02:30Z",
+      "updated_at": "2026-03-04T18:20:50Z"
+    },
+    {
+      "id": "df89b7a4-ec09-4512-88e1-5096bcf92697",
+      "capture_label": "rand_and_safe_x_04",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_safe_x_20260304",
+      "description": "Safe random AND batch (X NO contiguous, 5-series)",
+      "rung_rows": [
+        "R,X001,X002,X003,X004,X005,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001,X002,X003,X004,X005,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:02:30Z",
+      "updated_at": "2026-03-04T18:21:15Z"
+    },
+    {
+      "id": "6c87e0b0-085b-483b-a196-618e12120269",
+      "capture_label": "rand_and_safe_x_05",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_safe_x_20260304",
+      "description": "Safe random AND batch (X NO contiguous, 5-series)",
+      "rung_rows": [
+        "R,X041,X042,X043,X044,X045,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X041,X042,X043,X044,X045,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:02:30Z",
+      "updated_at": "2026-03-04T18:02:30Z"
+    },
+    {
+      "id": "4f41155d-8172-407d-b4c8-41fac0e2a96b",
+      "capture_label": "rand_and_safe_x_06",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_safe_x_20260304",
+      "description": "Safe random AND batch (X NO contiguous, 8-series)",
+      "rung_rows": [
+        "R,X052,X053,X054,X055,X056,X057,X058,X059,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X052,X053,X054,X055,X056,X057,X058,X059,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:02:30Z",
+      "updated_at": "2026-03-04T18:02:30Z"
+    },
+    {
+      "id": "bee4f0b5-8332-4913-aaaf-832c37ed8a6c",
+      "capture_label": "rand_and_safe_x_07",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_safe_x_20260304",
+      "description": "Safe random AND batch (X NO contiguous, 8-series)",
+      "rung_rows": [
+        "R,X034,X035,X036,X037,X038,X039,X040,X041,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X034,X035,X036,X037,X038,X039,X040,X041,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:02:30Z",
+      "updated_at": "2026-03-04T18:02:30Z"
+    },
+    {
+      "id": "8c745e60-b556-427b-a43c-7d80a7817346",
+      "capture_label": "rand_and_safe_x_08",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_safe_x_20260304",
+      "description": "Safe random AND batch (X NO contiguous, 8-series)",
+      "rung_rows": [
+        "R,X055,X056,X057,X058,X059,X060,X061,X062,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X055,X056,X057,X058,X059,X060,X061,X062,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:02:30Z",
+      "updated_at": "2026-03-04T18:02:30Z"
+    },
+    {
+      "id": "ce55c4bb-13ba-4ef7-9f27-9fe701442df2",
+      "capture_label": "rand_and_safe_x_09",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_safe_x_20260304",
+      "description": "Safe random AND batch (X NO contiguous, 8-series)",
+      "rung_rows": [
+        "R,X045,X046,X047,X048,X049,X050,X051,X052,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X045,X046,X047,X048,X049,X050,X051,X052,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:02:30Z",
+      "updated_at": "2026-03-04T18:02:30Z"
+    },
+    {
+      "id": "b379cfa1-e866-45d8-9fe0-b16722ab3175",
+      "capture_label": "rand_and_safe_x_10",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_safe_x_20260304",
+      "description": "Safe random AND batch (X NO contiguous, 8-series)",
+      "rung_rows": [
+        "R,X021,X022,X023,X024,X025,X026,X027,X028,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X021,X022,X023,X024,X025,X026,X027,X028,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:02:30Z",
+      "updated_at": "2026-03-04T18:02:30Z"
+    },
+    {
+      "id": "a0f69368-c2bb-45f5-864c-ec5df41ca8bd",
+      "capture_label": "rand_and_2s_a_01",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,~X037,X037,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "cancelled",
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,~X037,X037,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:30:12Z"
+    },
+    {
+      "id": "c886cc44-51eb-4395-b5c4-484dc6b217a6",
+      "capture_label": "rand_and_2s_a_02",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,X102,~X001,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X102,~X001,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "5f02899b-7e7d-4878-a295-1437bcf4e13f",
+      "capture_label": "rand_and_2s_a_03",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,X120.immediate,X089,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X120.immediate,X089,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "512bb57b-f355-4589-af94-9cc888b8d189",
+      "capture_label": "rand_and_2s_a_04",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,X034,~X055,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X034,~X055,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "3ec85974-5677-4aa0-918b-28244108d1e3",
+      "capture_label": "rand_and_2s_a_05",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,~X021,X046,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,~X021,X046,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "1229c00c-9313-4eb6-8664-58de1ab7dbb7",
+      "capture_label": "rand_and_2s_a_06",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,X091.immediate,X035.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X091.immediate,X035.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "41ae99d3-2ba9-455b-bf55-0e53939ee781",
+      "capture_label": "rand_and_2s_a_07",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,X109,~X006,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X109,~X006,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "81bbb9f0-5c1e-49ea-8f61-6e8690db2a66",
+      "capture_label": "rand_and_2s_a_08",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,~X052,X049,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,~X052,X049,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "9aac1853-085f-44d0-a7d1-6ee999feb451",
+      "capture_label": "rand_and_2s_a_09",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,X114.immediate,X107.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X114.immediate,X107.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "652b7e43-f3ef-46c5-8517-569f26828a04",
+      "capture_label": "rand_and_2s_a_10",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,X077.immediate,X064,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X077.immediate,X064,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "c399e56a-e05c-470e-956b-bead2abad1a2",
+      "capture_label": "rand_and_2s_b_01",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,X062.immediate,X071,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X062.immediate,X071,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "fc596663-e649-40d0-9c9e-ba1d948f2c69",
+      "capture_label": "rand_and_2s_b_02",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,X037.immediate,X073.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X037.immediate,X073.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "496dfa0e-5162-4983-8aa2-540984705b89",
+      "capture_label": "rand_and_2s_b_03",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,X094,~X081,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X094,~X081,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "e917ad57-037a-422e-ac76-33e5bbb30153",
+      "capture_label": "rand_and_2s_b_04",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,~X037,X069,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,~X037,X069,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "aee03f23-5303-4b57-801f-aad4465c8ddf",
+      "capture_label": "rand_and_2s_b_05",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,X068,~X076,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X068,~X076,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "085a3c16-e0c4-4a16-b448-b0a430a2a6b3",
+      "capture_label": "rand_and_2s_b_06",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,X101.immediate,X086,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X101.immediate,X086,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "ce104b25-4843-477e-9e28-2131e19d2925",
+      "capture_label": "rand_and_2s_b_07",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,X096,~X098,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X096,~X098,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "3d85e938-a149-443e-8413-08a143292a4a",
+      "capture_label": "rand_and_2s_b_08",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,X025.immediate,X093,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X025.immediate,X093,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "570813cc-8cf2-47ab-b9d7-b11176ea33a7",
+      "capture_label": "rand_and_2s_b_09",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,X117.immediate,X060.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X117.immediate,X060.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "31737d70-fc35-4ecd-8195-c8d80cef3344",
+      "capture_label": "rand_and_2s_b_10",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_20260304",
+      "description": "Random AND batch (two-series, Click-safe envelope)",
+      "rung_rows": [
+        "R,~X085,X065,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,~X085,X065,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:25:02Z",
+      "updated_at": "2026-03-04T18:25:02Z"
+    },
+    {
+      "id": "5c01deb6-517a-4153-87a8-39892bd39c12",
+      "capture_label": "rand_and_2s_sparse_a_01",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,~X314,X313,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,~X314,X313,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "54451b35-09cb-42c8-a6aa-779778d02172",
+      "capture_label": "rand_and_2s_sparse_a_02",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X002.immediate,X405.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X002.immediate,X405.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "57e23017-695f-40b6-bef7-d59eb2babf3c",
+      "capture_label": "rand_and_2s_sparse_a_03",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X512.immediate,X308,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X512.immediate,X308,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "d2b5fe4d-0f64-43b7-bf52-51c10b6614c6",
+      "capture_label": "rand_and_2s_sparse_a_04",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X413,~X113,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X413,~X113,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "059c652c-6a7c-4509-b6c9-e472f0963b06",
+      "capture_label": "rand_and_2s_sparse_a_05",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X109.immediate,X310.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X109.immediate,X310.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "427b3f1c-296d-4b3e-aff5-1ec7070f7ad8",
+      "capture_label": "rand_and_2s_sparse_a_06",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X012.immediate,X308,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X012.immediate,X308,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "37fde472-f46d-42e7-9da0-a8b2b7fb5611",
+      "capture_label": "rand_and_2s_sparse_a_07",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X506.immediate,X216.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X506.immediate,X216.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "9ccd86b7-d4c9-435c-9380-eaded14c2e7a",
+      "capture_label": "rand_and_2s_sparse_a_08",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X814.immediate,X704,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X814.immediate,X704,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "42807ed0-e0aa-4258-8b83-d695524ab19f",
+      "capture_label": "rand_and_2s_sparse_a_09",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X615.immediate,X801,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X615.immediate,X801,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "f39b5ceb-0a62-4187-9065-84577860e4d7",
+      "capture_label": "rand_and_2s_sparse_a_10",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X314.immediate,X806.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X314.immediate,X806.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "c1c04f74-8c8f-4e93-a094-ab7e66171577",
+      "capture_label": "rand_and_2s_sparse_b_01",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X414,X314.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X414,X314.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "37ca8f99-2a32-44fb-932b-a80d549e3773",
+      "capture_label": "rand_and_2s_sparse_b_02",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X113,X711.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X113,X711.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "d272e43f-704a-448f-a900-753cefbc1a86",
+      "capture_label": "rand_and_2s_sparse_b_03",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X309.immediate,X615.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X309.immediate,X615.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "e884634f-2b48-4aa3-b588-2e0080b767c9",
+      "capture_label": "rand_and_2s_sparse_b_04",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X314.immediate,X205.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X314.immediate,X205.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "5a6ffa13-4138-446a-a347-4333a814b431",
+      "capture_label": "rand_and_2s_sparse_b_05",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X704.immediate,X611.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X704.immediate,X611.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "ad06d35b-f533-45ef-bb60-b776f2de4562",
+      "capture_label": "rand_and_2s_sparse_b_06",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X705,X203.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X705,X203.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "999a7b3c-ed42-4db3-9834-bbeec5fce85b",
+      "capture_label": "rand_and_2s_sparse_b_07",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X811.immediate,X406.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X811.immediate,X406.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "9c6b5ef8-8f4c-4102-b461-69c4b2f63a5b",
+      "capture_label": "rand_and_2s_sparse_b_08",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X708,X611,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X708,X611,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "40eae223-e3ef-4c63-b40d-6a8f6eab42b6",
+      "capture_label": "rand_and_2s_sparse_b_09",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X410,~X108,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X410,~X108,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
+    },
+    {
+      "id": "e158fe06-a5c7-4cb6-aa99-a395c340c595",
+      "capture_label": "rand_and_2s_sparse_b_10",
+      "capture_type": "synthetic",
+      "scenario": "random_and_batch_two_series_sparse_x_20260304",
+      "description": "Random AND batch (two-series, sparse-valid X addresses)",
+      "rung_rows": [
+        "R,X614,X605.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X614,X605.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T18:29:21Z",
+      "updated_at": "2026-03-04T18:29:21Z"
     }
   ]
 }

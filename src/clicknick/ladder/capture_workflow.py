@@ -937,19 +937,100 @@ def run_tui(
             continue
 
         if choice == "3":
-            label = input_fn("Label: ").strip()
-            if not label:
-                output_fn("Label is required.")
+            mode = input_fn("Verify mode ([l]abel / [g]uided queue / [q] cancel): ").strip().lower()
+            if mode in {"q", "quit", "cancel"}:
                 continue
-            try:
-                result = engine.verify_run_interactive(
-                    label=label,
-                    input_fn=input_fn,
-                    output_fn=output_fn,
-                )
-                output_fn(f"Updated verify status: {result['entry']['verify_status']}")
-            except Exception as exc:
-                output_fn(f"Error: {exc}")
+
+            if mode in {"", "l", "label"}:
+                label = input_fn("Label: ").strip()
+                if not label:
+                    output_fn("Label is required.")
+                    continue
+                try:
+                    result = engine.verify_run_interactive(
+                        label=label,
+                        input_fn=input_fn,
+                        output_fn=output_fn,
+                    )
+                    output_fn(f"Updated verify status: {result['entry']['verify_status']}")
+                except Exception as exc:
+                    output_fn(f"Error: {exc}")
+                continue
+
+            if mode in {"g", "guided", "queue"}:
+                try:
+                    scenario_filter = input_fn(
+                        "Scenario filter (blank for all unverified entries): "
+                    ).strip()
+                    candidates = engine.entry_list(status="unverified")
+                    if scenario_filter:
+                        needle = scenario_filter.lower()
+                        candidates = [
+                            row for row in candidates if needle in row["scenario"].lower()
+                        ]
+                    if not candidates:
+                        output_fn("No unverified entries match filter.")
+                        continue
+
+                    output_fn(f"Pending verify entries: {len(candidates)}")
+                    verified = 0
+                    skipped = 0
+                    queue_stopped = False
+
+                    for index, entry in enumerate(candidates, start=1):
+                        label = entry["capture_label"]
+                        output_fn("")
+                        output_fn(f"[{index}/{len(candidates)}] {label}")
+                        output_fn(f"Type: {entry['capture_type']}")
+                        output_fn(f"Scenario: {entry['scenario']}")
+                        if entry["description"]:
+                            output_fn(f"Description: {entry['description']}")
+                        if entry["rung_rows"]:
+                            output_fn("Rows:")
+                            for row in entry["rung_rows"]:
+                                output_fn(f"  {row}")
+
+                        while True:
+                            action = (
+                                input_fn("Action ([Enter]/v verify, s skip, q quit): ")
+                                .strip()
+                                .lower()
+                            )
+                            if action in {"", "v", "s", "q"}:
+                                break
+                            output_fn("Please enter Enter/v, s, or q.")
+
+                        if action == "s":
+                            skipped += 1
+                            continue
+                        if action == "q":
+                            queue_stopped = True
+                            break
+
+                        result = engine.verify_run_interactive(
+                            label=label,
+                            input_fn=input_fn,
+                            output_fn=output_fn,
+                        )
+                        verified += 1
+                        output_fn(f"Updated verify status: {result['entry']['verify_status']}")
+
+                    remaining = len(engine.entry_list(status="unverified"))
+                    if queue_stopped:
+                        output_fn(
+                            f"Verify queue stopped. verified={verified} skipped={skipped} "
+                            f"remaining_unverified={remaining}"
+                        )
+                    else:
+                        output_fn(
+                            f"Verify queue complete. verified={verified} skipped={skipped} "
+                            f"remaining_unverified={remaining}"
+                        )
+                except Exception as exc:
+                    output_fn(f"Error: {exc}")
+                continue
+
+            output_fn("Invalid verify mode.")
             continue
 
         if choice == "4":

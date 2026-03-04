@@ -629,8 +629,10 @@ class ClickCodec:
         """RungGrid -> 8192-byte clipboard buffer."""
         off = self.Offsets
         contacts = grid.contacts
-        if not (1 <= len(contacts) <= 8):
-            raise ValueError("Only 1..8 contiguous series contacts are currently supported")
+        if len(contacts) not in (1, 2):
+            raise ValueError(
+                "Only 1 or 2 series contacts are currently supported for Click-safe encoding"
+            )
 
         buf = _new_buffer(row_count=1)
         _patch_header_variant_bytes(

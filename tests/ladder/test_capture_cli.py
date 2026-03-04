@@ -212,6 +212,53 @@ def test_tui_native_capture_queue_walks_pending_entries_without_label_input(tmp_
     assert any("Pending native captures: 2" in line for line in output)
 
 
+def test_tui_verify_guided_queue_walks_unverified_entries_without_label_input(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"\xad" * 8192)
+    workflow = _make_workflow(tmp_path, fake)
+    workflow.entry_add(
+        capture_type="synthetic",
+        label="verify_case_2",
+        scenario="guided_verify",
+        description="second guided verify case",
+        rows=["R,X001,~X002,->,:,out(Y001)"],
+        payload_source_mode="shorthand",
+    )
+    output: list[str] = []
+
+    rc = main(
+        ["tui"],
+        workflow=workflow,
+        input_fn=_input_iter(
+            [
+                "3",  # verify
+                "g",  # guided queue mode
+                "",  # scenario filter (all)
+                "",  # first item action: verify
+                "c",  # copied
+                "y",  # pasted
+                "y",  # expected match
+                "",  # note
+                "",  # keep expected rows
+                "",  # keep default status
+                "q",  # second item action: stop queue
+                "5",  # exit
+            ]
+        ),
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    first = workflow.entry_show(label="verify_case")
+    second = workflow.entry_show(label="verify_case_2")
+    assert first["verify_status"] == "verified_pass"
+    assert first["verify_clipboard_event"] == "copied"
+    assert first["verify_result_file"] is not None
+    assert second["verify_status"] == "unverified"
+    assert any("Pending verify entries: 2" in line for line in output)
+    assert any("Verify queue stopped." in line for line in output)
+    assert fake.read_calls == 1
+
+
 def test_report_profile_single_label_json(tmp_path: Path) -> None:
     fake = _FakeClipboard(read_payload=b"")
     workflow = _make_workflow(tmp_path, fake)

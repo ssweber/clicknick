@@ -1,6 +1,6 @@
 """Ladder module — encode/decode Click PLC clipboard rungs."""
 
-from .clipboard import copy_to_clipboard, read_from_clipboard
+from .clipboard import clear_clipboard, copy_to_clipboard, read_from_clipboard
 from .codec import ClickCodec
 from .csv_adapter import UnsupportedComplexRungError, to_runggrid_if_simple
 from .csv_ast import (
@@ -52,6 +52,7 @@ __all__ = [
     "normalize_header_entry",
     "normalized_header_entries",
     "UnsupportedComplexRungError",
+    "clear_clipboard",
     "copy_to_clipboard",
     "normalize_shorthand_row",
     "parse_wire_topology",

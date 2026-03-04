@@ -7,7 +7,7 @@ import pytest
 from clicknick.ladder import codec as codec_module
 from clicknick.ladder.codec import BUFFER_SIZE, ClickCodec, _load_scaffold
 from clicknick.ladder.model import Coil, Contact, InstructionType, RungGrid
-from clicknick.ladder.topology import HEADER_ENTRY_BASE, HEADER_ENTRY_COUNT, HEADER_ENTRY_SIZE, cell_offset
+from clicknick.ladder.topology import HEADER_ENTRY_BASE, HEADER_ENTRY_COUNT, HEADER_ENTRY_SIZE
 
 codec = ClickCodec()
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "ladder_captures"
@@ -222,20 +222,17 @@ class TestEncodeDecodeRoundTrip:
         decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
         assert decoded.to_csv() == "X001,X002,->,:,out(Y001)"
 
-    def test_three_series_contacts(self):
-        csv = "X001,X002,X003,->,:,out(Y001)"
-        decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
-        assert decoded.to_csv() == csv
-
-    def test_five_series_contacts(self):
-        csv = "X001,X002,X003,X004,X005,->,:,out(Y001)"
-        decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
-        assert decoded.to_csv() == csv
-
-    def test_eight_series_contacts(self):
-        csv = "X001,X002,X003,X004,X005,X006,X007,X008,->,:,out(Y001)"
-        decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
-        assert decoded.to_csv() == csv
+    @pytest.mark.parametrize(
+        "csv",
+        [
+            "X001,X002,X003,->,:,out(Y001)",
+            "X001,X002,X003,X004,X005,->,:,out(Y001)",
+            "X001,X002,X003,X004,X005,X006,X007,X008,->,:,out(Y001)",
+        ],
+    )
+    def test_more_than_two_series_is_blocked_for_click_safe_encoding(self, csv: str):
+        with pytest.raises(ValueError, match="Only 1 or 2 series contacts"):
+            codec.encode(RungGrid.from_csv(csv))
 
     @pytest.mark.parametrize(
         ("csv", "meta_shift"),
@@ -406,37 +403,3 @@ class TestNickname:
         data = codec.encode(grid)
         decoded = codec.decode(data)
         assert decoded.nickname is None
-
-
-class TestLongSeriesTailProfile:
-    def test_five_series_tail_profile_uses_header_seed(self):
-        data = codec.encode(RungGrid.from_csv("X001,X002,X003,X004,X005,->,:,out(Y001)"))
-        expected_first = data[HEADER_ENTRY_BASE + 0x05]
-        expected_second = (data[HEADER_ENTRY_BASE + 0x11] + 1) & 0xFF
-
-        for col in range(14, 32):
-            start = cell_offset(0, col)
-            assert data[start + 0x12] == expected_first
-            assert data[start + 0x1E] == expected_second
-
-        for col in range(0, 5):
-            start = cell_offset(1, col)
-            assert data[start + 0x12] == expected_first
-            assert data[start + 0x1E] == expected_second
-
-    def test_eight_series_tail_profile_uses_header_seed(self):
-        data = codec.encode(
-            RungGrid.from_csv("X001,X002,X003,X004,X005,X006,X007,X008,->,:,out(Y001)")
-        )
-        expected_first = data[HEADER_ENTRY_BASE + 0x05]
-        expected_second = (data[HEADER_ENTRY_BASE + 0x11] + 1) & 0xFF
-
-        for col in range(25, 32):
-            start = cell_offset(0, col)
-            assert data[start + 0x21] == expected_first
-            assert data[start + 0x2D] == expected_second
-
-        for col in range(0, 7):
-            start = cell_offset(1, col)
-            assert data[start + 0x21] == expected_first
-            assert data[start + 0x2D] == expected_second
