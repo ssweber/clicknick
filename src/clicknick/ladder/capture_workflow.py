@@ -624,9 +624,10 @@ def run_tui(
     while True:
         output_fn("")
         output_fn("1) List entries")
-        output_fn("2) Verify run (Copied/Crash/Cancel)")
-        output_fn("3) Promote entry")
-        output_fn("4) Exit")
+        output_fn("2) Capture native payload (guided)")
+        output_fn("3) Verify run (Copied/Crash/Cancel)")
+        output_fn("4) Promote entry")
+        output_fn("5) Exit")
         choice = input_fn("Select an option: ").strip()
 
         if choice == "1":
@@ -641,6 +642,71 @@ def run_tui(
             continue
 
         if choice == "2":
+            try:
+                native_entries = engine.entry_list(capture_type="native")
+                pending = [row for row in native_entries if not row.get("payload_file")]
+                if not pending:
+                    output_fn("No pending native entries.")
+                    continue
+
+                output_fn(f"Pending native captures: {len(pending)}")
+                captured = 0
+                skipped = 0
+                queue_stopped = False
+
+                for index, entry in enumerate(pending, start=1):
+                    label = entry["capture_label"]
+                    output_fn("")
+                    output_fn(f"[{index}/{len(pending)}] {label}")
+                    output_fn(f"Scenario: {entry['scenario']}")
+                    if entry["description"]:
+                        output_fn(f"Description: {entry['description']}")
+                    if entry["rung_rows"]:
+                        output_fn("Rows:")
+                        for row in entry["rung_rows"]:
+                            output_fn(f"  {row}")
+
+                    while True:
+                        action = input_fn("Action ([Enter]/c capture, s skip, q quit): ").strip().lower()
+                        if action in {"", "c", "s", "q"}:
+                            break
+                        output_fn("Please enter Enter/c, s, or q.")
+
+                    if action == "s":
+                        skipped += 1
+                        continue
+                    if action == "q":
+                        queue_stopped = True
+                        break
+
+                    ready = input_fn(
+                        "In Click: copy this rung now. Press Enter to capture (s skip, q quit): "
+                    ).strip().lower()
+                    if ready in {"s", "skip"}:
+                        skipped += 1
+                        continue
+                    if ready in {"q", "quit", "cancel"}:
+                        queue_stopped = True
+                        break
+
+                    result = engine.entry_capture(label=label)
+                    captured += 1
+                    output_fn(f"Captured {result['payload_len']} bytes -> {result['payload_file']}")
+
+                if queue_stopped:
+                    remaining = len(
+                        [row for row in engine.entry_list(capture_type="native") if not row.get("payload_file")]
+                    )
+                    output_fn(
+                        f"Queue stopped. captured={captured} skipped={skipped} remaining={remaining}"
+                    )
+                else:
+                    output_fn(f"Queue complete. captured={captured} skipped={skipped} remaining=0")
+            except Exception as exc:
+                output_fn(f"Error: {exc}")
+            continue
+
+        if choice == "3":
             label = input_fn("Label: ").strip()
             if not label:
                 output_fn("Label is required.")
@@ -656,7 +722,7 @@ def run_tui(
                 output_fn(f"Error: {exc}")
             continue
 
-        if choice == "3":
+        if choice == "4":
             label = input_fn("Label: ").strip()
             fixture_file = input_fn("Fixture file (blank for <label>.bin): ").strip() or None
             overwrite = input_fn("Overwrite existing fixture? [y/N] ").strip().lower() in {"y", "yes"}
@@ -667,7 +733,7 @@ def run_tui(
                 output_fn(f"Error: {exc}")
             continue
 
-        if choice == "4":
+        if choice == "5":
             return 0
 
         output_fn("Invalid option.")

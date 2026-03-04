@@ -147,3 +147,39 @@ def test_json_output_shape_stability(tmp_path: Path) -> None:
     assert payload["status"] == "success"
     assert payload["errors"] == []
     assert isinstance(payload["data"], list)
+
+
+def test_tui_native_capture_queue_walks_pending_entries_without_label_input(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"\xBE" * 8192)
+    workflow = _make_workflow(tmp_path, fake)
+    workflow.entry_add(
+        capture_type="native",
+        label="native_case_1",
+        scenario="native_queue",
+        description="first pending native case",
+        rows=["R,X001,->,:,out(Y001)"],
+    )
+    workflow.entry_add(
+        capture_type="native",
+        label="native_case_2",
+        scenario="native_queue",
+        description="second pending native case",
+        rows=["R,X001,~X002,->,:,out(Y001)"],
+    )
+    output: list[str] = []
+
+    rc = main(
+        ["tui"],
+        workflow=workflow,
+        input_fn=_input_iter(["2", "", "", "s", "5"]),
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    first = workflow.entry_show(label="native_case_1")
+    second = workflow.entry_show(label="native_case_2")
+    assert first["payload_file"] == "scratchpad/captures/native_case_1.bin"
+    assert second["payload_file"] is None
+    assert (tmp_path / first["payload_file"]).read_bytes() == b"\xBE" * 8192
+    assert fake.read_calls == 1
+    assert any("Pending native captures: 2" in line for line in output)
