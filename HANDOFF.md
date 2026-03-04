@@ -2,6 +2,28 @@
 
 Last validated: March 3, 2026
 
+## Execution Update (March 4, 2026 — Two-Series Hardening Pass)
+
+- Click-safe encoder scope remains intentionally limited to `1..2` series contacts.
+- Header seed model is now context-seeded:
+  - `ClickCodec.encode(..., header_seed=HeaderSeed(...))` is supported.
+  - Seed writes entry-uniform header bytes `+0x05/+0x11/+0x17/+0x18`.
+  - `0x0A59` now mirrors header entry `+0x05` via seed application.
+- Fixed header-family literals are no longer treated as rung semantics.
+- Second-immediate (`X001,X002.immediate`) keeps a guarded compatibility override for header
+  `+0x05/+0x11` and trailer mirror when no explicit seed is provided.
+- Capture workflow/CLI now supports seed-source selection for verify prepare/run:
+  - `--seed-source {clipboard,scaffold,entry,file}`
+  - default `clipboard` with explicit scaffold fallback warning.
+- Capture workflow/CLI now supports manifest deletion:
+  - `entry delete --label ...`
+  - `entry delete --scenario ...`
+  - dry-run by default; apply with `--yes`.
+- Working manifest was de-swamped:
+  - backup created at `scratchpad/archive/ladder_capture_manifest.pre_prune_20260304.json`
+  - exploratory scenarios removed from active manifest
+  - deterministic `two_series_hardening_matrix_20260304` (9 rows) added for focused verify.
+
 ## Goal
 
 Reverse engineer Click Programming Software's clipboard format so `clicknick.ladder`

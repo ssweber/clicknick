@@ -108,6 +108,22 @@ After deterministic encoder wrote these values for that family:
   - decode equals intended CSV
   - change covered by deterministic rule + automated tests
 
+## Implementation Decision Log (2026-03-04, late pass)
+
+- Two-series hardening path is now the active engineering lane.
+- Long-series (`>2`) remains blocked in encoder to avoid Click crash regressions.
+- Header tuple bytes are now modeled as context/session seed inputs:
+  - Added `HeaderSeed` with `from_payload(...)` and `apply_to_buffer(...)`.
+  - Verify workflows can source seed from clipboard/scaffold/entry/file.
+- Clipboard seed source is default for verify flows, with explicit scaffold fallback warning
+  if seed extraction fails.
+- Session UID evidence is operationalized by keeping `+0x17` in the seed tuple rather than
+  baking family literals into semantic rules.
+- Manifest queue was pruned to remove exploratory backlog and keep only:
+  - two-series/NC/edge/C-mix evidence scenarios
+  - session-counter evidence scenarios
+  - new focused two-series hardening matrix scenario.
+
 ## Current capture workflow (post-unification)
 Use the unified workflow engine so human and automation paths stay behaviorally identical.
 

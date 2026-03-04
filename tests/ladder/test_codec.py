@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from clicknick.ladder import codec as codec_module
-from clicknick.ladder.codec import BUFFER_SIZE, ClickCodec, _load_scaffold
+from clicknick.ladder.codec import BUFFER_SIZE, ClickCodec, HeaderSeed, _load_scaffold
 from clicknick.ladder.model import Coil, Contact, InstructionType, RungGrid
 from clicknick.ladder.topology import HEADER_ENTRY_BASE, HEADER_ENTRY_COUNT, HEADER_ENTRY_SIZE
 
@@ -34,76 +34,61 @@ class TestDeterministicEncoding:
                 == scaffold[entry_start : entry_start + HEADER_ENTRY_SIZE]
             )
 
-    def test_encode_header_variant_for_two_series(self):
-        data = codec.encode(RungGrid.from_csv("X001,X002,->,:,out(Y001)"))
-        for column in range(HEADER_ENTRY_COUNT):
-            entry_start = HEADER_ENTRY_BASE + column * HEADER_ENTRY_SIZE
-            assert data[entry_start + 0x17] == 0x15
-            assert data[entry_start + 0x18] == 0x01
-
-    def test_encode_header_variant_for_two_series_second_immediate(self):
+    def test_second_immediate_header_compat_applies_without_explicit_seed(self):
         data = codec.encode(RungGrid.from_csv("X001,X002.immediate,->,:,out(Y001)"))
         for column in range(HEADER_ENTRY_COUNT):
             entry_start = HEADER_ENTRY_BASE + column * HEADER_ENTRY_SIZE
-            assert data[entry_start + 0x17] == 0x0D
-            assert data[entry_start + 0x18] == 0x01
             assert data[entry_start + 0x05] == 0x04
             assert data[entry_start + 0x11] == 0x0B
         assert data[0x0A59] == 0x04
 
-    def test_two_series_second_immediate_row1_col1_profile(self):
-        data = codec.encode(RungGrid.from_csv("X001,X002.immediate,->,:,out(Y001)"))
-        row0_col0 = 0x0A60
-        row0_col1 = 0x0AA0
-        row0_col2 = 0x0AE0
-        row0_col4 = 0x0B60
-        row1_col0 = 0x1260
-        row1_col1 = 0x12A0
-        assert data[row0_col0 + 0x05] == 0x0C
-        assert data[row0_col1 + 0x3E] == 0x04
-        assert data[row0_col2 + 0x0A] == 0x0C
-        assert data[row0_col2 + 0x12] == 0x01
-        assert data[row0_col4 + 0x02] == 0x00
-        assert data[row0_col4 + 0x04] == 0x01
-        assert data[row0_col4 + 0x05] == 0x04
-        assert data[row0_col4 + 0x11] == 0x0C
-        assert data[row1_col0 + 0x05] == 0x04
-        assert data[row1_col0 + 0x11] == 0x0C
-        assert data[row1_col1 + 0x05] == 0x04
-        assert data[row1_col1 + 0x11] == 0x0C
-        assert data[row1_col1 + 0x19] == 0x02
-
-    def test_encode_header_variant_for_range_coil(self):
-        data = codec.encode(RungGrid.from_csv("X001,->,:,out(C1..C2)"))
+    def test_encode_applies_explicit_header_seed(self):
+        seed = HeaderSeed(profile_05=0x31, profile_11=0x62, family_17=0x58, family_18=0x01)
+        data = codec.encode(RungGrid.from_csv("X001,X002,->,:,out(Y001)"), header_seed=seed)
         for column in range(HEADER_ENTRY_COUNT):
             entry_start = HEADER_ENTRY_BASE + column * HEADER_ENTRY_SIZE
-            assert data[entry_start + 0x17] == 0x15
+            assert data[entry_start + 0x05] == 0x31
+            assert data[entry_start + 0x11] == 0x62
+            assert data[entry_start + 0x17] == 0x58
             assert data[entry_start + 0x18] == 0x01
+        assert data[0x0A59] == 0x31
 
-    @pytest.mark.parametrize(
-        ("csv", "expected_17_18"),
-        [
-            ("X001,X002,->,:,out(Y001)", (0x15, 0x01)),
-            ("X001.immediate,X002,->,:,out(Y001)", (0x15, 0x01)),
-            ("X001.immediate,X002.immediate,->,:,out(Y001)", (0x15, 0x01)),
-            ("X001,->,:,out(C1..C2)", (0x15, 0x01)),
-        ],
-    )
-    def test_header_gate_bytes_are_scaffold_for_non_second_immediate_two_series(
-        self,
-        csv: str,
-        expected_17_18: tuple[int, int],
-    ):
-        data = codec.encode(RungGrid.from_csv(csv))
-        scaffold = _load_scaffold()
-        expected_17, expected_18 = expected_17_18
+    def test_explicit_header_seed_disables_second_immediate_compat_override(self):
+        seed = HeaderSeed(profile_05=0x21, profile_11=0x42, family_17=0x20, family_18=0x01)
+        data = codec.encode(
+            RungGrid.from_csv("X001,X002.immediate,->,:,out(Y001)"),
+            header_seed=seed,
+        )
         for column in range(HEADER_ENTRY_COUNT):
             entry_start = HEADER_ENTRY_BASE + column * HEADER_ENTRY_SIZE
-            assert data[entry_start + 0x17] == expected_17
-            assert data[entry_start + 0x18] == expected_18
-            assert data[entry_start + 0x05] == scaffold[entry_start + 0x05]
-            assert data[entry_start + 0x11] == scaffold[entry_start + 0x11]
-        assert data[0x0A59] == scaffold[0x0A59]
+            assert data[entry_start + 0x05] == 0x21
+            assert data[entry_start + 0x11] == 0x42
+            assert data[entry_start + 0x17] == 0x20
+            assert data[entry_start + 0x18] == 0x01
+        assert data[0x0A59] == 0x21
+
+    def test_header_seed_from_payload_apply_roundtrip(self):
+        payload = bytearray(_load_scaffold())
+        for column in range(HEADER_ENTRY_COUNT):
+            entry_start = HEADER_ENTRY_BASE + column * HEADER_ENTRY_SIZE
+            payload[entry_start + 0x05] = 0x12
+            payload[entry_start + 0x11] = 0x27
+            payload[entry_start + 0x17] = 0x58
+            payload[entry_start + 0x18] = 0x01
+        payload[0x0A59] = 0x12
+
+        seed = HeaderSeed.from_payload(bytes(payload))
+        assert seed == HeaderSeed(profile_05=0x12, profile_11=0x27, family_17=0x58, family_18=0x01)
+
+        buf = bytearray(_load_scaffold())
+        seed.apply_to_buffer(buf)
+        for column in range(HEADER_ENTRY_COUNT):
+            entry_start = HEADER_ENTRY_BASE + column * HEADER_ENTRY_SIZE
+            assert buf[entry_start + 0x05] == 0x12
+            assert buf[entry_start + 0x11] == 0x27
+            assert buf[entry_start + 0x17] == 0x58
+            assert buf[entry_start + 0x18] == 0x01
+        assert buf[0x0A59] == 0x12
 
 
 class TestEncodeDecodeRoundTrip:
@@ -221,6 +206,21 @@ class TestEncodeDecodeRoundTrip:
         csv = "X1,X002,->,:,out(Y001)"
         decoded = codec.decode(codec.encode(RungGrid.from_csv(csv)))
         assert decoded.to_csv() == "X001,X002,->,:,out(Y001)"
+
+    def test_same_rung_with_different_seed_family_bytes_keeps_decode_and_topology(self):
+        csv = "~X001,X002,->,:,out(Y001)"
+        grid = RungGrid.from_csv(csv)
+        payload_a = codec.encode(
+            grid,
+            header_seed=HeaderSeed(profile_05=0x00, profile_11=0x00, family_17=0x58, family_18=0x01),
+        )
+        payload_b = codec.encode(
+            grid,
+            header_seed=HeaderSeed(profile_05=0x00, profile_11=0x00, family_17=0x20, family_18=0x01),
+        )
+        assert codec.decode(payload_a).to_csv() == csv
+        assert codec.decode(payload_b).to_csv() == csv
+        assert codec.decode_wire_topology(payload_a) == codec.decode_wire_topology(payload_b)
 
     @pytest.mark.parametrize(
         "csv",
@@ -344,6 +344,30 @@ class TestEncodeDecodeRoundTrip:
         assert data[row0_col4 + 0x11] == expected_11
         assert data[row1_col0 + 0x05] == expected_05
         assert data[row1_col0 + 0x11] == expected_11
+
+    @pytest.mark.parametrize(
+        ("csv", "expected_row1_col1_hleft"),
+        [
+            ("X001,X002,->,:,out(Y001)", 0x00),
+            ("X001.immediate,X002,->,:,out(Y001)", 0x02),
+            ("X001,X002.immediate,->,:,out(Y001)", 0x02),
+            ("X001.immediate,X002.immediate,->,:,out(Y001)", 0x00),
+            ("X001,~X002,->,:,out(Y001)", 0x00),
+        ],
+    )
+    def test_two_series_row1_col1_profile_tracks_row1_col0(
+        self,
+        csv: str,
+        expected_row1_col1_hleft: int,
+    ):
+        data = codec.encode(RungGrid.from_csv(csv))
+        row1_col0 = 0x1260
+        row1_col1 = 0x12A0
+        assert data[row1_col1 + 0x05] == data[row1_col0 + 0x05]
+        assert data[row1_col1 + 0x11] == data[row1_col0 + 0x11]
+        assert data[row1_col1 + 0x1A] == data[row1_col0 + 0x1A]
+        assert data[row1_col1 + 0x1B] == data[row1_col0 + 0x1B]
+        assert data[row1_col1 + 0x19] == expected_row1_col1_hleft
 
 
 class TestCaptureBackedDecode:

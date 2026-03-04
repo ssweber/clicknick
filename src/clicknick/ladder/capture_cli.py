@@ -89,12 +89,40 @@ def build_parser() -> argparse.ArgumentParser:
     p_entry_capture.add_argument("--output-file")
     _add_json_flag(p_entry_capture)
 
+    p_entry_delete = entry_sub.add_parser(
+        "delete",
+        help="Delete entry/entries (dry-run by default; pass --yes to apply)",
+    )
+    delete_target = p_entry_delete.add_mutually_exclusive_group(required=True)
+    delete_target.add_argument("--label")
+    delete_target.add_argument("--scenario")
+    p_entry_delete.add_argument(
+        "--yes",
+        action="store_true",
+        help="Apply deletion (without this flag, command is dry-run)",
+    )
+    _add_json_flag(p_entry_delete)
+
     p_verify = sub.add_parser("verify", help="Verification operations")
     verify_sub = p_verify.add_subparsers(dest="verify_cmd", required=True)
 
     p_verify_prepare = verify_sub.add_parser("prepare", help="Load entry payload to clipboard")
     p_verify_prepare.add_argument("--label", required=True)
     p_verify_prepare.add_argument("--source", choices=["shorthand", "file"])
+    p_verify_prepare.add_argument(
+        "--seed-source",
+        choices=["clipboard", "scaffold", "entry", "file"],
+        default="clipboard",
+        help="Header seed source used when payload source is shorthand",
+    )
+    p_verify_prepare.add_argument(
+        "--seed-entry-label",
+        help="Seed source entry label (required when --seed-source entry)",
+    )
+    p_verify_prepare.add_argument(
+        "--seed-file",
+        help="Seed source file path (required when --seed-source file)",
+    )
     p_verify_prepare.add_argument(
         "--uid",
         type=_parse_uid,
@@ -128,6 +156,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify_run = verify_sub.add_parser("run", help="Interactive verify workflow")
     p_verify_run.add_argument("--label", required=True)
     p_verify_run.add_argument("--source", choices=["shorthand", "file"])
+    p_verify_run.add_argument(
+        "--seed-source",
+        choices=["clipboard", "scaffold", "entry", "file"],
+        default="clipboard",
+        help="Header seed source used when payload source is shorthand",
+    )
+    p_verify_run.add_argument(
+        "--seed-entry-label",
+        help="Seed source entry label (required when --seed-source entry)",
+    )
+    p_verify_run.add_argument(
+        "--seed-file",
+        help="Seed source file path (required when --seed-source file)",
+    )
     p_verify_run.add_argument(
         "--uid",
         type=_parse_uid,
@@ -225,6 +267,34 @@ def _print_human(action: str, data: Any, output_fn: Callable[[str], None]) -> No
                 f"{entry['capture_label']}: type={entry['capture_type']} status={entry['verify_status']}"
             )
         return
+    if action == "entry.delete":
+        mode = data["mode"]
+        target = data["target"]
+        matched_count = data["matched_count"]
+        deleted_count = data["deleted_count"]
+        if data["dry_run"]:
+            output_fn(f"Dry-run delete ({mode}={target!r}): matched={matched_count}")
+        else:
+            output_fn(f"Deleted entries ({mode}={target!r}): deleted={deleted_count}")
+        for label in data.get("matched_labels", []):
+            output_fn(f"  - {label}")
+        return
+    if action == "verify.prepare":
+        output_fn(
+            f"Prepared {data['entry']['capture_label']} source={data['source_mode']} "
+            f"payload_len={data['payload_len']}"
+        )
+        seed = data.get("seed", {})
+        if seed.get("applied"):
+            output_fn(
+                "Seed: "
+                f"{seed.get('source_used')} "
+                f"(+05={seed.get('header_05')} +11={seed.get('header_11')} "
+                f"+17={seed.get('header_17')} +18={seed.get('header_18')})"
+            )
+        if seed.get("warning"):
+            output_fn(f"Warning: {seed['warning']}")
+        return
     if action == "report.profile":
         if isinstance(data, str):
             output_fn(data.rstrip("\n"))
@@ -301,11 +371,16 @@ def _dispatch(
         return workflow.entry_show(label=args.label)
     if args.command == "entry" and args.entry_cmd == "capture":
         return workflow.entry_capture(label=args.label, output_file=args.output_file)
+    if args.command == "entry" and args.entry_cmd == "delete":
+        return workflow.entry_delete(label=args.label, scenario=args.scenario, yes=args.yes)
 
     if args.command == "verify" and args.verify_cmd == "prepare":
         return workflow.verify_prepare(
             label=args.label,
             source=args.source,
+            seed_source=args.seed_source,
+            seed_entry_label=args.seed_entry_label,
+            seed_file=args.seed_file,
             owner_hwnd=args.uid,
             ensure_mdb_addresses=(not args.no_ensure_mdb_addresses),
             mdb_path=args.mdb_path,
@@ -323,6 +398,9 @@ def _dispatch(
         return workflow.verify_run_interactive(
             label=args.label,
             source=args.source,
+            seed_source=args.seed_source,
+            seed_entry_label=args.seed_entry_label,
+            seed_file=args.seed_file,
             owner_hwnd=args.uid,
             ensure_mdb_addresses=(not args.no_ensure_mdb_addresses),
             mdb_path=args.mdb_path,

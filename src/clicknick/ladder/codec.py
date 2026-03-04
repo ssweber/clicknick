@@ -8,6 +8,7 @@ Single-scaffold encoder:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from importlib import resources
 from typing import Final
 
@@ -79,6 +80,57 @@ _CELL_CONTROL_A_OFFSET: Final[int] = 0x1A
 _CELL_CONTROL_B_OFFSET: Final[int] = 0x1B
 _CELL_PROFILE_05_OFFSET: Final[int] = 0x05
 _CELL_PROFILE_11_OFFSET: Final[int] = 0x11
+_HEADER_PROFILE_05_OFFSET: Final[int] = 0x05
+_HEADER_PROFILE_11_OFFSET: Final[int] = 0x11
+_HEADER_FAMILY_17_OFFSET: Final[int] = 0x17
+_HEADER_FAMILY_18_OFFSET: Final[int] = 0x18
+_HEADER_TRAILER_MIRROR_OFFSET: Final[int] = 0x0A59
+
+
+@dataclass(frozen=True)
+class HeaderSeed:
+    """Column-uniform header seed bytes used for context/session family modeling."""
+
+    profile_05: int
+    profile_11: int
+    family_17: int
+    family_18: int
+
+    def __post_init__(self) -> None:
+        for name in ("profile_05", "profile_11", "family_17", "family_18"):
+            value = getattr(self, name)
+            if not isinstance(value, int) or not (0x00 <= value <= 0xFF):
+                raise ValueError(f"{name} must be an 8-bit integer, got {value!r}")
+
+    @classmethod
+    def from_payload(cls, payload: bytes) -> HeaderSeed:
+        """Extract seed bytes from a payload (uses first 8192-byte record)."""
+        if len(payload) < BUFFER_SIZE:
+            raise ValueError(f"Payload too short for seed extraction: {len(payload)} bytes")
+        data = payload[:BUFFER_SIZE]
+        return cls(
+            profile_05=data[HEADER_ENTRY_BASE + _HEADER_PROFILE_05_OFFSET],
+            profile_11=data[HEADER_ENTRY_BASE + _HEADER_PROFILE_11_OFFSET],
+            family_17=data[HEADER_ENTRY_BASE + _HEADER_FAMILY_17_OFFSET],
+            family_18=data[HEADER_ENTRY_BASE + _HEADER_FAMILY_18_OFFSET],
+        )
+
+    @classmethod
+    def from_scaffold(cls) -> HeaderSeed:
+        """Return deterministic seed from the canonical scaffold."""
+        return cls.from_payload(_load_scaffold())
+
+    def apply_to_buffer(self, buf: bytearray) -> None:
+        """Apply seed to all 32 header entries and mirror trailer byte."""
+        if len(buf) < BUFFER_SIZE:
+            raise ValueError(f"Buffer too short for seed application: {len(buf)} bytes")
+        for col in range(COLS_PER_ROW):
+            entry_start = HEADER_ENTRY_BASE + col * CELL_SIZE
+            buf[entry_start + _HEADER_PROFILE_05_OFFSET] = self.profile_05
+            buf[entry_start + _HEADER_PROFILE_11_OFFSET] = self.profile_11
+            buf[entry_start + _HEADER_FAMILY_17_OFFSET] = self.family_17
+            buf[entry_start + _HEADER_FAMILY_18_OFFSET] = self.family_18
+        buf[_HEADER_TRAILER_MIRROR_OFFSET] = self.profile_05
 
 
 def _load_scaffold() -> bytes:
@@ -350,8 +402,8 @@ def _write_topology_for_simple_series(buf: bytearray, contacts: list[Contact]) -
 
     if contact_count == 2:
         first_contact, second_contact = contacts
-        header_profile_05 = buf[HEADER_ENTRY_BASE + 0x05]
-        header_profile_11 = buf[HEADER_ENTRY_BASE + 0x11]
+        header_profile_05 = buf[HEADER_ENTRY_BASE + _HEADER_PROFILE_05_OFFSET]
+        header_profile_11 = buf[HEADER_ENTRY_BASE + _HEADER_PROFILE_11_OFFSET]
 
         # Two-series capture pattern:
         # - col3 flags are emitted by stream bytes (do not overwrite)
@@ -394,6 +446,14 @@ def _write_topology_for_simple_series(buf: bytearray, contacts: list[Contact]) -
         buf[row1_col0 + _CELL_PROFILE_11_OFFSET] = profile_11
         buf[row1_col0 + _CELL_CONTROL_A_OFFSET] = control_a
         buf[row1_col0 + _CELL_CONTROL_B_OFFSET] = control_b
+
+        # Two-series hardening: row1/col1 follows the same profile seed rule.
+        row1_col1 = cell_offset(1, 1)
+        buf[row1_col1 + _CELL_PROFILE_05_OFFSET] = profile_05
+        buf[row1_col1 + _CELL_PROFILE_11_OFFSET] = profile_11
+        buf[row1_col1 + _CELL_CONTROL_A_OFFSET] = control_a
+        buf[row1_col1 + _CELL_CONTROL_B_OFFSET] = control_b
+        buf[row1_col1 + CELL_HORIZONTAL_LEFT_OFFSET] = 0x02 if (first_contact.immediate ^ second_contact.immediate) else 0x00
 
 
 def _patch_long_series_tail_profile(
@@ -457,55 +517,28 @@ def _shift_region(buf: bytearray, *, start: int, delta: int) -> None:
     buf[start:] = shifted
 
 
-def _patch_header_variant_bytes(
+def _apply_second_immediate_header_compat(
     buf: bytearray,
     *,
     contacts: list[Contact],
-    coil: Coil,
-) -> None:
-    """Patch observed per-entry variant bytes in header table.
+    enabled: bool,
+) -> bool:
+    """Compatibility gate for known second-immediate single-rung assembly behavior.
 
-    Native captures show 0x05/0x01 for the strict baseline scaffold case only:
-    single NO contact + non-immediate OUT coil + no range.
-    Other supported instruction variants use 0x15/0x01.
+    TODO: Remove after the context-seeded model is validated on the full sparse 2-series
+    matrix without this override.
     """
-    first = contacts[0]
-    is_baseline_simple_out = (
-        len(contacts) == 1
-        and first.type == InstructionType.CONTACT_NO
-        and not first.immediate
-        and first.edge_kind is None
-        and coil.type == InstructionType.COIL_OUT
-        and not coil.immediate
-        and coil.range_end is None
-    )
-
     is_second_immediate_two_series = (
-        len(contacts) == 2 and not contacts[0].immediate and contacts[1].immediate
+        enabled and len(contacts) == 2 and not contacts[0].immediate and contacts[1].immediate
     )
-
-    if is_baseline_simple_out:
-        b17, b18 = (0x05, 0x01)
-    elif is_second_immediate_two_series:
-        # Native recaptures for the second-immediate series variant normalize
-        # this family byte to 0x0D.
-        b17, b18 = (0x0D, 0x01)
-    else:
-        b17, b18 = (0x15, 0x01)
-
+    if not is_second_immediate_two_series:
+        return False
     for col in range(COLS_PER_ROW):
         entry_start = HEADER_ENTRY_BASE + col * CELL_SIZE
-        buf[entry_start + 0x17] = b17
-        buf[entry_start + 0x18] = b18
-        if is_second_immediate_two_series:
-            # These bytes were previously treated as volatile, but in this
-            # specific family they gate single-rung assembly in pasteback.
-            buf[entry_start + 0x05] = 0x04
-            buf[entry_start + 0x11] = 0x0B
-
-    if is_second_immediate_two_series:
-        # Trailing header-area profile byte mirrors entry +0x05 for this family.
-        buf[0x0A59] = 0x04
+        buf[entry_start + _HEADER_PROFILE_05_OFFSET] = 0x04
+        buf[entry_start + _HEADER_PROFILE_11_OFFSET] = 0x0B
+    buf[_HEADER_TRAILER_MIRROR_OFFSET] = 0x04
+    return True
 
 
 def _contact_label_for_type(contact_type: InstructionType) -> str:
@@ -555,30 +588,6 @@ def _patch_two_series_structure(
     # Keep this metadata byte clear; native captures keep it at zero.
     buf[row1_col3 + 0x23] = 0x00
 
-    # For the second-immediate two-series profile, row1/col1 carries stable
-    # non-stream bytes that gate coil materialization in Click rendering.
-    if first_shift == 0 and second_shift == 2:
-        row0_col0 = cell_offset(0, 0)
-        row0_col1 = cell_offset(0, 1)
-        row0_col2 = cell_offset(0, 2)
-        row0_col4 = cell_offset(0, 4)
-        row1_col0 = cell_offset(1, 0)
-        row1_col1 = cell_offset(1, 1)
-        buf[row0_col0 + 0x05] = 0x0C
-        buf[row0_col1 + 0x3E] = 0x04
-        buf[row0_col2 + 0x0A] = 0x0C
-        buf[row0_col2 + 0x12] = 0x01
-        buf[row0_col4 + 0x02] = 0x00
-        buf[row0_col4 + 0x04] = 0x01
-        buf[row0_col4 + 0x05] = 0x04
-        buf[row0_col4 + 0x11] = 0x0C
-        buf[row1_col0 + 0x05] = 0x04
-        buf[row1_col0 + 0x11] = 0x0C
-        buf[row1_col1 + 0x05] = 0x04
-        buf[row1_col1 + 0x11] = 0x0C
-        buf[row1_col1 + 0x19] = 0x02
-
-
 def _clear_stale_type_marker(buf: bytearray, type_offset: int) -> None:
     """Zero marker bytes at a known anchor if they currently look like 0x27XX."""
     if type_offset < 0 or type_offset + 1 >= len(buf):
@@ -625,7 +634,7 @@ class ClickCodec:
         for rel in flag_offsets:
             buf[off.NICKNAME_STRING + rel + nn_len] = 0x01
 
-    def encode(self, grid: RungGrid) -> bytes:
+    def encode(self, grid: RungGrid, *, header_seed: HeaderSeed | None = None) -> bytes:
         """RungGrid -> 8192-byte clipboard buffer."""
         off = self.Offsets
         contacts = grid.contacts
@@ -635,10 +644,11 @@ class ClickCodec:
             )
 
         buf = _new_buffer(row_count=1)
-        _patch_header_variant_bytes(
+        (header_seed or HeaderSeed.from_scaffold()).apply_to_buffer(buf)
+        _apply_second_immediate_header_compat(
             buf,
             contacts=contacts,
-            coil=grid.coil,
+            enabled=(header_seed is None),
         )
 
         # Clear scaffold markers that can become stale when stream anchors move.

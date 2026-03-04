@@ -18,7 +18,7 @@ from ..utils.mdb_operations import ensure_addresses_exist
 from ..utils.mdb_shared import find_click_database
 from . import capture_registry
 from .clipboard import copy_to_clipboard, find_click_hwnd, read_from_clipboard
-from .codec import ClickCodec
+from .codec import ClickCodec, HeaderSeed
 from .csv_shorthand import normalize_shorthand_row
 from .model import RungGrid
 from .topology import HEADER_ENTRY_BASE, cell_offset, header_structural_equal, parse_wire_topology
@@ -59,6 +59,7 @@ PROFILE_COLUMNS_REPORT_BASE_FIELDS = (
     "row",
     "column",
 )
+SEED_SOURCES = {"clipboard", "scaffold", "entry", "file"}
 ADDRESS_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_])([A-Za-z]{1,3}\d{1,5})(?![A-Za-z0-9_])")
 ADDRESS_RANGE_RE = re.compile(
     r"(?<![A-Za-z0-9_])([A-Za-z]{1,3}\d{1,5})\s*\.\.\s*([A-Za-z]{1,3}\d{1,5})(?![A-Za-z0-9_])"
@@ -208,6 +209,24 @@ class CaptureWorkflow:
         manifest = self._load_manifest()
         return capture_registry.copy_entry(capture_registry.find_entry(manifest, label))
 
+    def entry_delete(
+        self,
+        *,
+        label: str | None = None,
+        scenario: str | None = None,
+        yes: bool = False,
+    ) -> dict[str, Any]:
+        manifest = self._load_manifest()
+        result = capture_registry.delete_entries(
+            manifest,
+            label=label,
+            scenario=scenario,
+            dry_run=(not yes),
+        )
+        if yes and result["deleted_count"] > 0:
+            self._save_manifest(manifest)
+        return result
+
     def entry_capture(self, *, label: str, output_file: str | None = None) -> dict[str, Any]:
         data = self._read_from_clipboard()
         output_path = (
@@ -248,11 +267,17 @@ class CaptureWorkflow:
 
         return f"{','.join(contacts)},->,:,{canonical.af}"
 
-    def _payload_bytes_for_source(self, entry: dict[str, Any], source_mode: str) -> bytes:
+    def _payload_bytes_for_source(
+        self,
+        entry: dict[str, Any],
+        source_mode: str,
+        *,
+        header_seed: HeaderSeed | None = None,
+    ) -> bytes:
         if source_mode == "shorthand":
             csv = self._entry_rows_to_simple_csv(entry["rung_rows"])
             grid = RungGrid.from_csv(csv)
-            return ClickCodec().encode(grid)
+            return ClickCodec().encode(grid, header_seed=header_seed)
 
         if source_mode == "file":
             source_path_text = entry.get("payload_source_file") or entry.get("payload_file")
@@ -265,6 +290,96 @@ class CaptureWorkflow:
 
         allowed = ", ".join(sorted(capture_registry.PAYLOAD_SOURCE_MODES))
         raise ValueError(f"Invalid source mode {source_mode!r}; expected one of [{allowed}]")
+
+    def _seed_from_payload_file(self, path_text: str) -> HeaderSeed:
+        path = self._resolve_user_path(path_text)
+        if not path.exists():
+            raise FileNotFoundError(f"Header seed source file not found: {path}")
+        return HeaderSeed.from_payload(path.read_bytes())
+
+    def _resolve_header_seed(
+        self,
+        *,
+        manifest: dict[str, Any],
+        source: str,
+        seed_entry_label: str | None,
+        seed_file: str | None,
+    ) -> tuple[HeaderSeed, dict[str, Any]]:
+        if source not in SEED_SOURCES:
+            allowed = ", ".join(sorted(SEED_SOURCES))
+            raise ValueError(f"seed_source must be one of [{allowed}]")
+
+        if source == "scaffold":
+            seed = HeaderSeed.from_scaffold()
+            return (
+                seed,
+                {
+                    "requested": source,
+                    "source_used": "scaffold",
+                    "warning": None,
+                },
+            )
+
+        if source == "entry":
+            if not seed_entry_label:
+                raise ValueError("seed_source=entry requires --seed-entry-label")
+            seed_entry = capture_registry.find_entry(manifest, seed_entry_label)
+            seed_path_text = seed_entry.get("verify_result_file") or seed_entry.get("payload_file")
+            if not seed_path_text:
+                raise ValueError(
+                    f"Seed entry {seed_entry_label!r} has no payload_file/verify_result_file"
+                )
+            seed = self._seed_from_payload_file(seed_path_text)
+            return (
+                seed,
+                {
+                    "requested": source,
+                    "source_used": "entry",
+                    "source_label": seed_entry_label,
+                    "source_path": seed_path_text,
+                    "warning": None,
+                },
+            )
+
+        if source == "file":
+            if not seed_file:
+                raise ValueError("seed_source=file requires --seed-file")
+            seed = self._seed_from_payload_file(seed_file)
+            return (
+                seed,
+                {
+                    "requested": source,
+                    "source_used": "file",
+                    "source_path": self._repo_path(self._resolve_user_path(seed_file)),
+                    "warning": None,
+                },
+            )
+
+        # source == "clipboard": try payload-derived seed, else deterministic scaffold fallback.
+        try:
+            clipboard_bytes = self._read_from_clipboard()
+            seed = HeaderSeed.from_payload(clipboard_bytes)
+            return (
+                seed,
+                {
+                    "requested": source,
+                    "source_used": "clipboard",
+                    "warning": None,
+                },
+            )
+        except Exception as exc:
+            seed = HeaderSeed.from_scaffold()
+            return (
+                seed,
+                {
+                    "requested": source,
+                    "source_used": "scaffold_fallback",
+                    "warning": (
+                        "Header seed fallback to scaffold because clipboard seed extraction "
+                        f"failed: {exc}"
+                    ),
+                },
+            )
 
     def _extract_operand_candidates(self, token: str) -> list[str]:
         text = token.strip().upper()
@@ -330,6 +445,9 @@ class CaptureWorkflow:
         *,
         label: str,
         source: str | None = None,
+        seed_source: str = "clipboard",
+        seed_entry_label: str | None = None,
+        seed_file: str | None = None,
         owner_hwnd: int | None = None,
         ensure_mdb_addresses: bool = True,
         mdb_path: str | None = None,
@@ -337,7 +455,28 @@ class CaptureWorkflow:
         manifest = self._load_manifest()
         current = capture_registry.find_entry(manifest, label)
         source_mode = source or current["payload_source_mode"]
-        payload = self._payload_bytes_for_source(current, source_mode)
+        seed_info: dict[str, Any] = {
+            "requested": seed_source,
+            "source_used": None,
+            "applied": False,
+            "warning": None,
+        }
+        header_seed: HeaderSeed | None = None
+        if source_mode == "shorthand":
+            header_seed, seed_meta = self._resolve_header_seed(
+                manifest=manifest,
+                source=seed_source,
+                seed_entry_label=seed_entry_label,
+                seed_file=seed_file,
+            )
+            seed_info.update(seed_meta)
+            seed_info["applied"] = True
+            seed_info["header_05"] = f"0x{header_seed.profile_05:02X}"
+            seed_info["header_11"] = f"0x{header_seed.profile_11:02X}"
+            seed_info["header_17"] = f"0x{header_seed.family_17:02X}"
+            seed_info["header_18"] = f"0x{header_seed.family_18:02X}"
+
+        payload = self._payload_bytes_for_source(current, source_mode, header_seed=header_seed)
 
         mdb_ensure: dict[str, Any]
         if ensure_mdb_addresses:
@@ -378,6 +517,7 @@ class CaptureWorkflow:
             "entry": updated,
             "source_mode": source_mode,
             "payload_len": len(payload),
+            "seed": seed_info,
             "mdb_ensure": mdb_ensure,
         }
 
@@ -711,6 +851,9 @@ class CaptureWorkflow:
         *,
         label: str,
         source: str | None = None,
+        seed_source: str = "clipboard",
+        seed_entry_label: str | None = None,
+        seed_file: str | None = None,
         owner_hwnd: int | None = None,
         ensure_mdb_addresses: bool = True,
         mdb_path: str | None = None,
@@ -721,6 +864,9 @@ class CaptureWorkflow:
         prepare = self.verify_prepare(
             label=label,
             source=source,
+            seed_source=seed_source,
+            seed_entry_label=seed_entry_label,
+            seed_file=seed_file,
             owner_hwnd=owner_hwnd,
             ensure_mdb_addresses=ensure_mdb_addresses,
             mdb_path=mdb_path,
@@ -732,6 +878,16 @@ class CaptureWorkflow:
         output_fn(f"Type: {entry['capture_type']}")
         output_fn(f"Scenario: {entry['scenario']}")
         output_fn(f"Payload source: {prepare['source_mode']} ({prepare['payload_len']} bytes)")
+        seed_info = prepare.get("seed", {})
+        if seed_info.get("applied"):
+            output_fn(
+                "Header seed: "
+                f"{seed_info.get('source_used')} "
+                f"(+05={seed_info.get('header_05')} +11={seed_info.get('header_11')} "
+                f"+17={seed_info.get('header_17')} +18={seed_info.get('header_18')})"
+            )
+        if seed_info.get("warning"):
+            output_fn(f"Warning: {seed_info['warning']}")
         output_fn("Expected rows:")
         for row in expected_rows:
             output_fn(f"  {row}")

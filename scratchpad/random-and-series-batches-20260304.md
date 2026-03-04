@@ -80,3 +80,40 @@ uv run clicknick-ladder-capture verify complete --label rand_and_a_01 --status b
   - `701-716`
   - `801-816`
 - All replacement rows were pre-validated through encode/decode roundtrip using the same shorthand normalization path as the capture workflow.
+
+## Sparse X Failure Triage (2026-03-04)
+
+Scenario investigated: `random_and_batch_two_series_sparse_x_20260304`
+
+Completed verify rows at pause:
+
+- `rand_and_2s_sparse_a_01`: `verified_pass`
+- `rand_and_2s_sparse_a_02`: `verified_fail` (`Only pasted X002.immediate`)
+- `rand_and_2s_sparse_a_03`: `verified_fail` (`Only pasted X512.immediate`)
+- `rand_and_2s_sparse_a_04`: `verified_fail` (`Has a RED outlined box where the ~X113 should be`)
+- `rand_and_2s_sparse_a_05`: `cancelled`
+
+Binary observations from copied-back captures:
+
+- `a_02` and `a_03` back-captures contain only one valid instruction type marker (`0x2711` at `0x0A99`); second contact + coil markers are absent.
+- `a_04` back-capture contains an `Err` contact block (UTF-16 `Err`) at the second-contact location with contact type `0x2712` but no decodable operand; coil remains present.
+- The outgoing generated payloads for all three failing labels *did* contain the expected second-contact and coil markers before paste, so divergence happens during Click paste/normalize.
+
+Current root-cause candidates:
+
+1. Two-series family modeling is still incomplete for some variants (`first immediate`, `both immediate`, `NO -> NC`) outside the currently hardened second-immediate path.
+2. Some sparse X addresses may still be invalid in the active Click project/module configuration even though they are globally valid in the nominal sparse ranges.
+
+Discriminating re-test set (recommended next pass):
+
+- Low-address controls for the same variants:
+  - `X001.immediate,X002.immediate,->,:,out(Y001)`
+  - `X001.immediate,X002,->,:,out(Y001)`
+  - `X001,~X002,->,:,out(Y001)`
+- High-address no-immediate control:
+  - `X413,X314,->,:,out(Y001)`
+
+Decision rule:
+
+- If low-address controls fail similarly: prioritize encoder variant-byte fixes.
+- If low-address controls pass but high-address controls fail: prioritize project-specific address-validity filtering for random batches.

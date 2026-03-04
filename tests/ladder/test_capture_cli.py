@@ -7,6 +7,8 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from clicknick.ladder.capture_cli import main
 from clicknick.ladder.capture_workflow import CaptureWorkflow, CaptureWorkflowPaths
 from clicknick.ladder.topology import HEADER_ENTRY_BASE, cell_offset
@@ -100,6 +102,16 @@ def _profile_payload(
     return bytes(data)
 
 
+def _header_seed_tuple(payload: bytes) -> tuple[int, int, int, int, int]:
+    return (
+        payload[HEADER_ENTRY_BASE + 0x05],
+        payload[HEADER_ENTRY_BASE + 0x11],
+        payload[HEADER_ENTRY_BASE + 0x17],
+        payload[HEADER_ENTRY_BASE + 0x18],
+        payload[0x0A59],
+    )
+
+
 def test_verify_run_copied_writes_back_bin_and_updates_manifest(tmp_path: Path) -> None:
     fake = _FakeClipboard(read_payload=b"\xab" * 8192)
     workflow = _make_workflow(tmp_path, fake)
@@ -121,7 +133,7 @@ def test_verify_run_copied_writes_back_bin_and_updates_manifest(tmp_path: Path) 
     result_path = tmp_path / entry["verify_result_file"]
     assert result_path.exists()
     assert result_path.read_bytes() == b"\xab" * 8192
-    assert fake.read_calls == 1
+    assert fake.read_calls == 2
 
 
 def test_verify_run_crash_writes_no_back_bin(tmp_path: Path) -> None:
@@ -144,7 +156,7 @@ def test_verify_run_crash_writes_no_back_bin(tmp_path: Path) -> None:
     assert entry["verify_clipboard_len"] is None
     verify_files = list((tmp_path / "scratchpad" / "captures").glob("*_verify_back_*.bin"))
     assert verify_files == []
-    assert fake.read_calls == 0
+    assert fake.read_calls == 1
 
 
 def test_verify_prepare_no_ensure_flag_succeeds(tmp_path: Path) -> None:
@@ -186,6 +198,138 @@ def test_verify_prepare_uid_forwarded_to_clipboard(tmp_path: Path) -> None:
     assert rc == 0
     assert len(fake.copied_payloads) == 1
     assert fake.copied_owner_hwnds == [0x1234]
+
+
+def test_verify_prepare_seed_source_clipboard_applies_header_seed(tmp_path: Path) -> None:
+    fake = _FakeClipboard(
+        read_payload=_profile_payload(
+            cell_05=0x00,
+            cell_11=0x00,
+            cell_1a=0x00,
+            cell_1b=0x00,
+            header_05=0x21,
+            header_11=0x42,
+            header_17=0x58,
+            header_18=0x01,
+            trailer_0a59=0x21,
+        )
+    )
+    workflow = _make_workflow(tmp_path, fake)
+    output: list[str] = []
+
+    rc = main(
+        [
+            "verify",
+            "prepare",
+            "--label",
+            "verify_case",
+            "--seed-source",
+            "clipboard",
+            "--no-ensure-mdb-addresses",
+        ],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    assert len(fake.copied_payloads) == 1
+    assert _header_seed_tuple(fake.copied_payloads[0]) == (0x21, 0x42, 0x58, 0x01, 0x21)
+    assert any("Seed:" in line for line in output)
+
+
+def test_verify_prepare_seed_source_clipboard_falls_back_to_scaffold(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"\x01\x02\x03")
+    workflow = _make_workflow(tmp_path, fake)
+    output: list[str] = []
+
+    rc = main(
+        [
+            "verify",
+            "prepare",
+            "--label",
+            "verify_case",
+            "--seed-source",
+            "clipboard",
+            "--no-ensure-mdb-addresses",
+        ],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    assert len(fake.copied_payloads) == 1
+    # Scaffold defaults: +05/+11/+17/+18/t59 = 00/00/05/01/00.
+    assert _header_seed_tuple(fake.copied_payloads[0]) == (0x00, 0x00, 0x05, 0x01, 0x00)
+    assert any("Warning:" in line for line in output)
+
+
+def test_verify_prepare_seed_source_entry_uses_seed_entry_payload(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"\x00" * 8192)
+    workflow = _make_workflow(tmp_path, fake)
+    workflow.entry_add(
+        capture_type="native",
+        label="seed_entry",
+        scenario="seed",
+        description="seed source entry",
+        rows=["R,X001,->,:,out(Y001)"],
+    )
+    fake.read_payload = _profile_payload(
+        cell_05=0x00,
+        cell_11=0x00,
+        cell_1a=0x00,
+        cell_1b=0x00,
+        header_05=0x31,
+        header_11=0x62,
+        header_17=0x20,
+        header_18=0x01,
+        trailer_0a59=0x31,
+    )
+    workflow.entry_capture(label="seed_entry")
+    output: list[str] = []
+
+    rc = main(
+        [
+            "verify",
+            "prepare",
+            "--label",
+            "verify_case",
+            "--seed-source",
+            "entry",
+            "--seed-entry-label",
+            "seed_entry",
+            "--no-ensure-mdb-addresses",
+        ],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    assert len(fake.copied_payloads) >= 1
+    assert _header_seed_tuple(fake.copied_payloads[-1]) == (0x31, 0x62, 0x20, 0x01, 0x31)
+    assert any("Seed:" in line for line in output)
+
+
+def test_verify_prepare_seed_source_entry_requires_label(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"\x00" * 8192)
+    workflow = _make_workflow(tmp_path, fake)
+    output: list[str] = []
+
+    rc = main(
+        [
+            "verify",
+            "prepare",
+            "--label",
+            "verify_case",
+            "--seed-source",
+            "entry",
+            "--no-ensure-mdb-addresses",
+        ],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+
+    assert rc == 1
+    assert any("seed_source=entry requires --seed-entry-label" in line for line in output)
 
 
 def test_verify_run_mdb_path_forwarded(tmp_path: Path) -> None:
@@ -233,6 +377,48 @@ def test_verify_run_uid_forwarded_to_clipboard(tmp_path: Path) -> None:
     assert rc == 0
     assert len(fake.copied_payloads) == 1
     assert fake.copied_owner_hwnds == [4660]
+
+
+def test_entry_delete_dry_run_then_apply(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"")
+    workflow = _make_workflow(tmp_path, fake)
+    workflow.entry_add(
+        capture_type="synthetic",
+        label="delete_case_a",
+        scenario="to_delete",
+        description="delete me a",
+        rows=["R,X001,->,:,out(Y001)"],
+    )
+    workflow.entry_add(
+        capture_type="synthetic",
+        label="delete_case_b",
+        scenario="to_delete",
+        description="delete me b",
+        rows=["R,X001,~X002,->,:,out(Y001)"],
+    )
+    output: list[str] = []
+
+    rc_dry = main(
+        ["entry", "delete", "--scenario", "to_delete"],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+    assert rc_dry == 0
+    assert any("Dry-run delete" in line for line in output)
+    assert workflow.entry_show(label="delete_case_a")["capture_label"] == "delete_case_a"
+
+    output.clear()
+    rc_apply = main(
+        ["entry", "delete", "--scenario", "to_delete", "--yes"],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+    assert rc_apply == 0
+    assert any("Deleted entries" in line for line in output)
+    with pytest.raises(KeyError):
+        workflow.entry_show(label="delete_case_a")
+    with pytest.raises(KeyError):
+        workflow.entry_show(label="delete_case_b")
 
 
 def test_verify_prepare_ensure_failure_returns_error_without_clipboard_write(
@@ -389,7 +575,7 @@ def test_tui_verify_guided_queue_walks_unverified_entries_without_label_input(tm
     assert second["verify_status"] == "unverified"
     assert any("Pending verify entries: 2" in line for line in output)
     assert any("Verify queue stopped." in line for line in output)
-    assert fake.read_calls == 1
+    assert fake.read_calls == 2
 
 
 def test_report_profile_single_label_json(tmp_path: Path) -> None:

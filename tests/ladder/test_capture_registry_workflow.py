@@ -385,3 +385,26 @@ def test_verify_prepare_ensure_failure_is_fail_fast(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="ensure failed"):
         workflow.verify_prepare(label="verify_case")
     assert fake.copied_payloads == []
+
+
+def test_entry_delete_dry_run_and_apply(tmp_path: Path) -> None:
+    fake = _FakeClipboard()
+    workflow = _make_workflow(tmp_path, fake)
+    workflow.entry_add(
+        capture_type="native",
+        label="delete_target",
+        scenario="delete_scenario",
+        description="to be deleted",
+        rows=["R,X001,->,:,out(Y001)"],
+    )
+
+    dry = workflow.entry_delete(scenario="delete_scenario", yes=False)
+    assert dry["dry_run"] is True
+    assert dry["matched_count"] == 1
+    assert workflow.entry_show(label="delete_target")["capture_label"] == "delete_target"
+
+    applied = workflow.entry_delete(scenario="delete_scenario", yes=True)
+    assert applied["dry_run"] is False
+    assert applied["deleted_count"] == 1
+    with pytest.raises(KeyError):
+        workflow.entry_show(label="delete_target")

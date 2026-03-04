@@ -289,3 +289,51 @@ def list_entries(
             continue
         out.append(copy_entry(entry))
     return out
+
+
+def delete_entries(
+    manifest: dict[str, Any],
+    *,
+    label: str | None = None,
+    scenario: str | None = None,
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    """Delete entries by label or scenario.
+
+    Exactly one selector must be provided. By default this is a dry-run and
+    returns matched labels without mutating the manifest.
+    """
+    if (label is None) == (scenario is None):
+        raise ValueError("Specify exactly one selector: label or scenario")
+
+    if label is not None:
+        matches = [entry for entry in manifest["entries"] if entry["capture_label"] == label]
+        if not matches:
+            raise KeyError(f"Capture label not found: {label}")
+        mode = "label"
+        target = label
+    else:
+        assert scenario is not None
+        matches = [entry for entry in manifest["entries"] if entry["scenario"] == scenario]
+        if not matches:
+            raise KeyError(f"Scenario not found: {scenario}")
+        mode = "scenario"
+        target = scenario
+
+    matched_labels = [entry["capture_label"] for entry in matches]
+    deleted_count = 0
+    if not dry_run:
+        delete_ids = {entry["id"] for entry in matches}
+        manifest["entries"] = [
+            entry for entry in manifest["entries"] if entry["id"] not in delete_ids
+        ]
+        deleted_count = len(matched_labels)
+
+    return {
+        "mode": mode,
+        "target": target,
+        "dry_run": dry_run,
+        "matched_count": len(matched_labels),
+        "matched_labels": matched_labels,
+        "deleted_count": deleted_count,
+    }

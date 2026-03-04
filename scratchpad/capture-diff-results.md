@@ -712,3 +712,29 @@ Action taken:
 
 - `analyze_session_counter.py` now supports `--source {auto,payload,verify}` to make this explicit.
 
+## Implementation Status Update (2026-03-04, post-isolation)
+
+Changes applied in codebase to align with findings above:
+
+1. Context-seeded header model is implemented.
+   - `ClickCodec.encode` now accepts `header_seed`.
+   - Seed writes entry-uniform `+0x05/+0x11/+0x17/+0x18`.
+   - Trailer mirror invariant is enforced: `0x0A59 == header_entry0(+0x05)`.
+
+2. Fixed header-family literals were removed as semantic assumptions.
+   - `+0x17` is now treated as session/context seed input.
+   - Existing second-immediate behavior keeps a guarded compatibility override when
+     explicit seed is not provided.
+
+3. Verify pipeline is seed-aware.
+   - `clicknick-ladder-capture verify prepare/run` supports:
+     - `--seed-source {clipboard,scaffold,entry,file}`
+     - `--seed-entry-label` / `--seed-file` as needed.
+   - Default seed source is `clipboard`; failure falls back to scaffold with warning.
+
+4. Manifest backlog de-swamped for focused execution.
+   - Backup: `scratchpad/archive/ladder_capture_manifest.pre_prune_20260304.json`
+   - Exploratory scenarios removed from active manifest queue.
+   - New focused scenario added:
+     - `two_series_hardening_matrix_20260304` (9 deterministic rows).
+
