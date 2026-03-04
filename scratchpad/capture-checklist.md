@@ -8,8 +8,11 @@ arbitrary per-variant constants.
 
 ## Current Status
 
-All requested native captures for this checklist are already present in
-`scratchpad/ladder_capture_manifest.json` as of 2026-03-04.
+Two-series and three-series baseline captures are present in
+`scratchpad/ladder_capture_manifest.json`.
+
+5-series and 8-series expansion captures (including gap layouts and contact-bank
+variation) are also captured as of 2026-03-04.
 
 ## What We Know
 
@@ -46,8 +49,7 @@ position-sensitive and equal inputs cancel to zero.
 
 ## Per-Case Workflow
 
-No new captures are required for this checklist right now because they are already in
-`scratchpad/ladder_capture_manifest.json`.
+Capture labels are pre-registered in `scratchpad/ladder_capture_manifest.json`.
 
 If any case needs to be re-captured:
 
@@ -103,6 +105,42 @@ Currently known:
 | simple NO (baseline) | 0x05 | 0x01 |
 | second immediate two-series | 0x0D | 0x01 |
 | everything else so far | 0x15 | 0x01 |
+
+## Phase F — Series Length + Gap Layout Expansion
+
+| ID | CSV | Native Label | Notes |
+|---|---|---|---|
+| `five_series_no_no_no_no_no` | `X001,X002,X003,X004,X005,->,:,out(Y001)` | `five_series_no_no_no_no_no_native` | captured |
+| `eight_series_no_x8` | `X001,X002,X003,X004,X005,X006,X007,X008,->,:,out(Y001)` | `eight_series_no_x8_native` | captured |
+| `five_series_gap_alternating` | `X001,-,X002,-,X003,-,X004,-,X005,->,:,out(Y001)` | `five_series_gap_alternating_native` | captured |
+| `five_series_gap_front_loaded` | `X001,-,-,X002,X003,X004,X005,->,:,out(Y001)` | `five_series_gap_front_loaded_native` | captured |
+| `eight_series_gap_alternating` | `X001,-,X002,-,X003,-,X004,-,X005,-,X006,-,X007,-,X008,->,:,out(Y001)` | `eight_series_gap_alternating_native` | captured |
+| `eight_series_gap_staggered` | `X001,X002,-,X003,-,-,X004,X005,-,X006,X007,-,X008,->,:,out(Y001)` | `eight_series_gap_staggered_native` | captured |
+| `eight_series_gap_split_blocks` | `X001,X002,X003,-,-,X004,X005,X006,-,X007,X008,->,:,out(Y001)` | `eight_series_gap_split_blocks_native` | captured |
+
+## Phase G — Contact Bank Expansion (5-series baseline)
+
+Platform constraint: `OUT` target banks are limited to `Y`, `C`, and `SC`.
+For this phase, keep AF fixed as `out(Y001)` so only contact-bank effects vary.
+
+| ID | CSV | Native Label | Notes |
+|---|---|---|---|
+| `five_series_contact_y` | `Y001,Y002,Y003,Y004,Y005,->,:,out(Y001)` | `five_series_contact_y_native` | captured |
+| `five_series_contact_c` | `C1,C2,C3,C4,C5,->,:,out(Y001)` | `five_series_contact_c_native` | captured |
+| `five_series_contact_t` | `T1,T2,T3,T4,T5,->,:,out(Y001)` | `five_series_contact_t_native` | captured |
+| `five_series_contact_ct` | `CT1,CT2,CT3,CT4,CT5,->,:,out(Y001)` | `five_series_contact_ct_native` | captured |
+| `five_series_contact_sc` | `SC1,SC2,SC3,SC4,SC5,->,:,out(Y001)` | `five_series_contact_sc_native` | captured |
+
+## Phase H — Coil Isolation (Valid OUT Targets)
+
+Keep contacts fixed as `X001..X005` and vary only AF among valid targets (`Y`, `C`, `SC`).
+`SC50` is used because only a writable subset of SC addresses is valid.
+
+| ID | CSV | Native Label | Notes |
+|---|---|---|---|
+| `five_series_x_out_y` | `X001,X002,X003,X004,X005,->,:,out(Y001)` | `five_series_no_no_no_no_no_native` | captured (reused baseline) |
+| `five_series_x_out_c` | `X001,X002,X003,X004,X005,->,:,out(C1)` | `five_series_x_out_c_native` | captured |
+| `five_series_x_out_sc` | `X001,X002,X003,X004,X005,->,:,out(SC50)` | `five_series_x_out_sc_native` | captured |
 
 ## Analysis Protocol (Investigator)
 
@@ -185,3 +223,4 @@ Also test whether `+0x17` is a bitwise OR of per-contact feature flags.
 
 Validate candidate formulas against all existing captures in the manifest.
 Any mismatch means the formula is incomplete.
+

@@ -252,3 +252,210 @@ Encoder status:
   - length: `8192`
   - markers: `0x0A99` (contact1), `0x0B1E` (contact2), `0x12D9` (coil)
   - decode: `X001,X002.immediate,->,:,out(Y001)`
+
+## Profile Byte Formula Investigation (2026-03-04)
+
+Scope:
+
+- New native captures listed in `scratchpad/capture-checklist.md` (11 labels).
+- Existing native fixture captures in `tests/fixtures/ladder_captures` for cross-check.
+
+### New-Capture Raw Table (`row0,col4` + header entry 0)
+
+| Label | Contacts | cell `+0x05` | cell `+0x11` | cell `+0x1A` | cell `+0x1B` | hdr `+0x05` | hdr `+0x11` | hdr `+0x17` | `0x0A59` |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `two_series_nc_no_native` | `~X001 , X002` | `0x00` | `0x00` | `0xFF` | `0x01` | `0x00` | `0x00` | `0x4E` | `0x00` |
+| `no_first_nc_second_native` | `X001 , ~X002` | `0x00` | `0x00` | `0xFF` | `0x01` | `0x01` | `0x02` | `0x4E` | `0x01` |
+| `two_series_nc_nc_native` | `~X001 , ~X002` | `0x00` | `0x00` | `0xFF` | `0x01` | `0x02` | `0x04` | `0x4E` | `0x02` |
+| `nc_first_imm_no_second_native` | `~X001.immediate , X002` | `0x03` | `0x07` | `0xFF` | `0xFF` | `0x03` | `0x06` | `0x4E` | `0x03` |
+| `no_first_nc_second_imm_native` | `X001 , ~X002.immediate` | `0x04` | `0x09` | `0xFF` | `0xFF` | `0x04` | `0x08` | `0x4E` | `0x04` |
+| `nc_first_imm_nc_second_imm_native` | `~X001.immediate , ~X002.immediate` | `0x00` | `0x00` | `0x00` | `0xFF` | `0x05` | `0x0A` | `0x4E` | `0x05` |
+| `c_first_no_second_native` | `C1 , X002` | `0x00` | `0x00` | `0x00` | `0x00` | `0x06` | `0x0C` | `0x4E` | `0x06` |
+| `no_first_c_second_native` | `X001 , C2` | `0x00` | `0x00` | `0x00` | `0x00` | `0x07` | `0x0E` | `0x4E` | `0x07` |
+| `no_first_rise_second_native` | `X001 , rise(X002)` | `0x11` | `0x01` | `0x00` | `0x00` | `0x08` | `0x10` | `0x4E` | `0x08` |
+| `no_first_fall_second_native` | `X001 , fall(X002)` | `0x11` | `0x01` | `0x00` | `0x00` | `0x08` | `0x10` | `0x4E` | `0x08` |
+| `rise_first_rise_second_native` | `rise(X001) , rise(X002)` | `0xFF` | `0x00` | `0x00` | `0x00` | `0x08` | `0x10` | `0x4E` | `0x08` |
+
+### Findings
+
+1. `+0x1A/+0x1B` is compositional by contact family and immediate count.
+   - Any edge contact OR any non-X-bank contact => `0x00/0x00`.
+   - Both immediate (X-bank contacts) => `0x00/0xFF`.
+   - Exactly one immediate (X-bank contacts) => `0xFF/0xFF`.
+   - No immediate (X-bank contacts, non-edge) => `0xFF/0x01`.
+
+2. `+0x05/+0x11` for two-series profile cells is not a fixed literal table.
+   - Best-fit rule uses header seed bytes (`hdr+0x05`, `hdr+0x11`) plus contact features:
+     - both edge => `0xFF/0x00`
+     - exactly one edge => `(hdr11 + 1) / 0x01`
+     - both immediate => `0x00/0x00`
+     - exactly one immediate => `hdr05 / (hdr11 + 1)`
+     - else => `0x00/0x00`
+   - This matched all decoded two-series native captures tested:
+     - `18/18` in `scratchpad/captures`
+     - `9/9` in `tests/fixtures/ladder_captures`
+
+3. Header bytes are context-dependent, not instruction-only constants.
+   - For almost all captures, all 32 entries share the same per-entry `+0x05`, `+0x11`, `+0x17`.
+   - `0x0A59` mirrors header entry `+0x05` in all non-fragmented records checked.
+   - Same rung shape can appear with different header families:
+     - `two_series_nc_no_native` fixture: `hdr+0x17=0x15`, `hdr+0x05=0x29`, `hdr+0x11=0x59`
+     - `two_series_nc_no_native` new capture: `hdr+0x17=0x4E`, `hdr+0x05=0x00`, `hdr+0x11=0x00`
+   - Their profile/control cell bytes remained identical, indicating header family bytes are influenced by broader capture context.
+
+## Three-Series Generalization Pass (2026-03-04)
+
+New native captures under scenario `three_series_generalization`:
+
+- `three_series_no_no_no_native`
+- `three_series_first_imm_native`
+- `three_series_second_imm_native`
+- `three_series_third_imm_native`
+- `three_series_first_second_imm_native`
+- `three_series_first_third_imm_native`
+- `three_series_first_rise_native`
+- `three_series_second_rise_native`
+- `three_series_c_first_native`
+
+All decode to expected 3-contact CSV forms.
+
+### Header observations
+
+- In this pass, header entry 0 stayed in one family: `+0x17 = 0x4E`, `+0x18 = 0x01`.
+- `0x0A59` mirrored header entry `+0x05` for every new capture.
+- Header entry `+0x05` progressed `0x09..0x11`; `+0x11` progressed `0x12..0x22` with `+0x11 = 2 * (+0x05)`.
+
+### Strong generalized rule (`row0,col4 +0x05/+0x11`)
+
+Let `first`, `second` be the first two contacts and `h05/h11` be header entry 0 bytes.
+
+- If both are edge contacts: `cell+0x05 = 0xFF`, `cell+0x11 = 0x00`
+- Else if exactly one is edge: `cell+0x05 = h11 + 1`, `cell+0x11 = 0x01`
+- Else if immediate flags differ: `cell+0x05 = h05`, `cell+0x11 = h11 + 1`
+- Else: `cell+0x05 = 0x00`, `cell+0x11 = 0x00`
+
+Validation:
+
+- Matched all decoded captures with at least two contacts:
+  - `27/27` in `scratchpad/captures`
+  - `9/9` in `tests/fixtures/ladder_captures`
+
+### Three-series tail profile region
+
+For 3-series captures, `row0,col6..31` had one constant tuple per capture for `(+0x05,+0x11,+0x1A,+0x1B)`.
+This tuple mirrors to `row1,col0` and `row1,col1` in all nine captures (and to `row1,col2` except `three_series_c_first_native`).
+
+Observed rule candidate:
+
+- Any edge contact present: `00/00/00/00`
+- Any non-X-bank contact present: `00/00/FF/FF`
+- Otherwise (all X-bank, non-edge):
+  - `+0x05/+0x11 = 00/00`
+  - `+0x1A/+0x1B = 01/01` when immediate count is odd, else `00/00`
+
+### Three-series `row0,col4 +0x1B` state byte
+
+`row0,col4 +0x1A` stayed `0x00` in this pass.
+`row0,col4 +0x1B` tracked first-pair immediate state (for non-edge X-bank pair):
+
+- first/second both non-immediate: `0x01`
+- exactly one immediate: `0x00`
+- both immediate: `0x02`
+
+For first-pair edge/non-X cases observed, this byte was `0x00`.
+
+### Remaining gaps
+
+To tighten formulas, still useful:
+
+- `X001.immediate,X002.immediate,X003.immediate` (odd-count parity check at count 3)
+- `X001,X002,fall(X003)` and `X001,X002,rise(X003)` (edge in third slot)
+- `X001,C2,X003` and `X001,X002,C3` (non-X bank in later slots)
+
+## Five/Eight-Series + Gaps + Bank Pass (2026-03-04)
+
+New native captures processed:
+
+- series length + gap:
+  - `five_series_no_no_no_no_no_native`
+  - `eight_series_no_x8_native`
+  - `five_series_gap_alternating_native`
+  - `five_series_gap_front_loaded_native`
+  - `eight_series_gap_alternating_native`
+  - `eight_series_gap_staggered_native`
+  - `eight_series_gap_split_blocks_native`
+- bank set:
+  - `five_series_contact_y_native`
+  - `five_series_contact_c_native`
+  - `five_series_contact_t_native`
+  - `five_series_contact_ct_native`
+  - `five_series_contact_sc_native`
+
+### Header pattern update
+
+- Header family remained fixed for all new captures:
+  - `+0x17 = 0x4E`
+  - `+0x18 = 0x01`
+- Header entry 0 relation remained stable:
+  - `+0x11 = 2 * (+0x05)`
+  - `0x0A59` mirrors `+0x05`
+
+### `row0,col4 +0x05/+0x11` generalized rule status
+
+The first-two-contact rule from the prior section still holds across the expanded corpus.
+
+Validation after adding 5/8/gap captures:
+
+- `39/39` decoded captures in `scratchpad/captures`
+- `9/9` decoded captures in `tests/fixtures/ladder_captures`
+
+### Gap-layout effect (`row0,col4 +0x1A/+0x1B`)
+
+For 5/8-series non-edge/non-immediate X-bank captures, `row0,col4 +0x1A/+0x1B` varied by layout:
+
+- contiguous: `00/01`
+- alternating gaps: `FF/FF`
+- staggered: `FF/01`
+- front-loaded gaps: `00/00`
+
+Interpretation:
+
+- For longer/gapped rungs, `row0,col4` control bytes are topology-sensitive and no longer just a simple pairwise instruction signature.
+
+### Bank-series clarification
+
+This bank set is now explicitly treated as contact-bank variation with AF fixed at `out(Y001)`:
+
+- `five_series_contact_y_native`: `Y001..Y005 -> out(Y001)`
+- `five_series_contact_c_native`: `C1..C5 -> out(Y001)`
+- `five_series_contact_t_native`: `T1..T5 -> out(Y001)`
+- `five_series_contact_ct_native`: `CT1..CT5 -> out(Y001)`
+- `five_series_contact_sc_native`: `SC1..SC5 -> out(Y001)`
+
+Coil-isolation follow-up is now captured with fixed contacts `X001..X005`:
+
+- `five_series_x_out_c_native` => decodes `...->,:,out(C1)`
+- `five_series_x_out_sc_native` => decodes `...->,:,out(SC50)` (`SC50` used because SC writability is range-limited)
+
+Observed profile/header bytes:
+
+- `five_series_x_out_c_native`: `cell(0,4) +0x1A/+0x1B = 00/01`, header `+0x05/+0x11/+0x17 = 22/44/4E`, trailer `0x0A59=22`
+- `five_series_x_out_sc_native`: `cell(0,4) +0x1A/+0x1B = 00/01`, header `+0x05/+0x11/+0x17 = 23/46/4E`, trailer `0x0A59=23`
+
+## Investigator Handoff (2026-03-04)
+
+State at pause:
+
+- Working manifest contains two-series, three-series, five/eight-series, gap-layout, contact-bank, and valid OUT-target isolation captures.
+- Generalized `row0,col4 +0x05/+0x11` first-two-contact rule remains validated on all decoded captures in `scratchpad/captures` and fixture natives.
+- Long-series/gap captures show topology-sensitive variation in `row0,col4 +0x1A/+0x1B`.
+- Contact-bank labels are normalized to `five_series_contact_*`.
+- OUT target constraint is recorded: valid targets are `Y`, `C`, `SC` (with `SC50` used for writable SC range).
+
+Suggested next investigator steps:
+
+1. Re-run one consolidated profile export:
+   - `uv run clicknick-ladder-capture report profile --all --csv`
+2. Build per-column (not only `row0,col4`) modeling for 5/8-series to separate stream-overlap bytes from stable profile region bytes.
+3. Decide whether to extend encoder beyond 2-series now or defer until compare-family captures are added.
+

@@ -284,6 +284,8 @@ class TestEncodeDecodeRoundTrip:
             ("X001.immediate,X002.immediate,->,:,out(Y001)", (0x00, 0xFF)),
             ("rise(X001),X002,->,:,out(Y001)", (0x00, 0x00)),
             ("fall(X001),X002,->,:,out(Y001)", (0x00, 0x00)),
+            ("C1,X002,->,:,out(Y001)", (0x00, 0x00)),
+            ("X001,C2,->,:,out(Y001)", (0x00, 0x00)),
         ],
     )
     def test_two_series_control_profile_bytes_by_contact_variant(
@@ -305,13 +307,15 @@ class TestEncodeDecodeRoundTrip:
         ("csv", "expected_profile"),
         [
             ("X001,X002,->,:,out(Y001)", (0x00, 0x00)),
-            ("X001.immediate,X002,->,:,out(Y001)", (0x25, 0x52)),
+            ("X001.immediate,X002,->,:,out(Y001)", (0x00, 0x01)),
             ("X001,X002.immediate,->,:,out(Y001)", (0x04, 0x0C)),
             ("X001.immediate,X002.immediate,->,:,out(Y001)", (0x00, 0x00)),
             ("~X001,X002,->,:,out(Y001)", (0x00, 0x00)),
             ("~X001,~X002,->,:,out(Y001)", (0x00, 0x00)),
-            ("rise(X001),X002,->,:,out(Y001)", (0x62, 0x01)),
-            ("fall(X001),X002,->,:,out(Y001)", (0x64, 0x01)),
+            ("rise(X001),X002,->,:,out(Y001)", (0x01, 0x01)),
+            ("fall(X001),X002,->,:,out(Y001)", (0x01, 0x01)),
+            ("X001,rise(X002),->,:,out(Y001)", (0x01, 0x01)),
+            ("rise(X001),rise(X002),->,:,out(Y001)", (0xFF, 0x00)),
         ],
     )
     def test_two_series_profile_05_11_bytes_by_contact_variant(

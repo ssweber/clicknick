@@ -276,6 +276,581 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T15:37:08Z",
       "updated_at": "2026-03-04T15:55:02Z"
+    },
+    {
+      "id": "80ee69f9-3b84-492a-9570-d52538d61969",
+      "capture_label": "three_series_no_no_no_native",
+      "capture_type": "native",
+      "scenario": "three_series_generalization",
+      "description": "three_series_no_no_no",
+      "rung_rows": [
+        "R,X001,X002,X003,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/three_series_no_no_no_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001,X002,X003,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:32:05Z",
+      "updated_at": "2026-03-04T16:34:53Z"
+    },
+    {
+      "id": "5c27e75a-a82d-467e-96b2-fe51d42eb820",
+      "capture_label": "three_series_first_imm_native",
+      "capture_type": "native",
+      "scenario": "three_series_generalization",
+      "description": "three_series_first_imm",
+      "rung_rows": [
+        "R,X001.immediate,X002,X003,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/three_series_first_imm_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001.immediate,X002,X003,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:32:05Z",
+      "updated_at": "2026-03-04T16:35:03Z"
+    },
+    {
+      "id": "3f234a89-a65f-4255-8894-1b92f8c6cfba",
+      "capture_label": "three_series_second_imm_native",
+      "capture_type": "native",
+      "scenario": "three_series_generalization",
+      "description": "three_series_second_imm",
+      "rung_rows": [
+        "R,X001,X002.immediate,X003,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/three_series_second_imm_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001,X002.immediate,X003,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:32:05Z",
+      "updated_at": "2026-03-04T16:36:21Z"
+    },
+    {
+      "id": "92e8185e-bb88-4fe7-a16d-54728b569381",
+      "capture_label": "three_series_third_imm_native",
+      "capture_type": "native",
+      "scenario": "three_series_generalization",
+      "description": "three_series_third_imm",
+      "rung_rows": [
+        "R,X001,X002,X003.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/three_series_third_imm_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001,X002,X003.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:32:06Z",
+      "updated_at": "2026-03-04T16:36:31Z"
+    },
+    {
+      "id": "8595c12c-0fad-499a-8b90-8dcf15bf324d",
+      "capture_label": "three_series_first_second_imm_native",
+      "capture_type": "native",
+      "scenario": "three_series_generalization",
+      "description": "three_series_first_second_imm",
+      "rung_rows": [
+        "R,X001.immediate,X002.immediate,X003,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/three_series_first_second_imm_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001.immediate,X002.immediate,X003,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:32:06Z",
+      "updated_at": "2026-03-04T16:36:46Z"
+    },
+    {
+      "id": "cb5bf723-5e64-4549-ab8a-3501bcab0725",
+      "capture_label": "three_series_first_third_imm_native",
+      "capture_type": "native",
+      "scenario": "three_series_generalization",
+      "description": "three_series_first_third_imm",
+      "rung_rows": [
+        "R,X001.immediate,X002,X003.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/three_series_first_third_imm_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001.immediate,X002,X003.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:32:06Z",
+      "updated_at": "2026-03-04T16:37:00Z"
+    },
+    {
+      "id": "90665835-2ba1-46de-8358-dc47fed028b5",
+      "capture_label": "three_series_first_rise_native",
+      "capture_type": "native",
+      "scenario": "three_series_generalization",
+      "description": "three_series_first_rise",
+      "rung_rows": [
+        "R,rise(X001),X002,X003,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/three_series_first_rise_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,rise(X001),X002,X003,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:32:06Z",
+      "updated_at": "2026-03-04T16:37:25Z"
+    },
+    {
+      "id": "e397966c-1567-46ae-94d3-786461de103e",
+      "capture_label": "three_series_second_rise_native",
+      "capture_type": "native",
+      "scenario": "three_series_generalization",
+      "description": "three_series_second_rise",
+      "rung_rows": [
+        "R,X001,rise(X002),X003,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/three_series_second_rise_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001,rise(X002),X003,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:32:07Z",
+      "updated_at": "2026-03-04T16:37:46Z"
+    },
+    {
+      "id": "81fc5df6-f64d-49ae-b895-a2888878dced",
+      "capture_label": "three_series_c_first_native",
+      "capture_type": "native",
+      "scenario": "three_series_generalization",
+      "description": "three_series_c_first",
+      "rung_rows": [
+        "R,C1,X002,X003,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/three_series_c_first_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,C1,X002,X003,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:32:07Z",
+      "updated_at": "2026-03-04T16:37:58Z"
+    },
+    {
+      "id": "f008c437-2840-48b9-baac-765418f0a4be",
+      "capture_label": "five_series_no_no_no_no_no_native",
+      "capture_type": "native",
+      "scenario": "series_length_and_gap_generalization",
+      "description": "five_series_contiguous",
+      "rung_rows": [
+        "R,X001,X002,X003,X004,X005,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/five_series_no_no_no_no_no_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001,X002,X003,X004,X005,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:53:18Z",
+      "updated_at": "2026-03-04T16:54:44Z"
+    },
+    {
+      "id": "d8c11d64-3288-44cd-b3e6-3a09cf03c425",
+      "capture_label": "eight_series_no_x8_native",
+      "capture_type": "native",
+      "scenario": "series_length_and_gap_generalization",
+      "description": "eight_series_contiguous",
+      "rung_rows": [
+        "R,X001,X002,X003,X004,X005,X006,X007,X008,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/eight_series_no_x8_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001,X002,X003,X004,X005,X006,X007,X008,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:53:18Z",
+      "updated_at": "2026-03-04T16:55:00Z"
+    },
+    {
+      "id": "6d7885fa-0a38-44d4-a657-22dfd7de666c",
+      "capture_label": "five_series_gap_alternating_native",
+      "capture_type": "native",
+      "scenario": "series_length_and_gap_generalization",
+      "description": "five_series_alternating_gaps",
+      "rung_rows": [
+        "R,X001,-,X002,-,X003,-,X004,-,X005,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/five_series_gap_alternating_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001,-,X002,-,X003,-,X004,-,X005,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:53:18Z",
+      "updated_at": "2026-03-04T16:55:27Z"
+    },
+    {
+      "id": "5b97c5db-ceeb-4bf0-b435-bd24d2477875",
+      "capture_label": "five_series_gap_front_loaded_native",
+      "capture_type": "native",
+      "scenario": "series_length_and_gap_generalization",
+      "description": "five_series_front_loaded_gaps",
+      "rung_rows": [
+        "R,X001,-,-,X002,X003,X004,X005,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/five_series_gap_front_loaded_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001,-,-,X002,X003,X004,X005,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:53:19Z",
+      "updated_at": "2026-03-04T16:55:48Z"
+    },
+    {
+      "id": "fdc0e536-6a63-4a8b-9b78-7961946b4a74",
+      "capture_label": "eight_series_gap_alternating_native",
+      "capture_type": "native",
+      "scenario": "series_length_and_gap_generalization",
+      "description": "eight_series_alternating_gaps",
+      "rung_rows": [
+        "R,X001,-,X002,-,X003,-,X004,-,X005,-,X006,-,X007,-,X008,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/eight_series_gap_alternating_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001,-,X002,-,X003,-,X004,-,X005,-,X006,-,X007,-,X008,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:53:19Z",
+      "updated_at": "2026-03-04T16:56:25Z"
+    },
+    {
+      "id": "a6d2575d-b983-47ff-879c-120a4c7c41b7",
+      "capture_label": "eight_series_gap_staggered_native",
+      "capture_type": "native",
+      "scenario": "series_length_and_gap_generalization",
+      "description": "eight_series_staggered_gaps",
+      "rung_rows": [
+        "R,X001,X002,-,X003,-,-,X004,X005,-,X006,X007,-,X008,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/eight_series_gap_staggered_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001,X002,-,X003,-,-,X004,X005,-,X006,X007,-,X008,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:53:19Z",
+      "updated_at": "2026-03-04T16:57:38Z"
+    },
+    {
+      "id": "af19dae0-ea32-4c70-924d-2c5e0eb2d601",
+      "capture_label": "eight_series_gap_split_blocks_native",
+      "capture_type": "native",
+      "scenario": "series_length_and_gap_generalization",
+      "description": "eight_series_split_blocks",
+      "rung_rows": [
+        "R,X001,X002,X003,-,-,X004,X005,X006,-,X007,X008,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/eight_series_gap_split_blocks_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001,X002,X003,-,-,X004,X005,X006,-,X007,X008,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:53:20Z",
+      "updated_at": "2026-03-04T16:58:16Z"
+    },
+    {
+      "id": "6b7379c1-e9d1-419f-9799-ce803e155716",
+      "capture_label": "five_series_contact_y_native",
+      "capture_type": "native",
+      "scenario": "series_contact_bank_generalization",
+      "description": "five_series_contact_y",
+      "rung_rows": [
+        "R,Y001,Y002,Y003,Y004,Y005,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/five_series_contact_y_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,Y001,Y002,Y003,Y004,Y005,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:53:20Z",
+      "updated_at": "2026-03-04T17:02:20Z"
+    },
+    {
+      "id": "34f752bd-58f1-4dfd-a3e7-cf1bdd42a35b",
+      "capture_label": "five_series_contact_c_native",
+      "capture_type": "native",
+      "scenario": "series_contact_bank_generalization",
+      "description": "five_series_contact_c",
+      "rung_rows": [
+        "R,C1,C2,C3,C4,C5,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/five_series_contact_c_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,C1,C2,C3,C4,C5,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:53:20Z",
+      "updated_at": "2026-03-04T17:02:37Z"
+    },
+    {
+      "id": "7907b0aa-4ac9-4b29-93cb-0ae1d5ee9826",
+      "capture_label": "five_series_contact_t_native",
+      "capture_type": "native",
+      "scenario": "series_contact_bank_generalization",
+      "description": "five_series_contact_t",
+      "rung_rows": [
+        "R,T1,T2,T3,T4,T5,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/five_series_contact_t_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,T1,T2,T3,T4,T5,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:53:21Z",
+      "updated_at": "2026-03-04T17:02:55Z"
+    },
+    {
+      "id": "e888ad41-07ab-4cbe-af79-e229d5c9f720",
+      "capture_label": "five_series_contact_ct_native",
+      "capture_type": "native",
+      "scenario": "series_contact_bank_generalization",
+      "description": "five_series_contact_ct",
+      "rung_rows": [
+        "R,CT1,CT2,CT3,CT4,CT5,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/five_series_contact_ct_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,CT1,CT2,CT3,CT4,CT5,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:53:21Z",
+      "updated_at": "2026-03-04T17:03:20Z"
+    },
+    {
+      "id": "48fa1746-31d9-48eb-8380-9e9899b22519",
+      "capture_label": "five_series_contact_sc_native",
+      "capture_type": "native",
+      "scenario": "series_contact_bank_generalization",
+      "description": "five_series_contact_sc",
+      "rung_rows": [
+        "R,SC1,SC2,SC3,SC4,SC5,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/five_series_contact_sc_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,SC1,SC2,SC3,SC4,SC5,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T16:53:21Z",
+      "updated_at": "2026-03-04T17:03:42Z"
+    },
+    {
+      "id": "686381bd-a609-42c1-bb36-d3ed3d71b001",
+      "capture_label": "five_series_x_out_c_native",
+      "capture_type": "native",
+      "scenario": "series_coil_isolation_valid_targets",
+      "description": "five_series_x_contacts_out_c",
+      "rung_rows": [
+        "R,X001,X002,X003,X004,X005,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(C1)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/five_series_x_out_c_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001,X002,X003,X004,X005,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(C1)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:20:33Z",
+      "updated_at": "2026-03-04T17:21:11Z"
+    },
+    {
+      "id": "18014fa5-0602-429c-aa99-7ce7bec9360f",
+      "capture_label": "five_series_x_out_sc_native",
+      "capture_type": "native",
+      "scenario": "series_coil_isolation_valid_targets",
+      "description": "five_series_x_contacts_out_sc",
+      "rung_rows": [
+        "R,X001,X002,X003,X004,X005,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(SC50)"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/five_series_x_out_sc_native.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,X001,X002,X003,X004,X005,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(SC50)"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-04T17:20:33Z",
+      "updated_at": "2026-03-04T17:21:42Z"
     }
   ]
 }

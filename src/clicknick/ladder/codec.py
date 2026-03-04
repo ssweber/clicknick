@@ -287,9 +287,16 @@ def _contact_stream_shift(contact: Contact) -> int:
     return len(_build_contact_stream(probe)) - _BASE_CONTACT_STREAM_LEN
 
 
+def _is_x_bank_contact(contact: Contact) -> bool:
+    return contact.operand.startswith("X")
+
+
 def _two_series_control_profile_bytes(first: Contact, second: Contact) -> tuple[int, int]:
     """Return the (0x1A, 0x1B) profile values for two-series wiring cells."""
     if first.type == InstructionType.CONTACT_EDGE or second.type == InstructionType.CONTACT_EDGE:
+        return (0x00, 0x00)
+
+    if not (_is_x_bank_contact(first) and _is_x_bank_contact(second)):
         return (0x00, 0x00)
 
     if first.immediate and second.immediate:
@@ -301,22 +308,26 @@ def _two_series_control_profile_bytes(first: Contact, second: Contact) -> tuple[
     return (0xFF, 0x01)
 
 
-def _two_series_profile_05_11_bytes(first: Contact, second: Contact) -> tuple[int, int]:
+def _two_series_profile_05_11_bytes(
+    first: Contact,
+    second: Contact,
+    *,
+    header_profile_05: int,
+    header_profile_11: int,
+) -> tuple[int, int]:
     """Return the (+0x05, +0x11) profile bytes for two-series wiring cells."""
-    if first.type == InstructionType.CONTACT_EDGE:
-        if first.edge_kind == "rise":
-            return (0x62, 0x01)
-        if first.edge_kind == "fall":
-            return (0x64, 0x01)
-        return (0x00, 0x01)
+    first_is_edge = first.type == InstructionType.CONTACT_EDGE
+    second_is_edge = second.type == InstructionType.CONTACT_EDGE
 
-    if first.immediate and not second.immediate:
-        return (0x25, 0x52)
+    if first_is_edge and second_is_edge:
+        return (0xFF, 0x00)
 
-    if not first.immediate and second.immediate:
-        return (0x04, 0x0C)
+    if first_is_edge or second_is_edge:
+        return ((header_profile_11 + 1) & 0xFF, 0x01)
 
-    # Includes both-immediate and fully non-immediate series profiles.
+    if first.immediate ^ second.immediate:
+        return (header_profile_05, (header_profile_11 + 1) & 0xFF)
+
     return (0x00, 0x00)
 
 
@@ -337,6 +348,8 @@ def _write_topology_for_simple_series(buf: bytearray, contacts: list[Contact]) -
 
     if contact_count == 2:
         first_contact, second_contact = contacts
+        header_profile_05 = buf[HEADER_ENTRY_BASE + 0x05]
+        header_profile_11 = buf[HEADER_ENTRY_BASE + 0x11]
 
         # Two-series capture pattern:
         # - col3 flags are emitted by stream bytes (do not overwrite)
@@ -358,7 +371,12 @@ def _write_topology_for_simple_series(buf: bytearray, contacts: list[Contact]) -
             right_value = 0x01
 
         control_a, control_b = _two_series_control_profile_bytes(first_contact, second_contact)
-        profile_05, profile_11 = _two_series_profile_05_11_bytes(first_contact, second_contact)
+        profile_05, profile_11 = _two_series_profile_05_11_bytes(
+            first_contact,
+            second_contact,
+            header_profile_05=header_profile_05,
+            header_profile_11=header_profile_11,
+        )
         for col in range(4, COLS_PER_ROW):
             start = cell_offset(0, col)
             buf[start + CELL_HORIZONTAL_LEFT_OFFSET] = left_value
