@@ -5,9 +5,11 @@ Provides connection management and CRUD operations for the MDB database.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pyodbc
+from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
 from pyclickplc.banks import DEFAULT_RETENTIVE, MEMORY_TYPE_TO_DATA_TYPE, DataType
 
 from ..models.address_row import AddressRow
@@ -15,6 +17,7 @@ from .mdb_shared import create_access_connection, find_click_database
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from typing import Any
 
 
 class MdbConnection:
@@ -272,3 +275,79 @@ def save_changes(conn: MdbConnection, rows: Sequence[AddressRow]) -> int:
         raise
     finally:
         cursor.close()
+
+
+def ensure_addresses_exist(db_path: str, addresses: Sequence[str]) -> dict[str, Any]:
+    """Ensure all requested addresses exist in the MDB address table.
+
+    Args:
+        db_path: Full path to SC_.mdb
+        addresses: Address strings such as "X001", "CT1", or endpoint ranges "X001..X005"
+
+    Returns:
+        Summary with deterministic counts and normalized address strings.
+    """
+    db_path_obj = Path(db_path)
+    if not db_path_obj.exists():
+        raise FileNotFoundError(f"MDB file not found: {db_path_obj}")
+
+    requested_keys: set[int] = set()
+    requested_pairs: list[tuple[str, int]] = []
+
+    def _add_candidate(candidate: str) -> None:
+        memory_type, address = parse_address(candidate.strip().upper())
+        addr_key = get_addr_key(memory_type, address)
+        if addr_key in requested_keys:
+            return
+        requested_keys.add(addr_key)
+        requested_pairs.append((memory_type, address))
+
+    for raw in addresses:
+        token = raw.strip().upper()
+        if not token:
+            continue
+        if ".." in token:
+            left_raw, right_raw = token.split("..", 1)
+            _add_candidate(left_raw)
+            _add_candidate(right_raw)
+            continue
+        _add_candidate(token)
+
+    parsed_addresses = [format_address_display(mem, addr) for mem, addr in requested_pairs]
+    requested_count = len(parsed_addresses)
+
+    with MdbConnection(str(db_path_obj)) as conn:
+        existing = load_all_addresses(conn)
+        existing_keys = set(existing.keys())
+
+        missing_rows: list[AddressRow] = []
+        for memory_type, address in requested_pairs:
+            addr_key = get_addr_key(memory_type, address)
+            if addr_key in existing_keys:
+                continue
+
+            missing_rows.append(
+                AddressRow(
+                    memory_type=memory_type,
+                    address=address,
+                    nickname="",
+                    comment="",
+                    used=True,
+                    data_type=MEMORY_TYPE_TO_DATA_TYPE.get(memory_type, DataType.BIT),
+                    initial_value="",
+                    retentive=DEFAULT_RETENTIVE.get(memory_type, False),
+                )
+            )
+
+        if missing_rows:
+            save_changes(conn, missing_rows)
+
+    inserted_count = len(missing_rows)
+    existing_count = requested_count - inserted_count
+    return {
+        "db_path": str(db_path_obj),
+        "requested_count": requested_count,
+        "inserted_count": inserted_count,
+        "existing_count": existing_count,
+        "parsed_addresses": parsed_addresses,
+    }

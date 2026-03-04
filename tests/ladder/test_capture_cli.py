@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -25,13 +26,33 @@ class _FakeClipboard:
         return self.read_payload
 
 
-def _make_workflow(tmp_path: Path, fake: _FakeClipboard) -> CaptureWorkflow:
+def _default_ensure_mdb(db_path: str, addresses: Sequence[str]) -> dict[str, object]:
+    return {
+        "db_path": db_path,
+        "requested_count": len(addresses),
+        "inserted_count": 0,
+        "existing_count": len(addresses),
+        "parsed_addresses": list(addresses),
+    }
+
+
+def _make_workflow(
+    tmp_path: Path,
+    fake: _FakeClipboard,
+    *,
+    ensure_mdb_fn=None,
+) -> CaptureWorkflow:
     paths = CaptureWorkflowPaths.for_repo_root(tmp_path)
     fixed_now = datetime(2026, 1, 2, 9, 30, 0, tzinfo=UTC)
+    fake_mdb = tmp_path / "SC_.mdb"
+    fake_mdb.write_bytes(b"")
     workflow = CaptureWorkflow(
         paths=paths,
         copy_to_clipboard_fn=fake.copy,
         read_from_clipboard_fn=fake.read,
+        ensure_mdb_addresses_fn=ensure_mdb_fn or _default_ensure_mdb,
+        find_click_hwnd_fn=lambda: 0x1234,
+        find_click_database_fn=lambda _pid, _hwnd: str(fake_mdb),
         now_fn=lambda: fixed_now,
     )
     workflow.manifest_init(force=True)
@@ -122,6 +143,75 @@ def test_verify_run_crash_writes_no_back_bin(tmp_path: Path) -> None:
     verify_files = list((tmp_path / "scratchpad" / "captures").glob("*_verify_back_*.bin"))
     assert verify_files == []
     assert fake.read_calls == 0
+
+
+def test_verify_prepare_no_ensure_flag_succeeds(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"\x11" * 8192)
+    workflow = _make_workflow(tmp_path, fake)
+    output: list[str] = []
+
+    rc = main(
+        ["verify", "prepare", "--label", "verify_case", "--no-ensure-mdb-addresses"],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    assert len(fake.copied_payloads) == 1
+    entry = workflow.entry_show(label="verify_case")
+    assert entry["verify_expected_rows"] == entry["rung_rows"]
+
+
+def test_verify_run_mdb_path_forwarded(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"\xaa" * 8192)
+    seen_db_paths: list[str] = []
+
+    def ensure_mdb(db_path: str, addresses: Sequence[str]) -> dict[str, object]:
+        seen_db_paths.append(db_path)
+        return {
+            "db_path": db_path,
+            "requested_count": len(addresses),
+            "inserted_count": 0,
+            "existing_count": len(addresses),
+            "parsed_addresses": list(addresses),
+        }
+
+    workflow = _make_workflow(tmp_path, fake, ensure_mdb_fn=ensure_mdb)
+    custom_mdb = tmp_path / "custom_verify.mdb"
+    custom_mdb.write_bytes(b"mdb")
+    output: list[str] = []
+
+    rc = main(
+        ["verify", "run", "--label", "verify_case", "--mdb-path", str(custom_mdb)],
+        workflow=workflow,
+        input_fn=_input_iter(["c", "y", "y", "", "", ""]),
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    assert seen_db_paths == [str(custom_mdb)]
+
+
+def test_verify_prepare_ensure_failure_returns_error_without_clipboard_write(
+    tmp_path: Path,
+) -> None:
+    fake = _FakeClipboard(read_payload=b"\x11" * 8192)
+
+    def ensure_fail(_db_path: str, _addresses: Sequence[str]) -> dict[str, object]:
+        raise RuntimeError("mdb ensure exploded")
+
+    workflow = _make_workflow(tmp_path, fake, ensure_mdb_fn=ensure_fail)
+    output: list[str] = []
+
+    rc = main(
+        ["verify", "prepare", "--label", "verify_case"],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+
+    assert rc == 1
+    assert fake.copied_payloads == []
+    assert any("mdb ensure exploded" in line for line in output)
 
 
 def test_verify_complete_crash_persists_state(tmp_path: Path) -> None:

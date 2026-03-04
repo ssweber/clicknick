@@ -86,6 +86,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify_prepare = verify_sub.add_parser("prepare", help="Load entry payload to clipboard")
     p_verify_prepare.add_argument("--label", required=True)
     p_verify_prepare.add_argument("--source", choices=["shorthand", "file"])
+    p_verify_prepare.add_argument("--mdb-path")
+    p_verify_prepare.add_argument(
+        "--no-ensure-mdb-addresses",
+        action="store_true",
+        help="Skip auto-inserting parsed rung operands into SC_.mdb before clipboard load",
+    )
     _add_json_flag(p_verify_prepare)
 
     p_verify_complete = verify_sub.add_parser("complete", help="Persist verify result state")
@@ -108,6 +114,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify_run = verify_sub.add_parser("run", help="Interactive verify workflow")
     p_verify_run.add_argument("--label", required=True)
     p_verify_run.add_argument("--source", choices=["shorthand", "file"])
+    p_verify_run.add_argument("--mdb-path")
+    p_verify_run.add_argument(
+        "--no-ensure-mdb-addresses",
+        action="store_true",
+        help="Skip auto-inserting parsed rung operands into SC_.mdb before clipboard load",
+    )
     p_verify_run.add_argument(
         "--status-default",
         choices=["unverified", "verified_pass", "verified_fail", "blocked"],
@@ -272,7 +284,12 @@ def _dispatch(
         return workflow.entry_capture(label=args.label, output_file=args.output_file)
 
     if args.command == "verify" and args.verify_cmd == "prepare":
-        return workflow.verify_prepare(label=args.label, source=args.source)
+        return workflow.verify_prepare(
+            label=args.label,
+            source=args.source,
+            ensure_mdb_addresses=(not args.no_ensure_mdb_addresses),
+            mdb_path=args.mdb_path,
+        )
     if args.command == "verify" and args.verify_cmd == "complete":
         return workflow.verify_complete(
             label=args.label,
@@ -286,6 +303,8 @@ def _dispatch(
         return workflow.verify_run_interactive(
             label=args.label,
             source=args.source,
+            ensure_mdb_addresses=(not args.no_ensure_mdb_addresses),
+            mdb_path=args.mdb_path,
             status_default=args.status_default,
             input_fn=input_fn,
             output_fn=output_fn,

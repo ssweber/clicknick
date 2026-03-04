@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,13 +33,33 @@ class _FakeClipboard:
         return self.read_payload
 
 
-def _make_workflow(tmp_path: Path, fake: _FakeClipboard) -> CaptureWorkflow:
+def _default_ensure_mdb(db_path: str, addresses: Sequence[str]) -> dict[str, object]:
+    return {
+        "db_path": db_path,
+        "requested_count": len(addresses),
+        "inserted_count": 0,
+        "existing_count": len(addresses),
+        "parsed_addresses": list(addresses),
+    }
+
+
+def _make_workflow(
+    tmp_path: Path,
+    fake: _FakeClipboard,
+    *,
+    ensure_mdb_fn=None,
+) -> CaptureWorkflow:
     paths = CaptureWorkflowPaths.for_repo_root(tmp_path)
     fixed_now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    fake_mdb = tmp_path / "SC_.mdb"
+    fake_mdb.write_bytes(b"")
     workflow = CaptureWorkflow(
         paths=paths,
         copy_to_clipboard_fn=fake.copy,
         read_from_clipboard_fn=fake.read,
+        ensure_mdb_addresses_fn=ensure_mdb_fn or _default_ensure_mdb,
+        find_click_hwnd_fn=lambda: 0x1234,
+        find_click_database_fn=lambda _pid, _hwnd: str(fake_mdb),
         now_fn=lambda: fixed_now,
     )
     workflow.manifest_init(force=True)
@@ -228,3 +249,116 @@ def test_fixture_manifest_upsert_and_codec_generatable_deterministic(tmp_path: P
     assert (
         first["fixture_entry"]["codec_generatable"] == second["fixture_entry"]["codec_generatable"]
     )
+
+
+def test_verify_prepare_calls_ensure_before_clipboard_copy(tmp_path: Path) -> None:
+    fake = _FakeClipboard()
+    ensure_calls: list[tuple[str, list[str]]] = []
+
+    def ensure_mdb(db_path: str, addresses: Sequence[str]) -> dict[str, object]:
+        assert fake.copied_payloads == []
+        ensure_calls.append((db_path, list(addresses)))
+        return {
+            "db_path": db_path,
+            "requested_count": len(addresses),
+            "inserted_count": 0,
+            "existing_count": len(addresses),
+            "parsed_addresses": list(addresses),
+        }
+
+    workflow = _make_workflow(tmp_path, fake, ensure_mdb_fn=ensure_mdb)
+    workflow.entry_add(
+        capture_type="synthetic",
+        label="verify_case",
+        scenario="verify",
+        description="ensure ordering",
+        rows=["R,X001,~X002,->,:,out(Y001..Y005)"],
+    )
+
+    result = workflow.verify_prepare(label="verify_case")
+
+    assert len(ensure_calls) == 1
+    assert len(fake.copied_payloads) == 1
+    assert result["mdb_ensure"]["enabled"] is True
+    assert result["mdb_ensure"]["parsed_addresses"] == ["X001", "X002", "Y001", "Y005"]
+
+
+def test_verify_prepare_skips_ensure_when_disabled(tmp_path: Path) -> None:
+    fake = _FakeClipboard()
+    ensure_calls = 0
+
+    def ensure_mdb(_db_path: str, _addresses: Sequence[str]) -> dict[str, object]:
+        nonlocal ensure_calls
+        ensure_calls += 1
+        return {}
+
+    workflow = _make_workflow(tmp_path, fake, ensure_mdb_fn=ensure_mdb)
+    workflow.entry_add(
+        capture_type="synthetic",
+        label="verify_case",
+        scenario="verify",
+        description="skip ensure",
+        rows=["R,X001,->,:,out(Y001)"],
+    )
+
+    result = workflow.verify_prepare(label="verify_case", ensure_mdb_addresses=False)
+
+    assert ensure_calls == 0
+    assert len(fake.copied_payloads) == 1
+    assert result["mdb_ensure"]["enabled"] is False
+
+
+def test_verify_run_interactive_forwards_mdb_path_to_ensure(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"\x33" * 8192)
+    seen_db_paths: list[str] = []
+
+    def ensure_mdb(db_path: str, addresses: Sequence[str]) -> dict[str, object]:
+        seen_db_paths.append(db_path)
+        return {
+            "db_path": db_path,
+            "requested_count": len(addresses),
+            "inserted_count": 0,
+            "existing_count": len(addresses),
+            "parsed_addresses": list(addresses),
+        }
+
+    workflow = _make_workflow(tmp_path, fake, ensure_mdb_fn=ensure_mdb)
+    workflow.entry_add(
+        capture_type="synthetic",
+        label="verify_case",
+        scenario="verify",
+        description="forward mdb path",
+        rows=["R,X001,->,:,out(Y001)"],
+    )
+    custom_mdb = tmp_path / "manual.mdb"
+    custom_mdb.write_bytes(b"")
+    prompts = iter(["q", "", "", ""])
+
+    workflow.verify_run_interactive(
+        label="verify_case",
+        mdb_path=str(custom_mdb),
+        input_fn=lambda _prompt="": next(prompts),
+        output_fn=lambda _line="": None,
+    )
+
+    assert seen_db_paths == [str(custom_mdb)]
+
+
+def test_verify_prepare_ensure_failure_is_fail_fast(tmp_path: Path) -> None:
+    fake = _FakeClipboard()
+
+    def ensure_fail(_db_path: str, _addresses: Sequence[str]) -> dict[str, object]:
+        raise RuntimeError("ensure failed")
+
+    workflow = _make_workflow(tmp_path, fake, ensure_mdb_fn=ensure_fail)
+    workflow.entry_add(
+        capture_type="synthetic",
+        label="verify_case",
+        scenario="verify",
+        description="fail fast",
+        rows=["R,X001,->,:,out(Y001)"],
+    )
+
+    with pytest.raises(RuntimeError, match="ensure failed"):
+        workflow.verify_prepare(label="verify_case")
+    assert fake.copied_payloads == []

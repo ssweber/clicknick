@@ -5,14 +5,19 @@ from __future__ import annotations
 import csv
 import io
 import json
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
+
+from ..utils.mdb_operations import ensure_addresses_exist
+from ..utils.mdb_shared import find_click_database
 from . import capture_registry
-from .clipboard import copy_to_clipboard, read_from_clipboard
+from .clipboard import copy_to_clipboard, find_click_hwnd, read_from_clipboard
 from .codec import ClickCodec
 from .csv_shorthand import normalize_shorthand_row
 from .model import RungGrid
@@ -53,6 +58,10 @@ PROFILE_COLUMNS_REPORT_BASE_FIELDS = (
     "record_len",
     "row",
     "column",
+)
+ADDRESS_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_])([A-Za-z]{1,3}\d{1,5})(?![A-Za-z0-9_])")
+ADDRESS_RANGE_RE = re.compile(
+    r"(?<![A-Za-z0-9_])([A-Za-z]{1,3}\d{1,5})\s*\.\.\s*([A-Za-z]{1,3}\d{1,5})(?![A-Za-z0-9_])"
 )
 
 VerifyStatus = str
@@ -111,11 +120,21 @@ class CaptureWorkflow:
         paths: CaptureWorkflowPaths | None = None,
         copy_to_clipboard_fn: Callable[[bytes], None] = copy_to_clipboard,
         read_from_clipboard_fn: Callable[[], bytes] = read_from_clipboard,
+        ensure_mdb_addresses_fn: Callable[[str, Sequence[str]], dict[str, Any]] = (
+            ensure_addresses_exist
+        ),
+        find_click_hwnd_fn: Callable[[], int] = find_click_hwnd,
+        find_click_database_fn: Callable[[int | None, int | None], str | None] = (
+            find_click_database
+        ),
         now_fn: Callable[[], datetime] | None = None,
     ) -> None:
         self.paths = paths or CaptureWorkflowPaths.default()
         self._copy_to_clipboard = copy_to_clipboard_fn
         self._read_from_clipboard = read_from_clipboard_fn
+        self._ensure_mdb_addresses = ensure_mdb_addresses_fn
+        self._find_click_hwnd = find_click_hwnd_fn
+        self._find_click_database = find_click_database_fn
         self._now_fn = now_fn or (lambda: datetime.now(UTC))
 
     def _now_iso(self) -> str:
@@ -247,11 +266,104 @@ class CaptureWorkflow:
         allowed = ", ".join(sorted(capture_registry.PAYLOAD_SOURCE_MODES))
         raise ValueError(f"Invalid source mode {source_mode!r}; expected one of [{allowed}]")
 
-    def verify_prepare(self, *, label: str, source: str | None = None) -> dict[str, Any]:
+    def _extract_operand_candidates(self, token: str) -> list[str]:
+        text = token.strip().upper()
+        if not text:
+            return []
+
+        out: list[str] = []
+        for match in ADDRESS_RANGE_RE.finditer(text):
+            out.append(match.group(1))
+            out.append(match.group(2))
+        for match in ADDRESS_TOKEN_RE.finditer(text):
+            out.append(match.group(1))
+        return out
+
+    def _extract_row_operand_addresses(self, rows: Sequence[str]) -> list[str]:
+        seen_keys: set[int] = set()
+        parsed: list[str] = []
+
+        for row in rows:
+            canonical = normalize_shorthand_row(row)
+            tokens = [*canonical.conditions, canonical.af]
+            for token in tokens:
+                for candidate in self._extract_operand_candidates(token):
+                    try:
+                        memory_type, address = parse_address(candidate)
+                    except ValueError:
+                        continue
+                    addr_key = get_addr_key(memory_type, address)
+                    if addr_key in seen_keys:
+                        continue
+                    seen_keys.add(addr_key)
+                    parsed.append(format_address_display(memory_type, address))
+        return parsed
+
+    def _resolve_verify_mdb_path(self, mdb_path: str | None) -> Path:
+        if mdb_path:
+            resolved = self._resolve_user_path(mdb_path)
+            if not resolved.exists():
+                raise FileNotFoundError(f"verify MDB path not found: {resolved}")
+            return resolved
+
+        try:
+            click_hwnd = self._find_click_hwnd()
+        except Exception as exc:
+            raise RuntimeError(
+                "Could not auto-detect a running CLICK window. "
+                "Open CLICK or pass --mdb-path <path-to-SC_.mdb>."
+            ) from exc
+
+        db_path = self._find_click_database(None, click_hwnd)
+        if not db_path:
+            raise FileNotFoundError(
+                "Could not locate SC_.mdb for the active CLICK window. "
+                "Pass --mdb-path <path-to-SC_.mdb>."
+            )
+        resolved = Path(db_path)
+        if not resolved.exists():
+            raise FileNotFoundError(f"Auto-detected SC_.mdb not found: {resolved}")
+        return resolved
+
+    def verify_prepare(
+        self,
+        *,
+        label: str,
+        source: str | None = None,
+        ensure_mdb_addresses: bool = True,
+        mdb_path: str | None = None,
+    ) -> dict[str, Any]:
         manifest = self._load_manifest()
         current = capture_registry.find_entry(manifest, label)
         source_mode = source or current["payload_source_mode"]
         payload = self._payload_bytes_for_source(current, source_mode)
+
+        mdb_ensure: dict[str, Any]
+        if ensure_mdb_addresses:
+            parsed_addresses = self._extract_row_operand_addresses(current["rung_rows"])
+            resolved_mdb_path = self._resolve_verify_mdb_path(mdb_path)
+            summary = self._ensure_mdb_addresses(str(resolved_mdb_path), parsed_addresses)
+            mdb_ensure = {
+                "enabled": True,
+                "db_path": str(resolved_mdb_path),
+                "requested_count": len(parsed_addresses),
+                "inserted_count": 0,
+                "existing_count": len(parsed_addresses),
+                "parsed_addresses": parsed_addresses,
+            }
+            mdb_ensure.update(summary)
+            mdb_ensure["enabled"] = True
+            mdb_ensure.setdefault("parsed_addresses", parsed_addresses)
+        else:
+            mdb_ensure = {
+                "enabled": False,
+                "db_path": None,
+                "requested_count": 0,
+                "inserted_count": 0,
+                "existing_count": 0,
+                "parsed_addresses": [],
+            }
+
         self._copy_to_clipboard(payload)
 
         updated = capture_registry.update_entry(
@@ -265,6 +377,7 @@ class CaptureWorkflow:
             "entry": updated,
             "source_mode": source_mode,
             "payload_len": len(payload),
+            "mdb_ensure": mdb_ensure,
         }
 
     def verify_complete(
@@ -597,11 +710,18 @@ class CaptureWorkflow:
         *,
         label: str,
         source: str | None = None,
+        ensure_mdb_addresses: bool = True,
+        mdb_path: str | None = None,
         status_default: str | None = None,
         input_fn: Callable[[str], str] = input,
         output_fn: Callable[[str], None] = print,
     ) -> dict[str, Any]:
-        prepare = self.verify_prepare(label=label, source=source)
+        prepare = self.verify_prepare(
+            label=label,
+            source=source,
+            ensure_mdb_addresses=ensure_mdb_addresses,
+            mdb_path=mdb_path,
+        )
         entry = prepare["entry"]
         expected_rows: list[str] = entry["verify_expected_rows"] or entry["rung_rows"]
 
