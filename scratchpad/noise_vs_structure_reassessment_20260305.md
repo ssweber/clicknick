@@ -38,6 +38,25 @@ All three test files pass locally.
    - Output test artifact:
      - `scratchpad/captures/session_counter_row2_duplicate_native_masked_test.bin`
 
+3. Width-variant check (`default/narrow/wide`) currently shows no byte-level effect.
+   - Manual observation: no discernible paste difference for width variants.
+   - Strict payload diff checks:
+     - `grid_empty_width_default_native` vs `narrow/wide`: `0` byte diffs
+     - `grid_wire_ab_width_default_native` vs `narrow/wide`: `0` byte diffs
+   - `noise_overlay.py` width-family heuristic was tightened to require variation
+     within true width triplets before classifying `width_candidates`.
+   - Re-run result on full `grid_basics_empty_template_20260305` set:
+     - `width_candidates = 0`
+
+4. Grid-basics capture/verify pass is complete.
+   - Scenario `grid_basics_empty_template_20260305`: `14/14` entries captured.
+   - Verification: `14/14` `verified_pass` with clipboard event `copied`.
+   - Overlay artifacts generated for both payload and verify sources:
+     - `scratchpad/noise_overlay_grid_basics_20260305.json`
+     - `scratchpad/noise_overlay_grid_basics_20260305.csv`
+     - `scratchpad/noise_overlay_grid_basics_verify_20260305.json`
+     - `scratchpad/noise_overlay_grid_basics_verify_20260305.csv`
+
 ## Confidence Calls (Current State)
 
 Confident noise candidates:
@@ -49,32 +68,27 @@ Confident noise candidates:
 
 Still unresolved / needs manual evidence:
 
-- Width-sensitive offsets (narrow/default/wide)
 - Which offsets are structural for horizontal-only grid layouts vs session/context drift
 - Final minimal mask that preserves Click paste semantics across empty/wire baselines
 
-## Manual Capture/Verify Queue (Pending)
+## Manual Capture/Verify Queue (Status)
 
 Phase 3 entries were added to active manifest under scenario:
 
 - `grid_basics_empty_template_20260305`
 
-Pending manual steps:
+Completed manual steps:
 
-1. Capture payloads (`entry capture`) for all new `grid_*_native` labels.
-2. Verify from captured files (`verify run --source file`) with note tags:
-   - `[width=default|narrow|wide]`
-   - `[window=A|B]`
-   - `[context=row1|row2|rows1_2|crossapp]`
-3. Re-run noise overlay on completed empty/wire/width/crossapp set.
-4. Apply candidate masks and verify pasteback stability.
+1. Captured payloads (`entry capture`) for all `grid_*_native` labels.
+2. Verified from captured files (`verify run --source file`) across the full grid-basics scenario.
+3. Re-ran noise overlay on completed empty/wire/width/crossapp set.
 
 ## Recommended Next Lane
 
-1. Complete native/synthetic verify backlog in active manifest.
-2. Finish empty-template + horizontal capture/verify pass.
-3. Recompute overlay with width and cross-app cohorts.
-4. If masked payloads paste cleanly:
+1. Execute Phase 5 mask trials on grid-basics captures:
+   - start with `session_tuple_candidates` donor-copy normalization.
+2. Register mask-patched payloads as `patch` entries and run guided verify.
+3. If patched payloads paste cleanly:
    - proceed to empty-template-driven grid synthesis tooling.
-5. If masked payloads fail:
-   - isolate remaining volatile clusters before expanding encoder scope.
+4. If patched payloads fail:
+   - narrow mask classes by removing the last-added class and retesting.

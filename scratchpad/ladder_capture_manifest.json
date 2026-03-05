@@ -478,31 +478,6 @@
       "updated_at": "2026-03-04T19:33:14Z"
     },
     {
-      "id": "d87fef25-1cb5-4717-889c-9e2edefd8d55",
-      "capture_label": "session_counter_crossapp_a_recopy_native",
-      "capture_type": "native",
-      "scenario": "session_counter_crossapp_transfer_20260304",
-      "description": "Cross-app counter test step 3: optional recopy from Click App A after transfer",
-      "rung_rows": [
-        "R,~X001,X002,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
-      ],
-      "payload_source_mode": "shorthand",
-      "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
-      "verify_notes": "",
-      "verify_expected_rows": [
-        "R,~X001,X002,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
-      ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
-      "promoted_fixture_file": null,
-      "created_at": "2026-03-04T19:24:26Z",
-      "updated_at": "2026-03-04T19:24:26Z"
-    },
-    {
       "id": "c71a52dc-af35-4922-84e9-8adf7e4b6f46",
       "capture_label": "session_counter_crossuid_yes_a_source_native",
       "capture_type": "native",
@@ -553,31 +528,6 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T19:35:21Z",
       "updated_at": "2026-03-04T19:45:13Z"
-    },
-    {
-      "id": "0dd3c679-1ca3-43cb-bd84-72089bcc680a",
-      "capture_label": "session_counter_crossuid_yes_a_recopy_native",
-      "capture_type": "native",
-      "scenario": "session_counter_crossuid_prompt_yes_20260304",
-      "description": "Cross-UID prompt YES step 3: recopy original rung from App A",
-      "rung_rows": [
-        "R,~X001,X002,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
-      ],
-      "payload_source_mode": "shorthand",
-      "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
-      "verify_notes": "",
-      "verify_expected_rows": [
-        "R,~X001,X002,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
-      ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
-      "promoted_fixture_file": null,
-      "created_at": "2026-03-04T19:35:21Z",
-      "updated_at": "2026-03-04T19:35:21Z"
     },
     {
       "id": "3451ee6d-b7f6-4432-91d2-07da0ecf7e81",
@@ -819,74 +769,78 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "payload_file": "scratchpad/captures/grid_empty_row1_single_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_empty_row1_single_native_verify_back_20260305_141707.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T13:19:30Z",
-      "updated_at": "2026-03-05T13:19:30Z"
+      "updated_at": "2026-03-05T14:17:07Z"
     },
     {
-      "id": "195393ef-ab1c-4102-90a5-9df55fc40faa",
+      "id": "dec56e53-1ce2-4456-a981-bd110d818cbc",
       "capture_label": "grid_empty_row2_duplicate_native",
       "capture_type": "native",
       "scenario": "grid_basics_empty_template_20260305",
-      "description": "Same empty rung duplicated to row2 and copied from row2",
+      "description": "Same empty rung duplicated to rung2 and copied from rung2",
       "rung_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "payload_file": "scratchpad/captures/grid_empty_row2_duplicate_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_empty_row2_duplicate_native_verify_back_20260305_141841.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
-      "created_at": "2026-03-05T13:19:31Z",
-      "updated_at": "2026-03-05T13:19:31Z"
+      "created_at": "2026-03-05T13:54:20Z",
+      "updated_at": "2026-03-05T14:18:41Z"
     },
     {
-      "id": "42bad774-f4b8-437b-be62-4e015da89c34",
+      "id": "4578c67d-b741-4674-be38-0ddd50a4c5c3",
       "capture_label": "grid_empty_rows1_2_combined_native",
       "capture_type": "native",
       "scenario": "grid_basics_empty_template_20260305",
-      "description": "Rows1+2 empty selection copied together",
+      "description": "Empty full rung copy (single rung only; combined rows unavailable)",
       "rung_rows": [
-        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
-        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "payload_file": "scratchpad/captures/grid_empty_rows1_2_combined_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
-        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
-        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_empty_rows1_2_combined_native_verify_back_20260305_141857.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
-      "created_at": "2026-03-05T13:19:31Z",
-      "updated_at": "2026-03-05T13:19:31Z"
+      "created_at": "2026-03-05T13:59:58Z",
+      "updated_at": "2026-03-05T14:18:57Z"
     },
     {
-      "id": "56939bea-5096-482a-ae37-7442feacba65",
+      "id": "d26d26e8-7fcc-48ea-ad78-45a90742efe3",
       "capture_label": "grid_wire_a_native",
       "capture_type": "native",
       "scenario": "grid_basics_empty_template_20260305",
@@ -896,22 +850,24 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "payload_file": "scratchpad/captures/grid_wire_a_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_wire_a_native_verify_back_20260305_141910.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
-      "created_at": "2026-03-05T13:19:32Z",
-      "updated_at": "2026-03-05T13:19:32Z"
+      "created_at": "2026-03-05T13:59:58Z",
+      "updated_at": "2026-03-05T14:19:10Z"
     },
     {
-      "id": "b8f0f1dc-6f5a-458d-b23d-92d238159c9e",
+      "id": "e0d8e0d3-a24d-443e-8871-dc9846ddcd5e",
       "capture_label": "grid_wire_ab_native",
       "capture_type": "native",
       "scenario": "grid_basics_empty_template_20260305",
@@ -921,22 +877,24 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "payload_file": "scratchpad/captures/grid_wire_ab_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_wire_ab_native_verify_back_20260305_141924.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
-      "created_at": "2026-03-05T13:19:33Z",
-      "updated_at": "2026-03-05T13:19:33Z"
+      "created_at": "2026-03-05T13:59:59Z",
+      "updated_at": "2026-03-05T14:19:24Z"
     },
     {
-      "id": "87592a8b-e4d4-4a85-8434-d5738b0b2313",
+      "id": "86cd4250-9e44-4b07-b16c-13577ab673ab",
       "capture_label": "grid_wire_full_row_native",
       "capture_type": "native",
       "scenario": "grid_basics_empty_template_20260305",
@@ -946,22 +904,24 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "payload_file": "scratchpad/captures/grid_wire_full_row_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_wire_full_row_native_verify_back_20260305_141941.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
-      "created_at": "2026-03-05T13:19:33Z",
-      "updated_at": "2026-03-05T13:19:33Z"
+      "created_at": "2026-03-05T13:59:59Z",
+      "updated_at": "2026-03-05T14:19:41Z"
     },
     {
-      "id": "a8878b15-4f37-468e-8c92-4e0cf10fea81",
+      "id": "85ca95ec-bf52-48a6-af66-f286c63eebf1",
       "capture_label": "grid_empty_width_default_native",
       "capture_type": "native",
       "scenario": "grid_basics_empty_template_20260305",
@@ -971,22 +931,24 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "payload_file": "scratchpad/captures/grid_empty_width_default_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_empty_width_default_native_verify_back_20260305_141954.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
-      "created_at": "2026-03-05T13:19:34Z",
-      "updated_at": "2026-03-05T13:19:34Z"
+      "created_at": "2026-03-05T13:59:59Z",
+      "updated_at": "2026-03-05T14:19:54Z"
     },
     {
-      "id": "bf045206-2ad3-4de4-a216-7e2b729d3451",
+      "id": "8547a153-7dd4-4b26-b475-91b197a953b8",
       "capture_label": "grid_empty_width_narrow_native",
       "capture_type": "native",
       "scenario": "grid_basics_empty_template_20260305",
@@ -996,22 +958,24 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "payload_file": "scratchpad/captures/grid_empty_width_narrow_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_empty_width_narrow_native_verify_back_20260305_142005.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
-      "created_at": "2026-03-05T13:19:35Z",
-      "updated_at": "2026-03-05T13:19:35Z"
+      "created_at": "2026-03-05T14:00:00Z",
+      "updated_at": "2026-03-05T14:20:05Z"
     },
     {
-      "id": "4d462b59-f114-436b-8b67-f1969d77fbf8",
+      "id": "dc4a7852-e269-467d-902a-21584597ba96",
       "capture_label": "grid_empty_width_wide_native",
       "capture_type": "native",
       "scenario": "grid_basics_empty_template_20260305",
@@ -1021,22 +985,24 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "payload_file": "scratchpad/captures/grid_empty_width_wide_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_empty_width_wide_native_verify_back_20260305_142018.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
-      "created_at": "2026-03-05T13:19:35Z",
-      "updated_at": "2026-03-05T13:19:35Z"
+      "created_at": "2026-03-05T14:00:00Z",
+      "updated_at": "2026-03-05T14:20:18Z"
     },
     {
-      "id": "de6834b9-b401-4d25-bb65-10e7483f94de",
+      "id": "6e94f277-c9d6-4c57-8dc2-6d03a9b63cb7",
       "capture_label": "grid_wire_ab_width_default_native",
       "capture_type": "native",
       "scenario": "grid_basics_empty_template_20260305",
@@ -1046,22 +1012,24 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "payload_file": "scratchpad/captures/grid_wire_ab_width_default_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_wire_ab_width_default_native_verify_back_20260305_142028.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
-      "created_at": "2026-03-05T13:19:36Z",
-      "updated_at": "2026-03-05T13:19:36Z"
+      "created_at": "2026-03-05T14:00:01Z",
+      "updated_at": "2026-03-05T14:20:28Z"
     },
     {
-      "id": "53afa385-d977-4340-9b02-1152927d50b0",
+      "id": "2c82ef3a-2a0e-4a23-a02f-5ec794bd4632",
       "capture_label": "grid_wire_ab_width_narrow_native",
       "capture_type": "native",
       "scenario": "grid_basics_empty_template_20260305",
@@ -1071,22 +1039,24 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "payload_file": "scratchpad/captures/grid_wire_ab_width_narrow_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_wire_ab_width_narrow_native_verify_back_20260305_142039.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
-      "created_at": "2026-03-05T13:19:37Z",
-      "updated_at": "2026-03-05T13:19:37Z"
+      "created_at": "2026-03-05T14:00:01Z",
+      "updated_at": "2026-03-05T14:20:39Z"
     },
     {
-      "id": "191efe98-a638-4b7b-b17f-43b1aee685dd",
+      "id": "2ba4e39a-a42d-483c-a0c5-c13609989829",
       "capture_label": "grid_wire_ab_width_wide_native",
       "capture_type": "native",
       "scenario": "grid_basics_empty_template_20260305",
@@ -1096,22 +1066,24 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "payload_file": "scratchpad/captures/grid_wire_ab_width_wide_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_wire_ab_width_wide_native_verify_back_20260305_142049.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
-      "created_at": "2026-03-05T13:19:37Z",
-      "updated_at": "2026-03-05T13:19:37Z"
+      "created_at": "2026-03-05T14:00:01Z",
+      "updated_at": "2026-03-05T14:20:49Z"
     },
     {
-      "id": "f8df0dca-e6f0-4be4-b4f1-28e52c8d5fe2",
+      "id": "060ca0f0-c824-40c3-9071-914fe03855dc",
       "capture_label": "grid_empty_crossapp_a_source_native",
       "capture_type": "native",
       "scenario": "grid_basics_empty_template_20260305",
@@ -1121,22 +1093,24 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "payload_file": "scratchpad/captures/grid_empty_crossapp_a_source_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_empty_crossapp_a_source_native_verify_back_20260305_142100.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
-      "created_at": "2026-03-05T13:19:38Z",
-      "updated_at": "2026-03-05T13:19:38Z"
+      "created_at": "2026-03-05T14:00:02Z",
+      "updated_at": "2026-03-05T14:21:00Z"
     },
     {
-      "id": "370993f3-28b5-47f7-936c-0f74bb4d38d0",
+      "id": "a0b16082-bcc4-4114-85fa-ec0bc1f8c776",
       "capture_label": "grid_empty_crossapp_b_pasteback_native",
       "capture_type": "native",
       "scenario": "grid_basics_empty_template_20260305",
@@ -1146,19 +1120,21 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "payload_file": "scratchpad/captures/grid_empty_crossapp_b_pasteback_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_empty_crossapp_b_pasteback_native_verify_back_20260305_142109.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
-      "created_at": "2026-03-05T13:19:39Z",
-      "updated_at": "2026-03-05T13:19:39Z"
+      "created_at": "2026-03-05T14:00:02Z",
+      "updated_at": "2026-03-05T14:21:09Z"
     }
   ]
 }

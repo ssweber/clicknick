@@ -37,3 +37,24 @@ def test_session_tuple_offsets_are_classified_as_candidates_when_they_vary() -> 
     expected = set(session_tuple_offsets())
     assert volatile == expected
     assert set(overlay["classification"]["session_tuple_candidates"]) == expected
+
+
+def test_width_candidates_require_variation_within_width_families() -> None:
+    baseline = bytearray(BUFFER_SIZE)
+    wire_variant = bytearray(BUFFER_SIZE)
+    wire_variant[7000] = 0x77
+
+    overlay = build_overlay(
+        [
+            _record("grid_empty_width_default_native", bytes(baseline)),
+            _record("grid_empty_width_narrow_native", bytes(baseline)),
+            _record("grid_empty_width_wide_native", bytes(baseline)),
+            _record("grid_wire_ab_width_default_native", bytes(baseline)),
+            _record("grid_wire_ab_width_narrow_native", bytes(baseline)),
+            _record("grid_wire_ab_width_wide_native", bytes(baseline)),
+            _record("grid_wire_a_native", bytes(wire_variant)),
+        ]
+    )
+
+    assert overlay["global"]["volatile_offset_count"] > 0
+    assert overlay["classification"]["width_candidates"] == []

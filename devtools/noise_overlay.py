@@ -15,6 +15,7 @@ import argparse
 import csv
 import hashlib
 import json
+import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from io import StringIO
@@ -32,6 +33,7 @@ BUFFER_SIZE = 8192
 TRAILER_MIRROR_OFFSET = 0x0A59
 SESSION_HEADER_ENTRY_OFFSETS = (0x05, 0x11, 0x17, 0x18)
 DEFAULT_MANIFEST_PATH = Path("scratchpad/ladder_capture_manifest.json")
+WIDTH_VARIANT_RE = re.compile(r"(.+)_width_(default|narrow|wide)(_native)?$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -265,6 +267,13 @@ def _is_width_record(name: str) -> bool:
     return "width_" in name.lower()
 
 
+def _width_family_key(name: str) -> str | None:
+    match = WIDTH_VARIANT_RE.fullmatch(name)
+    if not match:
+        return None
+    return f"{match.group(1).lower()}_width"
+
+
 def _is_wire_geometry_record(name: str) -> bool:
     lowered = name.lower()
     return any(token in lowered for token in ("wire_a", "wire_ab", "wire_full_row"))
@@ -275,11 +284,25 @@ def _width_candidate_offsets(records: list[CaptureRecord], varying_offsets: set[
     if len(width_records) < 2:
         return set()
 
-    candidates = {
-        offset
-        for offset in varying_offsets
-        if len({record.data[offset] for record in width_records}) > 1
-    }
+    families: dict[str, list[CaptureRecord]] = defaultdict(list)
+    for record in width_records:
+        family = _width_family_key(record.name)
+        if family is None:
+            continue
+        families[family].append(record)
+    if not families:
+        return set()
+
+    candidates: set[int] = set()
+    for family_records in families.values():
+        if len(family_records) < 2:
+            continue
+        family_candidates = {
+            offset
+            for offset in varying_offsets
+            if len({record.data[offset] for record in family_records}) > 1
+        }
+        candidates.update(family_candidates)
     if not candidates:
         return set()
 

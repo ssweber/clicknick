@@ -1,0 +1,35 @@
+{
+  "capture_type_filter": "synthetic",
+  "entry_count": 9,
+  "status_counts": {
+    "verified_pass": 1,
+    "verified_fail": 1,
+    "unverified": 7
+  },
+  "event_counts": {
+    "copied": 2,
+    "None": 7
+  },
+  "copied_count": 2,
+  "copied_mismatch_count": 1,
+  "copied_mismatch_labels": [
+    "two_series_harden_02_imm_no"
+  ],
+  "copied_mismatches": [
+    {
+      "capture_label": "two_series_harden_02_imm_no",
+      "capture_type": "synthetic",
+      "scenario": "two_series_hardening_matrix_20260304",
+      "verify_status": "verified_fail",
+      "verify_notes": "Didn't paste complete rung",
+      "verify_result_file": "scratchpad/captures/two_series_harden_02_imm_no_verify_back_20260304_201548.bin",
+      "verify_clipboard_len": 8192,
+      "expected_rows": [
+        "R,X001.immediate,X002,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
+      ],
+      "observed_rows": [
+        "R,X001.immediate,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ]
+    }
+  ]
+}
