@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import glob
 import io
 import json
 import re
@@ -64,6 +65,7 @@ ADDRESS_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_])([A-Za-z]{1,3}\d{1,5})(?![A-Za-
 ADDRESS_RANGE_RE = re.compile(
     r"(?<![A-Za-z0-9_])([A-Za-z]{1,3}\d{1,5})\s*\.\.\s*([A-Za-z]{1,3}\d{1,5})(?![A-Za-z0-9_])"
 )
+AUTO_LABEL_SANITIZE_RE = re.compile(r"[^A-Za-z0-9_]+")
 
 VerifyStatus = str
 
@@ -193,6 +195,108 @@ class CaptureWorkflow:
         )
         self._save_manifest(manifest)
         return entry
+
+    def _auto_label_from_path(self, path: Path, *, label_prefix: str = "") -> str:
+        stem = AUTO_LABEL_SANITIZE_RE.sub("_", path.stem).strip("_")
+        if not stem:
+            raise ValueError(f"Could not derive label from file name: {path.name!r}")
+        return f"{label_prefix}{stem}"
+
+    def _expand_payload_paths(
+        self,
+        *,
+        files: list[str] | None = None,
+        globs: list[str] | None = None,
+    ) -> list[Path]:
+        expanded: list[Path] = []
+        seen: set[str] = set()
+
+        for file_text in files or []:
+            resolved = self._resolve_user_path(file_text)
+            if not resolved.exists():
+                raise FileNotFoundError(f"Payload file not found: {resolved}")
+            if not resolved.is_file():
+                raise ValueError(f"Payload path is not a file: {resolved}")
+            key = str(resolved.resolve())
+            if key not in seen:
+                seen.add(key)
+                expanded.append(resolved)
+
+        for pattern in globs or []:
+            pattern_path = Path(pattern)
+            pattern_text = (
+                str(pattern_path) if pattern_path.is_absolute() else str(self.paths.root / pattern_path)
+            )
+            matches = [Path(item) for item in glob.glob(pattern_text)]
+            file_matches = [item for item in matches if item.is_file()]
+            if not file_matches:
+                raise FileNotFoundError(f"No files matched glob pattern: {pattern!r}")
+            for item in file_matches:
+                key = str(item.resolve())
+                if key in seen:
+                    continue
+                seen.add(key)
+                expanded.append(item)
+
+        if not expanded:
+            raise ValueError("Provide at least one --file or --glob")
+
+        return expanded
+
+    def entry_add_patch_batch(
+        self,
+        *,
+        scenario: str,
+        row: str,
+        files: list[str] | None = None,
+        globs: list[str] | None = None,
+        label_prefix: str = "",
+        description_prefix: str = "auto patch payload",
+        skip_existing: bool = False,
+    ) -> dict[str, Any]:
+        if not scenario:
+            raise ValueError("scenario must be non-empty")
+        payload_paths = self._expand_payload_paths(files=files, globs=globs)
+        manifest = self._load_manifest()
+        created: list[str] = []
+        skipped: list[str] = []
+
+        for payload_path in payload_paths:
+            repo_payload = self._repo_path(payload_path)
+            label = self._auto_label_from_path(payload_path, label_prefix=label_prefix)
+            description = f"{description_prefix}: {repo_payload}"
+            try:
+                capture_registry.add_entry(
+                    manifest,
+                    capture_label=label,
+                    capture_type="patch",
+                    scenario=scenario,
+                    description=description,
+                    rung_rows=[row],
+                    payload_source_mode="file",
+                    payload_source_file=repo_payload,
+                    payload_file=repo_payload,
+                    now_iso=self._now_iso(),
+                )
+                created.append(label)
+            except ValueError as exc:
+                if skip_existing and "capture_label already exists" in str(exc):
+                    skipped.append(label)
+                    continue
+                raise
+
+        if created:
+            self._save_manifest(manifest)
+
+        return {
+            "scenario": scenario,
+            "row": row,
+            "created_count": len(created),
+            "created_labels": created,
+            "skipped_count": len(skipped),
+            "skipped_labels": skipped,
+            "source_count": len(payload_paths),
+        }
 
     def entry_list(
         self,

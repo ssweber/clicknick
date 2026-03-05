@@ -80,6 +80,9 @@ uv run clicknick-ladder-capture promote --label <label> --overwrite
 - Duplicate `--label` fails.
 - `--payload-source` defaults to `shorthand`.
 - Shorthand source for prepare/verify generation currently supports a simple single-row path; it requires at least one contact and a non-empty AF instruction.
+- For `entry add-patch-batch`, provide at least one `--file` or `--glob`.
+- For `entry add-patch-batch`, `--file` and `--glob` are repeatable.
+- For `entry add-patch-batch`, `--skip-existing` changes duplicate-label handling from fail to skip.
 - Enum restrictions:
   - capture type: `native|synthetic|patch|pasteback`
   - verify event: `copied|crash|cancelled`
@@ -99,6 +102,7 @@ Manifest:
 
 Entry:
 - `add --type {native|synthetic|patch|pasteback} --label <label> --scenario <scenario> --description <description> --row <row> [--payload-source {shorthand|file}] [--payload-file <path>] [--json]`
+- `add-patch-batch --scenario <scenario> --row <row> [--file <path>] [--glob <pattern>] [--label-prefix <prefix>] [--description-prefix <text>] [--skip-existing] [--json]`
 - `list [--type {native|synthetic|patch|pasteback}] [--status {unverified|verified_pass|verified_fail|blocked}] [--json]`
 - `show --label <label> [--json]`
 - `capture --label <label> [--output-file <path>] [--json]`
@@ -139,6 +143,7 @@ TUI:
 ```powershell
 uv run clicknick-ladder-capture --help
 uv run clicknick-ladder-capture entry add --help
+uv run clicknick-ladder-capture entry add-patch-batch --help
 uv run clicknick-ladder-capture verify prepare --help
 uv run clicknick-ladder-capture verify run --help
 uv run clicknick-ladder-capture report profile --help

@@ -421,6 +421,114 @@ def test_entry_delete_dry_run_then_apply(tmp_path: Path) -> None:
         workflow.entry_show(label="delete_case_b")
 
 
+def test_entry_add_patch_batch_from_files(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"")
+    workflow = _make_workflow(tmp_path, fake)
+    captures_dir = tmp_path / "scratchpad" / "captures"
+    captures_dir.mkdir(parents=True, exist_ok=True)
+    payload_a = captures_dir / "two_series_patch_02_imm_no__header_seed.bin"
+    payload_b = captures_dir / "two_series_patch_02_imm_no__combined.bin"
+    payload_a.write_bytes(b"\x01" * 8192)
+    payload_b.write_bytes(b"\x02" * 8192)
+    output: list[str] = []
+
+    rc = main(
+        [
+            "entry",
+            "add-patch-batch",
+            "--scenario",
+            "two_series_hardening_matrix_20260304",
+            "--row",
+            "R,X001.immediate,X002,->,:,out(Y001)",
+            "--file",
+            str(payload_a),
+            "--file",
+            str(payload_b),
+            "--label-prefix",
+            "patch_",
+            "--description-prefix",
+            "matrix patch",
+            "--json",
+        ],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    payload = json.loads(output[-1])
+    assert payload["ok"] is True
+    assert payload["action"] == "entry.add-patch-batch"
+    data = payload["data"]
+    assert data["created_count"] == 2
+    assert data["skipped_count"] == 0
+    assert sorted(data["created_labels"]) == [
+        "patch_two_series_patch_02_imm_no__combined",
+        "patch_two_series_patch_02_imm_no__header_seed",
+    ]
+
+    entry = workflow.entry_show(label="patch_two_series_patch_02_imm_no__combined")
+    assert entry["capture_type"] == "patch"
+    assert entry["payload_source_mode"] == "file"
+    assert entry["payload_source_file"] == "scratchpad/captures/two_series_patch_02_imm_no__combined.bin"
+    assert entry["payload_file"] == "scratchpad/captures/two_series_patch_02_imm_no__combined.bin"
+
+
+def test_entry_add_patch_batch_skip_existing_with_glob(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"")
+    workflow = _make_workflow(tmp_path, fake)
+    captures_dir = tmp_path / "scratchpad" / "captures"
+    captures_dir.mkdir(parents=True, exist_ok=True)
+    payload = captures_dir / "two_series_patch_04_imm_imm__combined.bin"
+    payload.write_bytes(b"\x03" * 8192)
+    output: list[str] = []
+
+    rc_first = main(
+        [
+            "entry",
+            "add-patch-batch",
+            "--scenario",
+            "two_series_hardening_matrix_20260304",
+            "--row",
+            "R,X001.immediate,X002.immediate,->,:,out(Y001)",
+            "--glob",
+            "scratchpad/captures/two_series_patch_04_imm_imm__*.bin",
+            "--label-prefix",
+            "patch_",
+            "--json",
+        ],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+    assert rc_first == 0
+
+    output.clear()
+    rc_second = main(
+        [
+            "entry",
+            "add-patch-batch",
+            "--scenario",
+            "two_series_hardening_matrix_20260304",
+            "--row",
+            "R,X001.immediate,X002.immediate,->,:,out(Y001)",
+            "--glob",
+            "scratchpad/captures/two_series_patch_04_imm_imm__*.bin",
+            "--label-prefix",
+            "patch_",
+            "--skip-existing",
+            "--json",
+        ],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+
+    assert rc_second == 0
+    payload_json = json.loads(output[-1])
+    data = payload_json["data"]
+    assert data["created_count"] == 0
+    assert data["skipped_count"] == 1
+    assert data["skipped_labels"] == ["patch_two_series_patch_04_imm_imm__combined"]
+
+
 def test_verify_prepare_ensure_failure_returns_error_without_clipboard_write(
     tmp_path: Path,
 ) -> None:

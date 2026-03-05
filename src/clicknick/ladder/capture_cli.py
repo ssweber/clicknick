@@ -103,6 +103,43 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_json_flag(p_entry_delete)
 
+    p_entry_add_patch_batch = entry_sub.add_parser(
+        "add-patch-batch",
+        help="Bulk add file-backed patch entries from --file/--glob payload inputs",
+    )
+    p_entry_add_patch_batch.add_argument("--scenario", required=True)
+    p_entry_add_patch_batch.add_argument(
+        "--row",
+        required=True,
+        help="Single shorthand row applied to each generated entry",
+    )
+    p_entry_add_patch_batch.add_argument(
+        "--file",
+        action="append",
+        help="Payload file path (repeatable)",
+    )
+    p_entry_add_patch_batch.add_argument(
+        "--glob",
+        action="append",
+        help="Payload glob pattern (repeatable)",
+    )
+    p_entry_add_patch_batch.add_argument(
+        "--label-prefix",
+        default="",
+        help="Optional prefix prepended to auto-derived file-stem labels",
+    )
+    p_entry_add_patch_batch.add_argument(
+        "--description-prefix",
+        default="auto patch payload",
+        help="Description prefix for each generated entry",
+    )
+    p_entry_add_patch_batch.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Skip existing labels instead of failing",
+    )
+    _add_json_flag(p_entry_add_patch_batch)
+
     p_verify = sub.add_parser("verify", help="Verification operations")
     verify_sub = p_verify.add_subparsers(dest="verify_cmd", required=True)
 
@@ -279,6 +316,16 @@ def _print_human(action: str, data: Any, output_fn: Callable[[str], None]) -> No
         for label in data.get("matched_labels", []):
             output_fn(f"  - {label}")
         return
+    if action == "entry.add-patch-batch":
+        output_fn(
+            f"Added patch entries: created={data['created_count']} skipped={data['skipped_count']} "
+            f"sources={data['source_count']} scenario={data['scenario']!r}"
+        )
+        for label in data.get("created_labels", []):
+            output_fn(f"  + {label}")
+        for label in data.get("skipped_labels", []):
+            output_fn(f"  ~ {label} (exists)")
+        return
     if action == "verify.prepare":
         output_fn(
             f"Prepared {data['entry']['capture_label']} source={data['source_mode']} "
@@ -373,6 +420,16 @@ def _dispatch(
         return workflow.entry_capture(label=args.label, output_file=args.output_file)
     if args.command == "entry" and args.entry_cmd == "delete":
         return workflow.entry_delete(label=args.label, scenario=args.scenario, yes=args.yes)
+    if args.command == "entry" and args.entry_cmd == "add-patch-batch":
+        return workflow.entry_add_patch_batch(
+            scenario=args.scenario,
+            row=args.row,
+            files=args.file,
+            globs=args.glob,
+            label_prefix=args.label_prefix,
+            description_prefix=args.description_prefix,
+            skip_existing=args.skip_existing,
+        )
 
     if args.command == "verify" and args.verify_cmd == "prepare":
         return workflow.verify_prepare(
