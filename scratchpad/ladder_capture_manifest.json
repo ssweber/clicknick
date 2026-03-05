@@ -2570,19 +2570,21 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_h17_only.bin",
       "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_h17_only.bin",
-      "verify_clipboard_event": null,
+      "verify_clipboard_event": "cancelled",
       "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_notes": "reset: rerun with clipboard copy-back before c",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
       "verify_result_file": null,
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:45:17Z",
-      "updated_at": "2026-03-05T15:45:17Z"
+      "updated_at": "2026-03-05T16:22:03Z"
     },
     {
       "id": "1efe7f8e-794f-4d30-8f9d-a2abf9d7e785",
@@ -2597,19 +2599,21 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_header_full.bin",
       "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_header_full.bin",
-      "verify_clipboard_event": null,
+      "verify_clipboard_event": "cancelled",
       "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_notes": "reset: rerun with clipboard copy-back before c",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
       "verify_result_file": null,
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:45:17Z",
-      "updated_at": "2026-03-05T15:45:17Z"
+      "updated_at": "2026-03-05T16:22:03Z"
     },
     {
       "id": "c0f4742a-d9a9-49b8-a974-549c60687e90",
@@ -2624,19 +2628,21 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_pre_full.bin",
       "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_pre_full.bin",
-      "verify_clipboard_event": null,
+      "verify_clipboard_event": "cancelled",
       "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_notes": "reset: rerun with clipboard copy-back before c",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
       "verify_result_file": null,
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:45:17Z",
-      "updated_at": "2026-03-05T15:45:17Z"
+      "updated_at": "2026-03-05T16:22:03Z"
     },
     {
       "id": "537881c6-e30b-4094-a74c-c216a4c3576a",
@@ -2651,9 +2657,9 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_row0_full.bin",
       "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_row0_full.bin",
-      "verify_clipboard_event": null,
+      "verify_clipboard_event": "cancelled",
       "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_notes": "reset: rerun with clipboard copy-back before c",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
@@ -2663,7 +2669,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:45:18Z",
-      "updated_at": "2026-03-05T15:45:18Z"
+      "updated_at": "2026-03-05T16:22:04Z"
     },
     {
       "id": "d66ef28f-aaa6-4a5e-8f5c-5ac9b91a1d83",
@@ -2678,19 +2684,21 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_row1_full.bin",
       "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_row1_full.bin",
-      "verify_clipboard_event": null,
+      "verify_clipboard_event": "cancelled",
       "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_notes": "reset: rerun with clipboard copy-back before c",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
       "verify_result_file": null,
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:45:18Z",
-      "updated_at": "2026-03-05T15:45:18Z"
+      "updated_at": "2026-03-05T16:22:04Z"
     },
     {
       "id": "e9b9f22b-1272-4747-b80c-56614fbf19a9",
@@ -2705,19 +2713,21 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_tail_full.bin",
       "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_tail_full.bin",
-      "verify_clipboard_event": null,
+      "verify_clipboard_event": "cancelled",
       "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_notes": "reset: rerun with clipboard copy-back before c",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
       "verify_result_file": null,
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:45:18Z",
-      "updated_at": "2026-03-05T15:45:18Z"
+      "updated_at": "2026-03-05T16:22:04Z"
     },
     {
       "id": "c7359dba-dd21-496a-bda3-b4e103b5e302",
@@ -2732,19 +2742,21 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_pre_header.bin",
       "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_pre_header.bin",
-      "verify_clipboard_event": null,
+      "verify_clipboard_event": "cancelled",
       "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_notes": "reset: rerun with clipboard copy-back before c",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
       "verify_result_file": null,
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:45:19Z",
-      "updated_at": "2026-03-05T15:45:19Z"
+      "updated_at": "2026-03-05T16:22:05Z"
     },
     {
       "id": "26270f9a-31a5-4010-9be8-e2b1ebff3d0a",
@@ -2759,19 +2771,21 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_header_row1.bin",
       "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_header_row1.bin",
-      "verify_clipboard_event": null,
+      "verify_clipboard_event": "cancelled",
       "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_notes": "reset: rerun with clipboard copy-back before c",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
       "verify_result_file": null,
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:45:19Z",
-      "updated_at": "2026-03-05T15:45:19Z"
+      "updated_at": "2026-03-05T16:22:05Z"
     },
     {
       "id": "183a9bad-0acf-4b0c-bba4-0fb6767b5c45",
@@ -2786,9 +2800,9 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_header_tail.bin",
       "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_header_tail.bin",
-      "verify_clipboard_event": null,
+      "verify_clipboard_event": "cancelled",
       "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_notes": "reset: rerun with clipboard copy-back before c",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
@@ -2798,7 +2812,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:45:19Z",
-      "updated_at": "2026-03-05T15:45:19Z"
+      "updated_at": "2026-03-05T16:22:05Z"
     },
     {
       "id": "6fd60efe-aae3-4f22-a0fc-a9600835318c",
@@ -2813,9 +2827,9 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_row1_tail.bin",
       "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_row1_tail.bin",
-      "verify_clipboard_event": null,
+      "verify_clipboard_event": "cancelled",
       "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_notes": "reset: rerun with clipboard copy-back before c",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
@@ -2825,7 +2839,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:45:20Z",
-      "updated_at": "2026-03-05T15:45:20Z"
+      "updated_at": "2026-03-05T16:22:06Z"
     },
     {
       "id": "29ef3f1d-4879-436a-ae4a-130892f2e10b",
@@ -2840,9 +2854,9 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_all_native2_control.bin",
       "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_all_native2_control.bin",
-      "verify_clipboard_event": null,
+      "verify_clipboard_event": "cancelled",
       "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_notes": "reset: rerun with clipboard copy-back before c",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
@@ -2852,7 +2866,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:45:20Z",
-      "updated_at": "2026-03-05T15:45:20Z"
+      "updated_at": "2026-03-05T16:22:06Z"
     }
   ]
 }
