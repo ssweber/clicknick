@@ -132,6 +132,10 @@ Verify:
   5. For copied events, operator must paste in Click, then copy back in Click, then press `c`.
   6. Operator responds `done`.
   7. Parse manifest outcomes, classify pass/fail/blocked, build next batch, and commit outcomes.
+- For narrowing/isolation batches, prefer speed and clean signal:
+  - do not manually edit failed rungs.
+  - record `status`, `event`, and resulting clipboard length.
+  - add a short note only when outcome is surprising/ambiguous (for example accidental mis-click).
 - For native recapture rounds, use: `tui -> 2` (capture queue), then `tui -> 3 -> g -> f` for verify.
 - Preferred operator handoff message includes:
   - scenario name

@@ -97,6 +97,40 @@ Last validated: March 5, 2026
   - companion bytes act as a required combination for valid multi-row empty synthesis.
   - same companion set currently restores both 2-row and 3-row empty baselines.
 
+## Execution Update (March 5, 2026 — Empty Multi-Row Row-Rule Inference, Rounds 1-10)
+
+- New report artifact:
+  - `scratchpad/row_rule_inference_empty_multirow_20260305.md`
+- Native empty captures (`1/2/3/4/9/17/32 rows`) support deterministic row geometry rules:
+  - header entry0 word (`+0x00/+0x01` little-endian):
+    - `row_word = (logical_rows + 1) * 0x20`
+  - empty payload length scaling:
+    - `len = 0x1000 * (ceil(rows / 2) + 1)`
+  - active-row cell formulas validated across native set:
+    - `+0x01 = col_index`
+    - `+0x05 = row_index + 1`
+    - constants: `+0x09/+0x0A/+0x0C = 0x01`, `+0x0D..+0x10 = 0xFF`, `+0x11 = 0x01`
+    - terminal-row linkage:
+      - `+0x38 = 1`, except terminal-row col31 -> `0`
+      - `+0x3D = row+1` for cols `0..30`; col31 is next-row marker or terminal `0`
+- High-signal verified outcomes from row-rule isolation:
+  - header `+0x05` and trailer `0x0A59` are independent structural/context gates in empty lanes.
+  - simple tuple injection (`h05/h11/h17/h18/t59`) is insufficient by itself for 2-row nonzero-seed replay.
+  - tuple + row-coupled `cell +0x39` is the decisive 2-row restoration pattern.
+- Current high-confidence 2-row nonzero-seed coupling rule (empty lane):
+  - require tuple seed (`header +0x05/+0x11/+0x17/+0x18` and `0x0A59`)
+  - require `cell +0x39 = 1` on:
+    - row0 cols `0..31`
+    - row1 cols `0..30`
+  - row1 col31 is optional (`0` or `1` both validated pass)
+- Implication:
+  - for empty 2-row synthesis under this seed lane, header-only patching is insufficient;
+    coupled row-level control bytes must be applied.
+- Supporting scenarios/queues:
+  - `grid_empty_multirow_rowrule_iso_20260305` through
+    `grid_empty_multirow_rowrule_iso10_20260305`
+  - queue docs in `scratchpad/grid_empty_multirow_rowrule_iso*_verify_queue_20260305.md`
+
 ## Goal
 
 Reverse engineer Click Programming Software's clipboard format so `clicknick.ladder`

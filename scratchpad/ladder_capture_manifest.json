@@ -5980,6 +5980,1588 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T19:21:43Z",
       "updated_at": "2026-03-05T19:32:00Z"
+    },
+    {
+      "id": "dd73e6b0-9292-42a8-b4ae-183dfd2f36dd",
+      "capture_label": "rriso42_control_native2",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso3_20260305",
+      "description": "Control: native 2-row empty payload (h17=0x42 family)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42_control_native2.bin",
+      "payload_file": "scratchpad/captures/rriso42_control_native2.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42_control_native2_verify_back_20260305_193537.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:34:36Z",
+      "updated_at": "2026-03-05T19:35:37Z"
+    },
+    {
+      "id": "b35c8347-297e-4d78-9559-7c7933c27c8a",
+      "capture_label": "rriso42_patch_header05_only_01",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso3_20260305",
+      "description": "Set header +0x05 across entries to 0x01 (leave 0x0A59 unchanged)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42_patch_header05_only_01.bin",
+      "payload_file": "scratchpad/captures/rriso42_patch_header05_only_01.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42_patch_header05_only_01_verify_back_20260305_193619.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:34:36Z",
+      "updated_at": "2026-03-05T19:36:19Z"
+    },
+    {
+      "id": "be6fe99c-5691-4cbd-a29c-82e41fb532d5",
+      "capture_label": "rriso42_patch_t59_only_01",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso3_20260305",
+      "description": "Set trailer 0x0A59 to 0x01 (leave header +0x05 unchanged)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42_patch_t59_only_01.bin",
+      "payload_file": "scratchpad/captures/rriso42_patch_t59_only_01.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42_patch_t59_only_01_verify_back_20260305_193647.bin",
+      "verify_clipboard_len": 16384,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:34:37Z",
+      "updated_at": "2026-03-05T19:36:47Z"
+    },
+    {
+      "id": "e4ff86f3-08a0-4823-816f-cc23ed5f8f77",
+      "capture_label": "rriso42_patch_header05_t59_01",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso3_20260305",
+      "description": "Set header +0x05 and trailer 0x0A59 to 0x01",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42_patch_header05_t59_01.bin",
+      "payload_file": "scratchpad/captures/rriso42_patch_header05_t59_01.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42_patch_header05_t59_01_verify_back_20260305_193719.bin",
+      "verify_clipboard_len": 4096,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:34:37Z",
+      "updated_at": "2026-03-05T19:37:19Z"
+    },
+    {
+      "id": "326d4331-7257-42d3-9fdf-ef392253b3dd",
+      "capture_label": "rriso42_patch_header05_t59_02",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso3_20260305",
+      "description": "Set header +0x05 and trailer 0x0A59 to 0x02",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42_patch_header05_t59_02.bin",
+      "payload_file": "scratchpad/captures/rriso42_patch_header05_t59_02.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42_patch_header05_t59_02_verify_back_20260305_193742.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:34:37Z",
+      "updated_at": "2026-03-05T19:37:42Z"
+    },
+    {
+      "id": "4b1e4d53-ad9a-49a6-a003-c1e36f8693da",
+      "capture_label": "rriso42c_control_native2",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso4_20260305",
+      "description": "Control: native 2-row empty payload",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42c_control_native2.bin",
+      "payload_file": "scratchpad/captures/rriso42c_control_native2.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42c_control_native2_verify_back_20260305_194900.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:39:55Z",
+      "updated_at": "2026-03-05T19:49:00Z"
+    },
+    {
+      "id": "311c63f1-69a3-4fcf-91bf-456f38a89ca7",
+      "capture_label": "rriso42c_seed_0103_84_01_t59_01",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso4_20260305",
+      "description": "Seed tuple h05/h11/h17/h18/t59 = 01/03/84/01/01",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42c_seed_0103_84_01_t59_01.bin",
+      "payload_file": "scratchpad/captures/rriso42c_seed_0103_84_01_t59_01.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42c_seed_0103_84_01_t59_01_verify_back_20260305_194938.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:39:55Z",
+      "updated_at": "2026-03-05T19:49:38Z"
+    },
+    {
+      "id": "2b84517e-30c9-4e2f-b11f-f4868ee442c3",
+      "capture_label": "rriso42c_seed_0307_35_01_t59_03",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso4_20260305",
+      "description": "Seed tuple h05/h11/h17/h18/t59 = 03/07/35/01/03",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42c_seed_0307_35_01_t59_03.bin",
+      "payload_file": "scratchpad/captures/rriso42c_seed_0307_35_01_t59_03.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42c_seed_0307_35_01_t59_03_verify_back_20260305_194958.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:39:56Z",
+      "updated_at": "2026-03-05T19:49:58Z"
+    },
+    {
+      "id": "1fafaef5-79d2-47ad-8546-80be96bbea5a",
+      "capture_label": "rriso42c_seed_0103_42_01_t59_01",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso4_20260305",
+      "description": "Tuple 01/03 with family held at h17=42",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42c_seed_0103_42_01_t59_01.bin",
+      "payload_file": "scratchpad/captures/rriso42c_seed_0103_42_01_t59_01.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42c_seed_0103_42_01_t59_01_verify_back_20260305_195017.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:39:56Z",
+      "updated_at": "2026-03-05T19:50:17Z"
+    },
+    {
+      "id": "d1963b91-d1c0-42ae-a66a-53fc51aba140",
+      "capture_label": "rriso42c_seed_0100_84_01_t59_01",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso4_20260305",
+      "description": "Tuple with h11 uncoupled: 01/00/84/01/01",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42c_seed_0100_84_01_t59_01.bin",
+      "payload_file": "scratchpad/captures/rriso42c_seed_0100_84_01_t59_01.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42c_seed_0100_84_01_t59_01_verify_back_20260305_195034.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:39:56Z",
+      "updated_at": "2026-03-05T19:50:34Z"
+    },
+    {
+      "id": "bc20f6bb-4478-44e7-9f8a-038b40d8a522",
+      "capture_label": "rriso42c_seed_0103_84_01_t59_00",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso4_20260305",
+      "description": "Tuple 01/03/84/01 with trailer mismatch t59=00",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42c_seed_0103_84_01_t59_00.bin",
+      "payload_file": "scratchpad/captures/rriso42c_seed_0103_84_01_t59_00.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42c_seed_0103_84_01_t59_00_verify_back_20260305_195059.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:39:57Z",
+      "updated_at": "2026-03-05T19:50:59Z"
+    },
+    {
+      "id": "f40b551c-9eed-4e90-b5b1-3610d772a987",
+      "capture_label": "rriso42d_control_native2",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso5_20260305",
+      "description": "Control: native 2-row empty payload",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42d_control_native2.bin",
+      "payload_file": "scratchpad/captures/rriso42d_control_native2.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42d_control_native2_verify_back_20260305_195401.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:53:02Z",
+      "updated_at": "2026-03-05T19:54:01Z"
+    },
+    {
+      "id": "1192b83f-30fc-484a-8522-96cbc26f5e55",
+      "capture_label": "rriso42d_patch_header_region_only",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso5_20260305",
+      "description": "Copy donor header region 0x0254..0x0A5F only",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42d_patch_header_region_only.bin",
+      "payload_file": "scratchpad/captures/rriso42d_patch_header_region_only.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42d_patch_header_region_only_verify_back_20260305_195427.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:53:02Z",
+      "updated_at": "2026-03-05T19:54:27Z"
+    },
+    {
+      "id": "addf578f-a676-441d-85d8-bf57c389da8d",
+      "capture_label": "rriso42d_patch_preheader_header_only",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso5_20260305",
+      "description": "Copy donor pre-header+header region 0x0000..0x0A5F",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42d_patch_preheader_header_only.bin",
+      "payload_file": "scratchpad/captures/rriso42d_patch_preheader_header_only.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42d_patch_preheader_header_only_verify_back_20260305_195446.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:53:02Z",
+      "updated_at": "2026-03-05T19:54:46Z"
+    },
+    {
+      "id": "34f01540-222d-4a96-b9e6-ada8f4d0f19d",
+      "capture_label": "rriso42d_patch_tuple_plus_row05_0b_39",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso5_20260305",
+      "description": "Copy seed tuple and row0/row1 offsets +0x05/+0x0B/+0x39",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42d_patch_tuple_plus_row05_0b_39.bin",
+      "payload_file": "scratchpad/captures/rriso42d_patch_tuple_plus_row05_0b_39.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42d_patch_tuple_plus_row05_0b_39_verify_back_20260305_195506.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:53:03Z",
+      "updated_at": "2026-03-05T19:55:06Z"
+    },
+    {
+      "id": "3b09a941-7b94-4be2-8598-091979851ea1",
+      "capture_label": "rriso42d_patch_tuple_plus_full_row01",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso5_20260305",
+      "description": "Copy seed tuple and full row0/row1 regions from donor",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42d_patch_tuple_plus_full_row01.bin",
+      "payload_file": "scratchpad/captures/rriso42d_patch_tuple_plus_full_row01.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42d_patch_tuple_plus_full_row01_verify_back_20260305_195516.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:53:03Z",
+      "updated_at": "2026-03-05T19:55:16Z"
+    },
+    {
+      "id": "372968ef-e3e9-467c-9b6d-799cd1cf9f67",
+      "capture_label": "rriso42d_donor_direct",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso5_20260305",
+      "description": "Direct donor verify-back payload (sanity)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42d_donor_direct.bin",
+      "payload_file": "scratchpad/captures/rriso42d_donor_direct.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "y",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42d_donor_direct_verify_back_20260305_195526.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:53:04Z",
+      "updated_at": "2026-03-05T19:55:26Z"
+    },
+    {
+      "id": "3c3784d3-9a0d-43de-8582-fc50084210ee",
+      "capture_label": "rriso42e_control_native2",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso6_20260305",
+      "description": "Control: native 2-row empty payload",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42e_control_native2.bin",
+      "payload_file": "scratchpad/captures/rriso42e_control_native2.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42e_control_native2_verify_back_20260305_200219.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:56:43Z",
+      "updated_at": "2026-03-05T20:02:19Z"
+    },
+    {
+      "id": "7bce5d5b-0d48-4149-91fe-f4a1c28fe3f4",
+      "capture_label": "rriso42e_tuple_only",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso6_20260305",
+      "description": "Tuple only: header/t59 seed from donor",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42e_tuple_only.bin",
+      "payload_file": "scratchpad/captures/rriso42e_tuple_only.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42e_tuple_only_verify_back_20260305_200301.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:56:43Z",
+      "updated_at": "2026-03-05T20:03:01Z"
+    },
+    {
+      "id": "a3b18310-3285-4c11-8e4c-f7bb3206e4b3",
+      "capture_label": "rriso42e_tuple_plus_row_05",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso6_20260305",
+      "description": "Tuple + row offsets +0x05",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42e_tuple_plus_row_05.bin",
+      "payload_file": "scratchpad/captures/rriso42e_tuple_plus_row_05.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42e_tuple_plus_row_05_verify_back_20260305_200328.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:56:43Z",
+      "updated_at": "2026-03-05T20:03:28Z"
+    },
+    {
+      "id": "a0415824-8ff2-4faa-8eca-b3f0c66f0fc0",
+      "capture_label": "rriso42e_tuple_plus_row_0b",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso6_20260305",
+      "description": "Tuple + row offsets +0x0B",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42e_tuple_plus_row_0b.bin",
+      "payload_file": "scratchpad/captures/rriso42e_tuple_plus_row_0b.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42e_tuple_plus_row_0b_verify_back_20260305_200347.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:56:44Z",
+      "updated_at": "2026-03-05T20:03:47Z"
+    },
+    {
+      "id": "9f80e1a8-4741-4b9f-998b-98081c8a1b2c",
+      "capture_label": "rriso42e_tuple_plus_row_39",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso6_20260305",
+      "description": "Tuple + row offsets +0x39",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42e_tuple_plus_row_39.bin",
+      "payload_file": "scratchpad/captures/rriso42e_tuple_plus_row_39.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42e_tuple_plus_row_39_verify_back_20260305_200400.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:56:44Z",
+      "updated_at": "2026-03-05T20:04:00Z"
+    },
+    {
+      "id": "d831029f-e803-43ef-a7ed-e086bbba7167",
+      "capture_label": "rriso42e_tuple_plus_row_05_0b",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso6_20260305",
+      "description": "Tuple + row offsets +0x05/+0x0B",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42e_tuple_plus_row_05_0b.bin",
+      "payload_file": "scratchpad/captures/rriso42e_tuple_plus_row_05_0b.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42e_tuple_plus_row_05_0b_verify_back_20260305_200414.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:56:45Z",
+      "updated_at": "2026-03-05T20:04:14Z"
+    },
+    {
+      "id": "15e9addd-ca95-41d5-8b1a-2f04f4ea9194",
+      "capture_label": "rriso42e_tuple_plus_row_05_39",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso6_20260305",
+      "description": "Tuple + row offsets +0x05/+0x39",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42e_tuple_plus_row_05_39.bin",
+      "payload_file": "scratchpad/captures/rriso42e_tuple_plus_row_05_39.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42e_tuple_plus_row_05_39_verify_back_20260305_200427.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:56:45Z",
+      "updated_at": "2026-03-05T20:04:27Z"
+    },
+    {
+      "id": "632876f8-622c-459f-b691-e3e4b7ede214",
+      "capture_label": "rriso42e_tuple_plus_row_0b_39",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso6_20260305",
+      "description": "Tuple + row offsets +0x0B/+0x39",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42e_tuple_plus_row_0b_39.bin",
+      "payload_file": "scratchpad/captures/rriso42e_tuple_plus_row_0b_39.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "THIS ACTUALLY PASSED",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42e_tuple_plus_row_0b_39_verify_back_20260305_200451.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:56:45Z",
+      "updated_at": "2026-03-05T20:04:51Z"
+    },
+    {
+      "id": "b34179f0-25bb-49b1-8eb3-7160b7020a1d",
+      "capture_label": "rriso42e_tuple_plus_row_05_0b_39",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso6_20260305",
+      "description": "Tuple + row offsets +0x05/+0x0B/+0x39",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42e_tuple_plus_row_05_0b_39.bin",
+      "payload_file": "scratchpad/captures/rriso42e_tuple_plus_row_05_0b_39.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42e_tuple_plus_row_05_0b_39_verify_back_20260305_200504.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:56:46Z",
+      "updated_at": "2026-03-05T20:05:04Z"
+    },
+    {
+      "id": "5cecc6e8-5da5-431c-8546-b05f0c119efa",
+      "capture_label": "rriso42f_control_native2",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso7_20260305",
+      "description": "Control: native 2-row empty payload",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42f_control_native2.bin",
+      "payload_file": "scratchpad/captures/rriso42f_control_native2.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42f_control_native2_verify_back_20260305_200750.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:06:55Z",
+      "updated_at": "2026-03-05T20:07:50Z"
+    },
+    {
+      "id": "c1e3c861-d5d8-4563-819a-2870d4749449",
+      "capture_label": "rriso42f_row39_only_no_tuple",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso7_20260305",
+      "description": "Apply row +0x39 pattern only, no tuple seed",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42f_row39_only_no_tuple.bin",
+      "payload_file": "scratchpad/captures/rriso42f_row39_only_no_tuple.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42f_row39_only_no_tuple_verify_back_20260305_200812.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:06:55Z",
+      "updated_at": "2026-03-05T20:08:12Z"
+    },
+    {
+      "id": "f22b0095-55ed-4ef4-8bc2-7c115d12d609",
+      "capture_label": "rriso42f_tuple_only",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso7_20260305",
+      "description": "Tuple-only seed control (known fail baseline)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42f_tuple_only.bin",
+      "payload_file": "scratchpad/captures/rriso42f_tuple_only.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42f_tuple_only_verify_back_20260305_200831.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:06:56Z",
+      "updated_at": "2026-03-05T20:08:31Z"
+    },
+    {
+      "id": "212c00d4-1574-47d6-b007-9499758bce37",
+      "capture_label": "rriso42f_tuple_row39_canonical",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso7_20260305",
+      "description": "Tuple + canonical row +0x39 pattern",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42f_tuple_row39_canonical.bin",
+      "payload_file": "scratchpad/captures/rriso42f_tuple_row39_canonical.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42f_tuple_row39_canonical_verify_back_20260305_200842.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:06:56Z",
+      "updated_at": "2026-03-05T20:08:42Z"
+    },
+    {
+      "id": "bbc03a24-3914-42af-acc7-61b127e6d8d4",
+      "capture_label": "rriso42f_tuple_row39_row0_only",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso7_20260305",
+      "description": "Tuple + row0-only +0x39 pattern",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42f_tuple_row39_row0_only.bin",
+      "payload_file": "scratchpad/captures/rriso42f_tuple_row39_row0_only.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42f_tuple_row39_row0_only_verify_back_20260305_200910.bin",
+      "verify_clipboard_len": 16384,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:06:56Z",
+      "updated_at": "2026-03-05T20:09:10Z"
+    },
+    {
+      "id": "352937b4-28b7-4242-9f6d-d6bb250d0a34",
+      "capture_label": "rriso42f_tuple_row39_row1_only",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso7_20260305",
+      "description": "Tuple + row1-only +0x39 pattern",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42f_tuple_row39_row1_only.bin",
+      "payload_file": "scratchpad/captures/rriso42f_tuple_row39_row1_only.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42f_tuple_row39_row1_only_verify_back_20260305_200955.bin",
+      "verify_clipboard_len": 20480,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:06:57Z",
+      "updated_at": "2026-03-05T20:09:55Z"
+    },
+    {
+      "id": "ac8a33ff-1f4d-43f8-8e5f-a4856120bd15",
+      "capture_label": "rriso42f_tuple_row39_allones",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso7_20260305",
+      "description": "Tuple + +0x39 with row1 col31 forced to 1",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42f_tuple_row39_allones.bin",
+      "payload_file": "scratchpad/captures/rriso42f_tuple_row39_allones.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42f_tuple_row39_allones_verify_back_20260305_201008.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:06:57Z",
+      "updated_at": "2026-03-05T20:10:08Z"
+    },
+    {
+      "id": "cfb91ecd-f7a1-4041-a25d-4178c8b1626e",
+      "capture_label": "rriso42g_control_native2",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso8_20260305",
+      "description": "Control: native 2-row empty payload",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42g_control_native2.bin",
+      "payload_file": "scratchpad/captures/rriso42g_control_native2.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42g_control_native2_verify_back_20260305_201320.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:11:48Z",
+      "updated_at": "2026-03-05T20:13:20Z"
+    },
+    {
+      "id": "f276a68b-e733-490e-b322-73e981a54df6",
+      "capture_label": "rriso42g_tuple_only",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso8_20260305",
+      "description": "Tuple-only baseline",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42g_tuple_only.bin",
+      "payload_file": "scratchpad/captures/rriso42g_tuple_only.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42g_tuple_only_verify_back_20260305_201336.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:11:48Z",
+      "updated_at": "2026-03-05T20:13:36Z"
+    },
+    {
+      "id": "8c72d641-68ef-430f-8e8b-42f7181f06aa",
+      "capture_label": "rriso42g_tuple_row39_sparse_c0_c0",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso8_20260305",
+      "description": "Tuple + row39 sparse (row0 c0, row1 c0)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42g_tuple_row39_sparse_c0_c0.bin",
+      "payload_file": "scratchpad/captures/rriso42g_tuple_row39_sparse_c0_c0.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42g_tuple_row39_sparse_c0_c0_verify_back_20260305_201354.bin",
+      "verify_clipboard_len": 24576,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:11:49Z",
+      "updated_at": "2026-03-05T20:13:54Z"
+    },
+    {
+      "id": "51d06e2a-17a8-4f57-86a3-7743e7108632",
+      "capture_label": "rriso42g_tuple_row39_row0full_row1c0",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso8_20260305",
+      "description": "Tuple + row39 row0 full, row1 c0",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42g_tuple_row39_row0full_row1c0.bin",
+      "payload_file": "scratchpad/captures/rriso42g_tuple_row39_row0full_row1c0.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42g_tuple_row39_row0full_row1c0_verify_back_20260305_201410.bin",
+      "verify_clipboard_len": 16384,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:11:49Z",
+      "updated_at": "2026-03-05T20:14:10Z"
+    },
+    {
+      "id": "8465067b-6bad-428f-b4c9-c0eee255a291",
+      "capture_label": "rriso42g_tuple_row39_row0c0_row1full",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso8_20260305",
+      "description": "Tuple + row39 row0 c0, row1 full",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42g_tuple_row39_row0c0_row1full.bin",
+      "payload_file": "scratchpad/captures/rriso42g_tuple_row39_row0c0_row1full.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42g_tuple_row39_row0c0_row1full_verify_back_20260305_201423.bin",
+      "verify_clipboard_len": 20480,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:11:50Z",
+      "updated_at": "2026-03-05T20:14:23Z"
+    },
+    {
+      "id": "a0c1aa93-fa03-4dca-834b-8af70c8170ab",
+      "capture_label": "rriso42g_tuple_row39_row0full_row1c0_15",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso8_20260305",
+      "description": "Tuple + row39 row0 full, row1 cols 0..15",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42g_tuple_row39_row0full_row1c0_15.bin",
+      "payload_file": "scratchpad/captures/rriso42g_tuple_row39_row0full_row1c0_15.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42g_tuple_row39_row0full_row1c0_15_verify_back_20260305_201436.bin",
+      "verify_clipboard_len": 16384,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:11:50Z",
+      "updated_at": "2026-03-05T20:14:36Z"
+    },
+    {
+      "id": "8cb45cb0-d05f-4c23-b9a4-4f74649074d4",
+      "capture_label": "rriso42g_tuple_row39_row0full_row1c0_30",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso8_20260305",
+      "description": "Tuple + row39 row0 full, row1 cols 0..30",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42g_tuple_row39_row0full_row1c0_30.bin",
+      "payload_file": "scratchpad/captures/rriso42g_tuple_row39_row0full_row1c0_30.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42g_tuple_row39_row0full_row1c0_30_verify_back_20260305_201459.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:11:50Z",
+      "updated_at": "2026-03-05T20:14:59Z"
+    },
+    {
+      "id": "b90855d9-2f8d-4549-9bf4-105b0d69bd13",
+      "capture_label": "rriso42h_control_native2",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso9_20260305",
+      "description": "Control: native 2-row empty payload",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42h_control_native2.bin",
+      "payload_file": "scratchpad/captures/rriso42h_control_native2.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42h_control_native2_verify_back_20260305_203645.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:17:13Z",
+      "updated_at": "2026-03-05T20:36:45Z"
+    },
+    {
+      "id": "bc3ba6a5-ac3c-44f8-885c-e28ca618e27e",
+      "capture_label": "rriso42h_tuple_only",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso9_20260305",
+      "description": "Tuple-only baseline",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42h_tuple_only.bin",
+      "payload_file": "scratchpad/captures/rriso42h_tuple_only.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42h_tuple_only_verify_back_20260305_203658.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:17:14Z",
+      "updated_at": "2026-03-05T20:36:58Z"
+    },
+    {
+      "id": "57f00731-f686-488e-8ec7-9b8b1617db93",
+      "capture_label": "rriso42h_tuple_row39_row0full_row1c0_30",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso9_20260305",
+      "description": "Tuple + row39 row0 full, row1 cols 0..30 (known pass anchor)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42h_tuple_row39_row0full_row1c0_30.bin",
+      "payload_file": "scratchpad/captures/rriso42h_tuple_row39_row0full_row1c0_30.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42h_tuple_row39_row0full_row1c0_30_verify_back_20260305_203709.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:17:14Z",
+      "updated_at": "2026-03-05T20:37:09Z"
+    },
+    {
+      "id": "f104664f-369f-4c04-975e-b3ca7d2a2b28",
+      "capture_label": "rriso42h_tuple_row39_row0full_row1c0_29",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso9_20260305",
+      "description": "Tuple + row39 row0 full, row1 cols 0..29",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42h_tuple_row39_row0full_row1c0_29.bin",
+      "payload_file": "scratchpad/captures/rriso42h_tuple_row39_row0full_row1c0_29.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42h_tuple_row39_row0full_row1c0_29_verify_back_20260305_203718.bin",
+      "verify_clipboard_len": 16384,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:17:15Z",
+      "updated_at": "2026-03-05T20:37:18Z"
+    },
+    {
+      "id": "b0584098-8fe2-4236-b5d5-9cf4f01f6ffa",
+      "capture_label": "rriso42h_tuple_row39_row0c0_30_row1c0_30",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso9_20260305",
+      "description": "Tuple + row39 row0 cols 0..30, row1 cols 0..30",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42h_tuple_row39_row0c0_30_row1c0_30.bin",
+      "payload_file": "scratchpad/captures/rriso42h_tuple_row39_row0c0_30_row1c0_30.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42h_tuple_row39_row0c0_30_row1c0_30_verify_back_20260305_203733.bin",
+      "verify_clipboard_len": 20480,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:17:15Z",
+      "updated_at": "2026-03-05T20:37:33Z"
+    },
+    {
+      "id": "aef51a17-d7b8-4d4e-96c3-556dd5ae2f76",
+      "capture_label": "rriso42h_tuple_row39_row0c0_30_row1full",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso9_20260305",
+      "description": "Tuple + row39 row0 cols 0..30, row1 full",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42h_tuple_row39_row0c0_30_row1full.bin",
+      "payload_file": "scratchpad/captures/rriso42h_tuple_row39_row0c0_30_row1full.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42h_tuple_row39_row0c0_30_row1full_verify_back_20260305_203745.bin",
+      "verify_clipboard_len": 20480,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:17:15Z",
+      "updated_at": "2026-03-05T20:37:45Z"
+    },
+    {
+      "id": "5090e44d-845c-4477-8b97-ba8561c1e25c",
+      "capture_label": "rriso42h_tuple_row39_row0full_row1c1_31",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso9_20260305",
+      "description": "Tuple + row39 row0 full, row1 cols 1..31",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42h_tuple_row39_row0full_row1c1_31.bin",
+      "payload_file": "scratchpad/captures/rriso42h_tuple_row39_row0full_row1c1_31.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42h_tuple_row39_row0full_row1c1_31_verify_back_20260305_203756.bin",
+      "verify_clipboard_len": 20480,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:17:16Z",
+      "updated_at": "2026-03-05T20:37:56Z"
+    },
+    {
+      "id": "4abfb891-75df-4032-8469-469ffa88a05f",
+      "capture_label": "rriso42i_control_native2",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso10_20260305",
+      "description": "Control: native 2-row empty payload",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42i_control_native2.bin",
+      "payload_file": "scratchpad/captures/rriso42i_control_native2.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42i_control_native2_verify_back_20260305_203954.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:39:06Z",
+      "updated_at": "2026-03-05T20:39:54Z"
+    },
+    {
+      "id": "d86fcd65-aa03-48f4-9b85-82f73d804456",
+      "capture_label": "rriso42i_anchor_row1_c0_30",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso10_20260305",
+      "description": "Pass anchor: tuple + row39 row0 full, row1 cols 0..30",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42i_anchor_row1_c0_30.bin",
+      "payload_file": "scratchpad/captures/rriso42i_anchor_row1_c0_30.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42i_anchor_row1_c0_30_verify_back_20260305_204004.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:39:07Z",
+      "updated_at": "2026-03-05T20:40:04Z"
+    },
+    {
+      "id": "f9ef9bd1-0af3-4cd9-a0d8-0aab831cca90",
+      "capture_label": "rriso42i_anchor_drop_row1_c07",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso10_20260305",
+      "description": "Anchor minus row1 col7 at +0x39",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42i_anchor_drop_row1_c07.bin",
+      "payload_file": "scratchpad/captures/rriso42i_anchor_drop_row1_c07.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42i_anchor_drop_row1_c07_verify_back_20260305_204015.bin",
+      "verify_clipboard_len": 20480,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:39:07Z",
+      "updated_at": "2026-03-05T20:40:15Z"
+    },
+    {
+      "id": "a0b2d518-8ff2-4fb6-a5ac-2ab2b5b7b9cb",
+      "capture_label": "rriso42i_anchor_drop_row1_c15",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso10_20260305",
+      "description": "Anchor minus row1 col15 at +0x39",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42i_anchor_drop_row1_c15.bin",
+      "payload_file": "scratchpad/captures/rriso42i_anchor_drop_row1_c15.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42i_anchor_drop_row1_c15_verify_back_20260305_204029.bin",
+      "verify_clipboard_len": 20480,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:39:07Z",
+      "updated_at": "2026-03-05T20:40:29Z"
+    },
+    {
+      "id": "b0b83dc3-bdb2-498b-80c1-b98e37d36c1c",
+      "capture_label": "rriso42i_anchor_drop_row1_c23",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso10_20260305",
+      "description": "Anchor minus row1 col23 at +0x39",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso42i_anchor_drop_row1_c23.bin",
+      "payload_file": "scratchpad/captures/rriso42i_anchor_drop_row1_c23.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso42i_anchor_drop_row1_c23_verify_back_20260305_204040.bin",
+      "verify_clipboard_len": 20480,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T20:39:08Z",
+      "updated_at": "2026-03-05T20:40:40Z"
     }
   ]
 }
