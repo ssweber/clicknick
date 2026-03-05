@@ -2045,18 +2045,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_synth_empty_template__empty_row1.bin",
       "payload_file": "scratchpad/captures/grid_synth_empty_template__empty_row1.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_synth_empty_row1_synthetic_verify_back_20260305_152927.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:26:41Z",
-      "updated_at": "2026-03-05T15:26:41Z"
+      "updated_at": "2026-03-05T15:29:27Z"
     },
     {
       "id": "6a4a4e88-36b5-4d33-90af-b63bad5c57cd",
@@ -2070,18 +2072,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_synth_empty_template__wire_a.bin",
       "payload_file": "scratchpad/captures/grid_synth_empty_template__wire_a.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_synth_wire_a_synthetic_verify_back_20260305_152939.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:26:42Z",
-      "updated_at": "2026-03-05T15:26:42Z"
+      "updated_at": "2026-03-05T15:29:39Z"
     },
     {
       "id": "be3e1c0c-bfdd-43af-af65-654baf649f2b",
@@ -2095,18 +2099,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_synth_empty_template__wire_ab.bin",
       "payload_file": "scratchpad/captures/grid_synth_empty_template__wire_ab.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_synth_wire_ab_synthetic_verify_back_20260305_152949.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:26:42Z",
-      "updated_at": "2026-03-05T15:26:42Z"
+      "updated_at": "2026-03-05T15:29:49Z"
     },
     {
       "id": "9b353ac4-e9af-43ce-9b4e-05fc614377b0",
@@ -2120,18 +2126,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_synth_empty_template__wire_full_row.bin",
       "payload_file": "scratchpad/captures/grid_synth_empty_template__wire_full_row.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_synth_wire_full_row_synthetic_verify_back_20260305_153001.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:26:42Z",
-      "updated_at": "2026-03-05T15:26:42Z"
+      "updated_at": "2026-03-05T15:30:01Z"
     },
     {
       "id": "1acf31d1-571b-43b1-92c8-376789fc7de9",
@@ -2146,19 +2154,321 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_synth_empty_template__empty_rows1_2.bin",
       "payload_file": "scratchpad/captures/grid_synth_empty_template__empty_rows1_2.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "only 1 row",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_synth_empty_rows1_2_synthetic_verify_back_20260305_153043.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:26:43Z",
+      "updated_at": "2026-03-05T15:30:43Z"
+    },
+    {
+      "id": "d6ff4a65-b78d-4f06-b914-39cdaed308ed",
+      "capture_label": "h18iso_grid_synth_empty_row1_synthetic__00",
+      "capture_type": "patch",
+      "scenario": "grid_synth_h18_isolation_20260305",
+      "description": "+0x18 isolation from grid_synth_empty_row1_synthetic set +0x18=0x00",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_empty_row1_synthetic__h18_00.bin",
+      "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_empty_row1_synthetic__h18_00.bin",
       "verify_clipboard_event": null,
       "verify_status": "unverified",
       "verify_notes": "",
       "verify_expected_rows": [
-        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
-        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
       "verify_observed_rows": [],
       "verify_result_file": null,
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
-      "created_at": "2026-03-05T15:26:43Z",
-      "updated_at": "2026-03-05T15:26:43Z"
+      "created_at": "2026-03-05T15:31:49Z",
+      "updated_at": "2026-03-05T15:31:49Z"
+    },
+    {
+      "id": "23d1aa83-3f20-476c-9025-22a440936f6f",
+      "capture_label": "h18iso_grid_synth_empty_row1_synthetic__7f",
+      "capture_type": "patch",
+      "scenario": "grid_synth_h18_isolation_20260305",
+      "description": "+0x18 isolation from grid_synth_empty_row1_synthetic set +0x18=0x7F",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_empty_row1_synthetic__h18_7f.bin",
+      "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_empty_row1_synthetic__h18_7f.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:31:49Z",
+      "updated_at": "2026-03-05T15:31:49Z"
+    },
+    {
+      "id": "3354e9b6-4cbe-4d2a-bebb-2e3f3b7b5440",
+      "capture_label": "h18iso_grid_synth_empty_row1_synthetic__ff",
+      "capture_type": "patch",
+      "scenario": "grid_synth_h18_isolation_20260305",
+      "description": "+0x18 isolation from grid_synth_empty_row1_synthetic set +0x18=0xFF",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_empty_row1_synthetic__h18_ff.bin",
+      "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_empty_row1_synthetic__h18_ff.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:31:50Z",
+      "updated_at": "2026-03-05T15:31:50Z"
+    },
+    {
+      "id": "eb840015-1113-4772-bdb4-4f54874d99ea",
+      "capture_label": "h18iso_grid_synth_wire_a_synthetic__00",
+      "capture_type": "patch",
+      "scenario": "grid_synth_h18_isolation_20260305",
+      "description": "+0x18 isolation from grid_synth_wire_a_synthetic set +0x18=0x00",
+      "rung_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_a_synthetic__h18_00.bin",
+      "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_a_synthetic__h18_00.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:31:50Z",
+      "updated_at": "2026-03-05T15:31:50Z"
+    },
+    {
+      "id": "3d26f1a2-f6c9-45d2-afb4-6ce106814b28",
+      "capture_label": "h18iso_grid_synth_wire_a_synthetic__7f",
+      "capture_type": "patch",
+      "scenario": "grid_synth_h18_isolation_20260305",
+      "description": "+0x18 isolation from grid_synth_wire_a_synthetic set +0x18=0x7F",
+      "rung_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_a_synthetic__h18_7f.bin",
+      "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_a_synthetic__h18_7f.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:31:50Z",
+      "updated_at": "2026-03-05T15:31:50Z"
+    },
+    {
+      "id": "a80b9911-dabf-49ea-94ad-6866f2062dd3",
+      "capture_label": "h18iso_grid_synth_wire_a_synthetic__ff",
+      "capture_type": "patch",
+      "scenario": "grid_synth_h18_isolation_20260305",
+      "description": "+0x18 isolation from grid_synth_wire_a_synthetic set +0x18=0xFF",
+      "rung_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_a_synthetic__h18_ff.bin",
+      "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_a_synthetic__h18_ff.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:31:51Z",
+      "updated_at": "2026-03-05T15:31:51Z"
+    },
+    {
+      "id": "b3d77b3a-a673-4a2e-a84a-51714c06e402",
+      "capture_label": "h18iso_grid_synth_wire_ab_synthetic__00",
+      "capture_type": "patch",
+      "scenario": "grid_synth_h18_isolation_20260305",
+      "description": "+0x18 isolation from grid_synth_wire_ab_synthetic set +0x18=0x00",
+      "rung_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_ab_synthetic__h18_00.bin",
+      "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_ab_synthetic__h18_00.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:31:51Z",
+      "updated_at": "2026-03-05T15:31:51Z"
+    },
+    {
+      "id": "2f108d13-132f-4f67-a7d1-66928c1138fb",
+      "capture_label": "h18iso_grid_synth_wire_ab_synthetic__7f",
+      "capture_type": "patch",
+      "scenario": "grid_synth_h18_isolation_20260305",
+      "description": "+0x18 isolation from grid_synth_wire_ab_synthetic set +0x18=0x7F",
+      "rung_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_ab_synthetic__h18_7f.bin",
+      "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_ab_synthetic__h18_7f.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:31:51Z",
+      "updated_at": "2026-03-05T15:31:51Z"
+    },
+    {
+      "id": "e1e49ddb-1040-491d-874b-6281759fe851",
+      "capture_label": "h18iso_grid_synth_wire_ab_synthetic__ff",
+      "capture_type": "patch",
+      "scenario": "grid_synth_h18_isolation_20260305",
+      "description": "+0x18 isolation from grid_synth_wire_ab_synthetic set +0x18=0xFF",
+      "rung_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_ab_synthetic__h18_ff.bin",
+      "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_ab_synthetic__h18_ff.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:31:52Z",
+      "updated_at": "2026-03-05T15:31:52Z"
+    },
+    {
+      "id": "c73d0b68-2e6f-494c-a934-7227fcf5fef9",
+      "capture_label": "h18iso_grid_synth_wire_full_row_synthetic__00",
+      "capture_type": "patch",
+      "scenario": "grid_synth_h18_isolation_20260305",
+      "description": "+0x18 isolation from grid_synth_wire_full_row_synthetic set +0x18=0x00",
+      "rung_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_full_row_synthetic__h18_00.bin",
+      "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_full_row_synthetic__h18_00.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:31:52Z",
+      "updated_at": "2026-03-05T15:31:52Z"
+    },
+    {
+      "id": "b989d0fb-ff16-4947-8655-438e13145065",
+      "capture_label": "h18iso_grid_synth_wire_full_row_synthetic__7f",
+      "capture_type": "patch",
+      "scenario": "grid_synth_h18_isolation_20260305",
+      "description": "+0x18 isolation from grid_synth_wire_full_row_synthetic set +0x18=0x7F",
+      "rung_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_full_row_synthetic__h18_7f.bin",
+      "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_full_row_synthetic__h18_7f.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:31:52Z",
+      "updated_at": "2026-03-05T15:31:52Z"
+    },
+    {
+      "id": "713216d1-b836-4628-8978-722f787172cb",
+      "capture_label": "h18iso_grid_synth_wire_full_row_synthetic__ff",
+      "capture_type": "patch",
+      "scenario": "grid_synth_h18_isolation_20260305",
+      "description": "+0x18 isolation from grid_synth_wire_full_row_synthetic set +0x18=0xFF",
+      "rung_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_full_row_synthetic__h18_ff.bin",
+      "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_full_row_synthetic__h18_ff.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:31:53Z",
+      "updated_at": "2026-03-05T15:31:53Z"
     }
   ]
 }
