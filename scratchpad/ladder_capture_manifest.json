@@ -4050,6 +4050,176 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T17:34:35Z",
       "updated_at": "2026-03-05T17:37:25Z"
+    },
+    {
+      "id": "2a2413bc-f4d3-44a0-b618-c9fdc8cf6b02",
+      "capture_label": "gmc_grid2_no_companion",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_companion_confirm_20260305",
+      "description": "Grid2 control from synthetic template without companion",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_companion__grid2_no_companion.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_companion__grid2_no_companion.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T17:43:49Z",
+      "updated_at": "2026-03-05T17:43:49Z"
+    },
+    {
+      "id": "288ecc86-06d4-48eb-9f73-cce489f9c908",
+      "capture_label": "gmc_grid2_with_companion",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_companion_confirm_20260305",
+      "description": "Grid2 synthetic with donor companion rule (row1+0x10, row0col31+0x38/+0x3D)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_companion__grid2_with_companion.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_companion__grid2_with_companion.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T17:43:49Z",
+      "updated_at": "2026-03-05T17:43:49Z"
+    },
+    {
+      "id": "fe5a2d43-5440-4012-89f0-8c478ff0fa77",
+      "capture_label": "gmc_grid3_ablate_all",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_companion_confirm_20260305",
+      "description": "Grid3 native ablated at companion offsets using synthetic values",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_companion__grid3_ablate_all.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_companion__grid3_ablate_all.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T17:43:49Z",
+      "updated_at": "2026-03-05T17:43:49Z"
+    },
+    {
+      "id": "aa135ecc-459b-461e-84bb-f7d05bec4f22",
+      "capture_label": "gmc_grid3_restore_row1_only",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_companion_confirm_20260305",
+      "description": "Grid3 ablated then row1+0x10 restored only",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_companion__grid3_restore_row1_only.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_companion__grid3_restore_row1_only.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T17:43:50Z",
+      "updated_at": "2026-03-05T17:43:50Z"
+    },
+    {
+      "id": "ff9cefd4-bb24-457c-a960-410b5e7b5e51",
+      "capture_label": "gmc_grid3_restore_col31_only",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_companion_confirm_20260305",
+      "description": "Grid3 ablated then row0 col31 +0x38/+0x3D restored only",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_companion__grid3_restore_col31_only.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_companion__grid3_restore_col31_only.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T17:43:50Z",
+      "updated_at": "2026-03-05T17:43:50Z"
+    },
+    {
+      "id": "dc948089-244e-46a0-b8fe-03b9213adffb",
+      "capture_label": "gmc_grid3_restore_all",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_companion_confirm_20260305",
+      "description": "Grid3 ablated then all companion offsets restored",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_companion__grid3_restore_all.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_companion__grid3_restore_all.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T17:43:50Z",
+      "updated_at": "2026-03-05T17:43:50Z"
     }
   ]
 }

@@ -21,6 +21,8 @@ from clicknick.ladder.topology import (
     CELL_HORIZONTAL_RIGHT_OFFSET,
     CELL_VERTICAL_DOWN_OFFSET,
     COLS_PER_ROW,
+    GRID_FIRST_ROW_START,
+    GRID_ROW_STRIDE,
     HEADER_ENTRY_BASE,
     HEADER_ENTRY_COUNT,
     HEADER_ENTRY_SIZE,
@@ -33,13 +35,23 @@ HEADER_COPY_DEFAULT_OFFSETS = (0x11, 0x17)
 ROW_CLASS_BY_COUNT = {
     1: 0x40,
     2: 0x60,
+    3: 0x80,
 }
+MULTIROW_COMPANION_ROW1_REL_OFFSET = 0x10
+MULTIROW_COMPANION_ROW0_COL = 31
+MULTIROW_COMPANION_ROW0_REL_OFFSETS = (0x38, 0x3D)
 
 
 def _first_record(data: bytes, *, label: str) -> bytes:
     if len(data) < BUFFER_SIZE:
         raise ValueError(f"{label} payload too short ({len(data)} bytes); need at least {BUFFER_SIZE}")
     return data[:BUFFER_SIZE]
+
+
+def _available_rows_for_len(length: int) -> int:
+    if length < GRID_FIRST_ROW_START + GRID_ROW_STRIDE:
+        return 0
+    return (length - GRID_FIRST_ROW_START) // GRID_ROW_STRIDE
 
 
 def _parse_offset(raw: str) -> int:
@@ -69,8 +81,8 @@ def parse_wire_rows(rows: Iterable[str]) -> tuple[tuple[str, ...], ...]:
 
     if not parsed:
         raise ValueError("At least one --row is required")
-    if len(parsed) > 2:
-        raise ValueError("This tool supports up to two rows in an 8192-byte payload")
+    if len(parsed) > 3:
+        raise ValueError("This tool supports up to three shorthand rows")
     return tuple(parsed)
 
 
@@ -85,7 +97,10 @@ def _flags_for_token(token: str) -> tuple[int, int, int]:
 
 
 def _clear_wire_flags(buf: bytearray, *, rows: int) -> None:
+    available_rows = _available_rows_for_len(len(buf))
     for row in range(rows):
+        if row >= available_rows:
+            break
         for col in range(COLS_PER_ROW - 1):  # A..AE (AF is output cell)
             start = cell_offset(row, col)
             buf[start + CELL_HORIZONTAL_LEFT_OFFSET] = 0
@@ -94,7 +109,10 @@ def _clear_wire_flags(buf: bytearray, *, rows: int) -> None:
 
 
 def _draw_rows(buf: bytearray, parsed_rows: tuple[tuple[str, ...], ...]) -> None:
+    available_rows = _available_rows_for_len(len(buf))
     for row_idx, condition_tokens in enumerate(parsed_rows):
+        if row_idx >= available_rows:
+            break
         for col_idx, token in enumerate(condition_tokens):
             left, right, down = _flags_for_token(token)
             start = cell_offset(row_idx, col_idx)
@@ -116,36 +134,62 @@ def _apply_header_copy_offsets(
             buf[entry_start + rel] = donor_record[entry_start + rel]
 
 
+def _apply_multirow_empty_companion(
+    buf: bytearray,
+    *,
+    donor: bytes,
+) -> None:
+    donor_record = _first_record(donor, label="donor")
+    for col in range(COLS_PER_ROW):
+        row1 = cell_offset(1, col)
+        if row1 + MULTIROW_COMPANION_ROW1_REL_OFFSET >= len(buf):
+            break
+        buf[row1 + MULTIROW_COMPANION_ROW1_REL_OFFSET] = donor_record[
+            row1 + MULTIROW_COMPANION_ROW1_REL_OFFSET
+        ]
+
+    row0_col31 = cell_offset(0, MULTIROW_COMPANION_ROW0_COL)
+    for rel in MULTIROW_COMPANION_ROW0_REL_OFFSETS:
+        absolute = row0_col31 + rel
+        if absolute >= len(buf):
+            continue
+        buf[absolute] = donor_record[absolute]
+
+
 def synthesize_from_template(
     template: bytes,
     *,
     rows: Iterable[str],
     donor: bytes | None = None,
     header_copy_offsets: tuple[int, ...] = HEADER_COPY_DEFAULT_OFFSETS,
+    apply_multirow_empty_companion: bool = False,
 ) -> bytes:
-    template_record = _first_record(template, label="template")
+    if len(template) < BUFFER_SIZE:
+        raise ValueError(f"template payload too short ({len(template)} bytes); need at least {BUFFER_SIZE}")
     parsed_rows = parse_wire_rows(rows)
     row_count = len(parsed_rows)
     row_class = ROW_CLASS_BY_COUNT.get(row_count)
     if row_class is None:
         raise ValueError(f"Unsupported row count for synthesis: {row_count}")
 
-    out_record = bytearray(template_record)
-    out_record[HEADER_ENTRY_BASE + HEADER_ROW_CLASS_OFFSET] = row_class
+    out = bytearray(template)
+    out[HEADER_ENTRY_BASE + HEADER_ROW_CLASS_OFFSET] = row_class
 
     # Use a deterministic topology surface by clearing both row blocks first.
-    _clear_wire_flags(out_record, rows=2)
-    _draw_rows(out_record, parsed_rows)
+    _clear_wire_flags(out, rows=max(2, row_count))
+    _draw_rows(out, parsed_rows)
 
     if donor is not None and header_copy_offsets:
-        _apply_header_copy_offsets(out_record, donor=donor, entry_offsets=header_copy_offsets)
+        _apply_header_copy_offsets(out, donor=donor, entry_offsets=header_copy_offsets)
 
-    if len(template) == BUFFER_SIZE:
-        return bytes(out_record)
+    if apply_multirow_empty_companion:
+        if donor is None:
+            raise ValueError("apply_multirow_empty_companion requires donor payload")
+        if row_count < 2:
+            raise ValueError("apply_multirow_empty_companion requires at least two rows")
+        _apply_multirow_empty_companion(out, donor=donor)
 
-    output = bytearray(template)
-    output[:BUFFER_SIZE] = out_record
-    return bytes(output)
+    return bytes(out)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -170,6 +214,19 @@ def _build_parser() -> argparse.ArgumentParser:
             "Defaults to 0x11 and 0x17 when --donor is provided."
         ),
     )
+    parser.add_argument(
+        "--no-header-copy",
+        action="store_true",
+        help="Do not copy any header offsets from donor.",
+    )
+    parser.add_argument(
+        "--apply-multirow-empty-companion",
+        action="store_true",
+        help=(
+            "Apply empirically derived two-row empty companion bytes "
+            "(row1 +0x10 all columns, row0 col31 +0x38/+0x3D) from donor."
+        ),
+    )
     return parser
 
 
@@ -187,11 +244,14 @@ def main() -> int:
         raise ValueError("--header-copy-offset requires --donor")
 
     if donor_bytes is not None:
-        header_copy_offsets = (
-            tuple(_parse_offset(raw) for raw in args.header_copy_offset)
-            if args.header_copy_offset
-            else HEADER_COPY_DEFAULT_OFFSETS
-        )
+        if args.no_header_copy:
+            header_copy_offsets = tuple()
+        else:
+            header_copy_offsets = (
+                tuple(_parse_offset(raw) for raw in args.header_copy_offset)
+                if args.header_copy_offset
+                else HEADER_COPY_DEFAULT_OFFSETS
+            )
     else:
         header_copy_offsets = tuple()
 
@@ -200,6 +260,7 @@ def main() -> int:
         rows=args.row,
         donor=donor_bytes,
         header_copy_offsets=header_copy_offsets,
+        apply_multirow_empty_companion=args.apply_multirow_empty_companion,
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -97,6 +97,70 @@ def test_header_copy_only_touches_selected_offsets() -> None:
     assert out[0x0A59] == 0xAA
 
 
+def test_multirow_empty_companion_copies_row1_and_row0_col31_bytes() -> None:
+    template = bytearray(BUFFER_SIZE)
+    donor = bytearray(BUFFER_SIZE)
+    for col in range(32):
+        template[cell_offset(1, col) + 0x10] = 0x00
+        donor[cell_offset(1, col) + 0x10] = (0x40 + col) & 0xFF
+
+    row0_col31 = cell_offset(0, 31)
+    template[row0_col31 + 0x38] = 0x00
+    template[row0_col31 + 0x3D] = 0x00
+    donor[row0_col31 + 0x38] = 0xA1
+    donor[row0_col31 + 0x3D] = 0xB2
+
+    out = synthesize_from_template(
+        bytes(template),
+        rows=[
+            "R,...,:,...",
+            ",...,:,...",
+        ],
+        donor=bytes(donor),
+        header_copy_offsets=(),
+        apply_multirow_empty_companion=True,
+    )
+
+    for col in range(32):
+        assert out[cell_offset(1, col) + 0x10] == donor[cell_offset(1, col) + 0x10]
+    assert out[row0_col31 + 0x38] == 0xA1
+    assert out[row0_col31 + 0x3D] == 0xB2
+
+
+def test_multirow_empty_companion_requires_donor_and_two_rows() -> None:
+    with pytest.raises(ValueError, match="requires donor"):
+        synthesize_from_template(
+            bytes(BUFFER_SIZE),
+            rows=[
+                "R,...,:,...",
+                ",...,:,...",
+            ],
+            apply_multirow_empty_companion=True,
+        )
+
+    with pytest.raises(ValueError, match="at least two rows"):
+        synthesize_from_template(
+            bytes(BUFFER_SIZE),
+            rows=["R,...,:,..."],
+            donor=bytes(BUFFER_SIZE),
+            apply_multirow_empty_companion=True,
+        )
+
+
+def test_supports_three_rows_when_template_buffer_is_large_enough() -> None:
+    template = bytes(0x3000)
+    out = synthesize_from_template(
+        template,
+        rows=[
+            "R,...,:,...",
+            ",...,:,...",
+            ",...,:,...",
+        ],
+    )
+    assert len(out) == 0x3000
+    assert out[HEADER_ENTRY_BASE] == 0x80
+
+
 def test_rejects_non_wire_condition_tokens() -> None:
     with pytest.raises(ValueError, match="unsupported condition token"):
         synthesize_from_template(bytes(BUFFER_SIZE), rows=["R,X001,...,:,..."])
