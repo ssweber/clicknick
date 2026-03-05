@@ -123,6 +123,23 @@ Verify:
   captured/source payload; fix by running `entry capture --label <label>` (native) or adding a
   file-backed entry (`entry add ... --payload-source file --payload-file <path>`).
 
+## Queue-and-Run Cadence (Recommended)
+- For manual RE rounds, use this loop:
+  1. Build a scenario and add entries (`entry add` / `entry add-patch-batch`).
+  2. Generate a queue doc under `scratchpad/` (for example `scratchpad/<scenario>_verify_queue_<date>.md`).
+  3. Commit queue setup before operator manual steps.
+  4. Operator run path for verify queues: `tui -> 3 -> g -> f -> <scenario filter>`.
+  5. For copied events, operator must paste in Click, then copy back in Click, then press `c`.
+  6. Operator responds `done`.
+  7. Parse manifest outcomes, classify pass/fail/blocked, build next batch, and commit outcomes.
+- For native recapture rounds, use: `tui -> 2` (capture queue), then `tui -> 3 -> g -> f` for verify.
+- Preferred operator handoff message includes:
+  - scenario name
+  - case count
+  - queue doc path
+  - exact TUI path
+  - explicit `send done` instruction
+
 Report:
 - `profile (--label <label> | --all) [--json | --csv]`
 - `profile-columns (--label <label> | --all) [--rows <spec>] [--cols <spec>] [--offsets <spec>] [--json | --csv]`
