@@ -62,13 +62,12 @@ All three test files pass locally.
 Confident noise candidates:
 
 - Header entry-local offsets with verified-safe normalization on grid-basics:
-  - `+0x11`, `+0x17` (all 32 header entries)
+  - `+0x11`, `+0x17`, `+0x18` (all 32 header entries)
 
 Context-sensitive / structural candidates (do not normalize globally yet):
 
 - Header `+0x05`
 - Trailer mirror `0x0A59`
-- Header `+0x18` (not yet validated in a clean all-pass mask on this baseline)
 
 ## Manual Capture/Verify Queue (Status)
 
@@ -96,8 +95,33 @@ Completed manual steps:
    - policy: normalize header `+0x11` and `+0x17` only
    - result: `14/14` `verified_pass`
 
+## Empty-Template Synthesis Lane (Lane 1)
+
+1. Grid synthesis from empty native template was implemented and tested.
+   - tool: `devtools/grid_template_synth.py`
+   - queue scenario: `grid_synth_empty_template_20260305`
+2. Verify outcome:
+   - `4/5` `verified_pass`
+   - pass: `empty_row1`, `wire_a`, `wire_ab`, `wire_full_row`
+   - fail: `grid_synth_empty_rows1_2_synthetic` (observed: only 1 row pasted)
+3. Interpretation:
+   - Single-row horizontal synthesis is stable from empty template baseline.
+   - Multi-row empty synthesis still has unresolved structure beyond simple row-class flip.
+
+## `+0x18` Isolation Lane (Lane 2)
+
+1. Focused isolation scenario:
+   - `grid_synth_h18_isolation_20260305`
+   - 12 patch entries from 4 passing lane-1 baselines
+   - variants set all header entry `+0x18` bytes to `0x00`, `0x7F`, `0xFF`
+2. Verify outcome:
+   - `12/12` `verified_pass`
+   - all value buckets pass (`0x00`: 4/4, `0x7F`: 4/4, `0xFF`: 4/4)
+3. Classification:
+   - `+0x18` is safe session-noise normalization for the empty/horizontal baseline lane.
+
 ## Recommended Next Lane
 
-1. Use refined mask profile (`+0x11`/`+0x17` only) as the working session-noise normalization for empty/horizontal baseline workflows.
-2. Keep `+0x05` and `0x0A59` untouched while building grid synthesis from empty-template captures.
-3. Add a focused follow-up experiment for `+0x18` to classify it confidently as noise vs structure before broadening encoder scope.
+1. Use working normalization profile `+0x11/+0x17/+0x18` for empty-template horizontal synthesis workflows.
+2. Keep `+0x05` and `0x0A59` untouched while extending synthesis coverage.
+3. Isolate the two-row collapse case (`grid_synth_empty_rows1_2_synthetic`) before treating multi-row empty synthesis as stable.

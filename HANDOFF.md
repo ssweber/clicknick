@@ -1,4 +1,4 @@
-# Click PLC Clipboard Reverse Engineering — Handoff v11
+# Click PLC Clipboard Reverse Engineering — Handoff v12
 
 Last validated: March 5, 2026
 
@@ -42,8 +42,24 @@ Last validated: March 5, 2026
 - Working classification for grid-basics lane:
   - safe session normalization: header `+0x11`, `+0x17`
   - keep untouched for now: header `+0x05`, trailer `0x0A59`
-  - unresolved: header `+0x18`
+  - unresolved at this stage: header `+0x18` (resolved later in same day; see next update)
 - Full gate notes and artifact links:
+  - `scratchpad/noise_vs_structure_reassessment_20260305.md`
+
+## Execution Update (March 5, 2026 — Grid Synthesis Lane + `+0x18` Isolation)
+
+- Lane 1 (`grid_synth_empty_template_20260305`) from empty native template:
+  - `4/5` pass for single-row empty/horizontal cases
+  - failing case: `grid_synth_empty_rows1_2_synthetic` pasted as one row
+- Lane 2 (`grid_synth_h18_isolation_20260305`) focused `+0x18` sweep:
+  - 12 patch cases across 4 passing lane-1 baselines
+  - `+0x18 = 0x00/0x7F/0xFF` all pass (`12/12`)
+- Updated classification for empty/horizontal baseline:
+  - safe session normalization: `+0x11`, `+0x17`, `+0x18`
+  - keep donor-preserved: `+0x05`, `0x0A59`
+- Queue/reference artifacts:
+  - `scratchpad/grid_synth_empty_template_verify_queue_20260305.md`
+  - `scratchpad/grid_synth_h18_isolation_verify_queue_20260305.md`
   - `scratchpad/noise_vs_structure_reassessment_20260305.md`
 
 ## Goal
@@ -56,7 +72,7 @@ can generate clipboard-ready bytes for paste into Click from `RungGrid`.
 - `clicknick.ladder` now uses a deterministic encoder (no runtime dependency on per-variant
   `.bin` templates under `src/clicknick/ladder/resources`).
 - Header behavior is partially characterized:
-  - refined session normalization (`+0x11/+0x17`) is validated for empty/horizontal baselines.
+  - refined session normalization (`+0x11/+0x17/+0x18`) is validated for empty/horizontal baselines.
   - `+0x05` and `0x0A59` are context-sensitive and can be structural.
 - Wire topology cell flags are mapped and validated by pasteback.
 - Manual pasteback now succeeds for:
@@ -181,7 +197,8 @@ This table is implemented in deterministic encoder logic and covered by tests.
 - Entry offset `+0x0C..+0x0F` stores the column index as a little-endian dword.
 - Entry offsets `+0x05/+0x11/+0x17/+0x18` vary across captures, but are not uniformly
   non-structural:
-  - grid-basics masking shows `+0x11/+0x17` can be normalized safely.
+  - grid-basics + lane-2 isolation show `+0x11/+0x17/+0x18` can be normalized safely for
+    empty/horizontal baseline workflows.
   - `+0x05` can be structural (row2-duplicate empty case).
 - Global row-class byte is at `0x0254`:
   - `0x40` => 1 logical row
@@ -312,7 +329,7 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
 
 ## Open Questions
 
-1. Header `+0x18`: classify as noise vs structure with a dedicated all-pass/all-fail mask test.
+1. Multi-row empty synthesis: why row1+2 empty synthetic currently collapses to one pasted row.
 2. Per-cell structural control bytes in row0/row1 (beyond wire flags): exact role in broader
    instruction families now that second-immediate is solved.
 3. Stream metadata bytes (`65 60`, `67 60`, related blocks): exact semantics and whether
@@ -327,14 +344,14 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
 
 ### 1) Empty-Template Grid Synthesis (Immediate)
 
-- Use verified empty-rung template captures plus refined mask policy (`+0x11/+0x17` only)
+- Use verified empty-rung template captures plus refined mask policy (`+0x11/+0x17/+0x18`)
   as the active synthesis baseline.
 - Keep `+0x05` and `0x0A59` donor-preserved until further isolation is complete.
 
-### 2) `+0x18` Isolation Follow-Up
+### 2) Multi-Row Empty Isolation Follow-Up
 
-- Run focused mask variants that differ only at `+0x18` on the same grid-basics family.
-- Promote `+0x18` to safe normalization only if clean all-pass behavior is demonstrated.
+- Isolate why two-row empty synthetic payload currently pastes as one row.
+- Keep single-row horizontal synthesis as the validated production lane until this is resolved.
 
 ### 3) Deterministic Encoder Hardening
 

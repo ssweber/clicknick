@@ -2182,18 +2182,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_empty_row1_synthetic__h18_00.bin",
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_empty_row1_synthetic__h18_00.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/h18iso_grid_synth_empty_row1_synthetic__00_verify_back_20260305_153553.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:49Z",
-      "updated_at": "2026-03-05T15:31:49Z"
+      "updated_at": "2026-03-05T15:35:53Z"
     },
     {
       "id": "23d1aa83-3f20-476c-9025-22a440936f6f",
@@ -2207,18 +2209,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_empty_row1_synthetic__h18_7f.bin",
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_empty_row1_synthetic__h18_7f.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/h18iso_grid_synth_empty_row1_synthetic__7f_verify_back_20260305_153601.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:49Z",
-      "updated_at": "2026-03-05T15:31:49Z"
+      "updated_at": "2026-03-05T15:36:01Z"
     },
     {
       "id": "3354e9b6-4cbe-4d2a-bebb-2e3f3b7b5440",
@@ -2232,18 +2236,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_empty_row1_synthetic__h18_ff.bin",
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_empty_row1_synthetic__h18_ff.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/h18iso_grid_synth_empty_row1_synthetic__ff_verify_back_20260305_153613.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:50Z",
-      "updated_at": "2026-03-05T15:31:50Z"
+      "updated_at": "2026-03-05T15:36:13Z"
     },
     {
       "id": "eb840015-1113-4772-bdb4-4f54874d99ea",
@@ -2257,18 +2263,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_a_synthetic__h18_00.bin",
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_a_synthetic__h18_00.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/h18iso_grid_synth_wire_a_synthetic__00_verify_back_20260305_153622.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:50Z",
-      "updated_at": "2026-03-05T15:31:50Z"
+      "updated_at": "2026-03-05T15:36:22Z"
     },
     {
       "id": "3d26f1a2-f6c9-45d2-afb4-6ce106814b28",
@@ -2282,18 +2290,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_a_synthetic__h18_7f.bin",
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_a_synthetic__h18_7f.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/h18iso_grid_synth_wire_a_synthetic__7f_verify_back_20260305_153629.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:50Z",
-      "updated_at": "2026-03-05T15:31:50Z"
+      "updated_at": "2026-03-05T15:36:29Z"
     },
     {
       "id": "a80b9911-dabf-49ea-94ad-6866f2062dd3",
@@ -2307,18 +2317,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_a_synthetic__h18_ff.bin",
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_a_synthetic__h18_ff.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/h18iso_grid_synth_wire_a_synthetic__ff_verify_back_20260305_153636.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:51Z",
-      "updated_at": "2026-03-05T15:31:51Z"
+      "updated_at": "2026-03-05T15:36:36Z"
     },
     {
       "id": "b3d77b3a-a673-4a2e-a84a-51714c06e402",
@@ -2332,18 +2344,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_ab_synthetic__h18_00.bin",
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_ab_synthetic__h18_00.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/h18iso_grid_synth_wire_ab_synthetic__00_verify_back_20260305_153644.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:51Z",
-      "updated_at": "2026-03-05T15:31:51Z"
+      "updated_at": "2026-03-05T15:36:44Z"
     },
     {
       "id": "2f108d13-132f-4f67-a7d1-66928c1138fb",
@@ -2357,18 +2371,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_ab_synthetic__h18_7f.bin",
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_ab_synthetic__h18_7f.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/h18iso_grid_synth_wire_ab_synthetic__7f_verify_back_20260305_153650.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:51Z",
-      "updated_at": "2026-03-05T15:31:51Z"
+      "updated_at": "2026-03-05T15:36:50Z"
     },
     {
       "id": "e1e49ddb-1040-491d-874b-6281759fe851",
@@ -2382,18 +2398,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_ab_synthetic__h18_ff.bin",
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_ab_synthetic__h18_ff.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/h18iso_grid_synth_wire_ab_synthetic__ff_verify_back_20260305_153659.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:52Z",
-      "updated_at": "2026-03-05T15:31:52Z"
+      "updated_at": "2026-03-05T15:36:59Z"
     },
     {
       "id": "c73d0b68-2e6f-494c-a934-7227fcf5fef9",
@@ -2407,18 +2425,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_full_row_synthetic__h18_00.bin",
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_full_row_synthetic__h18_00.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/h18iso_grid_synth_wire_full_row_synthetic__00_verify_back_20260305_153709.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:52Z",
-      "updated_at": "2026-03-05T15:31:52Z"
+      "updated_at": "2026-03-05T15:37:09Z"
     },
     {
       "id": "b989d0fb-ff16-4947-8655-438e13145065",
@@ -2432,18 +2452,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_full_row_synthetic__h18_7f.bin",
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_full_row_synthetic__h18_7f.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/h18iso_grid_synth_wire_full_row_synthetic__7f_verify_back_20260305_153722.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:52Z",
-      "updated_at": "2026-03-05T15:31:52Z"
+      "updated_at": "2026-03-05T15:37:22Z"
     },
     {
       "id": "713216d1-b836-4628-8978-722f787172cb",
@@ -2457,18 +2479,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_full_row_synthetic__h18_ff.bin",
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_full_row_synthetic__h18_ff.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/h18iso_grid_synth_wire_full_row_synthetic__ff_verify_back_20260305_153729.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:53Z",
-      "updated_at": "2026-03-05T15:31:53Z"
+      "updated_at": "2026-03-05T15:37:29Z"
     }
   ]
 }
