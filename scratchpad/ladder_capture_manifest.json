@@ -5577,6 +5577,409 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T18:27:03Z",
       "updated_at": "2026-03-05T18:29:22Z"
+    },
+    {
+      "id": "109ad187-6997-4977-b721-a67f5fc5e4bb",
+      "capture_label": "rriso4_control_native4",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso_20260305",
+      "description": "Control: native 4-row empty payload",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso4_control_native4.bin",
+      "payload_file": "scratchpad/captures/rriso4_control_native4.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso4_control_native4_verify_back_20260305_191754.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:11:58Z",
+      "updated_at": "2026-03-05T19:17:54Z"
+    },
+    {
+      "id": "9446505d-5f95-4c5f-b78e-f45342206525",
+      "capture_label": "rriso4_patch_cell0b_42_only",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso_20260305",
+      "description": "Patch cell +0x0B to 0x42 for all active rows/cols",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso4_patch_cell0b_42_only.bin",
+      "payload_file": "scratchpad/captures/rriso4_patch_cell0b_42_only.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso4_patch_cell0b_42_only_verify_back_20260305_191813.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:11:59Z",
+      "updated_at": "2026-03-05T19:18:13Z"
+    },
+    {
+      "id": "aac2fdb4-cf7f-4305-bbac-98175aec36ea",
+      "capture_label": "rriso4_patch_cell15_row0_only",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso_20260305",
+      "description": "Move cell +0x15 marker to row0,col0 only",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso4_patch_cell15_row0_only.bin",
+      "payload_file": "scratchpad/captures/rriso4_patch_cell15_row0_only.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso4_patch_cell15_row0_only_verify_back_20260305_191833.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:11:59Z",
+      "updated_at": "2026-03-05T19:18:33Z"
+    },
+    {
+      "id": "115b0af3-ec0b-4f5b-ba0d-281c11af5734",
+      "capture_label": "rriso4_patch_cell0b42_cell15row0",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso_20260305",
+      "description": "Pair patch: cell +0x0B=0x42 plus +0x15 on row0,col0",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso4_patch_cell0b42_cell15row0.bin",
+      "payload_file": "scratchpad/captures/rriso4_patch_cell0b42_cell15row0.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso4_patch_cell0b42_cell15row0_verify_back_20260305_191842.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:11:59Z",
+      "updated_at": "2026-03-05T19:18:42Z"
+    },
+    {
+      "id": "f67bb482-448b-48f7-92bd-cc8fabc0a5e3",
+      "capture_label": "rriso4_patch_header05_t59_set01",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso_20260305",
+      "description": "Set header +0x05 across entries and trailer 0x0A59 to 0x01",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso4_patch_header05_t59_set01.bin",
+      "payload_file": "scratchpad/captures/rriso4_patch_header05_t59_set01.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso4_patch_header05_t59_set01_verify_back_20260305_191935.bin",
+      "verify_clipboard_len": 16384,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:12:00Z",
+      "updated_at": "2026-03-05T19:19:35Z"
+    },
+    {
+      "id": "7ea8f807-780d-46a7-b151-974a8c424941",
+      "capture_label": "rriso4_patch_cell05_plus3",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso_20260305",
+      "description": "Shift cell +0x05 by +3 across active rows",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso4_patch_cell05_plus3.bin",
+      "payload_file": "scratchpad/captures/rriso4_patch_cell05_plus3.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso4_patch_cell05_plus3_verify_back_20260305_191957.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:12:00Z",
+      "updated_at": "2026-03-05T19:19:57Z"
+    },
+    {
+      "id": "a0596336-a192-4f06-91d8-0d3f988d78d0",
+      "capture_label": "rriso4b_control_native4",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso2_20260305",
+      "description": "Control: native 4-row empty payload",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso4b_control_native4.bin",
+      "payload_file": "scratchpad/captures/rriso4b_control_native4.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso4b_control_native4_verify_back_20260305_192810.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:21:42Z",
+      "updated_at": "2026-03-05T19:28:10Z"
+    },
+    {
+      "id": "8af2f75b-ac2b-48ef-a314-212978cbda89",
+      "capture_label": "rriso4b_patch_header05_only_01",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso2_20260305",
+      "description": "Set header +0x05 across entries to 0x01 (leave 0x0A59 unchanged)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso4b_patch_header05_only_01.bin",
+      "payload_file": "scratchpad/captures/rriso4b_patch_header05_only_01.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso4b_patch_header05_only_01_verify_back_20260305_192904.bin",
+      "verify_clipboard_len": 16384,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:21:42Z",
+      "updated_at": "2026-03-05T19:29:04Z"
+    },
+    {
+      "id": "b45e4d6e-cbfd-467d-97af-05c73b75f8dc",
+      "capture_label": "rriso4b_patch_t59_only_01",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso2_20260305",
+      "description": "Set trailer 0x0A59 to 0x01 (leave header +0x05 unchanged)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso4b_patch_t59_only_01.bin",
+      "payload_file": "scratchpad/captures/rriso4b_patch_t59_only_01.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso4b_patch_t59_only_01_verify_back_20260305_192958.bin",
+      "verify_clipboard_len": 20480,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:21:43Z",
+      "updated_at": "2026-03-05T19:29:58Z"
+    },
+    {
+      "id": "e1ca6c97-3664-4045-bbc7-feeaf619f1c6",
+      "capture_label": "rriso4b_patch_header05_t59_01",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso2_20260305",
+      "description": "Set header +0x05 and trailer 0x0A59 to 0x01",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso4b_patch_header05_t59_01.bin",
+      "payload_file": "scratchpad/captures/rriso4b_patch_header05_t59_01.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso4b_patch_header05_t59_01_verify_back_20260305_193113.bin",
+      "verify_clipboard_len": 16384,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:21:43Z",
+      "updated_at": "2026-03-05T19:31:13Z"
+    },
+    {
+      "id": "5e261336-140c-4029-b80b-49fa3ab7e6b1",
+      "capture_label": "rriso4b_patch_header05_t59_02",
+      "capture_type": "patch",
+      "scenario": "grid_empty_multirow_rowrule_iso2_20260305",
+      "description": "Set header +0x05 and trailer 0x0A59 to 0x02",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/rriso4b_patch_header05_t59_02.bin",
+      "payload_file": "scratchpad/captures/rriso4b_patch_header05_t59_02.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/rriso4b_patch_header05_t59_02_verify_back_20260305_193200.bin",
+      "verify_clipboard_len": 16384,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T19:21:43Z",
+      "updated_at": "2026-03-05T19:32:00Z"
     }
   ]
 }
