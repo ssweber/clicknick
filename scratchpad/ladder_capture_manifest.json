@@ -3126,6 +3126,249 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T16:49:33Z",
       "updated_at": "2026-03-05T16:56:08Z"
+    },
+    {
+      "id": "ff370490-8cdb-48e9-9a41-426bc55c8c95",
+      "capture_label": "mriso3_control_row0_row1_full",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_phase3_20260305",
+      "description": "Control: copy row0 key bytes + full row1 diff set from native2 donor",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso3__control_row0_row1_full.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso3__control_row0_row1_full.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T16:59:48Z",
+      "updated_at": "2026-03-05T16:59:48Z"
+    },
+    {
+      "id": "e2ccbbe0-3493-4227-972a-77466b9c4c0e",
+      "capture_label": "mriso3_row0_only_keybytes",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_phase3_20260305",
+      "description": "Copy row0 key bytes only (no row1 donor bytes)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso3__row0_only_keybytes.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso3__row0_only_keybytes.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T16:59:48Z",
+      "updated_at": "2026-03-05T16:59:48Z"
+    },
+    {
+      "id": "bf2bb1f2-2fed-4dfa-840d-0acd4a543adf",
+      "capture_label": "mriso3_row1_only_full",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_phase3_20260305",
+      "description": "Copy full row1 diff set only (no row0 donor bytes)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso3__row1_only_full.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso3__row1_only_full.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T16:59:49Z",
+      "updated_at": "2026-03-05T16:59:49Z"
+    },
+    {
+      "id": "fb5d7498-4a11-415a-8268-b0303bbd2f5a",
+      "capture_label": "mriso3_row0_plus_row1_09_11",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_phase3_20260305",
+      "description": "Copy row0 key bytes + row1 offsets 0x09..0x11",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso3__row0_plus_row1_09_11.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso3__row0_plus_row1_09_11.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T16:59:49Z",
+      "updated_at": "2026-03-05T16:59:49Z"
+    },
+    {
+      "id": "d0fba51e-7af9-4088-9875-13ae5e28d9b2",
+      "capture_label": "mriso3_row0_plus_row1_01_05_38_3d",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_phase3_20260305",
+      "description": "Copy row0 key bytes + row1 offsets {0x01,0x05,0x38,0x3D}",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso3__row0_plus_row1_01_05_38_3d.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso3__row0_plus_row1_01_05_38_3d.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T16:59:49Z",
+      "updated_at": "2026-03-05T16:59:49Z"
+    },
+    {
+      "id": "557bf95f-536b-4742-a46f-9b5ba22510d5",
+      "capture_label": "mriso3_row0_plus_row1_01_05",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_phase3_20260305",
+      "description": "Copy row0 key bytes + row1 offsets {0x01,0x05}",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso3__row0_plus_row1_01_05.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso3__row0_plus_row1_01_05.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T16:59:50Z",
+      "updated_at": "2026-03-05T16:59:50Z"
+    },
+    {
+      "id": "a7eed6cf-1e17-4628-92f7-b60a094e2c6a",
+      "capture_label": "mriso3_row0_plus_row1_38_3d",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_phase3_20260305",
+      "description": "Copy row0 key bytes + row1 offsets {0x38,0x3D}",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso3__row0_plus_row1_38_3d.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso3__row0_plus_row1_38_3d.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T16:59:50Z",
+      "updated_at": "2026-03-05T16:59:50Z"
+    },
+    {
+      "id": "6688eff2-c9d4-499d-912b-7a7e2d1e6a00",
+      "capture_label": "mriso3_row0_plus_row1_09_0c",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_phase3_20260305",
+      "description": "Copy row0 key bytes + row1 offsets 0x09..0x0C",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso3__row0_plus_row1_09_0c.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso3__row0_plus_row1_09_0c.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T16:59:50Z",
+      "updated_at": "2026-03-05T16:59:50Z"
+    },
+    {
+      "id": "d59b9960-a913-4a99-a5d0-ed4b67cc5c60",
+      "capture_label": "mriso3_row0_plus_row1_0d_11",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_phase3_20260305",
+      "description": "Copy row0 key bytes + row1 offsets 0x0D..0x11",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso3__row0_plus_row1_0d_11.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso3__row0_plus_row1_0d_11.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T16:59:51Z",
+      "updated_at": "2026-03-05T16:59:51Z"
     }
   ]
 }
