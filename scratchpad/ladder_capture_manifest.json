@@ -516,7 +516,7 @@
       "payload_file": "scratchpad/captures/session_counter_crossuid_yes_b_pasteback_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,~X001,X002,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
       ],
@@ -527,7 +527,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T19:35:21Z",
-      "updated_at": "2026-03-04T19:45:13Z"
+      "updated_at": "2026-03-05T16:25:46Z"
     },
     {
       "id": "3451ee6d-b7f6-4432-91d2-07da0ecf7e81",
@@ -543,7 +543,7 @@
       "payload_file": null,
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,X001,X002,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
       ],
@@ -554,7 +554,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T20:10:12Z",
-      "updated_at": "2026-03-04T20:14:48Z"
+      "updated_at": "2026-03-05T16:25:46Z"
     },
     {
       "id": "91b06903-fd03-49a2-a193-1283600e6201",
@@ -570,7 +570,7 @@
       "payload_file": null,
       "verify_clipboard_event": "copied",
       "verify_status": "verified_fail",
-      "verify_notes": "Didn't paste complete rung",
+      "verify_notes": "Didn't paste complete rung [needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,X001.immediate,X002,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,out(Y001)"
       ],
@@ -581,7 +581,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T20:10:12Z",
-      "updated_at": "2026-03-04T20:15:48Z"
+      "updated_at": "2026-03-05T16:25:46Z"
     },
     {
       "id": "c9237747-cfae-4138-a957-7f6af01a8d3f",
@@ -772,7 +772,7 @@
       "payload_file": "scratchpad/captures/grid_empty_row1_single_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -783,7 +783,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T13:19:30Z",
-      "updated_at": "2026-03-05T14:17:07Z"
+      "updated_at": "2026-03-05T16:25:47Z"
     },
     {
       "id": "dec56e53-1ce2-4456-a981-bd110d818cbc",
@@ -799,7 +799,7 @@
       "payload_file": "scratchpad/captures/grid_empty_row2_duplicate_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -810,7 +810,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T13:54:20Z",
-      "updated_at": "2026-03-05T14:18:41Z"
+      "updated_at": "2026-03-05T16:25:47Z"
     },
     {
       "id": "4578c67d-b741-4674-be38-0ddd50a4c5c3",
@@ -826,7 +826,7 @@
       "payload_file": "scratchpad/captures/grid_empty_rows1_2_combined_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -837,7 +837,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T13:59:58Z",
-      "updated_at": "2026-03-05T14:18:57Z"
+      "updated_at": "2026-03-05T16:25:47Z"
     },
     {
       "id": "d26d26e8-7fcc-48ea-ad78-45a90742efe3",
@@ -853,7 +853,7 @@
       "payload_file": "scratchpad/captures/grid_wire_a_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -864,7 +864,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T13:59:58Z",
-      "updated_at": "2026-03-05T14:19:10Z"
+      "updated_at": "2026-03-05T16:25:48Z"
     },
     {
       "id": "e0d8e0d3-a24d-443e-8871-dc9846ddcd5e",
@@ -880,7 +880,7 @@
       "payload_file": "scratchpad/captures/grid_wire_ab_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -891,7 +891,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T13:59:59Z",
-      "updated_at": "2026-03-05T14:19:24Z"
+      "updated_at": "2026-03-05T16:25:48Z"
     },
     {
       "id": "86cd4250-9e44-4b07-b16c-13577ab673ab",
@@ -907,7 +907,7 @@
       "payload_file": "scratchpad/captures/grid_wire_full_row_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
       ],
@@ -918,7 +918,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T13:59:59Z",
-      "updated_at": "2026-03-05T14:19:41Z"
+      "updated_at": "2026-03-05T16:25:48Z"
     },
     {
       "id": "85ca95ec-bf52-48a6-af66-f286c63eebf1",
@@ -934,7 +934,7 @@
       "payload_file": "scratchpad/captures/grid_empty_width_default_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -945,7 +945,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T13:59:59Z",
-      "updated_at": "2026-03-05T14:19:54Z"
+      "updated_at": "2026-03-05T16:25:49Z"
     },
     {
       "id": "8547a153-7dd4-4b26-b475-91b197a953b8",
@@ -961,7 +961,7 @@
       "payload_file": "scratchpad/captures/grid_empty_width_narrow_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -972,7 +972,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:00:00Z",
-      "updated_at": "2026-03-05T14:20:05Z"
+      "updated_at": "2026-03-05T16:25:49Z"
     },
     {
       "id": "dc4a7852-e269-467d-902a-21584597ba96",
@@ -988,7 +988,7 @@
       "payload_file": "scratchpad/captures/grid_empty_width_wide_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -999,7 +999,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:00:00Z",
-      "updated_at": "2026-03-05T14:20:18Z"
+      "updated_at": "2026-03-05T16:25:49Z"
     },
     {
       "id": "6e94f277-c9d6-4c57-8dc2-6d03a9b63cb7",
@@ -1015,7 +1015,7 @@
       "payload_file": "scratchpad/captures/grid_wire_ab_width_default_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1026,7 +1026,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:00:01Z",
-      "updated_at": "2026-03-05T14:20:28Z"
+      "updated_at": "2026-03-05T16:25:50Z"
     },
     {
       "id": "2c82ef3a-2a0e-4a23-a02f-5ec794bd4632",
@@ -1042,7 +1042,7 @@
       "payload_file": "scratchpad/captures/grid_wire_ab_width_narrow_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1053,7 +1053,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:00:01Z",
-      "updated_at": "2026-03-05T14:20:39Z"
+      "updated_at": "2026-03-05T16:25:50Z"
     },
     {
       "id": "2ba4e39a-a42d-483c-a0c5-c13609989829",
@@ -1069,7 +1069,7 @@
       "payload_file": "scratchpad/captures/grid_wire_ab_width_wide_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1080,7 +1080,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:00:01Z",
-      "updated_at": "2026-03-05T14:20:49Z"
+      "updated_at": "2026-03-05T16:25:51Z"
     },
     {
       "id": "060ca0f0-c824-40c3-9071-914fe03855dc",
@@ -1096,7 +1096,7 @@
       "payload_file": "scratchpad/captures/grid_empty_crossapp_a_source_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1107,7 +1107,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:00:02Z",
-      "updated_at": "2026-03-05T14:21:00Z"
+      "updated_at": "2026-03-05T16:25:51Z"
     },
     {
       "id": "a0b16082-bcc4-4114-85fa-ec0bc1f8c776",
@@ -1123,7 +1123,7 @@
       "payload_file": "scratchpad/captures/grid_empty_crossapp_b_pasteback_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1134,7 +1134,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:00:02Z",
-      "updated_at": "2026-03-05T14:21:09Z"
+      "updated_at": "2026-03-05T16:25:51Z"
     },
     {
       "id": "c241fa16-ba6e-429b-bf45-66899b2b6fe3",
@@ -1150,7 +1150,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_sessionmask__grid_empty_crossapp_a_source_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1161,7 +1161,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:27:23Z",
-      "updated_at": "2026-03-05T14:31:03Z"
+      "updated_at": "2026-03-05T16:25:52Z"
     },
     {
       "id": "b0d40c59-500a-41b8-ace3-0de43c7ffd69",
@@ -1177,7 +1177,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_sessionmask__grid_empty_crossapp_b_pasteback_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1188,7 +1188,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:27:23Z",
-      "updated_at": "2026-03-05T14:31:15Z"
+      "updated_at": "2026-03-05T16:25:52Z"
     },
     {
       "id": "98b07533-7fa2-4b16-9b08-3a20e73c71df",
@@ -1204,7 +1204,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_sessionmask__grid_empty_row1_single_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1215,7 +1215,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:27:23Z",
-      "updated_at": "2026-03-05T14:31:25Z"
+      "updated_at": "2026-03-05T16:25:52Z"
     },
     {
       "id": "92143c15-2db6-445d-810f-968c1c1ee2a0",
@@ -1231,7 +1231,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_sessionmask__grid_empty_row2_duplicate_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_fail",
-      "verify_notes": "broken row after first column",
+      "verify_notes": "broken row after first column [needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1243,7 +1243,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:27:23Z",
-      "updated_at": "2026-03-05T14:32:21Z"
+      "updated_at": "2026-03-05T16:25:53Z"
     },
     {
       "id": "95259de2-02fd-4e07-b83a-adeee7ede227",
@@ -1259,7 +1259,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_sessionmask__grid_empty_rows1_2_combined_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1270,7 +1270,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:27:23Z",
-      "updated_at": "2026-03-05T14:32:55Z"
+      "updated_at": "2026-03-05T16:25:53Z"
     },
     {
       "id": "84f5017e-dc3b-4057-b4e5-e40e784daec3",
@@ -1286,7 +1286,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_sessionmask__grid_empty_width_default_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1297,7 +1297,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:27:23Z",
-      "updated_at": "2026-03-05T14:33:07Z"
+      "updated_at": "2026-03-05T16:25:53Z"
     },
     {
       "id": "7ca48dea-e61d-4da5-8296-96b21993d366",
@@ -1313,7 +1313,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_sessionmask__grid_empty_width_narrow_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "y",
+      "verify_notes": "y [needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1324,7 +1324,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:27:23Z",
-      "updated_at": "2026-03-05T14:33:19Z"
+      "updated_at": "2026-03-05T16:25:54Z"
     },
     {
       "id": "5e6bc3b9-df9c-4a25-9f91-0ca5c4103215",
@@ -1340,7 +1340,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_sessionmask__grid_empty_width_wide_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1351,7 +1351,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:27:23Z",
-      "updated_at": "2026-03-05T14:33:29Z"
+      "updated_at": "2026-03-05T16:25:54Z"
     },
     {
       "id": "1f759c81-bc19-44c5-ab46-2d07846abc3c",
@@ -1367,7 +1367,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_sessionmask__grid_wire_a_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1378,7 +1378,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:27:32Z",
-      "updated_at": "2026-03-05T14:33:38Z"
+      "updated_at": "2026-03-05T16:25:54Z"
     },
     {
       "id": "e379a4c2-6352-492c-9ca1-29cb7f5600e8",
@@ -1394,7 +1394,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_sessionmask__grid_wire_ab_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1405,7 +1405,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:27:32Z",
-      "updated_at": "2026-03-05T14:33:46Z"
+      "updated_at": "2026-03-05T16:25:55Z"
     },
     {
       "id": "5ec2feae-201f-4dda-8f02-7bafc3e07175",
@@ -1421,7 +1421,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_sessionmask__grid_wire_ab_width_default_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1432,7 +1432,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:27:32Z",
-      "updated_at": "2026-03-05T14:33:55Z"
+      "updated_at": "2026-03-05T16:25:55Z"
     },
     {
       "id": "446c7b3f-e35a-49a5-8d3f-7c894807df0e",
@@ -1448,7 +1448,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_sessionmask__grid_wire_ab_width_narrow_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1459,7 +1459,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:27:32Z",
-      "updated_at": "2026-03-05T14:34:04Z"
+      "updated_at": "2026-03-05T16:25:56Z"
     },
     {
       "id": "ce8d7b12-f07f-4dd3-aa1e-ceacf7557188",
@@ -1475,7 +1475,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_sessionmask__grid_wire_ab_width_wide_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1486,7 +1486,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:27:32Z",
-      "updated_at": "2026-03-05T14:34:26Z"
+      "updated_at": "2026-03-05T16:25:56Z"
     },
     {
       "id": "2fbec4eb-3dab-4c43-9d77-ebf5a0fd66b7",
@@ -1502,7 +1502,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_sessionmask__grid_wire_full_row_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
       ],
@@ -1513,7 +1513,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:27:33Z",
-      "updated_at": "2026-03-05T14:35:20Z"
+      "updated_at": "2026-03-05T16:25:56Z"
     },
     {
       "id": "4f4651b4-208c-4173-9de6-7a893fa100c6",
@@ -1529,7 +1529,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_narrow_row2__h05_h11_no_t59.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_fail",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1541,7 +1541,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:36:36Z",
-      "updated_at": "2026-03-05T14:48:54Z"
+      "updated_at": "2026-03-05T16:25:57Z"
     },
     {
       "id": "ee545f79-d271-49d8-a36e-e6097e99369f",
@@ -1557,7 +1557,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_narrow_row2__h05_only.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_fail",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1569,7 +1569,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:36:36Z",
-      "updated_at": "2026-03-05T14:49:24Z"
+      "updated_at": "2026-03-05T16:25:57Z"
     },
     {
       "id": "cc0e5cb4-59cf-4201-ba96-7c5ec465703a",
@@ -1585,7 +1585,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_narrow_row2__h05_t59.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_fail",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1597,7 +1597,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:36:36Z",
-      "updated_at": "2026-03-05T14:50:08Z"
+      "updated_at": "2026-03-05T16:25:57Z"
     },
     {
       "id": "636ff2f3-a893-4380-9cbb-dcd240362dc9",
@@ -1613,7 +1613,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_narrow_row2__h11.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1624,7 +1624,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:36:36Z",
-      "updated_at": "2026-03-05T14:50:24Z"
+      "updated_at": "2026-03-05T16:25:58Z"
     },
     {
       "id": "72cca9a8-7656-489f-ba8f-c695c3443404",
@@ -1640,7 +1640,7 @@
       "payload_file": "scratchpad/captures/grid_phase5_narrow_row2__t59_only.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_fail",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1653,7 +1653,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:36:36Z",
-      "updated_at": "2026-03-05T14:51:08Z"
+      "updated_at": "2026-03-05T16:25:58Z"
     },
     {
       "id": "a931b42e-7f88-4a69-a563-58c1c864e3ca",
@@ -1669,7 +1669,7 @@
       "payload_file": "scratchpad/captures\\grid_phase5_refined_h11_h17__grid_empty_crossapp_a_source_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1680,7 +1680,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:54:15Z",
-      "updated_at": "2026-03-05T15:04:45Z"
+      "updated_at": "2026-03-05T16:25:59Z"
     },
     {
       "id": "c1952f4c-22bc-4206-9208-5bd66e6bfa4a",
@@ -1696,7 +1696,7 @@
       "payload_file": "scratchpad/captures\\grid_phase5_refined_h11_h17__grid_empty_crossapp_b_pasteback_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1707,7 +1707,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:54:15Z",
-      "updated_at": "2026-03-05T15:04:54Z"
+      "updated_at": "2026-03-05T16:25:59Z"
     },
     {
       "id": "859172b9-da8e-45fb-98fc-d472f98fee0a",
@@ -1723,7 +1723,7 @@
       "payload_file": "scratchpad/captures\\grid_phase5_refined_h11_h17__grid_empty_row1_single_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1734,7 +1734,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:54:16Z",
-      "updated_at": "2026-03-05T15:05:06Z"
+      "updated_at": "2026-03-05T16:25:59Z"
     },
     {
       "id": "a4db31cb-a82b-4b72-b758-f4e8c83caff8",
@@ -1750,7 +1750,7 @@
       "payload_file": "scratchpad/captures\\grid_phase5_refined_h11_h17__grid_empty_row2_duplicate_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1761,7 +1761,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:54:16Z",
-      "updated_at": "2026-03-05T15:05:21Z"
+      "updated_at": "2026-03-05T16:26:00Z"
     },
     {
       "id": "74e922e8-7710-4797-8d55-72e86fb13b94",
@@ -1777,7 +1777,7 @@
       "payload_file": "scratchpad/captures\\grid_phase5_refined_h11_h17__grid_empty_rows1_2_combined_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1788,7 +1788,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:54:16Z",
-      "updated_at": "2026-03-05T15:05:30Z"
+      "updated_at": "2026-03-05T16:26:00Z"
     },
     {
       "id": "4d235633-5d12-4669-951b-f4cc31322484",
@@ -1804,7 +1804,7 @@
       "payload_file": "scratchpad/captures\\grid_phase5_refined_h11_h17__grid_empty_width_default_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1815,7 +1815,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:54:17Z",
-      "updated_at": "2026-03-05T15:05:38Z"
+      "updated_at": "2026-03-05T16:26:00Z"
     },
     {
       "id": "82fa17c5-996a-4874-8763-d788141b70d1",
@@ -1831,7 +1831,7 @@
       "payload_file": "scratchpad/captures\\grid_phase5_refined_h11_h17__grid_empty_width_narrow_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1842,7 +1842,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:54:17Z",
-      "updated_at": "2026-03-05T15:05:54Z"
+      "updated_at": "2026-03-05T16:26:01Z"
     },
     {
       "id": "69f7f2e5-8bfc-40a6-8214-d698c3c9b35b",
@@ -1858,7 +1858,7 @@
       "payload_file": "scratchpad/captures\\grid_phase5_refined_h11_h17__grid_empty_width_wide_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1869,7 +1869,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:54:17Z",
-      "updated_at": "2026-03-05T15:06:10Z"
+      "updated_at": "2026-03-05T16:26:01Z"
     },
     {
       "id": "ad3436b3-5a2b-4acb-a2cf-961b7837ce78",
@@ -1885,7 +1885,7 @@
       "payload_file": "scratchpad/captures\\grid_phase5_refined_h11_h17__grid_wire_a_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1896,7 +1896,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:54:18Z",
-      "updated_at": "2026-03-05T15:06:25Z"
+      "updated_at": "2026-03-05T16:26:02Z"
     },
     {
       "id": "491cb581-f396-4228-ab82-df7eab517697",
@@ -1912,7 +1912,7 @@
       "payload_file": "scratchpad/captures\\grid_phase5_refined_h11_h17__grid_wire_ab_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1923,7 +1923,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:54:18Z",
-      "updated_at": "2026-03-05T15:06:35Z"
+      "updated_at": "2026-03-05T16:26:02Z"
     },
     {
       "id": "8e125e45-0c4c-48da-a026-76c2006712c7",
@@ -1939,7 +1939,7 @@
       "payload_file": "scratchpad/captures\\grid_phase5_refined_h11_h17__grid_wire_ab_width_default_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1950,7 +1950,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:54:18Z",
-      "updated_at": "2026-03-05T15:06:46Z"
+      "updated_at": "2026-03-05T16:26:02Z"
     },
     {
       "id": "66b77233-5e9d-45a8-a840-dea2bca61142",
@@ -1966,7 +1966,7 @@
       "payload_file": "scratchpad/captures\\grid_phase5_refined_h11_h17__grid_wire_ab_width_narrow_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -1977,7 +1977,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:54:19Z",
-      "updated_at": "2026-03-05T15:06:55Z"
+      "updated_at": "2026-03-05T16:26:03Z"
     },
     {
       "id": "52904468-56c8-48b5-a5f8-19920ece73ff",
@@ -1993,7 +1993,7 @@
       "payload_file": "scratchpad/captures\\grid_phase5_refined_h11_h17__grid_wire_ab_width_wide_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -2004,7 +2004,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:54:19Z",
-      "updated_at": "2026-03-05T15:07:06Z"
+      "updated_at": "2026-03-05T16:26:03Z"
     },
     {
       "id": "068f2c30-822a-4533-8987-a2bec4e75050",
@@ -2020,7 +2020,7 @@
       "payload_file": "scratchpad/captures\\grid_phase5_refined_h11_h17__grid_wire_full_row_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
       ],
@@ -2031,7 +2031,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:54:19Z",
-      "updated_at": "2026-03-05T15:07:20Z"
+      "updated_at": "2026-03-05T16:26:03Z"
     },
     {
       "id": "2714f48b-f548-4ad4-bdae-ed4aec301eee",
@@ -2047,7 +2047,7 @@
       "payload_file": "scratchpad/captures/grid_synth_empty_template__empty_row1.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -2058,7 +2058,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:26:41Z",
-      "updated_at": "2026-03-05T15:29:27Z"
+      "updated_at": "2026-03-05T16:26:04Z"
     },
     {
       "id": "6a4a4e88-36b5-4d33-90af-b63bad5c57cd",
@@ -2074,7 +2074,7 @@
       "payload_file": "scratchpad/captures/grid_synth_empty_template__wire_a.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -2085,7 +2085,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:26:42Z",
-      "updated_at": "2026-03-05T15:29:39Z"
+      "updated_at": "2026-03-05T16:26:04Z"
     },
     {
       "id": "be3e1c0c-bfdd-43af-af65-654baf649f2b",
@@ -2101,7 +2101,7 @@
       "payload_file": "scratchpad/captures/grid_synth_empty_template__wire_ab.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -2112,7 +2112,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:26:42Z",
-      "updated_at": "2026-03-05T15:29:49Z"
+      "updated_at": "2026-03-05T16:26:05Z"
     },
     {
       "id": "9b353ac4-e9af-43ce-9b4e-05fc614377b0",
@@ -2128,7 +2128,7 @@
       "payload_file": "scratchpad/captures/grid_synth_empty_template__wire_full_row.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
       ],
@@ -2139,7 +2139,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:26:42Z",
-      "updated_at": "2026-03-05T15:30:01Z"
+      "updated_at": "2026-03-05T16:26:05Z"
     },
     {
       "id": "1acf31d1-571b-43b1-92c8-376789fc7de9",
@@ -2156,7 +2156,7 @@
       "payload_file": "scratchpad/captures/grid_synth_empty_template__empty_rows1_2.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_fail",
-      "verify_notes": "only 1 row",
+      "verify_notes": "only 1 row [needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
@@ -2168,7 +2168,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:26:43Z",
-      "updated_at": "2026-03-05T15:30:43Z"
+      "updated_at": "2026-03-05T16:26:05Z"
     },
     {
       "id": "d6ff4a65-b78d-4f06-b914-39cdaed308ed",
@@ -2184,7 +2184,7 @@
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_empty_row1_synthetic__h18_00.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -2195,7 +2195,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:49Z",
-      "updated_at": "2026-03-05T15:35:53Z"
+      "updated_at": "2026-03-05T16:26:06Z"
     },
     {
       "id": "23d1aa83-3f20-476c-9025-22a440936f6f",
@@ -2211,7 +2211,7 @@
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_empty_row1_synthetic__h18_7f.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -2222,7 +2222,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:49Z",
-      "updated_at": "2026-03-05T15:36:01Z"
+      "updated_at": "2026-03-05T16:26:06Z"
     },
     {
       "id": "3354e9b6-4cbe-4d2a-bebb-2e3f3b7b5440",
@@ -2238,7 +2238,7 @@
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_empty_row1_synthetic__h18_ff.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -2249,7 +2249,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:50Z",
-      "updated_at": "2026-03-05T15:36:13Z"
+      "updated_at": "2026-03-05T16:26:07Z"
     },
     {
       "id": "eb840015-1113-4772-bdb4-4f54874d99ea",
@@ -2265,7 +2265,7 @@
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_a_synthetic__h18_00.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -2276,7 +2276,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:50Z",
-      "updated_at": "2026-03-05T15:36:22Z"
+      "updated_at": "2026-03-05T16:26:08Z"
     },
     {
       "id": "3d26f1a2-f6c9-45d2-afb4-6ce106814b28",
@@ -2292,7 +2292,7 @@
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_a_synthetic__h18_7f.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -2303,7 +2303,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:50Z",
-      "updated_at": "2026-03-05T15:36:29Z"
+      "updated_at": "2026-03-05T16:26:08Z"
     },
     {
       "id": "a80b9911-dabf-49ea-94ad-6866f2062dd3",
@@ -2319,7 +2319,7 @@
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_a_synthetic__h18_ff.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -2330,7 +2330,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:51Z",
-      "updated_at": "2026-03-05T15:36:36Z"
+      "updated_at": "2026-03-05T16:26:09Z"
     },
     {
       "id": "b3d77b3a-a673-4a2e-a84a-51714c06e402",
@@ -2346,7 +2346,7 @@
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_ab_synthetic__h18_00.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -2357,7 +2357,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:51Z",
-      "updated_at": "2026-03-05T15:36:44Z"
+      "updated_at": "2026-03-05T16:26:09Z"
     },
     {
       "id": "2f108d13-132f-4f67-a7d1-66928c1138fb",
@@ -2373,7 +2373,7 @@
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_ab_synthetic__h18_7f.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -2384,7 +2384,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:51Z",
-      "updated_at": "2026-03-05T15:36:50Z"
+      "updated_at": "2026-03-05T16:26:09Z"
     },
     {
       "id": "e1e49ddb-1040-491d-874b-6281759fe851",
@@ -2400,7 +2400,7 @@
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_ab_synthetic__h18_ff.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
@@ -2411,7 +2411,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:52Z",
-      "updated_at": "2026-03-05T15:36:59Z"
+      "updated_at": "2026-03-05T16:26:10Z"
     },
     {
       "id": "c73d0b68-2e6f-494c-a934-7227fcf5fef9",
@@ -2427,7 +2427,7 @@
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_full_row_synthetic__h18_00.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
       ],
@@ -2438,7 +2438,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:52Z",
-      "updated_at": "2026-03-05T15:37:09Z"
+      "updated_at": "2026-03-05T16:26:10Z"
     },
     {
       "id": "b989d0fb-ff16-4947-8655-438e13145065",
@@ -2454,7 +2454,7 @@
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_full_row_synthetic__h18_7f.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
       ],
@@ -2465,7 +2465,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:52Z",
-      "updated_at": "2026-03-05T15:37:22Z"
+      "updated_at": "2026-03-05T16:26:10Z"
     },
     {
       "id": "713216d1-b836-4628-8978-722f787172cb",
@@ -2481,7 +2481,7 @@
       "payload_file": "scratchpad/captures/grid_h18_iso__grid_synth_wire_full_row_synthetic__h18_ff.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
       ],
@@ -2492,7 +2492,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:53Z",
-      "updated_at": "2026-03-05T15:37:29Z"
+      "updated_at": "2026-03-05T16:26:11Z"
     },
     {
       "id": "1b4a82ef-2fb9-4a80-8d1a-31ca31e13cdd",
@@ -2509,7 +2509,7 @@
       "payload_file": "scratchpad/captures/grid_empty_rows1_2_recapture_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
@@ -2522,7 +2522,7 @@
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:40:49Z",
-      "updated_at": "2026-03-05T15:43:29Z"
+      "updated_at": "2026-03-05T16:26:11Z"
     },
     {
       "id": "8d976df6-381f-4606-8d2e-520d14801930",
@@ -2540,7 +2540,7 @@
       "payload_file": "scratchpad/captures/grid_empty_rows1_2_3_recapture_native.bin",
       "verify_clipboard_event": "copied",
       "verify_status": "verified_pass",
-      "verify_notes": "",
+      "verify_notes": "[needs_recopyback] verify_result_file provenance requires explicit copy-back rerun",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
@@ -2555,7 +2555,7 @@
       "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:40:50Z",
-      "updated_at": "2026-03-05T15:43:36Z"
+      "updated_at": "2026-03-05T16:26:12Z"
     },
     {
       "id": "af54b246-9692-4bf6-b011-1b5960de9053",
