@@ -659,6 +659,7 @@ def test_tui_verify_guided_queue_walks_unverified_entries_without_label_input(tm
             [
                 "3",  # verify
                 "g",  # guided queue mode
+                "",  # source override (default)
                 "",  # scenario filter (all)
                 "",  # first item action: verify
                 "c",  # copied
@@ -684,6 +685,40 @@ def test_tui_verify_guided_queue_walks_unverified_entries_without_label_input(tm
     assert any("Pending verify entries: 2" in line for line in output)
     assert any("Verify queue stopped." in line for line in output)
     assert fake.read_calls == 2
+
+
+def test_tui_verify_label_mode_can_force_file_source(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"\xad" * 8192)
+    workflow = _make_workflow(tmp_path, fake)
+    workflow.entry_capture(label="verify_case")
+    output: list[str] = []
+
+    rc = main(
+        ["tui"],
+        workflow=workflow,
+        input_fn=_input_iter(
+            [
+                "3",  # verify
+                "",  # label mode (default)
+                "f",  # source override = file
+                "verify_case",  # label
+                "c",  # copied
+                "y",  # pasted
+                "y",  # expected match
+                "",  # note
+                "",  # keep expected rows
+                "",  # keep default status
+                "5",  # exit
+            ]
+        ),
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    entry = workflow.entry_show(label="verify_case")
+    assert entry["verify_status"] == "verified_pass"
+    assert entry["verify_clipboard_event"] == "copied"
+    assert any("Payload source: file" in line for line in output)
 
 
 def test_report_profile_single_label_json(tmp_path: Path) -> None:

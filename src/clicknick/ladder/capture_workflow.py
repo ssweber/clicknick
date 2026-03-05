@@ -1324,6 +1324,21 @@ def run_tui(
             if mode in {"q", "quit", "cancel"}:
                 continue
 
+            while True:
+                source_raw = input_fn(
+                    "Payload source override ([d]efault / [f]ile / [s]horthand): "
+                ).strip().lower()
+                if source_raw in {"", "d", "default"}:
+                    source_override: str | None = None
+                    break
+                if source_raw in {"f", "file"}:
+                    source_override = "file"
+                    break
+                if source_raw in {"s", "shorthand"}:
+                    source_override = "shorthand"
+                    break
+                output_fn("Please enter d, f, or s.")
+
             if mode in {"", "l", "label"}:
                 label = input_fn("Label: ").strip()
                 if not label:
@@ -1332,6 +1347,7 @@ def run_tui(
                 try:
                     result = engine.verify_run_interactive(
                         label=label,
+                        source=source_override,
                         input_fn=input_fn,
                         output_fn=output_fn,
                     )
@@ -1392,6 +1408,7 @@ def run_tui(
 
                         result = engine.verify_run_interactive(
                             label=label,
+                            source=source_override,
                             input_fn=input_fn,
                             output_fn=output_fn,
                         )
