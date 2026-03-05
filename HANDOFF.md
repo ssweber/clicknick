@@ -1,6 +1,6 @@
-# Click PLC Clipboard Reverse Engineering — Handoff v10
+# Click PLC Clipboard Reverse Engineering — Handoff v11
 
-Last validated: March 3, 2026
+Last validated: March 5, 2026
 
 ## Execution Update (March 4, 2026 — Two-Series Hardening Pass)
 
@@ -24,6 +24,28 @@ Last validated: March 3, 2026
   - exploratory scenarios removed from active manifest
   - deterministic `two_series_hardening_matrix_20260304` (9 rows) added for focused verify.
 
+## Execution Update (March 5, 2026 — Empty-Template Reset + Phase 5 Masking)
+
+- Baseline scenario `grid_basics_empty_template_20260305` is complete:
+  - `14/14` native captures verified (`verify run --source file`), all `verified_pass`.
+- Width experiment conclusion:
+  - `default/narrow/wide` variants produced no byte-level diffs in tested empty and wire baselines.
+- Phase 5 mask trials completed:
+  - `grid_basics_phase5_session_mask_20260305`: `13/14` pass, `1/14` fail
+    (`grid_empty_row2_duplicate_native` broke after first column).
+  - Narrowing scenario `grid_basics_phase5_narrow_row2_20260305`:
+    - only `h11`-only normalization passed;
+    - variants touching `+0x05` and/or `0x0A59` failed.
+  - Refined scenario `grid_basics_phase5_refined_h11_h17_20260305`:
+    - normalize `+0x11/+0x17` only;
+    - `14/14` pass.
+- Working classification for grid-basics lane:
+  - safe session normalization: header `+0x11`, `+0x17`
+  - keep untouched for now: header `+0x05`, trailer `0x0A59`
+  - unresolved: header `+0x18`
+- Full gate notes and artifact links:
+  - `scratchpad/noise_vs_structure_reassessment_20260305.md`
+
 ## Goal
 
 Reverse engineer Click Programming Software's clipboard format so `clicknick.ladder`
@@ -33,7 +55,9 @@ can generate clipboard-ready bytes for paste into Click from `RungGrid`.
 
 - `clicknick.ladder` now uses a deterministic encoder (no runtime dependency on per-variant
   `.bin` templates under `src/clicknick/ladder/resources`).
-- Header structural behavior is now treated as solved for current scope.
+- Header behavior is partially characterized:
+  - refined session normalization (`+0x11/+0x17`) is validated for empty/horizontal baselines.
+  - `+0x05` and `0x0A59` are context-sensitive and can be structural.
 - Wire topology cell flags are mapped and validated by pasteback.
 - Manual pasteback now succeeds for:
   - `smoke_simple`
@@ -155,7 +179,10 @@ This table is implemented in deterministic encoder logic and covered by tests.
 
 - Entry `n` corresponds to column `n`.
 - Entry offset `+0x0C..+0x0F` stores the column index as a little-endian dword.
-- Entry offsets `+0x05` and `+0x11` are volatile across captures and are non-structural.
+- Entry offsets `+0x05/+0x11/+0x17/+0x18` vary across captures, but are not uniformly
+  non-structural:
+  - grid-basics masking shows `+0x11/+0x17` can be normalized safely.
+  - `+0x05` can be structural (row2-duplicate empty case).
 - Global row-class byte is at `0x0254`:
   - `0x40` => 1 logical row
   - `0x60` => 2 logical rows
@@ -285,8 +312,7 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
 
 ## Open Questions
 
-1. Header family bytes (`+0x17/+0x18`): exact semantics and complete decision table for all
-   supported/unsupported rung families.
+1. Header `+0x18`: classify as noise vs structure with a dedicated all-pass/all-fail mask test.
 2. Per-cell structural control bytes in row0/row1 (beyond wire flags): exact role in broader
    instruction families now that second-immediate is solved.
 3. Stream metadata bytes (`65 60`, `67 60`, related blocks): exact semantics and whether
@@ -299,36 +325,47 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
 
 ## Next Steps
 
-### 1) Deterministic Encoder Hardening
+### 1) Empty-Template Grid Synthesis (Immediate)
+
+- Use verified empty-rung template captures plus refined mask policy (`+0x11/+0x17` only)
+  as the active synthesis baseline.
+- Keep `+0x05` and `0x0A59` donor-preserved until further isolation is complete.
+
+### 2) `+0x18` Isolation Follow-Up
+
+- Run focused mask variants that differ only at `+0x18` on the same grid-basics family.
+- Promote `+0x18` to safe normalization only if clean all-pass behavior is demonstrated.
+
+### 3) Deterministic Encoder Hardening
 
 - Keep deterministic header writer and topology writer as baseline.
 - Validate against additional pasteback scenarios beyond current topology checks.
 
-### 2) Stream Generalization (Primary)
+### 4) Stream Generalization (Primary)
 
 - Expand computed placement coverage for operand-length and immediate combinations.
 - Remove residual assumptions tied to old fixed-offset variant behaviors.
 
-### 3) Control-Byte Model Expansion
+### 5) Control-Byte Model Expansion
 
 - Use targeted control-byte diffing across captures to classify structural bytes that govern
   rung assembly/linkage (not just wire flags).
 - Expand from second-immediate to remaining unresolved families using the same isolation method
   (profile cells, then row blocks, then pre-grid/header partitions).
 
-### 3a) Pre-Grid Metadata Differential (New Priority)
+### 5a) Pre-Grid Metadata Differential (New Priority)
 
 - Reuse this method for future failing families:
   - compare generated payloads against native with row-block parity controls
   - partition `0x0000..0x0A5F` into pre-header and header slices
   - identify minimal decisive byte set and codify deterministic write rules
 
-### 4) Capture Expansion
+### 6) Capture Expansion
 
 - Add targeted captures for unresolved stream/operand/register-bank questions.
 - Promote new vetted captures into hermetic fixture set with manifest updates.
 
-### 5) CLI / Automation Integration
+### 7) CLI / Automation Integration
 
 - Build/extend `clicknick paste ...` flow:
   - validate/add operands in project data

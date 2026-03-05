@@ -112,6 +112,17 @@ Verify:
 - `complete --label <label> --status {unverified|verified_pass|verified_fail|blocked} --clipboard-event {copied|crash|cancelled} [--note <text>] [--row <row>] [--result-file <path>] [--json]`
 - `run --label <label> [--source {shorthand|file}] [--uid <uid_or_hwnd>] [--mdb-path <path>] [--no-ensure-mdb-addresses] [--status-default {unverified|verified_pass|verified_fail|blocked}] [--json]`
 
+## Guided Verify Queue (File-Backed Runs)
+- Use this for native/patch scenarios where payloads come from captured `.bin` files.
+- Start TUI: `uv run clicknick-ladder-capture tui`
+- In guided verify:
+  1. Select `3` (Verify run), then `g` (guided queue).
+  2. Choose payload override `f` (file).
+  3. Enter a scenario filter for the current round.
+- If you see `Entry has no payload_source_file or payload_file to load`, the entry is missing a
+  captured/source payload; fix by running `entry capture --label <label>` (native) or adding a
+  file-backed entry (`entry add ... --payload-source file --payload-file <path>`).
+
 Report:
 - `profile (--label <label> | --all) [--json | --csv]`
 - `profile-columns (--label <label> | --all) [--rows <spec>] [--cols <spec>] [--offsets <spec>] [--json | --csv]`
