@@ -2506,20 +2506,23 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "payload_file": "scratchpad/captures/grid_empty_rows1_2_recapture_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_empty_rows1_2_recapture_native_verify_back_20260305_154329.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:40:49Z",
-      "updated_at": "2026-03-05T15:40:49Z"
+      "updated_at": "2026-03-05T15:43:29Z"
     },
     {
       "id": "8d976df6-381f-4606-8d2e-520d14801930",
@@ -2534,21 +2537,322 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "payload_file": "scratchpad/captures/grid_empty_rows1_2_3_recapture_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grid_empty_rows1_2_3_recapture_native_verify_back_20260305_154336.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:40:50Z",
+      "updated_at": "2026-03-05T15:43:36Z"
+    },
+    {
+      "id": "af54b246-9692-4bf6-b011-1b5960de9053",
+      "capture_label": "mriso_mriso_h17_only",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_20260305",
+      "description": "Copy header +0x17 from native2 donor only",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_h17_only.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_h17_only.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
       "verify_observed_rows": [],
       "verify_result_file": null,
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
-      "created_at": "2026-03-05T15:40:50Z",
-      "updated_at": "2026-03-05T15:40:50Z"
+      "created_at": "2026-03-05T15:45:17Z",
+      "updated_at": "2026-03-05T15:45:17Z"
+    },
+    {
+      "id": "1efe7f8e-794f-4d30-8f9d-a2abf9d7e785",
+      "capture_label": "mriso_mriso_header_full",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_20260305",
+      "description": "Copy full header region from native2 donor",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_header_full.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_header_full.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:45:17Z",
+      "updated_at": "2026-03-05T15:45:17Z"
+    },
+    {
+      "id": "c0f4742a-d9a9-49b8-a974-549c60687e90",
+      "capture_label": "mriso_mriso_pre_full",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_20260305",
+      "description": "Copy pre-header region from native2 donor",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_pre_full.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_pre_full.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:45:17Z",
+      "updated_at": "2026-03-05T15:45:17Z"
+    },
+    {
+      "id": "537881c6-e30b-4094-a74c-c216a4c3576a",
+      "capture_label": "mriso_mriso_row0_full",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_20260305",
+      "description": "Copy row0 cell block from native2 donor",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_row0_full.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_row0_full.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:45:18Z",
+      "updated_at": "2026-03-05T15:45:18Z"
+    },
+    {
+      "id": "d66ef28f-aaa6-4a5e-8f5c-5ac9b91a1d83",
+      "capture_label": "mriso_mriso_row1_full",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_20260305",
+      "description": "Copy row1 cell block from native2 donor",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_row1_full.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_row1_full.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:45:18Z",
+      "updated_at": "2026-03-05T15:45:18Z"
+    },
+    {
+      "id": "e9b9f22b-1272-4747-b80c-56614fbf19a9",
+      "capture_label": "mriso_mriso_tail_full",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_20260305",
+      "description": "Copy tail region from native2 donor",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_tail_full.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_tail_full.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:45:18Z",
+      "updated_at": "2026-03-05T15:45:18Z"
+    },
+    {
+      "id": "c7359dba-dd21-496a-bda3-b4e103b5e302",
+      "capture_label": "mriso_mriso_pre_header",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_20260305",
+      "description": "Copy pre+header regions from native2 donor",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_pre_header.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_pre_header.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:45:19Z",
+      "updated_at": "2026-03-05T15:45:19Z"
+    },
+    {
+      "id": "26270f9a-31a5-4010-9be8-e2b1ebff3d0a",
+      "capture_label": "mriso_mriso_header_row1",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_20260305",
+      "description": "Copy header+row1 regions from native2 donor",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_header_row1.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_header_row1.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:45:19Z",
+      "updated_at": "2026-03-05T15:45:19Z"
+    },
+    {
+      "id": "183a9bad-0acf-4b0c-bba4-0fb6767b5c45",
+      "capture_label": "mriso_mriso_header_tail",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_20260305",
+      "description": "Copy header+tail regions from native2 donor",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_header_tail.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_header_tail.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:45:19Z",
+      "updated_at": "2026-03-05T15:45:19Z"
+    },
+    {
+      "id": "6fd60efe-aae3-4f22-a0fc-a9600835318c",
+      "capture_label": "mriso_mriso_row1_tail",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_20260305",
+      "description": "Copy row1+tail regions from native2 donor",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_row1_tail.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_row1_tail.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:45:20Z",
+      "updated_at": "2026-03-05T15:45:20Z"
+    },
+    {
+      "id": "29ef3f1d-4879-436a-ae4a-130892f2e10b",
+      "capture_label": "mriso_mriso_all_native2_control",
+      "capture_type": "patch",
+      "scenario": "grid_multirow_isolation_20260305",
+      "description": "Copy full first record from native2 donor (control)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_multirow_iso__mriso_all_native2_control.bin",
+      "payload_file": "scratchpad/captures/grid_multirow_iso__mriso_all_native2_control.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:45:20Z",
+      "updated_at": "2026-03-05T15:45:20Z"
     }
   ]
 }
