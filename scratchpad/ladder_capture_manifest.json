@@ -807,6 +807,358 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-04T20:10:12Z",
       "updated_at": "2026-03-04T20:10:12Z"
+    },
+    {
+      "id": "18524c43-60e6-4777-8061-504eebf7bd58",
+      "capture_label": "grid_empty_row1_single_native",
+      "capture_type": "native",
+      "scenario": "grid_basics_empty_template_20260305",
+      "description": "Empty rung copied from row1 baseline",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T13:19:30Z",
+      "updated_at": "2026-03-05T13:19:30Z"
+    },
+    {
+      "id": "195393ef-ab1c-4102-90a5-9df55fc40faa",
+      "capture_label": "grid_empty_row2_duplicate_native",
+      "capture_type": "native",
+      "scenario": "grid_basics_empty_template_20260305",
+      "description": "Same empty rung duplicated to row2 and copied from row2",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T13:19:31Z",
+      "updated_at": "2026-03-05T13:19:31Z"
+    },
+    {
+      "id": "42bad774-f4b8-437b-be62-4e015da89c34",
+      "capture_label": "grid_empty_rows1_2_combined_native",
+      "capture_type": "native",
+      "scenario": "grid_basics_empty_template_20260305",
+      "description": "Rows1+2 empty selection copied together",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T13:19:31Z",
+      "updated_at": "2026-03-05T13:19:31Z"
+    },
+    {
+      "id": "56939bea-5096-482a-ae37-7442feacba65",
+      "capture_label": "grid_wire_a_native",
+      "capture_type": "native",
+      "scenario": "grid_basics_empty_template_20260305",
+      "description": "Single horizontal segment at A",
+      "rung_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T13:19:32Z",
+      "updated_at": "2026-03-05T13:19:32Z"
+    },
+    {
+      "id": "b8f0f1dc-6f5a-458d-b23d-92d238159c9e",
+      "capture_label": "grid_wire_ab_native",
+      "capture_type": "native",
+      "scenario": "grid_basics_empty_template_20260305",
+      "description": "Two horizontal segments A-B",
+      "rung_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T13:19:33Z",
+      "updated_at": "2026-03-05T13:19:33Z"
+    },
+    {
+      "id": "87592a8b-e4d4-4a85-8434-d5738b0b2313",
+      "capture_label": "grid_wire_full_row_native",
+      "capture_type": "native",
+      "scenario": "grid_basics_empty_template_20260305",
+      "description": "Full horizontal wire row",
+      "rung_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T13:19:33Z",
+      "updated_at": "2026-03-05T13:19:33Z"
+    },
+    {
+      "id": "a8878b15-4f37-468e-8c92-4e0cf10fea81",
+      "capture_label": "grid_empty_width_default_native",
+      "capture_type": "native",
+      "scenario": "grid_basics_empty_template_20260305",
+      "description": "Empty rung default width capture",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T13:19:34Z",
+      "updated_at": "2026-03-05T13:19:34Z"
+    },
+    {
+      "id": "bf045206-2ad3-4de4-a216-7e2b729d3451",
+      "capture_label": "grid_empty_width_narrow_native",
+      "capture_type": "native",
+      "scenario": "grid_basics_empty_template_20260305",
+      "description": "Empty rung narrow width capture",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T13:19:35Z",
+      "updated_at": "2026-03-05T13:19:35Z"
+    },
+    {
+      "id": "4d462b59-f114-436b-8b67-f1969d77fbf8",
+      "capture_label": "grid_empty_width_wide_native",
+      "capture_type": "native",
+      "scenario": "grid_basics_empty_template_20260305",
+      "description": "Empty rung wide width capture",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T13:19:35Z",
+      "updated_at": "2026-03-05T13:19:35Z"
+    },
+    {
+      "id": "de6834b9-b401-4d25-bb65-10e7483f94de",
+      "capture_label": "grid_wire_ab_width_default_native",
+      "capture_type": "native",
+      "scenario": "grid_basics_empty_template_20260305",
+      "description": "Wire AB default width capture",
+      "rung_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T13:19:36Z",
+      "updated_at": "2026-03-05T13:19:36Z"
+    },
+    {
+      "id": "53afa385-d977-4340-9b02-1152927d50b0",
+      "capture_label": "grid_wire_ab_width_narrow_native",
+      "capture_type": "native",
+      "scenario": "grid_basics_empty_template_20260305",
+      "description": "Wire AB narrow width capture",
+      "rung_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T13:19:37Z",
+      "updated_at": "2026-03-05T13:19:37Z"
+    },
+    {
+      "id": "191efe98-a638-4b7b-b17f-43b1aee685dd",
+      "capture_label": "grid_wire_ab_width_wide_native",
+      "capture_type": "native",
+      "scenario": "grid_basics_empty_template_20260305",
+      "description": "Wire AB wide width capture",
+      "rung_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T13:19:37Z",
+      "updated_at": "2026-03-05T13:19:37Z"
+    },
+    {
+      "id": "f8df0dca-e6f0-4be4-b4f1-28e52c8d5fe2",
+      "capture_label": "grid_empty_crossapp_a_source_native",
+      "capture_type": "native",
+      "scenario": "grid_basics_empty_template_20260305",
+      "description": "Empty rung source capture from app window A",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T13:19:38Z",
+      "updated_at": "2026-03-05T13:19:38Z"
+    },
+    {
+      "id": "370993f3-28b5-47f7-936c-0f74bb4d38d0",
+      "capture_label": "grid_empty_crossapp_b_pasteback_native",
+      "capture_type": "native",
+      "scenario": "grid_basics_empty_template_20260305",
+      "description": "Empty rung pasteback capture from app window B",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T13:19:39Z",
+      "updated_at": "2026-03-05T13:19:39Z"
     }
   ]
 }
