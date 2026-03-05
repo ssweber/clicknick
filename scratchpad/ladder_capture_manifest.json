@@ -2032,6 +2032,133 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T14:54:19Z",
       "updated_at": "2026-03-05T15:07:20Z"
+    },
+    {
+      "id": "2714f48b-f548-4ad4-bdae-ed4aec301eee",
+      "capture_label": "grid_synth_empty_row1_synthetic",
+      "capture_type": "synthetic",
+      "scenario": "grid_synth_empty_template_20260305",
+      "description": "Synth empty row1 from empty template with refined header copy (+0x11/+0x17)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_synth_empty_template__empty_row1.bin",
+      "payload_file": "scratchpad/captures/grid_synth_empty_template__empty_row1.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:26:41Z",
+      "updated_at": "2026-03-05T15:26:41Z"
+    },
+    {
+      "id": "6a4a4e88-36b5-4d33-90af-b63bad5c57cd",
+      "capture_label": "grid_synth_wire_a_synthetic",
+      "capture_type": "synthetic",
+      "scenario": "grid_synth_empty_template_20260305",
+      "description": "Synth wire A from empty template with refined header copy (+0x11/+0x17)",
+      "rung_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_synth_empty_template__wire_a.bin",
+      "payload_file": "scratchpad/captures/grid_synth_empty_template__wire_a.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:26:42Z",
+      "updated_at": "2026-03-05T15:26:42Z"
+    },
+    {
+      "id": "be3e1c0c-bfdd-43af-af65-654baf649f2b",
+      "capture_label": "grid_synth_wire_ab_synthetic",
+      "capture_type": "synthetic",
+      "scenario": "grid_synth_empty_template_20260305",
+      "description": "Synth wire A-B from empty template with refined header copy (+0x11/+0x17)",
+      "rung_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_synth_empty_template__wire_ab.bin",
+      "payload_file": "scratchpad/captures/grid_synth_empty_template__wire_ab.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:26:42Z",
+      "updated_at": "2026-03-05T15:26:42Z"
+    },
+    {
+      "id": "9b353ac4-e9af-43ce-9b4e-05fc614377b0",
+      "capture_label": "grid_synth_wire_full_row_synthetic",
+      "capture_type": "synthetic",
+      "scenario": "grid_synth_empty_template_20260305",
+      "description": "Synth full-row horizontal wire from empty template with refined header copy (+0x11/+0x17)",
+      "rung_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_synth_empty_template__wire_full_row.bin",
+      "payload_file": "scratchpad/captures/grid_synth_empty_template__wire_full_row.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:26:42Z",
+      "updated_at": "2026-03-05T15:26:42Z"
+    },
+    {
+      "id": "1acf31d1-571b-43b1-92c8-376789fc7de9",
+      "capture_label": "grid_synth_empty_rows1_2_synthetic",
+      "capture_type": "synthetic",
+      "scenario": "grid_synth_empty_template_20260305",
+      "description": "Synth two-row empty grid from empty template with refined header copy (+0x11/+0x17)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grid_synth_empty_template__empty_rows1_2.bin",
+      "payload_file": "scratchpad/captures/grid_synth_empty_template__empty_rows1_2.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:26:43Z",
+      "updated_at": "2026-03-05T15:26:43Z"
     }
   ]
 }
