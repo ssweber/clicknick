@@ -62,6 +62,21 @@ Last validated: March 5, 2026
   - `scratchpad/grid_synth_h18_isolation_verify_queue_20260305.md`
   - `scratchpad/noise_vs_structure_reassessment_20260305.md`
 
+## Execution Update (March 5, 2026 — Multi-Row Recapture + Isolation)
+
+- Fresh recaptures validated native multi-row empties:
+  - `grid_empty_rows1_2_recapture_native` (2-row pass)
+  - `grid_empty_rows1_2_3_recapture_native` (3-row pass)
+- Multi-row isolation phase 1 (`grid_multirow_isolation_20260305`):
+  - only full-native control passed;
+  - most partial-region variants collapsed to one row.
+- Multi-row isolation phase 2 (`grid_multirow_isolation_phase2_20260305`):
+  - `row0+row1` copy passed while preserving synthetic pre/header/tail;
+  - row0 + pre/header/tail combinations blocked (edit/crash/stuck).
+- Current inference:
+  - two-row collapse gate is row-block structural bytes (priority on row1-linked region),
+    not pre/header/tail session metadata.
+
 ## Goal
 
 Reverse engineer Click Programming Software's clipboard format so `clicknick.ladder`
@@ -350,7 +365,8 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
 
 ### 2) Multi-Row Empty Isolation Follow-Up
 
-- Isolate why two-row empty synthetic payload currently pastes as one row.
+- Isolate minimal row1-linked byte set (and any required row0 companions) that restores
+  stable two-row empty paste without full row-block donor copy.
 - Keep single-row horizontal synthesis as the validated production lane until this is resolved.
 
 ### 3) Deterministic Encoder Hardening

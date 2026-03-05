@@ -120,8 +120,29 @@ Completed manual steps:
 3. Classification:
    - `+0x18` is safe session-noise normalization for the empty/horizontal baseline lane.
 
+## Multi-Row Empty Isolation (Fresh Recapture Driven)
+
+1. Fresh native recaptures succeeded:
+   - scenario: `grid_multirow_recapture_20260305`
+   - `grid_empty_rows1_2_recapture_native`: pass (2 rows observed)
+   - `grid_empty_rows1_2_3_recapture_native`: pass (3 rows observed)
+2. Phase 1 region matrix (`grid_multirow_isolation_20260305`):
+   - only full-native control passed
+   - all partial copies failed except row0-only variant, which blocked in edit mode
+3. Phase 2 row0-centered matrix (`grid_multirow_isolation_phase2_20260305`):
+   - `mriso2_row0_row1`: `verified_pass`
+   - `mriso2_all_native2_control`: `verified_pass`
+   - all row0 + {pre|header|tail} combinations: `blocked` (edit/crash/stuck mode)
+4. Decisive inference from phase-2:
+   - Two-row collapse is not caused by pre/header/tail alone.
+   - Copying row blocks (`row0+row1`) from native is sufficient for clean two-row paste,
+     even when pre/header/tail remain synthetic.
+   - Remaining structural unknown is inside row-block bytes (priority on row1-linked bytes),
+     not session header noise.
+
 ## Recommended Next Lane
 
 1. Use working normalization profile `+0x11/+0x17/+0x18` for empty-template horizontal synthesis workflows.
 2. Keep `+0x05` and `0x0A59` untouched while extending synthesis coverage.
-3. Isolate the two-row collapse case (`grid_synth_empty_rows1_2_synthetic`) before treating multi-row empty synthesis as stable.
+3. Isolate minimal row1 (and row0 companion) byte set required for multi-row empty stability
+   before treating multi-row empty synthesis as stable.
