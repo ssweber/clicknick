@@ -139,10 +139,20 @@ Completed manual steps:
      even when pre/header/tail remain synthetic.
    - Remaining structural unknown is inside row-block bytes (priority on row1-linked bytes),
      not session header noise.
+5. Phase-3 to Phase-6 narrowing (row1 bands, then row0 companions):
+   - With row0 key bytes present, row1 `+0x10` is sufficient (`phase4: row0_plus_10_only` pass).
+   - Row1 `+0x11` alone is not sufficient (`phase4: row0_plus_11_only` blocked).
+   - With row1 `+0x10` fixed, row0 col31 requires both `+0x38` and `+0x3D`:
+     - `phase6: col31_38_only_row1_10` fail
+     - `phase6: col31_3d_only_row1_10` fail
+     - `phase6: control_col31_38_3d_row1_10` pass
+   - Current minimal observed passing set for two-row empty synthesis:
+     - row1 all columns `+0x10` (donor values)
+     - row0 col31 `+0x38` and `+0x3D` (donor values)
 
 ## Recommended Next Lane
 
 1. Use working normalization profile `+0x11/+0x17/+0x18` for empty-template horizontal synthesis workflows.
 2. Keep `+0x05` and `0x0A59` untouched while extending synthesis coverage.
-3. Isolate minimal row1 (and row0 companion) byte set required for multi-row empty stability
-   before treating multi-row empty synthesis as stable.
+3. Implement the two-row empty minimal set in synthesis tooling and run a confirmatory re-verify pass.
+4. Run targeted three-row empty synthesis checks to determine whether the same row1/row0 companion rule scales or needs row2-specific additions.

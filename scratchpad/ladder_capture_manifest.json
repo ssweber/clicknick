@@ -3918,19 +3918,22 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_iso6__control_col31_38_3d_row1_10.bin",
       "payload_file": "scratchpad/captures/grid_multirow_iso6__control_col31_38_3d_row1_10.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/mriso6_control_col31_38_3d_row1_10_verify_back_20260305_173601.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T17:34:33Z",
-      "updated_at": "2026-03-05T17:34:33Z"
+      "updated_at": "2026-03-05T17:36:01Z"
     },
     {
       "id": "d68704f9-e5c8-4d6d-96c9-368337139f7b",
@@ -3945,19 +3948,21 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_iso6__col31_38_only_row1_10.bin",
       "payload_file": "scratchpad/captures/grid_multirow_iso6__col31_38_only_row1_10.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/mriso6_col31_38_only_row1_10_verify_back_20260305_173620.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T17:34:34Z",
-      "updated_at": "2026-03-05T17:34:34Z"
+      "updated_at": "2026-03-05T17:36:20Z"
     },
     {
       "id": "517107e3-49f4-417a-8b18-67b36926574d",
@@ -3972,19 +3977,21 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_iso6__col31_3d_only_row1_10.bin",
       "payload_file": "scratchpad/captures/grid_multirow_iso6__col31_3d_only_row1_10.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/mriso6_col31_3d_only_row1_10_verify_back_20260305_173634.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T17:34:34Z",
-      "updated_at": "2026-03-05T17:34:34Z"
+      "updated_at": "2026-03-05T17:36:34Z"
     },
     {
       "id": "c2bf3636-7d32-436c-b591-58c483a179bd",
@@ -3999,19 +4006,21 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_iso6__col31_38_3d_no_row1.bin",
       "payload_file": "scratchpad/captures/grid_multirow_iso6__col31_38_3d_no_row1.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "stuck in edit mode",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
       "verify_result_file": null,
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T17:34:35Z",
-      "updated_at": "2026-03-05T17:34:35Z"
+      "updated_at": "2026-03-05T17:36:57Z"
     },
     {
       "id": "0fc195f5-bb27-422c-aaa1-8a2c030c7224",
@@ -4026,19 +4035,21 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_iso6__row1_10_only_no_row0.bin",
       "payload_file": "scratchpad/captures/grid_multirow_iso6__row1_10_only_no_row0.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/mriso6_row1_10_only_no_row0_verify_back_20260305_173725.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T17:34:35Z",
-      "updated_at": "2026-03-05T17:34:35Z"
+      "updated_at": "2026-03-05T17:37:25Z"
     }
   ]
 }

@@ -76,6 +76,15 @@ Last validated: March 5, 2026
 - Current inference:
   - two-row collapse gate is row-block structural bytes (priority on row1-linked region),
     not pre/header/tail session metadata.
+- Multi-row narrowing phases (3..6) produced a minimal observed two-row fix:
+  - required row1 bytes: `+0x10` across all row1 columns
+  - required row0 bytes: col31 `+0x38` and `+0x3D`
+  - insufficiency checks:
+    - row1 `+0x10` without row0 companions fails
+    - row0 col31 `+0x38` only fails
+    - row0 col31 `+0x3D` only fails
+  - passing check:
+    - row1 `+0x10` + row0 col31 `{+0x38,+0x3D}` passes (2-row empty)
 
 ## Goal
 
@@ -344,7 +353,8 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
 
 ## Open Questions
 
-1. Multi-row empty synthesis: why row1+2 empty synthetic currently collapses to one pasted row.
+1. Three-row empty synthesis: does the two-row minimal fix (`row1 +0x10` + row0 col31 `{+0x38,+0x3D}`)
+   scale directly, or are row2-linked companion bytes additionally required?
 2. Per-cell structural control bytes in row0/row1 (beyond wire flags): exact role in broader
    instruction families now that second-immediate is solved.
 3. Stream metadata bytes (`65 60`, `67 60`, related blocks): exact semantics and whether
@@ -365,9 +375,9 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
 
 ### 2) Multi-Row Empty Isolation Follow-Up
 
-- Isolate minimal row1-linked byte set (and any required row0 companions) that restores
-  stable two-row empty paste without full row-block donor copy.
-- Keep single-row horizontal synthesis as the validated production lane until this is resolved.
+- Implement and validate the current minimal two-row companion rule:
+  - row1 `+0x10` (all columns) plus row0 col31 `{+0x38,+0x3D}`.
+- Extend isolation to three-row empty synthesis and classify row2-specific companion needs.
 
 ### 3) Deterministic Encoder Hardening
 
