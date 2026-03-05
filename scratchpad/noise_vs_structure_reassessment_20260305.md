@@ -150,9 +150,21 @@ Completed manual steps:
      - row1 all columns `+0x10` (donor values)
      - row0 col31 `+0x38` and `+0x3D` (donor values)
 
+6. Tool-mode confirmation / 3-row probe (`grid_multirow_companion_confirm_20260305`):
+   - `gmc_grid2_no_companion`: fail (collapses to 1 row)
+   - `gmc_grid2_with_companion`: pass (2 rows)
+   - `gmc_grid3_ablate_all`: fail (collapses to 1 row)
+   - `gmc_grid3_restore_all`: pass (3 rows)
+   - `gmc_grid3_restore_row1_only`: fail (1 row)
+   - `gmc_grid3_restore_col31_only`: fail with invalid boxes despite 3-row presence
+7. Confirmed interpretation:
+   - The companion pair is required as a combination for valid multi-row empty synthesis.
+   - The same companion pair restores both 2-row and 3-row empty behavior in this baseline.
+
 ## Recommended Next Lane
 
 1. Use working normalization profile `+0x11/+0x17/+0x18` for empty-template horizontal synthesis workflows.
 2. Keep `+0x05` and `0x0A59` untouched while extending synthesis coverage.
-3. Implement the two-row empty minimal set in synthesis tooling and run a confirmatory re-verify pass.
-4. Run targeted three-row empty synthesis checks to determine whether the same row1/row0 companion rule scales or needs row2-specific additions.
+3. Keep the multi-row companion rule enabled when synthesizing empty multi-row templates:
+   - row1 `+0x10` all columns plus row0 col31 `{+0x38,+0x3D}` from donor.
+4. Expand beyond empty multi-row baselines (add horizontal and mixed-wire multi-row probes) to test whether the same companion offsets remain sufficient.

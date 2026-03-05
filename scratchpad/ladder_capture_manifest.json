@@ -4064,19 +4064,21 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_companion__grid2_no_companion.bin",
       "payload_file": "scratchpad/captures/grid_multirow_companion__grid2_no_companion.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gmc_grid2_no_companion_verify_back_20260305_174628.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T17:43:49Z",
-      "updated_at": "2026-03-05T17:43:49Z"
+      "updated_at": "2026-03-05T17:46:28Z"
     },
     {
       "id": "288ecc86-06d4-48eb-9f73-cce489f9c908",
@@ -4091,19 +4093,22 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_companion__grid2_with_companion.bin",
       "payload_file": "scratchpad/captures/grid_multirow_companion__grid2_with_companion.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gmc_grid2_with_companion_verify_back_20260305_174644.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T17:43:49Z",
-      "updated_at": "2026-03-05T17:43:49Z"
+      "updated_at": "2026-03-05T17:46:44Z"
     },
     {
       "id": "fe5a2d43-5440-4012-89f0-8c478ff0fa77",
@@ -4119,20 +4124,22 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_companion__grid3_ablate_all.bin",
       "payload_file": "scratchpad/captures/grid_multirow_companion__grid3_ablate_all.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gmc_grid3_ablate_all_verify_back_20260305_174705.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T17:43:49Z",
-      "updated_at": "2026-03-05T17:43:49Z"
+      "updated_at": "2026-03-05T17:47:05Z"
     },
     {
       "id": "aa135ecc-459b-461e-84bb-f7d05bec4f22",
@@ -4148,20 +4155,22 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_companion__grid3_restore_row1_only.bin",
       "payload_file": "scratchpad/captures/grid_multirow_companion__grid3_restore_row1_only.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gmc_grid3_restore_row1_only_verify_back_20260305_174724.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T17:43:50Z",
-      "updated_at": "2026-03-05T17:43:50Z"
+      "updated_at": "2026-03-05T17:47:24Z"
     },
     {
       "id": "ff9cefd4-bb24-457c-a960-410b5e7b5e51",
@@ -4177,20 +4186,24 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_companion__grid3_restore_col31_only.bin",
       "payload_file": "scratchpad/captures/grid_multirow_companion__grid3_restore_col31_only.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "all invalid boxes in columns",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gmc_grid3_restore_col31_only_verify_back_20260305_174752.bin",
+      "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T17:43:50Z",
-      "updated_at": "2026-03-05T17:43:50Z"
+      "updated_at": "2026-03-05T17:47:52Z"
     },
     {
       "id": "dc948089-244e-46a0-b8fe-03b9213adffb",
@@ -4206,20 +4219,24 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grid_multirow_companion__grid3_restore_all.bin",
       "payload_file": "scratchpad/captures/grid_multirow_companion__grid3_restore_all.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gmc_grid3_restore_all_verify_back_20260305_174814.bin",
+      "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T17:43:50Z",
-      "updated_at": "2026-03-05T17:43:50Z"
+      "updated_at": "2026-03-05T17:48:14Z"
     }
   ]
 }

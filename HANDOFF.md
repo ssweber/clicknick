@@ -85,6 +85,17 @@ Last validated: March 5, 2026
     - row0 col31 `+0x3D` only fails
   - passing check:
     - row1 `+0x10` + row0 col31 `{+0x38,+0x3D}` passes (2-row empty)
+- Tool confirmation/probe (`grid_multirow_companion_confirm_20260305`):
+  - 2-row synthetic with companion mode: pass
+  - 2-row synthetic without companion mode: fail (collapses to 1 row)
+  - 3-row native ablate/restore:
+    - ablate companion offsets: fail (collapses to 1 row)
+    - restore companion offsets: pass (3 rows)
+    - restore row1-only: fail (1 row)
+    - restore col31-only: fail (invalid boxes)
+- Updated inference:
+  - companion bytes act as a required combination for valid multi-row empty synthesis.
+  - same companion set currently restores both 2-row and 3-row empty baselines.
 
 ## Goal
 
@@ -353,8 +364,8 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
 
 ## Open Questions
 
-1. Three-row empty synthesis: does the two-row minimal fix (`row1 +0x10` + row0 col31 `{+0x38,+0x3D}`)
-   scale directly, or are row2-linked companion bytes additionally required?
+1. Multi-row non-empty (horizontal/mixed-wire) synthesis: does the empty-template companion rule
+   remain sufficient when row2/row3 include wire geometry?
 2. Per-cell structural control bytes in row0/row1 (beyond wire flags): exact role in broader
    instruction families now that second-immediate is solved.
 3. Stream metadata bytes (`65 60`, `67 60`, related blocks): exact semantics and whether
@@ -375,9 +386,9 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
 
 ### 2) Multi-Row Empty Isolation Follow-Up
 
-- Implement and validate the current minimal two-row companion rule:
+- Keep companion rule active for empty multi-row synthesis:
   - row1 `+0x10` (all columns) plus row0 col31 `{+0x38,+0x3D}`.
-- Extend isolation to three-row empty synthesis and classify row2-specific companion needs.
+- Move next to non-empty multi-row probes to test whether additional row2/row3 companions emerge.
 
 ### 3) Deterministic Encoder Hardening
 
