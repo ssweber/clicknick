@@ -2493,6 +2493,62 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-05T15:31:53Z",
       "updated_at": "2026-03-05T15:37:29Z"
+    },
+    {
+      "id": "1b4a82ef-2fb9-4a80-8d1a-31ca31e13cdd",
+      "capture_label": "grid_empty_rows1_2_recapture_native",
+      "capture_type": "native",
+      "scenario": "grid_multirow_recapture_20260305",
+      "description": "Recapture: full rung with row1+row2 empty grid",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:40:49Z",
+      "updated_at": "2026-03-05T15:40:49Z"
+    },
+    {
+      "id": "8d976df6-381f-4606-8d2e-520d14801930",
+      "capture_label": "grid_empty_rows1_2_3_recapture_native",
+      "capture_type": "native",
+      "scenario": "grid_multirow_recapture_20260305",
+      "description": "Recapture: full rung with row1+row2+row3 empty grid",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-05T15:40:50Z",
+      "updated_at": "2026-03-05T15:40:50Z"
     }
   ]
 }
