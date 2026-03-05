@@ -61,15 +61,14 @@ All three test files pass locally.
 
 Confident noise candidates:
 
-- Header entry-local session tuple offsets:
-  - `+0x05`, `+0x11`, `+0x17`, `+0x18` (all 32 header entries)
-- Trailer mirror:
-  - `0x0A59`
+- Header entry-local offsets with verified-safe normalization on grid-basics:
+  - `+0x11`, `+0x17` (all 32 header entries)
 
-Still unresolved / needs manual evidence:
+Context-sensitive / structural candidates (do not normalize globally yet):
 
-- Which offsets are structural for horizontal-only grid layouts vs session/context drift
-- Final minimal mask that preserves Click paste semantics across empty/wire baselines
+- Header `+0x05`
+- Trailer mirror `0x0A59`
+- Header `+0x18` (not yet validated in a clean all-pass mask on this baseline)
 
 ## Manual Capture/Verify Queue (Status)
 
@@ -83,12 +82,22 @@ Completed manual steps:
 2. Verified from captured files (`verify run --source file`) across the full grid-basics scenario.
 3. Re-ran noise overlay on completed empty/wire/width/crossapp set.
 
+## Phase 5 Outcome (Finalized)
+
+1. Baseline session-mask trial:
+   - scenario: `grid_basics_phase5_session_mask_20260305`
+   - result: `13/14` pass, `1/14` fail (`grid_empty_row2_duplicate_native`)
+2. Narrowing on failing row2-duplicate case:
+   - scenario: `grid_basics_phase5_narrow_row2_20260305`
+   - result: only `h11` variant passes
+   - variants touching `h05` and/or `0x0A59` fail
+3. Refined mask trial:
+   - scenario: `grid_basics_phase5_refined_h11_h17_20260305`
+   - policy: normalize header `+0x11` and `+0x17` only
+   - result: `14/14` `verified_pass`
+
 ## Recommended Next Lane
 
-1. Execute Phase 5 mask trials on grid-basics captures:
-   - start with `session_tuple_candidates` donor-copy normalization.
-2. Register mask-patched payloads as `patch` entries and run guided verify.
-3. If patched payloads paste cleanly:
-   - proceed to empty-template-driven grid synthesis tooling.
-4. If patched payloads fail:
-   - narrow mask classes by removing the last-added class and retesting.
+1. Use refined mask profile (`+0x11`/`+0x17` only) as the working session-noise normalization for empty/horizontal baseline workflows.
+2. Keep `+0x05` and `0x0A59` untouched while building grid synthesis from empty-template captures.
+3. Add a focused follow-up experiment for `+0x18` to classify it confidently as noise vs structure before broadening encoder scope.
