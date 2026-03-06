@@ -132,12 +132,15 @@ Vertical inference update:
 - Added scenarios:
   - `grid_nonempty_multirow_horiz_20260306`
   - `grid_nonempty_multirow_vert_20260306`
+  - `grid_nonempty_multirow_rowcombo_20260306`
 - Added entries:
   - horizontal: `9` labels (`gnmh_*`)
   - vertical: `8` labels (`gnmv_*`)
+  - rowcombo: `12` labels (`gnmr*`)
 - Current verify status:
   - horizontal (`gnmh_*`): complete (`8` pass, `1` fail)
   - vertical (`gnmv_*`): complete (`8` pass, `0` fail)
+  - rowcombo (`gnmr*`): complete (`11` pass, `1` fail)
 
 ## Boundary Statement
 Proven in this round:
@@ -145,26 +148,38 @@ Proven in this round:
 - Horizontal scenario has a reproducible non-empty 2-row synthetic pass path.
 - Horizontal decisive candidate behavior at row1 col1 was isolated (`+0x1D` decisive vs `+0x19` alone).
 - Vertical scenario has reproducible non-empty 2-row and 3-row synthetic pass paths with deterministic `+0x21` control.
+- 4-row and 5-row row-combo probes passed broadly (`11/12`) with stable row-word/length behavior.
+- Corrected fail-case observation confirms asymmetry behavior at row2:
+  - `hleft+vdown` (`+0x19=1,+0x1D=0,+0x21=1`) collapsed to vertical-only (`|`) and failed expected `T`.
+  - `hright+vdown` (`+0x19=0,+0x1D=1,+0x21=1`) preserved expected mixed behavior and passed.
 
 Assumed (not yet proven by this round's Click verify):
 - Horizontal `+0x1D` decisiveness generalizes beyond the tested col1 row1 geometry.
 
 Unknown:
-- Whether the same minimal sets hold for 4-row non-empty lanes.
+- Whether the same horizontal asymmetry rule (`+0x1D` gate) holds for all columns/instruction-heavy non-empty families.
 - Whether these lane rules remain stable when instruction-stream-heavy non-empty families are mixed into the same rows.
 
 ## Recommendation
 - `ready for implementation planning` (scoped to tested non-empty wire-topology lanes).
 - Keep implementation scope explicit: 2-row/3-row wire continuity rules proven here; 4-row and mixed instruction-heavy lanes remain follow-up validation items.
 
-## Next Batch Prepared (4+ Rows / Row Combinations)
-- New scenario added: `grid_nonempty_multirow_rowcombo_20260306` (`12` file-backed patch cases).
-- Queue doc:
-  - `scratchpad/grid_nonempty_multirow_rowcombo_verify_queue_20260306.md`
-- Case family coverage:
-  - rows4 vertical chains and link ablations (`c1`, `c3`)
-  - rows4 horizontal and `T` at row2
-  - rows4 one-sided horizontal asymmetry probes under `T`
-  - rows5 vertical chain and sparse/non-contiguous link patterns
-  - rows5 mixed topology (`row1 T` + `row3 vertical`)
-- Status: all `12` entries currently `unverified` (awaiting guided run).
+## 4+/Row-Combo Outcomes (Completed)
+Scenario run: `grid_nonempty_multirow_rowcombo_20260306` (`12` cases)
+
+Outcome summary:
+- `verified_pass`: `11`
+- `verified_fail`: `1` (`gnmr4_t_r2_c1_keep_hleft`)
+- `blocked`: `0`
+- `unverified`: `0`
+
+Length/row-word checks from verify-back:
+- rows4 cases: `12288` bytes, row-word `0x00A0`
+- rows5 cases: `16384` bytes, row-word `0x00C0`
+
+High-signal rowcombo implications:
+- Vertical continuity (`+0x21`) remains deterministic across rows4/5 and sparse/non-contiguous placements.
+- Column scaling (`c1` -> `c3`) remains deterministic in rows4 chain probes.
+- Horizontal asymmetry under mixed `T` at row2 reinforces prior rule:
+  - `+0x1D` retention is compatible with preserving mixed continuity.
+  - `+0x19` without `+0x1D` collapses mixed cell to vertical-only.

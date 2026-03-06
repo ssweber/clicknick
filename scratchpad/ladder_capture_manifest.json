@@ -8490,8 +8490,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/gnmr4_vert_chain_c1.bin",
       "payload_file": "scratchpad/captures/gnmr4_vert_chain_c1.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
@@ -8499,12 +8499,17 @@
         ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gnmr4_vert_chain_c1_verify_back_20260306_155601.bin",
+      "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T15:53:21Z",
-      "updated_at": "2026-03-06T15:53:21Z"
+      "updated_at": "2026-03-06T15:56:01Z"
     },
     {
       "id": "6af8192c-505f-4f6e-a78b-7d39327c15be",
@@ -8521,21 +8526,26 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/gnmr4_vert_chain_c1_drop_r1.bin",
       "payload_file": "scratchpad/captures/gnmr4_vert_chain_c1_drop_r1.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "y",
       "verify_expected_rows": [
         "R,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gnmr4_vert_chain_c1_drop_r1_verify_back_20260306_155609.bin",
+      "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T15:53:22Z",
-      "updated_at": "2026-03-06T15:53:22Z"
+      "updated_at": "2026-03-06T15:56:09Z"
     },
     {
       "id": "e23a8447-92bc-499b-b985-9c756037ff85",
@@ -8552,8 +8562,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/gnmr4_vert_chain_c1_drop_r2.bin",
       "payload_file": "scratchpad/captures/gnmr4_vert_chain_c1_drop_r2.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
@@ -8561,12 +8571,17 @@
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gnmr4_vert_chain_c1_drop_r2_verify_back_20260306_155619.bin",
+      "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T15:53:22Z",
-      "updated_at": "2026-03-06T15:53:22Z"
+      "updated_at": "2026-03-06T15:56:20Z"
     },
     {
       "id": "295f96bd-7020-4236-8706-e4c7e0050f1d",
@@ -8583,8 +8598,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/gnmr4_vert_only_r2_c1.bin",
       "payload_file": "scratchpad/captures/gnmr4_vert_only_r2_c1.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
@@ -8592,12 +8607,17 @@
         ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gnmr4_vert_only_r2_c1_verify_back_20260306_155630.bin",
+      "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T15:53:23Z",
-      "updated_at": "2026-03-06T15:53:23Z"
+      "updated_at": "2026-03-06T15:56:30Z"
     },
     {
       "id": "e5389cc1-5abd-4a3c-9206-70dbf462489f",
@@ -8614,8 +8634,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/gnmr4_vert_chain_c3.bin",
       "payload_file": "scratchpad/captures/gnmr4_vert_chain_c3.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
@@ -8623,12 +8643,17 @@
         ",,,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gnmr4_vert_chain_c3_verify_back_20260306_155639.bin",
+      "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T15:53:24Z",
-      "updated_at": "2026-03-06T15:53:24Z"
+      "updated_at": "2026-03-06T15:56:39Z"
     },
     {
       "id": "ede3931b-7ac4-4dfc-a17d-33073f8f8bc7",
@@ -8645,8 +8670,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/gnmr4_horiz_r2_c1_only.bin",
       "payload_file": "scratchpad/captures/gnmr4_horiz_r2_c1_only.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
@@ -8654,12 +8679,17 @@
         ",,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gnmr4_horiz_r2_c1_only_verify_back_20260306_155649.bin",
+      "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T15:53:25Z",
-      "updated_at": "2026-03-06T15:53:25Z"
+      "updated_at": "2026-03-06T15:56:49Z"
     },
     {
       "id": "9b009a15-fbca-4111-b7f4-9b00deb46d15",
@@ -8676,8 +8706,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/gnmr4_t_r2_c1.bin",
       "payload_file": "scratchpad/captures/gnmr4_t_r2_c1.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
@@ -8685,12 +8715,17 @@
         ",,T,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,T,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gnmr4_t_r2_c1_verify_back_20260306_155700.bin",
+      "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T15:53:25Z",
-      "updated_at": "2026-03-06T15:53:25Z"
+      "updated_at": "2026-03-06T15:57:00Z"
     },
     {
       "id": "9176b111-eeb8-4ca8-a161-810faa06a54f",
@@ -8707,8 +8742,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/gnmr4_t_r2_c1_keep_hright.bin",
       "payload_file": "scratchpad/captures/gnmr4_t_r2_c1_keep_hright.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
@@ -8716,12 +8751,17 @@
         ",,T,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,T,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gnmr4_t_r2_c1_keep_hright_verify_back_20260306_155735.bin",
+      "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T15:53:26Z",
-      "updated_at": "2026-03-06T15:53:26Z"
+      "updated_at": "2026-03-06T15:57:35Z"
     },
     {
       "id": "5f75a463-4b2e-4147-9632-f7012ab89409",
@@ -8738,21 +8778,26 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/gnmr4_t_r2_c1_keep_hleft.bin",
       "payload_file": "scratchpad/captures/gnmr4_t_r2_c1_keep_hleft.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "Corrected observed rows: row2 collapsed to vertical-only",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,T,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gnmr4_t_r2_c1_keep_hleft_verify_back_20260306_155825.bin",
+      "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T15:53:27Z",
-      "updated_at": "2026-03-06T15:53:27Z"
+      "updated_at": "2026-03-06T16:01:16Z"
     },
     {
       "id": "0c50cfdc-491f-478e-b7ba-0ae6d37fa941",
@@ -8770,8 +8815,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/gnmr5_vert_chain_c1.bin",
       "payload_file": "scratchpad/captures/gnmr5_vert_chain_c1.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
@@ -8780,12 +8825,18 @@
         ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gnmr5_vert_chain_c1_verify_back_20260306_155841.bin",
+      "verify_clipboard_len": 16384,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T15:53:28Z",
-      "updated_at": "2026-03-06T15:53:28Z"
+      "updated_at": "2026-03-06T15:58:41Z"
     },
     {
       "id": "ad1c83c0-6459-4947-bdf4-1bf70b953890",
@@ -8803,8 +8854,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/gnmr5_vert_alt_r0_r2.bin",
       "payload_file": "scratchpad/captures/gnmr5_vert_alt_r0_r2.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
@@ -8813,12 +8864,18 @@
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gnmr5_vert_alt_r0_r2_verify_back_20260306_155858.bin",
+      "verify_clipboard_len": 16384,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T15:53:28Z",
-      "updated_at": "2026-03-06T15:53:28Z"
+      "updated_at": "2026-03-06T15:58:58Z"
     },
     {
       "id": "e931d2e4-edea-4870-b19b-9af8c078ed50",
@@ -8836,8 +8893,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/gnmr5_mix_row1T_row3D.bin",
       "payload_file": "scratchpad/captures/gnmr5_mix_row1T_row3D.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
@@ -8846,12 +8903,18 @@
         ",,,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,T,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gnmr5_mix_row1T_row3D_verify_back_20260306_155920.bin",
+      "verify_clipboard_len": 16384,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T15:53:29Z",
-      "updated_at": "2026-03-06T15:53:29Z"
+      "updated_at": "2026-03-06T15:59:20Z"
     }
   ]
 }

@@ -274,22 +274,33 @@ Recommendation:
   - 4-row non-empty lanes
   - mixed instruction-heavy non-empty families.
 
-## Execution Update (March 6, 2026 — 4+/Row-Combo Validation Batch Prepared)
+## Execution Update (March 6, 2026 — 4+/Row-Combo Validation Completed)
 
-- Added scenario: `grid_nonempty_multirow_rowcombo_20260306` (`12` file-backed patch entries).
-- Added queue doc:
+- Scenario `grid_nonempty_multirow_rowcombo_20260306` completed (`12` cases):
+  - `11` `verified_pass`
+  - `1` `verified_fail` (`gnmr4_t_r2_c1_keep_hleft`)
+  - all events `copied`
+- Queue and case-spec artifacts used:
   - `scratchpad/grid_nonempty_multirow_rowcombo_verify_queue_20260306.md`
-- Added case-spec artifact:
   - `scratchpad/nonempty_multirow_rowcombo_case_specs_20260306.json`
 
-Batch intent:
-- Stress-tested generalization candidates beyond 2/3 rows before implementation planning:
-  - rows4 vertical chains + ablations (including column shift `c1 -> c3`)
-  - rows4 horizontal/T/asymmetry probes on row2
-  - rows5 chain and sparse/non-contiguous combinations
+Row-count scaling checks from verify-back:
+- rows4 cases: `12288` bytes, row-word `0x00A0`
+- rows5 cases: `16384` bytes, row-word `0x00C0`
 
-Current status:
-- All `12` new row-combo labels are `unverified` and queued for guided verify.
+4+/row-combo implications:
+- Vertical continuity (`+0x21`) remained deterministic across rows4/5, including sparse
+  and non-contiguous link placements.
+- Column-scaling remained deterministic (`c1 -> c3` chain probe passed).
+- Horizontal asymmetry under `T` at row2 reinforces prior gate:
+  - `+0x1D` retained (`gnmr4_t_r2_c1_keep_hright`): pass
+  - `+0x19` only without `+0x1D` (`gnmr4_t_r2_c1_keep_hleft`): fail and collapsed to vertical-only (`|`).
+  - corrected observed rows were backfilled in manifest for the fail case.
+
+Updated recommendation:
+- Non-empty wire-topology findings are now validated through 5-row row-combo probes.
+- Proceed to implementation planning for scoped topology synthesis rules, with follow-up
+  validation still advised for instruction-stream-heavy mixed families.
 
 ## Goal
 
