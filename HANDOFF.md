@@ -274,6 +274,23 @@ Recommendation:
   - 4-row non-empty lanes
   - mixed instruction-heavy non-empty families.
 
+## Execution Update (March 6, 2026 — 4+/Row-Combo Validation Batch Prepared)
+
+- Added scenario: `grid_nonempty_multirow_rowcombo_20260306` (`12` file-backed patch entries).
+- Added queue doc:
+  - `scratchpad/grid_nonempty_multirow_rowcombo_verify_queue_20260306.md`
+- Added case-spec artifact:
+  - `scratchpad/nonempty_multirow_rowcombo_case_specs_20260306.json`
+
+Batch intent:
+- Stress-tested generalization candidates beyond 2/3 rows before implementation planning:
+  - rows4 vertical chains + ablations (including column shift `c1 -> c3`)
+  - rows4 horizontal/T/asymmetry probes on row2
+  - rows5 chain and sparse/non-contiguous combinations
+
+Current status:
+- All `12` new row-combo labels are `unverified` and queued for guided verify.
+
 ## Goal
 
 Reverse engineer Click Programming Software's clipboard format so `clicknick.ladder`

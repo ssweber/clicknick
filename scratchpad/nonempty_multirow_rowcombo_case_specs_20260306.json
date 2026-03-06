@@ -1,0 +1,519 @@
+[
+  {
+    "label": "gnmr4_vert_chain_c1",
+    "description": "rows4 control: vertical continuity chain at col1 (r0->r1->r2)",
+    "logical_rows": 4,
+    "ops": [
+      [
+        0,
+        1,
+        0,
+        0,
+        1
+      ],
+      [
+        1,
+        1,
+        0,
+        0,
+        1
+      ],
+      [
+        2,
+        1,
+        0,
+        0,
+        1
+      ]
+    ],
+    "payload_file": "scratchpad/captures/gnmr4_vert_chain_c1.bin",
+    "rows": [
+      "R,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ],
+    "topology_cells": [
+      {
+        "row": 0,
+        "col": 1,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      },
+      {
+        "row": 1,
+        "col": 1,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      },
+      {
+        "row": 2,
+        "col": 1,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      }
+    ]
+  },
+  {
+    "label": "gnmr4_vert_chain_c1_drop_r1",
+    "description": "rows4 ablation: drop middle link r1 c1 +0x21",
+    "logical_rows": 4,
+    "ops": [
+      [
+        0,
+        1,
+        0,
+        0,
+        1
+      ],
+      [
+        2,
+        1,
+        0,
+        0,
+        1
+      ]
+    ],
+    "payload_file": "scratchpad/captures/gnmr4_vert_chain_c1_drop_r1.bin",
+    "rows": [
+      "R,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ],
+    "topology_cells": [
+      {
+        "row": 0,
+        "col": 1,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      },
+      {
+        "row": 2,
+        "col": 1,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      }
+    ]
+  },
+  {
+    "label": "gnmr4_vert_chain_c1_drop_r2",
+    "description": "rows4 ablation: drop lower link r2 c1 +0x21",
+    "logical_rows": 4,
+    "ops": [
+      [
+        0,
+        1,
+        0,
+        0,
+        1
+      ],
+      [
+        1,
+        1,
+        0,
+        0,
+        1
+      ]
+    ],
+    "payload_file": "scratchpad/captures/gnmr4_vert_chain_c1_drop_r2.bin",
+    "rows": [
+      "R,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ],
+    "topology_cells": [
+      {
+        "row": 0,
+        "col": 1,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      },
+      {
+        "row": 1,
+        "col": 1,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      }
+    ]
+  },
+  {
+    "label": "gnmr4_vert_only_r2_c1",
+    "description": "rows4 sparse: only r2 c1 vertical-down",
+    "logical_rows": 4,
+    "ops": [
+      [
+        2,
+        1,
+        0,
+        0,
+        1
+      ]
+    ],
+    "payload_file": "scratchpad/captures/gnmr4_vert_only_r2_c1.bin",
+    "rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ],
+    "topology_cells": [
+      {
+        "row": 2,
+        "col": 1,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      }
+    ]
+  },
+  {
+    "label": "gnmr4_vert_chain_c3",
+    "description": "rows4 column shift: vertical chain at col3 (r0->r1->r2)",
+    "logical_rows": 4,
+    "ops": [
+      [
+        0,
+        3,
+        0,
+        0,
+        1
+      ],
+      [
+        1,
+        3,
+        0,
+        0,
+        1
+      ],
+      [
+        2,
+        3,
+        0,
+        0,
+        1
+      ]
+    ],
+    "payload_file": "scratchpad/captures/gnmr4_vert_chain_c3.bin",
+    "rows": [
+      "R,,,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ],
+    "topology_cells": [
+      {
+        "row": 0,
+        "col": 3,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      },
+      {
+        "row": 1,
+        "col": 3,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      },
+      {
+        "row": 2,
+        "col": 3,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      }
+    ]
+  },
+  {
+    "label": "gnmr4_horiz_r2_c1_only",
+    "description": "rows4 horizontal: row2 col1 horizontal only",
+    "logical_rows": 4,
+    "ops": [
+      [
+        2,
+        1,
+        1,
+        1,
+        0
+      ]
+    ],
+    "payload_file": "scratchpad/captures/gnmr4_horiz_r2_c1_only.bin",
+    "rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ],
+    "topology_cells": [
+      {
+        "row": 2,
+        "col": 1,
+        "hl": true,
+        "hr": true,
+        "vd": false
+      }
+    ]
+  },
+  {
+    "label": "gnmr4_t_r2_c1",
+    "description": "rows4 mixed: row2 col1 T (horizontal+vertical)",
+    "logical_rows": 4,
+    "ops": [
+      [
+        2,
+        1,
+        1,
+        1,
+        1
+      ]
+    ],
+    "payload_file": "scratchpad/captures/gnmr4_t_r2_c1.bin",
+    "rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,T,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ],
+    "topology_cells": [
+      {
+        "row": 2,
+        "col": 1,
+        "hl": true,
+        "hr": true,
+        "vd": true
+      }
+    ]
+  },
+  {
+    "label": "gnmr4_t_r2_c1_keep_hright",
+    "description": "rows4 asymmetry probe: row2 col1 keep hright+vdown only",
+    "logical_rows": 4,
+    "ops": [
+      [
+        2,
+        1,
+        0,
+        1,
+        1
+      ]
+    ],
+    "payload_file": "scratchpad/captures/gnmr4_t_r2_c1_keep_hright.bin",
+    "rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,T,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ],
+    "topology_cells": [
+      {
+        "row": 2,
+        "col": 1,
+        "hl": false,
+        "hr": true,
+        "vd": true
+      }
+    ]
+  },
+  {
+    "label": "gnmr4_t_r2_c1_keep_hleft",
+    "description": "rows4 asymmetry probe: row2 col1 keep hleft+vdown only",
+    "logical_rows": 4,
+    "ops": [
+      [
+        2,
+        1,
+        1,
+        0,
+        1
+      ]
+    ],
+    "payload_file": "scratchpad/captures/gnmr4_t_r2_c1_keep_hleft.bin",
+    "rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,T,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ],
+    "topology_cells": [
+      {
+        "row": 2,
+        "col": 1,
+        "hl": true,
+        "hr": false,
+        "vd": true
+      }
+    ]
+  },
+  {
+    "label": "gnmr5_vert_chain_c1",
+    "description": "rows5 control: vertical chain at col1 (r0->r1->r2->r3)",
+    "logical_rows": 5,
+    "ops": [
+      [
+        0,
+        1,
+        0,
+        0,
+        1
+      ],
+      [
+        1,
+        1,
+        0,
+        0,
+        1
+      ],
+      [
+        2,
+        1,
+        0,
+        0,
+        1
+      ],
+      [
+        3,
+        1,
+        0,
+        0,
+        1
+      ]
+    ],
+    "payload_file": "scratchpad/captures/gnmr5_vert_chain_c1.bin",
+    "rows": [
+      "R,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ],
+    "topology_cells": [
+      {
+        "row": 0,
+        "col": 1,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      },
+      {
+        "row": 1,
+        "col": 1,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      },
+      {
+        "row": 2,
+        "col": 1,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      },
+      {
+        "row": 3,
+        "col": 1,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      }
+    ]
+  },
+  {
+    "label": "gnmr5_vert_alt_r0_r2",
+    "description": "rows5 sparse: vertical links only at r0 c1 and r2 c1",
+    "logical_rows": 5,
+    "ops": [
+      [
+        0,
+        1,
+        0,
+        0,
+        1
+      ],
+      [
+        2,
+        1,
+        0,
+        0,
+        1
+      ]
+    ],
+    "payload_file": "scratchpad/captures/gnmr5_vert_alt_r0_r2.bin",
+    "rows": [
+      "R,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ],
+    "topology_cells": [
+      {
+        "row": 0,
+        "col": 1,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      },
+      {
+        "row": 2,
+        "col": 1,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      }
+    ]
+  },
+  {
+    "label": "gnmr5_mix_row1T_row3D",
+    "description": "rows5 mixed: row1 col1 T and row3 col3 vertical",
+    "logical_rows": 5,
+    "ops": [
+      [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      [
+        3,
+        3,
+        0,
+        0,
+        1
+      ]
+    ],
+    "payload_file": "scratchpad/captures/gnmr5_mix_row1T_row3D.bin",
+    "rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,T,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,|,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ],
+    "topology_cells": [
+      {
+        "row": 1,
+        "col": 1,
+        "hl": true,
+        "hr": true,
+        "vd": true
+      },
+      {
+        "row": 3,
+        "col": 3,
+        "hl": false,
+        "hr": false,
+        "vd": true
+      }
+    ]
+  }
+]

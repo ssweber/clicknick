@@ -156,3 +156,15 @@ Unknown:
 ## Recommendation
 - `ready for implementation planning` (scoped to tested non-empty wire-topology lanes).
 - Keep implementation scope explicit: 2-row/3-row wire continuity rules proven here; 4-row and mixed instruction-heavy lanes remain follow-up validation items.
+
+## Next Batch Prepared (4+ Rows / Row Combinations)
+- New scenario added: `grid_nonempty_multirow_rowcombo_20260306` (`12` file-backed patch cases).
+- Queue doc:
+  - `scratchpad/grid_nonempty_multirow_rowcombo_verify_queue_20260306.md`
+- Case family coverage:
+  - rows4 vertical chains and link ablations (`c1`, `c3`)
+  - rows4 horizontal and `T` at row2
+  - rows4 one-sided horizontal asymmetry probes under `T`
+  - rows5 vertical chain and sparse/non-contiguous link patterns
+  - rows5 mixed topology (`row1 T` + `row3 vertical`)
+- Status: all `12` entries currently `unverified` (awaiting guided run).
