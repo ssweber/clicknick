@@ -183,6 +183,97 @@ Last validated: March 5, 2026
   - Non-empty multi-row synthesis still requires separate rule work before claiming
     arbitrary row-height rung generation for general ladders.
 
+## Execution Update (March 6, 2026 — Non-Empty Multi-Row Horizontal/Vertical Isolation Setup)
+
+- New non-empty multi-row scenarios were added (file-backed patch entries, no codec changes):
+  - `grid_nonempty_multirow_horiz_20260306` (`9` labels: `gnmh_*`)
+  - `grid_nonempty_multirow_vert_20260306` (`8` labels: `gnmv_*`)
+- Required queue docs created:
+  - `scratchpad/grid_nonempty_multirow_horiz_verify_queue_20260306.md`
+  - `scratchpad/grid_nonempty_multirow_vert_verify_queue_20260306.md`
+- New round report created:
+  - `scratchpad/nonempty_multirow_horiz_vert_inference_20260306.md`
+
+Horizontal track setup highlights:
+- Base donor lane: `vert_b_only` (2-row vertical at col1).
+- Minimal candidate bytes under active isolation:
+  - `r0 c1 +0x19/+0x1D` (`0x0AB9`, `0x0ABD`)
+  - `r1 c1 +0x19/+0x1D` (`0x12B9`, `0x12BD`)
+  - extent probe: `r0 c0 +0x1D` (`0x0A7D`)
+- Generated variants include row0-only, row1-only, both-rows (same extent), both-rows (different extent), and single-byte ablations.
+
+Vertical track setup highlights:
+- Base donor lane: `vert_b_3rows` (3-row col1 continuity).
+- Minimal candidate bytes under active isolation:
+  - `r0 c1 +0x21` (`0x0AC1`)
+  - `r1 c1 +0x21` (`0x12C1`)
+  - column-shift probe to col3 (`0x0B41`, `0x1341`)
+- Generated variants include 2-row controls, 3-row control, single-link ablations, dual-link ablation, and col1->col3 shift.
+
+Current status:
+- All new non-empty entries are currently `unverified` and queued for guided run (`tui -> 3 -> g -> f`).
+- No production codec integration was performed for non-empty multi-row logic in this pass.
+
+Recommendation:
+- **more isolation required** (pending guided verify outcomes for the new horizontal and vertical scenario queues).
+
+## Execution Update (March 6, 2026 — Non-Empty Horizontal Batch Completed)
+
+- Scenario `grid_nonempty_multirow_horiz_20260306` completed (`9` cases):
+  - `8` `verified_pass`
+  - `1` `verified_fail` (`gnmh_ablate_r1_hright_only`)
+  - all events `copied`
+  - all verify-back lengths `8192`
+- Verified pass path for non-empty 2-row horizontal continuity is now reproducible.
+
+High-signal horizontal inference (col1, 2-row non-empty lane):
+- `r1 c1 +0x1D` (absolute `0x12BD`) is decisive for row1 horizontal continuity.
+- `r1 c1 +0x19` (absolute `0x12B9`) alone is insufficient.
+  - evidence:
+    - `gnmh_ablate_r1_hleft_only` (keep `+0x1D`, clear `+0x19`) passed.
+    - `gnmh_ablate_r1_hright_only` (keep `+0x19`, clear `+0x1D`) failed.
+- Row0 extent probe (`r0 c0 +0x1D`) remained compatible (`gnmh_both_rows_horiz_diff` passed).
+
+Status after this update:
+- Horizontal track: complete for this round.
+- Vertical track (`grid_nonempty_multirow_vert_20260306`): still pending (`8` unverified).
+
+Recommendation:
+- **more isolation required** until vertical queue outcomes are recorded and combined
+  horizontal/vertical minimal sets are finalized.
+
+## Execution Update (March 6, 2026 — Non-Empty Vertical Batch Completed + Combined Conclusion)
+
+- Scenario `grid_nonempty_multirow_vert_20260306` completed (`8` cases):
+  - `8` `verified_pass`
+  - `0` `verified_fail`
+  - all events `copied`
+  - verify-back lengths:
+    - 2-row controls: `8192`
+    - 3-row cases: `12288`
+
+High-signal vertical inference (tested non-empty lane):
+- `cell +0x21` is the deterministic inter-row continuity control at target row/column cells.
+  - clearing `r1 c1 +0x21` leaves only the top link.
+  - clearing `r0 c1 +0x21` leaves only the middle link.
+  - clearing both removes vertical continuity entirely.
+- Column scaling is direct:
+  - moving `+0x21` writes from `c1` to `c3` moved observed continuity from column B to D.
+- Terminal 3-row endpoint behavior stayed stable (`gnmv_force_terminal_r2c1_vdown0` pass).
+
+Combined non-empty horiz/vert conclusion for this round:
+- Reproducible synthetic path exists for both horizontal and vertical continuity.
+- Minimal decisive candidate sets identified in tested lanes:
+  - horizontal: row1 col1 `+0x1D` decisive (`+0x19` alone insufficient in this geometry)
+  - vertical: per-cell `+0x21` controls continuity links
+
+Recommendation:
+- **ready for implementation planning** for scoped non-empty wire-topology synthesis
+  (2-row/3-row continuity rules proven here).
+- Keep follow-up validation queued for:
+  - 4-row non-empty lanes
+  - mixed instruction-heavy non-empty families.
+
 ## Goal
 
 Reverse engineer Click Programming Software's clipboard format so `clicknick.ladder`

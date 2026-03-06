@@ -80,6 +80,10 @@ uv run clicknick-ladder-capture promote --label <label> --overwrite
 - Duplicate `--label` fails.
 - `--payload-source` defaults to `shorthand`.
 - Shorthand source for prepare/verify generation currently supports a simple single-row path; it requires at least one contact and a non-empty AF instruction.
+- Wire shorthand tokens used in observed/expected rows:
+  - `-` = horizontal wire
+  - `|` = vertical wire (valid on columns `B+`; not column `A`)
+  - `T` = both horizontal and vertical at the same cell
 - For `entry add-patch-batch`, provide at least one `--file` or `--glob`.
 - For `entry add-patch-batch`, `--file` and `--glob` are repeatable.
 - For `entry add-patch-batch`, `--skip-existing` changes duplicate-label handling from fail to skip.
