@@ -16,7 +16,6 @@ from .topology import (
     COLS_PER_ROW,
     GRID_FIRST_ROW_START,
     GRID_ROW_STRIDE,
-    HEADER_COLUMN_INDEX_OFFSET,
     HEADER_ENTRY_BASE,
     HEADER_ENTRY_COUNT,
     HEADER_ENTRY_SIZE,
@@ -105,9 +104,6 @@ def synthesize_empty_multirow(
     for column in range(HEADER_ENTRY_COUNT):
         entry_start = HEADER_ENTRY_BASE + column * HEADER_ENTRY_SIZE
         out[entry_start + EMPTY_MULTIROW_HEADER_PROFILE_05_OFFSET] = 0x00
-        out[
-            entry_start + HEADER_COLUMN_INDEX_OFFSET : entry_start + HEADER_COLUMN_INDEX_OFFSET + 4
-        ] = column.to_bytes(4, "little")
     if EMPTY_MULTIROW_TRAILER_OFFSET < len(out):
         out[EMPTY_MULTIROW_TRAILER_OFFSET] = 0x00
 
@@ -149,4 +145,3 @@ def synthesize_empty_multirow(
         out[terminal_row_col0 + 0x15] = terminal_15_value
 
     return bytes(out)
-
