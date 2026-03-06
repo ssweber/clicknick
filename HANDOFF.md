@@ -302,6 +302,31 @@ Updated recommendation:
 - Proceed to implementation planning for scoped topology synthesis rules, with follow-up
   validation still advised for instruction-stream-heavy mixed families.
 
+## Execution Update (March 6, 2026 — Scale-to-32 Validation Completed)
+
+- Scenario `grid_nonempty_multirow_scale_20260306` completed (`8` cases):
+  - `7` `verified_pass`
+  - `1` `verified_fail` (`gnms32_t_r30_c1_keep_hleft`)
+  - all events `copied`
+- Scale checkpoints validated:
+  - rows9 chain: len `24576`, row-word `0x0140`
+  - rows17 chain: len `40960`, row-word `0x0240`
+  - rows32 cases: len `69632`, row-word `0x0420`
+
+High-signal scale findings:
+- Vertical continuity remains deterministic through row32:
+  - `gnms32_vert_chain_c1` and `gnms32_vert_chain_c3` both passed.
+- Deep-row mixed-cell asymmetry at row30 matches lower-row findings:
+  - `gnms32_t_r30_c1` pass
+  - `gnms32_t_r30_c1_keep_hright` pass
+  - `gnms32_t_r30_c1_keep_hleft` fail; observed collapse from `T` to `|`.
+- `gnms09_vert_chain_c1` was re-run explicitly and verified pass with matching rows/topology.
+
+Updated recommendation:
+- Non-empty wire-topology findings now have direct evidence through row32 for tested patterns.
+- Proceed to implementation planning for scoped topology synthesis, with explicit caveat that
+  instruction-stream-heavy non-empty families still need dedicated follow-up validation.
+
 ## Goal
 
 Reverse engineer Click Programming Software's clipboard format so `clicknick.ladder`

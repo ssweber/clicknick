@@ -133,14 +133,17 @@ Vertical inference update:
   - `grid_nonempty_multirow_horiz_20260306`
   - `grid_nonempty_multirow_vert_20260306`
   - `grid_nonempty_multirow_rowcombo_20260306`
+  - `grid_nonempty_multirow_scale_20260306`
 - Added entries:
   - horizontal: `9` labels (`gnmh_*`)
   - vertical: `8` labels (`gnmv_*`)
   - rowcombo: `12` labels (`gnmr*`)
+  - scale: `8` labels (`gnms*`)
 - Current verify status:
   - horizontal (`gnmh_*`): complete (`8` pass, `1` fail)
   - vertical (`gnmv_*`): complete (`8` pass, `0` fail)
   - rowcombo (`gnmr*`): complete (`11` pass, `1` fail)
+  - scale (`gnms*`): complete (`7` pass, `1` fail)
 
 ## Boundary Statement
 Proven in this round:
@@ -149,6 +152,7 @@ Proven in this round:
 - Horizontal decisive candidate behavior at row1 col1 was isolated (`+0x1D` decisive vs `+0x19` alone).
 - Vertical scenario has reproducible non-empty 2-row and 3-row synthetic pass paths with deterministic `+0x21` control.
 - 4-row and 5-row row-combo probes passed broadly (`11/12`) with stable row-word/length behavior.
+- 9/17/32 scale probes passed broadly (`7/8`) with expected row-word/length scaling to max tested depth.
 - Corrected fail-case observation confirms asymmetry behavior at row2:
   - `hleft+vdown` (`+0x19=1,+0x1D=0,+0x21=1`) collapsed to vertical-only (`|`) and failed expected `T`.
   - `hright+vdown` (`+0x19=0,+0x1D=1,+0x21=1`) preserved expected mixed behavior and passed.
@@ -157,12 +161,12 @@ Assumed (not yet proven by this round's Click verify):
 - Horizontal `+0x1D` decisiveness generalizes beyond the tested col1 row1 geometry.
 
 Unknown:
-- Whether the same horizontal asymmetry rule (`+0x1D` gate) holds for all columns/instruction-heavy non-empty families.
-- Whether these lane rules remain stable when instruction-stream-heavy non-empty families are mixed into the same rows.
+- Whether the same horizontal asymmetry rule (`+0x1D` gate) holds for all columns and all instruction-heavy non-empty families.
+- Whether these lane rules remain stable when mixed with broader stream-content complexity (beyond wire-topology-only probes).
 
 ## Recommendation
 - `ready for implementation planning` (scoped to tested non-empty wire-topology lanes).
-- Keep implementation scope explicit: 2-row/3-row wire continuity rules proven here; 4-row and mixed instruction-heavy lanes remain follow-up validation items.
+- Implementation scope can include tested scaling through row32 for vertical continuity and deep-row mixed-cell asymmetry behavior.
 
 ## 4+/Row-Combo Outcomes (Completed)
 Scenario run: `grid_nonempty_multirow_rowcombo_20260306` (`12` cases)
@@ -183,3 +187,29 @@ High-signal rowcombo implications:
 - Horizontal asymmetry under mixed `T` at row2 reinforces prior rule:
   - `+0x1D` retention is compatible with preserving mixed continuity.
   - `+0x19` without `+0x1D` collapses mixed cell to vertical-only.
+
+## Scale Outcomes (Rows 9/17/32, Completed)
+Scenario run: `grid_nonempty_multirow_scale_20260306` (`8` cases)
+
+Outcome summary:
+- `verified_pass`: `7`
+- `verified_fail`: `1` (`gnms32_t_r30_c1_keep_hleft`)
+- `blocked`: `0`
+- `unverified`: `0`
+
+Length/row-word checks from verify-back:
+- rows9 chain: len `24576`, row-word `0x0140` (pass on explicit retest)
+- rows17 chain: len `40960`, row-word `0x0240` (pass)
+- rows32 cases: len `69632`, row-word `0x0420` (all cases remained at expected scale)
+
+High-signal scale implications:
+- Vertical chain behavior is stable through row32 at tested columns:
+  - `gnms32_vert_chain_c1` pass
+  - `gnms32_vert_chain_c3` pass
+- Deep-row (`row30`) horizontal/mixed behavior matches smaller-row findings:
+  - `gnms32_t_r30_c1` pass
+  - `gnms32_t_r30_c1_keep_hright` pass
+  - `gnms32_t_r30_c1_keep_hleft` fail, observed collapse from `T` to `|`.
+- This reproduces the same one-sided asymmetry seen at rows4:
+  - retaining `+0x1D` is compatible with preserving mixed cell behavior;
+  - retaining only `+0x19` is not.
