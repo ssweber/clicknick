@@ -1,0 +1,400 @@
+[
+  {
+    "label": "gafnp01r0_hright_only",
+    "description": "rows1 synthetic: set row0 col31 +0x1D only",
+    "base_file": "scratchpad/captures/gafn_rows01_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp01r0_hright_only.bin",
+    "ops": [
+      [
+        "0x123d",
+        1
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+    ]
+  },
+  {
+    "label": "gafnp09r0_hright_only",
+    "description": "rows9 synthetic: set row0 col31 +0x1D only",
+    "base_file": "scratchpad/captures/gafn_rows09_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp09r0_hright_only.bin",
+    "ops": [
+      [
+        "0x123d",
+        1
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ]
+  },
+  {
+    "label": "gafnp02r1_full_griddiff",
+    "description": "rows2 row1 NOP: full 3-byte grid diff control",
+    "base_file": "scratchpad/captures/gafn_rows02_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp02r1_full_griddiff.bin",
+    "ops": [
+      [
+        "0xa75",
+        0
+      ],
+      [
+        "0x1275",
+        1
+      ],
+      [
+        "0x1a3d",
+        1
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+    ]
+  },
+  {
+    "label": "gafnp02r1_hright_only",
+    "description": "rows2 row1 NOP: set row1 col31 +0x1D only",
+    "base_file": "scratchpad/captures/gafn_rows02_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp02r1_hright_only.bin",
+    "ops": [
+      [
+        "0x1a3d",
+        1
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+    ]
+  },
+  {
+    "label": "gafnp02r1_hright_target15",
+    "description": "rows2 row1 NOP: set row1 +0x15 and row1 col31 +0x1D",
+    "base_file": "scratchpad/captures/gafn_rows02_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp02r1_hright_target15.bin",
+    "ops": [
+      [
+        "0x1275",
+        1
+      ],
+      [
+        "0x1a3d",
+        1
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+    ]
+  },
+  {
+    "label": "gafnp02r1_hright_target15_clearrow0",
+    "description": "rows2 row1 NOP: set row1 +0x15/+0x1D and clear row0 +0x15",
+    "base_file": "scratchpad/captures/gafn_rows02_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp02r1_hright_target15_clearrow0.bin",
+    "ops": [
+      [
+        "0xa75",
+        0
+      ],
+      [
+        "0x1275",
+        1
+      ],
+      [
+        "0x1a3d",
+        1
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+    ]
+  },
+  {
+    "label": "gafnp02r1_target15_only",
+    "description": "rows2 row1 NOP: set row1 +0x15 only",
+    "base_file": "scratchpad/captures/gafn_rows02_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp02r1_target15_only.bin",
+    "ops": [
+      [
+        "0x1275",
+        1
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+    ]
+  },
+  {
+    "label": "gafnp02r1_target15_clearrow0",
+    "description": "rows2 row1 NOP: set row1 +0x15 and clear row0 +0x15",
+    "base_file": "scratchpad/captures/gafn_rows02_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp02r1_target15_clearrow0.bin",
+    "ops": [
+      [
+        "0xa75",
+        0
+      ],
+      [
+        "0x1275",
+        1
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+    ]
+  },
+  {
+    "label": "gafnp02r1_clearrow0_only",
+    "description": "rows2 row1 NOP: clear row0 +0x15 only",
+    "base_file": "scratchpad/captures/gafn_rows02_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp02r1_clearrow0_only.bin",
+    "ops": [
+      [
+        "0xa75",
+        0
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+    ]
+  },
+  {
+    "label": "gafnp09r4_full_griddiff",
+    "description": "rows9 row4 NOP: full 3-byte grid diff control",
+    "base_file": "scratchpad/captures/gafn_rows09_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp09r4_full_griddiff.bin",
+    "ops": [
+      [
+        "0xa75",
+        0
+      ],
+      [
+        "0x2a75",
+        1
+      ],
+      [
+        "0x323d",
+        1
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ]
+  },
+  {
+    "label": "gafnp09r4_hright_only",
+    "description": "rows9 row4 NOP: set row4 col31 +0x1D only",
+    "base_file": "scratchpad/captures/gafn_rows09_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp09r4_hright_only.bin",
+    "ops": [
+      [
+        "0x323d",
+        1
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ]
+  },
+  {
+    "label": "gafnp09r4_hright_target15",
+    "description": "rows9 row4 NOP: set row4 +0x15 and row4 col31 +0x1D",
+    "base_file": "scratchpad/captures/gafn_rows09_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp09r4_hright_target15.bin",
+    "ops": [
+      [
+        "0x2a75",
+        1
+      ],
+      [
+        "0x323d",
+        1
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ]
+  },
+  {
+    "label": "gafnp09r4_hright_target15_clearrow0",
+    "description": "rows9 row4 NOP: set row4 +0x15/+0x1D and clear row0 +0x15",
+    "base_file": "scratchpad/captures/gafn_rows09_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp09r4_hright_target15_clearrow0.bin",
+    "ops": [
+      [
+        "0xa75",
+        0
+      ],
+      [
+        "0x2a75",
+        1
+      ],
+      [
+        "0x323d",
+        1
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+    ]
+  },
+  {
+    "label": "gafnp09r8_full_griddiff",
+    "description": "rows9 row8 NOP: full 3-byte grid diff control",
+    "base_file": "scratchpad/captures/gafn_rows09_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp09r8_full_griddiff.bin",
+    "ops": [
+      [
+        "0xa75",
+        0
+      ],
+      [
+        "0x4a75",
+        1
+      ],
+      [
+        "0x523d",
+        1
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+    ]
+  },
+  {
+    "label": "gafnp09r8_hright_only",
+    "description": "rows9 row8 NOP: set row8 col31 +0x1D only",
+    "base_file": "scratchpad/captures/gafn_rows09_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp09r8_hright_only.bin",
+    "ops": [
+      [
+        "0x523d",
+        1
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+    ]
+  },
+  {
+    "label": "gafnp09r8_hright_target15",
+    "description": "rows9 row8 NOP: set row8 +0x15 and row8 col31 +0x1D",
+    "base_file": "scratchpad/captures/gafn_rows09_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp09r8_hright_target15.bin",
+    "ops": [
+      [
+        "0x4a75",
+        1
+      ],
+      [
+        "0x523d",
+        1
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+    ]
+  },
+  {
+    "label": "gafnp09r8_hright_target15_clearrow0",
+    "description": "rows9 row8 NOP: set row8 +0x15/+0x1D and clear row0 +0x15",
+    "base_file": "scratchpad/captures/gafn_rows09_empty_native.bin",
+    "payload_file": "scratchpad/captures/gafnp09r8_hright_target15_clearrow0.bin",
+    "ops": [
+      [
+        "0xa75",
+        0
+      ],
+      [
+        "0x4a75",
+        1
+      ],
+      [
+        "0x523d",
+        1
+      ]
+    ],
+    "expected_rows": [
+      "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+    ]
+  }
+]

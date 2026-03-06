@@ -2,6 +2,64 @@
 
 Last validated: March 6, 2026
 
+## Execution Update (March 6, 2026 — Phase 1 AF `NOP` vs Empty Completed)
+
+- Native AF matrix scenario `grid_af_nop_vs_empty_20260306` completed:
+  - `9/9` `verified_pass`
+  - placements validated at rows `0/1/4/8` (within row-count sets `1/2/9`)
+  - verify-back lengths matched expected scale (`8192`, `24576`).
+- Operator workflow note captured:
+  - continuation-row `NOP` placement is reliable via insert-row-above/below authoring path.
+- Patch isolation scenario `grid_af_nop_patch_isolation_20260306` completed:
+  - `11` pass / `6` fail, all events `copied`
+  - decisive sufficiency/necessity pattern isolated.
+- Minimal AF `NOP` byte model (tested):
+  - row0 `NOP`: set `row0 col31 +0x1D` (`0x123D`) to `1` (single-byte sufficient).
+  - non-first-row `NOP` at target row `r`:
+    - required: `r col31 +0x1D = 1`
+    - required: `r col0 +0x15 = 1`
+    - optional native-parity companion: `row0 col0 +0x15 = 0`
+- Phase 1 acceptance gate status:
+  - reproducible synthetic path for AF `NOP`: met
+  - minimal decisive byte set identified (not full-region copy): met
+- Artifacts:
+  - `scratchpad/phase1_af_nop_inference_20260306.md`
+  - `scratchpad/phase1_af_nop_case_specs_20260306.json`
+  - `scratchpad/phase1_af_nop_patch_case_specs_20260306.json`
+  - `scratchpad/grid_af_nop_patch_isolation_verify_queue_20260306.md`
+
+## Execution Update (March 6, 2026 — Phase 2 RungComment Native Mapping Completed, Patch Isolation Ready)
+
+- Native comment scenario `grid_rungcomment_mapping_20260306` completed:
+  - `11/11` `verified_pass`
+  - all events `copied`
+  - verify-back length `8192` across cases.
+- Comment payload model from native captures:
+  - length dword at `0x0294`
+  - payload starts at `0x0298`
+  - observed rule: `len_dword = payload_bytes + 1` (includes trailing NUL).
+- Content encoding:
+  - RTF-like ANSI payload (`{\\rtf1\\ansi\\ansicpg1252...}`).
+  - UTF probe showed degree-symbol escape (`\\'b0`) as expected for RTF/CP1252.
+- Style mapping confirmed in payload token stream:
+  - bold: `\\b ... \\b0`
+  - italic: `\\i ... \\i0`
+  - underline: `\\ul ... \\ulnone`
+  - mixed inline styling (selected text segments) confirmed:
+    - `\\b ... \\b0`
+    - `\\b\\i ... \\b0\\i0`
+    - `\\ul\\b ... \\ulnone\\b0`
+- Max-length correction:
+  - true comment max is `1400` chars (initial `1396` estimate corrected).
+  - existing label `grc_maxlen_1396_native` is historical; captured payload body is `1400` chars.
+- Phase 2 patch-isolation setup prepared:
+  - scenario: `grid_rungcomment_patch_isolation_20260306`
+  - case count: `12` file-backed patch entries
+  - artifacts:
+    - `scratchpad/phase2_rungcomment_patch_case_specs_20260306.json`
+    - `scratchpad/grid_rungcomment_patch_isolation_verify_queue_20260306.md`
+    - `scratchpad/phase2_rungcomment_inference_20260306.md`
+
 ## Execution Update (March 4, 2026 — Two-Series Hardening Pass)
 
 - Click-safe encoder scope remains intentionally limited to `1..2` series contacts.

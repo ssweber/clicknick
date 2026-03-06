@@ -1,0 +1,226 @@
+{
+  "scenario": "grid_af_nop_vs_empty_20260306",
+  "phase": "phase1_af_nop_vs_empty",
+  "date": "2026-03-06",
+  "goal": "Identify minimal decisive bytes that differentiate AF empty ('...') from AF NOP while keeping topology fixed.",
+  "native_matrix": [
+    {
+      "rows": 1,
+      "af_mode": "empty",
+      "label": "gafn_rows01_empty_native",
+      "capture_type": "native",
+      "description": "rows1 baseline AF empty",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ]
+    },
+    {
+      "rows": 1,
+      "af_mode": "nop",
+      "label": "gafn_rows01_nop_native",
+      "capture_type": "native",
+      "description": "rows1 AF NOP",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ]
+    },
+    {
+      "rows": 2,
+      "af_mode": "empty",
+      "label": "gafn_rows02_empty_native",
+      "capture_type": "native",
+      "description": "rows2 baseline AF empty",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ]
+    },
+    {
+      "rows": 2,
+      "af_mode": "nop",
+      "label": "gafn_rows02_nop_native",
+      "capture_type": "native",
+      "description": "rows2 AF NOP on row0",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ]
+    },
+    {
+      "rows": 2,
+      "af_mode": "nop",
+      "label": "gafn_rows02_nop_row1_native",
+      "capture_type": "native",
+      "description": "rows2 AF NOP on row1",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ]
+    },
+    {
+      "rows": 9,
+      "af_mode": "empty",
+      "label": "gafn_rows09_empty_native",
+      "capture_type": "native",
+      "description": "rows9 baseline AF empty",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ]
+    },
+    {
+      "rows": 9,
+      "af_mode": "nop",
+      "label": "gafn_rows09_nop_native",
+      "capture_type": "native",
+      "description": "rows9 AF NOP on row0",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ]
+    },
+    {
+      "rows": 9,
+      "af_mode": "nop",
+      "label": "gafn_rows09_nop_row4_native",
+      "capture_type": "native",
+      "description": "rows9 AF NOP on row4",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ]
+    },
+    {
+      "rows": 9,
+      "af_mode": "nop",
+      "label": "gafn_rows09_nop_row8_native",
+      "capture_type": "native",
+      "description": "rows9 AF NOP on row8",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ]
+    }
+  ],
+  "pairs_for_diff": [
+    {
+      "rows": 1,
+      "nop_position": 0,
+      "empty_label": "gafn_rows01_empty_native",
+      "nop_label": "gafn_rows01_nop_native"
+    },
+    {
+      "rows": 2,
+      "nop_position": 0,
+      "empty_label": "gafn_rows02_empty_native",
+      "nop_label": "gafn_rows02_nop_native"
+    },
+    {
+      "rows": 9,
+      "nop_position": 0,
+      "empty_label": "gafn_rows09_empty_native",
+      "nop_label": "gafn_rows09_nop_native"
+    },
+    {
+      "rows": 2,
+      "nop_position": 1,
+      "empty_label": "gafn_rows02_empty_native",
+      "nop_label": "gafn_rows02_nop_row1_native"
+    },
+    {
+      "rows": 9,
+      "nop_position": 4,
+      "empty_label": "gafn_rows09_empty_native",
+      "nop_label": "gafn_rows09_nop_row4_native"
+    },
+    {
+      "rows": 9,
+      "nop_position": 8,
+      "empty_label": "gafn_rows09_empty_native",
+      "nop_label": "gafn_rows09_nop_row8_native"
+    }
+  ],
+  "patch_variant_plan": [
+    {
+      "id": "full_diff_control",
+      "description": "Apply full AF-empty->AF-NOP diff set as control to confirm replay direction.",
+      "requires_native_payloads": true
+    },
+    {
+      "id": "af_adjacent_cluster_transplant",
+      "description": "Cluster diff offsets and transplant AF-adjacent clusters only; keep others baseline.",
+      "requires_native_payloads": true
+    },
+    {
+      "id": "single_byte_ablation",
+      "description": "From passing cluster transplant, ablate one byte at a time to isolate decisive offsets.",
+      "requires_native_payloads": true
+    },
+    {
+      "id": "small_group_ablation",
+      "description": "Ablate/restore minimal offset groups when single-byte edits are insufficient.",
+      "requires_native_payloads": true
+    }
+  ],
+  "acceptance_gate": {
+    "requires": [
+      "At least one reproducible synthetic path for AF NOP",
+      "Minimal decisive AF byte set, not only full-region copy"
+    ]
+  },
+  "native_verification_summary": {
+    "scenario": "grid_af_nop_vs_empty_20260306",
+    "verified_pass": 9,
+    "verified_fail": 0,
+    "blocked": 0
+  },
+  "patch_isolation_scenario": "grid_af_nop_patch_isolation_20260306",
+  "patch_verification_summary": {
+    "scenario": "grid_af_nop_patch_isolation_20260306",
+    "verified_pass": 11,
+    "verified_fail": 6,
+    "blocked": 0
+  },
+  "minimal_byte_model": {
+    "row0_nop_required_offsets": [
+      "0x123D"
+    ],
+    "nonfirstrow_nop_required_offsets_tested_pattern": [
+      "target_row_col0_plus0x15",
+      "target_row_col31_plus0x1D"
+    ],
+    "optional_native_parity_offset": [
+      "row0_col0_plus0x15_clear"
+    ]
+  },
+  "acceptance_gate_result": "met",
+  "status": "phase1_complete_ready_for_phase2"
+}
