@@ -1,6 +1,6 @@
-# Click PLC Clipboard Reverse Engineering — Handoff v12
+# Click PLC Clipboard Reverse Engineering — Handoff v13
 
-Last validated: March 5, 2026
+Last validated: March 6, 2026
 
 ## Execution Update (March 4, 2026 — Two-Series Hardening Pass)
 
@@ -326,6 +326,41 @@ Updated recommendation:
 - Non-empty wire-topology findings now have direct evidence through row32 for tested patterns.
 - Proceed to implementation planning for scoped topology synthesis, with explicit caveat that
   instruction-stream-heavy non-empty families still need dedicated follow-up validation.
+
+## Execution Update (March 6, 2026 — Non-Empty Synthesis Impl + Asymmetry Confirmation)
+
+- Production now has scoped non-empty multi-row wire synthesis:
+  - module: `src/clicknick/ladder/nonempty_multirow.py`
+  - API: `synthesize_nonempty_multirow(logical_rows, wire_rows, ...)`
+  - supported range/tokens:
+    - rows `2..32`
+    - tokens `""`, `-`, `|`, `T` across condition columns `A..AE`
+  - guard behavior:
+    - column-A `|` is rejected by default (`col_a_vertical_policy='reject'`)
+    - optional normalization path: `col_a_vertical_policy='blank'`
+- Unit coverage added:
+  - `tests/ladder/test_nonempty_multirow.py`
+  - validates length/row-word scaling, token mapping, row-shape guards, column-A policy, and stale-flag clearing.
+- Implementation smoke verify batch completed:
+  - scenario: `grid_nonempty_multirow_impl_smoke_20260306`
+  - result: `5/5` `verified_pass`
+  - lengths: `8192`, `12288`, `24576`, `69632` (matched expected rows).
+- Asymmetry edge batch completed:
+  - scenario: `grid_nonempty_multirow_impl_asymmetry_20260306` (`9` cases)
+  - result: `6` pass / `3` fail; all fails are `*_keep_hleft`
+    - `gnmia04_t_r2_c1_keep_hleft`
+    - `gnmia09_t_r7_c3_keep_hleft`
+    - `gnmia32_t_r30_c1_keep_hleft`
+  - all `*_keep_hright` passed at rows `4/9/32`.
+  - verify-back target-cell flags confirmed consistent signature:
+    - control `T`: `(1,1,1)`
+    - keep-hright: `(0,1,1)` -> pass
+    - keep-hleft: `(0,0,1)` -> fail (collapse to vertical-only behavior).
+
+Updated recommendation:
+- Non-empty multi-row wire synthesis is validated for a guarded integration path.
+- Keep default codec behavior unchanged until gated wiring is added and one post-wire manual verify sweep is completed.
+- Continue separate follow-up for instruction-stream-heavy mixed families.
 
 ## Goal
 

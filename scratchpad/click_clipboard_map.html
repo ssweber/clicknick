@@ -84,7 +84,8 @@
     <strong>Scaling rules (empty lane):</strong><br>
     Payload length = 0x1000 × (⌊(rows+1)/2⌋ + 1) — e.g. 1 row = 0x2000, 4 rows = 0x3000, 9 rows = 0x6000<br>
     Header row word = (rows + 1) × 0x20 — stored LE at entry 0, offsets +0x00/+0x01<br>
-    When empty: grid rows at 0x0A60 + row × 0x0800 — 32 columns × 64 bytes each
+    When empty: grid rows at 0x0A60 + row × 0x0800 — 32 columns × 64 bytes each<br>
+    <strong>Non-empty asymmetry (validated):</strong> in mixed `T` cells, `+0x1D/+0x21` preserves behavior while `+0x19/+0x21` can collapse to vertical-only.
   </div>
 </div>
 
@@ -117,9 +118,9 @@ const CELL_OFFSETS = [
   { offset: 0x0D, len: 4, label: "FF×4",   category: "fixed",      note: "0xFF 0xFF 0xFF 0xFF." },
   { offset: 0x11, len: 1, label: "0x01",   category: "fixed",      note: "Constant 0x01." },
   { offset: 0x15, len: 1, label: "?term",  category: "unknown",    note: "Terminal row probe — not required for empty lane." },
-  { offset: 0x19, len: 1, label: "AF?",    category: "structural", note: "0x01 for col AF only (output column marker)." },
-  { offset: 0x1D, len: 1, label: "H-wire", category: "wire",       note: "Horizontal wire flag (0=off, 1=on). Confirmed in empty-cell format." },
-  { offset: 0x26, len: 1, label: "V-down", category: "wire",       note: "Vertical ┬ junction (0=off, 1=on). Single byte, ┴ is implicit." },
+  { offset: 0x19, len: 1, label: "H-left",  category: "wire",       note: "Horizontal-left flag (0=off, 1=on). In mixed T cells, +0x19 without +0x1D can collapse to vertical-only." },
+  { offset: 0x1D, len: 1, label: "H-right", category: "wire",       note: "Horizontal-right flag (0=off, 1=on). Retaining +0x1D with +0x21 is compatible with T preservation in tested non-empty lanes." },
+  { offset: 0x21, len: 1, label: "V-down",  category: "wire",       note: "Vertical-down flag (0=off, 1=on) linking to next row. Confirmed through row32 non-empty probes." },
   { offset: 0x38, len: 1, label: "cont.",  category: "linkage",    note: "Continuation: 0x01 except terminal-row col31 → 0x00." },
   { offset: 0x39, len: 1, label: "seed?",  category: "structural", note: "Seed coupling — required =1 for non-zero-seed multi-row lanes." },
   { offset: 0x3D, len: 1, label: "link",   category: "linkage",    note: "Row linkage: row+1 for cols 0–30; col31 = next-row ptr or 0x00 at terminal." },
