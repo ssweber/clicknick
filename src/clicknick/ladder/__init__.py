@@ -22,6 +22,13 @@ from .empty_multirow import (
     empty_multirow_row_word,
     synthesize_empty_multirow,
 )
+from .nonempty_multirow import (
+    NONEMPTY_MULTIROW_MAX_ROWS,
+    NONEMPTY_MULTIROW_MIN_ROWS,
+    nonempty_multirow_payload_length,
+    nonempty_multirow_row_word,
+    synthesize_nonempty_multirow,
+)
 from .model import Coil, Contact, InstructionType, RungGrid
 from .topology import (
     CELL_HORIZONTAL_LEFT_OFFSET,
@@ -68,6 +75,11 @@ __all__ = [
     "empty_multirow_payload_length",
     "empty_multirow_row_word",
     "synthesize_empty_multirow",
+    "NONEMPTY_MULTIROW_MIN_ROWS",
+    "NONEMPTY_MULTIROW_MAX_ROWS",
+    "nonempty_multirow_payload_length",
+    "nonempty_multirow_row_word",
+    "synthesize_nonempty_multirow",
     "parse_wire_topology",
     "parse_bundle",
     "parse_csv_file",
