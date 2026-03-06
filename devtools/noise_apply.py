@@ -11,6 +11,24 @@ from typing import Any
 BUFFER_SIZE = 8192
 
 
+def mask_session_noise(payload: bytes) -> bytes:
+    """Apply the current session-noise normalization pass for ladder payloads."""
+    if len(payload) < BUFFER_SIZE:
+        raise ValueError(f"Input payload too short ({len(payload)} bytes)")
+
+    out = bytearray(payload)
+    out[0x0008:0x00B8] = b"\x00" * (0x00B8 - 0x0008)
+    out[0x00B8:0x01F8] = b"\x00" * (0x01F8 - 0x00B8)
+
+    for n in range(32):
+        entry = 0x0254 + n * 0x40
+        for rel in (0x11, 0x17, 0x18):
+            if entry + rel < len(out):
+                out[entry + rel] = 0x00
+
+    return bytes(out)
+
+
 def _coerce_offset(value: Any) -> int:
     if isinstance(value, int):
         offset = value

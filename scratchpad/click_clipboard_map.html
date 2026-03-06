@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Click PLC Clipboard Byte Map</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --text-bright: #e6edf3; --text-dim: #6c757d; --text-mid: #8b949e;
+    --accent: #f4a261;
+    --c-fixed: #2d6a4f; --ct-fixed: #d8f3dc;
+    --c-geometry: #0077b6; --ct-geometry: #caf0f8;
+    --c-wire: #e76f51; --ct-wire: #fefae0;
+    --c-linkage: #9b5de5; --ct-linkage: #f0e6ff;
+    --c-structural: #b5838d; --ct-structural: #fff0f3;
+    --c-unknown: #495057; --ct-unknown: #dee2e6;
+    --c-noise: #6c757d; --ct-noise: #dee2e6;
+    --c-grid: #457b9d; --ct-grid: #caf0f8;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; padding: 28px 32px; }
+  .wrap { max-width: 820px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 700; color: var(--text-bright); letter-spacing: -0.02em; }
+  h2 { font-size: 16px; font-weight: 600; color: var(--text-bright); margin: 0 0 4px; }
+  .sub { font-size: 12px; color: var(--text-dim); margin: 4px 0 0; }
+  .mono { font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace; }
+
+  /* ── memory bar ── */
+  .bar-wrap { position: relative; height: 36px; background: var(--surface); border-radius: 4px; border: 1px solid var(--border); overflow: hidden; }
+  .bar-seg { position: absolute; height: 100%; border: 1px solid var(--bg); border-radius: 2px; cursor: pointer; opacity: 0.85; transition: opacity 0.15s; }
+  .bar-seg:hover, .bar-seg.active { opacity: 1; }
+  .bar-seg.active { border: 2px solid var(--accent); }
+  .bar-ticks { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-dim); margin-bottom: 4px; }
+
+  /* ── legends ── */
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; cursor: pointer; transition: opacity 0.15s; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ── detail panel ── */
+  .detail { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; font-size: 13px; margin: 16px 0; }
+  .detail-title { font-weight: 600; color: var(--text-bright); margin-bottom: 4px; }
+  .detail-note { color: var(--text-mid); line-height: 1.5; }
+  .badge { display: inline-block; font-size: 10px; font-weight: 500; padding: 1px 6px; border-radius: 3px; margin-left: 8px; }
+
+  /* ── cell grid ── */
+  .cell-row { display: flex; align-items: center; gap: 2px; margin-bottom: 2px; }
+  .cell-label { font-size: 10px; color: var(--text-dim); width: 32px; text-align: right; margin-right: 4px; }
+  .cell { width: 28px; height: 28px; border-radius: 3px; display: flex; align-items: center; justify-content: center;
+    font-size: 8px; cursor: default; transition: all 0.12s; }
+  .cell.known { cursor: pointer; }
+  .cell.active { border: 2px solid var(--accent) !important; }
+  .cell.empty { background: #212529; border: 1px solid #2b2b3d; color: #343a40; opacity: 0.4; }
+
+  .divider { border-top: 1px solid #21262d; margin: 20px 0; }
+  .note-box { margin-top: 28px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; font-size: 12px; color: var(--text-mid); line-height: 1.6; }
+  .note-box strong { color: var(--text-bright); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Click PLC Clipboard Byte Map</h1>
+  <p class="sub">8192-byte (0x2000) buffer — 1-row payload. Click any region or cell byte for details.</p>
+
+  <!-- memory bar -->
+  <div style="margin:24px 0 16px">
+    <div class="bar-ticks mono"><span>0x0000</span><span>0x0400</span><span>0x0800</span><span>0x0C00</span><span>0x1260</span></div>
+    <div class="bar-wrap" id="membar"></div>
+  </div>
+  <div class="legend" id="region-legend"></div>
+  <div id="region-detail"></div>
+
+  <div class="divider"></div>
+
+  <h2>Cell Layout (64 bytes / 0x40)</h2>
+  <p class="sub" style="margin-bottom:16px">Empty-cell format (no instructions). Colored = characterized, dark = unused/zero.</p>
+  <div id="cellgrid"></div>
+  <div id="cell-detail"></div>
+  <div class="legend" id="cell-legend" style="margin-top:12px"></div>
+
+  <div class="note-box">
+    <strong>Scaling rules (empty lane):</strong><br>
+    Payload length = 0x1000 × (⌊(rows+1)/2⌋ + 1) — e.g. 1 row = 0x2000, 4 rows = 0x3000, 9 rows = 0x6000<br>
+    Header row word = (rows + 1) × 0x20 — stored LE at entry 0, offsets +0x00/+0x01<br>
+    When empty: grid rows at 0x0A60 + row × 0x0800 — 32 columns × 64 bytes each
+  </div>
+</div>
+
+<script>
+// ╔══════════════════════════════════════════════════════════════════╗
+// ║  DATA — edit these arrays as new findings land                  ║
+// ╚══════════════════════════════════════════════════════════════════╝
+
+const REGIONS = [
+  // { id, label, start, end, color (CSS var suffix), category, note }
+  { id: "magic",          label: "Magic",                    start: 0x0000, end: 0x0007, category: "fixed",      note: '"CLICK   " (8 bytes, space-padded).' },
+  { id: "filepath",       label: "File Path",                start: 0x0008, end: 0x00B7, category: "noise",      note: "Project .ckp path, UTF-16LE. SESSION NOISE — zero for diffing." },
+  { id: "pointer",        label: "Pointer / Rendering Table",start: 0x00B8, end: 0x01F7, category: "noise",      note: "Varies per session but doesn't block paste. SESSION NOISE — zero for diffing." },
+  { id: "gap1",           label: "Gap (unknown)",            start: 0x01F8, end: 0x0253, category: "unknown",    note: "Uncharacterized region between pointer table and header entries." },
+  { id: "header_entries", label: "Header Entry Table",       start: 0x0254, end: 0x0A53, category: "structural", note: "32 entries × 0x40 bytes. Per-entry fields at +0x05, +0x11, +0x17, +0x18. Entry 0 carries row word at +0x00/+0x01." },
+  { id: "gap2",           label: "Gap (incl. trailer 0x0A59)", start: 0x0A54, end: 0x0A5F, category: "structural", note: "Contains trailer byte at 0x0A59 — mirrors header +0x05 in empty lane. Structural gate." },
+  { id: "rung",           label: "Rung Region (0x0A60+)",     start: 0x0A60, end: 0x125F, category: "grid",       note: "Extends to end of payload. When empty: rows at 0x0800 stride (row 0 at 0x0A60, row 1 at 0x1260, etc.), 32 columns each, 0x40 bytes per cell. Cell layout when instructions are present is not yet characterized. Payload scales by 0x1000 pages for additional rows (up to 32). Zero-padded to page boundary." },
+];
+
+const CELL_OFFSETS = [
+  // { offset, len, label, note, category }
+  // To update: add/remove/edit rows here. Categories: fixed, geometry, wire, linkage, structural, unknown
+  { offset: 0x00, len: 1, label: "zero",   category: "fixed",      note: "Always 0x00." },
+  { offset: 0x01, len: 1, label: "col",    category: "geometry",   note: "Column index (0x00=A … 0x1F=AF)." },
+  { offset: 0x05, len: 1, label: "row+1",  category: "geometry",   note: "1-indexed row number." },
+  { offset: 0x09, len: 1, label: "0x01",   category: "fixed",      note: "Constant 0x01." },
+  { offset: 0x0A, len: 1, label: "0x01",   category: "fixed",      note: "Constant 0x01." },
+  { offset: 0x0B, len: 1, label: "?0x5C",  category: "unknown",    note: "0x5C in native captures, 0x00 in synthesis — not required for empty lane." },
+  { offset: 0x0C, len: 1, label: "0x01",   category: "fixed",      note: "Constant 0x01." },
+  { offset: 0x0D, len: 4, label: "FF×4",   category: "fixed",      note: "0xFF 0xFF 0xFF 0xFF." },
+  { offset: 0x11, len: 1, label: "0x01",   category: "fixed",      note: "Constant 0x01." },
+  { offset: 0x15, len: 1, label: "?term",  category: "unknown",    note: "Terminal row probe — not required for empty lane." },
+  { offset: 0x19, len: 1, label: "AF?",    category: "structural", note: "0x01 for col AF only (output column marker)." },
+  { offset: 0x1D, len: 1, label: "H-wire", category: "wire",       note: "Horizontal wire flag (0=off, 1=on). Confirmed in empty-cell format." },
+  { offset: 0x26, len: 1, label: "V-down", category: "wire",       note: "Vertical ┬ junction (0=off, 1=on). Single byte, ┴ is implicit." },
+  { offset: 0x38, len: 1, label: "cont.",  category: "linkage",    note: "Continuation: 0x01 except terminal-row col31 → 0x00." },
+  { offset: 0x39, len: 1, label: "seed?",  category: "structural", note: "Seed coupling — required =1 for non-zero-seed multi-row lanes." },
+  { offset: 0x3D, len: 1, label: "link",   category: "linkage",    note: "Row linkage: row+1 for cols 0–30; col31 = next-row ptr or 0x00 at terminal." },
+];
+
+const CELL_CATEGORIES = ["fixed", "geometry", "wire", "linkage", "structural", "unknown"];
+
+// ╔══════════════════════════════════════════════════════════════════╗
+// ║  RENDERING — shouldn't need editing                            ║
+// ╚══════════════════════════════════════════════════════════════════╝
+
+const CAT_COLORS = {
+  fixed:      { bg: "#2d6a4f", fg: "#d8f3dc" },
+  geometry:   { bg: "#0077b6", fg: "#caf0f8" },
+  wire:       { bg: "#e76f51", fg: "#fefae0" },
+  linkage:    { bg: "#9b5de5", fg: "#f0e6ff" },
+  structural: { bg: "#b5838d", fg: "#fff0f3" },
+  unknown:    { bg: "#495057", fg: "#dee2e6" },
+  noise:      { bg: "#6c757d", fg: "#dee2e6" },
+  grid:       { bg: "#457b9d", fg: "#caf0f8" },
+};
+
+function hex(n, pad) { return "0x" + n.toString(16).toUpperCase().padStart(pad || 4, "0"); }
+
+let selectedRegion = null;
+let selectedCell = null;
+
+// ── Memory bar ──
+function renderBar() {
+  const total = 0x1260;
+  const bar = document.getElementById("membar");
+  const legend = document.getElementById("region-legend");
+  bar.innerHTML = ""; legend.innerHTML = "";
+
+  REGIONS.forEach(r => {
+    const pct = (r.start / total) * 100;
+    const w = Math.max(((r.end - r.start + 1) / total) * 100, 1.2);
+    const seg = document.createElement("div");
+    seg.className = "bar-seg" + (selectedRegion === r.id ? " active" : "");
+    seg.style.cssText = `left:${pct}%;width:${w}%;background:${CAT_COLORS[r.category].bg}`;
+    seg.title = `${r.label}: ${hex(r.start)}–${hex(r.end)}`;
+    seg.onclick = () => { selectedRegion = selectedRegion === r.id ? null : r.id; render(); };
+    bar.appendChild(seg);
+
+    const item = document.createElement("div");
+    item.className = "legend-item";
+    item.style.opacity = !selectedRegion || selectedRegion === r.id ? 1 : 0.45;
+    item.innerHTML = `<div class="legend-dot" style="background:${CAT_COLORS[r.category].bg}"></div>
+      <span>${r.label}</span> <span class="mono" style="color:#484f58;font-size:10px">${hex(r.start)}</span>`;
+    item.onclick = () => { selectedRegion = selectedRegion === r.id ? null : r.id; render(); };
+    legend.appendChild(item);
+  });
+
+  const det = document.getElementById("region-detail");
+  const ar = REGIONS.find(r => r.id === selectedRegion);
+  if (ar) {
+    det.innerHTML = `<div class="detail" style="border-left:3px solid ${CAT_COLORS[ar.category].bg}">
+      <div class="detail-title">${ar.label}
+        <span class="mono" style="font-weight:400;color:var(--text-mid);margin-left:8px;font-size:12px">
+          ${hex(ar.start)}–${hex(ar.end)} (${ar.end - ar.start + 1} bytes)</span></div>
+      <div class="detail-note">${ar.note}</div></div>`;
+  } else { det.innerHTML = ""; }
+}
+
+// ── Cell grid ──
+function renderCells() {
+  const grid = document.getElementById("cellgrid");
+  const clegend = document.getElementById("cell-legend");
+  grid.innerHTML = ""; clegend.innerHTML = "";
+
+  // build offset lookup
+  const omap = {};
+  CELL_OFFSETS.forEach(f => { for (let i = 0; i < (f.len || 1); i++) omap[f.offset + i] = f; });
+
+  for (let row = 0; row < 4; row++) {
+    const r = document.createElement("div");
+    r.className = "cell-row";
+    r.innerHTML = `<span class="cell-label mono">+${hex(row * 16, 2)}</span>`;
+    for (let col = 0; col < 16; col++) {
+      const idx = row * 16 + col;
+      const f = omap[idx];
+      const isStart = f && idx === f.offset;
+      const cc = f ? CAT_COLORS[f.category] : null;
+      const active = f && selectedCell === f.offset;
+
+      const c = document.createElement("div");
+      c.className = "cell" + (f ? " known" : " empty") + (active ? " active" : "");
+      if (f) {
+        c.style.background = cc.bg;
+        c.style.color = cc.fg;
+        c.style.border = active ? "" : "1px solid rgba(255,255,255,0.1)";
+        c.textContent = isStart ? f.label.slice(0, 3) : "·";
+        c.title = `+${hex(idx, 2)}: ${f.label} — ${f.note}`;
+        c.onclick = () => { selectedCell = selectedCell === f.offset ? null : f.offset; render(); };
+      } else {
+        c.title = `+${hex(idx, 2)}: unused/zero`;
+      }
+      r.appendChild(c);
+    }
+    grid.appendChild(r);
+  }
+
+  // detail
+  const det = document.getElementById("cell-detail");
+  const af = CELL_OFFSETS.find(f => f.offset === selectedCell);
+  if (af) {
+    const cc = CAT_COLORS[af.category];
+    det.innerHTML = `<div class="detail" style="border-left:3px solid ${cc.bg}">
+      <div class="detail-title">+${hex(af.offset, 2)}: ${af.label}
+        <span class="badge" style="background:${cc.bg};color:${cc.fg}">${af.category}</span></div>
+      <div class="detail-note">${af.note}</div></div>`;
+  } else { det.innerHTML = ""; }
+
+  // category legend
+  CELL_CATEGORIES.forEach(cat => {
+    const item = document.createElement("div");
+    item.className = "legend-item";
+    item.innerHTML = `<div class="legend-dot" style="background:${CAT_COLORS[cat].bg}"></div><span style="color:var(--text-mid)">${cat}</span>`;
+    clegend.appendChild(item);
+  });
+}
+
+function render() { renderBar(); renderCells(); }
+render();
+</script>
+</body>
+</html>
