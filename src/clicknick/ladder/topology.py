@@ -17,13 +17,16 @@ HEADER_ENTRY_COUNT = 32
 HEADER_COLUMN_INDEX_OFFSET = 0x0C  # little-endian dword: column index
 HEADER_VOLATILE_BYTE_OFFSETS = (0x05, 0x11)  # capture-volatile, non-structural
 
-# First header entry byte 0 indicates logical rung row class in captures.
+# First header entry word (+0x00/+0x01, little-endian) carries logical row count.
+# Historical 1-byte classes 0x40/0x60/0x80 remain for 1..3 rows.
 HEADER_ROW_CLASS_OFFSET = 0x00
+HEADER_ROW_WORD_OFFSET = 0x00
 HEADER_ROW_CLASS_TO_COUNT = {
     0x40: 1,
     0x60: 2,
     0x80: 3,
 }
+HEADER_ROW_WORD_STRIDE = 0x20
 
 # --- Grid/cell layout ---
 GRID_FIRST_ROW_START = 0x0A60
@@ -108,7 +111,29 @@ def header_row_class(data: bytes) -> int | None:
     return data[HEADER_ENTRY_BASE + HEADER_ROW_CLASS_OFFSET]
 
 
+def header_row_word(data: bytes) -> int | None:
+    start = HEADER_ENTRY_BASE + HEADER_ROW_WORD_OFFSET
+    if start + 1 >= len(data):
+        return None
+    return data[start] | (data[start + 1] << 8)
+
+
+def logical_row_count_from_header_word(data: bytes) -> int | None:
+    row_word = header_row_word(data)
+    if row_word is None:
+        return None
+    if row_word < 0x40 or row_word % HEADER_ROW_WORD_STRIDE != 0:
+        return None
+    logical_rows = row_word // HEADER_ROW_WORD_STRIDE - 1
+    if logical_rows <= 0:
+        return None
+    return logical_rows
+
+
 def logical_row_count_from_header(data: bytes) -> int | None:
+    from_word = logical_row_count_from_header_word(data)
+    if from_word is not None:
+        return from_word
     row_class = header_row_class(data)
     if row_class is None:
         return None

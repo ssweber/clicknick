@@ -422,3 +422,62 @@ Final 2-row coupling conclusion (tested):
 Status:
 - 2-row nonzero-seed coupling rule is now high-confidence for empty lane.
 - Remaining work is extension/generalization to `rows > 2` under seeded conditions.
+
+## Scale Confirmation Batch (March 6, 2026)
+
+- Scenario: `grid_synth_empty_multirow_rule_minimal_20260306`
+- Goal:
+  - test whether the proven empty multi-row rule set generalizes to larger row counts
+    when low-confidence bytes are omitted (`cell +0x0B`, `cell +0x15`).
+- Cases:
+  - `gmrs_rows04_rule_minimal`
+  - `gmrs_rows09_rule_minimal`
+  - `gmrs_rows17_rule_minimal`
+  - `gmrs_rows32_rule_minimal`
+
+Outcome:
+- `4/4` `verified_pass` (`copied` in all cases).
+- Verify-back lengths matched expected page scaling:
+  - row4: `12288`
+  - row9: `24576`
+  - row17: `40960`
+  - row32: `69632`
+
+Implication:
+- For empty multi-row lane, low-confidence bytes `+0x0B` and `+0x15` are not required to
+  preserve multi-row assembly at tested scales (`4/9/17/32`) when the proven rule offsets are present.
+
+Next batch prepared:
+- Scenario: `grid_synth_empty_multirow_crossdonor_row9_20260306`
+- Queue doc: `scratchpad/grid_synth_empty_multirow_crossdonor_row9_verify_queue_20260306.md`
+- Purpose: isolate cross-donor behavior by building row9 from row4 donor template, with and without
+  restoring `+0x0B/+0x15`.
+
+## Cross-Donor Row9 Follow-Up (March 6, 2026)
+
+- Scenario: `grid_synth_empty_multirow_crossdonor_row9_20260306`
+- Cases:
+  - `gmrsx_rows09_fromrow4_rule_minimal`
+  - `gmrsx_rows09_fromrow4_rule_plus0b15`
+
+Outcome:
+- `2/2` `verified_pass` (`copied` in both cases), verify-back len `24576` in both.
+
+Implication:
+- The empty multi-row row-rule remains stable under cross-donor construction (row9 from row4 base).
+- Restoring low-confidence bytes (`+0x0B`, terminal `+0x15`) does not change outcome in this probe.
+
+## Integration Status (March 6, 2026)
+
+- Rule encoding integrated into production module:
+  - `src/clicknick/ladder/empty_multirow.py`
+  - public API: `synthesize_empty_multirow(...)`
+- Header row-count decode now uses 16-bit row word in topology helpers:
+  - `src/clicknick/ladder/topology.py`
+- Fixture promotion completed for passing synthesis probes:
+  - `gmrs_rows04_rule_minimal`
+  - `gmrs_rows09_rule_minimal`
+  - `gmrs_rows17_rule_minimal`
+  - `gmrs_rows32_rule_minimal`
+  - `gmrsx_rows09_fromrow4_rule_minimal`
+  - `gmrsx_rows09_fromrow4_rule_plus0b15`

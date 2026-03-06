@@ -131,6 +131,58 @@ Last validated: March 5, 2026
     `grid_empty_multirow_rowrule_iso10_20260305`
   - queue docs in `scratchpad/grid_empty_multirow_rowrule_iso*_verify_queue_20260305.md`
 
+## Execution Update (March 6, 2026 — Empty Multi-Row Scale Confirmation)
+
+- Scenario `grid_synth_empty_multirow_rule_minimal_20260306` completed:
+  - `4/4` pass (`gmrs_rows04/09/17/32_rule_minimal`).
+  - verify-back lengths matched expected scaling:
+    - row4 `12288`
+    - row9 `24576`
+    - row17 `40960`
+    - row32 `69632`
+- These synthetic files intentionally omitted low-confidence bytes
+  (`cell +0x0B`, `cell +0x15`) while preserving proven row-rule offsets.
+- Updated implication:
+  - in empty multi-row lane, `+0x0B/+0x15` are not required at tested scales (`4/9/17/32`)
+    when the proven rule offsets are present.
+- Next queued batch prepared:
+  - scenario: `grid_synth_empty_multirow_crossdonor_row9_20260306`
+  - queue doc: `scratchpad/grid_synth_empty_multirow_crossdonor_row9_verify_queue_20260306.md`
+  - purpose: cross-donor row9 synthesis from row4 template (with/without restoring `+0x0B/+0x15`).
+
+## Execution Update (March 6, 2026 — Empty Multi-Row Cross-Donor Row9)
+
+- Scenario `grid_synth_empty_multirow_crossdonor_row9_20260306` completed:
+  - `2/2` pass:
+    - `gmrsx_rows09_fromrow4_rule_minimal`
+    - `gmrsx_rows09_fromrow4_rule_plus0b15`
+  - verify-back length for both: `24576`.
+- Result interpretation:
+  - row-rule synthesis remains stable under cross-donor construction (row9 built from row4 donor).
+  - restoring `+0x0B` and terminal `+0x15` did not affect outcome in this probe.
+
+## Execution Update (March 6, 2026 — Empty Multi-Row Rule Encoding Integrated)
+
+- Production code now includes deterministic empty multi-row synthesis:
+  - module: `src/clicknick/ladder/empty_multirow.py`
+  - API: `synthesize_empty_multirow(logical_rows, ...)`
+  - validated range: `1..32` logical rows (empty lane).
+- Topology decode was corrected for larger row counts:
+  - `logical_row_count_from_header(...)` now uses the 16-bit header row word (`+0x00/+0x01`)
+    before legacy 1-byte class fallback.
+  - fixes alias case where row9 row-word `0x0140` previously looked like class `0x40`.
+- Passing empty-lane synthetic entries were promoted to fixtures:
+  - `gmrs_rows04_rule_minimal`
+  - `gmrs_rows09_rule_minimal`
+  - `gmrs_rows17_rule_minimal`
+  - `gmrs_rows32_rule_minimal`
+  - `gmrsx_rows09_fromrow4_rule_minimal`
+  - `gmrsx_rows09_fromrow4_rule_plus0b15`
+- Current boundary:
+  - Empty multi-row generation is now codified for this family.
+  - Non-empty multi-row synthesis still requires separate rule work before claiming
+    arbitrary row-height rung generation for general ladders.
+
 ## Goal
 
 Reverse engineer Click Programming Software's clipboard format so `clicknick.ladder`

@@ -6,6 +6,7 @@ from clicknick.ladder.topology import (
     CELL_HORIZONTAL_RIGHT_OFFSET,
     CELL_VERTICAL_DOWN_OFFSET,
     HEADER_COLUMN_INDEX_OFFSET,
+    HEADER_ENTRY_BASE,
     HEADER_ENTRY_COUNT,
     HEADER_ENTRY_SIZE,
     HEADER_ROW_CLASS_TO_COUNT,
@@ -13,11 +14,14 @@ from clicknick.ladder.topology import (
     cell_offset,
     header_entry_slice,
     header_structural_equal,
+    logical_row_count_from_header,
     parse_wire_topology,
 )
 
 
-def _buffer_with_header(*, size: int = BUFFER_SIZE, row_class: int = 0x40) -> bytearray:
+def _buffer_with_header(
+    *, size: int = BUFFER_SIZE, row_class: int = 0x40, row_word: int | None = None
+) -> bytearray:
     data = bytearray(size)
     for column in range(HEADER_ENTRY_COUNT):
         entry = bytearray(HEADER_ENTRY_SIZE)
@@ -25,7 +29,10 @@ def _buffer_with_header(*, size: int = BUFFER_SIZE, row_class: int = 0x40) -> by
             4, "little"
         )
         if column == 0:
-            entry[0] = row_class
+            if row_word is None:
+                entry[0] = row_class
+            else:
+                entry[0:2] = row_word.to_bytes(2, "little")
         data[header_entry_slice(column)] = entry
     return data
 
@@ -95,6 +102,25 @@ def test_parse_wire_topology_uses_header_row_class() -> None:
     topology = parse_wire_topology(bytes(data))
     assert topology.row_count == 3
     assert topology.flags_at(2, 1) == CellWireFlags(
+        horizontal_left=False,
+        horizontal_right=False,
+        vertical_down=True,
+    )
+
+
+def test_parse_wire_topology_uses_header_row_word_for_rows_gt_three() -> None:
+    # For 9 rows the row-word low byte is 0x40, which aliases legacy row_class=1.
+    # Decoder must use the full little-endian word (0x0140 -> 9 rows).
+    data = _buffer_with_header(size=24576, row_word=0x0140)
+    assert data[HEADER_ENTRY_BASE] == 0x40
+    assert logical_row_count_from_header(bytes(data)) == 9
+
+    row8_col1 = cell_offset(8, 1)
+    data[row8_col1 + CELL_VERTICAL_DOWN_OFFSET] = 0x01
+
+    topology = parse_wire_topology(bytes(data))
+    assert topology.row_count == 9
+    assert topology.flags_at(8, 1) == CellWireFlags(
         horizontal_left=False,
         horizontal_right=False,
         vertical_down=True,

@@ -15,6 +15,13 @@ from .csv_ast import (
 from .csv_bundle import parse_bundle
 from .csv_parser import parse_csv_file, parse_row
 from .csv_shorthand import normalize_shorthand_row
+from .empty_multirow import (
+    EMPTY_MULTIROW_MAX_ROWS,
+    EMPTY_MULTIROW_MIN_ROWS,
+    empty_multirow_payload_length,
+    empty_multirow_row_word,
+    synthesize_empty_multirow,
+)
 from .model import Coil, Contact, InstructionType, RungGrid
 from .topology import (
     CELL_HORIZONTAL_LEFT_OFFSET,
@@ -56,6 +63,11 @@ __all__ = [
     "clear_clipboard",
     "copy_to_clipboard",
     "normalize_shorthand_row",
+    "EMPTY_MULTIROW_MIN_ROWS",
+    "EMPTY_MULTIROW_MAX_ROWS",
+    "empty_multirow_payload_length",
+    "empty_multirow_row_word",
+    "synthesize_empty_multirow",
     "parse_wire_topology",
     "parse_bundle",
     "parse_csv_file",

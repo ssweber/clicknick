@@ -30,6 +30,158 @@
       "metadata_todo": false
     },
     {
+      "fixture_file": "gmrs_rows04_rule_minimal.bin",
+      "capture_label": "gmrs_rows04_rule_minimal",
+      "scenario": "grid_synth_empty_multirow_rule_minimal_20260306",
+      "source": "scratchpad/captures",
+      "description": "Rule-minimal synthetic patch from gnenp row4 (drops low-confidence +0x0B/+0x15)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verified": true,
+      "codec_generatable": false,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "gmrs_rows09_rule_minimal.bin",
+      "capture_label": "gmrs_rows09_rule_minimal",
+      "scenario": "grid_synth_empty_multirow_rule_minimal_20260306",
+      "source": "scratchpad/captures",
+      "description": "Rule-minimal synthetic patch from gnenp row9 (drops low-confidence +0x0B/+0x15)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verified": true,
+      "codec_generatable": false,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "gmrs_rows17_rule_minimal.bin",
+      "capture_label": "gmrs_rows17_rule_minimal",
+      "scenario": "grid_synth_empty_multirow_rule_minimal_20260306",
+      "source": "scratchpad/captures",
+      "description": "Rule-minimal synthetic patch from gnenp row17 (drops low-confidence +0x0B/+0x15)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verified": true,
+      "codec_generatable": false,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "gmrs_rows32_rule_minimal.bin",
+      "capture_label": "gmrs_rows32_rule_minimal",
+      "scenario": "grid_synth_empty_multirow_rule_minimal_20260306",
+      "source": "scratchpad/captures",
+      "description": "Rule-minimal synthetic patch from gnenp row32 (drops low-confidence +0x0B/+0x15)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verified": true,
+      "codec_generatable": false,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "gmrsx_rows09_fromrow4_rule_minimal.bin",
+      "capture_label": "gmrsx_rows09_fromrow4_rule_minimal",
+      "scenario": "grid_synth_empty_multirow_crossdonor_row9_20260306",
+      "source": "scratchpad/captures",
+      "description": "Cross-donor synthetic row9 from row4 template using rule-minimal offsets",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verified": true,
+      "codec_generatable": false,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "gmrsx_rows09_fromrow4_rule_plus0b15.bin",
+      "capture_label": "gmrsx_rows09_fromrow4_rule_plus0b15",
+      "scenario": "grid_synth_empty_multirow_crossdonor_row9_20260306",
+      "source": "scratchpad/captures",
+      "description": "Cross-donor synthetic row9 from row4 template with +0x0B and terminal +0x15 restored",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verified": true,
+      "codec_generatable": false,
+      "metadata_todo": false
+    },
+    {
       "fixture_file": "latch_af_only.bin",
       "capture_label": "latch_af_only",
       "scenario": "coil_variant",
@@ -244,19 +396,6 @@
       "metadata_todo": false
     },
     {
-      "fixture_file": "simple_rung.bin",
-      "capture_label": "simple_rung",
-      "scenario": "composed_rung",
-      "source": "scratchpad/captures",
-      "description": "NO X001, wire to AF, Out Y001",
-      "rung_rows": [
-        "R,X001,->,:,out(Y001)"
-      ],
-      "verified": false,
-      "codec_generatable": false,
-      "metadata_todo": false
-    },
-    {
       "fixture_file": "simple_latch_native.bin",
       "capture_label": "simple_latch_native",
       "scenario": "coil_variant",
@@ -306,6 +445,19 @@
       ],
       "verified": false,
       "codec_generatable": true,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "simple_rung.bin",
+      "capture_label": "simple_rung",
+      "scenario": "composed_rung",
+      "source": "scratchpad/captures",
+      "description": "NO X001, wire to AF, Out Y001",
+      "rung_rows": [
+        "R,X001,->,:,out(Y001)"
+      ],
+      "verified": false,
+      "codec_generatable": false,
       "metadata_todo": false
     },
     {
@@ -413,19 +565,6 @@
       "metadata_todo": false
     },
     {
-      "fixture_file": "two_series_rung.bin",
-      "capture_label": "two_series_rung",
-      "scenario": "composed_rung",
-      "source": "scratchpad/captures",
-      "description": "NO X001, NO X002, wire to AF, Out Y001",
-      "rung_rows": [
-        "R,X001,X002,->,:,out(Y001)"
-      ],
-      "verified": false,
-      "codec_generatable": false,
-      "metadata_todo": false
-    },
-    {
       "fixture_file": "two_series_both_immediate_native.bin",
       "capture_label": "two_series_both_immediate_native",
       "scenario": "two_series_immediate_mix",
@@ -501,6 +640,19 @@
       ],
       "verified": false,
       "codec_generatable": true,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "two_series_rung.bin",
+      "capture_label": "two_series_rung",
+      "scenario": "composed_rung",
+      "source": "scratchpad/captures",
+      "description": "NO X001, NO X002, wire to AF, Out Y001",
+      "rung_rows": [
+        "R,X001,X002,->,:,out(Y001)"
+      ],
+      "verified": false,
+      "codec_generatable": false,
       "metadata_todo": false
     },
     {
