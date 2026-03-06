@@ -1,6 +1,100 @@
-# Click PLC Clipboard Reverse Engineering — Handoff v13
+# Click PLC Clipboard Reverse Engineering — Handoff v16
 
 Last validated: March 6, 2026
+
+## Execution Update (March 6, 2026 — Phase 2 Companion Isolation Follow-Up Completed, Gate Still Not Met)
+
+- Scenario `grid_rungcomment_patch_companion_isolation_20260306` completed (`16` cases):
+  - `3` `verified_pass`
+  - `0` `verified_fail`
+  - `13` `blocked` (`crash`)
+  - copied-event cases: `8192` bytes.
+- Short lane (`no_comment` -> short donor):
+  - len+payload control: pass
+  - full-window (`0x0294..0x08FC`): pass
+  - tail-only (`0x030E..0x08FC`): crash
+  - implication: tail bytes alone are destabilizing, but tolerated when paired with coherent short len+payload.
+- Style lane (`style_plain` -> bold/italic/underline donors):
+  - all probes crashed, including:
+    - bold len+payload control
+    - bold full-window
+    - bold split-tail variants
+    - italic/underline full-window controls
+  - implication: style replay requires companions outside the current `0x0294..0x08FC` probe window and/or additional lane normalization.
+- Max1400 lane (`no_comment` -> max donor):
+  - len+payload control: crash
+  - full-window (`0x0294..0x08FC`): crash
+  - lower-tail split (`0x0884..0x08BC`): crash
+  - upper-tail split (`0x08BD..0x08FC`): pass with caveat (comment appears after opening/closing Edit Comment dialog)
+  - tail-only: crash
+  - implication: `0x08BD..0x08FC` is a high-signal companion candidate, but replay quality is not yet clean.
+- Phase 2 acceptance gate:
+  - **not met**.
+- Phase 3 status:
+  - still blocked by Phase 2 gate.
+- Artifacts updated:
+  - `scratchpad/phase2_rungcomment_inference_20260306.md`
+  - `scratchpad/phase2_rungcomment_case_specs_20260306.json`
+  - `scratchpad/phase2_rungcomment_patch_companion_case_specs_20260306.json`
+
+## Execution Update (March 6, 2026 — Phase 2 Companion Isolation Follow-Up Batch Prepared)
+
+- Follow-up scenario added to continue Phase 2 comment replay isolation:
+  - scenario: `grid_rungcomment_patch_companion_isolation_20260306`
+  - case count: `16` file-backed patch entries (`grcp2c_*`)
+  - all new entries currently `unverified`.
+- New artifact files:
+  - case spec: `scratchpad/phase2_rungcomment_patch_companion_case_specs_20260306.json`
+  - queue doc: `scratchpad/grid_rungcomment_patch_companion_isolation_verify_queue_20260306.md`
+- Follow-up case design targets post-payload companion region:
+  - short lane controls: len+payload, tail-only, full-window
+  - style lane probes:
+    - bold control (`0x0294..0x031C`)
+    - bold full-window (`0x0294..0x08FC`)
+    - bold split-tail ablations (`0x031D..0x03FF`, `0x0400..0x08FC`, half splits)
+    - italic/underline full-window transplants
+  - max1400 lane probes:
+    - control (`0x0294..0x0883`)
+    - full-window (`0x0294..0x08FC`)
+    - tail chunk ablations (`0x0884..0x08BC`, `0x08BD..0x08FC`)
+    - tail-only (`0x0884..0x08FC`)
+- Purpose:
+  - distinguish required post-payload companions from known noise-like co-variation.
+- Phase 2 gate status remains:
+  - **not met** (awaiting guided verify outcomes for this follow-up batch).
+
+## Execution Update (March 6, 2026 — Phase 2 RungComment Patch Isolation Completed, Gate Not Met)
+
+- Patch isolation scenario `grid_rungcomment_patch_isolation_20260306` completed (`12` cases):
+  - `3` `verified_pass`
+  - `2` `verified_fail`
+  - `7` `blocked` (all `crash`)
+  - copied-event cases remained `8192` bytes.
+- Outcome highlights by required classification axis:
+  - length dword only:
+    - short length-only probe passed
+    - max-length length-only probe crashed
+    - short `len=0` reset probe copied back but failed with OOM note.
+  - payload only:
+    - short/max payload-only probes crashed
+    - style payload-only probe copied but failed semantic expectation (raw RTF text shown).
+  - length+payload:
+    - short/plain probes passed (`len+payload`, and non-NUL length variant)
+    - style (`bold/italic/underline`) transplants crashed
+    - max1400 transplant crashed.
+- Native-vs-native diff scope for comment variants was rechecked:
+  - differences are not confined to `0x0294 + len window`;
+  - observed co-varying region extends through approximately `0x08F1..0x08FC`.
+- Current implication:
+  - minimal replay model is incomplete for styled and long comments;
+  - additional companion-byte isolation is required before claiming deterministic comment replay.
+- Phase 2 acceptance gate:
+  - **not met**.
+- Phase 3 status:
+  - not started (gated on Phase 2 completion).
+- Artifacts updated:
+  - `scratchpad/phase2_rungcomment_inference_20260306.md`
+  - `scratchpad/phase2_rungcomment_case_specs_20260306.json`
 
 ## Execution Update (March 6, 2026 — Phase 1 AF `NOP` vs Empty Completed)
 

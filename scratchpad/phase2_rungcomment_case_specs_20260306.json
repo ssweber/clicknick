@@ -126,6 +126,101 @@
     "pending": 0
   },
   "patch_isolation_scenario": "grid_rungcomment_patch_isolation_20260306",
+  "patch_isolation_summary": {
+    "scenario": "grid_rungcomment_patch_isolation_20260306",
+    "verified_pass": 3,
+    "verified_fail": 2,
+    "blocked": 7,
+    "pending": 0,
+    "copied_events": 5,
+    "crash_events": 7
+  },
+  "patch_isolation_results": [
+    {
+      "label": "grcp2_short_len_payload_from_no",
+      "status": "verified_pass",
+      "event": "copied",
+      "clipboard_len": 8192,
+      "note": ""
+    },
+    {
+      "label": "grcp2_short_len_only_from_no",
+      "status": "verified_pass",
+      "event": "copied",
+      "clipboard_len": 8192,
+      "note": ""
+    },
+    {
+      "label": "grcp2_short_payload_only_from_no",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": "'Out of Memory'"
+    },
+    {
+      "label": "grcp2_short_len_payload_nonul_from_no",
+      "status": "verified_pass",
+      "event": "copied",
+      "clipboard_len": 8192,
+      "note": "A1"
+    },
+    {
+      "label": "grcp2_short_reset_len0_from_short",
+      "status": "verified_fail",
+      "event": "copied",
+      "clipboard_len": 8192,
+      "note": "'Out of Memory'"
+    },
+    {
+      "label": "grcp2_style_bold_len_payload_from_plain",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": "crashed"
+    },
+    {
+      "label": "grcp2_style_italic_len_payload_from_plain",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": ""
+    },
+    {
+      "label": "grcp2_style_underline_len_payload_from_plain",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": ""
+    },
+    {
+      "label": "grcp2_style_bold_payload_only_from_plain",
+      "status": "verified_fail",
+      "event": "copied",
+      "clipboard_len": 8192,
+      "note": "Comment says: has a bunch of rtfl ansi ansicpg1252 etc before getting to STYLE PROBE"
+    },
+    {
+      "label": "grcp2_max1400_len_payload_from_no",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": ""
+    },
+    {
+      "label": "grcp2_max1400_len_only_from_no",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": ""
+    },
+    {
+      "label": "grcp2_max1400_payload_only_from_no",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": ""
+    }
+  ],
   "inline_style_findings": {
     "mixed_selection_tokens": [
       "\\b ... \\b0",
@@ -134,5 +229,25 @@
     ],
     "inference": "style is represented as inline RTF markup spans inside the comment payload"
   },
-  "status": "native_complete_patch_isolation_pending"
+  "classification": {
+    "length_dword_only": "mixed and unstable: short-only case passed, len0 reset failed, max-length len-only crashed",
+    "payload_only": "insufficient and unstable: short/max payload-only crashed; style payload-only failed semantic expectation",
+    "length_plus_payload": "sufficient only for short/plain probes; style and max-length cases crashed",
+    "terminator_coupling": "non-NUL short length was accepted (len excludes trailing NUL in one passing case)",
+    "style_transplants": "style replay not explained by payload token bytes alone under current transplant window",
+    "max1400_replay": "all max1400 replay probes crashed"
+  },
+  "followup_companion_isolation": {
+    "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+    "case_count": 16,
+    "case_spec": "scratchpad/phase2_rungcomment_patch_companion_case_specs_20260306.json",
+    "queue_doc": "scratchpad/grid_rungcomment_patch_companion_isolation_verify_queue_20260306.md",
+    "verified_pass": 3,
+    "verified_fail": 0,
+    "blocked": 13,
+    "pending": 0,
+    "status": "completed_gate_not_met"
+  },
+  "phase2_gate": "not_met",
+  "status": "phase2_followup_companion_batch_complete_gate_not_met"
 }

@@ -11979,18 +11979,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grcp2_short_len_payload_from_no.bin",
       "payload_file": "scratchpad/captures/grcp2_short_len_payload_from_no.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcp2_short_len_payload_from_no_verify_back_20260306_181814.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T17:52:43Z",
-      "updated_at": "2026-03-06T17:52:43Z"
+      "updated_at": "2026-03-06T18:18:14Z"
     },
     {
       "id": "9d7f4aa7-8a4a-4d6d-ad35-e3714b990f2e",
@@ -12004,18 +12006,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grcp2_short_len_only_from_no.bin",
       "payload_file": "scratchpad/captures/grcp2_short_len_only_from_no.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcp2_short_len_only_from_no_verify_back_20260306_181842.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T17:52:43Z",
-      "updated_at": "2026-03-06T17:52:43Z"
+      "updated_at": "2026-03-06T18:18:42Z"
     },
     {
       "id": "6a8c5906-5425-429c-8a05-2c7345d50398",
@@ -12029,9 +12033,9 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grcp2_short_payload_only_from_no.bin",
       "payload_file": "scratchpad/captures/grcp2_short_payload_only_from_no.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "'Out of Memory'",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
       ],
@@ -12040,7 +12044,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T17:52:44Z",
-      "updated_at": "2026-03-06T17:52:44Z"
+      "updated_at": "2026-03-06T18:19:06Z"
     },
     {
       "id": "16d49c93-ac8a-4a04-9667-7d2eb9974278",
@@ -12054,18 +12058,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grcp2_short_len_payload_nonul_from_no.bin",
       "payload_file": "scratchpad/captures/grcp2_short_len_payload_nonul_from_no.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "A1",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcp2_short_len_payload_nonul_from_no_verify_back_20260306_181950.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T17:52:44Z",
-      "updated_at": "2026-03-06T17:52:44Z"
+      "updated_at": "2026-03-06T18:19:50Z"
     },
     {
       "id": "0a6ca3cd-25d3-4e99-80cb-c6470d21fd01",
@@ -12079,18 +12085,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grcp2_short_reset_len0_from_short.bin",
       "payload_file": "scratchpad/captures/grcp2_short_reset_len0_from_short.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "'Out of Memory'",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcp2_short_reset_len0_from_short_verify_back_20260306_182018.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T17:52:45Z",
-      "updated_at": "2026-03-06T17:52:45Z"
+      "updated_at": "2026-03-06T18:20:18Z"
     },
     {
       "id": "935e69d1-7b33-4b69-a33a-7fdea0a10774",
@@ -12104,9 +12112,9 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grcp2_style_bold_len_payload_from_plain.bin",
       "payload_file": "scratchpad/captures/grcp2_style_bold_len_payload_from_plain.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "crashed",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
       ],
@@ -12115,7 +12123,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T17:52:45Z",
-      "updated_at": "2026-03-06T17:52:45Z"
+      "updated_at": "2026-03-06T18:20:42Z"
     },
     {
       "id": "b7394954-d67e-4a93-86ab-28a1e71d4fcc",
@@ -12129,8 +12137,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grcp2_style_italic_len_payload_from_plain.bin",
       "payload_file": "scratchpad/captures/grcp2_style_italic_len_payload_from_plain.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
@@ -12140,7 +12148,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T17:52:45Z",
-      "updated_at": "2026-03-06T17:52:45Z"
+      "updated_at": "2026-03-06T18:21:12Z"
     },
     {
       "id": "3f548fa9-2fef-443a-9b91-7eb7939a0869",
@@ -12154,8 +12162,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grcp2_style_underline_len_payload_from_plain.bin",
       "payload_file": "scratchpad/captures/grcp2_style_underline_len_payload_from_plain.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
@@ -12165,7 +12173,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T17:52:46Z",
-      "updated_at": "2026-03-06T17:52:46Z"
+      "updated_at": "2026-03-06T18:21:30Z"
     },
     {
       "id": "e875ad95-e282-4664-afb0-ebf28971a270",
@@ -12179,18 +12187,20 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grcp2_style_bold_payload_only_from_plain.bin",
       "payload_file": "scratchpad/captures/grcp2_style_bold_payload_only_from_plain.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
-      "verify_notes": "",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "Comment says: has a bunch of rtfl ansi ansicpg1252 etc before getting to STYLE PROBE",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcp2_style_bold_payload_only_from_plain_verify_back_20260306_182309.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T17:52:46Z",
-      "updated_at": "2026-03-06T17:52:46Z"
+      "updated_at": "2026-03-06T18:23:09Z"
     },
     {
       "id": "8cf33d9b-8784-4c6d-b882-6222e8cbdc2a",
@@ -12204,8 +12214,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grcp2_max1400_len_payload_from_no.bin",
       "payload_file": "scratchpad/captures/grcp2_max1400_len_payload_from_no.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
@@ -12215,7 +12225,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T17:52:47Z",
-      "updated_at": "2026-03-06T17:52:47Z"
+      "updated_at": "2026-03-06T18:23:52Z"
     },
     {
       "id": "1542658f-85c9-41be-a3f5-97fa3a94749c",
@@ -12229,8 +12239,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grcp2_max1400_len_only_from_no.bin",
       "payload_file": "scratchpad/captures/grcp2_max1400_len_only_from_no.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
@@ -12240,7 +12250,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T17:52:47Z",
-      "updated_at": "2026-03-06T17:52:47Z"
+      "updated_at": "2026-03-06T18:24:23Z"
     },
     {
       "id": "93509ce9-4a69-4640-b270-61cd4fe8e3ed",
@@ -12254,8 +12264,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/grcp2_max1400_payload_only_from_no.bin",
       "payload_file": "scratchpad/captures/grcp2_max1400_payload_only_from_no.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
@@ -12265,7 +12275,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T17:52:48Z",
-      "updated_at": "2026-03-06T17:52:48Z"
+      "updated_at": "2026-03-06T18:24:37Z"
     },
     {
       "id": "091eec04-617f-43b9-b563-f61e937fca91",
@@ -12293,6 +12303,412 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T18:01:28Z",
       "updated_at": "2026-03-06T18:04:21Z"
+    },
+    {
+      "id": "ee13082d-96f7-49a9-a31d-257f08de7e40",
+      "capture_label": "grcp2c_short_lpp_control_from_no",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+      "description": "short plain control: copy len+payload only (0x0294-0x030D) from short donor onto no-comment baseline",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_short_lpp_control_from_no.bin",
+      "payload_file": "scratchpad/captures/grcp2c_short_lpp_control_from_no.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcp2c_short_lpp_control_from_no_verify_back_20260306_190040.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-06T18:45:05Z",
+      "updated_at": "2026-03-06T19:00:40Z"
+    },
+    {
+      "id": "475a9ea9-89ac-47d2-8833-acf03d421e4b",
+      "capture_label": "grcp2c_short_tail_only_030e_08fc_from_no",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+      "description": "short plain tail-only: copy post-payload companion window (0x030E-0x08FC) from short donor",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_short_tail_only_030e_08fc_from_no.bin",
+      "payload_file": "scratchpad/captures/grcp2c_short_tail_only_030e_08fc_from_no.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-06T18:45:06Z",
+      "updated_at": "2026-03-06T19:00:48Z"
+    },
+    {
+      "id": "6ce03049-f049-48c3-a43e-8b4baaf15ea2",
+      "capture_label": "grcp2c_short_full_0294_08fc_from_no",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+      "description": "short plain full window: copy 0x0294-0x08FC from short donor onto no-comment baseline",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_short_full_0294_08fc_from_no.bin",
+      "payload_file": "scratchpad/captures/grcp2c_short_full_0294_08fc_from_no.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcp2c_short_full_0294_08fc_from_no_verify_back_20260306_190103.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-06T18:45:06Z",
+      "updated_at": "2026-03-06T19:01:03Z"
+    },
+    {
+      "id": "3cb79a71-71e3-43da-87bd-c000f51d8d00",
+      "capture_label": "grcp2c_bold_lpp_control_from_plain",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+      "description": "bold control: copy len+payload only (0x0294-0x031C) from bold donor onto plain baseline",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_bold_lpp_control_from_plain.bin",
+      "payload_file": "scratchpad/captures/grcp2c_bold_lpp_control_from_plain.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-06T18:45:07Z",
+      "updated_at": "2026-03-06T19:01:09Z"
+    },
+    {
+      "id": "08b7690d-9afe-4d55-b42d-30c59bab3fd4",
+      "capture_label": "grcp2c_bold_full_0294_08fc_from_plain",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+      "description": "bold full window: copy 0x0294-0x08FC from bold donor onto plain baseline",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_bold_full_0294_08fc_from_plain.bin",
+      "payload_file": "scratchpad/captures/grcp2c_bold_full_0294_08fc_from_plain.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-06T18:45:07Z",
+      "updated_at": "2026-03-06T19:01:22Z"
+    },
+    {
+      "id": "49ccb2c1-1716-495e-9175-188e1d53e99c",
+      "capture_label": "grcp2c_bold_lpp_plus_tail_031d_03ff_from_plain",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+      "description": "bold split-tail A: len+payload plus near tail (0x031D-0x03FF)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_bold_lpp_plus_tail_031d_03ff_from_plain.bin",
+      "payload_file": "scratchpad/captures/grcp2c_bold_lpp_plus_tail_031d_03ff_from_plain.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-06T18:45:07Z",
+      "updated_at": "2026-03-06T19:01:36Z"
+    },
+    {
+      "id": "d9b33137-d204-4fc8-b85d-54d20b44c2eb",
+      "capture_label": "grcp2c_bold_lpp_plus_tail_0400_08fc_from_plain",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+      "description": "bold split-tail B: len+payload plus far tail (0x0400-0x08FC)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_bold_lpp_plus_tail_0400_08fc_from_plain.bin",
+      "payload_file": "scratchpad/captures/grcp2c_bold_lpp_plus_tail_0400_08fc_from_plain.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-06T18:45:08Z",
+      "updated_at": "2026-03-06T19:01:51Z"
+    },
+    {
+      "id": "8ddf98ac-d7aa-474b-9537-bf470f71583a",
+      "capture_label": "grcp2c_bold_lpp_plus_tail_031d_05ff_from_plain",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+      "description": "bold split-tail C: len+payload plus mid tail (0x031D-0x05FF)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_bold_lpp_plus_tail_031d_05ff_from_plain.bin",
+      "payload_file": "scratchpad/captures/grcp2c_bold_lpp_plus_tail_031d_05ff_from_plain.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-06T18:45:08Z",
+      "updated_at": "2026-03-06T19:02:22Z"
+    },
+    {
+      "id": "7bbcd5ae-5223-4b70-a969-86956b12cb0a",
+      "capture_label": "grcp2c_bold_lpp_plus_tail_0600_08fc_from_plain",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+      "description": "bold split-tail D: len+payload plus upper tail (0x0600-0x08FC)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_bold_lpp_plus_tail_0600_08fc_from_plain.bin",
+      "payload_file": "scratchpad/captures/grcp2c_bold_lpp_plus_tail_0600_08fc_from_plain.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-06T18:45:09Z",
+      "updated_at": "2026-03-06T19:02:36Z"
+    },
+    {
+      "id": "db7e4a52-a6e6-4448-9684-487c3575050b",
+      "capture_label": "grcp2c_italic_full_0294_08fc_from_plain",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+      "description": "italic full window: copy 0x0294-0x08FC from italic donor onto plain baseline",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_italic_full_0294_08fc_from_plain.bin",
+      "payload_file": "scratchpad/captures/grcp2c_italic_full_0294_08fc_from_plain.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-06T18:45:09Z",
+      "updated_at": "2026-03-06T19:02:52Z"
+    },
+    {
+      "id": "ef8ce384-ac7a-4308-ba22-e025add4e3ff",
+      "capture_label": "grcp2c_underline_full_0294_08fc_from_plain",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+      "description": "underline full window: copy 0x0294-0x08FC from underline donor onto plain baseline",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_underline_full_0294_08fc_from_plain.bin",
+      "payload_file": "scratchpad/captures/grcp2c_underline_full_0294_08fc_from_plain.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-06T18:45:10Z",
+      "updated_at": "2026-03-06T19:03:06Z"
+    },
+    {
+      "id": "43e37f51-a666-4e63-aeb0-96f48f78cfc0",
+      "capture_label": "grcp2c_max_lpp_control_from_no",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+      "description": "max1400 control: copy len+payload only (0x0294-0x0883) from max donor onto no-comment baseline",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_max_lpp_control_from_no.bin",
+      "payload_file": "scratchpad/captures/grcp2c_max_lpp_control_from_no.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-06T18:45:10Z",
+      "updated_at": "2026-03-06T19:03:19Z"
+    },
+    {
+      "id": "745c949a-ef56-4781-8da2-812b485cdd53",
+      "capture_label": "grcp2c_max_full_0294_08fc_from_no",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+      "description": "max1400 full window: copy 0x0294-0x08FC from max donor onto no-comment baseline",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_max_full_0294_08fc_from_no.bin",
+      "payload_file": "scratchpad/captures/grcp2c_max_full_0294_08fc_from_no.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-06T18:45:10Z",
+      "updated_at": "2026-03-06T19:03:35Z"
+    },
+    {
+      "id": "e47ae573-7057-49fd-906b-cdf14bfffee8",
+      "capture_label": "grcp2c_max_lpp_plus_tail_0884_08bc_from_no",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+      "description": "max1400 split-tail A: len+payload plus first tail chunk (0x0884-0x08BC)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_max_lpp_plus_tail_0884_08bc_from_no.bin",
+      "payload_file": "scratchpad/captures/grcp2c_max_lpp_plus_tail_0884_08bc_from_no.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-06T18:45:11Z",
+      "updated_at": "2026-03-06T19:03:50Z"
+    },
+    {
+      "id": "72532543-c871-4d2a-84c7-48b5e1a88033",
+      "capture_label": "grcp2c_max_lpp_plus_tail_08bd_08fc_from_no",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+      "description": "max1400 split-tail B: len+payload plus second tail chunk (0x08BD-0x08FC)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_max_lpp_plus_tail_08bd_08fc_from_no.bin",
+      "payload_file": "scratchpad/captures/grcp2c_max_lpp_plus_tail_08bd_08fc_from_no.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "NOT 100% perfect. The comment transferred, but doesn't 'display' until I clicked 'Edit Comment', it was all there, and then I clicked 'ok' it all showed then",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcp2c_max_lpp_plus_tail_08bd_08fc_from_no_verify_back_20260306_190549.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-06T18:45:11Z",
+      "updated_at": "2026-03-06T19:05:49Z"
+    },
+    {
+      "id": "020bbf79-369a-409a-9e53-03c6fb8ffe16",
+      "capture_label": "grcp2c_max_tail_only_0884_08fc_from_no",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+      "description": "max1400 tail-only: copy post-payload tail (0x0884-0x08FC) from max donor onto no-comment baseline",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_max_tail_only_0884_08fc_from_no.bin",
+      "payload_file": "scratchpad/captures/grcp2c_max_tail_only_0884_08fc_from_no.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-06T18:45:12Z",
+      "updated_at": "2026-03-06T19:06:20Z"
     }
   ]
 }

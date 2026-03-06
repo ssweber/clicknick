@@ -1,0 +1,498 @@
+{
+  "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+  "phase": "phase2_rungcomment_patch_companion_isolation",
+  "date": "2026-03-06",
+  "fixed_topology_row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+  "entries": [
+    {
+      "label": "grcp2c_short_lpp_control_from_no",
+      "description": "short plain control: copy len+payload only (0x0294-0x030D) from short donor onto no-comment baseline",
+      "base_label": "grc_no_comment_native",
+      "donor_label": "grc_short_ascii_native",
+      "ranges": [
+        {
+          "end": 781,
+          "start": 660
+        }
+      ],
+      "expected_comment": "A1",
+      "expected_style": "plain",
+      "probe_focus": "reconfirm short control baseline",
+      "payload_file": "scratchpad/captures/grcp2c_short_lpp_control_from_no.bin",
+      "row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      "ranges_hex": [
+        "0x0294-0x030D"
+      ]
+    },
+    {
+      "label": "grcp2c_short_tail_only_030e_08fc_from_no",
+      "description": "short plain tail-only: copy post-payload companion window (0x030E-0x08FC) from short donor",
+      "base_label": "grc_no_comment_native",
+      "donor_label": "grc_short_ascii_native",
+      "ranges": [
+        {
+          "end": 2300,
+          "start": 782
+        }
+      ],
+      "expected_comment": "(probe)",
+      "expected_style": "plain",
+      "probe_focus": "test whether tail alone has effect or destabilizes",
+      "payload_file": "scratchpad/captures/grcp2c_short_tail_only_030e_08fc_from_no.bin",
+      "row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      "ranges_hex": [
+        "0x030E-0x08FC"
+      ]
+    },
+    {
+      "label": "grcp2c_short_full_0294_08fc_from_no",
+      "description": "short plain full window: copy 0x0294-0x08FC from short donor onto no-comment baseline",
+      "base_label": "grc_no_comment_native",
+      "donor_label": "grc_short_ascii_native",
+      "ranges": [
+        {
+          "end": 2300,
+          "start": 660
+        }
+      ],
+      "expected_comment": "A1",
+      "expected_style": "plain",
+      "probe_focus": "control for full companion window transplant",
+      "payload_file": "scratchpad/captures/grcp2c_short_full_0294_08fc_from_no.bin",
+      "row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      "ranges_hex": [
+        "0x0294-0x08FC"
+      ]
+    },
+    {
+      "label": "grcp2c_bold_lpp_control_from_plain",
+      "description": "bold control: copy len+payload only (0x0294-0x031C) from bold donor onto plain baseline",
+      "base_label": "grc_style_plain_native",
+      "donor_label": "grc_style_bold_native",
+      "ranges": [
+        {
+          "end": 796,
+          "start": 660
+        }
+      ],
+      "expected_comment": "STYLE_PROBE",
+      "expected_style": "bold",
+      "probe_focus": "reproduce prior crash control",
+      "payload_file": "scratchpad/captures/grcp2c_bold_lpp_control_from_plain.bin",
+      "row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      "ranges_hex": [
+        "0x0294-0x031C"
+      ]
+    },
+    {
+      "label": "grcp2c_bold_full_0294_08fc_from_plain",
+      "description": "bold full window: copy 0x0294-0x08FC from bold donor onto plain baseline",
+      "base_label": "grc_style_plain_native",
+      "donor_label": "grc_style_bold_native",
+      "ranges": [
+        {
+          "end": 2300,
+          "start": 660
+        }
+      ],
+      "expected_comment": "STYLE_PROBE",
+      "expected_style": "bold",
+      "probe_focus": "test if full companion window restores stable style replay",
+      "payload_file": "scratchpad/captures/grcp2c_bold_full_0294_08fc_from_plain.bin",
+      "row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      "ranges_hex": [
+        "0x0294-0x08FC"
+      ]
+    },
+    {
+      "label": "grcp2c_bold_lpp_plus_tail_031d_03ff_from_plain",
+      "description": "bold split-tail A: len+payload plus near tail (0x031D-0x03FF)",
+      "base_label": "grc_style_plain_native",
+      "donor_label": "grc_style_bold_native",
+      "ranges": [
+        {
+          "end": 796,
+          "start": 660
+        },
+        {
+          "end": 1023,
+          "start": 797
+        }
+      ],
+      "expected_comment": "STYLE_PROBE",
+      "expected_style": "bold",
+      "probe_focus": "isolate near-tail companion contribution",
+      "payload_file": "scratchpad/captures/grcp2c_bold_lpp_plus_tail_031d_03ff_from_plain.bin",
+      "row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      "ranges_hex": [
+        "0x0294-0x031C",
+        "0x031D-0x03FF"
+      ]
+    },
+    {
+      "label": "grcp2c_bold_lpp_plus_tail_0400_08fc_from_plain",
+      "description": "bold split-tail B: len+payload plus far tail (0x0400-0x08FC)",
+      "base_label": "grc_style_plain_native",
+      "donor_label": "grc_style_bold_native",
+      "ranges": [
+        {
+          "end": 796,
+          "start": 660
+        },
+        {
+          "end": 2300,
+          "start": 1024
+        }
+      ],
+      "expected_comment": "STYLE_PROBE",
+      "expected_style": "bold",
+      "probe_focus": "isolate far-tail companion contribution",
+      "payload_file": "scratchpad/captures/grcp2c_bold_lpp_plus_tail_0400_08fc_from_plain.bin",
+      "row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      "ranges_hex": [
+        "0x0294-0x031C",
+        "0x0400-0x08FC"
+      ]
+    },
+    {
+      "label": "grcp2c_bold_lpp_plus_tail_031d_05ff_from_plain",
+      "description": "bold split-tail C: len+payload plus mid tail (0x031D-0x05FF)",
+      "base_label": "grc_style_plain_native",
+      "donor_label": "grc_style_bold_native",
+      "ranges": [
+        {
+          "end": 796,
+          "start": 660
+        },
+        {
+          "end": 1535,
+          "start": 797
+        }
+      ],
+      "expected_comment": "STYLE_PROBE",
+      "expected_style": "bold",
+      "probe_focus": "narrow companion requirement lower-half",
+      "payload_file": "scratchpad/captures/grcp2c_bold_lpp_plus_tail_031d_05ff_from_plain.bin",
+      "row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      "ranges_hex": [
+        "0x0294-0x031C",
+        "0x031D-0x05FF"
+      ]
+    },
+    {
+      "label": "grcp2c_bold_lpp_plus_tail_0600_08fc_from_plain",
+      "description": "bold split-tail D: len+payload plus upper tail (0x0600-0x08FC)",
+      "base_label": "grc_style_plain_native",
+      "donor_label": "grc_style_bold_native",
+      "ranges": [
+        {
+          "end": 796,
+          "start": 660
+        },
+        {
+          "end": 2300,
+          "start": 1536
+        }
+      ],
+      "expected_comment": "STYLE_PROBE",
+      "expected_style": "bold",
+      "probe_focus": "narrow companion requirement upper-half",
+      "payload_file": "scratchpad/captures/grcp2c_bold_lpp_plus_tail_0600_08fc_from_plain.bin",
+      "row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      "ranges_hex": [
+        "0x0294-0x031C",
+        "0x0600-0x08FC"
+      ]
+    },
+    {
+      "label": "grcp2c_italic_full_0294_08fc_from_plain",
+      "description": "italic full window: copy 0x0294-0x08FC from italic donor onto plain baseline",
+      "base_label": "grc_style_plain_native",
+      "donor_label": "grc_style_italic_native",
+      "ranges": [
+        {
+          "end": 2300,
+          "start": 660
+        }
+      ],
+      "expected_comment": "STYLE_PROBE",
+      "expected_style": "italic",
+      "probe_focus": "check if full-window transplant generalizes to italic",
+      "payload_file": "scratchpad/captures/grcp2c_italic_full_0294_08fc_from_plain.bin",
+      "row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      "ranges_hex": [
+        "0x0294-0x08FC"
+      ]
+    },
+    {
+      "label": "grcp2c_underline_full_0294_08fc_from_plain",
+      "description": "underline full window: copy 0x0294-0x08FC from underline donor onto plain baseline",
+      "base_label": "grc_style_plain_native",
+      "donor_label": "grc_style_underline_native",
+      "ranges": [
+        {
+          "end": 2300,
+          "start": 660
+        }
+      ],
+      "expected_comment": "STYLE_PROBE",
+      "expected_style": "underline",
+      "probe_focus": "check if full-window transplant generalizes to underline",
+      "payload_file": "scratchpad/captures/grcp2c_underline_full_0294_08fc_from_plain.bin",
+      "row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      "ranges_hex": [
+        "0x0294-0x08FC"
+      ]
+    },
+    {
+      "label": "grcp2c_max_lpp_control_from_no",
+      "description": "max1400 control: copy len+payload only (0x0294-0x0883) from max donor onto no-comment baseline",
+      "base_label": "grc_no_comment_native",
+      "donor_label": "grc_maxlen_1396_native",
+      "ranges": [
+        {
+          "end": 2179,
+          "start": 660
+        }
+      ],
+      "expected_comment": "MAX1400_BODY",
+      "expected_style": "plain",
+      "probe_focus": "reproduce prior max crash control",
+      "payload_file": "scratchpad/captures/grcp2c_max_lpp_control_from_no.bin",
+      "row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      "ranges_hex": [
+        "0x0294-0x0883"
+      ]
+    },
+    {
+      "label": "grcp2c_max_full_0294_08fc_from_no",
+      "description": "max1400 full window: copy 0x0294-0x08FC from max donor onto no-comment baseline",
+      "base_label": "grc_no_comment_native",
+      "donor_label": "grc_maxlen_1396_native",
+      "ranges": [
+        {
+          "end": 2300,
+          "start": 660
+        }
+      ],
+      "expected_comment": "MAX1400_BODY",
+      "expected_style": "plain",
+      "probe_focus": "test if max replay needs post-payload companions",
+      "payload_file": "scratchpad/captures/grcp2c_max_full_0294_08fc_from_no.bin",
+      "row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      "ranges_hex": [
+        "0x0294-0x08FC"
+      ]
+    },
+    {
+      "label": "grcp2c_max_lpp_plus_tail_0884_08bc_from_no",
+      "description": "max1400 split-tail A: len+payload plus first tail chunk (0x0884-0x08BC)",
+      "base_label": "grc_no_comment_native",
+      "donor_label": "grc_maxlen_1396_native",
+      "ranges": [
+        {
+          "end": 2179,
+          "start": 660
+        },
+        {
+          "end": 2236,
+          "start": 2180
+        }
+      ],
+      "expected_comment": "MAX1400_BODY",
+      "expected_style": "plain",
+      "probe_focus": "narrow max companion requirement lower-tail chunk",
+      "payload_file": "scratchpad/captures/grcp2c_max_lpp_plus_tail_0884_08bc_from_no.bin",
+      "row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      "ranges_hex": [
+        "0x0294-0x0883",
+        "0x0884-0x08BC"
+      ]
+    },
+    {
+      "label": "grcp2c_max_lpp_plus_tail_08bd_08fc_from_no",
+      "description": "max1400 split-tail B: len+payload plus second tail chunk (0x08BD-0x08FC)",
+      "base_label": "grc_no_comment_native",
+      "donor_label": "grc_maxlen_1396_native",
+      "ranges": [
+        {
+          "end": 2179,
+          "start": 660
+        },
+        {
+          "end": 2300,
+          "start": 2237
+        }
+      ],
+      "expected_comment": "MAX1400_BODY",
+      "expected_style": "plain",
+      "probe_focus": "narrow max companion requirement upper-tail chunk",
+      "payload_file": "scratchpad/captures/grcp2c_max_lpp_plus_tail_08bd_08fc_from_no.bin",
+      "row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      "ranges_hex": [
+        "0x0294-0x0883",
+        "0x08BD-0x08FC"
+      ]
+    },
+    {
+      "label": "grcp2c_max_tail_only_0884_08fc_from_no",
+      "description": "max1400 tail-only: copy post-payload tail (0x0884-0x08FC) from max donor onto no-comment baseline",
+      "base_label": "grc_no_comment_native",
+      "donor_label": "grc_maxlen_1396_native",
+      "ranges": [
+        {
+          "end": 2300,
+          "start": 2180
+        }
+      ],
+      "expected_comment": "(probe)",
+      "expected_style": "plain",
+      "probe_focus": "test if max tail alone perturbs baseline",
+      "payload_file": "scratchpad/captures/grcp2c_max_tail_only_0884_08fc_from_no.bin",
+      "row": "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP",
+      "ranges_hex": [
+        "0x0884-0x08FC"
+      ]
+    }
+  ],
+  "verification_summary": {
+    "scenario": "grid_rungcomment_patch_companion_isolation_20260306",
+    "verified_pass": 3,
+    "verified_fail": 0,
+    "blocked": 13,
+    "pending": 0,
+    "copied_events": 3,
+    "crash_events": 13
+  },
+  "verification_results": [
+    {
+      "label": "grcp2c_short_lpp_control_from_no",
+      "status": "verified_pass",
+      "event": "copied",
+      "clipboard_len": 8192,
+      "note": "",
+      "result_file": "scratchpad/captures/grcp2c_short_lpp_control_from_no_verify_back_20260306_190040.bin"
+    },
+    {
+      "label": "grcp2c_short_tail_only_030e_08fc_from_no",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": "",
+      "result_file": null
+    },
+    {
+      "label": "grcp2c_short_full_0294_08fc_from_no",
+      "status": "verified_pass",
+      "event": "copied",
+      "clipboard_len": 8192,
+      "note": "",
+      "result_file": "scratchpad/captures/grcp2c_short_full_0294_08fc_from_no_verify_back_20260306_190103.bin"
+    },
+    {
+      "label": "grcp2c_bold_lpp_control_from_plain",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": "",
+      "result_file": null
+    },
+    {
+      "label": "grcp2c_bold_full_0294_08fc_from_plain",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": "",
+      "result_file": null
+    },
+    {
+      "label": "grcp2c_bold_lpp_plus_tail_031d_03ff_from_plain",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": "",
+      "result_file": null
+    },
+    {
+      "label": "grcp2c_bold_lpp_plus_tail_0400_08fc_from_plain",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": "",
+      "result_file": null
+    },
+    {
+      "label": "grcp2c_bold_lpp_plus_tail_031d_05ff_from_plain",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": "",
+      "result_file": null
+    },
+    {
+      "label": "grcp2c_bold_lpp_plus_tail_0600_08fc_from_plain",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": "",
+      "result_file": null
+    },
+    {
+      "label": "grcp2c_italic_full_0294_08fc_from_plain",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": "",
+      "result_file": null
+    },
+    {
+      "label": "grcp2c_underline_full_0294_08fc_from_plain",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": "",
+      "result_file": null
+    },
+    {
+      "label": "grcp2c_max_lpp_control_from_no",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": "",
+      "result_file": null
+    },
+    {
+      "label": "grcp2c_max_full_0294_08fc_from_no",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": "",
+      "result_file": null
+    },
+    {
+      "label": "grcp2c_max_lpp_plus_tail_0884_08bc_from_no",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": "",
+      "result_file": null
+    },
+    {
+      "label": "grcp2c_max_lpp_plus_tail_08bd_08fc_from_no",
+      "status": "verified_pass",
+      "event": "copied",
+      "clipboard_len": 8192,
+      "note": "NOT 100% perfect. The comment transferred, but doesn't 'display' until I clicked 'Edit Comment', it was all there, and then I clicked 'ok' it all showed then",
+      "result_file": "scratchpad/captures/grcp2c_max_lpp_plus_tail_08bd_08fc_from_no_verify_back_20260306_190549.bin"
+    },
+    {
+      "label": "grcp2c_max_tail_only_0884_08fc_from_no",
+      "status": "blocked",
+      "event": "crash",
+      "clipboard_len": null,
+      "note": "",
+      "result_file": null
+    }
+  ],
+  "status": "completed_gate_not_met"
+}

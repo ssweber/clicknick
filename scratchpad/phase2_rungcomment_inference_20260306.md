@@ -26,7 +26,7 @@
 - Case spec: `scratchpad/phase2_rungcomment_case_specs_20260306.json`
 - Queue doc: `scratchpad/grid_rungcomment_mapping_verify_queue_20260306.md`
 
-## Native Outcomes (Current)
+## Native Outcomes (Completed)
 - Scenario `grid_rungcomment_mapping_20260306`: `11/11` verified pass.
 - All events are `copied`; verify-back lengths are `8192`.
 - Operator notes confirmed:
@@ -56,25 +56,135 @@
   - `BTU` section: `\ul\b ... \ulnone\b0`
   - implication: style is text-span markup inside one RTF payload, not row-global flags.
 
-## Patch Isolation Setup (Ready)
-- New scenario: `grid_rungcomment_patch_isolation_20260306`
-- Case count: `12` patch payloads (file-backed)
-- Case spec: `scratchpad/phase2_rungcomment_patch_case_specs_20260306.json`
-- Queue doc: `scratchpad/grid_rungcomment_patch_isolation_verify_queue_20260306.md`
-- Batch includes:
-  - length+payload vs length-only vs payload-only controls
-  - terminator/length coupling probe
-  - length-zero reset probe
-  - style payload transplants (bold/italic/underline)
-  - max1400 payload replay probes
+## Patch Isolation Outcomes (Completed)
+- Scenario: `grid_rungcomment_patch_isolation_20260306`
+- Case count: `12` file-backed patch entries
+- Verification totals:
+  - `verified_pass`: `3`
+  - `verified_fail`: `2`
+  - `blocked`: `7`
+  - copied events: `5`
+  - crash events: `7`
+- Passing labels:
+  - `grcp2_short_len_payload_from_no`
+  - `grcp2_short_len_only_from_no`
+  - `grcp2_short_len_payload_nonul_from_no`
+- Failing labels:
+  - `grcp2_short_reset_len0_from_short` (`copied`, note: `'Out of Memory'`)
+  - `grcp2_style_bold_payload_only_from_plain` (`copied`, note reports raw RTF text shown in UI)
+- Blocked labels (crash):
+  - `grcp2_short_payload_only_from_no`
+  - `grcp2_style_bold_len_payload_from_plain`
+  - `grcp2_style_italic_len_payload_from_plain`
+  - `grcp2_style_underline_len_payload_from_plain`
+  - `grcp2_max1400_len_payload_from_no`
+  - `grcp2_max1400_len_only_from_no`
+  - `grcp2_max1400_payload_only_from_no`
 
-## Pending Operator Actions
-1. Run patch queue verify:
-   - `uv run clicknick-ladder-capture tui`
-   - `3 -> g -> f -> grid_rungcomment_patch_isolation_20260306`
-2. Send `done`.
-3. We will classify minimal replay requirements and close the Phase 2 acceptance gate.
+## Required Classification Axes
 
-## Gate Status
-- Acceptance gate not yet evaluated.
-- Current status: `native_matrix_complete_patch_isolation_pending`.
+### 1) Length Dword Only
+- Mixed outcome:
+  - short length-only (`118`) replay copied and re-copied.
+  - max-length-only (`1516`) crashed.
+  - zero-length reset from short baseline produced `verified_fail` with OOM note.
+- Classification: length-only writes are not a stable global replay model.
+
+### 2) Payload Only
+- `short_payload_only` crashed.
+- `bold_payload_only` copied but failed semantic expectation (raw RTF text note).
+- `max1400_payload_only` crashed.
+- Classification: payload-only is insufficient and frequently unstable.
+
+### 3) Length + Payload
+- short plain (`len+payload`) passed.
+- short non-NUL length (`len=payload_bytes`) also passed.
+- style transplants (`bold/italic/underline`) crashed.
+- max1400 transplant crashed.
+- Classification: `0x0294` length + immediate payload bytes are sufficient only for a narrow short/plain lane.
+
+### 4) Terminator Coupling
+- `grcp2_short_len_payload_nonul_from_no` passed with `len=117` (excluding trailing NUL), and verify-back preserved `117`.
+- Classification: strict NUL-included length is not required in this short/plain probe.
+
+### 5) Style Payload Transplants
+- style `len+payload` transplant cases all crashed.
+- payload-only style transplant failed with raw-markup presentation.
+- Classification: style replay is not explained by isolated RTF token bytes at `0x0298` alone.
+
+### 6) Max1400 Replay Cases
+- all three max1400 replay probes (length+payload, length-only, payload-only) crashed.
+- Classification: max-length replay requires additional coupling not covered by current patch window.
+
+## Byte-Level Inference (from patch/native diffs)
+- Confirmed patch generator behavior:
+  - all patch payloads mutated only intended comment-window offsets near `0x0294`.
+- Native capture comparison shows broader co-variation:
+  - style variants (`plain` vs `bold/italic/underline`) differ from `0x0294` through approximately `0x08F6/0x08FB`.
+  - no-comment vs short/max variants also differ through approximately `0x08F1/0x08FC`.
+- Inference: comment replay has companions outside the minimal `length dword + immediate payload` window, especially for style and long-comment lanes.
+
+## Phase 2 Gate Decision
+- Acceptance gate: **not met**.
+- Reason:
+  - no replay-confirmed minimal model that covers style and max-length comment lanes.
+  - crash rate is high (`7/12`) under current narrow transplant model.
+
+## Next Isolation Target (Before Phase 3)
+- Keep Phase 2 open and run a follow-up companion-byte isolation batch that:
+  - starts from passing short/plain controls,
+  - expands transplant/ablation window beyond payload end (`0x030E..0x08FC`),
+  - separately isolates style and max1400 companion requirements.
+- Follow-up batch was executed:
+  - scenario: `grid_rungcomment_patch_companion_isolation_20260306`
+  - case count: `16` file-backed patch entries (`grcp2c_*`)
+  - outcomes:
+    - `verified_pass`: `3`
+    - `verified_fail`: `0`
+    - `blocked`: `13` (`crash`)
+    - copied events: `3`
+    - crash events: `13`
+
+## Follow-Up Companion Isolation Outcomes
+
+### Short Lane (`no_comment` base, short donor)
+- `grcp2c_short_lpp_control_from_no`: pass (`8192`)
+- `grcp2c_short_full_0294_08fc_from_no`: pass (`8192`)
+- `grcp2c_short_tail_only_030e_08fc_from_no`: crash
+- Interpretation:
+  - short/plain replay remains stable with coherent len+payload.
+  - post-payload tail bytes by themselves are destabilizing.
+
+### Style Lane (`style_plain` base, bold/italic/underline donors)
+- All style probes crashed:
+  - bold control (`len+payload` only)
+  - bold full-window (`0x0294..0x08FC`)
+  - all bold split-tail variants
+  - italic full-window
+  - underline full-window
+- Interpretation:
+  - required style companions are not resolved by transplants limited to `0x0294..0x08FC`.
+  - additional required bytes likely exist outside this window and/or require lane-specific normalization.
+
+### Max1400 Lane (`no_comment` base, max donor)
+- `grcp2c_max_lpp_control_from_no`: crash
+- `grcp2c_max_full_0294_08fc_from_no`: crash
+- `grcp2c_max_lpp_plus_tail_0884_08bc_from_no`: crash
+- `grcp2c_max_lpp_plus_tail_08bd_08fc_from_no`: pass (`8192`) with UI note:
+  - comment content transferred but was not shown until opening `Edit Comment` and confirming.
+- `grcp2c_max_tail_only_0884_08fc_from_no`: crash
+- Interpretation:
+  - the upper tail chunk (`0x08BD..0x08FC`) is a high-signal companion candidate for max-length replay.
+  - lower tail chunk (`0x0884..0x08BC`) is insufficient and may be destabilizing in this lane.
+
+## Updated Phase 2 Gate Decision
+- Acceptance gate: **not met**.
+- Why still not met:
+  - style replay remains unresolved (`0` pass across all style follow-up probes).
+  - max1400 replay has only a partial/non-clean pass signature (delayed UI render behavior).
+
+## Next Isolation Recommendation
+- Keep Phase 2 open for one more narrowing round focused on:
+  - style companions outside `0x08FC` (expand probe window and/or copy additional donor-linked regions),
+  - max1400 upper-tail candidate refinement around `0x08BD..0x08FC` with minimal-byte ablations and a clean-display criterion.
+- Current status: `phase2_followup_companion_batch_complete_gate_not_met`.
