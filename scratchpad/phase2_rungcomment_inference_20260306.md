@@ -151,6 +151,75 @@
     - row-metadata entanglement
     - or a pseudo-row / extent-like structure
 
+## Offline Structural Analysis (March 7, 2026 - Structural Family Explained Better)
+
+- New report:
+  - `scratchpad/max1400_structural_family_analysis_20260307.md`
+- Identity check on the unresolved region:
+  - failing `grcmfs_commentwin_full` equals fresh no-comment native exactly over `0x08FD..0x1A5F`
+  - passing `grcmfs_commentgrid` equals fresh max1400 native exactly over `0x0294..0x1A5F`
+- Implication:
+  - the unresolved family is exactly the native no-comment vs native max1400 delta for this lane.
+  - there is no remaining ambiguity about synthetic-only drift inside `0x08FD..0x1A5F`.
+
+### Reclassification Of The "120 Non-Grid Bytes"
+
+- The `120` bytes are not best described as a free pre-grid block.
+- Exact placement:
+  - `3` bytes in the tail of header entry col `26`
+  - `22` bytes each in header entries cols `27..31`
+  - `7` trailer bytes after the 32-entry header table (`0x0A55..0x0A5C`)
+- High-signal repeated pattern in header cols `27..31`:
+  - `+0x01/+0x02/+0x03`: `00 00 00 -> 01 01 0F`
+  - `+0x05..+0x09`: `00 00 00 00 00 -> FF FF FF FF 01`
+  - `+0x15..+0x1D`: `01 01 0F 01 FF FF FF FF 01 -> 00 ... 00`
+  - `+0x28`: `00 -> 01`
+  - `+0x30`: `00 -> 01`
+  - `+0x39`: monotonic `04/05/06/07/08`
+  - `+0x3C`: `01 -> 00`
+- Interpretation:
+  - this is a header-tail / trailer descriptor family, not random pre-grid noise.
+
+### Row0 Source Families
+
+- `5` row0 shapes were isolated:
+  - col `0`: body family plus extra clear at `+0x15`, `+0x2D = 0x09`
+  - cols `1..22`: stable main body with `+0x01: 0x16 -> 0x00` and `+0x2D: 00 -> 1F`
+  - col `23`: boundary variant with `+0x01: 0x17 -> 0x00`, loses `+0x2D`, gains `+0x29/+0x31`
+  - cols `24..30`: tail variant with `+0x01: 0x1E -> 0x00` and `+0x2D: 00 -> 07`
+  - col `31`: terminal variant with `+0x01: 0x1F -> 0x00`, `+0x2D: 00 -> 08`, and extra `+0x19/+0x1D/+0x38/+0x3D`
+- Interpretation:
+  - row0 is partitioned into head/body, boundary, tail, and terminal roles.
+  - the differing bytes are structured extent markers, not a sparse set of independent fixes.
+
+### Row1 Source Families
+
+- `5` row1 shapes were isolated:
+  - cols `0..22`: common continuation family with `+0x2D: 00 -> 1F`, `+0x37: 00 -> 0F`, `+0x39..+0x3C: 00 -> FF FF FF FF`, and multiple `00 -> 01` writes
+  - col `23`: boundary cell with `+0x05/+0x09` and `+0x30/+0x34/+0x36 = 07/10/03`
+  - cols `24/27/30`, `25/28/31`, `26/29`: repeating `3`-phase tail families built from `09/10/03` triplets at shifted offsets
+- Interpretation:
+  - row1 tail is a phased descriptor wave, not eight unrelated tail cells.
+
+### Updated Working Model
+
+- The region `0x08FD..0x1A5F` behaves like a coherent structural extent family that spans:
+  - header-tail / trailer bytes
+  - row0 boundary and terminal cells
+  - row1 continuation and tail-phase cells
+- This evidence favors:
+  - **row-coupled extent metadata / pseudo-row-like structure**
+- It does **not** favor:
+  - a bag of replay-safe independent patch bytes
+  - a purely local row0-only or row1-only metadata tweak
+- This explains why:
+  - observed-63 marker patches crashed
+  - coarse block splits also crashed
+
+### Recommendation After Offline Pass
+
+- Do not resume manual splitting of `0x08FD..0x1A5F` as if the bytes are independent.
+
 ## Recommended Future Native Baseline
 
 - Capture a row32 native no-comment / max1400 pair using the same max1400 body file.

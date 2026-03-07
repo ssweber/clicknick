@@ -2,6 +2,50 @@
 
 Last validated: March 7, 2026
 
+## Execution Update (March 7, 2026 — Max1400 Offline Structural Analysis Completed)
+
+- New offline report:
+  - `scratchpad/max1400_structural_family_analysis_20260307.md`
+- Identity check for the unresolved region is now explicit:
+  - failing `grcmfs_commentwin_full_0294_08fc_from_freshnowire.bin` matches `grc_no_comment_fresh_native_20260307.bin` exactly over `0x08FD..0x1A5F`
+  - passing `grcmfs_commentgrid_0294_1a5f_from_freshnowire.bin` matches `grc_max1400_fresh_native_20260307.bin` exactly over `0x0294..0x1A5F`
+- Implication:
+  - the unresolved family is exactly the native no-comment vs native max1400 delta in this lane, not synthetic drift.
+
+Key structural findings from the offline pass:
+- the so-called `120` non-grid bytes are not a loose pre-grid block.
+- exact placement is:
+  - `3` bytes in the tail of header entry col `26`
+  - `22` bytes each in header entries cols `27..31`
+  - `7` trailer bytes after the 32-entry header table (`0x0A55..0x0A5C`)
+- row0 source deltas collapse into `5` stable families:
+  - col `0`
+  - cols `1..22`
+  - col `23` boundary
+  - cols `24..30` tail
+  - col `31` terminal
+- row1 source deltas also collapse into `5` stable families:
+  - cols `0..22`
+  - col `23` boundary
+  - tail phases at cols `24/27/30`, `25/28/31`, `26/29`
+- repeated monotonic codes and phased `09/10/03` triplets strongly suggest a coupled extent descriptor, not independent patch bytes.
+
+Best current interpretation:
+- the max1400 lane is still expressed through row0/row1 metadata, but not as isolated local tweaks.
+- evidence now favors a coherent extent-like / pseudo-row-like structural family spanning header-tail, row0, and row1.
+- this explains why both:
+  - observed-63 source patches
+  - coarse structural block splits
+  crashed instead of yielding a clean minimal fix.
+
+Status after the offline pass:
+- Phase 2 acceptance gate remains:
+  - **not met**
+- Recommended next native experiment:
+  - capture a fresh row32 no-comment control and row32 max1400 control using `scratchpad/max1400_comment_body_20260307.txt`
+- Reason:
+  - this should distinguish low-row-only coupling from a genuinely scaling extent/pseudo-row model.
+
 ## Execution Update (March 7, 2026 — Max1400 Structure Scope Narrowed to 0x08FD..0x1A5F)
 
 - Fresh recaptures established the correct no-wire lane for this investigation:
