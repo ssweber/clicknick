@@ -221,3 +221,70 @@ The next native experiment should be:
 Reason:
 - if this is only a low-row entanglement, the same row0/row1 family should persist with little scaling change.
 - if this is a true extra extent or pseudo-row family, the row32 pair should expose how the descriptor scales beyond the current 2-row footprint.
+
+## Follow-Up Native Discriminator: Row32 Full-Wire Row0-NOP
+
+Follow-up report:
+- `scratchpad/max1400_row32_fullwire_row0nop_native_results_20260307.md`
+
+New result:
+- the row32 full-wire row0-NOP pair also shows `69632 -> 73728`
+- delta remains **`+4096` exactly**
+
+Implication:
+- the extra page is not contingent on empty visible rows
+- the "comment row must stay empty" interpretation is now materially weakened
+
+Additional high-signal fact:
+- the full-wire row0-NOP extra page is no longer sparse
+- it contains `793` non-zero bytes and UTF-16LE strings including:
+  - `Segoe UI Variable Display Semilight`
+  - `Segoe UI Variable Display Semibold`
+  - `SimSun`
+  - `NSimSun`
+  - `SimSun-ExtB`
+
+Important negative check:
+- the comment's RTF payload still advertises only `Arial` in its ANSI `{\fonttbl...}` block
+- the UTF-16LE font names above do not come from direct payload spillover
+- they appear in the extra page only
+- they are absent from the corresponding no-comment and empty-row max1400 row32 captures
+
+Updated interpretation:
+- the same extra-page mechanism survives topology changes
+- visible rung content affects what the extra page carries
+- but does not suppress the extra-page allocation itself
+- this fits a comment-owned extent/page family better than an empty-line carrier model
+- the extra page now looks plausibly like a terminal descriptor page that can also carry renderer/layout companion records
+
+Additional structural refinement from the full-wire row0-NOP page:
+- page `17` decomposes into `4` top-level records, all beginning with `74 76 00 08`
+- three `492`-byte records carry `Segoe UI Variable Display` family variants
+- one larger `2520`-byte record carries `SimSun` / `NSimSun` / `SimSun-ExtB` fallback-family data
+- the first UTF-16LE family name in each record begins at relative offset `+0xAC`
+
+This makes page `17` look like a compact record table for renderer/font fallback metadata.
+
+## Cross-Lane Stability Check: Empty-Row Row32 vs Full-Wire Row0-NOP Row32
+
+Comparing the two row32 max1400-vs-control diff sets over the shared `69632` bytes:
+
+- shared diff offsets between the two lanes:
+  - `25042`
+- empty-row-only diff offsets:
+  - `971`
+- full-wire-row0-NOP-only diff offsets:
+  - `3327`
+
+Implication:
+- about `96%` of the empty-row row32 max1400 diff footprint is also present in the full-wire row0-NOP lane
+- about `88%` of the full-wire row0-NOP diff footprint is shared with the empty-row lane
+
+Interpretation:
+- the bulk of the row32 max1400 structure is lane-invariant
+- topology changes add secondary lane-specific companions
+- the most visible lane-specific addition is the richer terminal page `17` font/layout table
+
+This supports a two-layer working model:
+1. a large lane-stable comment-owned extent family spanning the repeated body pages
+2. a smaller lane-sensitive terminal companion layer that can carry renderer/layout metadata

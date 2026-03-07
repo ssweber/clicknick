@@ -2,6 +2,81 @@
 
 Last validated: March 7, 2026
 
+## Execution Update (March 7, 2026 - Full-Wire Row0-NOP Discriminator Weakens Empty-Carrier Model)
+
+- New result report:
+  - `scratchpad/max1400_row32_fullwire_row0nop_native_results_20260307.md`
+- Scenario completed:
+  - `grid_rungcomment_max1400_row32_fullwire_row0nop_native_20260307`
+- Manifest verify statuses:
+  - `2/2` `verified_pass`
+
+Observed native lengths:
+- `grc32fwnop_no_comment_native_20260307`
+  - capture: `69632`
+  - verify-back: `69632`
+- `grc32fwnop_max1400_native_20260307`
+  - capture: `73728`
+  - verify-back: `73728`
+
+Key outcome:
+- the row32 full-wire row0-NOP max1400 native also allocates **exactly one additional `0x1000` page** relative to its no-comment control.
+- this matches the earlier row32 empty-row pair exactly in total-length delta.
+
+Why this matters:
+- the extra page survives when:
+  - all visible rows are full horizontal wire rows
+  - row `0` is explicitly distinguished with `NOP`
+- therefore the extra page is not dependent on empty visible rows acting as hidden carriers.
+
+Additional offline summary from the full-wire row0-NOP pair:
+- shared-prefix diff count (`full-wire max1400` vs `full-wire no-comment` over first `69632` bytes):
+  - `28369`
+- page-family structure by `0x1000` pages remains the same class:
+  - page `0`: comment/payload-heavy lead page
+  - page `1`: lead-in structural page
+  - pages `2..15`: identical repeated diff family
+  - page `16`: terminal/tail variant
+  - page `17`: extra max1400-only page
+- difference from the empty-row pair:
+  - the extra page is no longer sparse
+  - it contains `793` non-zero bytes and UTF-16LE font/display strings including:
+    - `Segoe UI Variable Display Semilight`
+    - `Segoe UI Variable Display Semibold`
+    - `SimSun`
+    - `NSimSun`
+    - `SimSun-ExtB`
+  - those strings are absent from the comment's ANSI RTF payload, which still uses `Arial`
+  - they are also absent from the no-comment row32 full-wire control and the empty-row row32 max1400 capture
+  - implication: the extra page is not just payload spillover; it likely carries renderer/layout companion records
+  - more specifically:
+    - page `17` decomposes into `4` top-level records, each beginning with `74 76 00 08`
+    - three `492`-byte records carry `Segoe UI Variable Display` family variants
+    - one larger `2520`-byte record carries `SimSun` / `NSimSun` / `SimSun-ExtB` fallback-family data
+    - the first family-name string appears at relative offset `+0xAC` inside each record
+- cross-lane stability check against the empty-row row32 pair:
+  - shared diff offsets over the common `69632` bytes: `25042`
+  - empty-row-only diff offsets: `971`
+  - full-wire-row0-NOP-only diff offsets: `3327`
+  - implication:
+    - most of the row32 max1400 footprint is shared across both lanes
+    - lane-specific additions are secondary companions, not the core structure
+
+Best current interpretation:
+- the "comment row must be empty" model is materially weakened.
+- the max1400 lane is better explained as a comment-owned extent/page family that can coexist with ordinary rung topology.
+- topology changes affect what the extra page carries, but do not suppress the extra-page allocation.
+- the terminal extra page now looks like a descriptor/render-companion page whose richness depends on the surrounding topology lane.
+- current best conceptual model is:
+  - a large lane-stable comment extent family spanning the repeated body pages
+  - plus a smaller lane-sensitive terminal companion layer that can carry renderer/layout metadata
+
+Recommended next step:
+- continue offline interpretation/documentation first.
+- if more native captures are still needed afterward, the best next size matrix remains:
+  - row9 no-comment / max1400
+  - row17 no-comment / max1400
+
 ## Execution Update (March 7, 2026 - Row32 Native Pair Strongly Favors Extent-Scaling)
 
 - New result report:

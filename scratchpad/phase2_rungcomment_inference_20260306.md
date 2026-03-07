@@ -565,3 +565,51 @@ Delta for row32 max1400 vs row32 no-comment:
 
 ## Current Status
 - `phase2_rungcomment_closure_completed_gate_not_met`
+
+## Offline Follow-Up (March 7, 2026 - Empty-Row Carrier Hypothesis Weakened)
+
+- New report:
+  - `scratchpad/max1400_row32_fullwire_row0nop_native_results_20260307.md`
+- New native discriminator scenario:
+  - `grid_rungcomment_max1400_row32_fullwire_row0nop_native_20260307`
+- Manifest statuses:
+  - `2/2` `verified_pass`
+
+Length outcomes:
+- `grc32fwnop_no_comment_native_20260307`
+  - capture: `69632`
+  - verify-back: `69632`
+- `grc32fwnop_max1400_native_20260307`
+  - capture: `73728`
+  - verify-back: `73728`
+
+Key implication:
+- row32 max1400 still allocates **exactly one extra `0x1000` page** even when:
+  - all visible rows are full horizontal wire rows
+  - row `0` is explicitly distinguished with `NOP`
+
+This materially weakens:
+- the idea that the extra max1400 structure only works because empty rows exist as hidden carriers
+
+This materially strengthens:
+- a comment-owned extent/page-family model that coexists with normal rung topology
+
+Additional note:
+- the extra page in this full-wire row0-NOP lane is not sparse
+- it contains UTF-16LE font/display strings such as:
+  - `Segoe UI Variable Display Semilight`
+  - `Segoe UI Variable Display Semibold`
+  - `SimSun`
+  - `NSimSun`
+  - `SimSun-ExtB`
+- these strings are absent from the comment's ANSI RTF payload, which still names only `Arial`
+- this points to a renderer/layout companion page, not direct text spillover
+
+Updated offline interpretation:
+- the row32 empty-row pair and the row32 full-wire row0-NOP pair now point to the same core conclusion:
+  - the extra page is a real comment-owned scaling structure
+  - not merely an empty-row-local carrier trick
+
+Recommended next native matrix, if more capture work is needed:
+- row9 no-comment / max1400
+- row17 no-comment / max1400

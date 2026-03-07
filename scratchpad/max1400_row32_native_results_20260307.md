@@ -128,3 +128,32 @@ Most useful next native matrix, if more capture work is needed:
 
 Reason:
 - these intermediate sizes can show exactly when the extra page first appears.
+
+## Follow-Up Discriminator: Full-Wire Row0-NOP Pair (Completed Same Day)
+
+Additional report:
+- `scratchpad/max1400_row32_fullwire_row0nop_native_results_20260307.md`
+
+New paired scenario:
+- `grid_rungcomment_max1400_row32_fullwire_row0nop_native_20260307`
+
+Key outcome:
+- row32 full-wire row0-NOP no-comment: `69632`
+- row32 full-wire row0-NOP max1400: `73728`
+- delta remains **`+4096` exactly**
+
+Why this matters:
+- the extra page survives even when all visible rows are full horizontal wire rows
+- row `0` is also explicitly distinguished with `NOP`
+- therefore the extra page is not dependent on empty visible rows acting as carriers
+
+Refined interpretation after the discriminator:
+- the row32 result is no longer best explained as an empty-row-only pseudo-row trick
+- the evidence now better fits a comment-owned extent/page family that coexists with ordinary rung topology
+
+Additional note:
+- the full-wire row0-NOP extra page is much richer than the sparse empty-row extra page
+- it contains UTF-16LE font/display strings such as `Segoe UI Variable Display Semilight`, `Segoe UI Variable Display Semibold`, `SimSun`, `NSimSun`, and `SimSun-ExtB`
+- those strings do not appear in the comment RTF payload, which still uses `Arial` in the ANSI font table
+- this suggests the extra page can act as a renderer/layout companion page rather than simple text overflow
+- this suggests the same extra-page mechanism can carry richer display metadata in non-empty topology lanes
