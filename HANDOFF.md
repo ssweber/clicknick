@@ -109,6 +109,20 @@ Additional offline refinement on the repeated body pages:
   - better than "empty pseudo rung with no wire markers"
   - current best phrase is "hidden paged extent that reuses cell-shaped descriptor slots"
 
+Additional empty-row page-17 asymmetry:
+- empty-row native page `17` remains extremely sparse
+- empty-row verify-back page `17` does not remain sparse:
+  - it grows to `683` non-zero bytes
+- but it also does **not** become the rich full-wire `74 76 00 08` font/fallback table
+- instead, verify-back page `17` resolves as another `64`-slot lattice page with:
+  - slot `0` preserving the `0x20` terminal anchor
+  - the remaining slots dominated by a repeating `3`-phase descriptor wave
+  - compact patterns built from the same `09/10/03` and `07/10/03` vocabulary seen elsewhere in the structural family
+- strongest current interpretation:
+  - in the empty-row lane, Click synthesizes a reduced terminal descriptor page on copy-back
+  - in the full-wire lane, it preserves a richer renderer/fallback companion page
+  - so page `17` is now best treated as the most lane- and regeneration-sensitive terminal companion in the extent model
+
 Recommended next step:
 - continue offline interpretation/documentation first.
 - if more native captures are still needed afterward, the best next size matrix remains:

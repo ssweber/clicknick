@@ -642,6 +642,19 @@ Additional offline refinement for the repeated row32 body pages:
 - this is more precise than:
   - empty pseudo rung with no wire markers
 
+Additional empty-row page-17 refinement:
+- empty-row row32 native page `17` stays extremely sparse
+- but empty-row verify-back page `17` grows to `683` non-zero bytes without becoming the rich font/fallback table seen in the full-wire row0-NOP lane
+- verify-back page `17` still uses the same `0x40` slot lattice (`64` slots)
+- after slot `0`'s preserved `0x20` terminal anchor, the page is dominated by a repeating `3`-phase wave built from the same compact descriptor vocabulary:
+  - `09/10/03`
+  - `07/10/03`
+  - nearby terminal variants like `08` and `0D`
+- best current interpretation:
+  - Click synthesizes a reduced terminal descriptor page on copy-back in the empty-row lane
+  - rather than preserving the sparse native page literally
+  - and without promoting it to the rich renderer/fallback form used in the full-wire lane
+
 Updated offline interpretation:
 - the row32 empty-row pair and the row32 full-wire row0-NOP pair now point to the same core conclusion:
   - the extra page is a real comment-owned scaling structure

@@ -431,3 +431,95 @@ That keeps the useful part of the pseudo-rung idea:
 
 But it avoids the misleading part:
 - it is not simply an empty visible rung authored with missing wire flags
+
+## Empty-Row Page 17 Native Versus Verify-Back
+
+The empty-row row32 lane shows a second important asymmetry:
+- native page `17` is extremely sparse (`12` non-zero bytes)
+- verify-back page `17` is not sparse (`683` non-zero bytes)
+- but it still does **not** become the rich full-wire font/fallback table
+
+So Click is not merely preserving the sparse native extra page on copy-back.
+It is synthesizing a reduced terminal descriptor form.
+
+### Regenerated Page 17 Uses The Same 0x40 Slot Lattice
+
+Empty-row verify-back page `17` still occupies a full `0x1000` page and still resolves as:
+- `64` slots of `0x40` bytes each
+
+But unlike body pages `2..16`:
+- page-to-page ordinal fields are no longer populated across the page
+- slot `0` alone carries the terminal `0x20` marker at `+0x09/+0x11`
+- the remaining slots are dominated by local phase-pattern payloads rather than the monotonic body-page ladder
+
+### Slot Families In The Regenerated Empty-Row Page 17
+
+Verify-back page `17` collapses into `5` slot families:
+
+1. slot `0`
+- preserves the sparse terminal anchor:
+  - `+0x04 = 0x01`
+  - `+0x09 = 0x20`
+  - `+0x0D = 0x1F`
+  - `+0x11 = 0x20`
+  - `+0x15..+0x1D = 01 01 FC FF FF FF FF 01`
+
+2. slot `1`
+- bridge/special case with:
+  - `09 10 03`
+  - `07 10 03`
+  - two `+0x20/+0x38`-style anchors set to `01`
+
+3. repeating family A (`21` slots)
+- offsets of the form:
+  - `+0x00/+0x18/+0x30`
+  - `+0x04/+0x1C/+0x34 = 0x10`
+  - `+0x06/+0x1E/+0x36 = 0x03`
+- exemplar values include:
+  - `09 10 03`
+  - terminal variant `0D 10 03`
+
+4. repeating family B (`21` slots)
+- offsets of the form:
+  - `+0x00/+0x18/+0x30 = 0x01`
+  - `+0x08/+0x20/+0x38`
+  - `+0x0C/+0x24/+0x3C = 0x10`
+  - `+0x0E/+0x26/+0x3E = 0x03`
+
+5. repeating family C (`20` slots)
+- offsets of the form:
+  - `+0x08/+0x20/+0x38 = 0x01`
+  - `+0x10/+0x28 = 0x07`
+  - `+0x14/+0x2C = 0x10`
+  - `+0x16/+0x2E = 0x03`
+
+High-signal pattern:
+- after the first two slots, the page is dominated by a `3`-phase wave across slots `2..63`
+- the vocabulary is the same family of compact descriptors already seen earlier:
+  - `09/10/03`
+  - `07/10/03`
+  - nearby terminal variants such as `08` and `0D`
+
+Interpretation:
+- empty-row verify-back page `17` is not a leaf render/fallback table
+- it is better described as a **synthesized reduced terminal descriptor page**
+- it reuses the same compact phase-wave grammar as the structural extent family
+- this is consistent with Click regenerating a terminal companion page on copy-back when the native source page was only minimally populated
+
+### Contrast With The Full-Wire Row0-NOP Page 17
+
+Full-wire row0-NOP page `17`:
+- round-trips byte-exact
+- remains the rich `74 76 00 08` renderer/fallback table
+
+Empty-row page `17`:
+- does not round-trip byte-exact
+- does not gain the rich font/fallback records
+- instead becomes a reduced phase-wave descriptor lattice
+
+Most defensible current interpretation:
+- page `17` is a lane-sensitive terminal companion page
+- Click can materialize different concrete page-17 forms on copy-back:
+  - rich render/fallback table in the full-wire lane
+  - reduced synthesized terminal descriptor page in the empty-row lane
+- the shared body-page chain remains the primary stable extent structure, while page `17` is the most lane- and regeneration-sensitive part of the model
