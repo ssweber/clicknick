@@ -626,6 +626,22 @@ Further offline decode of that page:
 - the wrapper fields `0x012C / 0x015E / 0x0190 / 0x0258` are now best interpreted as weight-like or fallback-class codes (`300 / 350 / 400 / 600`), not lengths
 - this materially strengthens the "renderer/fallback metadata" model for page `17`
 
+Additional offline refinement for the repeated row32 body pages:
+- pages `2..16` are now better described as **paired-row descriptor pages**
+- reason:
+  - each page is `0x1000`
+  - the structure still uses the ordinary `0x40` cell stride
+  - so each page holds `64` cell-shaped slots, naturally resolving as two `32`-column row bands
+- across pages `2..15`, the only page-to-page varying bytes are slot `+0x09` and slot `+0x11`
+- those two fields advance monotonically by page, which fits extent ordinals or row-band indices much better than visible wire data
+- in the full-wire row0-NOP lane:
+  - `+0x09` keeps the same ordinal ladder
+  - `+0x11` is shifted upward by `0x21`
+- best current wording is now:
+  - hidden paged extent that reuses cell-shaped descriptor slots
+- this is more precise than:
+  - empty pseudo rung with no wire markers
+
 Updated offline interpretation:
 - the row32 empty-row pair and the row32 full-wire row0-NOP pair now point to the same core conclusion:
   - the extra page is a real comment-owned scaling structure

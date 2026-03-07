@@ -94,6 +94,21 @@ Best current interpretation:
   - a large lane-stable comment extent family spanning the repeated body pages
   - plus a smaller lane-sensitive terminal companion layer that can carry renderer/layout metadata
 
+Additional offline refinement on the repeated body pages:
+- pages `2..16` are now better modeled as **paired-row descriptor pages**
+- basis:
+  - each page is `0x1000`
+  - the data still sits on the normal `0x40` cell stride
+  - so each body page contains `64` cell-sized slots, naturally resolving as two `32`-column row bands
+- across pages `2..15`, the only page-to-page varying bytes are slot `+0x09` and slot `+0x11`
+- those bytes form a monotonic ladder by page, which fits extent ordinals / row-band indices better than visible wire markers
+- lane relation:
+  - empty-row lane: `+0x09` and `+0x11` share the same ordinal ladder
+  - full-wire row0-NOP lane: `+0x09` keeps that ladder, while `+0x11` is shifted upward by `0x21`
+- updated wording:
+  - better than "empty pseudo rung with no wire markers"
+  - current best phrase is "hidden paged extent that reuses cell-shaped descriptor slots"
+
 Recommended next step:
 - continue offline interpretation/documentation first.
 - if more native captures are still needed afterward, the best next size matrix remains:

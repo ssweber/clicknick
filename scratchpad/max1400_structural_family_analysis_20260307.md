@@ -322,3 +322,112 @@ Interpretation:
 This supports a two-layer working model:
 1. a large lane-stable comment-owned extent family spanning the repeated body pages
 2. a smaller lane-sensitive terminal companion layer that can carry renderer/layout metadata
+
+## Repeated Body Pages Decode: Paired-Row Descriptor Pages
+
+Further offline decoding of row32 pages `2..16` strengthens the extent model.
+
+High-signal facts:
+- pages `2..15` are not just "same diff masks"
+- they are structured on the ordinary `0x40` cell lattice
+- each `0x1000` page holds `64` cell-sized slots:
+  - `64 * 0x40 = 0x1000`
+  - this matches two ordinary `32`-column row bands per page
+- the repeated family therefore looks like a **paired-row descriptor page**, not a free-form blob
+
+### Page-Local Ladder Fields
+
+Across pages `2..15`, the only bytes that vary from page to page are:
+- cell `+0x09`
+- cell `+0x11`
+
+Those offsets repeat across all `64` slots in the page, so the varying-byte count is:
+- `64 * 2 = 128`
+
+Empty-row lane:
+- page `2`
+  - first half-row `+0x09/+0x11`: `02, 03, 03, ...`
+  - second half-row `+0x09/+0x11`: `03, 04, 04, ...`
+- page `3`
+  - first half-row: `04, 05, 05, ...`
+  - second half-row: `05, 06, 06, ...`
+- page `15`
+  - first half-row: `1C, 1D, 1D, ...`
+  - second half-row: `1D, 1E, 1E, ...`
+- page `16`
+  - first half-row: `1E, 1F, 1F, ...`
+  - second half-row: `1F, 20, 20, ...`
+
+Full-wire row0-NOP lane:
+- `+0x09` follows the same page ladder as the empty-row lane
+- `+0x11` is shifted upward by `0x21`:
+  - page `2`: `23/24`
+  - page `3`: `25/26`
+  - ...
+  - page `16`: `3F/40`
+
+Interpretation:
+- `+0x09` and `+0x11` are strong candidates for page/row ordinal or extent-index fields
+- they do not behave like visible wire-topology authoring
+- the full-wire lane preserves the same ordinal ladder while adding a lane-class offset at `+0x11`
+
+### Slot Families Inside A Repeated Body Page
+
+Within page `2`, most of the `64` slots fall into a small number of repeated families.
+
+Empty-row lane:
+- one dominant family covers `60/64` slots
+- one special family appears at slots `1` and `33`
+- one special family appears at slots `9` and `41`
+
+Full-wire row0-NOP lane:
+- one dominant family covers `56/64` slots
+- paired boundary families appear at:
+  - `0/32`
+  - `1/33`
+  - `8/40`
+  - `9/41`
+
+Important pattern:
+- the special slots recur exactly `+32` apart
+- that is, the same local role repeats once in each half-page row band
+
+Interpretation:
+- this is the clearest evidence so far that a body page is modeling two coupled `32`-column row descriptors
+- not one flat `4096`-byte payload slab
+
+### Terminal Body Page Versus Repeated Body Pages
+
+Page `16` is a terminal variant of the same paired-row form.
+
+Relative to page `2`:
+- the dominant body structure stays intact
+- the same `+0x09/+0x11` ladder advances to the terminal values
+- only one extra differing offset appears in the empty-row lane, and no broad format break appears in the full-wire lane
+
+Interpretation:
+- page `16` is best described as the terminal paired-row descriptor page of the extent chain
+- page `17` then sits after that chain as the terminal companion page
+
+## Updated Extent Model After Body-Page Decode
+
+The strongest current offline model is now:
+
+1. pages `2..16` form a hidden comment-owned descriptor chain on the ordinary cell lattice
+2. each `0x1000` body page represents two `32`-slot row bands
+3. the per-page ladder is carried mainly by slot bytes `+0x09/+0x11`
+4. page `17` is not another ordinary body page:
+   - in the full-wire lane it is a rich render/fallback companion table
+   - in the empty-row lane it is a sparse or regenerated terminal companion
+
+This is a better fit than the older phrasing:
+- "empty pseudo rung with no wire markers"
+
+Updated phrasing:
+- **hidden paged extent that reuses cell-shaped descriptor slots**
+
+That keeps the useful part of the pseudo-rung idea:
+- the structure is laid out on the same row/column lattice
+
+But it avoids the misleading part:
+- it is not simply an empty visible rung authored with missing wire flags

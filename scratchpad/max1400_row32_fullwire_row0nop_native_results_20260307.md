@@ -240,6 +240,36 @@ Interpretation:
   - a large lane-stable comment extent family through the body pages
   - plus a lane-sensitive terminal render/layout companion page
 
+## Additional Offline Refinement: Shared Body Pages Look Like Paired-Row Descriptors
+
+The repeated body-page family can now be described more concretely.
+
+Shared across the empty-row and full-wire row0-NOP lanes:
+- pages `2..15` are built on the ordinary `0x40` cell stride
+- each `0x1000` page therefore contains `64` cell-sized slots
+- the special slot roles recur at `+32`, which strongly suggests two coupled `32`-column row bands per page
+
+Across pages `2..15`:
+- the only page-to-page varying bytes are slot `+0x09` and slot `+0x11`
+- those fields advance monotonically by page
+
+Lane relationship:
+- empty-row lane:
+  - `+0x09` and `+0x11` carry the same ordinal ladder
+- full-wire row0-NOP lane:
+  - `+0x09` keeps the same ladder
+  - `+0x11` is shifted upward by `0x21`
+
+Interpretation:
+- the shared body pages are best treated as **paired-row descriptor pages** inside a hidden comment-owned extent chain
+- the full-wire lane does not replace that body chain; it overlays a lane-class shift on top of the same ordinal structure
+
+This is a better fit than describing the mechanism as:
+- a literal empty pseudo rung with no wire markers
+
+Current best wording:
+- **hidden paged extent that reuses cell-shaped descriptor slots**
+
 ## Recommended Next Step
 
 Offline recommendation:

@@ -95,6 +95,39 @@ Interpretation:
 - max1400 scaling at row32 is not just "row0/row1 plus one trailer blob"
 - it introduces a repeated per-page family across most of the multi-page body plus a sparse terminal extra page
 
+## Offline Decode Refinement: Pages 2..16 Are Paired-Row Descriptor Pages
+
+Further offline analysis tightens the model for the repeated body family.
+
+High-signal facts:
+- each repeated body page is exactly `0x1000` bytes
+- the format is still laid out on the normal `0x40` cell stride
+- so each page contains `64` cell-sized slots
+- that naturally resolves as two `32`-column row bands per page
+
+Across pages `2..15`, the only page-to-page varying bytes are:
+- slot `+0x09`
+- slot `+0x11`
+
+That yields exactly:
+- `64 * 2 = 128` varying offsets per repeated page
+
+In the empty-row lane:
+- page `2` carries ladder values `02/03/04`
+- page `3` carries `04/05/06`
+- ...
+- page `16` carries `1E/1F/20`
+
+Interpretation:
+- the repeated family is not arbitrary repeated payload
+- it behaves like a hidden extent chain whose body pages carry paired-row descriptors with monotonic ordinal/index fields
+
+This is a better fit than:
+- "an empty pseudo rung with no wire markers"
+
+Current best phrasing:
+- **a hidden paged extent that reuses cell-shaped descriptor slots**
+
 ## Working Interpretation
 
 This result is strong evidence that max1400 native handling scales like an extent / pseudo-row structure.
