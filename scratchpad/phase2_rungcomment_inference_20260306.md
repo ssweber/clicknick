@@ -655,6 +655,39 @@ Additional empty-row page-17 refinement:
   - rather than preserving the sparse native page literally
   - and without promoting it to the rich renderer/fallback form used in the full-wire lane
 
+New offline prototype milestone:
+- helper added:
+  - `devtools/prototype_max1400_body_synth.py`
+- it applies the inferred body-page rules to a row32 no-comment native base capture
+- current result:
+  - pages `2..16` synthesize **exactly** for both tested row32 lanes:
+    - empty-row lane
+    - full-wire row0-NOP lane
+- implication:
+  - the bulk hidden extent body is now rule-backed offline, not merely described
+  - the remaining synthesis unknowns are concentrated in:
+    - page `0`
+    - page `1`
+    - page `17`
+
+New offline splice milestone:
+- helper added:
+  - `devtools/prototype_max1400_splice.py`
+- hybrid construction:
+  - donor pages `0/1/17`
+  - synthesized pages `2..16`
+  - base = row32 no-comment native control
+- result:
+  - full byte-for-byte reconstruction now succeeds for both tested row32 lanes:
+    - empty-row row32
+    - full-wire row0-NOP row32
+- implication:
+  - in the tested row32 lanes, there is no remaining hidden coupling outside the partition:
+    - lead pages `0/1`
+    - body pages `2..16`
+    - terminal companion page `17`
+  - future synthesis work can focus narrowly on replacing or generating donor pages `0/1/17`
+
 Updated offline interpretation:
 - the row32 empty-row pair and the row32 full-wire row0-NOP pair now point to the same core conclusion:
   - the extra page is a real comment-owned scaling structure

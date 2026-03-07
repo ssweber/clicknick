@@ -1,132 +1,178 @@
-# Pickup Prompt: Max1400 Offline Structural Analysis
+# Pickup Prompt: Max1400 Offline Synthesis Follow-Up
 
 ## Read First
 1. `HANDOFF.md`
 2. `AGENTS.md`
 3. `scratchpad/phase2_rungcomment_inference_20260306.md`
-4. `scratchpad/phase2_rungcomment_max1400_structure_scope_20260307.json`
-5. `scratchpad/phase2_rungcomment_max1400_obs63_narrow_20260307.json`
-6. `scratchpad/phase2_rungcomment_max1400_struct_blocks_20260307.json`
+4. `scratchpad/max1400_structural_family_analysis_20260307.md`
+5. `scratchpad/max1400_row32_native_results_20260307.md`
+6. `scratchpad/max1400_row32_fullwire_row0nop_native_results_20260307.md`
+
+## Current Commit Baseline
+The latest committed offline state now includes:
+- page-17 record decode
+- paired-row descriptor-page model for pages `2..16`
+- empty-row page-17 regeneration analysis
+- exact offline body synthesis for pages `2..16`
+- exact offline splice reconstruction for full row32 payloads
+
+Useful helpers already added:
+- `devtools/analyze_max1400_page17.py`
+- `devtools/analyze_max1400_body_pages.py`
+- `devtools/prototype_max1400_body_synth.py`
+- `devtools/prototype_max1400_splice.py`
 
 ## Current Ground Truth
-- Comment storage model is still:
-  - `0x0294` = length dword
-  - `0x0298` = payload start
-  - `len = payload_bytes + 1`
-  - payload is RTF-like ANSI
-  - max comment length is `1400`
-- Fresh no-wire native anchors for this lane:
-  - `scratchpad/captures/grc_no_comment_fresh_native_20260307.bin`
-  - `scratchpad/captures/grc_max1400_fresh_native_20260307.bin`
-- Full comment-window-only replay (`0x0294..0x08FC`) is insufficient:
-  - can produce `hidden comment`
-  - can also force a visible wire rung even though the native lane is `R,...,:,NOP`
-- Copying `0x0294..0x1A5F` from the fresh max1400 native onto the fresh no-comment base is sufficient:
-  - no rung wire
-  - correct max comment behavior
-  - verify-back exact match to the fresh native max1400 control
-- Copying earlier than `0x0294` was not required for observed parity.
 
-## Important Negative Results
-- The `63` observed verify-back offsets from the failing `commentwin` case are **not** a safe source-level fix.
-  - forcing them directly caused crashes.
-- Coarse structural block splits also crashed:
-  - `120` non-grid bytes alone
-  - row0 structural block alone
-  - row1 structural block alone
-  - row0+row1 structural block without the accompanying non-grid bytes
+### Comment Storage Model
+- `0x0294` = length dword
+- `0x0298` = payload start
+- payload is RTF-like ANSI
+- `len = payload_bytes + 1`
+- max comment length is `1400`
 
-## What Is Actually Unresolved
-The unresolved source region is still:
-- `0x08FD..0x1A5F`
+### Row32 Native Scaling Is Real
+Committed row32 native pairs:
+- empty-row lane:
+  - `grc32_no_comment_native_20260307 = 69632`
+  - `grc32_max1400_native_20260307 = 73728`
+- full-wire row0-NOP lane:
+  - `grc32fwnop_no_comment_native_20260307 = 69632`
+  - `grc32fwnop_max1400_native_20260307 = 73728`
 
-But current evidence says this region is not a bag of independent patch bytes.
-It behaves like a coherent structural family spanning:
-- pre-grid bytes near `0x0904..0x0A5C`
-- row0 cell metadata
-- row1 cell metadata
+Decisive implication:
+- max1400 allocates one extra `0x1000` page in native source capture
+- this survives when visible rows are fully wired
+- so the structure is not dependent on empty rows as hidden carriers
 
-## Offline Analysis Objective
-Do not start with more operator queues.
-First do an offline-only pass that tries to explain the structural family inside `0x08FD..0x1A5F`.
+## Best Current Model
 
-Primary question:
-- Is Click treating the max1400 comment as:
-  - row0/row1 metadata entanglement only
-  - or some kind of pseudo-row / extra-extent structure
+### 1) Hidden Paged Extent
+Pages `2..16` are best treated as:
+- a hidden comment-owned extent
+- reusing the normal `0x40` cell stride
+- with `64` cell-sized slots per `0x1000` page
+- naturally resolving as two `32`-column row bands per page
 
-## High-Signal Offline Facts
+This is more precise than:
+- "empty pseudo rung with no wire markers"
 
-### 1) Failing vs Passing Source Delta
-`grcmfs_commentwin_full_0294_08fc_from_freshnowire.bin`
-vs
-`grcmfs_commentgrid_0294_1a5f_from_freshnowire.bin`
+Current wording:
+- **hidden paged extent that reuses cell-shaped descriptor slots**
 
-Source delta count:
-- `1194` bytes total
+### 2) Body Pages `2..16` Are Solved Offline
+Prototype:
+- `devtools/prototype_max1400_body_synth.py`
 
-Partition:
-- `120` non-grid bytes near `0x0904..0x0A5C`
-- `685` row0 bytes
-- `389` row1 bytes
+Result:
+- starting from row32 no-comment native controls
+- pages `2..16` synthesize **exactly** in both tested lanes:
+  - empty-row row32
+  - full-wire row0-NOP row32
 
-### 2) Repeating Cell Shapes
-The row-structured portion is not random.
-Observed repeating source-diff families:
-- row0 cols `1..22`: shared shape
-- row0 col `0`: same family plus extra `+0x15`
-- row0 col `23`: boundary variant
-- row0 cols `24..30`: tail variant
-- row0 col `31`: terminal variant with `+0x19/+0x1D/+0x38/+0x3D`
-- row1 cols `0..22`: shared shape
-- row1 col `23`: boundary variant
-- row1 cols `24/27/30`: one repeating tail shape
-- row1 cols `25/28/31`: second repeating tail shape
-- row1 cols `26/29`: third repeating tail shape
+Implication:
+- the bulk max1400 extent body is no longer the unresolved surface
 
-### 3) The 120 Non-Grid Bytes Also Repeat
-Those bytes appear in `6` buckets, spaced by `0x40`, starting around:
-- `0x0904`
-- `0x0944`
-- `0x0984`
-- `0x09C4`
-- `0x0A04`
-- `0x0A44`
+### 3) Full Row32 Payload Can Be Reconstructed Exactly Offline
+Prototype:
+- `devtools/prototype_max1400_splice.py`
 
-That pattern strongly suggests a descriptor table / per-column-family structure, not random noise.
+Construction:
+1. start from row32 no-comment native base
+2. synthesize pages `2..16`
+3. copy donor pages `0`, `1`, and `17` from the native row32 max1400 payload
 
-## Suggested Offline Tasks
-1. Build a compact table of the repeated row0/row1 shape families and their exact rel-offset/value transitions.
-2. Determine whether the `120` non-grid bytes align semantically with:
-   - row0 cols `24..31`
-   - row1 cols `24..31`
-   - or some separate extent table.
-3. Compare these max1400-specific structures against:
-   - fresh no-comment native
-   - fresh max1400 native
-   - passing `commentgrid` synthetic
-4. Check whether the row-diff families look like:
-   - terminal-row linkage rules
-   - per-cell extent/ownership flags
-   - or a compacted descriptor for hidden rows / pseudo-rows.
+Result:
+- exact full-payload reconstruction in both tested row32 lanes
 
-## Recommended Future Native Experiment
-After the offline pass, strongly consider a new native matrix:
-- row32 no-comment control
-- row32 max1400 comment control
+Implication:
+- for the tested row32 lanes, the payload decomposition is exact:
+  - lead pages `0/1`
+  - synthesized body pages `2..16`
+  - terminal companion page `17`
 
-Use the same body file:
-- `scratchpad/max1400_comment_body_20260307.txt`
+## What Is Still Unresolved
+The remaining max1400 synthesis unknowns are now tightly scoped to:
+- page `0`
+- page `1`
+- page `17`
 
-Why:
-- If max1400 is only entangled with the first visible rows, row32 may preserve the same low-row signature.
-- If Click is treating the max comment as a pseudo-row / extra structural extent, row32 should expose how that scaling behaves.
+These are no longer mixed up with the repeated body chain.
+
+## Page 17 Model
+
+### Full-Wire Row0-NOP Lane
+Page `17` is a rich renderer/fallback companion table:
+- `4` top-level `74 76 00 08` records
+- `3` Segoe leaf wrappers
+- `1` CJK container wrapper
+- CJK wrapper expands to `5` nested fallback-face slots:
+  - `SimSun`
+  - `@SimSun`
+  - `NSimSun`
+  - `@NSimSun`
+  - `SimSun-ExtB`
+
+Best current interpretation of the wrapper codes:
+- `0x012C / 0x015E / 0x0190 / 0x0258`
+- weight-like or fallback-class ladder (`300 / 350 / 400 / 600`)
+
+### Empty-Row Lane
+Native page `17` is sparse, but verify-back page `17` is regenerated:
+- not sparse anymore
+- but also not the rich full-wire font/fallback table
+- instead it becomes a reduced terminal descriptor page on the same `64`-slot lattice
+- dominated by the same compact `09/10/03` and `07/10/03` grammar seen elsewhere
+
+Interpretation:
+- page `17` is lane-sensitive and regeneration-sensitive
+- it is the most unstable / least solved part of the max1400 extent model
+
+## Recommended Next Offline Objective
+Do not start by changing production codec behavior.
+
+Primary question now:
+- can pages `0`, `1`, and `17` be generated or normalized from:
+  - row count
+  - comment payload/length
+  - lane class
+  - existing no-comment base data
+
+## Suggested Next Tasks
+1. Diff and classify page `0` max1400 vs no-comment in both row32 lanes.
+2. Diff and classify page `1` max1400 vs no-comment in both row32 lanes.
+3. Determine whether page `0` and page `1` also decompose into:
+   - donor-preserved subregions
+   - plus rule-driven inserts similar to the solved body pages.
+4. Decide whether page `17` can be:
+   - synthesized directly
+   - normalized from a smaller lane-specific template
+   - or must remain donor-backed for now.
+
+## Recommendation On Tooling
+- do not update production codec behavior yet
+- it is reasonable now to continue with:
+  - offline prototype tooling
+  - guarded experimental synthesis paths
+- but not with:
+  - default production max1400 emission
+
+## Operator Guidance
+Avoid new operator queues unless the offline pass on pages `0/1/17` clearly bottoms out.
+
+If more captures are needed after that, the best next matrix is still:
+- row9 no-comment / max1400
+- row17 no-comment / max1400
+
+Reason:
+- determine how donor-page behavior scales before row32
+- especially when the extra page first appears and how pages `0/1/17` evolve
 
 ## Non-Negotiables
-- Do not edit `scratchpad/ladder_capture_manifest.json` by hand
-- Keep using `uv run clicknick-ladder-capture ...` workflow commands
-- Keep production codec behavior unchanged during RE
-- Prefer offline analysis before adding more operator queues
+- do not edit `scratchpad/ladder_capture_manifest.json` by hand
+- keep production codec behavior unchanged during RE
+- use `apply_patch` for file edits
+- prefer deterministic repo-local helpers
 
 ## One-Line Intent
-Explain the structural family in `0x08FD..0x1A5F` before asking for more manual max1400 pasteback runs.
+The body chain is solved; continue offline RE on donor/problem pages `0`, `1`, and `17` before attempting production max1400 synthesis.

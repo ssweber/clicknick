@@ -523,3 +523,79 @@ Most defensible current interpretation:
   - rich render/fallback table in the full-wire lane
   - reduced synthesized terminal descriptor page in the empty-row lane
 - the shared body-page chain remains the primary stable extent structure, while page `17` is the most lane- and regeneration-sensitive part of the model
+
+## Offline Prototype Result: Body Pages 2..16 Are Now Synthesized Exactly
+
+Prototype helper:
+- `devtools/prototype_max1400_body_synth.py`
+
+This helper takes a row32 no-comment native capture and applies only offline RE rules for:
+- repeated body pages `2..15`
+- the terminal body page `16`
+
+Result:
+- empty-row lane:
+  - using `grc32_no_comment_native_20260307.bin` as base
+  - synthesized pages `2..16` match `grc32_max1400_native_20260307.bin` exactly
+  - diff count over pages `2..16`: `0`
+- full-wire row0-NOP lane:
+  - using `grc32fwnop_no_comment_native_20260307.bin` as base
+  - synthesized pages `2..16` match `grc32fwnop_max1400_native_20260307.bin` exactly
+  - diff count over pages `2..16`: `0`
+
+Implication:
+- the repeated body chain is no longer an unresolved descriptive model only
+- it now has a concrete replayable offline rule set for the tested row32 lanes
+
+### What The Prototype Actually Solves
+
+Solved exactly for row32:
+- all repeated body pages `2..15`
+- the terminal body page `16`, including:
+  - the slot-`41..63` terminal collapse
+  - the two small empty-row page-16 quirks at:
+    - slot `9`, offset `+0x35`
+    - slot `33`, offset `+0x21`
+
+Still unresolved:
+- page `0`
+- page `1`
+- page `17`
+
+Current significance:
+- the remaining unknown for max1400 synthesis is no longer the bulk body extent
+- it is the lead-in pages and the lane-sensitive terminal companion page
+
+## Offline Splice Prototype Result: Full Row32 Reconstruction Is Exact
+
+Splice helper:
+- `devtools/prototype_max1400_splice.py`
+
+Construction:
+1. start from the row32 no-comment native base capture
+2. synthesize pages `2..16` with the offline body-page rules
+3. copy donor pages `0`, `1`, and `17` from the native row32 max1400 capture
+
+Result:
+- empty-row row32 lane:
+  - full payload diff count: `0`
+- full-wire row0-NOP row32 lane:
+  - full payload diff count: `0`
+
+Implication:
+- for the tested row32 lanes, the payload now decomposes cleanly into:
+  - donor lead pages `0/1`
+  - synthesized body pages `2..16`
+  - donor terminal companion page `17`
+
+This is stronger than the earlier body-page-only result because it proves:
+- there is no hidden cross-page coupling left outside that partition in the tested row32 lanes
+- the current unresolved synthesis surface is exactly:
+  - how to generate or select pages `0`
+  - how to generate or select page `1`
+  - how to generate or select page `17`
+
+Practical interpretation:
+- an offline hybrid prototype is now capable of exact row32 native reconstruction
+- production still should not use this yet
+- but future work can focus narrowly on the donor-page problem instead of the entire max1400 extent

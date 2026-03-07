@@ -123,6 +123,41 @@ Additional empty-row page-17 asymmetry:
   - in the full-wire lane, it preserves a richer renderer/fallback companion page
   - so page `17` is now best treated as the most lane- and regeneration-sensitive terminal companion in the extent model
 
+New offline prototype milestone:
+- helper added:
+  - `devtools/prototype_max1400_body_synth.py`
+- result:
+  - starting from the row32 no-comment native controls, the inferred rules now synthesize pages `2..16` exactly in both tested lanes:
+    - empty-row row32
+    - full-wire row0-NOP row32
+- this includes:
+  - all repeated body pages `2..15`
+  - the terminal body page `16`
+- practical implication:
+  - the remaining unknown for max1400 synthesis is no longer the bulk body extent
+  - it is concentrated in:
+    - page `0`
+    - page `1`
+    - page `17`
+
+New offline splice milestone:
+- helper added:
+  - `devtools/prototype_max1400_splice.py`
+- construction:
+  - row32 no-comment native base
+  - synthesized pages `2..16`
+  - donor pages `0/1/17` copied from the native row32 max1400 payload
+- result:
+  - full byte-for-byte reconstruction is now exact in both tested row32 lanes:
+    - empty-row row32
+    - full-wire row0-NOP row32
+- implication:
+  - for the tested row32 lanes, the current decomposition is exact and sufficient:
+    - lead pages `0/1`
+    - body pages `2..16`
+    - terminal companion page `17`
+  - the remaining synthesis problem is now tightly scoped to generating or selecting donor pages `0/1/17`
+
 Recommended next step:
 - continue offline interpretation/documentation first.
 - if more native captures are still needed afterward, the best next size matrix remains:
