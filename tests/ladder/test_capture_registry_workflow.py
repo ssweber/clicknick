@@ -331,6 +331,24 @@ def test_verify_prepare_forwards_owner_hwnd(tmp_path: Path) -> None:
     assert fake.copied_owner_hwnds == [0x1234]
 
 
+def test_verify_prepare_defaults_native_entries_to_file_after_capture(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"\x44" * 8192)
+    workflow = _make_workflow(tmp_path, fake)
+    workflow.entry_add(
+        capture_type="native",
+        label="native_case",
+        scenario="verify",
+        description="captured native should verify from file by default",
+        rows=["R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"],
+    )
+    workflow.entry_capture(label="native_case")
+
+    result = workflow.verify_prepare(label="native_case", ensure_mdb_addresses=False)
+
+    assert result["source_mode"] == "file"
+    assert fake.copied_payloads[-1] == b"\x44" * 8192
+
+
 def test_verify_run_interactive_forwards_mdb_path_to_ensure(tmp_path: Path) -> None:
     fake = _FakeClipboard(read_payload=b"\x33" * 8192)
     seen_db_paths: list[str] = []

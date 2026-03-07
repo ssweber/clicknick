@@ -371,6 +371,15 @@ class CaptureWorkflow:
 
         return f"{','.join(contacts)},->,:,{canonical.af}"
 
+    def _default_verify_source_mode(self, entry: dict[str, Any], requested_source: str | None) -> str:
+        if requested_source is not None:
+            return requested_source
+
+        if entry["capture_type"] == "native" and entry.get("payload_file"):
+            return "file"
+
+        return entry["payload_source_mode"]
+
     def _payload_bytes_for_source(
         self,
         entry: dict[str, Any],
@@ -558,7 +567,7 @@ class CaptureWorkflow:
     ) -> dict[str, Any]:
         manifest = self._load_manifest()
         current = capture_registry.find_entry(manifest, label)
-        source_mode = source or current["payload_source_mode"]
+        source_mode = self._default_verify_source_mode(current, source)
         seed_info: dict[str, Any] = {
             "requested": seed_source,
             "source_used": None,

@@ -721,6 +721,42 @@ def test_tui_verify_label_mode_can_force_file_source(tmp_path: Path) -> None:
     assert any("Payload source: file" in line for line in output)
 
 
+def test_tui_verify_label_mode_defaults_captured_native_to_file(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"\xad" * 8192)
+    workflow = _make_workflow(tmp_path, fake)
+    workflow.entry_add(
+        capture_type="native",
+        label="native_case",
+        scenario="native_verify",
+        description="captured native defaults to file source",
+        rows=["R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"],
+    )
+    workflow.entry_capture(label="native_case")
+    output: list[str] = []
+
+    rc = main(
+        ["tui"],
+        workflow=workflow,
+        input_fn=_input_iter(
+            [
+                "3",  # verify
+                "",  # label mode (default)
+                "",  # source override = default
+                "native_case",  # label
+                "q",  # cancel verification after prepare
+                "",  # note
+                "",  # keep status as-is instead of blocked
+                "",  # keep current status
+                "5",  # exit
+            ]
+        ),
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    assert any("Payload source: file" in line for line in output)
+
+
 def test_report_profile_single_label_json(tmp_path: Path) -> None:
     fake = _FakeClipboard(read_payload=b"")
     workflow = _make_workflow(tmp_path, fake)
