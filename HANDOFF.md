@@ -1,8 +1,60 @@
-# Click PLC Clipboard Reverse Engineering — Handoff v17
+# Click PLC Clipboard Reverse Engineering - Handoff v17
 
 Last validated: March 7, 2026
 
-## Execution Update (March 7, 2026 — Max1400 Offline Structural Analysis Completed)
+## Execution Update (March 7, 2026 - Row32 Native Pair Strongly Favors Extent-Scaling)
+
+- New result report:
+  - `scratchpad/max1400_row32_native_results_20260307.md`
+- Scenario completed:
+  - `grid_rungcomment_max1400_row32_native_20260307`
+- Manifest verify statuses:
+  - `2/2` `verified_pass`
+- Important interpretation note:
+  - row rendering matched expected rows for both entries, but the decisive signal from this round is payload length, not the pass/fail label alone.
+
+Observed native lengths:
+- `grc32_no_comment_native_20260307`
+  - capture: `69632`
+  - verify-back: `69632`
+- `grc32_max1400_native_20260307`
+  - capture: `73728`
+  - verify-back: `73728`
+
+Key outcome:
+- row32 max1400 native allocates **exactly one additional `0x1000` page** relative to row32 no-comment.
+- the extra page exists in the native source capture itself and survives verify-back unchanged in total length.
+
+Why this matters:
+- this materially weakens the old idea that max1400 behavior is only a low-row row0/row1-local entanglement.
+- it materially strengthens an extent-like / pseudo-row-like scaling model.
+
+Additional offline summary from the row32 pair:
+- shared-prefix diff count (`row32 max1400` vs `row32 no-comment` over first `69632` bytes):
+  - `26013`
+- extra max1400-only tail page:
+  - `4096` bytes total
+  - only `12` non-zero bytes
+- page-family structure by `0x1000` pages:
+  - page `0`: comment/payload-heavy lead page
+  - page `1`: lead-in structural page
+  - pages `2..15`: identical repeated diff family
+  - page `16`: terminal/tail variant
+  - page `17`: sparse extra descriptor-like page
+
+Best current interpretation:
+- the short-row `0x08FD..0x1A5F` family was probably only the low-row footprint of a larger scaling structure.
+- at row32, max1400 reveals page-level repetition plus an extra sparse descriptor page.
+
+Recommended next step:
+- do offline page-family analysis before more operator queues.
+- if another native matrix is needed afterward, capture:
+  - row9 no-comment / max1400
+  - row17 no-comment / max1400
+- purpose:
+  - locate when the extra `0x1000` page first appears.
+
+## Execution Update (March 7, 2026 - Max1400 Offline Structural Analysis Completed)
 
 - New offline report:
   - `scratchpad/max1400_structural_family_analysis_20260307.md`
@@ -46,7 +98,7 @@ Status after the offline pass:
 - Reason:
   - this should distinguish low-row-only coupling from a genuinely scaling extent/pseudo-row model.
 
-## Execution Update (March 7, 2026 — Max1400 Structure Scope Narrowed to 0x08FD..0x1A5F)
+## Execution Update (March 7, 2026 - Max1400 Structure Scope Narrowed to 0x08FD..0x1A5F)
 
 - Fresh recaptures established the correct no-wire lane for this investigation:
   - `grc_max1400_fresh_native_20260307`
@@ -101,7 +153,7 @@ Next queued narrowing round:
 - purpose:
   - test whether the `63` observed verify-back offsets are sufficient to restore native-equivalent behavior from the failing `commentwin` base.
 
-## Execution Update (March 7, 2026 — Observed-63 Signature Is Marker, Not Minimal Source Fix)
+## Execution Update (March 7, 2026 - Observed-63 Signature Is Marker, Not Minimal Source Fix)
 
 - Scenario `grid_rungcomment_max1400_obs63_narrow_20260307` completed (`6` cases):
   - `1` `verified_pass` control
@@ -134,7 +186,7 @@ Next queued narrowing round:
     - row1 structural block
     - combined row0+row1 block
 
-## Execution Update (March 7, 2026 — Structural Block Splits Crash; Offline Analysis Recommended)
+## Execution Update (March 7, 2026 - Structural Block Splits Crash; Offline Analysis Recommended)
 
 - Scenario `grid_rungcomment_max1400_struct_blocks_20260307` completed (`7` cases):
   - `2` `verified_pass` controls
@@ -171,7 +223,7 @@ Recommended future native baseline experiment:
   - test whether the max-comment coupling remains tied only to row0/row1-style metadata
   - or scales like a pseudo-row / extra structural extent at larger row counts
 
-## Execution Update (March 7, 2026 — RungComment Closure Batch Completed, Gate Still Not Met)
+## Execution Update (March 7, 2026 - RungComment Closure Batch Completed, Gate Still Not Met)
 
 - Scenario `grid_rungcomment_closure_20260307` completed (`11` cases):
   - `2` `verified_pass`
@@ -213,7 +265,7 @@ Recommended future native baseline experiment:
   - `scratchpad/phase2_rungcomment_inference_20260306.md`
   - `HANDOFF.md`
 
-## Execution Update (March 6, 2026 — Phase 2 Companion Isolation Follow-Up Completed, Gate Still Not Met)
+## Execution Update (March 6, 2026 - Phase 2 Companion Isolation Follow-Up Completed, Gate Still Not Met)
 
 - Scenario `grid_rungcomment_patch_companion_isolation_20260306` completed (`16` cases):
   - `3` `verified_pass`
@@ -248,7 +300,7 @@ Recommended future native baseline experiment:
   - `scratchpad/phase2_rungcomment_case_specs_20260306.json`
   - `scratchpad/phase2_rungcomment_patch_companion_case_specs_20260306.json`
 
-## Execution Update (March 6, 2026 — Phase 2 Companion Isolation Follow-Up Batch Prepared)
+## Execution Update (March 6, 2026 - Phase 2 Companion Isolation Follow-Up Batch Prepared)
 
 - Follow-up scenario added to continue Phase 2 comment replay isolation:
   - scenario: `grid_rungcomment_patch_companion_isolation_20260306`
@@ -274,7 +326,7 @@ Recommended future native baseline experiment:
 - Phase 2 gate status remains:
   - **not met** (awaiting guided verify outcomes for this follow-up batch).
 
-## Execution Update (March 6, 2026 — Phase 2 RungComment Patch Isolation Completed, Gate Not Met)
+## Execution Update (March 6, 2026 - Phase 2 RungComment Patch Isolation Completed, Gate Not Met)
 
 - Patch isolation scenario `grid_rungcomment_patch_isolation_20260306` completed (`12` cases):
   - `3` `verified_pass`
@@ -307,7 +359,7 @@ Recommended future native baseline experiment:
   - `scratchpad/phase2_rungcomment_inference_20260306.md`
   - `scratchpad/phase2_rungcomment_case_specs_20260306.json`
 
-## Execution Update (March 6, 2026 — Phase 1 AF `NOP` vs Empty Completed)
+## Execution Update (March 6, 2026 - Phase 1 AF `NOP` vs Empty Completed)
 
 - Native AF matrix scenario `grid_af_nop_vs_empty_20260306` completed:
   - `9/9` `verified_pass`
@@ -333,7 +385,7 @@ Recommended future native baseline experiment:
   - `scratchpad/phase1_af_nop_patch_case_specs_20260306.json`
   - `scratchpad/grid_af_nop_patch_isolation_verify_queue_20260306.md`
 
-## Execution Update (March 6, 2026 — Phase 2 RungComment Native Mapping Completed, Patch Isolation Ready)
+## Execution Update (March 6, 2026 - Phase 2 RungComment Native Mapping Completed, Patch Isolation Ready)
 
 - Native comment scenario `grid_rungcomment_mapping_20260306` completed:
   - `11/11` `verified_pass`
@@ -365,7 +417,7 @@ Recommended future native baseline experiment:
     - `scratchpad/grid_rungcomment_patch_isolation_verify_queue_20260306.md`
     - `scratchpad/phase2_rungcomment_inference_20260306.md`
 
-## Execution Update (March 4, 2026 — Two-Series Hardening Pass)
+## Execution Update (March 4, 2026 - Two-Series Hardening Pass)
 
 - Click-safe encoder scope remains intentionally limited to `1..2` series contacts.
 - Header seed model is now context-seeded:
@@ -387,7 +439,7 @@ Recommended future native baseline experiment:
   - exploratory scenarios removed from active manifest
   - deterministic `two_series_hardening_matrix_20260304` (9 rows) added for focused verify.
 
-## Execution Update (March 5, 2026 — Empty-Template Reset + Phase 5 Masking)
+## Execution Update (March 5, 2026 - Empty-Template Reset + Phase 5 Masking)
 
 - Baseline scenario `grid_basics_empty_template_20260305` is complete:
   - `14/14` native captures verified (`verify run --source file`), all `verified_pass`.
@@ -409,7 +461,7 @@ Recommended future native baseline experiment:
 - Full gate notes and artifact links:
   - `scratchpad/noise_vs_structure_reassessment_20260305.md`
 
-## Execution Update (March 5, 2026 — Grid Synthesis Lane + `+0x18` Isolation)
+## Execution Update (March 5, 2026 - Grid Synthesis Lane + `+0x18` Isolation)
 
 - Lane 1 (`grid_synth_empty_template_20260305`) from empty native template:
   - `4/5` pass for single-row empty/horizontal cases
@@ -425,7 +477,7 @@ Recommended future native baseline experiment:
   - `scratchpad/grid_synth_h18_isolation_verify_queue_20260305.md`
   - `scratchpad/noise_vs_structure_reassessment_20260305.md`
 
-## Execution Update (March 5, 2026 — Multi-Row Recapture + Isolation)
+## Execution Update (March 5, 2026 - Multi-Row Recapture + Isolation)
 
 - Fresh recaptures validated native multi-row empties:
   - `grid_empty_rows1_2_recapture_native` (2-row pass)
@@ -460,7 +512,7 @@ Recommended future native baseline experiment:
   - companion bytes act as a required combination for valid multi-row empty synthesis.
   - same companion set currently restores both 2-row and 3-row empty baselines.
 
-## Execution Update (March 5, 2026 — Empty Multi-Row Row-Rule Inference, Rounds 1-10)
+## Execution Update (March 5, 2026 - Empty Multi-Row Row-Rule Inference, Rounds 1-10)
 
 - New report artifact:
   - `scratchpad/row_rule_inference_empty_multirow_20260305.md`
@@ -494,7 +546,7 @@ Recommended future native baseline experiment:
     `grid_empty_multirow_rowrule_iso10_20260305`
   - queue docs in `scratchpad/grid_empty_multirow_rowrule_iso*_verify_queue_20260305.md`
 
-## Execution Update (March 6, 2026 — Empty Multi-Row Scale Confirmation)
+## Execution Update (March 6, 2026 - Empty Multi-Row Scale Confirmation)
 
 - Scenario `grid_synth_empty_multirow_rule_minimal_20260306` completed:
   - `4/4` pass (`gmrs_rows04/09/17/32_rule_minimal`).
@@ -513,7 +565,7 @@ Recommended future native baseline experiment:
   - queue doc: `scratchpad/grid_synth_empty_multirow_crossdonor_row9_verify_queue_20260306.md`
   - purpose: cross-donor row9 synthesis from row4 template (with/without restoring `+0x0B/+0x15`).
 
-## Execution Update (March 6, 2026 — Empty Multi-Row Cross-Donor Row9)
+## Execution Update (March 6, 2026 - Empty Multi-Row Cross-Donor Row9)
 
 - Scenario `grid_synth_empty_multirow_crossdonor_row9_20260306` completed:
   - `2/2` pass:
@@ -524,7 +576,7 @@ Recommended future native baseline experiment:
   - row-rule synthesis remains stable under cross-donor construction (row9 built from row4 donor).
   - restoring `+0x0B` and terminal `+0x15` did not affect outcome in this probe.
 
-## Execution Update (March 6, 2026 — Empty Multi-Row Rule Encoding Integrated)
+## Execution Update (March 6, 2026 - Empty Multi-Row Rule Encoding Integrated)
 
 - Production code now includes deterministic empty multi-row synthesis:
   - module: `src/clicknick/ladder/empty_multirow.py`
@@ -546,7 +598,7 @@ Recommended future native baseline experiment:
   - Non-empty multi-row synthesis still requires separate rule work before claiming
     arbitrary row-height rung generation for general ladders.
 
-## Execution Update (March 6, 2026 — Non-Empty Multi-Row Horizontal/Vertical Isolation Setup)
+## Execution Update (March 6, 2026 - Non-Empty Multi-Row Horizontal/Vertical Isolation Setup)
 
 - New non-empty multi-row scenarios were added (file-backed patch entries, no codec changes):
   - `grid_nonempty_multirow_horiz_20260306` (`9` labels: `gnmh_*`)
@@ -580,7 +632,7 @@ Current status:
 Recommendation:
 - **more isolation required** (pending guided verify outcomes for the new horizontal and vertical scenario queues).
 
-## Execution Update (March 6, 2026 — Non-Empty Horizontal Batch Completed)
+## Execution Update (March 6, 2026 - Non-Empty Horizontal Batch Completed)
 
 - Scenario `grid_nonempty_multirow_horiz_20260306` completed (`9` cases):
   - `8` `verified_pass`
@@ -605,7 +657,7 @@ Recommendation:
 - **more isolation required** until vertical queue outcomes are recorded and combined
   horizontal/vertical minimal sets are finalized.
 
-## Execution Update (March 6, 2026 — Non-Empty Vertical Batch Completed + Combined Conclusion)
+## Execution Update (March 6, 2026 - Non-Empty Vertical Batch Completed + Combined Conclusion)
 
 - Scenario `grid_nonempty_multirow_vert_20260306` completed (`8` cases):
   - `8` `verified_pass`
@@ -637,7 +689,7 @@ Recommendation:
   - 4-row non-empty lanes
   - mixed instruction-heavy non-empty families.
 
-## Execution Update (March 6, 2026 — 4+/Row-Combo Validation Completed)
+## Execution Update (March 6, 2026 - 4+/Row-Combo Validation Completed)
 
 - Scenario `grid_nonempty_multirow_rowcombo_20260306` completed (`12` cases):
   - `11` `verified_pass`
@@ -665,7 +717,7 @@ Updated recommendation:
 - Proceed to implementation planning for scoped topology synthesis rules, with follow-up
   validation still advised for instruction-stream-heavy mixed families.
 
-## Execution Update (March 6, 2026 — Scale-to-32 Validation Completed)
+## Execution Update (March 6, 2026 - Scale-to-32 Validation Completed)
 
 - Scenario `grid_nonempty_multirow_scale_20260306` completed (`8` cases):
   - `7` `verified_pass`
@@ -690,7 +742,7 @@ Updated recommendation:
 - Proceed to implementation planning for scoped topology synthesis, with explicit caveat that
   instruction-stream-heavy non-empty families still need dedicated follow-up validation.
 
-## Execution Update (March 6, 2026 — Non-Empty Synthesis Impl + Asymmetry Confirmation)
+## Execution Update (March 6, 2026 - Non-Empty Synthesis Impl + Asymmetry Confirmation)
 
 - Production now has scoped non-empty multi-row wire synthesis:
   - module: `src/clicknick/ladder/nonempty_multirow.py`
@@ -755,7 +807,7 @@ can generate clipboard-ready bytes for paste into Click from `RungGrid`.
 - Instruction stream placement remains the primary engineering area (especially broader
   operand-length and multi-contact generalization).
 
-## New Findings (March 3, 2026 — v2 Isolation Pass)
+## New Findings (March 3, 2026 - v2 Isolation Pass)
 
 ### A) `+0x1A/+0x1B` are not the primary split gate
 

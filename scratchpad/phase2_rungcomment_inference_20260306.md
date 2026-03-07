@@ -227,6 +227,62 @@
   - if the coupling is only row0/row1-local, the row32 lane may preserve the same low-row signature.
   - if Click is treating max comments like an extra extent/pseudo-row, the row32 lane should expose that scaling more clearly.
 
+## Row32 Native Pair Outcomes (March 7, 2026 - Extent-Scaling Signal Confirmed)
+
+- New report:
+  - `scratchpad/max1400_row32_native_results_20260307.md`
+- Scenario:
+  - `grid_rungcomment_max1400_row32_native_20260307`
+- Manifest statuses:
+  - `2/2` recorded `verified_pass`
+- Important caveat:
+  - row rendering matched for both entries, but byte-length outcome is the decisive signal from this round.
+
+### Length Outcomes
+
+- `grc32_no_comment_native_20260307`
+  - capture: `69632`
+  - verify-back: `69632`
+- `grc32_max1400_native_20260307`
+  - capture: `73728`
+  - verify-back: `73728`
+
+Delta for row32 max1400 vs row32 no-comment:
+- **`+4096` bytes exactly (`0x1000`)**
+
+### Interpretation
+
+- The extra `0x1000` page exists already in the native source capture.
+- It is not a verify-only artifact.
+- It persists through verify-back at the same total length.
+- This strongly favors:
+  - **a scaling extent / pseudo-row model**
+- It strongly weakens:
+  - a purely low-row-local row0/row1 entanglement model
+
+### Additional Structural Notes
+
+- Shared-prefix diff count (`row32 max1400` vs `row32 no-comment` over the first `69632` bytes):
+  - `26013`
+- Extra max1400-only tail page:
+  - `4096` bytes
+  - only `12` non-zero bytes
+- Page-family breakdown by `0x1000` pages:
+  - page `0`: comment/payload-heavy lead page
+  - page `1`: lead-in structural page
+  - pages `2..15`: identical repeated diff family (`1468` diffs each)
+  - page `16`: terminal/tail variant
+  - page `17`: sparse extra descriptor-like page
+
+### Updated Recommendation
+
+- Prefer offline page-family analysis before more operator queues.
+- Best next native captures, if needed after that offline pass:
+  - row9 no-comment / max1400
+  - row17 no-comment / max1400
+- Purpose:
+  - determine when the extra `0x1000` page first appears.
+
 
 ## Scope
 - Phase: `2` from `scratchpad/nop_af_rungcomment_prompt_20260306.md`
