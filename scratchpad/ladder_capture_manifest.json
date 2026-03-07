@@ -12709,6 +12709,293 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-06T18:45:12Z",
       "updated_at": "2026-03-06T19:06:20Z"
+    },
+    {
+      "id": "6a987173-9a2b-4b10-8d6f-be26af023771",
+      "capture_label": "grcc_short_plain_control_from_no",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_closure_20260307",
+      "description": "short plain control carried forward; confirms queue/session baseline before comment closure probes",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_short_lpp_control_from_no.bin",
+      "payload_file": "scratchpad/captures/grcp2c_short_lpp_control_from_no.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcc_short_plain_control_from_no_verify_back_20260307_201059.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:06:10Z",
+      "updated_at": "2026-03-07T20:10:59Z"
+    },
+    {
+      "id": "b5acfa90-c248-4026-a7c5-5f8786e36ede",
+      "capture_label": "grcc_style_min_bold_handcrafted",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_closure_20260307",
+      "description": "hand-crafted minimal bold RTF from no-comment baseline; stop styled claims if this crashes or fails",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcc_style_min_bold_handcrafted.bin",
+      "payload_file": "scratchpad/captures/grcc_style_min_bold_handcrafted.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:06:11Z",
+      "updated_at": "2026-03-07T20:11:14Z"
+    },
+    {
+      "id": "b68d4d96-e819-46b5-9fd0-0fa6e8fa091e",
+      "capture_label": "grcc_style_min_italic_handcrafted",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_closure_20260307",
+      "description": "ONLY RUN IF bold handcrafted probe passed cleanly; minimal italic RTF from no-comment baseline",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcc_style_min_italic_handcrafted.bin",
+      "payload_file": "scratchpad/captures/grcc_style_min_italic_handcrafted.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:06:12Z",
+      "updated_at": "2026-03-07T20:06:12Z"
+    },
+    {
+      "id": "893b3fda-9103-4cab-ae8e-8a8d8b0d8d11",
+      "capture_label": "grcc_style_min_underline_handcrafted",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_closure_20260307",
+      "description": "ONLY RUN IF bold handcrafted probe passed cleanly; minimal underline RTF from no-comment baseline",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcc_style_min_underline_handcrafted.bin",
+      "payload_file": "scratchpad/captures/grcc_style_min_underline_handcrafted.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:06:13Z",
+      "updated_at": "2026-03-07T20:06:13Z"
+    },
+    {
+      "id": "19fbe4e6-d9cf-4dfb-8f36-9f8ee62a21bf",
+      "capture_label": "grcc_max1400_native_control",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_closure_20260307",
+      "description": "native 1400-char control for same-session A/B; note whether comment displays immediately after paste",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grc_maxlen_1396_native.bin",
+      "payload_file": "scratchpad/captures/grc_maxlen_1396_native.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcc_max1400_native_control_verify_back_20260307_201148.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:06:14Z",
+      "updated_at": "2026-03-07T20:11:48Z"
+    },
+    {
+      "id": "d09e53e8-141e-4cdf-82af-8dc65660d235",
+      "capture_label": "grcc_max1400_synth_compare",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_closure_20260307",
+      "description": "current best synthetic 1400-char payload (len+payload plus 0x08BD..0x08FC); compare immediate display against native control",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_max_lpp_plus_tail_08bd_08fc_from_no.bin",
+      "payload_file": "scratchpad/captures/grcp2c_max_lpp_plus_tail_08bd_08fc_from_no.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "full comment hidden. Copied in still 'hidden' state.",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcc_max1400_synth_compare_verify_back_20260307_201224.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:06:14Z",
+      "updated_at": "2026-03-07T20:12:24Z"
+    },
+    {
+      "id": "1151b61c-da9c-49a7-875b-e8af7230b418",
+      "capture_label": "grcc_max1400_synth_reopen",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_closure_20260307",
+      "description": "same synthetic 1400-char payload, but perform save and reopen check before copy-back; note whether display becomes normal after reload",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_max_lpp_plus_tail_08bd_08fc_from_no.bin",
+      "payload_file": "scratchpad/captures/grcp2c_max_lpp_plus_tail_08bd_08fc_from_no.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "After reopen the full comment shows. Native paste it shows right away.",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcc_max1400_synth_reopen_verify_back_20260307_201351.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:06:15Z",
+      "updated_at": "2026-03-07T20:13:51Z"
+    },
+    {
+      "id": "16392d27-85a8-41dc-b583-9ec46158aae3",
+      "capture_label": "grcc_max1400_synth_diff22",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_closure_20260307",
+      "description": "1400-char synthetic narrowing: len+payload plus only the 22 differing offsets inside 0x08BD..0x08FC",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcc_max1400_synth_diff22.bin",
+      "payload_file": "scratchpad/captures/grcc_max1400_synth_diff22.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "Hidden full comment",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcc_max1400_synth_diff22_verify_back_20260307_201408.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:06:16Z",
+      "updated_at": "2026-03-07T20:14:08Z"
+    },
+    {
+      "id": "9e7a66b1-bb30-4ea9-8d1e-a7cf4416e2c2",
+      "capture_label": "grcc_max1400_synth_coreclusters",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_closure_20260307",
+      "description": "1400-char synthetic narrowing: len+payload plus core cluster offsets 0x08D5..0x08DD, 0x08E9..0x08F1, and 0x08FC",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcc_max1400_synth_coreclusters.bin",
+      "payload_file": "scratchpad/captures/grcc_max1400_synth_coreclusters.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:06:16Z",
+      "updated_at": "2026-03-07T20:14:18Z"
+    },
+    {
+      "id": "38afc54d-6282-4100-9945-3e436eaeb23b",
+      "capture_label": "grcc_max1400_synth_coreclusters_no_08fc",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_closure_20260307",
+      "description": "1400-char synthetic narrowing: core cluster offsets without 0x08FC; tests whether the final tail byte is required",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcc_max1400_synth_coreclusters_no_08fc.bin",
+      "payload_file": "scratchpad/captures/grcc_max1400_synth_coreclusters_no_08fc.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:06:17Z",
+      "updated_at": "2026-03-07T20:14:40Z"
+    },
+    {
+      "id": "92216561-885b-4162-9693-522c763d1308",
+      "capture_label": "grcc_max1400_synth_singletons",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_closure_20260307",
+      "description": "1400-char synthetic narrowing: singleton offsets only (0x08C4, 0x08CD, 0x08D0, 0x08E1, 0x08FC)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcc_max1400_synth_singletons.bin",
+      "payload_file": "scratchpad/captures/grcc_max1400_synth_singletons.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "Still hidden comment",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcc_max1400_synth_singletons_verify_back_20260307_201506.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:06:18Z",
+      "updated_at": "2026-03-07T20:15:06Z"
     }
   ]
 }

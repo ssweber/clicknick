@@ -10,11 +10,55 @@ Canonical runner: `uv run clicknick-ladder-capture ...`.
 - Use `entry add` to create new checklist items.
 - Use `entry capture`, `verify ...`, and `promote` to update lifecycle fields.
 - Run commands from repo root.
+- Treat manifest lifecycle and payload construction as separate concerns:
+  - use `uv run clicknick-ladder-capture ...` for manifest/state changes
+  - generate `.bin` payload files first, then register them as file-backed entries
 - Do not use retired tools:
   - `devtools/capture.py`
   - `devtools/clipboard_load.py`
   - `devtools/update_ladder_capture_manifest.py`
   - `scratchpad/pasteback_smoke.py`
+
+## Investigator Quick Start
+When starting a new reverse-engineering lane:
+1. Read `HANDOFF.md` first for the latest accepted ground truth and current gate status.
+2. Read the lane-specific scratchpad report/case-spec files for the active round.
+3. Find an existing donor capture in `scratchpad/captures/` before inventing a new baseline.
+4. Decide whether the next round needs:
+   - new native captures
+   - synthetic codec output
+   - file-backed patch payloads built from existing captures
+5. Only after the payloads exist, add checklist entries with `uv run clicknick-ladder-capture ...`.
+
+## Approved Payload Construction Helpers
+These helpers are allowed for generating patch payload files before manifest registration:
+- `devtools/noise_apply.py`
+  - use for explicit offset-copy or constant-write patching across the first `8192` bytes
+- `devtools/patch_capture_cells.py`
+  - use for per-cell offset mutations when the change is cell-local
+- `devtools/two_series_patch_harness.py`
+  - use as a reference pattern for donor/base patch generation and naming
+
+If no helper exactly fits the lane:
+- a short repo-local Python snippet is acceptable for one-off payload generation
+- keep it deterministic, write the output under `scratchpad/captures/`, and document the exact offsets/ranges in the case spec or queue doc
+- do not treat ad hoc generation as permission to edit the manifest by hand
+
+## File-Backed Patch Workflow
+Use this when the payload is derived from existing `.bin` captures rather than shorthand generation.
+
+1. Build the payload file under `scratchpad/captures/`.
+2. Sanity-check the payload length.
+3. Add a patch entry with `--payload-source file --payload-file <path>`.
+4. Verify the entry shows the expected payload file.
+5. Add the case to a queue doc with the patch rationale, donor/base labels, and offsets or ranges used.
+
+Minimal pattern:
+
+```powershell
+uv run clicknick-ladder-capture entry add --type patch --label <label> --scenario <scenario> --description "<desc>" --row "<row>" --payload-source file --payload-file scratchpad/captures/<file>.bin
+uv run clicknick-ladder-capture entry show --label <label>
+```
 
 ## Minimal Add New Checklist Item Flow
 1. Ensure manifest exists.
@@ -79,11 +123,15 @@ uv run clicknick-ladder-capture promote --label <label> --overwrite
 - `--row` is required and repeatable.
 - Duplicate `--label` fails.
 - `--payload-source` defaults to `shorthand`.
+- `--payload-source file` does not create the file for you; the `.bin` must already exist.
 - Shorthand source for prepare/verify generation currently supports a simple single-row path; it requires at least one contact and a non-empty AF instruction.
 - Wire shorthand tokens used in observed/expected rows:
   - `-` = horizontal wire
   - `|` = vertical wire (valid on columns `B+`; not column `A`)
   - `T` = both horizontal and vertical at the same cell
+- Empty commas in stored `--row` values often act as a shorthand placeholder for an otherwise wire-only baseline.
+  - when Click visibly shows a full horizontal line, record the observed row using explicit `-` tokens if needed
+  - do not assume the manifest shorthand string is the most human-readable rendering of the pasted rung
 - For `entry add-patch-batch`, provide at least one `--file` or `--glob`.
 - For `entry add-patch-batch`, `--file` and `--glob` are repeatable.
 - For `entry add-patch-batch`, `--skip-existing` changes duplicate-label handling from fail to skip.
@@ -147,6 +195,34 @@ Verify:
   - queue doc path
   - exact TUI path
   - explicit `send done` instruction
+- For rows that can render differently in Click than their stored shorthand suggests:
+  - tell the operator what visible shape is expected
+  - tell the operator what observed-row form to enter if a rows override is needed
+  - keep comment/rendering notes separate from topology notes
+
+## What To Document In Each New RE Round
+Create or update a scratchpad case spec / queue doc that records:
+- scenario name and date
+- donor/base labels
+- payload file path for each case
+- exact copied ranges or explicit offsets
+- the hypothesis each case is testing
+- what counts as pass/fail/blocked
+- any operator-only instructions such as:
+  - save and reopen before copy-back
+  - inspect `Edit Comment`
+  - skip conditional follow-up cases after a stop-condition failure
+
+## Comment-Lane Example
+For comment replay work, the bare minimum context to preserve in the queue doc is:
+- proven model offsets such as `0x0294` and `0x0298`
+- whether `len` includes trailing NUL
+- the current best donor companion region, if any
+- whether the goal is:
+  - semantic persistence
+  - immediate display parity
+  - style rendering
+- whether a failed styled probe should stop the styled branch entirely
 
 Report:
 - `profile (--label <label> | --all) [--json | --csv]`

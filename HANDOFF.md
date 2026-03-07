@@ -1,6 +1,48 @@
-# Click PLC Clipboard Reverse Engineering — Handoff v16
+# Click PLC Clipboard Reverse Engineering — Handoff v17
 
-Last validated: March 6, 2026
+Last validated: March 7, 2026
+
+## Execution Update (March 7, 2026 — RungComment Closure Batch Completed, Gate Still Not Met)
+
+- Scenario `grid_rungcomment_closure_20260307` completed (`11` cases):
+  - `2` `verified_pass`
+  - `4` `verified_fail`
+  - `3` `blocked` (`crash`)
+  - `2` intentionally skipped / left `unverified` after the styled stop condition
+  - copied-event cases: `8192` bytes.
+- Proven comment model remains:
+  - length dword at `0x0294`
+  - payload starts at `0x0298`
+  - `len = payload_bytes + 1` including trailing NUL
+  - payload is RTF-like ANSI text
+  - max comment length is `1400` characters
+- Styled lane closure:
+  - hand-crafted minimal bold RTF probe crashed
+  - italic/underline handcrafted probes were skipped by policy after the bold failure
+  - classification: styled comments are unsupported under the current model
+- Max1400 plain lane closure:
+  - native `1400`-char control displayed immediately
+  - current best synthetic (`len+payload + 0x08BD..0x08FC`) copied back at `8192` but stayed hidden at paste time
+  - reopen check showed the same synthetic comment displays normally after reload
+  - narrowing results:
+    - `22`-offset refinement inside `0x08BD..0x08FC`: still hidden
+    - core-cluster reductions: crash
+    - singleton-only subset: still hidden
+  - classification: plain comments up to `1400` chars are **partially working with caveat**
+  - best current interpretation:
+    - persisted bytes are semantically good enough to render after reopen
+    - native-equivalent immediate display is still not achieved on the synthetic path
+    - treat this as a paste-time UI refresh caveat with unresolved immediate-display parity
+- Paste-time rendering classification for the best synthetic max1400 path:
+  - **requires reopen to display**
+  - prior probe also showed `Edit Comment` open/close can reveal the comment
+- Phase 2 acceptance gate:
+  - **not met**
+- Phase 3 status:
+  - still blocked by Phase 2 gate.
+- Artifacts updated:
+  - `scratchpad/phase2_rungcomment_inference_20260306.md`
+  - `HANDOFF.md`
 
 ## Execution Update (March 6, 2026 — Phase 2 Companion Isolation Follow-Up Completed, Gate Still Not Met)
 

@@ -183,8 +183,101 @@
   - style replay remains unresolved (`0` pass across all style follow-up probes).
   - max1400 replay has only a partial/non-clean pass signature (delayed UI render behavior).
 
-## Next Isolation Recommendation
-- Keep Phase 2 open for one more narrowing round focused on:
-  - style companions outside `0x08FC` (expand probe window and/or copy additional donor-linked regions),
-  - max1400 upper-tail candidate refinement around `0x08BD..0x08FC` with minimal-byte ablations and a clean-display criterion.
-- Current status: `phase2_followup_companion_batch_complete_gate_not_met`.
+## Closure Batch Outcomes (March 7, 2026)
+- Scenario: `grid_rungcomment_closure_20260307`
+- Case count: `11`
+- Verification totals:
+  - `verified_pass`: `2`
+  - `verified_fail`: `4`
+  - `blocked`: `3`
+  - intentionally skipped / left `unverified`: `2`
+- Copied-event verify-back lengths:
+  - short plain control: `8192`
+  - all copied max1400 cases: `8192`
+
+### Short Plain Control
+- `grcc_short_plain_control_from_no`: pass (`8192`)
+- Interpretation:
+  - the narrow short/plain lane remains stable.
+
+### Hand-Crafted Minimal Styled Probe
+- `grcc_style_min_bold_handcrafted`: crash
+- `grcc_style_min_italic_handcrafted`: intentionally skipped by policy after bold crash
+- `grcc_style_min_underline_handcrafted`: intentionally skipped by policy after bold crash
+- Interpretation:
+  - the bounded handcrafted-style test failed at the first decision gate.
+  - styled comments are unsupported under the current replay model.
+  - broad styled transplant exploration should remain closed unless a new model is established.
+
+### Max1400 Native vs Synthetic A/B
+- `grcc_max1400_native_control`: pass (`8192`)
+  - operator outcome: comment displayed immediately after paste.
+- `grcc_max1400_synth_compare`: fail (`8192`)
+  - note: full comment remained hidden and copied back in the hidden state.
+- Interpretation:
+  - native and synthetic do not have the same paste-time behavior in the same session.
+  - the current synthetic max1400 path does not achieve native immediate-render parity.
+
+### Save/Reopen Check
+- `grcc_max1400_synth_reopen`: fail (`8192`)
+  - note: after reopen, the full comment showed; native paste showed right away.
+- Interpretation:
+  - the best synthetic max1400 payload persists semantically and renders normally after reload.
+  - this is best classified as a paste-time UI refresh caveat, not a total encoding failure.
+
+### Max1400 Narrowing Results
+- `grcc_max1400_synth_diff22`: fail (`8192`)
+  - note: hidden full comment
+- `grcc_max1400_synth_coreclusters`: crash
+- `grcc_max1400_synth_coreclusters_no_08fc`: crash
+- `grcc_max1400_synth_singletons`: fail (`8192`)
+  - note: still hidden comment
+- Interpretation:
+  - copying only the `22` changed offsets inside `0x08BD..0x08FC` preserves the same hidden-comment behavior as the prior best synthetic case.
+  - the aggressive cluster reductions crash, while the singleton subset is insufficient.
+  - narrowing did not produce a clean immediate-display synthetic path.
+
+## Final Comment Support Classification
+
+### Proven Comment Model
+- `0x0294` = length dword
+- `0x0298` = payload start
+- `len = payload_bytes + 1`
+- max comment length = `1400` characters
+- payload encoding = RTF-like ANSI text
+
+### 1) Plain Comments Up To 1400 Chars
+- Classification: **partially working with caveat**
+- Evidence:
+  - short plain comment replay is clean with `len + payload`.
+  - native `1400`-char comment pastes and displays immediately.
+  - current best synthetic `1400`-char path copies back at `8192`, preserves `len=1516`, and displays correctly after reopen, but remains hidden at paste time in the direct A/B check.
+- Best current synthetic max1400 construction:
+  - `len + payload` plus donor companion region `0x08BD..0x08FC`
+- Imperfection classification:
+  - best described as a **paste-time UI refresh quirk with unresolved native-parity immediate display**.
+  - practical meaning: the bytes are good enough to persist and render after reopen, but the synthetic path still misses clean paste-time display parity with native.
+
+### 2) Styled Comments
+- Classification: **hand-crafted minimal styled does not work**
+- Evidence:
+  - native captures confirm RTF style tokens (`\b`, `\i`, `\ul`) inside the payload.
+  - style transplants crashed in earlier batches.
+  - the bounded handcrafted minimal bold probe also crashed.
+- Supported forms under the current model:
+  - none proven.
+
+### 3) Paste-Time Rendering Behavior
+- Classification: **requires reopen to display**
+- Important note:
+  - an earlier batch also showed that opening and closing `Edit Comment` can reveal the transferred `1400`-char synthetic comment.
+  - native max1400 does not require this refresh step.
+
+## Updated Phase 2 Gate Decision
+- Acceptance gate: **not met**.
+- Why:
+  - styled comments are unsupported under the current model.
+  - plain comments are not yet cleanly reproducible at `1400` characters with native-equivalent immediate display.
+
+## Current Status
+- `phase2_rungcomment_closure_completed_gate_not_met`
