@@ -110,6 +110,88 @@ Within each block, the first font-name string begins at a stable relative offset
 
 This strongly suggests page `17` is a small record table, not free-form spillover.
 
+## Offline Decode Of Page 17 Record Layout
+
+Repro helper:
+- `devtools/analyze_max1400_page17.py`
+
+The wrapper fields are not arbitrary.
+
+For the three Segoe records:
+- `+0x84 = 0x01EC` exactly matches the full record length (`492`)
+- `+0x88 = 0x0178`
+- `0x0178 + 0x74 = 0x01EC`
+
+For the large CJK wrapper:
+- `+0x84 = 0x01E4`
+- `+0x88 = 0x0170`
+- `0x0170 + 0x74 = 0x01E4`
+
+Interpretation:
+- the wrapper appears to carry a fixed-structure size pair rather than random literals
+- `0x74` is a stable descriptor-header size in both the leaf and nested-slot forms
+
+The large CJK block is a repeated slot run, not one special-case blob.
+
+After the `0xA8`-byte wrapper, it contains nested slots at:
+- `0x0A8`
+- `0x28C`
+- `0x470`
+- `0x654`
+- `0x838`
+
+Slot facts:
+- stride between slot starts: `0x1E4` (`484`) for the first four slots
+- first four slots are full `0x1E4` entries
+- the fifth slot is a terminal/truncated `0x1A0` entry
+- every slot begins with `03 02 01 xx`
+- every slot contains:
+  - family name at slot `+0x04`
+  - duplicated family name at slot `+0x44`
+  - style string at slot `+0xC4` (`Regular` for all five CJK slots)
+  - secondary descriptor header `64 76 00 08` at slot `+0x144`
+
+Nested CJK slot families:
+- slots `0/1`: `SimSun`, `@SimSun`, tag byte `0x02`
+- slots `2/3`: `NSimSun`, `@NSimSun`, tag byte `0x31`
+- slot `4`: `SimSun-ExtB`, also tag byte `0x31`, but terminal metrics differ
+
+The first four full CJK slots are byte-identical outside:
+- the UTF-16LE family names
+- the tag byte at slot `+0x03`
+- the corresponding class byte inside the secondary descriptor (`0x07` vs `0x36`)
+
+The terminal `SimSun-ExtB` slot keeps the same slot skeleton but changes descriptor-tail fields:
+- inner `+0x20`: `0x05 -> 0x00`
+- inner `+0x28`: `0x20 -> 0x22`
+- inner `+0x3C..+0x3F`: `0xFFE50020 -> 0x20260020`
+
+Interpretation:
+- the large block is best described as one wrapper record that owns a run of uniform fallback-face slots
+- the last slot is not a different format; it is the same format with terminal coverage/class variations
+
+## Meaning Of The 0x012C / 0x015E / 0x0190 / 0x0258 Codes
+
+Best current offline interpretation:
+- they are **weight-like / fallback-class codes**, not lengths or offsets
+
+Why this is the strongest fit:
+- decimal forms are `300 / 350 / 400 / 600`
+- those values match a plausible Windows font-weight ladder much better than a size or pointer ladder
+- the named Segoe records are exactly the kinds of faces that would align with:
+  - `350` semilight
+  - `400` regular
+  - `600` semibold
+- the large CJK slots all carry `Regular`, and their nested descriptors pin `0x0190` (`400`) consistently
+
+Most defensible model from the bytes alone:
+- top-level wrappers are ordered by a monotonic weight/fallback ladder (`300 -> 350 -> 400 -> 600`)
+- the secondary code at wrapper `+0xA0` behaves like the chosen or linked face weight for the wrapped content
+- this is why the three Segoe wrappers step into one another (`0x015E`, `0x0190`, `0x0258`)
+- and why the CJK wrapper still points back to `0x0190` for its regular fallback faces
+
+This is strong inference, not final proof, but it fits the observed names and record chaining materially better than a record-size interpretation.
+
 Important negative check:
 - the actual RTF comment payload at `0x0298` still uses a simple ANSI font table with `Arial`
 - these UTF-16LE font names do **not** appear in the RTF payload

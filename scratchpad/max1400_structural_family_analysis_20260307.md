@@ -265,6 +265,40 @@ Additional structural refinement from the full-wire row0-NOP page:
 
 This makes page `17` look like a compact record table for renderer/font fallback metadata.
 
+More specific decode from `devtools/analyze_max1400_page17.py`:
+- the three Segoe records are leaf wrappers:
+  - wrapper length field `+0x84 = 0x01EC` matches the full record length
+  - paired field `+0x88 = 0x0178`
+  - `0x0178 + 0x74 = 0x01EC`, implying a fixed `0x74` descriptor-header span
+  - after the wrapper, each leaf contains one `0x144` slot starting at `+0xA8` with tag `03 02 01 02`
+- the large CJK record is a container wrapper:
+  - wrapper subtype changes from `0x0040` to `0x0020`
+  - `+0x84 = 0x01E4`, `+0x88 = 0x0170`, again preserving the same `0x74` gap
+  - after its `0xA8`-byte wrapper it contains `5` nested slots at:
+    - `0x0A8`, `0x28C`, `0x470`, `0x654`, `0x838`
+  - the first four nested slots are full `0x1E4` entries on a stable `0x1E4` stride
+  - the fifth is a terminal `0x1A0` slot
+  - every nested slot contains:
+    - family name at slot `+0x04`
+    - duplicate family name at slot `+0x44`
+    - style string at slot `+0xC4` (`Regular`)
+    - secondary descriptor tag `64 76 00 08` at slot `+0x144`
+
+Implication:
+- the large CJK block is not an unrelated one-off blob
+- it is a wrapper plus a run of uniform fallback-face subrecords using a slightly richer nested form than the Segoe leaf records
+
+High-confidence interpretation of the wrapper codes:
+- `0x012C / 0x015E / 0x0190 / 0x0258` are best treated as weight-like or fallback-class codes, not lengths
+- decimal forms are `300 / 350 / 400 / 600`
+- the three Segoe wrappers chain through those values in order
+- the repeated CJK nested descriptors pin `0x0190` (`400`) while the face names all resolve to `Regular`
+
+Most defensible current model:
+- top-level page-17 wrappers are organized by a monotonic font-weight/fallback ladder
+- the larger CJK wrapper then expands that ladder entry into multiple concrete fallback faces (`SimSun`, `@SimSun`, `NSimSun`, `@NSimSun`, `SimSun-ExtB`)
+- this is materially more consistent with renderer/fallback metadata than with comment-text overflow
+
 ## Cross-Lane Stability Check: Empty-Row Row32 vs Full-Wire Row0-NOP Row32
 
 Comparing the two row32 max1400-vs-control diff sets over the shared `69632` bytes:

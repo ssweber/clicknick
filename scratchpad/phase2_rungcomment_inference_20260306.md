@@ -605,6 +605,27 @@ Additional note:
 - these strings are absent from the comment's ANSI RTF payload, which still names only `Arial`
 - this points to a renderer/layout companion page, not direct text spillover
 
+Further offline decode of that page:
+- helper added:
+  - `devtools/analyze_max1400_page17.py`
+- page `17` is now better described as a wrapper/slot table, not just "a page with some font strings"
+- the `74 76 00 08` top-level records split into:
+  - `3` Segoe leaf wrappers of `0x01EC` bytes each
+  - `1` CJK container wrapper of `0x09D8` bytes
+- the CJK wrapper contains `5` nested fallback-face slots on a stable `0x1E4` stride:
+  - `SimSun`
+  - `@SimSun`
+  - `NSimSun`
+  - `@NSimSun`
+  - `SimSun-ExtB`
+- each nested slot repeats the same skeleton:
+  - family name
+  - duplicate family name
+  - `Regular`
+  - inner descriptor header `64 76 00 08` at slot `+0x144`
+- the wrapper fields `0x012C / 0x015E / 0x0190 / 0x0258` are now best interpreted as weight-like or fallback-class codes (`300 / 350 / 400 / 600`), not lengths
+- this materially strengthens the "renderer/fallback metadata" model for page `17`
+
 Updated offline interpretation:
 - the row32 empty-row pair and the row32 full-wire row0-NOP pair now point to the same core conclusion:
   - the extra page is a real comment-owned scaling structure

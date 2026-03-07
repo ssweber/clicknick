@@ -1,4 +1,4 @@
-# Click PLC Clipboard Reverse Engineering - Handoff v17
+# Click PLC Clipboard Reverse Engineering - Handoff v18
 
 Last validated: March 7, 2026
 
@@ -54,6 +54,29 @@ Additional offline summary from the full-wire row0-NOP pair:
     - three `492`-byte records carry `Segoe UI Variable Display` family variants
     - one larger `2520`-byte record carries `SimSun` / `NSimSun` / `SimSun-ExtB` fallback-family data
     - the first family-name string appears at relative offset `+0xAC` inside each record
+    - helper for reproducible decode:
+      - `devtools/analyze_max1400_page17.py`
+    - record-layout decode now established:
+      - the three Segoe records are leaf wrappers with:
+        - `+0x84 = 0x01EC` (full record length)
+        - `+0x88 = 0x0178`
+        - stable gap `0x74`
+      - the large CJK record is a container wrapper with:
+        - `+0x84 = 0x01E4`
+        - `+0x88 = 0x0170`
+        - the same stable gap `0x74`
+      - after its `0xA8`-byte wrapper, the CJK record expands into `5` nested fallback-face slots at:
+        - `0x0A8`, `0x28C`, `0x470`, `0x654`, `0x838`
+      - first four nested slots are full `0x1E4` entries on a `0x1E4` stride
+      - the fifth is a terminal `0x1A0` slot
+      - each nested slot contains:
+        - family name
+        - duplicate family name
+        - `Regular`
+        - secondary descriptor header `64 76 00 08` at slot `+0x144`
+    - strongest current interpretation of the `0x012C / 0x015E / 0x0190 / 0x0258` codes:
+      - weight-like or fallback-class ladder (`300 / 350 / 400 / 600`)
+      - not record lengths or offsets
 - cross-lane stability check against the empty-row row32 pair:
   - shared diff offsets over the common `69632` bytes: `25042`
   - empty-row-only diff offsets: `971`
