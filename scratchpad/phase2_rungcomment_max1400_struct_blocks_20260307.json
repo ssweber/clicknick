@@ -1,0 +1,54 @@
+{
+  "scenario": "grid_rungcomment_max1400_struct_blocks_20260307",
+  "phase": "phase2_rungcomment_max1400_struct_blocks",
+  "date": "2026-03-07",
+  "fixed_topology_row": "R,...,:,NOP",
+  "basis": {
+    "fresh_max_control": "grc_max1400_fresh_native_20260307",
+    "commentwin_fail_control": "grcmfs_commentwin_full",
+    "commentgrid_pass_control": "grcmfs_commentgrid"
+  },
+  "source_partition": {
+    "outside120": 120,
+    "row0_full": 685,
+    "row1_full": 389,
+    "row0_plus_row1": 1074
+  },
+  "entries": [
+    {
+      "label": "grcmfr_max1400_fresh_control",
+      "payload_file": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+      "probe_focus": "fresh native max1400 no-wire control"
+    },
+    {
+      "label": "grcmfr_commentwin_fail_control",
+      "payload_file": "scratchpad/captures/grcmfs_commentwin_full_0294_08fc_from_freshnowire.bin",
+      "probe_focus": "known fail control: comment window only"
+    },
+    {
+      "label": "grcmfr_commentgrid_pass_control",
+      "payload_file": "scratchpad/captures/grcmfs_commentgrid_0294_1a5f_from_freshnowire.bin",
+      "probe_focus": "known pass control: 0x0294..0x1A5F"
+    },
+    {
+      "label": "grcmfr_commentwin_plus_outside120",
+      "payload_file": "scratchpad/captures/grcmfr_commentwin_plus_outside120_from_freshnowire.bin",
+      "probe_focus": "comment-window fail control plus the 120 non-grid source offsets"
+    },
+    {
+      "label": "grcmfr_commentwin_plus_row0full",
+      "payload_file": "scratchpad/captures/grcmfr_commentwin_plus_row0full_from_freshnowire.bin",
+      "probe_focus": "comment-window fail control plus all row0 source offsets from the passing commentgrid case"
+    },
+    {
+      "label": "grcmfr_commentwin_plus_row1full",
+      "payload_file": "scratchpad/captures/grcmfr_commentwin_plus_row1full_from_freshnowire.bin",
+      "probe_focus": "comment-window fail control plus all row1 source offsets from the passing commentgrid case"
+    },
+    {
+      "label": "grcmfr_commentwin_plus_row0_row1full",
+      "payload_file": "scratchpad/captures/grcmfr_commentwin_plus_row0_row1full_from_freshnowire.bin",
+      "probe_focus": "comment-window fail control plus the full row0+row1 source offset set"
+    }
+  ]
+}

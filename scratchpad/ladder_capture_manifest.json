@@ -12996,6 +12996,844 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-07T20:06:18Z",
       "updated_at": "2026-03-07T20:15:06Z"
+    },
+    {
+      "id": "84200b3b-c837-4e10-8f24-d2117a9bf827",
+      "capture_label": "grc_max1400_fresh_native_20260307",
+      "capture_type": "native",
+      "scenario": "grid_rungcomment_max1400_recapture_20260307",
+      "description": "Fresh native recapture for max1400 comment using shorthand R,...,:,NOP for direct native-vs-synthetic comparison",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:31:10Z",
+      "updated_at": "2026-03-07T20:34:45Z"
+    },
+    {
+      "id": "2be0d0f6-3c7b-43ad-9eb2-243d0f24206e",
+      "capture_label": "grcmf_native_fresh_control",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_fresh_narrow_20260307",
+      "description": "fresh native control for direct A/B against fresh-donor synthetic variants",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+      "payload_file": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmf_native_fresh_control_verify_back_20260307_204101.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:39:17Z",
+      "updated_at": "2026-03-07T20:41:01Z"
+    },
+    {
+      "id": "963893d7-6325-4d83-b246-cfe7f47122c8",
+      "capture_label": "grcmf_synth_hidden_control_oldbest",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_fresh_narrow_20260307",
+      "description": "current hidden-control synthetic from prior round (old donor len+payload + 0x08BD..0x08FC)",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcp2c_max_lpp_plus_tail_08bd_08fc_from_no.bin",
+      "payload_file": "scratchpad/captures/grcp2c_max_lpp_plus_tail_08bd_08fc_from_no.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "hidden comment",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmf_synth_hidden_control_oldbest_verify_back_20260307_204117.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:39:17Z",
+      "updated_at": "2026-03-07T20:41:17Z"
+    },
+    {
+      "id": "073619fa-8fab-49f6-9f04-dd3b4d41df6c",
+      "capture_label": "grcmf_synth_fresh_tail",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_fresh_narrow_20260307",
+      "description": "fresh-donor rebuild of current best synthetic: copy 0x0294-0x0883 and 0x08BD-0x08FC from fresh native onto no-comment base",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmf_synth_fresh_tail_from_no.bin",
+      "payload_file": "scratchpad/captures/grcmf_synth_fresh_tail_from_no.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "hidden comment",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmf_synth_fresh_tail_verify_back_20260307_204138.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:39:18Z",
+      "updated_at": "2026-03-07T20:41:38Z"
+    },
+    {
+      "id": "40cdfb81-b298-4a77-8898-d26f54801f8b",
+      "capture_label": "grcmf_synth_fresh_tail_plus_0897",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_fresh_narrow_20260307",
+      "description": "fresh-tail rebuild plus lower-tail byte 0x0897 from fresh native",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmf_synth_fresh_tail_plus_0897_from_no.bin",
+      "payload_file": "scratchpad/captures/grcmf_synth_fresh_tail_plus_0897_from_no.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "hidden comment",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmf_synth_fresh_tail_plus_0897_verify_back_20260307_204150.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:39:19Z",
+      "updated_at": "2026-03-07T20:41:50Z"
+    },
+    {
+      "id": "8e95deae-d518-4a6e-ad0a-f0f22f188580",
+      "capture_label": "grcmf_synth_fresh_tail_plus_0a59",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_fresh_narrow_20260307",
+      "description": "fresh-tail rebuild plus trailer byte 0x0A59 from fresh native",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmf_synth_fresh_tail_plus_0a59_from_no.bin",
+      "payload_file": "scratchpad/captures/grcmf_synth_fresh_tail_plus_0a59_from_no.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "hidden comment",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmf_synth_fresh_tail_plus_0a59_verify_back_20260307_204202.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:39:19Z",
+      "updated_at": "2026-03-07T20:42:02Z"
+    },
+    {
+      "id": "33452bfa-babc-454d-8e80-e474e4f2bf7c",
+      "capture_label": "grcmf_synth_fresh_tail_plus_r0c31clear",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_fresh_narrow_20260307",
+      "description": "fresh-tail rebuild plus row0 col31 +0x19/+0x1D cleared to fresh native values",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmf_synth_fresh_tail_plus_r0c31clear_from_no.bin",
+      "payload_file": "scratchpad/captures/grcmf_synth_fresh_tail_plus_r0c31clear_from_no.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:39:20Z",
+      "updated_at": "2026-03-07T20:39:20Z"
+    },
+    {
+      "id": "947e7d4a-9254-4e9f-9904-8c9d6a95b4a0",
+      "capture_label": "grcmf_synth_fresh_tail_plus_0897_0a59_r0c31clear",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_fresh_narrow_20260307",
+      "description": "fresh-tail rebuild plus combined lower-tail/trailer/r0c31 flag parity bytes",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmf_synth_fresh_tail_plus_0897_0a59_r0c31clear_from_no.bin",
+      "payload_file": "scratchpad/captures/grcmf_synth_fresh_tail_plus_0897_0a59_r0c31clear_from_no.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:39:20Z",
+      "updated_at": "2026-03-07T20:39:20Z"
+    },
+    {
+      "id": "2d4fa38d-5f89-471c-88e4-6f5c16acd5d8",
+      "capture_label": "grcmfw_native_fresh_control",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_fresh_nowire_20260307",
+      "description": "fresh native no-wire control for direct A/B against no-wire synthetic variants",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+      "payload_file": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmfw_native_fresh_control_verify_back_20260307_204834.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:45:15Z",
+      "updated_at": "2026-03-07T20:48:34Z"
+    },
+    {
+      "id": "f6f1ebb2-d946-42a7-ba14-a48256c17b20",
+      "capture_label": "grcmfw_synth_nowire_base",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_fresh_nowire_20260307",
+      "description": "fresh-donor no-wire synthetic base: copy 0x0294-0x0883 and 0x08BD-0x08FC, then clear row0 col31 +0x19/+0x1D to match fresh native",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmfw_synth_nowire_base_from_no.bin",
+      "payload_file": "scratchpad/captures/grcmfw_synth_nowire_base_from_no.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "hidden comment. Wire rung still!",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmfw_synth_nowire_base_verify_back_20260307_204859.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:45:15Z",
+      "updated_at": "2026-03-07T20:48:59Z"
+    },
+    {
+      "id": "d825524c-41af-4b4f-a221-2caa636419ad",
+      "capture_label": "grcmfw_synth_nowire_plus_0897",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_fresh_nowire_20260307",
+      "description": "no-wire synthetic base plus lower-tail byte 0x0897 from fresh native",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmfw_synth_nowire_plus_0897_from_no.bin",
+      "payload_file": "scratchpad/captures/grcmfw_synth_nowire_plus_0897_from_no.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "hidden comment. Wire rung ->",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmfw_synth_nowire_plus_0897_verify_back_20260307_204919.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:45:16Z",
+      "updated_at": "2026-03-07T20:49:19Z"
+    },
+    {
+      "id": "966f55c0-b163-408e-a774-3858ca9894c1",
+      "capture_label": "grcmfw_synth_nowire_plus_0a59",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_fresh_nowire_20260307",
+      "description": "no-wire synthetic base plus trailer byte 0x0A59 from fresh native",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmfw_synth_nowire_plus_0a59_from_no.bin",
+      "payload_file": "scratchpad/captures/grcmfw_synth_nowire_plus_0a59_from_no.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "hidden comment. Wire rung!",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmfw_synth_nowire_plus_0a59_verify_back_20260307_204933.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:45:17Z",
+      "updated_at": "2026-03-07T20:49:33Z"
+    },
+    {
+      "id": "54c60f60-ac28-4d48-a031-89a6515d0bbb",
+      "capture_label": "grcmfw_synth_nowire_plus_0897_0a59",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_fresh_nowire_20260307",
+      "description": "no-wire synthetic base plus both 0x0897 and 0x0A59 from fresh native",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmfw_synth_nowire_plus_0897_0a59_from_no.bin",
+      "payload_file": "scratchpad/captures/grcmfw_synth_nowire_plus_0897_0a59_from_no.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "hidden comment. Wire rung!",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmfw_synth_nowire_plus_0897_0a59_verify_back_20260307_204947.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:45:17Z",
+      "updated_at": "2026-03-07T20:49:47Z"
+    },
+    {
+      "id": "a9c336ae-dd95-4006-9459-ba4bd8f29155",
+      "capture_label": "grc_no_comment_fresh_native_20260307",
+      "capture_type": "native",
+      "scenario": "grid_rungcomment_nowire_baseline_recapture_20260307",
+      "description": "Fresh native no-comment recapture for true R,...,:,NOP no-wire baseline in the same family as grc_max1400_fresh_native_20260307",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/grc_no_comment_fresh_native_20260307.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:51:42Z",
+      "updated_at": "2026-03-07T20:52:51Z"
+    },
+    {
+      "id": "6245edb3-1769-414d-9fc0-f3341f82b4ec",
+      "capture_label": "grcmfs_nowire_fresh_control",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_structure_scope_20260307",
+      "description": "fresh native no-comment no-wire control",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grc_no_comment_fresh_native_20260307.bin",
+      "payload_file": "scratchpad/captures/grc_no_comment_fresh_native_20260307.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmfs_nowire_fresh_control_verify_back_20260307_205925.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:55:34Z",
+      "updated_at": "2026-03-07T20:59:25Z"
+    },
+    {
+      "id": "a1e86086-319f-4d33-baff-37440f59a087",
+      "capture_label": "grcmfs_max1400_fresh_control",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_structure_scope_20260307",
+      "description": "fresh native max1400 no-wire control",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+      "payload_file": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmfs_max1400_fresh_control_verify_back_20260307_205941.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:55:35Z",
+      "updated_at": "2026-03-07T20:59:41Z"
+    },
+    {
+      "id": "4239aa8c-5b4e-4336-ae00-60fd506205c1",
+      "capture_label": "grcmfs_commentwin_full",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_structure_scope_20260307",
+      "description": "fresh no-wire base plus full comment window 0x0294..0x08FC from fresh max1400 donor",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmfs_commentwin_full_0294_08fc_from_freshnowire.bin",
+      "payload_file": "scratchpad/captures/grcmfs_commentwin_full_0294_08fc_from_freshnowire.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "hidden comment, R,-> full wire",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmfs_commentwin_full_verify_back_20260307_210008.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:55:36Z",
+      "updated_at": "2026-03-07T21:00:08Z"
+    },
+    {
+      "id": "7882c7b4-09f9-46e8-94d4-695e8d441def",
+      "capture_label": "grcmfs_commentgrid",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_structure_scope_20260307",
+      "description": "fresh no-wire base plus 0x0294..0x1A5F from fresh max1400 donor",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmfs_commentgrid_0294_1a5f_from_freshnowire.bin",
+      "payload_file": "scratchpad/captures/grcmfs_commentgrid_0294_1a5f_from_freshnowire.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "worked. comment, no rung wire",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmfs_commentgrid_verify_back_20260307_210031.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:55:36Z",
+      "updated_at": "2026-03-07T21:00:31Z"
+    },
+    {
+      "id": "aee3bd58-778a-460e-8d12-c1e5f442ace4",
+      "capture_label": "grcmfs_pregrid_header_commentgrid",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_structure_scope_20260307",
+      "description": "fresh no-wire base plus 0x0000..0x1A5F from fresh max1400 donor",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmfs_pregrid_header_commentgrid_0000_1a5f_from_freshnowire.bin",
+      "payload_file": "scratchpad/captures/grcmfs_pregrid_header_commentgrid_0000_1a5f_from_freshnowire.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "full comment, no rung wire",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmfs_pregrid_header_commentgrid_verify_back_20260307_210044.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T20:55:37Z",
+      "updated_at": "2026-03-07T21:00:44Z"
+    },
+    {
+      "id": "31c161cd-7841-43bd-b8dd-dfbd2210975a",
+      "capture_label": "grcmft_max1400_fresh_control",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_obs63_narrow_20260307",
+      "description": "fresh native max1400 no-wire control",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+      "payload_file": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "full comment, no rung!",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmft_max1400_fresh_control_verify_back_20260307_210415.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T21:02:30Z",
+      "updated_at": "2026-03-07T21:04:15Z"
+    },
+    {
+      "id": "9f95d7f7-3057-4d67-bd15-f1a9e07a98af",
+      "capture_label": "grcmft_commentwin_fail_control",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_obs63_narrow_20260307",
+      "description": "fresh no-wire base plus full comment window 0x0294..0x08FC from fresh max1400 donor; known fail control",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmfs_commentwin_full_0294_08fc_from_freshnowire.bin",
+      "payload_file": "scratchpad/captures/grcmfs_commentwin_full_0294_08fc_from_freshnowire.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "hidden comment, full rung :(",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmft_commentwin_fail_control_verify_back_20260307_210436.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T21:02:30Z",
+      "updated_at": "2026-03-07T21:04:36Z"
+    },
+    {
+      "id": "0526c9f7-0012-4303-bd80-81729c69f6e2",
+      "capture_label": "grcmft_commentwin_plus_obs63",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_obs63_narrow_20260307",
+      "description": "comment-window fail control plus the 63 observed verify-back offsets that differ from the passing native case",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmft_commentwin_plus_obs63_from_freshnowire.bin",
+      "payload_file": "scratchpad/captures/grcmft_commentwin_plus_obs63_from_freshnowire.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T21:02:31Z",
+      "updated_at": "2026-03-07T21:04:46Z"
+    },
+    {
+      "id": "a2d48108-1885-4017-9d19-391dc0ac4a4e",
+      "capture_label": "grcmft_commentwin_plus_row0tail63part",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_obs63_narrow_20260307",
+      "description": "comment-window fail control plus row0 c24..31 +0x05/+0x09 observed-diff subset",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmft_commentwin_plus_row0tail63part_from_freshnowire.bin",
+      "payload_file": "scratchpad/captures/grcmft_commentwin_plus_row0tail63part_from_freshnowire.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T21:02:32Z",
+      "updated_at": "2026-03-07T21:05:03Z"
+    },
+    {
+      "id": "b4c32a75-5bc1-412a-9409-adf01a987436",
+      "capture_label": "grcmft_commentwin_plus_row1head63part",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_obs63_narrow_20260307",
+      "description": "comment-window fail control plus row1 c0..22 +0x05/+0x09 and row1 c23 +0x05 observed-diff subset",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmft_commentwin_plus_row1head63part_from_freshnowire.bin",
+      "payload_file": "scratchpad/captures/grcmft_commentwin_plus_row1head63part_from_freshnowire.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T21:02:33Z",
+      "updated_at": "2026-03-07T21:05:18Z"
+    },
+    {
+      "id": "6d98563c-59a5-429b-846a-77939744a6c6",
+      "capture_label": "grcmft_commentwin_plus_obs63_no_c23",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_obs63_narrow_20260307",
+      "description": "comment-window fail control plus the 63-offset set minus row1 c23 +0x05",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmft_commentwin_plus_obs63_no_c23_from_freshnowire.bin",
+      "payload_file": "scratchpad/captures/grcmft_commentwin_plus_obs63_no_c23_from_freshnowire.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T21:02:33Z",
+      "updated_at": "2026-03-07T21:05:38Z"
+    },
+    {
+      "id": "8e8f57e7-7cf0-45af-bc9a-397c548cffb2",
+      "capture_label": "grcmfr_max1400_fresh_control",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_struct_blocks_20260307",
+      "description": "fresh native max1400 no-wire control",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+      "payload_file": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmfr_max1400_fresh_control_verify_back_20260307_210927.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T21:07:07Z",
+      "updated_at": "2026-03-07T21:09:27Z"
+    },
+    {
+      "id": "23a1e23c-cdcc-4b90-b1c8-dd183bfac902",
+      "capture_label": "grcmfr_commentwin_fail_control",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_struct_blocks_20260307",
+      "description": "known fail control: fresh no-wire base plus full comment window 0x0294..0x08FC",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmfs_commentwin_full_0294_08fc_from_freshnowire.bin",
+      "payload_file": "scratchpad/captures/grcmfs_commentwin_full_0294_08fc_from_freshnowire.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T21:07:07Z",
+      "updated_at": "2026-03-07T21:09:37Z"
+    },
+    {
+      "id": "88fcf2aa-4345-4f95-b3cc-58ea35fd900b",
+      "capture_label": "grcmfr_commentgrid_pass_control",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_struct_blocks_20260307",
+      "description": "known pass control: fresh no-wire base plus 0x0294..0x1A5F",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmfs_commentgrid_0294_1a5f_from_freshnowire.bin",
+      "payload_file": "scratchpad/captures/grcmfs_commentgrid_0294_1a5f_from_freshnowire.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcmfr_commentgrid_pass_control_verify_back_20260307_210954.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T21:07:08Z",
+      "updated_at": "2026-03-07T21:09:54Z"
+    },
+    {
+      "id": "c4bbf062-f1a2-489d-b402-ffaf2adfade0",
+      "capture_label": "grcmfr_commentwin_plus_outside120",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_struct_blocks_20260307",
+      "description": "comment-window fail control plus the 120 non-grid source diffs in 0x0904..0x0A5C",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmfr_commentwin_plus_outside120_from_freshnowire.bin",
+      "payload_file": "scratchpad/captures/grcmfr_commentwin_plus_outside120_from_freshnowire.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T21:07:08Z",
+      "updated_at": "2026-03-07T21:10:09Z"
+    },
+    {
+      "id": "4f4fa52f-6eb5-423a-9ecd-a644f3d164aa",
+      "capture_label": "grcmfr_commentwin_plus_row0full",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_struct_blocks_20260307",
+      "description": "comment-window fail control plus all row0 source diffs from the passing commentgrid case",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmfr_commentwin_plus_row0full_from_freshnowire.bin",
+      "payload_file": "scratchpad/captures/grcmfr_commentwin_plus_row0full_from_freshnowire.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T21:07:09Z",
+      "updated_at": "2026-03-07T21:10:25Z"
+    },
+    {
+      "id": "3b2c66b9-02b1-43ca-88e7-90257697aab0",
+      "capture_label": "grcmfr_commentwin_plus_row1full",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_struct_blocks_20260307",
+      "description": "comment-window fail control plus all row1 source diffs from the passing commentgrid case",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmfr_commentwin_plus_row1full_from_freshnowire.bin",
+      "payload_file": "scratchpad/captures/grcmfr_commentwin_plus_row1full_from_freshnowire.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T21:07:10Z",
+      "updated_at": "2026-03-07T21:10:47Z"
+    },
+    {
+      "id": "7e0ed09b-7732-4c9b-aa3b-a954adf57a07",
+      "capture_label": "grcmfr_commentwin_plus_row0_row1full",
+      "capture_type": "patch",
+      "scenario": "grid_rungcomment_max1400_struct_blocks_20260307",
+      "description": "comment-window fail control plus all row0+row1 source diffs from the passing commentgrid case",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/grcmfr_commentwin_plus_row0_row1full_from_freshnowire.bin",
+      "payload_file": "scratchpad/captures/grcmfr_commentwin_plus_row0_row1full_from_freshnowire.bin",
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-07T21:07:10Z",
+      "updated_at": "2026-03-07T21:11:06Z"
     }
   ]
 }

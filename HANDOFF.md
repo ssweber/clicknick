@@ -2,6 +2,131 @@
 
 Last validated: March 7, 2026
 
+## Execution Update (March 7, 2026 — Max1400 Structure Scope Narrowed to 0x08FD..0x1A5F)
+
+- Fresh recaptures established the correct no-wire lane for this investigation:
+  - `grc_max1400_fresh_native_20260307`
+  - `grc_no_comment_fresh_native_20260307`
+- Important correction:
+  - earlier synthetic max1400 probes built from historical `grc_no_comment_native` were not source-family matches for the fresh `R,...,:,NOP` lane.
+  - symptom: synthetic probes could paste with a visible full wire rung even when authored/recorded as no-wire.
+- Structure-scope scenario `grid_rungcomment_max1400_structure_scope_20260307` completed (`5` cases):
+  - `2` `verified_pass` controls
+  - `1` decisive fail
+  - `2` decisive pass probes
+  - all copied-event cases: `8192` bytes.
+
+Key outcomes:
+- `grcmfs_commentwin_full` (`0x0294..0x08FC` only):
+  - failed
+  - operator note: `hidden comment, R,-> full wire`
+  - verify-back differed from fresh max1400 native at exactly `63` grid offsets.
+- `grcmfs_commentgrid` (`0x0294..0x1A5F`):
+  - passed
+  - operator note: `worked. comment, no rung wire`
+  - verify-back matched fresh max1400 native exactly (`0` diff bytes).
+- `grcmfs_pregrid_header_commentgrid` (`0x0000..0x1A5F`):
+  - passed
+  - operator note: `full comment, no rung wire`
+  - verify-back also matched fresh max1400 native exactly.
+
+Strong inference from this round:
+- bytes in `0x0000..0x0293` are not required for observed pasteback parity in this lane.
+- bytes in `0x0294..0x08FC` are insufficient; that scope causes both:
+  - hidden comment behavior
+  - forced full-wire rung render
+- copying through `0x1A5F` is sufficient for native-equivalent pasteback behavior in the tested lane.
+- current smallest unresolved additional region beyond the old comment-window model is:
+  - **`0x08FD..0x1A5F`**
+
+Observed decisive 63-offset verify-back signature for the failing `commentwin` scope:
+- row0 cols `24..31`: `cell +0x05/+0x09`
+- row1 cols `0..22`: `cell +0x05/+0x09`
+- row1 col `23`: `cell +0x05`
+
+Status after this update:
+- styled comments remain unsupported under the current model.
+- max1400 plain lane is no longer best explained as a pure UI-refresh quirk.
+- the defect is structural: the old comment-window transplant model omits required bytes through `0x1A5F`.
+- Phase 2 acceptance gate remains:
+  - **not met**
+  - reason: a smaller minimal subset inside `0x08FD..0x1A5F` is still unresolved.
+
+Next queued narrowing round:
+- scenario: `grid_rungcomment_max1400_obs63_narrow_20260307`
+- purpose:
+  - test whether the `63` observed verify-back offsets are sufficient to restore native-equivalent behavior from the failing `commentwin` base.
+
+## Execution Update (March 7, 2026 — Observed-63 Signature Is Marker, Not Minimal Source Fix)
+
+- Scenario `grid_rungcomment_max1400_obs63_narrow_20260307` completed (`6` cases):
+  - `1` `verified_pass` control
+  - `1` `verified_fail` control
+  - `4` `blocked` (`crash`)
+- Key results:
+  - `grcmft_commentwin_fail_control` reproduced the known failure:
+    - note: `hidden comment, full rung :(`
+  - `grcmft_commentwin_plus_obs63`: crash
+  - `grcmft_commentwin_plus_row0tail63part`: crash
+  - `grcmft_commentwin_plus_row1head63part`: crash
+  - `grcmft_commentwin_plus_obs63_no_c23`: crash
+- Interpretation:
+  - the `63` observed verify-back offsets are **not** a safe minimal source patch.
+  - they are downstream markers of the failing/passing difference, not a directly replayable fix set.
+
+New source-level characterization from failing `commentwin` vs passing `commentgrid`:
+- total source delta: `1194` bytes
+- partition:
+  - `120` non-grid bytes in approximately `0x0904..0x0A5C`
+  - `685` row0 grid bytes
+  - `389` row1 grid bytes
+
+Next queued narrowing round:
+- scenario: `grid_rungcomment_max1400_struct_blocks_20260307`
+- purpose:
+  - test the real source partitions:
+    - non-grid `120`-byte block
+    - row0 structural block
+    - row1 structural block
+    - combined row0+row1 block
+
+## Execution Update (March 7, 2026 — Structural Block Splits Crash; Offline Analysis Recommended)
+
+- Scenario `grid_rungcomment_max1400_struct_blocks_20260307` completed (`7` cases):
+  - `2` `verified_pass` controls
+  - `5` `blocked` (`crash`)
+- Outcomes:
+  - `grcmfr_max1400_fresh_control`: pass
+  - `grcmfr_commentgrid_pass_control`: pass
+  - `grcmfr_commentwin_fail_control`: crash in this run
+  - `grcmfr_commentwin_plus_outside120`: crash
+  - `grcmfr_commentwin_plus_row0full`: crash
+  - `grcmfr_commentwin_plus_row1full`: crash
+  - `grcmfr_commentwin_plus_row0_row1full`: crash
+
+Interpretation:
+- The real source delta from failing `commentwin` to passing `commentgrid` does not decompose cleanly into:
+  - non-grid `120`-byte block alone
+  - row0 structural block alone
+  - row1 structural block alone
+  - row0+row1 block without the accompanying non-grid bytes
+- Current evidence favors a **coherent structural family spanning both pre-grid and row-structured bytes**, rather than a small replay-safe patch subset already isolated by manual splitting.
+
+Recommended next step:
+- pause manual patch-batch narrowing
+- do an offline analysis pass first on the `0x08FD..0x1A5F` source delta:
+  - classify repeating per-cell patterns
+  - model the `120` non-grid bytes near `0x0904..0x0A5C`
+  - determine whether the max1400 lane is:
+    - entangled with row0/row1 metadata
+    - or represented through a pseudo-row/pseudo-extent structure
+
+Recommended future native baseline experiment:
+- capture a **32-row native max1400 comment** lane, paired with a 32-row no-comment control, using the same comment body.
+- purpose:
+  - test whether the max-comment coupling remains tied only to row0/row1-style metadata
+  - or scales like a pseudo-row / extra structural extent at larger row counts
+
 ## Execution Update (March 7, 2026 — RungComment Closure Batch Completed, Gate Still Not Met)
 
 - Scenario `grid_rungcomment_closure_20260307` completed (`11` cases):

@@ -1,0 +1,125 @@
+{
+  "scenario": "grid_rungcomment_max1400_fresh_narrow_20260307",
+  "phase": "phase2_rungcomment_max1400_fresh_narrow",
+  "date": "2026-03-07",
+  "fixed_topology_row": "R,...,:,NOP",
+  "comparison_basis": {
+    "fresh_native_label": "grc_max1400_fresh_native_20260307",
+    "fresh_native_payload": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+    "hidden_control_label": "grcp2c_max_lpp_plus_tail_08bd_08fc_from_no",
+    "hidden_control_payload": "scratchpad/captures/grcp2c_max_lpp_plus_tail_08bd_08fc_from_no.bin",
+    "same_comment_body_file": "scratchpad/max1400_comment_body_20260307.txt"
+  },
+  "proven_comment_model": {
+    "length_dword_offset": "0x0294",
+    "payload_start_offset": "0x0298",
+    "length_rule": "len = payload_bytes + 1",
+    "encoding": "RTF-like ANSI text",
+    "max_comment_chars": 1400
+  },
+  "fresh_native_delta_vs_old_native": {
+    "comment_window_diffs": [
+      "0x0897",
+      "0x08D7"
+    ],
+    "values": {
+      "0x0897": {
+        "fresh_native": "0x0F",
+        "old_native": "0x2C",
+        "current_synth": "0x00"
+      },
+      "0x08D7": {
+        "fresh_native": "0x0F",
+        "old_native": "0x2C",
+        "current_synth": "0x2C"
+      }
+    }
+  },
+  "source_parity_candidates_vs_fresh_native": {
+    "trailer": {
+      "offset": "0x0A59",
+      "fresh_native": "0xFF",
+      "current_synth": "0x00"
+    },
+    "row0_col31_flags": {
+      "offsets": [
+        "0x1239",
+        "0x123D"
+      ],
+      "meaning": "row0 col31 +0x19/+0x1D",
+      "fresh_native": "0x00/0x00",
+      "current_synth": "0x01/0x01"
+    }
+  },
+  "entries": [
+    {
+      "label": "grcmf_native_fresh_control",
+      "payload_file": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+      "probe_focus": "Fresh native immediate-display control"
+    },
+    {
+      "label": "grcmf_synth_hidden_control_oldbest",
+      "payload_file": "scratchpad/captures/grcp2c_max_lpp_plus_tail_08bd_08fc_from_no.bin",
+      "probe_focus": "Known hidden-comment synthetic control from the prior round"
+    },
+    {
+      "label": "grcmf_synth_fresh_tail",
+      "payload_file": "scratchpad/captures/grcmf_synth_fresh_tail_from_no.bin",
+      "ranges_or_offsets": [
+        "0x0294..0x0883",
+        "0x08BD..0x08FC"
+      ],
+      "probe_focus": "Fresh-donor rebuild of the prior best synthetic; changes only 0x08D7 vs old hidden control"
+    },
+    {
+      "label": "grcmf_synth_fresh_tail_plus_0897",
+      "payload_file": "scratchpad/captures/grcmf_synth_fresh_tail_plus_0897_from_no.bin",
+      "ranges_or_offsets": [
+        "0x0294..0x0883",
+        "0x08BD..0x08FC",
+        "0x0897"
+      ],
+      "probe_focus": "Tests whether one lower-tail byte in the previously excluded 0x0884..0x08BC gap is the missing immediate-display gate"
+    },
+    {
+      "label": "grcmf_synth_fresh_tail_plus_0a59",
+      "payload_file": "scratchpad/captures/grcmf_synth_fresh_tail_plus_0a59_from_no.bin",
+      "ranges_or_offsets": [
+        "0x0294..0x0883",
+        "0x08BD..0x08FC",
+        "0x0A59"
+      ],
+      "probe_focus": "Tests whether source trailer parity with fresh native matters for paste-time display"
+    },
+    {
+      "label": "grcmf_synth_fresh_tail_plus_r0c31clear",
+      "payload_file": "scratchpad/captures/grcmf_synth_fresh_tail_plus_r0c31clear_from_no.bin",
+      "ranges_or_offsets": [
+        "0x0294..0x0883",
+        "0x08BD..0x08FC",
+        "0x1239",
+        "0x123D"
+      ],
+      "probe_focus": "Tests whether clearing the residual row0-col31 line flags restores native immediate-display behavior"
+    },
+    {
+      "label": "grcmf_synth_fresh_tail_plus_0897_0a59_r0c31clear",
+      "payload_file": "scratchpad/captures/grcmf_synth_fresh_tail_plus_0897_0a59_r0c31clear_from_no.bin",
+      "ranges_or_offsets": [
+        "0x0294..0x0883",
+        "0x08BD..0x08FC",
+        "0x0897",
+        "0x0A59",
+        "0x1239",
+        "0x123D"
+      ],
+      "probe_focus": "Combined parity probe for the fresh-donor lower-tail byte, trailer byte, and row0-col31 flag cleanup"
+    }
+  ],
+  "classification_goal": [
+    "immediate display",
+    "hidden until Edit Comment",
+    "hidden until reopen",
+    "crash"
+  ]
+}

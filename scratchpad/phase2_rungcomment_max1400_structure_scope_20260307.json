@@ -1,0 +1,46 @@
+{
+  "scenario": "grid_rungcomment_max1400_structure_scope_20260307",
+  "phase": "phase2_rungcomment_max1400_structure_scope",
+  "date": "2026-03-07",
+  "fixed_topology_row": "R,...,:,NOP",
+  "objective": "Identify whether the forced wire-render bug comes from the comment window only, the grid/comment region through 0x1A5F, or bytes beyond 0x1A5F",
+  "controls": {
+    "fresh_nowire_no_comment": "grc_no_comment_fresh_native_20260307",
+    "fresh_nowire_max1400": "grc_max1400_fresh_native_20260307"
+  },
+  "hypothesis": {
+    "finding": "Fresh no-comment and fresh max1400 natives are not in the same source family even though both author as R,...,:,NOP. Copying only comment bytes onto the fresh no-comment baseline is therefore insufficient for like-for-like synthesis.",
+    "test_axis": [
+      "0x0294..0x08FC",
+      "0x0294..0x1A5F",
+      "0x0000..0x1A5F"
+    ]
+  },
+  "entries": [
+    {
+      "label": "grcmfs_nowire_fresh_control",
+      "payload_file": "scratchpad/captures/grc_no_comment_fresh_native_20260307.bin",
+      "probe_focus": "fresh native no-comment no-wire control"
+    },
+    {
+      "label": "grcmfs_max1400_fresh_control",
+      "payload_file": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+      "probe_focus": "fresh native max1400 no-wire control"
+    },
+    {
+      "label": "grcmfs_commentwin_full",
+      "payload_file": "scratchpad/captures/grcmfs_commentwin_full_0294_08fc_from_freshnowire.bin",
+      "probe_focus": "copy full comment window only from fresh max1400 donor onto fresh no-comment baseline"
+    },
+    {
+      "label": "grcmfs_commentgrid",
+      "payload_file": "scratchpad/captures/grcmfs_commentgrid_0294_1a5f_from_freshnowire.bin",
+      "probe_focus": "copy comment/trailer/grid region through 0x1A5F from fresh max1400 donor onto fresh no-comment baseline"
+    },
+    {
+      "label": "grcmfs_pregrid_header_commentgrid",
+      "payload_file": "scratchpad/captures/grcmfs_pregrid_header_commentgrid_0000_1a5f_from_freshnowire.bin",
+      "probe_focus": "copy everything through 0x1A5F from fresh max1400 donor onto fresh no-comment baseline"
+    }
+  ]
+}

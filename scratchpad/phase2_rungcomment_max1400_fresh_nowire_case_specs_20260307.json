@@ -1,0 +1,61 @@
+{
+  "scenario": "grid_rungcomment_max1400_fresh_nowire_20260307",
+  "phase": "phase2_rungcomment_max1400_fresh_nowire",
+  "date": "2026-03-07",
+  "fixed_topology_row": "R,...,:,NOP",
+  "purpose": "Compare fresh native max1400 no-wire capture against only no-wire synthetic variants",
+  "fresh_native_label": "grc_max1400_fresh_native_20260307",
+  "fresh_native_payload": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+  "noise_note": "For this round, only source-level no-wire synthetics are included. Residual row0 col31 wire-flag bytes from the no-comment base are explicitly cleared before optional byte probes are added.",
+  "base_synthetic_recipe": {
+    "base_label": "grcmfw_synth_nowire_base",
+    "base_file": "scratchpad/captures/grcmfw_synth_nowire_base_from_no.bin",
+    "copied_ranges": [
+      "0x0294..0x0883",
+      "0x08BD..0x08FC"
+    ],
+    "forced_no_wire_offsets": [
+      "0x1239",
+      "0x123D"
+    ]
+  },
+  "candidate_offsets": {
+    "0x0897": {
+      "fresh_native": "0x0F",
+      "no_comment_base": "0x00",
+      "meaning": "fresh-donor lower-tail byte in the previously excluded 0x0884..0x08BC gap"
+    },
+    "0x0A59": {
+      "fresh_native": "0xFF",
+      "no_comment_base": "0x00",
+      "meaning": "trailer parity byte"
+    }
+  },
+  "entries": [
+    {
+      "label": "grcmfw_native_fresh_control",
+      "payload_file": "scratchpad/captures/grc_max1400_fresh_native_20260307.bin",
+      "probe_focus": "fresh native no-wire immediate-display control"
+    },
+    {
+      "label": "grcmfw_synth_nowire_base",
+      "payload_file": "scratchpad/captures/grcmfw_synth_nowire_base_from_no.bin",
+      "probe_focus": "fresh-donor no-wire synthetic base"
+    },
+    {
+      "label": "grcmfw_synth_nowire_plus_0897",
+      "payload_file": "scratchpad/captures/grcmfw_synth_nowire_plus_0897_from_no.bin",
+      "probe_focus": "no-wire base plus lower-tail byte 0x0897"
+    },
+    {
+      "label": "grcmfw_synth_nowire_plus_0a59",
+      "payload_file": "scratchpad/captures/grcmfw_synth_nowire_plus_0a59_from_no.bin",
+      "probe_focus": "no-wire base plus trailer byte 0x0A59"
+    },
+    {
+      "label": "grcmfw_synth_nowire_plus_0897_0a59",
+      "payload_file": "scratchpad/captures/grcmfw_synth_nowire_plus_0897_0a59_from_no.bin",
+      "probe_focus": "no-wire base plus both 0x0897 and 0x0A59"
+    }
+  ]
+}
