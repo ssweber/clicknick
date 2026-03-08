@@ -4,6 +4,7 @@ from __future__ import annotations
 
 MARKER_COLUMN = "marker"
 OUTPUT_COLUMN = "AF"
+COMMENT_MARKER = "#"
 
 
 def _excel_column_name(index_1_based: int) -> str:
@@ -21,7 +22,7 @@ TOTAL_COLUMNS = len(CSV_HEADER)
 
 
 def is_valid_marker(value: str) -> bool:
-    return value in {"R", ""}
+    return value in {"R", "", COMMENT_MARKER}
 
 
 def validate_header(fields: list[str]) -> None:

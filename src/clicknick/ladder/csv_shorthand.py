@@ -17,6 +17,25 @@ def _parse_csv_row(row: str) -> list[str]:
     return next(reader, [])
 
 
+def _render_csv_row(fields: list[str]) -> str:
+    buf = StringIO()
+    writer = csv.writer(buf, lineterminator="")
+    writer.writerow(fields)
+    return buf.getvalue()
+
+
+def format_comment_shorthand_row(text: str) -> str:
+    return _render_csv_row(["#", text])
+
+
+def render_shorthand_row(canonical: CanonicalRow, *, marker_override: str | None = None) -> str:
+    marker = canonical.marker if marker_override is None else marker_override
+    if marker == "#":
+        return _render_csv_row(["#", canonical.comment_text or ""])
+    af = canonical.af if canonical.af else "..."
+    return _render_csv_row([marker, *canonical.conditions, ":", af])
+
+
 def normalize_shorthand_row(row: str, strict: bool = True) -> CanonicalRow:
     fields = _parse_csv_row(row)
     if not fields:
@@ -24,7 +43,14 @@ def normalize_shorthand_row(row: str, strict: bool = True) -> CanonicalRow:
 
     marker = fields[0].strip()
     if not is_valid_marker(marker):
-        raise ValueError(f"Invalid marker {marker!r}; expected 'R' or blank")
+        raise ValueError(f"Invalid marker {marker!r}; expected 'R', '#', or blank")
+
+    if marker == "#":
+        if len(fields) > 2:
+            raise ValueError("Comment rows only support marker and column A text")
+        comment_text = fields[1] if len(fields) == 2 else ""
+        conditions = [comment_text] + [""] * (len(CONDITION_COLUMNS) - 1)
+        return CanonicalRow(marker=marker, conditions=tuple(conditions), af="")
 
     if len(fields) < 2:
         raise ValueError("Shorthand row is missing ':' separator and AF field")

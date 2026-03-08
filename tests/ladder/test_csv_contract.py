@@ -38,6 +38,7 @@ def test_parse_row_requires_33_columns() -> None:
     [
         ("R", True),
         ("", True),
+        ("#", True),
         ("X", False),
         ("r", False),
     ],

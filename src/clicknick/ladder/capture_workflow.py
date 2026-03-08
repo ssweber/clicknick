@@ -20,7 +20,7 @@ from ..utils.mdb_shared import find_click_database
 from . import capture_registry
 from .clipboard import copy_to_clipboard, find_click_hwnd, read_from_clipboard
 from .codec import ClickCodec, HeaderSeed
-from .csv_shorthand import normalize_shorthand_row
+from .csv_shorthand import format_comment_shorthand_row, normalize_shorthand_row
 from .model import RungGrid
 from .topology import HEADER_ENTRY_BASE, cell_offset, header_structural_equal, parse_wire_topology
 
@@ -176,18 +176,20 @@ class CaptureWorkflow:
         scenario: str,
         description: str,
         rows: list[str],
+        comments: list[str] | None = None,
         payload_source_mode: str = "shorthand",
         payload_file: str | None = None,
     ) -> dict[str, Any]:
         manifest = self._load_manifest()
         payload_source_file = payload_file if payload_source_mode == "file" else None
+        all_rows = [format_comment_shorthand_row(text) for text in (comments or [])] + rows
         entry = capture_registry.add_entry(
             manifest,
             capture_label=label,
             capture_type=capture_type,
             scenario=scenario,
             description=description,
-            rung_rows=rows,
+            rung_rows=all_rows,
             payload_source_mode=payload_source_mode,
             payload_source_file=payload_source_file,
             payload_file=payload_file,
@@ -248,6 +250,7 @@ class CaptureWorkflow:
         *,
         scenario: str,
         row: str,
+        comments: list[str] | None = None,
         files: list[str] | None = None,
         globs: list[str] | None = None,
         label_prefix: str = "",
@@ -260,6 +263,7 @@ class CaptureWorkflow:
         manifest = self._load_manifest()
         created: list[str] = []
         skipped: list[str] = []
+        scenario_rows = [format_comment_shorthand_row(text) for text in (comments or [])] + [row]
 
         for payload_path in payload_paths:
             repo_payload = self._repo_path(payload_path)
@@ -272,7 +276,7 @@ class CaptureWorkflow:
                     capture_type="patch",
                     scenario=scenario,
                     description=description,
-                    rung_rows=[row],
+                    rung_rows=scenario_rows,
                     payload_source_mode="file",
                     payload_source_file=repo_payload,
                     payload_file=repo_payload,
@@ -291,6 +295,7 @@ class CaptureWorkflow:
         return {
             "scenario": scenario,
             "row": row,
+            "comments": comments or [],
             "created_count": len(created),
             "created_labels": created,
             "skipped_count": len(skipped),
@@ -356,10 +361,16 @@ class CaptureWorkflow:
         }
 
     def _entry_rows_to_simple_csv(self, rows: list[str]) -> str:
-        if len(rows) != 1:
+        canonical_rows = [normalize_shorthand_row(row) for row in rows]
+        if any(row.is_comment for row in canonical_rows):
+            raise ValueError(
+                "Shorthand payload mode does not support comment rows; use --payload-source file"
+            )
+
+        if len(canonical_rows) != 1:
             raise ValueError("Shorthand payload mode currently supports exactly one row")
 
-        canonical = normalize_shorthand_row(rows[0])
+        canonical = canonical_rows[0]
         if not canonical.af:
             raise ValueError("Shorthand payload mode requires a non-empty AF instruction")
 
@@ -513,6 +524,8 @@ class CaptureWorkflow:
 
         for row in rows:
             canonical = normalize_shorthand_row(row)
+            if canonical.is_comment:
+                continue
             tokens = [*canonical.conditions, canonical.af]
             for token in tokens:
                 for candidate in self._extract_operand_candidates(token):

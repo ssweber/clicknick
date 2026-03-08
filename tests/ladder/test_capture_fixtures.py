@@ -71,9 +71,14 @@ def test_manifest_rung_rows_parse_and_marker_contract() -> None:
             continue
 
         rows = entry["rung_rows"]
-        for row_index, row in enumerate(rows):
+        seen_rung = False
+        for row in rows:
             canonical = normalize_shorthand_row(row)
-            assert canonical.marker == ("R" if row_index == 0 else "")
+            if canonical.is_comment:
+                assert seen_rung is False
+                continue
+            assert canonical.marker == ("R" if not seen_rung else "")
+            seen_rung = True
             assert "+" not in canonical.conditions
             assert "t" not in canonical.conditions
             assert "r" not in canonical.conditions

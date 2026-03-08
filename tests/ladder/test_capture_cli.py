@@ -200,6 +200,72 @@ def test_verify_prepare_uid_forwarded_to_clipboard(tmp_path: Path) -> None:
     assert fake.copied_owner_hwnds == [0x1234]
 
 
+def test_entry_add_comment_lines_are_prepended_to_rows(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"")
+    workflow = _make_workflow(tmp_path, fake)
+    output: list[str] = []
+
+    rc = main(
+        [
+            "entry",
+            "add",
+            "--type",
+            "synthetic",
+            "--label",
+            "comment_case",
+            "--scenario",
+            "comment_smoke",
+            "--description",
+            "commented rung",
+            "--comment",
+            "Initialize the light system.",
+            "--comment",
+            "Activates when Button is pressed.",
+            "--row",
+            "R,X001,->,:,out(Y001)",
+        ],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+
+    assert rc == 0
+    entry = workflow.entry_show(label="comment_case")
+    assert entry["rung_rows"][:2] == [
+        "#,Initialize the light system.",
+        "#,Activates when Button is pressed.",
+    ]
+    assert entry["rung_rows"][2].startswith("R,X001,")
+
+
+def test_verify_prepare_comment_rows_shorthand_returns_clear_error(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"\x11" * 8192)
+    workflow = _make_workflow(tmp_path, fake)
+    workflow.entry_add(
+        capture_type="synthetic",
+        label="comment_verify_case",
+        scenario="verify",
+        description="comment rows require file source",
+        comments=["Initialize the light system."],
+        rows=["R,X001,->,:,out(Y001)"],
+    )
+    output: list[str] = []
+
+    rc = main(
+        [
+            "verify",
+            "prepare",
+            "--label",
+            "comment_verify_case",
+            "--no-ensure-mdb-addresses",
+        ],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+
+    assert rc == 1
+    assert any("does not support comment rows" in line for line in output)
+
+
 def test_verify_prepare_seed_source_clipboard_applies_header_seed(tmp_path: Path) -> None:
     fake = _FakeClipboard(
         read_payload=_profile_payload(

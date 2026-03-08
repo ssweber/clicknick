@@ -125,6 +125,17 @@ uv run clicknick-ladder-capture promote --label <label> --overwrite
 - `--payload-source` defaults to `shorthand`.
 - `--payload-source file` does not create the file for you; the `.bin` must already exist.
 - Shorthand source for prepare/verify generation currently supports a simple single-row path; it requires at least one contact and a non-empty AF instruction.
+- Shorthand row syntax now also supports comment rows:
+  - `#` = comment row marker
+  - column `A` = comment text for that line
+  - no additional columns on shorthand comment rows
+  - example: `#,Initialize the light system.`
+  - multi-line comments use one row per line
+- For `entry add` / `entry add-patch-batch`, you can either:
+  - pass repeatable `--comment "<text>"` flags
+  - or pass explicit comment rows via repeatable `--row "#,<text>"`
+- Comment rows must appear before the first rung row in an entry.
+- Shorthand payload generation does not yet synthesize rung comments; comment-bearing entries should verify from file/native payloads unless you are only recording expected rows.
 - Wire shorthand tokens used in observed/expected rows:
   - `-` = horizontal wire
   - `|` = vertical wire (valid on columns `B+`; not column `A`)
@@ -153,8 +164,8 @@ Manifest:
 - `init [--force]`
 
 Entry:
-- `add --type {native|synthetic|patch|pasteback} --label <label> --scenario <scenario> --description <description> --row <row> [--payload-source {shorthand|file}] [--payload-file <path>] [--json]`
-- `add-patch-batch --scenario <scenario> --row <row> [--file <path>] [--glob <pattern>] [--label-prefix <prefix>] [--description-prefix <text>] [--skip-existing] [--json]`
+- `add --type {native|synthetic|patch|pasteback} --label <label> --scenario <scenario> --description <description> [--comment <text>] --row <row> [--payload-source {shorthand|file}] [--payload-file <path>] [--json]`
+- `add-patch-batch --scenario <scenario> [--comment <text>] --row <row> [--file <path>] [--glob <pattern>] [--label-prefix <prefix>] [--description-prefix <text>] [--skip-existing] [--json]`
 - `list [--type {native|synthetic|patch|pasteback}] [--status {unverified|verified_pass|verified_fail|blocked}] [--json]`
 - `show --label <label> [--json]`
 - `capture --label <label> [--output-file <path>] [--json]`

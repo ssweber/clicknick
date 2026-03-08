@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from .csv_shorthand import normalize_shorthand_row
+from .csv_shorthand import normalize_shorthand_row, render_shorthand_row
 
 CAPTURE_TYPES = {"native", "synthetic", "patch", "pasteback"}
 PAYLOAD_SOURCE_MODES = {"shorthand", "file"}
@@ -40,15 +40,27 @@ def default_manifest() -> dict[str, object]:
     }
 
 
-def _canonicalize_row(row: str, row_index: int) -> str:
+def _canonicalize_row(row: str, *, first_rung_row: bool) -> tuple[str, bool]:
     canonical = normalize_shorthand_row(row)
-    marker = "R" if row_index == 0 else ""
-    af = canonical.af if canonical.af else "..."
-    return ",".join([marker, *canonical.conditions, ":", af])
+    if canonical.is_comment:
+        return render_shorthand_row(canonical), False
+    marker = "R" if first_rung_row else ""
+    return render_shorthand_row(canonical, marker_override=marker), True
 
 
 def canonicalize_rows(rows: list[str]) -> list[str]:
-    return [_canonicalize_row(row, row_index=i) for i, row in enumerate(rows)]
+    canonical_rows: list[str] = []
+    seen_rung = False
+    for row in rows:
+        rendered, is_rung = _canonicalize_row(row, first_rung_row=(not seen_rung))
+        if not is_rung and seen_rung:
+            raise ValueError("Comment rows must appear before rung rows")
+        canonical_rows.append(rendered)
+        if is_rung:
+            seen_rung = True
+    if rows and not seen_rung:
+        raise ValueError("At least one rung row is required")
+    return canonical_rows
 
 
 def _validate_enum(name: str, value: str | None, allowed: set[str]) -> None:
@@ -118,9 +130,12 @@ def validate_entry(entry: dict[str, Any]) -> None:
         if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
             raise ValueError(f"entry.{key} must be a list[str]")
 
-    canonicalize_rows(entry["rung_rows"])
-    canonicalize_rows(entry["verify_expected_rows"])
-    canonicalize_rows(entry["verify_observed_rows"])
+    if entry["rung_rows"]:
+        canonicalize_rows(entry["rung_rows"])
+    if entry["verify_expected_rows"]:
+        canonicalize_rows(entry["verify_expected_rows"])
+    if entry["verify_observed_rows"]:
+        canonicalize_rows(entry["verify_observed_rows"])
 
     _validate_optional_path_like("entry.payload_source_file", entry.get("payload_source_file"))
     _validate_optional_path_like("entry.payload_file", entry.get("payload_file"))

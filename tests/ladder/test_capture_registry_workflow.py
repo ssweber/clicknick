@@ -123,6 +123,25 @@ def test_label_uniqueness_and_row_canonicalization() -> None:
         )
 
 
+def test_comment_rows_are_canonicalized_before_first_rung() -> None:
+    manifest = capture_registry.default_manifest()
+    entry = capture_registry.add_entry(
+        manifest,
+        capture_label="comment_case",
+        capture_type="synthetic",
+        scenario="comment_smoke",
+        description="desc",
+        rung_rows=['#,"Initialize, then run."', "R,X001,->,:,out(Y001)"],
+    )
+
+    assert entry["rung_rows"][0] == '#,"Initialize, then run."'
+    comment_row = normalize_shorthand_row(entry["rung_rows"][0])
+    rung_row = normalize_shorthand_row(entry["rung_rows"][1])
+    assert comment_row.is_comment is True
+    assert comment_row.comment_text == "Initialize, then run."
+    assert rung_row.marker == "R"
+
+
 def test_verify_status_defaults_by_clipboard_event() -> None:
     assert (
         default_verify_status_for_event(
@@ -283,6 +302,25 @@ def test_verify_prepare_calls_ensure_before_clipboard_copy(tmp_path: Path) -> No
     assert len(fake.copied_payloads) == 1
     assert result["mdb_ensure"]["enabled"] is True
     assert result["mdb_ensure"]["parsed_addresses"] == ["X001", "X002", "Y001", "Y005"]
+
+
+def test_verify_prepare_shorthand_comment_rows_fail_with_clear_error(tmp_path: Path) -> None:
+    fake = _FakeClipboard()
+    workflow = _make_workflow(tmp_path, fake)
+    workflow.entry_add(
+        capture_type="synthetic",
+        label="comment_verify_case",
+        scenario="verify",
+        description="comment rows require file source",
+        comments=["Initialize the light system."],
+        rows=["R,X001,->,:,out(Y001)"],
+    )
+
+    with pytest.raises(ValueError, match="does not support comment rows"):
+        workflow.verify_prepare(
+            label="comment_verify_case",
+            ensure_mdb_addresses=False,
+        )
 
 
 def test_verify_prepare_skips_ensure_when_disabled(tmp_path: Path) -> None:

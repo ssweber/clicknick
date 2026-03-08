@@ -76,6 +76,24 @@ def test_multi_row_rung_rejected(tmp_path: Path) -> None:
     assert exc.value.reason == "row_count"
 
 
+def test_comment_rows_rejected(tmp_path: Path) -> None:
+    csv_path = tmp_path / "main.csv"
+    conditions = _blank_conditions()
+    conditions[0] = "X001"
+    _write_canonical(
+        csv_path,
+        [
+            ("#", ["comment", *[""] * (len(CONDITION_COLUMNS) - 1)], ""),
+            ("R", conditions, "out(Y001)"),
+        ],
+    )
+
+    rung = parse_csv_file(csv_path, syntax="canonical").rungs[0]
+    with pytest.raises(UnsupportedComplexRungError) as exc:
+        to_runggrid_if_simple(rung)
+    assert exc.value.reason == "comment_rows"
+
+
 def test_complex_condition_rejected(tmp_path: Path) -> None:
     csv_path = tmp_path / "main.csv"
     conditions = _blank_conditions()

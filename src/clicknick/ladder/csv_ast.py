@@ -56,6 +56,16 @@ class CanonicalRow:
                 f"got {len(self.conditions)}"
             )
 
+    @property
+    def is_comment(self) -> bool:
+        return self.marker == "#"
+
+    @property
+    def comment_text(self) -> str | None:
+        if not self.is_comment:
+            return None
+        return self.conditions[0]
+
 
 @dataclass(frozen=True)
 class BlankCondition:
@@ -143,6 +153,7 @@ class RowAst:
 @dataclass(frozen=True)
 class RungAst:
     rows: tuple[RowAst, ...]
+    comment_rows: tuple[RowAst, ...] = ()
 
 
 @dataclass(frozen=True)

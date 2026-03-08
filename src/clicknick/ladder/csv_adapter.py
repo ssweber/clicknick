@@ -48,6 +48,9 @@ def _unsupported(reason: str, detail: str) -> UnsupportedComplexRungError:
 
 
 def to_runggrid_if_simple(rung: RungAst) -> RungGrid:
+    if rung.comment_rows:
+        raise _unsupported("comment_rows", "Rung comments are unsupported by RungGrid adapter")
+
     if len(rung.rows) != 1:
         raise _unsupported("row_count", "Only single-row rungs are supported by RungGrid adapter")
 

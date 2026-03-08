@@ -3,7 +3,7 @@
 import pytest
 
 from clicknick.ladder.csv_contract import CONDITION_COLUMNS
-from clicknick.ladder.csv_shorthand import normalize_shorthand_row
+from clicknick.ladder.csv_shorthand import format_comment_shorthand_row, normalize_shorthand_row
 
 
 def test_shorthand_wire_fill() -> None:
@@ -25,6 +25,27 @@ def test_shorthand_blank_fill_and_blank_af() -> None:
 def test_shorthand_blank_fill_allows_af_placeholder_macro() -> None:
     row = normalize_shorthand_row("R,X001,...,:,...")
     assert row.af == ""
+
+
+def test_comment_row_normalizes_without_colon() -> None:
+    row = normalize_shorthand_row("#,Initialize the light system.")
+    assert row.marker == "#"
+    assert row.is_comment is True
+    assert row.comment_text == "Initialize the light system."
+    assert row.conditions[1:] == ("",) * (len(CONDITION_COLUMNS) - 1)
+    assert row.af == ""
+
+
+def test_comment_row_round_trips_with_csv_quoting() -> None:
+    rendered = format_comment_shorthand_row('Initialize, then "run".')
+    row = normalize_shorthand_row(rendered)
+    assert row.marker == "#"
+    assert row.comment_text == 'Initialize, then "run".'
+
+
+def test_comment_row_rejects_extra_columns() -> None:
+    with pytest.raises(ValueError, match="Comment rows only support marker and column A text"):
+        normalize_shorthand_row("#,hello,extra")
 
 
 def test_missing_marker_rejected() -> None:

@@ -26,10 +26,15 @@ def _canonical_row_from_fields(fields: list[str], strict: bool = True) -> Canoni
 
     marker = fields[0].strip()
     if not is_valid_marker(marker):
-        raise ValueError(f"Invalid marker {marker!r}; expected 'R' or blank")
+        raise ValueError(f"Invalid marker {marker!r}; expected 'R', '#', or blank")
 
     conditions = tuple(cell.strip() for cell in fields[1:-1])
     af = fields[-1].strip()
+
+    if marker == "#":
+        if any(cell for cell in conditions[1:]) or af:
+            raise ValueError("Comment rows may only populate column A text")
+        return CanonicalRow(marker=marker, conditions=conditions, af="")
 
     if strict:
         forbidden = {"->", "..."}
@@ -48,24 +53,41 @@ def _row_ast(canonical: CanonicalRow) -> RowAst:
 def _segment_rungs(rows: tuple[RowAst, ...], strict: bool = True) -> tuple[RungAst, ...]:
     rungs: list[RungAst] = []
     current: list[RowAst] = []
+    current_comments: list[RowAst] = []
+    pending_comments: list[RowAst] = []
 
     for row in rows:
+        if row.canonical.is_comment:
+            if current:
+                rungs.append(RungAst(comment_rows=tuple(current_comments), rows=tuple(current)))
+                current = []
+                current_comments = []
+            pending_comments.append(row)
+            continue
+
         if row.canonical.marker == "R":
             if current:
-                rungs.append(RungAst(rows=tuple(current)))
+                rungs.append(RungAst(comment_rows=tuple(current_comments), rows=tuple(current)))
             current = [row]
+            current_comments = pending_comments
+            pending_comments = []
             continue
 
         if not current:
             if strict:
                 raise ValueError("Continuation row encountered before first 'R' marker")
             current = [row]
+            current_comments = pending_comments
+            pending_comments = []
             continue
 
         current.append(row)
 
+    if pending_comments:
+        raise ValueError("Comment row encountered without following 'R' marker")
+
     if current:
-        rungs.append(RungAst(rows=tuple(current)))
+        rungs.append(RungAst(comment_rows=tuple(current_comments), rows=tuple(current)))
 
     return tuple(rungs)
 

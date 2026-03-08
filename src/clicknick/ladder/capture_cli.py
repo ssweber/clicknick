@@ -66,6 +66,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_entry_add.add_argument("--label", required=True)
     p_entry_add.add_argument("--scenario", required=True)
     p_entry_add.add_argument("--description", required=True)
+    p_entry_add.add_argument(
+        "--comment",
+        action="append",
+        help="Comment text line inserted above the first rung row (repeatable)",
+    )
     p_entry_add.add_argument("--row", action="append", required=True)
     p_entry_add.add_argument("--payload-source", choices=["shorthand", "file"], default="shorthand")
     p_entry_add.add_argument("--payload-file")
@@ -112,6 +117,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--row",
         required=True,
         help="Single shorthand row applied to each generated entry",
+    )
+    p_entry_add_patch_batch.add_argument(
+        "--comment",
+        action="append",
+        help="Comment text line inserted above the generated rung row (repeatable)",
     )
     p_entry_add_patch_batch.add_argument(
         "--file",
@@ -408,6 +418,7 @@ def _dispatch(
             label=args.label,
             scenario=args.scenario,
             description=args.description,
+            comments=args.comment,
             rows=args.row,
             payload_source_mode=args.payload_source,
             payload_file=args.payload_file,
@@ -424,6 +435,7 @@ def _dispatch(
         return workflow.entry_add_patch_batch(
             scenario=args.scenario,
             row=args.row,
+            comments=args.comment,
             files=args.file,
             globs=args.glob,
             label_prefix=args.label_prefix,

@@ -53,6 +53,42 @@ def test_canonical_parse_and_rung_segmentation(tmp_path: Path) -> None:
     assert parsed.rungs[1].rows[0].canonical.marker == "R"
 
 
+def test_comment_rows_attach_to_following_rung(tmp_path: Path) -> None:
+    csv_path = tmp_path / "main.csv"
+    _write_canonical(
+        csv_path,
+        [
+            ("#", ["Initialize the light system.", *[""] * (len(CONDITION_COLUMNS) - 1)], ""),
+            ("R", _mk_conditions({0: "X001", 1: "-"}), "out(Y001)"),
+            ("#", ["Second rung comment", *[""] * (len(CONDITION_COLUMNS) - 1)], ""),
+            ("R", _mk_conditions({0: "X002"}), "reset(Y002)"),
+        ],
+    )
+
+    parsed = parse_csv_file(csv_path, syntax="canonical")
+    assert len(parsed.rows) == 4
+    assert len(parsed.rungs) == 2
+    assert [row.canonical.comment_text for row in parsed.rungs[0].comment_rows] == [
+        "Initialize the light system."
+    ]
+    assert [row.canonical.comment_text for row in parsed.rungs[1].comment_rows] == [
+        "Second rung comment"
+    ]
+
+
+def test_comment_row_without_following_rung_rejected(tmp_path: Path) -> None:
+    csv_path = tmp_path / "main.csv"
+    _write_canonical(
+        csv_path,
+        [
+            ("#", ["dangling", *[""] * (len(CONDITION_COLUMNS) - 1)], ""),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="without following 'R' marker"):
+        parse_csv_file(csv_path, syntax="canonical")
+
+
 def test_continuation_before_first_r_rejected_in_strict_mode(tmp_path: Path) -> None:
     csv_path = tmp_path / "main.csv"
     _write_canonical(
