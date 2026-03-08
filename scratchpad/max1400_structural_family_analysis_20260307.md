@@ -25,9 +25,9 @@ Implication:
 
 Diff count between failing `commentwin` and passing `commentgrid` inside `0x08FD..0x1A5F`:
 
-- `120` bytes before row0 grid start (`0x08FD..0x0A5C`)
-- `685` bytes in row0
-- `389` bytes in row1
+- `120` bytes before the row0 band start (`0x08FD..0x0A5C`)
+- `685` bytes in the row0 band (`0x0A60..0x125F`)
+- `389` bytes in the row1 band (`0x1260..0x1A5F`)
 - total: `1194`
 
 ## Key Correction: The "120 Non-Grid Bytes" Are Header-Tail/Trailer Structure
@@ -64,9 +64,9 @@ Interpretation:
 - this behaves like a tail descriptor table anchored in the last header entries, not random pre-grid noise.
 - the monotonic `0x1B..0x1F` and `0x04..0x08` sequences strongly suggest extent indexing or terminal bookkeeping.
 
-## Row0 Structural Families
+## Row0 Band Structural Families
 
-Row0 has `5` distinct diff shapes.
+The row0 band has `5` distinct diff shapes.
 
 ### Family A: Col `0`
 
@@ -90,7 +90,7 @@ Shared body:
 - `+0x39..+0x3C: 00 -> FF FF FF FF`
 
 Interpretation:
-- this is a stable body family across most of row0, not per-column noise.
+- this is a stable body family across most of the row0 band, not per-column noise.
 
 ### Family C: Col `23` Boundary
 
@@ -100,7 +100,7 @@ Changes relative to Family B:
 - gains `+0x29`, `+0x31`
 
 Interpretation:
-- row0 col `23` is a real boundary cell, not just the next member of the `1..22` family.
+- row0-band col `23` is a real boundary cell, not just the next member of the `1..22` family.
 
 ### Family D: Cols `24..30` Tail
 
@@ -111,7 +111,7 @@ Changes relative to Family B:
 - `+0x2D: 00 -> 07`
 
 Interpretation:
-- row0 cols `24..30` are a separate tail run with a different extent code.
+- row0-band cols `24..30` are a separate tail run with a different extent code.
 
 ### Family E: Col `31` Terminal
 
@@ -125,12 +125,12 @@ Changes relative to Family D:
 - `+0x2D: 00 -> 08`
 
 Interpretation:
-- row0 col `31` is an explicit terminal marker.
+- row0-band col `31` is an explicit terminal marker.
 - the added `+0x19/+0x1D/+0x38/+0x3D` reinforces that the max1400 structure is using real grid-control bytes, not only comment-window metadata.
 
-## Row1 Structural Families
+## Row1 Band Structural Families
 
-Row1 also has `5` distinct diff shapes.
+The row1 band also has `5` distinct diff shapes.
 
 ### Family F: Cols `0..22`
 
@@ -144,7 +144,7 @@ Distinctive values:
 - `+0x24/+0x29/+0x31/+0x35/+0x36/+0x38/+0x3D: 00 -> 01`
 
 Interpretation:
-- row1 head carries a continuation descriptor aligned with the broad row0 body.
+- the row1-band head carries a continuation descriptor aligned with the broad row0-band body.
 
 ### Family G: Col `23` Boundary
 
@@ -156,7 +156,7 @@ Values:
 - `+0x30/+0x34/+0x36: 00 -> 07/10/03`
 
 Interpretation:
-- row1 col `23` is a transition cell between the row1 head block and the tail-phase families.
+- row1-band col `23` is a transition cell between the row1-band head block and the tail-phase families.
 
 ### Families H/I/J: Tail Phase Wave Across Cols `24..31`
 
@@ -188,7 +188,7 @@ Phase J:
 - `+0x10/+0x28: 00 -> 01`
 
 Interpretation:
-- row1 tail is a phased descriptor wave, not eight unrelated cell patches.
+- the row1-band tail is a phased descriptor wave, not eight unrelated cell patches.
 - the repeating `09/10/03` triplets look more like compact extent metadata than visible rung-topology authoring.
 
 ## Working Interpretation
@@ -196,18 +196,18 @@ Interpretation:
 This region does not behave like:
 - an isolated comment companion blob
 - a bag of replay-safe patch bytes
-- a purely row0-only or row1-only metadata tweak
+- a purely row0-band-only or row1-band-only metadata tweak
 
 It does behave like a coherent structural extent family that:
 - starts in the tail of the header table
-- spans row0 across multiple boundary classes
-- continues through row1 as a head block plus a `3`-phase tail wave
-- terminates explicitly at row0 col `31` and the header-table trailer
+- spans the row0 band across multiple boundary classes
+- continues through the row1 band as a head block plus a `3`-phase tail wave
+- terminates explicitly at row0-band col `31` and the header-table trailer
 
 Most defensible current model:
 - max1400 plain-comment support is expressed through row-coupled extent metadata, not only through the comment payload window.
 - that metadata is likely extent-like or pseudo-row-like rather than ordinary visible wire topology.
-- the earlier crashes from block-split patches make sense under this model because the descriptor family is internally coupled across header tail, row0, and row1.
+- the earlier crashes from block-split patches make sense under this model because the descriptor family is internally coupled across the header tail, the row0 band, and the row1 band.
 
 ## Practical Consequence For Next RE Step
 
@@ -219,7 +219,7 @@ The next native experiment should be:
 - same body file: `scratchpad/max1400_comment_body_20260307.txt`
 
 Reason:
-- if this is only a low-row entanglement, the same row0/row1 family should persist with little scaling change.
+- if this is only a low-band entanglement, the same row0/row1 band family should persist with little scaling change.
 - if this is a true extra extent or pseudo-row family, the row32 pair should expose how the descriptor scales beyond the current 2-row footprint.
 
 ## Follow-Up Native Discriminator: Row32 Full-Wire Row0-NOP

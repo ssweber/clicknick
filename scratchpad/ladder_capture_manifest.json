@@ -14117,7 +14117,7 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
+      "payload_file": "scratchpad/captures/grc32fw_no_comment_native_20260307.bin",
       "verify_clipboard_event": null,
       "verify_status": "unverified",
       "verify_notes": "",
@@ -14160,7 +14160,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-07T22:00:06Z",
-      "updated_at": "2026-03-07T22:00:06Z"
+      "updated_at": "2026-03-08T13:37:21Z"
     },
     {
       "id": "b399e923-f54d-4bbb-938f-6da7cf184e77",
@@ -14204,7 +14204,7 @@
       ],
       "payload_source_mode": "shorthand",
       "payload_source_file": null,
-      "payload_file": null,
+      "payload_file": "scratchpad/captures/grc32fw_max1400_native_20260307.bin",
       "verify_clipboard_event": null,
       "verify_status": "unverified",
       "verify_notes": "",
@@ -14247,7 +14247,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-07T22:00:07Z",
-      "updated_at": "2026-03-07T22:00:07Z"
+      "updated_at": "2026-03-08T13:37:59Z"
     },
     {
       "id": "256f71d4-c7f5-4fc2-86f1-35c9eb9d3d19",
@@ -14488,6 +14488,234 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-07T22:01:40Z",
       "updated_at": "2026-03-07T22:03:43Z"
+    },
+    {
+      "id": "7925dfa5-837d-4f94-95ec-b35ec3046507",
+      "capture_label": "grcecr_empty_native_20260308",
+      "capture_type": "native",
+      "scenario": "grid_rungcomment_clean_empty_reverify_20260308",
+      "description": "clean empty 1-row native control: no wire, no AF instruction, no comment",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/grcecr_empty_native_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grcecr_empty_native_20260308_verify_back_20260308_134145.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T13:30:24Z",
+      "updated_at": "2026-03-08T13:41:45Z"
+    },
+    {
+      "id": "8963c58b-ada7-4a3a-80af-b51ce55004a3",
+      "capture_label": "grcecr_short_native_20260308",
+      "capture_type": "native",
+      "scenario": "grid_rungcomment_clean_empty_reverify_20260308",
+      "description": "clean empty 1-row native with short plain comment body Hello",
+      "rung_rows": [
+        "#,Hello",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/grcecr_short_native_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Hello",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Hello",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grcecr_short_native_20260308_verify_back_20260308_134157.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T13:30:24Z",
+      "updated_at": "2026-03-08T13:41:57Z"
+    },
+    {
+      "id": "fb2c2000-63c3-4d73-984b-1571283dc9a9",
+      "capture_label": "grcecr_medium_native_20260308",
+      "capture_type": "native",
+      "scenario": "grid_rungcomment_clean_empty_reverify_20260308",
+      "description": "clean empty 1-row native with deterministic 256-char plain comment body",
+      "rung_rows": [
+        "#,MEDIUM256_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ1234",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/grcecr_medium_native_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,MEDIUM256_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ1234",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,MEDIUM256_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ1234",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grcecr_medium_native_20260308_verify_back_20260308_134206.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T13:30:25Z",
+      "updated_at": "2026-03-08T13:42:06Z"
+    },
+    {
+      "id": "e73d98b3-3fba-4a60-b77f-c264adeabe35",
+      "capture_label": "grcecr_max1400_native_20260308",
+      "capture_type": "native",
+      "scenario": "grid_rungcomment_clean_empty_reverify_20260308",
+      "description": "clean empty 1-row native with deterministic 1400-char plain comment body from scratchpad/max1400_comment_body_20260307.txt",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/grcecr_max1400_native_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grcecr_max1400_native_20260308_verify_back_20260308_134218.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T13:30:26Z",
+      "updated_at": "2026-03-08T13:42:18Z"
+    },
+    {
+      "id": "f1a6d0ae-8240-432a-8f96-5dad8aba8ed9",
+      "capture_label": "grcecr_fullwire_native_20260308",
+      "capture_type": "native",
+      "scenario": "grid_rungcomment_clean_empty_reverify_20260308",
+      "description": "fresh 1-row full horizontal wire native reference",
+      "rung_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/grcecr_fullwire_native_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grcecr_fullwire_native_20260308_verify_back_20260308_134231.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T13:30:26Z",
+      "updated_at": "2026-03-08T13:42:31Z"
+    },
+    {
+      "id": "6e10ed77-58fe-4c93-aad9-e4180c0bf62c",
+      "capture_label": "grcecr_fullwire_nop_native_20260308",
+      "capture_type": "native",
+      "scenario": "grid_rungcomment_clean_empty_reverify_20260308",
+      "description": "fresh 1-row full horizontal wire with AF NOP native reference",
+      "rung_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/grcecr_fullwire_nop_native_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/grcecr_fullwire_nop_native_20260308_verify_back_20260308_134239.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T13:30:27Z",
+      "updated_at": "2026-03-08T13:42:39Z"
+    },
+    {
+      "id": "86b49c09-9401-4234-a0b0-1daf8081a46a",
+      "capture_label": "grcecr_rows2_empty_native_20260308",
+      "capture_type": "native",
+      "scenario": "grid_rungcomment_clean_empty_reverify_20260308",
+      "description": "fresh 2-row empty native reference",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/grcecr_rows2_empty_native_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grcecr_rows2_empty_native_20260308_verify_back_20260308_134248.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T13:30:27Z",
+      "updated_at": "2026-03-08T13:42:48Z"
+    },
+    {
+      "id": "18eba4e7-b177-4223-915e-f333d75a5496",
+      "capture_label": "grcecr_rows2_vert_horiz_native_20260308",
+      "capture_type": "native",
+      "scenario": "grid_rungcomment_clean_empty_reverify_20260308",
+      "description": "fresh 2-row vertical-plus-horizontal native reference",
+      "rung_rows": [
+        "R,,T,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/grcecr_rows2_vert_horiz_native_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,T,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,T,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/grcecr_rows2_vert_horiz_native_20260308_verify_back_20260308_134329.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T13:30:28Z",
+      "updated_at": "2026-03-08T13:43:29Z"
     }
   ]
 }

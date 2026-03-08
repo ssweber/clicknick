@@ -1,5 +1,61 @@
 # Phase 2 RungComment Mapping Inference (March 6, 2026)
 
+## Execution Update (March 8, 2026 - Clean Empty-Rung Re-Verification Completed)
+
+- New report:
+  - `scratchpad/rungcomment_clean_empty_reverify_results_20260308.md`
+- Scenario:
+  - `grid_rungcomment_clean_empty_reverify_20260308`
+- Manifest totals:
+  - `8/8` `verified_pass`
+
+Fresh canonical capture set established:
+- `grcecr_empty_native_20260308`
+- `grcecr_short_native_20260308`
+- `grcecr_medium_native_20260308`
+- `grcecr_max1400_native_20260308`
+- `grcecr_fullwire_native_20260308`
+- `grcecr_fullwire_nop_native_20260308`
+- `grcecr_rows2_empty_native_20260308`
+- `grcecr_rows2_vert_horiz_native_20260308`
+
+What changed materially:
+- the clean empty-rung round confirms that native plain comments work on a truly empty baseline at:
+  - short length
+  - medium length (`256`)
+  - max tested length (`1400`)
+- the visible rung remained empty in all three comment-bearing native cases
+- therefore the old fallback explanation "the comment is fine, it just needs reopen" is no longer acceptable as the default explanation for empty-baseline failures
+
+But the round also shows:
+- comment support is not metadata-only
+- versus the empty native control, comment-bearing natives changed bytes in:
+  - metadata band `0x0254..0x0A5F`
+  - row0 band `0x0A60..0x125F`
+  - row1 band `0x1260..0x1A5F`
+- wire flags at `+0x19/+0x1D/+0x21` did **not** change in row0 or row1
+- interpretation:
+  - comments are topology-neutral in rendered wire terms on the clean empty baseline
+  - but remain structurally coupled to row0/row1 band companion bytes
+
+New gap-region result:
+- `0x0A54..0x0A5F` varies by comment length and round-trips exactly
+- treat it as a structural trailer/separator region, not padding
+
+Native versus verify-back result on the clean empty-baseline set:
+- metadata: exact
+- gap: exact
+- row0 band: exact
+- row1 band: regeneration-sensitive
+
+Conservative classification after the reset:
+- native plain comment behavior on empty rungs:
+  - **proven working**
+- deterministic synthesis model for comment-bearing payloads:
+  - **still unresolved**
+- Phase 2 codec gate for synthesis:
+  - **still not met**
+
 ## Execution Update (March 7, 2026 — Max1400 Structure Scope Narrowed)
 
 - Fresh native controls added to remove shorthand/render ambiguity:
@@ -145,7 +201,7 @@
 
 - Do an offline analysis pass before further operator queues.
 - Focus on:
-  - repeating cell-pattern families across row0/row1
+  - repeating cell-pattern families across the row0/row1 bands
   - the `120` non-grid bytes near `0x0904..0x0A5C`
   - whether max1400 behavior is:
     - row-metadata entanglement
@@ -224,7 +280,7 @@
 
 - Capture a row32 native no-comment / max1400 pair using the same max1400 body file.
 - Rationale:
-  - if the coupling is only row0/row1-local, the row32 lane may preserve the same low-row signature.
+  - if the coupling is only row0/row1-band-local, the row32 lane may preserve the same low-band signature.
   - if Click is treating max comments like an extra extent/pseudo-row, the row32 lane should expose that scaling more clearly.
 
 ## Row32 Native Pair Outcomes (March 7, 2026 - Extent-Scaling Signal Confirmed)
@@ -258,7 +314,7 @@ Delta for row32 max1400 vs row32 no-comment:
 - This strongly favors:
   - **a scaling extent / pseudo-row model**
 - It strongly weakens:
-  - a purely low-row-local row0/row1 entanglement model
+  - a purely low-band row0/row1-band entanglement model
 
 ### Additional Structural Notes
 

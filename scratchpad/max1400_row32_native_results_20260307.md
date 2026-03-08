@@ -39,7 +39,7 @@ This is the decisive outcome from the row32 experiment.
 ## Why This Matters
 
 The offline hypothesis before this run was:
-- maybe the max1400 structure is only row0/row1-local
+- maybe the max1400 structure is only row0/row1-band-local
 - or maybe it scales like an extent / pseudo-row family
 
 The row32 outcome strongly favors the second model.
@@ -92,7 +92,7 @@ Comparing row32 max1400 native to row32 no-comment native by `0x1000` pages yiel
 - terminal/tail variant
 
 Interpretation:
-- max1400 scaling at row32 is not just "row0/row1 plus one trailer blob"
+- max1400 scaling at row32 is not just "row0/row1 bands plus one trailer blob"
 - it introduces a repeated per-page family across most of the multi-page body plus a sparse terminal extra page
 
 ## Offline Decode Refinement: Pages 2..16 Are Paired-Row Descriptor Pages
@@ -140,7 +140,7 @@ Current best model:
 
 ## Practical Consequence
 
-The row32 experiment materially weakens the old "row0/row1-only entanglement" hypothesis.
+The row32 experiment materially weakens the old "row0/row1-band-only entanglement" hypothesis.
 
 It materially strengthens:
 - a scaling extent descriptor model

@@ -2,6 +2,131 @@
 
 Last validated: March 7, 2026
 
+## Execution Update (March 8, 2026 - Clean Empty-Rung Re-Verification Completed)
+
+- New result report:
+  - `scratchpad/rungcomment_clean_empty_reverify_results_20260308.md`
+- Scenario completed:
+  - `grid_rungcomment_clean_empty_reverify_20260308`
+- Manifest verify statuses:
+  - `8/8` `verified_pass`
+
+Fresh canonical capture set:
+- `grcecr_empty_native_20260308`
+- `grcecr_short_native_20260308`
+- `grcecr_medium_native_20260308`
+- `grcecr_max1400_native_20260308`
+- `grcecr_fullwire_native_20260308`
+- `grcecr_fullwire_nop_native_20260308`
+- `grcecr_rows2_empty_native_20260308`
+- `grcecr_rows2_vert_horiz_native_20260308`
+
+Key outcome:
+- native plain comments on a truly empty 1-row rung are now re-verified as working at:
+  - short length
+  - medium length (`256`)
+  - max tested length (`1400`)
+- all three comment-bearing cases pasted and copied back with the visible rung still empty
+
+Critical correction to prior interpretation:
+- the old fallback explanation "comment exists but only appears after reopen" should not be used as the default interpretation for comment-lane anomalies
+- the clean empty-rung native round shows that plain comments can work without introducing malformed visible topology
+- earlier failures were at least partly caused by structurally bad bytes in contaminated lanes, not by a generic comment-only UI refresh rule
+
+Conservative byte-level interpretation from the clean round:
+- comments are **not** metadata-only
+- versus the empty control, comment-bearing natives changed bytes in:
+  - metadata band `0x0254..0x0A5F`
+  - row0 band `0x0A60..0x125F`
+  - row1 band `0x1260..0x1A5F`
+- but row0/row1 band wire flags at `+0x19/+0x1D/+0x21` stayed unchanged
+- therefore:
+  - comment support is topology-neutral in visible wire terms on the clean empty baseline
+  - but still structurally coupled to non-wire companion bytes in the row0/row1 bands
+
+12-byte gap result:
+- `0x0A54..0x0A5F` varies by comment length and round-trips exactly
+- treat it as structural trailer/separator state, not padding
+
+Native versus verify-back result on the clean empty-baseline set:
+- metadata: exact
+- `0x0A54..0x0A5F`: exact
+- row0 band: exact
+- row1 band: regeneration-sensitive
+
+Tooling audit result:
+- `scratchpad/rungcomment_tooling_audit_20260308.md`
+- current code paths correctly keep GUI row `0` at `0x0A60`
+- no live indexing bug was found that counts `0x0254..0x0A5F` as GUI row `0`
+
+Accepted classification after the reset:
+- native plain comments on empty rungs:
+  - **proven working**
+- deterministic synthesis model for comment-bearing payloads:
+  - **still unresolved**
+- Phase 2 synthesis gate:
+  - **still not met**
+
+Recommended next step:
+- use the March 8 canonical captures as the clean donor set for Phase 3 wireframe synthesis
+- keep comment synthesis outside the production path until the comment companion family is modeled explicitly
+
+## Execution Update (March 8, 2026 - Comment Lane Reset / Clean-Slate Queue Prepared)
+
+This update supersedes the earlier March 7 comment-support wording below until the clean re-verification round is completed.
+
+Status:
+- no new native comment captures were accepted on March 8 yet
+- Phase 2 comment support is reopened and remains **not met**
+
+Why the reset happened:
+- earlier comment conclusions were confounded by testing on non-empty or structurally non-neutral rungs
+- the old explanation "`comment exists but only appears after reopen`" is no longer accepted as a safe comment-specific UI quirk
+- if a pasted comment lane produces the wrong visible rung shape, that result should now be classified as **structural failure**
+
+Tooling audit result:
+- new audit note:
+  - `scratchpad/rungcomment_tooling_audit_20260308.md`
+- confirmed current code/tools use:
+  - metadata region: `0x0254..0x0A5F`
+  - GUI row `0`: `0x0A60`
+- no current code path was found that counts the metadata region as GUI row `0`
+- `devtools/capture.py` is not present in the repo and remains retired by policy
+- current best interpretation:
+  - historical confusion was primarily naming/documentation ambiguity plus contaminated baselines
+  - not a proven live indexing bug in the current audited tooling
+
+Prepared clean-slate re-verification round:
+- scenario:
+  - `grid_rungcomment_clean_empty_reverify_20260308`
+- artifacts:
+  - `scratchpad/phase2_rungcomment_clean_empty_reverify_case_specs_20260308.json`
+  - `scratchpad/grid_rungcomment_clean_empty_reverify_verify_queue_20260308.md`
+  - `scratchpad/rungcomment_short_body_20260308.txt`
+  - `scratchpad/rungcomment_medium_body_20260308.txt`
+  - `scratchpad/max1400_comment_body_20260307.txt`
+
+Prepared native cases:
+- `grcecr_empty_native_20260308`
+- `grcecr_short_native_20260308`
+- `grcecr_medium_native_20260308`
+- `grcecr_max1400_native_20260308`
+- `grcecr_fullwire_native_20260308`
+- `grcecr_fullwire_nop_native_20260308`
+- `grcecr_rows2_empty_native_20260308`
+- `grcecr_rows2_vert_horiz_native_20260308`
+
+Ground-truth rule until that round is complete:
+- treat comment support of any length as **unsettled**
+- do not rely on the earlier:
+  - "short comments are working"
+  - "plain max1400 is partially working"
+  - "requires reopen to display" as a sufficient explanation
+
+Next required step:
+- run the prepared clean empty-rung native capture + verify queue
+- only after those results land should `HANDOFF.md` be rewritten as the next clean canonical version
+
 ## Execution Update (March 7, 2026 - Full-Wire Row0-NOP Discriminator Weakens Empty-Carrier Model)
 
 - New result report:
@@ -188,7 +313,7 @@ Key outcome:
 - the extra page exists in the native source capture itself and survives verify-back unchanged in total length.
 
 Why this matters:
-- this materially weakens the old idea that max1400 behavior is only a low-row row0/row1-local entanglement.
+- this materially weakens the old idea that max1400 behavior is only a low-band row0/row1-band-local entanglement.
 - it materially strengthens an extent-like / pseudo-row-like scaling model.
 
 Additional offline summary from the row32 pair:
@@ -245,7 +370,7 @@ Key structural findings from the offline pass:
 - repeated monotonic codes and phased `09/10/03` triplets strongly suggest a coupled extent descriptor, not independent patch bytes.
 
 Best current interpretation:
-- the max1400 lane is still expressed through row0/row1 metadata, but not as isolated local tweaks.
+- the max1400 lane is still expressed through row0/row1-band metadata, but not as isolated local tweaks.
 - evidence now favors a coherent extent-like / pseudo-row-like structural family spanning header-tail, row0, and row1.
 - this explains why both:
   - observed-63 source patches
@@ -376,13 +501,13 @@ Recommended next step:
   - classify repeating per-cell patterns
   - model the `120` non-grid bytes near `0x0904..0x0A5C`
   - determine whether the max1400 lane is:
-    - entangled with row0/row1 metadata
+    - entangled with row0/row1-band metadata
     - or represented through a pseudo-row/pseudo-extent structure
 
 Recommended future native baseline experiment:
 - capture a **32-row native max1400 comment** lane, paired with a 32-row no-comment control, using the same comment body.
 - purpose:
-  - test whether the max-comment coupling remains tied only to row0/row1-style metadata
+  - test whether the max-comment coupling remains tied only to row0/row1-band-style metadata
   - or scales like a pseudo-row / extra structural extent at larger row counts
 
 ## Execution Update (March 7, 2026 - RungComment Closure Batch Completed, Gate Still Not Met)
@@ -1208,7 +1333,7 @@ This avoids local-only dependency on gitignored `scratchpad/captures` during CI/
 
 1. Multi-row non-empty (horizontal/mixed-wire) synthesis: does the empty-template companion rule
    remain sufficient when row2/row3 include wire geometry?
-2. Per-cell structural control bytes in row0/row1 (beyond wire flags): exact role in broader
+2. Per-cell structural control bytes in the row0/row1 bands (beyond wire flags): exact role in broader
    instruction families now that second-immediate is solved.
 3. Stream metadata bytes (`65 60`, `67 60`, related blocks): exact semantics and whether
    all are mandatory per instruction family.

@@ -12,8 +12,8 @@ Reference setup:
 - row count: `32`
 - visible geometry:
   - full horizontal wire on every row
-  - row `0` ends with `NOP`
-  - rows `1..31` have blank AF
+  - GUI row `0` ends with `NOP`
+  - GUI rows `1..31` have blank AF
 - body file:
   - `scratchpad/max1400_comment_body_20260307.txt`
 
@@ -46,7 +46,7 @@ The extra max1400 page does **not** require empty rows as carriers.
 
 Why:
 - the extra `0x1000` page persists when all `32` visible rows are full horizontal wire rows
-- it also persists when row `0` is structurally distinguished by `NOP`
+- it also persists when GUI row `0` is structurally distinguished by `NOP`
 - therefore the scaling page cannot be explained only as a hidden empty-row companion behind the previously tested empty geometry
 
 This materially weakens:
@@ -256,7 +256,7 @@ Across pages `2..15`:
 Lane relationship:
 - empty-row lane:
   - `+0x09` and `+0x11` carry the same ordinal ladder
-- full-wire row0-NOP lane:
+- full-wire GUI-row0-NOP lane:
   - `+0x09` keeps the same ladder
   - `+0x11` is shifted upward by `0x21`
 
