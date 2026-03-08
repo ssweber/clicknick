@@ -1,6 +1,83 @@
 # Click PLC Clipboard Reverse Engineering - Handoff v18
 
-Last validated: March 7, 2026
+Last validated: March 8, 2026
+
+## Execution Update (March 8, 2026 - Phase 3 Wireframe Baseline Started)
+
+- New offline report:
+  - `scratchpad/phase3_wireframe_baseline_start_20260308.md`
+- New offline helper:
+  - `devtools/march8_wireframe_synth.py`
+- Generated offline outputs:
+  - `scratchpad/captures/phase3_wireframe_20260308/`
+
+Scope of this pass:
+- start Phase 3 from the March 8 clean donor set
+- keep comment synthesis explicitly out of scope
+- keep production codec behavior unchanged
+
+What the new helper reconstructs byte-exactly:
+- `grcecr_empty_native_20260308`
+- `grcecr_fullwire_native_20260308`
+- `grcecr_fullwire_nop_native_20260308`
+- `grcecr_rows2_empty_native_20260308`
+- `grcecr_rows2_vert_horiz_native_20260308`
+
+Current band model:
+- donor-backed prefix band:
+  - `0x0000..0x0253`
+- metadata band:
+  - `0x0254..0x0A53`
+- gap band:
+  - `0x0A54..0x0A5F`
+- row0 band:
+  - `0x0A60..0x125F`
+- row1 band:
+  - `0x1260..0x1A5F`
+- donor-backed tail band:
+  - `0x1A60..0x1FFF`
+
+Bytes now explicitly explained by the wireframe model:
+- empty 1-row -> fullwire 1-row:
+  - all `62` row0-band deltas
+  - row0 condition cols `0..30`, `+0x19/+0x1D`
+- fullwire 1-row -> fullwire+NOP 1-row:
+  - `2` row0-band deltas
+  - row0 AF cell col `31`, `+0x19/+0x1D`
+- empty 1-row -> empty 2-row:
+  - metadata `0x0254: 0x40 -> 0x60`
+  - row0 col31 `+0x38: 0x00 -> 0x01`
+  - row0 col31 `+0x3D: 0x00 -> 0x02`
+- empty 2-row -> 2-row vertical+horizontal:
+  - all `5` deltas are visible wire bytes
+  - row0 col1 `+0x19/+0x1D/+0x21`
+  - row1 col1 `+0x19/+0x1D`
+
+Bytes still donor-backed / not yet generalized:
+- fullwire 1-row row1 band:
+  - `421` bytes vs empty 1-row
+- 2-row prefix band:
+  - `237` bytes vs empty 1-row
+- 2-row empty row1 band:
+  - `570` bytes vs empty 1-row
+- tail band `0x1A60..0x1FFF`:
+  - `491` bytes in both the fullwire and 2-row family jumps
+
+Conservative interpretation:
+- the March 8 no-comment wireframe baseline is now clean enough to separate:
+  - explicit visible wireframe bytes
+  - donor-backed no-comment companion families
+- this is a wireframe-only milestone, not comment synthesis
+- comment-bearing row0/row1 companion families remain unresolved and outside this Phase 3 helper
+
+Recommended next Phase 3 step:
+- keep this helper offline-only
+- isolate the donor-backed no-comment bands before touching comment lanes again
+- priority order:
+  - fullwire row1 band
+  - shared tail band `0x1A60..0x1FFF`
+  - 2-row prefix band
+  - 2-row empty row1 band
 
 ## Execution Update (March 8, 2026 - Clean Empty-Rung Re-Verification Completed)
 
