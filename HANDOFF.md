@@ -1,6 +1,57 @@
-# Click PLC Clipboard Reverse Engineering - Handoff v19
+# Click PLC Clipboard Reverse Engineering - Handoff v20
 
 Last validated: March 8, 2026
+
+## Execution Update (March 8, 2026 - Plain Comment Readiness Assessed)
+
+- New offline report:
+  - `scratchpad/phase3_comment_synthesis_readiness_20260308.md`
+- New offline helper:
+  - `devtools/march8_comment_synthesis_readiness.py`
+
+Scope of this assessment:
+- use the March 8 clean empty-rung native set only
+- assess plain-comment synthesis readiness conservatively
+- keep styled-comment synthesis out of scope
+- keep production codec behavior unchanged
+
+What is now explicitly proven:
+- the clean March 8 plain-comment payload window is exact for:
+  - short
+  - medium
+  - max1400
+- exact March 8 plain payload envelope:
+  - length dword at `0x0294`
+  - bytes at `0x0298`
+  - fixed `105`-byte RTF prefix
+  - plain text body in `cp1252`
+  - fixed `11`-byte suffix
+- the prefix band `0x0000..0x0253` remains unchanged for all three clean plain-comment captures
+- metadata before the payload length dword `0x0254..0x0293` remains unchanged for all three clean plain-comment captures
+
+New high-signal readiness result:
+- `grcecr_max1400_native_20260308` reuses solved no-comment bands exactly at:
+  - fullwire 1-row row1 band `0x1260..0x1A5F`
+  - shared tail band `0x1A60..0x1FFF`
+- this exact fullwire-band reuse is **not** true for the clean short or medium comment captures
+
+Remaining unresolved companion-byte counts after:
+- exact plain payload-window synthesis from text
+- exact fullwire row1/tail reuse only when the match is exact
+
+Counts:
+- short:
+  - `790`
+- medium:
+  - `1887`
+- max1400:
+  - `802`
+
+Conservative interpretation:
+- plain payload serialization is now much closer than the companion-band problem
+- max1400 is the closest clean plain-comment case because its row1 band and tail band already collapse to solved no-comment templates
+- medium remains the least converged clean plain-comment case because it still carries a distinct row1 family and a distinct tail family
+- comment synthesis is still not ready for production
 
 ## Execution Update (March 8, 2026 - Phase 3 Wireframe Band Isolation Continued)
 
