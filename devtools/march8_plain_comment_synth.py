@@ -10,7 +10,7 @@ from pathlib import Path
 PAYLOAD_LENGTH_OFFSET = 0x0294
 PAYLOAD_BYTES_OFFSET = 0x0298
 PHASE_A_LEN = 0xFC8
-MEDIUM_PHASE_B_PERIOD_BLOCKS = 27
+MEDIUM_PHASE_B_TRIAD_PERIOD = 9
 BLOCK_SIZE = 0x40
 
 EMPTY_CAPTURE = "grcecr_empty_native_20260308.bin"
@@ -29,6 +29,39 @@ COMMENT_CASES = {
         "capture": "grcecr_max1400_native_20260308.bin",
         "body_file": "scratchpad/max1400_comment_body_20260307.txt",
     },
+}
+
+MEDIUM_TYPE_A_OFFSETS = {
+    0x00: 0x10,
+    0x02: 0x03,
+    0x0C: 0x01,
+    0x18: 0x10,
+    0x1A: 0x03,
+    0x24: 0x01,
+    0x30: 0x10,
+    0x32: 0x03,
+    0x3C: 0x01,
+}
+
+MEDIUM_TYPE_B_OFFSETS = {
+    0x08: 0x10,
+    0x0A: 0x03,
+    0x14: 0x01,
+    0x20: 0x10,
+    0x22: 0x03,
+    0x2C: 0x01,
+    0x38: 0x10,
+    0x3A: 0x03,
+}
+
+MEDIUM_TYPE_C_OFFSETS = {
+    0x04: 0x01,
+    0x10: 0x10,
+    0x12: 0x03,
+    0x1C: 0x01,
+    0x28: 0x10,
+    0x2A: 0x03,
+    0x34: 0x01,
 }
 
 
@@ -84,7 +117,8 @@ def _derive_medium_phase_b_program(capture_dir: Path) -> dict[str, object]:
         medium[start + idx * BLOCK_SIZE : start + (idx + 1) * BLOCK_SIZE]
         for idx in range(full_block_count)
     ]
-    period = MEDIUM_PHASE_B_PERIOD_BLOCKS
+    triad_period = MEDIUM_PHASE_B_TRIAD_PERIOD
+    period = triad_period * 3
 
     for idx in range(full_block_count - period):
         if full_blocks[idx] != full_blocks[idx + period]:
@@ -95,9 +129,46 @@ def _derive_medium_phase_b_program(capture_dir: Path) -> dict[str, object]:
     if tail != expected_tail:
         raise ValueError("Medium phase-B tail was not the truncated next block in the repeating program")
 
+    triads = []
+    for triad_idx in range(triad_period):
+        a = full_blocks[triad_idx * 3 + 0]
+        b = full_blocks[triad_idx * 3 + 1]
+        c = full_blocks[triad_idx * 3 + 2]
+        triads.append(
+            {
+                "a1": a[0x14],
+                "a2": a[0x2C],
+                "b1": b[0x04],
+                "b2": b[0x1C],
+                "b3": b[0x34],
+                "c1": c[0x0C],
+                "c2": c[0x24],
+                "c3": c[0x3C],
+            }
+        )
+
+    ring_r1 = [triad["a1"] for triad in triads]
+    ring_r2 = [triad["a2"] for triad in triads]
+    ring_r3 = [triad["b1"] for triad in triads]
+    ring_r4 = [triad["b2"] for triad in triads]
+
+    for idx, triad in enumerate(triads):
+        shifted = (idx + 5) % triad_period
+        if triad["b3"] != ring_r1[shifted]:
+            raise ValueError("Medium ring relation b3 -> r1 failed")
+        if triad["c1"] != ring_r2[shifted]:
+            raise ValueError("Medium ring relation c1 -> r2 failed")
+        if triad["c2"] != ring_r3[shifted]:
+            raise ValueError("Medium ring relation c2 -> r3 failed")
+        if triad["c3"] != ring_r4[shifted]:
+            raise ValueError("Medium ring relation c3 -> r4 failed")
+
     return {
-        "period_blocks": period,
-        "cycle_blocks": full_blocks[:period],
+        "triad_period": triad_period,
+        "ring_r1": ring_r1,
+        "ring_r2": ring_r2,
+        "ring_r3": ring_r3,
+        "ring_r4": ring_r4,
         "tail_len": tail_len,
     }
 
@@ -116,19 +187,48 @@ def _apply_payload_and_phase_a(base: bytes, payload: bytes, phase_a_stream: byte
 
 
 def _apply_medium_phase_b(out: bytearray, start: int, program: dict[str, object]) -> None:
-    cycle_blocks = program["cycle_blocks"]
-    period_blocks = program["period_blocks"]
+    triad_period = program["triad_period"]
+    ring_r1 = program["ring_r1"]
+    ring_r2 = program["ring_r2"]
+    ring_r3 = program["ring_r3"]
+    ring_r4 = program["ring_r4"]
     tail_len = program["tail_len"]
 
     full_block_count = (0x2000 - start) // BLOCK_SIZE
     for idx in range(full_block_count):
-        block = cycle_blocks[idx % period_blocks]
+        triad_idx = (idx // 3) % triad_period
+        block_type = idx % 3
+        shifted = (triad_idx + 5) % triad_period
+        block = bytearray(BLOCK_SIZE)
+        if block_type == 0:
+            for off, value in MEDIUM_TYPE_A_OFFSETS.items():
+                block[off] = value
+            block[0x14] = ring_r1[triad_idx]
+            block[0x2C] = ring_r2[triad_idx]
+        elif block_type == 1:
+            for off, value in MEDIUM_TYPE_B_OFFSETS.items():
+                block[off] = value
+            block[0x04] = ring_r3[triad_idx]
+            block[0x1C] = ring_r4[triad_idx]
+            block[0x34] = ring_r1[shifted]
+        else:
+            for off, value in MEDIUM_TYPE_C_OFFSETS.items():
+                block[off] = value
+            block[0x0C] = ring_r2[shifted]
+            block[0x24] = ring_r3[shifted]
+            block[0x3C] = ring_r4[shifted]
         off = start + idx * BLOCK_SIZE
         out[off : off + BLOCK_SIZE] = block
 
     if tail_len:
         tail_off = start + full_block_count * BLOCK_SIZE
-        out[tail_off:0x2000] = cycle_blocks[full_block_count % period_blocks][:tail_len]
+        triad_idx = (full_block_count // 3) % triad_period
+        block = bytearray(BLOCK_SIZE)
+        for off, value in MEDIUM_TYPE_A_OFFSETS.items():
+            block[off] = value
+        block[0x14] = ring_r1[triad_idx]
+        block[0x2C] = ring_r2[triad_idx]
+        out[tail_off:0x2000] = block[:tail_len]
 
 
 def _synthesize_case(
@@ -230,7 +330,7 @@ def main() -> int:
         "payload_prefix_len": len(payload_prefix),
         "payload_suffix_len": len(payload_suffix),
         "phase_a_len": len(phase_a_stream),
-        "medium_phase_b_period_blocks": medium_phase_b_program["period_blocks"],
+        "medium_phase_b_triad_period": medium_phase_b_program["triad_period"],
         "medium_phase_b_tail_len": medium_phase_b_program["tail_len"],
         "results": results,
     }
@@ -241,7 +341,7 @@ def main() -> int:
         print(f"payload_prefix_len={result['payload_prefix_len']}")
         print(f"payload_suffix_len={result['payload_suffix_len']}")
         print(f"phase_a_len={result['phase_a_len']}")
-        print(f"medium_phase_b_period_blocks={result['medium_phase_b_period_blocks']}")
+        print(f"medium_phase_b_triad_period={result['medium_phase_b_triad_period']}")
         print(f"medium_phase_b_tail_len={result['medium_phase_b_tail_len']}")
         print()
         for row in results:

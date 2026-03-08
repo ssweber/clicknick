@@ -75,6 +75,10 @@ The remaining later branch is now exact offline as a repeating phase-B program:
   - truncated next block of `44` bytes
 - equivalent shape:
   - `9` `ABC` triads repeated three times across the visible full-block window
+- tighter causal form:
+  - four `9`-step ordinal rings
+  - fixed `A/B/C` block layouts
+  - fixed ring-offset relation of `+5` triad steps between the `A` and later `B/C` lookups
 
 This repeating program accounts exactly for the bytes that remained after phase A:
 - row1:
@@ -86,6 +90,7 @@ This repeating program accounts exactly for the bytes that remained after phase 
 
 Conservative wording:
 - this is an explicit March 8 medium phase-B program
+- it is now reduced below literal 27-block replay into a smaller ring-driven program
 - it is not yet a generalized semantic explanation for all comment lengths
 
 #### Max1400

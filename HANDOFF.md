@@ -24,6 +24,8 @@ Accepted March 8-scoped synthesis model:
   - exact from empty donor + plain payload + phase A + explicit repeating phase-B program
   - phase-B program shape:
     - `27` full `0x40` blocks
+    - equivalent to `9` repeating `ABC` triads
+    - generated from four `9`-step ordinal rings with a fixed `+5` triad-step relation
     - plus a truncated next block of `44` bytes at EOF
 - max1400:
   - exact from empty donor + plain payload + phase A + solved no-comment `fullwire` row1/tail bands
