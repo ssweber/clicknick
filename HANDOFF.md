@@ -1,6 +1,39 @@
-# Click PLC Clipboard Reverse Engineering - Handoff v22
+# Click PLC Clipboard Reverse Engineering - Handoff v23
 
 Last validated: March 8, 2026
+
+## Execution Update (March 8, 2026 - Plain Comment Exact Offline Synthesis Reached)
+
+- New offline report:
+  - `scratchpad/phase3_plain_comment_exact_synth_20260308.md`
+- New offline helper:
+  - `devtools/march8_plain_comment_synth.py`
+- Generated offline outputs:
+  - `scratchpad/captures/phase3_plain_comment_exact_20260308/`
+
+Highest-signal accepted result:
+- all three clean March 8 plain-comment natives are now reconstructed byte-exactly offline
+
+Accepted March 8-scoped synthesis model:
+- shared rule for all three clean cases:
+  - exact plain payload bytes
+  - universal phase-A continuation stream at `payload_end`
+- short:
+  - exact from empty donor + plain payload + phase A
+- medium:
+  - exact from empty donor + plain payload + phase A + explicit repeating phase-B program
+  - phase-B program shape:
+    - `27` full `0x40` blocks
+    - plus a truncated next block of `44` bytes at EOF
+- max1400:
+  - exact from empty donor + plain payload + phase A + solved no-comment `fullwire` row1/tail bands
+
+What this does and does not mean:
+- it does mean the clean March 8 plain-comment lane is now exact offline
+- it does not yet mean comment synthesis is generalized
+- medium phase B is still an explicit March 8 program, not yet a broader semantic generator
+- styled comments remain out of scope
+- production codec behavior remains unchanged
 
 ## Execution Update (March 8, 2026 - Plain Comment Model Tightened)
 
@@ -29,15 +62,14 @@ What is now explicitly proven:
   - max1400:
     - exact from empty donor + plain payload + phase A + solved no-comment `fullwire` row1/tail bands
   - medium:
-    - still unresolved after phase A
-    - still unresolved if `fullwire` row1/tail bands are forced
+    - exact offline once the explicit March 8 phase-B program is applied
+    - still not reduced to a broader semantic generator
 
 Why this matters:
 - it replaces the older "many comment bands" wording with one moving continuation-stream model
 - it explains why payload-only from a `max1400` donor crashed:
   - shortening the payload without moving the continuation stream leaves that stream anchored at the wrong absolute offsets
-- it narrows the remaining March 8 plain-comment problem to one clean case:
-  - medium
+- it narrows the remaining problem from exact offline synthesis to later-stream generalization
 
 Accepted phase-B structure:
 - phase B is not random row1/tail residue
@@ -57,6 +89,7 @@ Accepted phase-B structure:
 
 Current unresolved boundary:
 - medium still owns a distinct visible phase-B branch across row1 and tail
+- that branch is now exact offline as an explicit March 8 program
 - short does not expose a meaningful visible phase-B branch in the `0x2000` window
 - max1400 hands off exactly to the solved March 8 no-comment `fullwire` row1/tail family after phase A
 
@@ -172,8 +205,8 @@ New high-signal readiness result:
 Conservative interpretation:
 - plain payload serialization is now much closer than the later-stream branch problem
 - the later-stream framing is better than the older companion-band framing
-- short and max1400 are now exact offline under the newer stream model documented above
-- medium remains the only unresolved clean March 8 plain-comment case
+- all three clean March 8 plain-comment cases are now exact offline under the newer stream model documented above
+- the remaining gap is later-stream generalization, especially the medium phase-B program
 - comment synthesis is still not ready for production
 
 ## Execution Update (March 8, 2026 - Phase 3 Wireframe Band Isolation Continued)
