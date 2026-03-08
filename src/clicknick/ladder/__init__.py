@@ -1,7 +1,8 @@
 """Ladder module — encode/decode Click PLC clipboard rungs."""
 
 from .clipboard import clear_clipboard, copy_to_clipboard, read_from_clipboard
-from .codec import ClickCodec, HeaderSeed
+from .codec import ClickCodec, EncodeResult, HeaderSeed
+from .codec_v2 import LadderRungV2, V2Degradation, V2EncodeReport, V2UnsupportedShapeError
 from .csv_adapter import UnsupportedComplexRungError, to_runggrid_if_simple
 from .csv_ast import (
     AfBlank,
@@ -45,7 +46,9 @@ from .topology import (
 
 __all__ = [
     "ClickCodec",
+    "EncodeResult",
     "HeaderSeed",
+    "LadderRungV2",
     "Coil",
     "Contact",
     "CellWireFlags",
@@ -67,6 +70,9 @@ __all__ = [
     "normalize_header_entry",
     "normalized_header_entries",
     "UnsupportedComplexRungError",
+    "V2Degradation",
+    "V2EncodeReport",
+    "V2UnsupportedShapeError",
     "clear_clipboard",
     "copy_to_clipboard",
     "normalize_shorthand_row",

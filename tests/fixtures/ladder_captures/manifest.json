@@ -182,6 +182,115 @@
       "metadata_todo": false
     },
     {
+      "fixture_file": "grcecr_empty_native_20260308.bin",
+      "capture_label": "grcecr_empty_native_20260308",
+      "scenario": "grid_rungcomment_clean_empty_reverify_20260308",
+      "source": "scratchpad/captures",
+      "description": "March 8 canonical empty 1-row clean baseline",
+      "rung_rows": [
+        "R,...,:,..."
+      ],
+      "verified": true,
+      "codec_generatable": true,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "grcecr_fullwire_native_20260308.bin",
+      "capture_label": "grcecr_fullwire_native_20260308",
+      "scenario": "grid_rungcomment_clean_empty_reverify_20260308",
+      "source": "scratchpad/captures",
+      "description": "March 8 canonical fullwire 1-row clean baseline",
+      "rung_rows": [
+        "R,->,:,..."
+      ],
+      "verified": true,
+      "codec_generatable": true,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "grcecr_fullwire_nop_native_20260308.bin",
+      "capture_label": "grcecr_fullwire_nop_native_20260308",
+      "scenario": "grid_rungcomment_clean_empty_reverify_20260308",
+      "source": "scratchpad/captures",
+      "description": "March 8 canonical fullwire 1-row with AF NOP",
+      "rung_rows": [
+        "R,->,:,NOP"
+      ],
+      "verified": true,
+      "codec_generatable": true,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "grcecr_max1400_native_20260308.bin",
+      "capture_label": "grcecr_max1400_native_20260308",
+      "scenario": "grid_plain_comment_exact_20260308",
+      "source": "scratchpad/captures",
+      "description": "March 8 canonical plain max1400 comment on empty rung",
+      "rung_rows": [
+        "#,\"MAX1396_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRST1234\"",
+        "R,...,:,..."
+      ],
+      "verified": true,
+      "codec_generatable": true,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "grcecr_medium_native_20260308.bin",
+      "capture_label": "grcecr_medium_native_20260308",
+      "scenario": "grid_plain_comment_exact_20260308",
+      "source": "scratchpad/captures",
+      "description": "March 8 canonical plain 256-char comment on empty rung",
+      "rung_rows": [
+        "#,\"MEDIUM256_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ1234\"",
+        "R,...,:,..."
+      ],
+      "verified": true,
+      "codec_generatable": true,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "grcecr_rows2_empty_native_20260308.bin",
+      "capture_label": "grcecr_rows2_empty_native_20260308",
+      "scenario": "grid_rungcomment_clean_empty_reverify_20260308",
+      "source": "scratchpad/captures",
+      "description": "March 8 canonical empty 2-row clean baseline",
+      "rung_rows": [
+        "R,...,:,...",
+        ",...,:,..."
+      ],
+      "verified": true,
+      "codec_generatable": true,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "grcecr_rows2_vert_horiz_native_20260308.bin",
+      "capture_label": "grcecr_rows2_vert_horiz_native_20260308",
+      "scenario": "grid_rungcomment_clean_empty_reverify_20260308",
+      "source": "scratchpad/captures",
+      "description": "March 8 canonical 2-row T/- mixed topology baseline",
+      "rung_rows": [
+        "R,,T,...,:,...",
+        ",,-,...,:,..."
+      ],
+      "verified": true,
+      "codec_generatable": true,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "grcecr_short_native_20260308.bin",
+      "capture_label": "grcecr_short_native_20260308",
+      "scenario": "grid_plain_comment_exact_20260308",
+      "source": "scratchpad/captures",
+      "description": "March 8 canonical short plain comment on empty rung",
+      "rung_rows": [
+        "#,Hello",
+        "R,...,:,..."
+      ],
+      "verified": true,
+      "codec_generatable": true,
+      "metadata_todo": false
+    },
+    {
       "fixture_file": "latch_af_only.bin",
       "capture_label": "latch_af_only",
       "scenario": "coil_variant",

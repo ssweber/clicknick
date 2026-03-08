@@ -14853,6 +14853,695 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-08T15:21:31Z",
       "updated_at": "2026-03-08T15:24:47Z"
+    },
+    {
+      "id": "7d1c9610-59ca-4f3f-8562-b55d1a4a0c58",
+      "capture_label": "gpcg_len0001_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_generalized_20260308",
+      "description": "generalized plain-comment synthetic len 1 on empty 1-row rung",
+      "rung_rows": [
+        "#,G",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0001_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0001_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,G",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,G",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcg_len0001_20260308_verify_back_20260308_190424.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:02:13Z",
+      "updated_at": "2026-03-08T19:04:24Z"
+    },
+    {
+      "id": "d349dcab-e43f-4d02-baa1-84b3195d12d8",
+      "capture_label": "gpcg_len0002_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_generalized_20260308",
+      "description": "generalized plain-comment synthetic len 2 on empty 1-row rung",
+      "rung_rows": [
+        "#,GE",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0002_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0002_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,GE",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,GE",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcg_len0002_20260308_verify_back_20260308_190435.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:02:14Z",
+      "updated_at": "2026-03-08T19:04:35Z"
+    },
+    {
+      "id": "c1c59f26-5d65-4376-9b5e-347803eb75a7",
+      "capture_label": "gpcg_len0004_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_generalized_20260308",
+      "description": "generalized plain-comment synthetic len 4 on empty 1-row rung",
+      "rung_rows": [
+        "#,GENL",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0004_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0004_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,GENL",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,GENL",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcg_len0004_20260308_verify_back_20260308_190446.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:02:14Z",
+      "updated_at": "2026-03-08T19:04:46Z"
+    },
+    {
+      "id": "a8f83d0f-3346-479a-9099-3a23211ad020",
+      "capture_label": "gpcg_len0006_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_generalized_20260308",
+      "description": "generalized plain-comment synthetic len 6 on empty 1-row rung",
+      "rung_rows": [
+        "#,GENLEN",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0006_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0006_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,GENLEN",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,GENLEN",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcg_len0006_20260308_verify_back_20260308_190453.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:02:15Z",
+      "updated_at": "2026-03-08T19:04:53Z"
+    },
+    {
+      "id": "6a36fa04-3234-45ab-8eb2-d83c38cc2add",
+      "capture_label": "gpcg_len0010_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_generalized_20260308",
+      "description": "generalized plain-comment synthetic len 10 on empty 1-row rung",
+      "rung_rows": [
+        "#,GENLEN0010",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0010_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0010_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,GENLEN0010",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,GENLEN0010",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcg_len0010_20260308_verify_back_20260308_190501.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:02:16Z",
+      "updated_at": "2026-03-08T19:05:01Z"
+    },
+    {
+      "id": "6b7e96f3-2567-4280-a92b-64f5323422b7",
+      "capture_label": "gpcg_len0032_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_generalized_20260308",
+      "description": "generalized plain-comment synthetic len 32 on empty 1-row rung",
+      "rung_rows": [
+        "#,GENLEN0032_ABCDEFGHIJKLMNOPQRSTU",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0032_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0032_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,GENLEN0032_ABCDEFGHIJKLMNOPQRSTU",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,GENLEN0032_ABCDEFGHIJKLMNOPQRSTU",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcg_len0032_20260308_verify_back_20260308_190508.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:02:16Z",
+      "updated_at": "2026-03-08T19:05:08Z"
+    },
+    {
+      "id": "d69b687a-f97b-4e6e-8422-911e1f49cb97",
+      "capture_label": "gpcg_len0100_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_generalized_20260308",
+      "description": "generalized plain-comment synthetic len 100 on empty 1-row rung",
+      "rung_rows": [
+        "#,GENLEN0100_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQ",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0100_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0100_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "pasted comment, 1 empty row, then default ->,:,NOP",
+      "verify_expected_rows": [
+        "#,GENLEN0100_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQ",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,GENLEN0100_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQ",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcg_len0100_20260308_verify_back_20260308_190547.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:02:17Z",
+      "updated_at": "2026-03-08T19:05:47Z"
+    },
+    {
+      "id": "facba1f9-06aa-4f13-828e-b6a3b7951b8e",
+      "capture_label": "gpcg_len0255_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_generalized_20260308",
+      "description": "generalized plain-comment synthetic len 255 on empty 1-row rung",
+      "rung_rows": [
+        "#,GENLEN0255_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ01",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0255_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0255_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,GENLEN0255_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ01",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,GENLEN0255_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ01",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcg_len0255_20260308_verify_back_20260308_190600.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:02:17Z",
+      "updated_at": "2026-03-08T19:06:00Z"
+    },
+    {
+      "id": "776ef12a-61fb-4392-be48-81dd06e57a41",
+      "capture_label": "gpcg_len0257_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_generalized_20260308",
+      "description": "generalized plain-comment synthetic len 257 on empty 1-row rung",
+      "rung_rows": [
+        "#,GENLEN0257_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0257_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0257_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,GENLEN0257_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,GENLEN0257_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcg_len0257_20260308_verify_back_20260308_190608.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:02:18Z",
+      "updated_at": "2026-03-08T19:06:08Z"
+    },
+    {
+      "id": "32063021-a48e-437b-83be-9ce041f5395f",
+      "capture_label": "gpcg_len0512_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_generalized_20260308",
+      "description": "generalized plain-comment synthetic len 512 on empty 1-row rung",
+      "rung_rows": [
+        "#,GENLEN0512_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0512_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len0512_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,GENLEN0512_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,GENLEN0512_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcg_len0512_20260308_verify_back_20260308_190617.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:02:19Z",
+      "updated_at": "2026-03-08T19:06:17Z"
+    },
+    {
+      "id": "e86e2359-9ece-49bb-99ab-e8e3993960ad",
+      "capture_label": "gpcg_len1024_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_generalized_20260308",
+      "description": "generalized plain-comment synthetic len 1024 on empty 1-row rung",
+      "rung_rows": [
+        "#,GENLEN1024_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDE",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len1024_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len1024_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,GENLEN1024_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDE",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,GENLEN1024_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDE",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcg_len1024_20260308_verify_back_20260308_190625.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:02:19Z",
+      "updated_at": "2026-03-08T19:06:25Z"
+    },
+    {
+      "id": "c7154e8e-9cd1-483f-9712-527dda8e855c",
+      "capture_label": "gpcg_len1399_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_generalized_20260308",
+      "description": "generalized plain-comment synthetic len 1399 on empty 1-row rung",
+      "rung_rows": [
+        "#,GENLEN1399_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRST",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len1399_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_generalized_20260308/gpcg_len1399_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,GENLEN1399_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRST",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,GENLEN1399_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRST",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcg_len1399_20260308_verify_back_20260308_190633.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:02:20Z",
+      "updated_at": "2026-03-08T19:06:33Z"
+    },
+    {
+      "id": "c9609e44-aa36-4b41-99ba-7d580827f4f6",
+      "capture_label": "gpcl100r_len0099_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_len100_retest_20260308",
+      "description": "len-100 retest synthetic plain comment len 99 on empty 1-row rung",
+      "rung_rows": [
+        "#,LEN0099_LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345678",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_len100_retest_20260308/gpcl100r_len0099_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_len100_retest_20260308/gpcl100r_len0099_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,LEN0099_LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345678",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,LEN0099_LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345678",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcl100r_len0099_20260308_verify_back_20260308_191224.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:10:57Z",
+      "updated_at": "2026-03-08T19:12:24Z"
+    },
+    {
+      "id": "3971a1b9-b551-43c7-8786-1eb1ab155a73",
+      "capture_label": "gpcl100r_len0100_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_len100_retest_20260308",
+      "description": "len-100 retest synthetic plain comment len 100 on empty 1-row rung",
+      "rung_rows": [
+        "#,LEN0100_LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_len100_retest_20260308/gpcl100r_len0100_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_len100_retest_20260308/gpcl100r_len0100_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,LEN0100_LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/gpcl100r_len0100_20260308_verify_back_20260308_191252.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:11:00Z",
+      "updated_at": "2026-03-08T19:12:52Z"
+    },
+    {
+      "id": "ef2fc1a5-1a9e-4588-9166-47dbdbebe84e",
+      "capture_label": "gpcl100r_len0101_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_len100_retest_20260308",
+      "description": "len-100 retest synthetic plain comment len 101 on empty 1-row rung",
+      "rung_rows": [
+        "#,LEN0101_LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789L",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_len100_retest_20260308/gpcl100r_len0101_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_len100_retest_20260308/gpcl100r_len0101_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,LEN0101_LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789L",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,LEN0101_LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789L",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcl100r_len0101_20260308_verify_back_20260308_191259.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:11:02Z",
+      "updated_at": "2026-03-08T19:12:59Z"
+    },
+    {
+      "id": "d796baf5-9069-48e8-a9f1-88b520078d99",
+      "capture_label": "gpcl100a_len0036_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_len100_alignment_retest_20260308",
+      "description": "alignment retest synthetic plain comment len 36 on empty 1-row rung",
+      "rung_rows": [
+        "#,ALIGN0036_ALIGNRET_ABCDEFGHIJKLMNOPQ",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_len100_alignment_retest_20260308/gpcl100a_len0036_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_len100_alignment_retest_20260308/gpcl100a_len0036_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,ALIGN0036_ALIGNRET_ABCDEFGHIJKLMNOPQ",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#, Comment",
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/gpcl100a_len0036_20260308_verify_back_20260308_192127.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:15:59Z",
+      "updated_at": "2026-03-08T19:21:27Z"
+    },
+    {
+      "id": "834f2008-e308-4b80-9a4e-83e6b45229a1",
+      "capture_label": "gpcl100a_len0100_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_len100_alignment_retest_20260308",
+      "description": "alignment retest synthetic plain comment len 100 on empty 1-row rung",
+      "rung_rows": [
+        "#,ALIGN0100_ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_len100_alignment_retest_20260308/gpcl100a_len0100_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_len100_alignment_retest_20260308/gpcl100a_len0100_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,ALIGN0100_ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Comment",
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/gpcl100a_len0100_20260308_verify_back_20260308_192317.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:16:00Z",
+      "updated_at": "2026-03-08T19:23:17Z"
+    },
+    {
+      "id": "bbeb7459-6fa8-4ce4-82b6-fb87f8632796",
+      "capture_label": "gpcl100a_len0164_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_len100_alignment_retest_20260308",
+      "description": "alignment retest synthetic plain comment len 164 on empty 1-row rung",
+      "rung_rows": [
+        "#,ALIGN0164_ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ALIGNRET_ABCDEFGHIJ",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_len100_alignment_retest_20260308/gpcl100a_len0164_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_len100_alignment_retest_20260308/gpcl100a_len0164_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,ALIGN0164_ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ALIGNRET_ABCDEFGHIJ",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Comment",
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/gpcl100a_len0164_20260308_verify_back_20260308_192346.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:16:01Z",
+      "updated_at": "2026-03-08T19:23:46Z"
+    },
+    {
+      "id": "272d67be-5f8e-4c3b-8e74-bc925903760b",
+      "capture_label": "gpcl100a_len0228_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_len100_alignment_retest_20260308",
+      "description": "alignment retest synthetic plain comment len 228 on empty 1-row rung",
+      "rung_rows": [
+        "#,ALIGN0228_ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ012",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_len100_alignment_retest_20260308/gpcl100a_len0228_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_len100_alignment_retest_20260308/gpcl100a_len0228_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,ALIGN0228_ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ALIGNRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ012",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#, Comment",
+        "R,,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/gpcl100a_len0228_20260308_verify_back_20260308_192432.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:16:02Z",
+      "updated_at": "2026-03-08T19:24:32Z"
+    },
+    {
+      "id": "1ae31f28-adb1-4c75-be98-a9219cf3c1aa",
+      "capture_label": "gpcar_len0036_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_alignment_repaired_20260308",
+      "description": "repaired alignment-class synthetic plain comment len 36 on empty 1-row rung",
+      "rung_rows": [
+        "#,REPAIR0036_REPAIRED_ABCDEFGHIJKLMNOP",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_alignment_repaired_20260308/gpcar_len0036_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_alignment_repaired_20260308/gpcar_len0036_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,REPAIR0036_REPAIRED_ABCDEFGHIJKLMNOP",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Comment",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/gpcar_len0036_20260308_verify_back_20260308_200151.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:48:12Z",
+      "updated_at": "2026-03-08T20:01:51Z"
+    },
+    {
+      "id": "8b44cb3e-eb8a-4435-9f48-f30b8014e87c",
+      "capture_label": "gpcar_len0100_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_alignment_repaired_20260308",
+      "description": "repaired alignment-class synthetic plain comment len 100 on empty 1-row rung",
+      "rung_rows": [
+        "#,REPAIR0100_REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345678",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_alignment_repaired_20260308/gpcar_len0100_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_alignment_repaired_20260308/gpcar_len0100_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "same, comment then default line->nop",
+      "verify_expected_rows": [
+        "#,REPAIR0100_REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345678",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,REPAIR0100_REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345678",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcar_len0100_20260308_verify_back_20260308_200207.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:48:15Z",
+      "updated_at": "2026-03-08T20:02:07Z"
+    },
+    {
+      "id": "750f14fd-0744-458b-9943-091a86131561",
+      "capture_label": "gpcar_len0164_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_alignment_repaired_20260308",
+      "description": "repaired alignment-class synthetic plain comment len 164 on empty 1-row rung",
+      "rung_rows": [
+        "#,REPAIR0164_REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHI",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_alignment_repaired_20260308/gpcar_len0164_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_alignment_repaired_20260308/gpcar_len0164_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "same",
+      "verify_expected_rows": [
+        "#,REPAIR0164_REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHI",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,REPAIR0164_REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHI",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcar_len0164_20260308_verify_back_20260308_200222.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:48:17Z",
+      "updated_at": "2026-03-08T20:02:22Z"
+    },
+    {
+      "id": "a26aa40b-c954-4342-bc60-8016761ebf69",
+      "capture_label": "gpcar_len0228_20260308",
+      "capture_type": "synthetic",
+      "scenario": "grid_plain_comment_alignment_repaired_20260308",
+      "description": "repaired alignment-class synthetic plain comment len 228 on empty 1-row rung",
+      "rung_rows": [
+        "#,REPAIR0228_REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ01",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_alignment_repaired_20260308/gpcar_len0228_20260308.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_alignment_repaired_20260308/gpcar_len0228_20260308.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "same",
+      "verify_expected_rows": [
+        "#,REPAIR0228_REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ01",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,REPAIR0228_REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789REPAIRED_ABCDEFGHIJKLMNOPQRSTUVWXYZ01",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcar_len0228_20260308_verify_back_20260308_200236.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T19:48:19Z",
+      "updated_at": "2026-03-08T20:02:36Z"
     }
   ]
 }

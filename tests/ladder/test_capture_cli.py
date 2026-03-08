@@ -237,16 +237,16 @@ def test_entry_add_comment_lines_are_prepended_to_rows(tmp_path: Path) -> None:
     assert entry["rung_rows"][2].startswith("R,X001,")
 
 
-def test_verify_prepare_comment_rows_shorthand_returns_clear_error(tmp_path: Path) -> None:
+def test_verify_prepare_comment_rows_shorthand_supported_for_plain_empty_rung(tmp_path: Path) -> None:
     fake = _FakeClipboard(read_payload=b"\x11" * 8192)
     workflow = _make_workflow(tmp_path, fake)
     workflow.entry_add(
         capture_type="synthetic",
         label="comment_verify_case",
         scenario="verify",
-        description="comment rows require file source",
-        comments=["Initialize the light system."],
-        rows=["R,X001,->,:,out(Y001)"],
+        description="plain comment on empty rung",
+        comments=["Hello"],
+        rows=["R,...,:,..."],
     )
     output: list[str] = []
 
@@ -262,8 +262,8 @@ def test_verify_prepare_comment_rows_shorthand_returns_clear_error(tmp_path: Pat
         output_fn=output.append,
     )
 
-    assert rc == 1
-    assert any("does not support comment rows" in line for line in output)
+    assert rc == 0
+    assert len(fake.copied_payloads) == 1
 
 
 def test_verify_prepare_seed_source_clipboard_applies_header_seed(tmp_path: Path) -> None:

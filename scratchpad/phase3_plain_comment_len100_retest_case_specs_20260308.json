@@ -1,0 +1,30 @@
+{
+  "scenario": "grid_plain_comment_len100_retest_20260308",
+  "date": "2026-03-08",
+  "cases": [
+    {
+      "label": "gpcl100r_len0099_20260308",
+      "length": 99,
+      "comment_text": "LEN0099_LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345678",
+      "decoded_comment": "LEN0099_LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345678",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_len100_retest_20260308/gpcl100r_len0099_20260308.bin",
+      "family": "plain_comment_medium_family_len_99"
+    },
+    {
+      "label": "gpcl100r_len0100_20260308",
+      "length": 100,
+      "comment_text": "LEN0100_LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+      "decoded_comment": "LEN0100_LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_len100_retest_20260308/gpcl100r_len0100_20260308.bin",
+      "family": "plain_comment_medium_family_len_100"
+    },
+    {
+      "label": "gpcl100r_len0101_20260308",
+      "length": 101,
+      "comment_text": "LEN0101_LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789L",
+      "decoded_comment": "LEN0101_LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789LENRETEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789L",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_len100_retest_20260308/gpcl100r_len0101_20260308.bin",
+      "family": "plain_comment_medium_family_len_101"
+    }
+  ]
+}

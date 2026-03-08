@@ -21,7 +21,6 @@ from . import capture_registry
 from .clipboard import copy_to_clipboard, find_click_hwnd, read_from_clipboard
 from .codec import ClickCodec, HeaderSeed
 from .csv_shorthand import format_comment_shorthand_row, normalize_shorthand_row
-from .model import RungGrid
 from .topology import HEADER_ENTRY_BASE, cell_offset, header_structural_equal, parse_wire_topology
 
 FIXTURE_MANIFEST_VERSION = 2
@@ -399,9 +398,12 @@ class CaptureWorkflow:
         header_seed: HeaderSeed | None = None,
     ) -> bytes:
         if source_mode == "shorthand":
-            csv = self._entry_rows_to_simple_csv(entry["rung_rows"])
-            grid = RungGrid.from_csv(csv)
-            return ClickCodec().encode(grid, header_seed=header_seed)
+            return ClickCodec().encode_rows(
+                entry["rung_rows"],
+                mode="strict",
+                legacy_fallback=True,
+                header_seed=header_seed,
+            )
 
         if source_mode == "file":
             source_path_text = entry.get("payload_source_file") or entry.get("payload_file")

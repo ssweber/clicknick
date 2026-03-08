@@ -304,23 +304,25 @@ def test_verify_prepare_calls_ensure_before_clipboard_copy(tmp_path: Path) -> No
     assert result["mdb_ensure"]["parsed_addresses"] == ["X001", "X002", "Y001", "Y005"]
 
 
-def test_verify_prepare_shorthand_comment_rows_fail_with_clear_error(tmp_path: Path) -> None:
+def test_verify_prepare_shorthand_comment_rows_supported_for_plain_empty_rung(tmp_path: Path) -> None:
     fake = _FakeClipboard()
     workflow = _make_workflow(tmp_path, fake)
     workflow.entry_add(
         capture_type="synthetic",
         label="comment_verify_case",
         scenario="verify",
-        description="comment rows require file source",
-        comments=["Initialize the light system."],
-        rows=["R,X001,->,:,out(Y001)"],
+        description="plain comment on empty rung",
+        comments=["Hello"],
+        rows=["R,...,:,..."],
     )
 
-    with pytest.raises(ValueError, match="does not support comment rows"):
-        workflow.verify_prepare(
-            label="comment_verify_case",
-            ensure_mdb_addresses=False,
-        )
+    result = workflow.verify_prepare(
+        label="comment_verify_case",
+        ensure_mdb_addresses=False,
+    )
+
+    assert result["source_mode"] == "shorthand"
+    assert len(fake.copied_payloads) == 1
 
 
 def test_verify_prepare_skips_ensure_when_disabled(tmp_path: Path) -> None:

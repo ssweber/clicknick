@@ -51,6 +51,8 @@ class ScenarioSpec:
     target_file: str
     logical_rows: int
     condition_rows: tuple[tuple[str, ...], ...]
+    base_file: str | None = None
+    row1_file: str | None = None
     band_template_names: tuple[str, ...] = ()
     af_nop_rows: frozenset[int] = frozenset()
 
@@ -92,12 +94,15 @@ SCENARIOS: dict[str, ScenarioSpec] = {
         target_file="grcecr_empty_native_20260308.bin",
         logical_rows=1,
         condition_rows=(_blank_row(),),
+        base_file="grcecr_empty_native_20260308.bin",
     ),
     "fullwire_1row": ScenarioSpec(
         name="fullwire_1row",
         target_file="grcecr_fullwire_native_20260308.bin",
         logical_rows=1,
         condition_rows=(_fullwire_row(),),
+        base_file="grcecr_empty_native_20260308.bin",
+        row1_file="grcecr_fullwire_native_20260308.bin",
         band_template_names=("fullwire_1row_row1_band", "shared_tail_band"),
     ),
     "fullwire_nop_1row": ScenarioSpec(
@@ -105,6 +110,8 @@ SCENARIOS: dict[str, ScenarioSpec] = {
         target_file="grcecr_fullwire_nop_native_20260308.bin",
         logical_rows=1,
         condition_rows=(_fullwire_row(),),
+        base_file="grcecr_empty_native_20260308.bin",
+        row1_file="grcecr_fullwire_native_20260308.bin",
         band_template_names=("fullwire_1row_row1_band", "shared_tail_band"),
         af_nop_rows=frozenset({0}),
     ),
@@ -113,6 +120,7 @@ SCENARIOS: dict[str, ScenarioSpec] = {
         target_file="grcecr_rows2_empty_native_20260308.bin",
         logical_rows=2,
         condition_rows=(_blank_row(), _blank_row()),
+        base_file="grcecr_rows2_empty_native_20260308.bin",
         band_template_names=("rows2_prefix_band", "rows2_empty_row1_band", "shared_tail_band"),
     ),
     "vert_horiz_2row": ScenarioSpec(
@@ -123,6 +131,7 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             _row_with_tokens(mapping={1: "T"}),
             _row_with_tokens(mapping={1: "-"}),
         ),
+        base_file="grcecr_rows2_empty_native_20260308.bin",
         band_template_names=("rows2_prefix_band", "rows2_empty_row1_band", "shared_tail_band"),
     ),
 }
@@ -204,20 +213,30 @@ def _apply_two_row_terminal_bytes(payload: bytearray) -> None:
 def synthesize_scenario_bytes(
     scenario_name: str,
     donor_payloads: Mapping[str, bytes],
-    wireframe_band_templates: WireframeBandTemplates,
+    wireframe_band_templates: WireframeBandTemplates | None = None,
 ) -> bytes:
     scenario = SCENARIOS[scenario_name]
-    base = donor_payloads[wireframe_band_templates.base_file]
-    _validate_donor_size(wireframe_band_templates.base_file, base)
+    if wireframe_band_templates is None:
+        base_name = scenario.base_file or scenario.target_file
+        base = donor_payloads[base_name]
+        _validate_donor_size(base_name, base)
+        out = bytearray(base)
+        if scenario.row1_file:
+            row1_source = donor_payloads[scenario.row1_file]
+            _copy_band(out, row1_source, ROW1_BAND)
+            _copy_band(out, row1_source, _tail_region_for(row1_source))
+    else:
+        base = donor_payloads[wireframe_band_templates.base_file]
+        _validate_donor_size(wireframe_band_templates.base_file, base)
 
-    out = bytearray(base)
-    _copy_band(out, base, METADATA_BAND)
-    _copy_band(out, base, GAP_BAND)
-    _copy_band(out, base, ROW0_BAND)
-    _copy_band(out, base, ROW1_BAND)
+        out = bytearray(base)
+        _copy_band(out, base, METADATA_BAND)
+        _copy_band(out, base, GAP_BAND)
+        _copy_band(out, base, ROW0_BAND)
+        _copy_band(out, base, ROW1_BAND)
 
-    for template_name in scenario.band_template_names:
-        _apply_band_template(out, wireframe_band_templates.bands[template_name])
+        for template_name in scenario.band_template_names:
+            _apply_band_template(out, wireframe_band_templates.bands[template_name])
 
     _apply_row_word(out, scenario.logical_rows)
     _clear_visible_wire_flags(out, scenario.logical_rows)
