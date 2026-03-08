@@ -42,17 +42,31 @@ METADATA_BAND = slice(HEADER_ENTRY_BASE, GAP_BAND_START)
 GAP_BAND = slice(GAP_BAND_START, GRID_FIRST_ROW_START)
 ROW0_BAND = slice(GRID_FIRST_ROW_START, GRID_FIRST_ROW_START + 0x800)
 ROW1_BAND = slice(GRID_FIRST_ROW_START + 0x800, GRID_FIRST_ROW_START + 0x1000)
+DEFAULT_TEMPLATE_FILE = Path("scratchpad/phase3_wireframe_band_templates_20260308.json")
 
 
 @dataclass(frozen=True)
 class ScenarioSpec:
     name: str
     target_file: str
-    base_file: str
-    row1_file: str | None
     logical_rows: int
     condition_rows: tuple[tuple[str, ...], ...]
+    band_template_names: tuple[str, ...] = ()
     af_nop_rows: frozenset[int] = frozenset()
+
+
+@dataclass(frozen=True)
+class BandTemplate:
+    start: int
+    stop: int
+    payload: bytes
+    changed_byte_count_vs_empty_1row: int
+
+
+@dataclass(frozen=True)
+class WireframeBandTemplates:
+    base_file: str
+    bands: Mapping[str, BandTemplate]
 
 
 def _blank_row() -> tuple[str, ...]:
@@ -76,46 +90,40 @@ SCENARIOS: dict[str, ScenarioSpec] = {
     "empty_1row": ScenarioSpec(
         name="empty_1row",
         target_file="grcecr_empty_native_20260308.bin",
-        base_file="grcecr_empty_native_20260308.bin",
-        row1_file=None,
         logical_rows=1,
         condition_rows=(_blank_row(),),
     ),
     "fullwire_1row": ScenarioSpec(
         name="fullwire_1row",
         target_file="grcecr_fullwire_native_20260308.bin",
-        base_file="grcecr_empty_native_20260308.bin",
-        row1_file="grcecr_fullwire_native_20260308.bin",
         logical_rows=1,
         condition_rows=(_fullwire_row(),),
+        band_template_names=("fullwire_1row_row1_band", "shared_tail_band"),
     ),
     "fullwire_nop_1row": ScenarioSpec(
         name="fullwire_nop_1row",
         target_file="grcecr_fullwire_nop_native_20260308.bin",
-        base_file="grcecr_empty_native_20260308.bin",
-        row1_file="grcecr_fullwire_native_20260308.bin",
         logical_rows=1,
         condition_rows=(_fullwire_row(),),
+        band_template_names=("fullwire_1row_row1_band", "shared_tail_band"),
         af_nop_rows=frozenset({0}),
     ),
     "empty_2row": ScenarioSpec(
         name="empty_2row",
         target_file="grcecr_rows2_empty_native_20260308.bin",
-        base_file="grcecr_rows2_empty_native_20260308.bin",
-        row1_file=None,
         logical_rows=2,
         condition_rows=(_blank_row(), _blank_row()),
+        band_template_names=("rows2_prefix_band", "rows2_empty_row1_band", "shared_tail_band"),
     ),
     "vert_horiz_2row": ScenarioSpec(
         name="vert_horiz_2row",
         target_file="grcecr_rows2_vert_horiz_native_20260308.bin",
-        base_file="grcecr_rows2_empty_native_20260308.bin",
-        row1_file=None,
         logical_rows=2,
         condition_rows=(
             _row_with_tokens(mapping={1: "T"}),
             _row_with_tokens(mapping={1: "-"}),
         ),
+        band_template_names=("rows2_prefix_band", "rows2_empty_row1_band", "shared_tail_band"),
     ),
 }
 
@@ -127,6 +135,10 @@ def _validate_donor_size(name: str, payload: bytes) -> None:
 
 def _copy_band(dst: bytearray, src: bytes, band: slice) -> None:
     dst[band] = src[band]
+
+
+def _apply_band_template(dst: bytearray, template: BandTemplate) -> None:
+    dst[template.start : template.stop] = template.payload
 
 
 def _tail_region_for(payload: bytes) -> slice:
@@ -192,10 +204,11 @@ def _apply_two_row_terminal_bytes(payload: bytearray) -> None:
 def synthesize_scenario_bytes(
     scenario_name: str,
     donor_payloads: Mapping[str, bytes],
+    wireframe_band_templates: WireframeBandTemplates,
 ) -> bytes:
     scenario = SCENARIOS[scenario_name]
-    base = donor_payloads[scenario.base_file]
-    _validate_donor_size(scenario.base_file, base)
+    base = donor_payloads[wireframe_band_templates.base_file]
+    _validate_donor_size(wireframe_band_templates.base_file, base)
 
     out = bytearray(base)
     _copy_band(out, base, METADATA_BAND)
@@ -203,11 +216,8 @@ def synthesize_scenario_bytes(
     _copy_band(out, base, ROW0_BAND)
     _copy_band(out, base, ROW1_BAND)
 
-    if scenario.row1_file is not None:
-        row1_source = donor_payloads[scenario.row1_file]
-        _validate_donor_size(scenario.row1_file, row1_source)
-        _copy_band(out, row1_source, ROW1_BAND)
-        _copy_band(out, row1_source, _tail_region_for(out))
+    for template_name in scenario.band_template_names:
+        _apply_band_template(out, wireframe_band_templates.bands[template_name])
 
     _apply_row_word(out, scenario.logical_rows)
     _clear_visible_wire_flags(out, scenario.logical_rows)
@@ -232,14 +242,26 @@ def diff_counts_by_band(left: bytes, right: bytes) -> dict[str, int]:
 
 
 def _load_donors(capture_dir: Path) -> dict[str, bytes]:
-    needed = {spec.base_file for spec in SCENARIOS.values()} | {
-        spec.row1_file for spec in SCENARIOS.values() if spec.row1_file is not None
-    }
+    needed = {"grcecr_empty_native_20260308.bin"} | {spec.target_file for spec in SCENARIOS.values()}
     donors: dict[str, bytes] = {}
     for filename in sorted(needed):
         path = capture_dir / filename
         donors[filename] = path.read_bytes()
     return donors
+
+
+def _load_wireframe_band_templates(path: Path) -> WireframeBandTemplates:
+    raw = json.loads(path.read_text())
+    bands = {
+        name: BandTemplate(
+            start=spec["start"],
+            stop=spec["stop"],
+            payload=bytes.fromhex(spec["bytes_hex"]),
+            changed_byte_count_vs_empty_1row=spec["changed_byte_count_vs_empty_1row"],
+        )
+        for name, spec in raw["bands"].items()
+    }
+    return WireframeBandTemplates(base_file=raw["base_file"], bands=bands)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -262,6 +284,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Optional directory to write synthesized payloads",
     )
     parser.add_argument(
+        "--template-file",
+        type=Path,
+        default=DEFAULT_TEMPLATE_FILE,
+        help="JSON file containing explicit March 8 band templates",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Emit JSON instead of plain text",
@@ -272,12 +300,13 @@ def _build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = _build_parser().parse_args()
     donors = _load_donors(args.capture_dir)
+    wireframe_band_templates = _load_wireframe_band_templates(args.template_file)
 
     scenario_names = list(SCENARIOS) if args.scenario == "all" else [args.scenario]
     results: list[dict[str, object]] = []
     for scenario_name in scenario_names:
         spec = SCENARIOS[scenario_name]
-        synthesized = synthesize_scenario_bytes(scenario_name, donors)
+        synthesized = synthesize_scenario_bytes(scenario_name, donors, wireframe_band_templates)
         target = (args.capture_dir / spec.target_file).read_bytes()
         diffs = diff_counts_by_band(synthesized, target)
 
@@ -292,6 +321,7 @@ def main() -> int:
                 "scenario": scenario_name,
                 "target_file": spec.target_file,
                 "output_file": str(output_file) if output_file is not None else None,
+                "band_template_names": list(spec.band_template_names),
                 "diffs": diffs,
             }
         )

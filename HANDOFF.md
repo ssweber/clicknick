@@ -1,83 +1,76 @@
-# Click PLC Clipboard Reverse Engineering - Handoff v18
+# Click PLC Clipboard Reverse Engineering - Handoff v19
 
 Last validated: March 8, 2026
 
-## Execution Update (March 8, 2026 - Phase 3 Wireframe Baseline Started)
+## Execution Update (March 8, 2026 - Phase 3 Wireframe Band Isolation Continued)
 
-- New offline report:
+- New offline reports:
   - `scratchpad/phase3_wireframe_baseline_start_20260308.md`
-- New offline helper:
+  - `scratchpad/phase3_wireframe_band_isolation_20260308.md`
+- Offline helpers:
   - `devtools/march8_wireframe_synth.py`
+  - `devtools/march8_wireframe_band_audit.py`
+- Explicit March 8 no-comment band template spec:
+  - `scratchpad/phase3_wireframe_band_templates_20260308.json`
 - Generated offline outputs:
   - `scratchpad/captures/phase3_wireframe_20260308/`
+  - `scratchpad/captures/phase3_wireframe_20260308_bands/`
 
-Scope of this pass:
-- start Phase 3 from the March 8 clean donor set
+Scope of the accepted wireframe model:
+- stay on the March 8 clean donor set
 - keep comment synthesis explicitly out of scope
 - keep production codec behavior unchanged
 
-What the new helper reconstructs byte-exactly:
+What the helper now reconstructs byte-exactly:
 - `grcecr_empty_native_20260308`
 - `grcecr_fullwire_native_20260308`
 - `grcecr_fullwire_nop_native_20260308`
 - `grcecr_rows2_empty_native_20260308`
 - `grcecr_rows2_vert_horiz_native_20260308`
 
-Current band model:
-- donor-backed prefix band:
+Accepted March 8 no-comment band model:
+- base donor:
+  - `grcecr_empty_native_20260308`
+- explicit prefix band:
   - `0x0000..0x0253`
 - metadata band:
   - `0x0254..0x0A53`
 - gap band:
   - `0x0A54..0x0A5F`
-- row0 band:
+- explicit row0 band logic:
   - `0x0A60..0x125F`
-- row1 band:
+- explicit row1 band templates:
   - `0x1260..0x1A5F`
-- donor-backed tail band:
+- explicit shared tail band template:
   - `0x1A60..0x1FFF`
 
-Bytes now explicitly explained by the wireframe model:
-- empty 1-row -> fullwire 1-row:
-  - all `62` row0-band deltas
-  - row0 condition cols `0..30`, `+0x19/+0x1D`
-- fullwire 1-row -> fullwire+NOP 1-row:
-  - `2` row0-band deltas
-  - row0 AF cell col `31`, `+0x19/+0x1D`
-- empty 1-row -> empty 2-row:
-  - metadata `0x0254: 0x40 -> 0x60`
-  - row0 col31 `+0x38: 0x00 -> 0x01`
-  - row0 col31 `+0x3D: 0x00 -> 0x02`
-- empty 2-row -> 2-row vertical+horizontal:
-  - all `5` deltas are visible wire bytes
-  - row0 col1 `+0x19/+0x1D/+0x21`
-  - row1 col1 `+0x19/+0x1D`
-
-Bytes still donor-backed / not yet generalized:
-- fullwire 1-row row1 band:
-  - `421` bytes vs empty 1-row
-- 2-row prefix band:
-  - `237` bytes vs empty 1-row
-- 2-row empty row1 band:
-  - `570` bytes vs empty 1-row
-- tail band `0x1A60..0x1FFF`:
-  - `491` bytes in both the fullwire and 2-row family jumps
+Bytes now explicitly covered by the March 8 no-comment wireframe model:
+- previously accepted explicit bytes:
+  - empty 1-row -> fullwire 1-row row0 band:
+    - all `62` visible wire deltas
+  - fullwire 1-row -> fullwire+NOP 1-row row0 band:
+    - `2` AF-cell deltas
+  - empty 1-row -> empty 2-row:
+    - metadata `0x0254: 0x40 -> 0x60`
+    - row0 col31 `+0x38: 0x00 -> 0x01`
+    - row0 col31 `+0x3D: 0x00 -> 0x02`
+  - empty 2-row -> 2-row vertical+horizontal:
+    - all `5` visible wire deltas
+- newly explicit March 8 band-template coverage:
+  - fullwire 1-row row1 band:
+    - `421` changed bytes vs empty 1-row
+  - shared tail band `0x1A60..0x1FFF`:
+    - `491` changed bytes vs empty 1-row
+    - same explicit band template in the fullwire and 2-row families
+  - 2-row prefix band:
+    - `237` changed bytes vs empty 1-row
+  - 2-row empty row1 band:
+    - `570` changed bytes vs empty 1-row
 
 Conservative interpretation:
-- the March 8 no-comment wireframe baseline is now clean enough to separate:
-  - explicit visible wireframe bytes
-  - donor-backed no-comment companion families
-- this is a wireframe-only milestone, not comment synthesis
-- comment-bearing row0/row1 companion families remain unresolved and outside this Phase 3 helper
-
-Recommended next Phase 3 step:
-- keep this helper offline-only
-- isolate the donor-backed no-comment bands before touching comment lanes again
-- priority order:
-  - fullwire row1 band
-  - shared tail band `0x1A60..0x1FFF`
-  - 2-row prefix band
-  - 2-row empty row1 band
+- the March 8 clean no-comment wireframe targets are now reconstructed from one empty 1-row donor baseline plus explicit March 8 band templates and explicit row0/metadata logic
+- those explicit band templates are March 8-scoped no-comment findings, not yet a general semantic model
+- this remains a wireframe-only milestone and does not claim comment support or comment companion-byte synthesis
 
 ## Execution Update (March 8, 2026 - Clean Empty-Rung Re-Verification Completed)
 
