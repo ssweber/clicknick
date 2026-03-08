@@ -1,6 +1,31 @@
-# Click PLC Clipboard Reverse Engineering - Handoff v23
+# Click PLC Clipboard Reverse Engineering - Handoff v24
 
 Last validated: March 8, 2026
+
+## Execution Update (March 8, 2026 - Exact Plain Comment Synth Verified In Click)
+
+- New verify result report:
+  - `scratchpad/phase3_plain_comment_exact_verify_results_20260308.md`
+- Verify scenario:
+  - `grid_plain_comment_exact_20260308`
+
+Verify outcomes:
+- `gpcx_short_exact_20260308`
+  - `verified_pass`
+- `gpcx_medium_exact_20260308`
+  - `verified_pass`
+- `gpcx_max1400_exact_20260308`
+  - `verified_pass`
+
+Accepted result:
+- the exact March 8 plain-comment synth model is now:
+  - exact offline
+  - and live verify-backed in Click
+
+Conservative boundary:
+- this proof is still March 8 clean-family scoped
+- styled comments remain out of scope
+- broader generalized comment synthesis remains a separate step
 
 ## Execution Update (March 8, 2026 - Plain Comment Exact Offline Synthesis Reached)
 
