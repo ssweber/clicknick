@@ -14766,6 +14766,33 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-08T14:45:16Z",
       "updated_at": "2026-03-08T14:47:10Z"
+    },
+    {
+      "id": "27be97d2-5d36-4bb4-8b20-e7dbbb29786a",
+      "capture_label": "gpcx_short_exact_20260308",
+      "capture_type": "patch",
+      "scenario": "grid_plain_comment_exact_20260308",
+      "description": "exact offline March 8 plain-comment synth: short via empty donor + payload + phase A",
+      "rung_rows": [
+        "#,Hello",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_exact_20260308/short_plain_comment_exact.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_exact_20260308/short_plain_comment_exact.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Hello",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T15:17:21Z",
+      "updated_at": "2026-03-08T15:17:21Z"
     }
   ]
 }
