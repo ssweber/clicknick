@@ -14780,19 +14780,74 @@
       "payload_source_mode": "file",
       "payload_source_file": "scratchpad/captures/phase3_plain_comment_exact_20260308/short_plain_comment_exact.bin",
       "payload_file": "scratchpad/captures/phase3_plain_comment_exact_20260308/short_plain_comment_exact.bin",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Hello",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Hello",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/gpcx_short_exact_20260308_verify_back_20260308_151946.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T15:17:21Z",
+      "updated_at": "2026-03-08T15:19:46Z"
+    },
+    {
+      "id": "ed48debf-3a38-4a4e-b788-8181f09490a5",
+      "capture_label": "gpcx_medium_exact_20260308",
+      "capture_type": "patch",
+      "scenario": "grid_plain_comment_exact_20260308",
+      "description": "exact offline March 8 plain-comment synth: medium via empty donor + payload + phase A + 9-triad ring program",
+      "rung_rows": [
+        "#,MEDIUM256_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ1234",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_exact_20260308/medium_plain_comment_exact.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_exact_20260308/medium_plain_comment_exact.bin",
       "verify_clipboard_event": null,
       "verify_status": "unverified",
       "verify_notes": "",
       "verify_expected_rows": [
-        "#,Hello",
+        "#,MEDIUM256_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ1234",
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
       "verify_observed_rows": [],
       "verify_result_file": null,
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
-      "created_at": "2026-03-08T15:17:21Z",
-      "updated_at": "2026-03-08T15:17:21Z"
+      "created_at": "2026-03-08T15:21:31Z",
+      "updated_at": "2026-03-08T15:21:31Z"
+    },
+    {
+      "id": "5eeb1c34-5cb2-4ab8-ae84-c135bbeec8c4",
+      "capture_label": "gpcx_max1400_exact_20260308",
+      "capture_type": "patch",
+      "scenario": "grid_plain_comment_exact_20260308",
+      "description": "exact offline March 8 plain-comment synth: max1400 via empty donor + payload + phase A + fullwire row1/tail handoff",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "file",
+      "payload_source_file": "scratchpad/captures/phase3_plain_comment_exact_20260308/max1400_plain_comment_exact.bin",
+      "payload_file": "scratchpad/captures/phase3_plain_comment_exact_20260308/max1400_plain_comment_exact.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-08T15:21:31Z",
+      "updated_at": "2026-03-08T15:21:31Z"
     }
   ]
 }
