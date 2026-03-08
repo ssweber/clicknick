@@ -1,6 +1,140 @@
-# Click PLC Clipboard Reverse Engineering - Handoff v20
+# Click PLC Clipboard Reverse Engineering - Handoff v22
 
 Last validated: March 8, 2026
+
+## Execution Update (March 8, 2026 - Plain Comment Model Tightened)
+
+- New offline reports:
+  - `scratchpad/phase3_comment_stream_model_20260308.md`
+  - `scratchpad/phase3_comment_phase_b_analysis_20260308.md`
+- New offline helpers:
+  - `devtools/march8_comment_stream_analysis.py`
+  - `devtools/march8_comment_phase_b_analysis.py`
+
+Highest-signal accepted model:
+- the clean March 8 plain-comment lane is now best described as:
+  - exact plain payload bytes
+  - universal phase-A continuation stream at `payload_end`
+  - later phase-B continuation stream only when enough visible file space remains after phase A
+
+What is now explicitly proven:
+- after the true payload end, short / medium / max1400 share an identical phase-A continuation stream of:
+  - `0xFC8` bytes
+- that universal phase A covers, for all three clean plain-comment captures:
+  - the post-payload region through `0x0A5F`
+  - the entire row0 band `0x0A60..0x125F`
+- exact offline synthesis boundaries are now:
+  - short:
+    - exact from empty donor + plain payload + phase A
+  - max1400:
+    - exact from empty donor + plain payload + phase A + solved no-comment `fullwire` row1/tail bands
+  - medium:
+    - still unresolved after phase A
+    - still unresolved if `fullwire` row1/tail bands are forced
+
+Why this matters:
+- it replaces the older "many comment bands" wording with one moving continuation-stream model
+- it explains why payload-only from a `max1400` donor crashed:
+  - shortening the payload without moving the continuation stream leaves that stream anchored at the wrong absolute offsets
+- it narrows the remaining March 8 plain-comment problem to one clean case:
+  - medium
+
+Accepted phase-B structure:
+- phase B is not random row1/tail residue
+- in the clean captures it follows a repeating `0x40`-block triad:
+  - `A`
+  - `B`
+  - `C`
+- observed full-block sequences:
+  - medium:
+    - `ABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABC`
+  - max1400:
+    - `CABCABCABCABCABCABCABCABC`
+- from `max1400` phase-B start `0x184C` to EOF:
+  - diff versus clean `fullwire`: `0`
+- from `medium` phase-B start `0x13D4` to EOF:
+  - diff versus clean `fullwire`: `996`
+
+Current unresolved boundary:
+- medium still owns a distinct visible phase-B branch across row1 and tail
+- short does not expose a meaningful visible phase-B branch in the `0x2000` window
+- max1400 hands off exactly to the solved March 8 no-comment `fullwire` row1/tail family after phase A
+
+## Execution Update (March 8, 2026 - Payload-End Continuation Stream Model Identified)
+
+- New offline report:
+  - `scratchpad/phase3_comment_stream_model_20260308.md`
+- New offline helper:
+  - `devtools/march8_comment_stream_analysis.py`
+
+Highest-signal new finding:
+- the clean March 8 plain-comment structure is better modeled as:
+  - exact plain payload bytes
+  - followed by a payload-end-anchored continuation stream
+
+What is now explicitly proven:
+- after the true payload end, short / medium / max1400 share an identical continuation stream prefix of:
+  - `0xFC8` bytes
+- that universal prefix lands, for all three clean plain-comment captures, across:
+  - the post-payload region through `0x0A5F`
+  - the entire row0 band `0x0A60..0x125F`
+
+Why this matters:
+- it explains why payload-only from a `max1400` donor crashed:
+  - shortening the payload without moving the continuation stream leaves that stream anchored at the wrong absolute offsets
+- it replaces the older "many comment bands" wording:
+  - the earlier metadata / gap / row0 surfaces are different absolute slices of one stream whose start moves with `payload_end`
+
+Updated comment-lane working model:
+- step 1:
+  - write exact plain payload bytes
+- step 2:
+  - generate the universal phase-A continuation stream at `payload_end`
+- step 3:
+  - handle the later length-class branch that begins after aligned offset `0xFC8`
+
+Current unresolved boundary:
+- after aligned offset `0xFC8`, the stream branches by length class
+- short:
+  - later phase effectively absent / zero-filled
+- medium and max1400:
+  - later phase present
+  - see the newer phase-B update above for the tighter model
+
+## Execution Update (March 8, 2026 - Max1400 Payload-Only Template Hypothesis Rejected)
+
+- New offline report:
+  - `scratchpad/phase3_max1400_payload_only_probe_results_20260308.md`
+- Offline helper:
+  - `devtools/march8_max1400_template_probe.py`
+- Verify scenario:
+  - `grid_max1400_payload_only_template_20260308`
+
+Tested hypothesis:
+- start from clean `grcecr_max1400_native_20260308`
+- replace only the shorter plain-comment `len + payload` bytes
+- keep all other sections from the clean `max1400` donor unchanged
+
+Observed verify outcomes:
+- short payload-only probe:
+  - `blocked`
+  - event: `crash`
+  - note: `Out of Memory`
+- medium payload-only probe:
+  - `blocked`
+  - event: `crash`
+
+Accepted conclusion:
+- payload-only reuse of the clean March 8 `max1400` donor is not replay-safe for the clean short or medium plain-comment lanes
+
+Offline implication:
+- the failure is consistent with leaving the continuation stream anchored at the old `max1400` payload end
+- payload-only is therefore too narrow for the clean March 8 plain-comment lane
+
+High-signal next probe if more online work is attempted:
+- copy target bytes through the gap band:
+  - `0x0294..0x0A5F`
+- this is now the narrowest defensible next candidate after the payload-only crash
 
 ## Execution Update (March 8, 2026 - Plain Comment Readiness Assessed)
 
@@ -35,22 +169,11 @@ New high-signal readiness result:
   - shared tail band `0x1A60..0x1FFF`
 - this exact fullwire-band reuse is **not** true for the clean short or medium comment captures
 
-Remaining unresolved companion-byte counts after:
-- exact plain payload-window synthesis from text
-- exact fullwire row1/tail reuse only when the match is exact
-
-Counts:
-- short:
-  - `790`
-- medium:
-  - `1887`
-- max1400:
-  - `802`
-
 Conservative interpretation:
-- plain payload serialization is now much closer than the companion-band problem
-- max1400 is the closest clean plain-comment case because its row1 band and tail band already collapse to solved no-comment templates
-- medium remains the least converged clean plain-comment case because it still carries a distinct row1 family and a distinct tail family
+- plain payload serialization is now much closer than the later-stream branch problem
+- the later-stream framing is better than the older companion-band framing
+- short and max1400 are now exact offline under the newer stream model documented above
+- medium remains the only unresolved clean March 8 plain-comment case
 - comment synthesis is still not ready for production
 
 ## Execution Update (March 8, 2026 - Phase 3 Wireframe Band Isolation Continued)
@@ -190,7 +313,7 @@ Accepted classification after the reset:
 
 Recommended next step:
 - use the March 8 canonical captures as the clean donor set for Phase 3 wireframe synthesis
-- keep comment synthesis outside the production path until the comment companion family is modeled explicitly
+- keep comment synthesis outside the production path until the later continuation-stream branch is modeled explicitly
 
 ## Execution Update (March 8, 2026 - Comment Lane Reset / Clean-Slate Queue Prepared)
 
