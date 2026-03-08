@@ -30,6 +30,26 @@ When starting a new reverse-engineering lane:
    - file-backed patch payloads built from existing captures
 5. Only after the payloads exist, add checklist entries with `uv run clicknick-ladder-capture ...`.
 
+## RE Analysis Heuristic
+When a lane is not converging, deliberately switch between three views instead of staying in one:
+- text / ASCII view
+  - use when the format likely embeds human-readable payloads, wrappers, or delimiters
+  - good for separating content from container bytes
+- byte / offset view
+  - use when exact structural authority matters
+  - good for locating decisive offsets, strides, band boundaries, and crash-causing stale bytes
+- block / record view
+  - use when repeated byte families appear on a fixed cadence such as `0x40` or `0x1000`
+  - good for reducing leftover diffs into reusable programs instead of treating them as opaque residue
+
+Recommended progression:
+1. isolate any text-bearing payload window first
+2. re-anchor comparisons on the payload or record boundary if absolute offsets are misleading
+3. only then classify the remaining bytes by their natural stride or record cadence
+
+Practical rule:
+- do not assume a stubborn absolute band is its own family until you test whether it is just a shifted view of a moving stream or record program
+
 ## Approved Payload Construction Helpers
 These helpers are allowed for generating patch payload files before manifest registration:
 - `devtools/noise_apply.py`
