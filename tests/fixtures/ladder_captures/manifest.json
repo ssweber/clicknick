@@ -304,6 +304,48 @@
       "metadata_todo": false
     },
     {
+      "fixture_file": "native-comment-fullwire.bin",
+      "capture_label": "native-comment-fullwire",
+      "scenario": "comment-family-flag-20260309",
+      "source": "scratchpad/captures",
+      "description": "Native comment+fullwire (all 31 cols dashed) to confirm 0x67 family flag",
+      "rung_rows": [
+        "#,Partial wires",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verified": false,
+      "codec_generatable": false,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "native-comment-nop-only.bin",
+      "capture_label": "native-comment-nop-only",
+      "scenario": "comment-family-flag-20260309",
+      "source": "scratchpad/captures",
+      "description": "Native comment+NOP-only (no wires) to check family flag (0x65 expected)",
+      "rung_rows": [
+        "#,Partial wires",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verified": false,
+      "codec_generatable": false,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "native-comment-partial-wire-v2.bin",
+      "capture_label": "native-comment-partial-wire-v2",
+      "scenario": "comment-combo-native-20260309",
+      "source": "scratchpad/captures",
+      "description": "Native comment+partial-wire: 'Partial wires' text, dash on B and D, 1-row",
+      "rung_rows": [
+        "#,Partial wires",
+        "R,,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verified": false,
+      "codec_generatable": false,
+      "metadata_todo": false
+    },
+    {
       "fixture_file": "nc_a_immediate_only.bin",
       "capture_label": "nc_a_immediate_only",
       "scenario": "contact_variant",
