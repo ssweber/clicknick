@@ -11,9 +11,10 @@ Updated per integration session.
 | Empty rung | **Supported** | 1–32 | Verified at 1/2/3/4/9/17/32 rows |
 | Wire-only rung | **Supported** | 1–32 | All combos of `- \| T` tokens |
 | Wire + NOP | **Supported** | 1–32 | NOP on any row verified through row32 |
-| Comment (empty rung) | **Supported** | 1 | Plain text, 1–1400 chars, all lengths including mod-36 |
-| Comment + wires | **Guarded** | 1 | Structurally sound, awaiting Click verification |
-| Comment + NOP | **Guarded** | 1 | Structurally sound, awaiting Click verification |
+| Comment (empty rung) | **Supported** | 1 | Plain text, 1–1400 chars, all lengths |
+| Comment + wires | **Supported** | 1 | Full and sparse wires verified (phase-A stride encoding) |
+| Comment + NOP | **Supported** | 1 | NOP via phase-A slot 62 + 0x25 |
+| Comment + wires + NOP | **Supported** | 1 | All three combined verified |
 | Comment (multi-row) | **Not supported** | 2–32 | Needs extra page + terminal companion synthesis |
 | Condition contacts | **Not supported** | — | Needs instruction stream builder |
 | AF coils (out/latch/reset) | **Not supported** | — | Needs instruction stream + AF cell model |
@@ -26,7 +27,7 @@ Updated per integration session.
 | Token | Meaning | Flags set | Status |
 |-------|---------|-----------|--------|
 | `""` | Blank cell | none | **Supported** |
-| `"-"` | Horizontal wire | +0x19=1, +0x1D=1 | **Supported** |
+| `"-"` | Horizontal wire | +0x19=1, +0x1D=1 (cell grid) or +0x21=1, +0x25=1 (phase-A stride for comment rungs) | **Supported** |
 | `"\|"` | Vertical pass-through | +0x21=1 | **Supported** (not on col A) |
 | `"T"` | Junction down | +0x19=1, +0x1D=1, +0x21=1 | **Supported** (not on col A) |
 
@@ -49,12 +50,13 @@ Updated per integration session.
 | Plain text body | **Supported** | cp1252 encoded, max 1400 bytes |
 | RTF prefix/suffix | **Supported** | Extracted from single donor file |
 | Phase-A stream | **Supported** | Universal across all lengths |
-| Length 100 (mod-36) | **Supported** | Previously broken, now fixed |
+| Length 100 (formerly mod-36) | **Supported** | Was caused by wrong flag byte (0x65), not length |
+| On wire rungs | **Supported** | Uses phase-A stride (+0x21/+0x25) not cell grid (+0x19/+0x1D) |
+| On NOP rungs | **Supported** | NOP at phase-A slot 62 + 0x25 |
 | Styled (bold) | **Not supported** | Crashes — needs companion bytes |
 | Styled (italic) | **Not supported** | Skipped after bold failure |
 | Styled (underline) | **Not supported** | Skipped after bold failure |
 | Multi-line | **Not supported** | Only single-line proven in captures |
-| On wire rungs | **Guarded** | Awaiting Click verification |
 | On multi-row rungs | **Not supported** | Needs page-extent synthesis |
 
 
@@ -64,12 +66,13 @@ Updated per integration session.
 |---------|--------|-------|
 | Row word (row count) | **Supported** | Formula: (rows + 1) × 0x20 |
 | Buffer allocation | **Supported** | Page-aligned: 0x1000 × (ceil(rows/2) + 1) |
-| Header +0x05 (zero) | **Supported** | Safe for wire-only and comment rungs |
-| Header +0x11 (zero) | **Supported** | Safe for wire-only and comment rungs |
+| Header +0x05 (zero) | **Supported** | Zero for wire-only and comment rungs |
+| Header +0x11 (zero) | **Supported** | Zero for wire-only and comment rungs |
+| Header +0x17 (comment flag) | **Supported** | 0x5A for all comment rungs (unified, not grid-dependent) |
 | Header +0x05 (nonzero) | **Not supported** | Needed for instruction families |
 | Header +0x11 (nonzero) | **Not supported** | Needed for instruction families |
-| Header +0x17/+0x18 | **Not supported** | Decision table incomplete |
-| Trailer 0x0A59 | **Supported** | Zero for wire-only (mirrors +0x05) |
+| Header +0x17/+0x18 (instructions) | **Not supported** | Decision table incomplete for instruction families |
+| Trailer 0x0A59 | **Supported** | Zero for wire-only; 0x01 for comment rungs |
 | Cell +0x39 linkage | **Not supported** | Needed for instruction-bearing rungs |
 
 
@@ -120,3 +123,5 @@ All "supported" items above are backed by Click round-trip verification
 | Plain comment (short) | `gpcx_short_exact_20260308` |
 | Plain comment (medium) | `gpcx_medium_exact_20260308` |
 | Plain comment (max1400) | `gpcx_max1400_exact_20260308` |
+| Comment + wires/NOP (0x5A flag) | `verify-0x5A-flag-20260309` (10 shapes: comment-only, 1char, 100char, 100m, NOP, fullwire, partial-wire, fullwire+NOP, empty baseline, fullwire+NOP baseline) |
+| Native comment references | `comment-family-flag-20260309` (sparse wire, fullwire, NOP-only — all 0x5A) |

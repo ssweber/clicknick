@@ -21,10 +21,10 @@ as the short operational summary.
   - empty rungs, 1..32 rows
   - wire-only rungs, 1..32 rows
   - wire + `NOP`, 1..32 rows
-  - plain single-line comments on 1-row empty rungs, lengths 1..1400
-- Guarded:
-  - 1-row plain comment + wires
-  - 1-row plain comment + `NOP`
+  - plain single-line comments on 1-row rungs, lengths 1..1400
+  - 1-row plain comment + wires (full and sparse, via phase-A stride)
+  - 1-row plain comment + `NOP` (via phase-A slot 62)
+  - 1-row plain comment + wires + `NOP` (combined)
 - Not supported:
   - multi-row comments
   - styled comments

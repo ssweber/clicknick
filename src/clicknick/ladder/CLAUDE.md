@@ -27,14 +27,15 @@ Write a prompt block the user can paste to a separate Claude Code session. Inclu
 
 ## Current state (2026-03-09)
 
-Verified 19/20 shapes pass Click round-trip:
+All tested shapes pass Click round-trip:
 - Empty rungs (1/2/8/32 rows)
 - Wire topologies (horizontal, vertical, T-junction, mixed, partial)
 - NOP on AF column (row 0, multi-row with wires)
 - Plain comments (1 char, 100 chars, 1400 max, cp1252 specials)
 - Edge cases (all 31 cols dashed, vertical B-only, T at column AE)
-- Comment + wires on 1-row rung (guards lifted, awaiting Click verification)
-- Comment + NOP on 1-row rung (guards lifted, awaiting Click verification)
+- Comment + wires (full and sparse, 1-row)
+- Comment + NOP (1-row)
+- Comment + wires + NOP (1-row)
 
 One known Click rendering quirk: multi-row NOP shows extra visual artifacts (Click bug, not encoder bug).
 
@@ -48,7 +49,8 @@ One known Click rendering quirk: multi-row NOP shows extra visual artifacts (Cli
 
 ## Important patterns
 
-- **Header seed clobbers comment bytes.** The `HeaderSeed.apply_to_buffer()` writes +0x05/+0x11/+0x17/+0x18 uniformly across all 32 header entries. Comment rungs need entry0 +0x17 = 0x65. Fix: skip header seed entirely for comment rungs in `_encode_compiled()`.
-- **Comment payload is separate from cell grid.** Payload region (0x0294+) vs cell grid (0x0A60+). They don't conflict for 1-row rungs.
+- **Header seed clobbers comment bytes.** The `HeaderSeed.apply_to_buffer()` writes +0x05/+0x11/+0x17/+0x18 uniformly across all 32 header entries. Comment rungs need entry0 +0x17 = 0x5A. Fix: skip header seed entirely for comment rungs in `_encode_compiled()`.
+- **Comment wire encoding uses phase-A stride, not cell grid.** For comment rungs, wire data goes at phase-A-relative positions (+0x21 left, +0x25 right, slot = col_idx + 31), NOT at cell grid +0x19/+0x1D. NOP uses phase-A slot 62 + 0x25. The cell grid wire bytes are all zero in native comment captures.
+- **Comment flag is 0x5A universally.** Not grid-dependent (was previously 0x65/0x67). Wire seed bytes (+0x05, +0x11) stay 0x00 for comment rungs. Trailer 0x0A59 = 0x01 for all comment rungs.
 - **Native captures are the ground truth.** When something doesn't work, capture a native rung with the same shape and diff against synthetic. The `scratchpad/captures/` directory has reference captures.
 - **Verify workflow:** `uv run clicknick-ladder-capture verify prepare --label <label>` loads clipboard, user pastes in Click, copies back, then `verify complete` or `verify run` records result.

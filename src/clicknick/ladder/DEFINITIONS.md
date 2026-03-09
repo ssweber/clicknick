@@ -57,12 +57,23 @@ table and the payload region.
 
 ## Cell Byte Offsets
 
-**Wire flags**
+**Wire flags (cell grid model — non-comment rungs)**
 Three single-byte flags per cell that control visual wire rendering:
 - `+0x19` — horizontal-left
 - `+0x1D` — horizontal-right (decisive for continuity; left alone is
   insufficient)
 - `+0x21` — vertical-down-to-next-row
+
+**Wire flags (phase-A stride model — comment rungs)**
+For comment rungs, wire data lives in the phase-A stride, NOT in the cell
+grid. The cell grid `+0x19/+0x1D` bytes are all zero in native comment
+captures. Instead, wires are at phase-A-relative positions:
+- Phase-A slot = `col_idx + 31` (within the 0x40-byte stride)
+- `slot_base + 0x21` — left wire
+- `slot_base + 0x25` — right wire
+- `slot_base = phase_a_start + slot × 0x40`
+- `phase_a_start = 0x0298 + payload_length`
+NOP uses phase-A slot 62 (AF column) + 0x25.
 
 **Structural fields** (written by `synthesize_empty_multirow`)
 - `+0x01` — column index
@@ -98,15 +109,24 @@ The low byte of the row word. Historical 1-byte shorthand: `0x40` = 1
 row, `0x60` = 2 rows, `0x80` = 3 rows. Superseded by the full row word
 for row counts > 3.
 
+**Comment flag byte**
+`+0x17` on header entry 0. Set to `0x5A` for all comment rungs regardless
+of grid content (empty, sparse wires, full wires, NOP). This value is
+mirrored into all 63 phase-A periodic slots at `phase_a[0x13 + 0x40*k]`.
+Two older native captures showed `0x67` and one legacy-prefix capture
+showed `0x65`, but these appear to be version/session artefacts. The
+encoder uses `0x5A` universally.
+
 **Header seed bytes** *(instruction-specific, not yet used)*
-- `+0x05` — structural gate (zero for wire-only; e.g. `0x04` for
-  second-immediate)
-- `+0x11` — family classifier (zero for wire-only; e.g. `0x0B` for
-  second-immediate)
-- `+0x17/+0x18` — capture-family classifiers (decision table incomplete)
+- `+0x05` — structural gate (zero for wire-only and comment rungs; e.g.
+  `0x04` for second-immediate)
+- `+0x11` — family classifier (zero for wire-only and comment rungs; e.g.
+  `0x0B` for second-immediate)
+- `+0x17/+0x18` — capture-family classifiers (decision table incomplete
+  for instruction families)
 
 **Trailer byte**
-`0x0A59` — mirrors header `+0x05`. Zero for wire-only rungs.
+`0x0A59` — zero for wire-only rungs, `0x01` for comment rungs.
 
 **Volatile bytes**
 `+0x05` and `+0x11` on header entries can vary between capture sessions
@@ -125,10 +145,13 @@ Starts at `0x0298`. For comment rungs, this is: 105-byte RTF prefix +
 cp1252 body text + 11-byte RTF suffix (includes trailing NUL).
 
 **Phase-A**
-A fixed continuation stream of `0xFC8` bytes written immediately after
-the payload body. Universal across all tested comment lengths. This is
-stream data, not cell grid data — it merely passes through grid-range
-addresses for short comments in small buffers.
+A fixed continuation stream of `0xFC8` bytes (63 slots × `0x40` + 8 tail
+bytes) written immediately after the payload body. Universal across all
+tested comment lengths. Contains the comment flag byte at periodic offset
+`+0x13` in each slot. For comment rungs, the phase-A stride also carries
+wire data at `+0x21` (left) and `+0x25` (right) — these positions overlap
+the cell grid address range but are distinct from the cell grid wire flag
+offsets (`+0x19/+0x1D`).
 
 **Phase-B** *(deleted from encoder)*
 A repeating block pattern that was observed after phase-A in the medium
