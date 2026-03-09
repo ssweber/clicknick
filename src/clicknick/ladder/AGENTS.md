@@ -21,7 +21,7 @@ Canonical runner: `uv run clicknick-ladder-capture ...`.
 
 ## Investigator Quick Start
 When starting a new reverse-engineering lane:
-1. Read `HANDOFF.md` first for the latest accepted ground truth and current gate status.
+1. Read `STATUS.md` first for the current state and canonical source files.
 2. Read the lane-specific scratchpad report/case-spec files for the active round.
 3. Find an existing donor capture in `scratchpad/captures/` before inventing a new baseline.
 4. Decide whether the next round needs:

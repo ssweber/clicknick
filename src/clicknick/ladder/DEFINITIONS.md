@@ -1,6 +1,6 @@
 # Ladder Encoder — Definitions
 
-Terms used in encode.py, topology.py, empty_multirow.py, and HANDOFF.md.
+Terms used in encode.py, topology.py, empty_multirow.py, and STATUS.md.
 Canonical reference to prevent confusion across sessions.
 
 
