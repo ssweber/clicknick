@@ -251,7 +251,8 @@ def _encode_compiled(
             detail=str(exc),
         ) from exc
 
-    if header_seed is not None:
+    has_comment = comment is not None and comment != ""
+    if header_seed is not None and not has_comment:
         out = bytearray(payload)
         header_seed.apply_to_buffer(out)
         payload = bytes(out)

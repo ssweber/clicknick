@@ -217,8 +217,6 @@ from .topology import (
 
 PAYLOAD_LENGTH_OFFSET = 0x0294
 PAYLOAD_BYTES_OFFSET = 0x0298
-COMMENT_PREFIX_LEN = 105  # RTF envelope header: {\rtf1\ansi\ansicpg1252...
-COMMENT_SUFFIX_LEN = 11   # RTF closing + trailing NUL
 PHASE_A_LEN = 0xFC8
 COMMENT_MAX_BYTES = 1400
 
@@ -275,45 +273,28 @@ CELL_NOP_ROW_ENABLE_OFFSET = 0x15  # on col0: required for non-first-row NOP
 
 
 # ---------------------------------------------------------------------------
-# Comment framing — derived once from a single reference donor
+# Comment framing — hardcoded from native capture (2026-03-09)
 # ---------------------------------------------------------------------------
 
-# NOTE: This is one of only two binary resource files still required:
-#   1. empty_multirow_rule_minimal.scaffold.bin — used by
-#      synthesize_empty_multirow as the base template for all row counts.
-#      Provides the prefix band (0x0000..0x0253) and initial cell structure.
-#   2. grcecr_short_native_20260308.bin — used here to extract the comment
-#      RTF prefix, suffix, and phase-A continuation stream. These three
-#      byte sequences are universal across all tested comment lengths.
-# All other March 8 donor .bin files can be deleted after integration.
+# RTF envelope prefix (90 bytes). Wraps plain-text comment body.
+# Extracted from a native Click capture of an empty rung with comment.
+_PREFIX = (
+    b"{\\rtf1\\ansi\\deff0"
+    b"{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}\r\n"
+    b"\\viewkind4\\uc1\\pard\\lang1033\\fs20 "
+)
 
-_MARCH8_DONOR = "resources/grcecr_short_native_20260308.bin"
+# RTF envelope suffix (11 bytes). Closes the RTF body.
+_SUFFIX = b"\r\n\\par }\r\n\x00"
 
-
-def _load_comment_framing() -> tuple[bytes, bytes, bytes]:
-    """Extract comment prefix, suffix, and phase-A from one donor file.
-
-    All three values are universal across comment lengths — only one donor
-    is needed.  The short donor is smallest and loads fastest.
-    """
-    data = (
-        resources.files("clicknick.ladder")
-        .joinpath(_MARCH8_DONOR)
-        .read_bytes()
-    )
-    payload_len = int.from_bytes(
-        data[PAYLOAD_LENGTH_OFFSET:PAYLOAD_BYTES_OFFSET], "little"
-    )
-    payload = data[PAYLOAD_BYTES_OFFSET : PAYLOAD_BYTES_OFFSET + payload_len]
-    prefix = payload[:COMMENT_PREFIX_LEN]
-    suffix = payload[-COMMENT_SUFFIX_LEN:]
-
-    payload_end = PAYLOAD_BYTES_OFFSET + payload_len
-    phase_a = data[payload_end : payload_end + PHASE_A_LEN]
-    return prefix, suffix, phase_a
-
-
-_PREFIX, _SUFFIX, _PHASE_A = _load_comment_framing()
+# Phase-A continuation stream (0xFC8 bytes). Loaded from a purpose-built
+# resource file extracted from a native capture. This is structural
+# scaffolding that Click expects immediately after the comment payload.
+_PHASE_A = (
+    resources.files("clicknick.ladder")
+    .joinpath("resources/comment_phase_a.bin")
+    .read_bytes()
+)
 
 
 # ---------------------------------------------------------------------------
@@ -544,6 +525,8 @@ def encode_rung(
     #      the continuation stream that plain comments don't need.
 
     if has_comment:
+        # Header entry0 +0x17 = 0x65 signals "comment present" to Click.
+        out[0x0254 + 0x17] = 0x65
         _apply_comment(out, comment)
 
     return bytes(out)
