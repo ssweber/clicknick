@@ -49,7 +49,9 @@ def _base_manifest() -> dict:
         verify_clipboard_event="copied",
         verify_status="verified_fail",
         verify_notes="only first contact pasted",
-        verify_observed_rows=["R,X001,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"],
+        verify_observed_rows=[
+            "R,X001,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+        ],
         now_iso="2026-03-05T12:01:00Z",
     )
     capture_registry.update_entry(
@@ -57,7 +59,9 @@ def _base_manifest() -> dict:
         "native_mismatch",
         verify_clipboard_event="copied",
         verify_status="verified_fail",
-        verify_observed_rows=["R,X001,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"],
+        verify_observed_rows=[
+            "R,X001,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+        ],
         now_iso="2026-03-05T12:01:00Z",
     )
     return manifest

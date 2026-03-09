@@ -226,7 +226,9 @@ class CaptureWorkflow:
         for pattern in globs or []:
             pattern_path = Path(pattern)
             pattern_text = (
-                str(pattern_path) if pattern_path.is_absolute() else str(self.paths.root / pattern_path)
+                str(pattern_path)
+                if pattern_path.is_absolute()
+                else str(self.paths.root / pattern_path)
             )
             matches = [Path(item) for item in glob.glob(pattern_text)]
             file_matches = [item for item in matches if item.is_file()]
@@ -381,7 +383,9 @@ class CaptureWorkflow:
 
         return f"{','.join(contacts)},->,:,{canonical.af}"
 
-    def _default_verify_source_mode(self, entry: dict[str, Any], requested_source: str | None) -> str:
+    def _default_verify_source_mode(
+        self, entry: dict[str, Any], requested_source: str | None
+    ) -> str:
         if requested_source is not None:
             return requested_source
 
@@ -589,9 +593,7 @@ class CaptureWorkflow:
             "warning": None,
         }
         header_seed: HeaderSeed | None = None
-        has_comment = any(
-            normalize_shorthand_row(r).is_comment for r in current["rung_rows"]
-        )
+        has_comment = any(normalize_shorthand_row(r).is_comment for r in current["rung_rows"])
         if source_mode == "shorthand" and not has_comment:
             header_seed, seed_meta = self._resolve_header_seed(
                 manifest=manifest,
@@ -735,8 +737,7 @@ class CaptureWorkflow:
         )
         if len(data) <= max_required_offset:
             raise ValueError(
-                f"Payload too short for profile report ({entry['capture_label']}): "
-                f"{len(raw)} bytes"
+                f"Payload too short for profile report ({entry['capture_label']}): {len(raw)} bytes"
             )
 
         def hx(value: int) -> str:
@@ -810,10 +811,7 @@ class CaptureWorkflow:
         data = raw[:PROFILE_REPORT_BUFFER_SIZE]
 
         max_required_offset = max(
-            cell_offset(row, col) + rel
-            for row in rows
-            for col in cols
-            for rel in offsets
+            cell_offset(row, col) + rel for row in rows for col in cols for rel in offsets
         )
         if len(data) <= max_required_offset:
             raise ValueError(
@@ -1351,9 +1349,11 @@ def run_tui(
                 continue
 
             while True:
-                source_raw = input_fn(
-                    "Payload source override ([d]efault / [f]ile / [s]horthand): "
-                ).strip().lower()
+                source_raw = (
+                    input_fn("Payload source override ([d]efault / [f]ile / [s]horthand): ")
+                    .strip()
+                    .lower()
+                )
                 if source_raw in {"", "d", "default"}:
                     source_override: str | None = None
                     break

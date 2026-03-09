@@ -17,6 +17,7 @@ from clicknick.ladder.topology import (
     parse_wire_topology,
 )
 
+
 @pytest.mark.parametrize(
     ("rows", "expected_len", "expected_word"),
     [

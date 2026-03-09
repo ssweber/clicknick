@@ -21,9 +21,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Literal
+from typing import Literal
 
 from clicknick.ladder.codec import ClickCodec
 from clicknick.ladder.topology import (
@@ -258,12 +259,13 @@ def main() -> int:
             print("- none")
         else:
             for off in varying_offsets:
-                values = " ".join(f"{s.name}=0x{s.data[HEADER_ENTRY_BASE + off]:02X}" for s in summaries)
-                column_uniform = all(len(set(_entry_local_offset_values(s, off))) == 1 for s in summaries)
-                print(
-                    f"- +0x{off:02X}: {values} "
-                    f"(column_uniform={column_uniform})"
+                values = " ".join(
+                    f"{s.name}=0x{s.data[HEADER_ENTRY_BASE + off]:02X}" for s in summaries
                 )
+                column_uniform = all(
+                    len(set(_entry_local_offset_values(s, off))) == 1 for s in summaries
+                )
+                print(f"- +0x{off:02X}: {values} (column_uniform={column_uniform})")
 
     if len(summaries) > 1:
         baseline = summaries[0]
@@ -277,10 +279,7 @@ def main() -> int:
                 f"t59={_delta_u8(baseline.t59, s.t59):+d}"
             )
             print(f"  topology_equal={baseline.topology_hash == s.topology_hash}")
-            print(
-                "  header_eq(mask+05+11)="
-                f"{header_structural_equal(baseline.data, s.data)}"
-            )
+            print(f"  header_eq(mask+05+11)={header_structural_equal(baseline.data, s.data)}")
             print(
                 "  header_eq(mask+05+11+17+18)="
                 f"{baseline.header_hash_mask_05111718 == s.header_hash_mask_05111718}"

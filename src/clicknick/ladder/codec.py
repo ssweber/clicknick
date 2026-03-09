@@ -97,7 +97,9 @@ class EncodeResult:
     report: V2EncodeReport | None = None
 
 
-def _normalize_af_token(token: str, *, row_idx: int, mode: EncodeMode) -> tuple[str, V2Degradation | None]:
+def _normalize_af_token(
+    token: str, *, row_idx: int, mode: EncodeMode
+) -> tuple[str, V2Degradation | None]:
     stripped = token.strip()
     normalized = stripped.upper()
     if normalized == "":

@@ -90,7 +90,9 @@ def resolve_offsets(
     )
 
 
-def apply_copy_from_donor(input_bytes: bytes, donor_bytes: bytes, offsets: list[int]) -> tuple[bytes, int]:
+def apply_copy_from_donor(
+    input_bytes: bytes, donor_bytes: bytes, offsets: list[int]
+) -> tuple[bytes, int]:
     if len(input_bytes) < BUFFER_SIZE:
         raise ValueError(f"Input payload too short ({len(input_bytes)} bytes)")
     if len(donor_bytes) < BUFFER_SIZE:

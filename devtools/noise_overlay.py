@@ -86,7 +86,9 @@ def _resolve_path(path_text: str, *, root: Path) -> Path:
 def _load_first_record(path: Path) -> tuple[bytes, int]:
     raw = path.read_bytes()
     if len(raw) < BUFFER_SIZE:
-        raise ValueError(f"{path}: payload too short ({len(raw)} bytes); need at least {BUFFER_SIZE}")
+        raise ValueError(
+            f"{path}: payload too short ({len(raw)} bytes); need at least {BUFFER_SIZE}"
+        )
     return raw[:BUFFER_SIZE], len(raw)
 
 
@@ -122,7 +124,9 @@ def _group_from_expected_rows(rows: tuple[str, ...]) -> str:
     return " || ".join(rows)
 
 
-def _lookup_custom_group(record_name: str, record_path: Path, mapping: dict[str, str]) -> str | None:
+def _lookup_custom_group(
+    record_name: str, record_path: Path, mapping: dict[str, str]
+) -> str | None:
     probes = (
         record_name,
         str(record_path),
@@ -325,7 +329,9 @@ def _width_candidate_offsets(records: list[CaptureRecord], varying_offsets: set[
     return filtered
 
 
-def _structure_candidate_offsets(records: list[CaptureRecord], varying_offsets: set[int]) -> set[int]:
+def _structure_candidate_offsets(
+    records: list[CaptureRecord], varying_offsets: set[int]
+) -> set[int]:
     structure_records = [record for record in records if _is_wire_geometry_record(record.name)]
     if len(structure_records) < 2:
         return set()
@@ -442,7 +448,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", default=str(DEFAULT_MANIFEST_PATH))
     parser.add_argument("--label", action="append", default=[], help="Manifest label (repeatable)")
-    parser.add_argument("--file", action="append", default=[], help="Direct .bin file path (repeatable)")
+    parser.add_argument(
+        "--file", action="append", default=[], help="Direct .bin file path (repeatable)"
+    )
     parser.add_argument(
         "--source",
         choices=("payload", "verify"),

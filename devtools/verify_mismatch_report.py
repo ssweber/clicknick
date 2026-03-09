@@ -35,7 +35,9 @@ def _observed_rows(entry: dict[str, Any]) -> list[str]:
     return []
 
 
-def build_mismatch_report(manifest: dict[str, Any], *, capture_type: str = "synthetic") -> dict[str, Any]:
+def build_mismatch_report(
+    manifest: dict[str, Any], *, capture_type: str = "synthetic"
+) -> dict[str, Any]:
     entries = manifest.get("entries")
     if not isinstance(entries, list):
         raise ValueError("Manifest entries must be a list")

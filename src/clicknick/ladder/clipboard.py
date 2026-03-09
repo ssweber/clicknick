@@ -31,16 +31,6 @@ _user32.CloseClipboard.restype = ctypes.c_bool
 GMEM_MOVEABLE = 0x0002
 
 
-def find_click_hwnd() -> int:
-    """Find Click Programming Software's main window handle."""
-    import win32gui
-
-    results = find_click_hwnds()
-    if not results:
-        raise RuntimeError("Click Programming Software not found. Is it running?")
-    return results[0]
-
-
 def find_click_hwnds() -> list[int]:
     """Find all visible Click Programming Software main window handles."""
     import win32gui
@@ -55,6 +45,15 @@ def find_click_hwnds() -> list[int]:
     win32gui.EnumWindows(callback, None)
     # Deterministic ordering simplifies click:<index> selection at call-sites.
     return sorted(results)
+
+
+def find_click_hwnd() -> int:
+    """Find Click Programming Software's main window handle."""
+
+    results = find_click_hwnds()
+    if not results:
+        raise RuntimeError("Click Programming Software not found. Is it running?")
+    return results[0]
 
 
 def _open_clipboard_with_retry(owner_hwnd: int | None = None) -> None:

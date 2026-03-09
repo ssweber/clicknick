@@ -243,9 +243,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     target_group = p_report_profile.add_mutually_exclusive_group(required=True)
     target_group.add_argument("--label", help="Capture label to inspect")
-    target_group.add_argument("--all", action="store_true", help="Inspect all entries with payloads")
+    target_group.add_argument(
+        "--all", action="store_true", help="Inspect all entries with payloads"
+    )
     format_group = p_report_profile.add_mutually_exclusive_group()
-    format_group.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")
+    format_group.add_argument(
+        "--json", action="store_true", help="Emit machine-readable JSON output"
+    )
     format_group.add_argument("--csv", action="store_true", help="Emit CSV output")
 
     p_report_profile_columns = report_sub.add_parser(
@@ -254,7 +258,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     target_group = p_report_profile_columns.add_mutually_exclusive_group(required=True)
     target_group.add_argument("--label", help="Capture label to inspect")
-    target_group.add_argument("--all", action="store_true", help="Inspect all entries with payloads")
+    target_group.add_argument(
+        "--all", action="store_true", help="Inspect all entries with payloads"
+    )
     p_report_profile_columns.add_argument(
         "--rows",
         default="0,1",
@@ -271,7 +277,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Cell byte offsets (0x00-0x3F). Example: 0x05,0x11,0x1A,0x1B",
     )
     format_group = p_report_profile_columns.add_mutually_exclusive_group()
-    format_group.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")
+    format_group.add_argument(
+        "--json", action="store_true", help="Emit machine-readable JSON output"
+    )
     format_group.add_argument("--csv", action="store_true", help="Emit CSV output")
 
     p_promote = sub.add_parser(
@@ -379,9 +387,7 @@ def _print_human(action: str, data: Any, output_fn: Callable[[str], None]) -> No
         cell_fields = sorted(key for key in sample.keys() if key.startswith("cell_"))
         for row in rows:
             rendered = " ".join(f"{key}={row[key]}" for key in cell_fields)
-            output_fn(
-                f"{row['capture_label']} r{row['row']} c{row['column']}: {rendered}"
-            )
+            output_fn(f"{row['capture_label']} r{row['row']} c{row['column']}: {rendered}")
         return
     output_fn(json.dumps(data, indent=2))
 

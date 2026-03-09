@@ -237,7 +237,9 @@ def test_entry_add_comment_lines_are_prepended_to_rows(tmp_path: Path) -> None:
     assert entry["rung_rows"][2].startswith("R,X001,")
 
 
-def test_verify_prepare_comment_rows_shorthand_supported_for_plain_empty_rung(tmp_path: Path) -> None:
+def test_verify_prepare_comment_rows_shorthand_supported_for_plain_empty_rung(
+    tmp_path: Path,
+) -> None:
     fake = _FakeClipboard(read_payload=b"\x11" * 8192)
     workflow = _make_workflow(tmp_path, fake)
     workflow.entry_add(
@@ -564,7 +566,10 @@ def test_entry_add_patch_batch_from_files(tmp_path: Path) -> None:
     entry = workflow.entry_show(label="patch_two_series_patch_02_imm_no__combined")
     assert entry["capture_type"] == "patch"
     assert entry["payload_source_mode"] == "file"
-    assert entry["payload_source_file"] == "scratchpad/captures/two_series_patch_02_imm_no__combined.bin"
+    assert (
+        entry["payload_source_file"]
+        == "scratchpad/captures/two_series_patch_02_imm_no__combined.bin"
+    )
     assert entry["payload_file"] == "scratchpad/captures/two_series_patch_02_imm_no__combined.bin"
 
 
@@ -734,7 +739,9 @@ def test_tui_native_capture_queue_walks_pending_entries_without_label_input(tmp_
     assert any("Pending native captures: 2" in line for line in output)
 
 
-def test_tui_verify_guided_queue_walks_unverified_entries_without_label_input(tmp_path: Path) -> None:
+def test_tui_verify_guided_queue_walks_unverified_entries_without_label_input(
+    tmp_path: Path,
+) -> None:
     fake = _FakeClipboard(read_payload=b"\xad" * 8192)
     workflow = _make_workflow(tmp_path, fake)
     workflow.entry_add(

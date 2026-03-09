@@ -87,6 +87,18 @@ _HEADER_FAMILY_18_OFFSET: Final[int] = 0x18
 _HEADER_TRAILER_MIRROR_OFFSET: Final[int] = 0x0A59
 
 
+def _load_scaffold() -> bytes:
+    global _scaffold_cache
+    if _scaffold_cache is None:
+        _scaffold_cache = (
+            resources.files("clicknick.ladder")
+            .joinpath("resources/smoke_simple_native.scaffold.bin")
+            .read_bytes()
+        )
+        assert len(_scaffold_cache) == BUFFER_SIZE
+    return _scaffold_cache
+
+
 @dataclass(frozen=True)
 class HeaderSeed:
     """Column-uniform header seed bytes used for context/session family modeling."""
@@ -131,18 +143,6 @@ class HeaderSeed:
             buf[entry_start + _HEADER_FAMILY_17_OFFSET] = self.family_17
             buf[entry_start + _HEADER_FAMILY_18_OFFSET] = self.family_18
         buf[_HEADER_TRAILER_MIRROR_OFFSET] = self.profile_05
-
-
-def _load_scaffold() -> bytes:
-    global _scaffold_cache
-    if _scaffold_cache is None:
-        _scaffold_cache = (
-            resources.files("clicknick.ladder")
-            .joinpath("resources/smoke_simple_native.scaffold.bin")
-            .read_bytes()
-        )
-        assert len(_scaffold_cache) == BUFFER_SIZE
-    return _scaffold_cache
 
 
 def _encode_utf16(value: str) -> bytes:
@@ -453,7 +453,9 @@ def _write_topology_for_simple_series(buf: bytearray, contacts: list[Contact]) -
         buf[row1_col1 + _CELL_PROFILE_11_OFFSET] = profile_11
         buf[row1_col1 + _CELL_CONTROL_A_OFFSET] = control_a
         buf[row1_col1 + _CELL_CONTROL_B_OFFSET] = control_b
-        buf[row1_col1 + CELL_HORIZONTAL_LEFT_OFFSET] = 0x02 if (first_contact.immediate ^ second_contact.immediate) else 0x00
+        buf[row1_col1 + CELL_HORIZONTAL_LEFT_OFFSET] = (
+            0x02 if (first_contact.immediate ^ second_contact.immediate) else 0x00
+        )
 
 
 def _patch_long_series_tail_profile(
@@ -587,6 +589,7 @@ def _patch_two_series_structure(
     buf[row1_col3 + 0x2A + total_shift] = 0x01
     # Keep this metadata byte clear; native captures keep it at zero.
     buf[row1_col3 + 0x23] = 0x00
+
 
 def _clear_stale_type_marker(buf: bytearray, type_offset: int) -> None:
     """Zero marker bytes at a known anchor if they currently look like 0x27XX."""

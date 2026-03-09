@@ -48,9 +48,7 @@ def _validate_u8(name: str, value: int) -> None:
 
 def _load_template() -> bytes:
     data = (
-        resources.files("clicknick.ladder")
-        .joinpath(EMPTY_MULTIROW_TEMPLATE_RESOURCE)
-        .read_bytes()
+        resources.files("clicknick.ladder").joinpath(EMPTY_MULTIROW_TEMPLATE_RESOURCE).read_bytes()
     )
     if len(data) < GRID_FIRST_ROW_START + GRID_ROW_STRIDE:
         raise ValueError(f"Empty multi-row template is too short: {len(data)} bytes")

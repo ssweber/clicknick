@@ -309,7 +309,9 @@ def test_verify_prepare_calls_ensure_before_clipboard_copy(tmp_path: Path) -> No
     assert result["mdb_ensure"]["parsed_addresses"] == ["X001", "X002", "Y001", "Y005"]
 
 
-def test_verify_prepare_shorthand_comment_rows_supported_for_plain_empty_rung(tmp_path: Path) -> None:
+def test_verify_prepare_shorthand_comment_rows_supported_for_plain_empty_rung(
+    tmp_path: Path,
+) -> None:
     fake = _FakeClipboard()
     workflow = _make_workflow(tmp_path, fake)
     workflow.entry_add(
