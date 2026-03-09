@@ -1,4 +1,4 @@
-"""Tests for clicknick.ladder.csv_bundle."""
+"""Tests for clicknick.csv.bundle."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from clicknick.ladder.csv_bundle import parse_bundle
-from clicknick.ladder.csv_contract import CONDITION_COLUMNS, CSV_HEADER
+from clicknick.csv.bundle import parse_bundle
+from clicknick.csv.contract import CONDITION_COLUMNS, CSV_HEADER
 
 
 def _write_one_row_file(path: Path, marker: str = "R", af: str = "out(Y001)") -> None:

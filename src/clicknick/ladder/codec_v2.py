@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from importlib import resources
 from typing import Literal
 
-from .csv_ast import (
+from ..csv.ast import (
     AfBlank,
     AfCall,
     BlankCondition,
@@ -25,8 +25,8 @@ from .csv_ast import (
     RowAst,
     VerticalPassThroughWire,
 )
-from .csv_shorthand import normalize_shorthand_row
-from .csv_token_parser import parse_af_token, parse_condition_token
+from ..csv.shorthand import normalize_shorthand_row
+from ..csv.token_parser import parse_af_token, parse_condition_token
 from .topology import (
     CELL_HORIZONTAL_LEFT_OFFSET,
     CELL_HORIZONTAL_RIGHT_OFFSET,

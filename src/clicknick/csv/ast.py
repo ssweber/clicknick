@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from .csv_contract import CONDITION_COLUMNS
+from .contract import CONDITION_COLUMNS
 
 KNOWN_AF_NAMES = {
     "out",

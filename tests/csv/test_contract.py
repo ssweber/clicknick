@@ -1,15 +1,15 @@
-"""Tests for clicknick.ladder.csv_contract."""
+"""Tests for clicknick.csv.contract."""
 
 import pytest
 
-from clicknick.ladder.csv_contract import (
+from clicknick.csv.contract import (
     CONDITION_COLUMNS,
     CSV_HEADER,
     TOTAL_COLUMNS,
     is_valid_marker,
     validate_header,
 )
-from clicknick.ladder.csv_parser import parse_row
+from clicknick.csv.parser import parse_row
 
 
 def test_header_exact_match() -> None:

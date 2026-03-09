@@ -6,10 +6,10 @@ import csv
 from pathlib import Path
 from typing import Literal
 
-from .csv_ast import CanonicalRow, ParsedCsvFileAst, RowAst, RungAst
-from .csv_contract import CSV_HEADER, TOTAL_COLUMNS, is_valid_marker, validate_header
-from .csv_shorthand import normalize_shorthand_row
-from .csv_token_parser import parse_af_token, parse_condition_token
+from .ast import CanonicalRow, ParsedCsvFileAst, RowAst, RungAst
+from .contract import CSV_HEADER, TOTAL_COLUMNS, is_valid_marker, validate_header
+from .shorthand import normalize_shorthand_row
+from .token_parser import parse_af_token, parse_condition_token
 
 
 def _detect_file_role(path: Path) -> tuple[Literal["main", "subroutine"], str | None]:

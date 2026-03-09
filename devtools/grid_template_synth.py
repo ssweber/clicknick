@@ -14,8 +14,8 @@ import argparse
 from pathlib import Path
 from typing import Iterable
 
+from clicknick.csv.shorthand import normalize_shorthand_row
 from clicknick.ladder.codec import BUFFER_SIZE
-from clicknick.ladder.csv_shorthand import normalize_shorthand_row
 from clicknick.ladder.topology import (
     CELL_HORIZONTAL_LEFT_OFFSET,
     CELL_HORIZONTAL_RIGHT_OFFSET,

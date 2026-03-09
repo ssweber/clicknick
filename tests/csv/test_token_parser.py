@@ -1,11 +1,11 @@
-"""Tests for clicknick.ladder.csv_token_parser."""
+"""Tests for clicknick.csv.token_parser."""
 
 from __future__ import annotations
 
 import pytest
 
-from clicknick.ladder.csv_ast import AfCall, GenericCondition, VerticalPassThroughWire
-from clicknick.ladder.csv_token_parser import parse_af_token, parse_condition_token
+from clicknick.csv.ast import AfCall, GenericCondition, VerticalPassThroughWire
+from clicknick.csv.token_parser import parse_af_token, parse_condition_token
 
 
 @pytest.mark.parametrize(

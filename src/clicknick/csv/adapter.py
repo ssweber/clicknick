@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .csv_ast import (
+from ..ladder.model import Coil, Contact, InstructionType, RungGrid
+from .ast import (
     AfCall,
     BlankCondition,
     ComparisonCondition,
@@ -16,7 +17,6 @@ from .csv_ast import (
     RungAst,
     VerticalPassThroughWire,
 )
-from .model import Coil, Contact, InstructionType, RungGrid
 
 
 @dataclass

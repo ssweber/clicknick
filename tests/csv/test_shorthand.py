@@ -1,9 +1,9 @@
-"""Tests for clicknick.ladder.csv_shorthand."""
+"""Tests for clicknick.csv.shorthand."""
 
 import pytest
 
-from clicknick.ladder.csv_contract import CONDITION_COLUMNS
-from clicknick.ladder.csv_shorthand import format_comment_shorthand_row, normalize_shorthand_row
+from clicknick.csv.contract import CONDITION_COLUMNS
+from clicknick.csv.shorthand import format_comment_shorthand_row, normalize_shorthand_row
 
 
 def test_shorthand_wire_fill() -> None:

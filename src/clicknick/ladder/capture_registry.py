@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from .csv_shorthand import normalize_shorthand_row, render_shorthand_row
+from ..csv.shorthand import normalize_shorthand_row, render_shorthand_row
 
 CAPTURE_TYPES = {"native", "synthetic", "patch", "pasteback"}
 PAYLOAD_SOURCE_MODES = {"shorthand", "file"}

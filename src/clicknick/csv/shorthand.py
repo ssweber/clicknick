@@ -5,8 +5,8 @@ from __future__ import annotations
 import csv
 from io import StringIO
 
-from .csv_ast import CanonicalRow
-from .csv_contract import CONDITION_COLUMNS, is_valid_marker
+from .ast import CanonicalRow
+from .contract import CONDITION_COLUMNS, is_valid_marker
 
 _MACRO_WIRE_FILL = "->"
 _MACRO_BLANK_FILL = "..."

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from clicknick.ladder.csv_shorthand import normalize_shorthand_row
+from clicknick.csv.shorthand import normalize_shorthand_row
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "ladder_captures"
 MANIFEST_PATH = FIXTURES_DIR / "manifest.json"

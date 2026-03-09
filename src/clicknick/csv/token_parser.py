@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 
-from .csv_ast import (
+from ..ladder.model import OPERAND_RE
+from .ast import (
     KNOWN_AF_NAMES,
     AfBlank,
     AfCall,
@@ -19,7 +20,6 @@ from .csv_ast import (
     JunctionDownWire,
     VerticalPassThroughWire,
 )
-from .model import OPERAND_RE
 
 _EDGE_RE = re.compile(r"^(rise|fall)\((.+)\)$")
 _CALL_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*|\.[A-Za-z_][A-Za-z0-9_]*)\((.*)\)$")

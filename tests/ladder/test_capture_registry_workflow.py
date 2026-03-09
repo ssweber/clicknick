@@ -10,13 +10,13 @@ from pathlib import Path
 
 import pytest
 
+from clicknick.csv.shorthand import normalize_shorthand_row
 from clicknick.ladder import capture_registry
 from clicknick.ladder.capture_workflow import (
     CaptureWorkflow,
     CaptureWorkflowPaths,
     default_verify_status_for_event,
 )
-from clicknick.ladder.csv_shorthand import normalize_shorthand_row
 
 
 class _FakeClipboard:

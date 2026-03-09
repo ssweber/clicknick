@@ -1,4 +1,4 @@
-"""Tests for clicknick.ladder.csv_adapter."""
+"""Tests for clicknick.csv.adapter."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from clicknick.ladder.csv_adapter import UnsupportedComplexRungError, to_runggrid_if_simple
-from clicknick.ladder.csv_contract import CONDITION_COLUMNS, CSV_HEADER
-from clicknick.ladder.csv_parser import parse_csv_file
+from clicknick.csv.adapter import UnsupportedComplexRungError, to_runggrid_if_simple
+from clicknick.csv.contract import CONDITION_COLUMNS, CSV_HEADER
+from clicknick.csv.parser import parse_csv_file
 
 
 def _write_canonical(path: Path, rows: list[tuple[str, list[str], str]]) -> None:

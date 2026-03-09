@@ -15,12 +15,12 @@ from typing import Any
 
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
 
+from ..csv.shorthand import format_comment_shorthand_row, normalize_shorthand_row
 from ..utils.mdb_operations import ensure_addresses_exist
 from ..utils.mdb_shared import find_click_database
 from . import capture_registry
 from .clipboard import copy_to_clipboard, find_click_hwnd, read_from_clipboard
 from .codec import ClickCodec, HeaderSeed
-from .csv_shorthand import format_comment_shorthand_row, normalize_shorthand_row
 from .topology import HEADER_ENTRY_BASE, cell_offset, header_structural_equal, parse_wire_topology
 
 FIXTURE_MANIFEST_VERSION = 2

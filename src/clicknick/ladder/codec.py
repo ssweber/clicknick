@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
+from ..csv.ast import RungAst
+from ..csv.shorthand import normalize_shorthand_row, render_shorthand_row
 from . import legacy_codec as _legacy_codec
 from .codec_v2 import (
     EncodeMode,
@@ -18,8 +20,6 @@ from .codec_v2 import (
     V2EncodeReport,
     V2UnsupportedShapeError,
 )
-from .csv_ast import RungAst
-from .csv_shorthand import normalize_shorthand_row, render_shorthand_row
 from .model import RungGrid
 from .topology import WireTopology, parse_wire_topology
 

@@ -1,4 +1,4 @@
-"""Tests for clicknick.ladder.csv_parser."""
+"""Tests for clicknick.csv.parser."""
 
 from __future__ import annotations
 
@@ -7,15 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from clicknick.ladder.csv_ast import (
+from clicknick.csv.ast import (
     AfCall,
     ComparisonCondition,
     ContactCondition,
     EdgeCondition,
     GenericCondition,
 )
-from clicknick.ladder.csv_contract import CONDITION_COLUMNS, CSV_HEADER
-from clicknick.ladder.csv_parser import parse_csv_file
+from clicknick.csv.contract import CONDITION_COLUMNS, CSV_HEADER
+from clicknick.csv.parser import parse_csv_file
 
 
 def _mk_conditions(values: dict[int, str] | None = None) -> list[str]:
