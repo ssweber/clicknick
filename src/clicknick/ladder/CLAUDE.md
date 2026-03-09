@@ -33,13 +33,13 @@ Verified 19/20 shapes pass Click round-trip:
 - NOP on AF column (row 0, multi-row with wires)
 - Plain comments (1 char, 100 chars, 1400 max, cp1252 specials)
 - Edge cases (all 31 cols dashed, vertical B-only, T at column AE)
+- Comment + wires on 1-row rung (guards lifted, awaiting Click verification)
+- Comment + NOP on 1-row rung (guards lifted, awaiting Click verification)
 
 One known Click rendering quirk: multi-row NOP shows extra visual artifacts (Click bug, not encoder bug).
 
 ## Known limitations (not yet implemented)
 
-- Comment + wires on same rung (structurally sound, gated in encode.py)
-- Comment + NOP on same rung (structurally sound, gated in encode.py)
 - Multi-row comments (needs extra 0x1000 page for terminal companion extent)
 - Styled comments (RTF bold/italic/underline — crashes under current model)
 - Contacts (NO, NC, edge, comparison, immediate variants)

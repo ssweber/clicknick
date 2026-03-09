@@ -589,7 +589,10 @@ class CaptureWorkflow:
             "warning": None,
         }
         header_seed: HeaderSeed | None = None
-        if source_mode == "shorthand":
+        has_comment = any(
+            normalize_shorthand_row(r).is_comment for r in current["rung_rows"]
+        )
+        if source_mode == "shorthand" and not has_comment:
             header_seed, seed_meta = self._resolve_header_seed(
                 manifest=manifest,
                 source=seed_source,

@@ -90,9 +90,9 @@ Verified in Click (encode → paste → copy back → decode round-trip):
     [x] Plain comment, 1-row empty, short/medium/max1400 lengths
     [x] Plain comment, all lengths 1..1400 (including formerly broken
         mod-36 lengths like 100)
+    [x] Plain comment + wire topology (1-row; payload and grid are separate)
+    [x] Plain comment + NOP (1-row; payload and grid are separate)
 
-    [ ] Plain comment + wire topology (structurally sound — comment and
-        grid occupy separate regions — but not yet Click-verified)
     [ ] Plain comment on multi-row rung (requires extra page allocation
         for terminal companion extent; model understood but synthesis
         not built)
@@ -108,14 +108,14 @@ Pipeline steps
 
     1. Allocate — page-aligned buffer from row count
     2. Header + cell structure — deterministic per-cell fields
-    3. Wire flags — condition token grid (columns A..AE)
-    4. AF column — NOP via minimal tested byte model
-    5. Comment — optional payload + phase-A
+    3. Comment — optional payload + phase-A (must precede wire flags)
+    4. Wire flags — condition token grid (columns A..AE)
+    5. AF column — NOP via minimal tested byte model
 
 Steps 1-2 are handled by synthesize_empty_multirow. Steps 3-5 are
-applied on top. The comment (step 5) writes into the payload region
-(0x0294+), not into the cell grid, so it does not conflict with wire
-flags for 1-row rungs.
+applied on top. Comment (step 3) is applied before wire flags because
+phase-A overlaps the cell grid region for short comments — writing
+wires after ensures they are not clobbered.
 
 Future extension points for contacts and instructions are marked with
 "FUTURE:" throughout. The main areas are:
@@ -220,6 +220,14 @@ PAYLOAD_BYTES_OFFSET = 0x0298
 PHASE_A_LEN = 0xFC8
 COMMENT_MAX_BYTES = 1400
 
+# Comment-present flag written to header entry0 +0x17.
+# 0x65 = comment on an otherwise empty rung (no wires, no NOP).
+# 0x67 = comment + grid content (wires and/or NOP present).
+# Determined by diffing native captures: comment-only natives use 0x65,
+# comment+wire/NOP natives use 0x67.
+COMMENT_FLAG_EMPTY = 0x65
+COMMENT_FLAG_WITH_GRID = 0x67
+
 # NOTE: The native convention is len_dword = total payload bytes including
 # the trailing NUL in the suffix. The prefix is a fixed RTF ANSI header,
 # the body is plain text encoded as cp1252, and the suffix closes the RTF
@@ -276,12 +284,16 @@ CELL_NOP_ROW_ENABLE_OFFSET = 0x15  # on col0: required for non-first-row NOP
 # Comment framing — hardcoded from native capture (2026-03-09)
 # ---------------------------------------------------------------------------
 
-# RTF envelope prefix (90 bytes). Wraps plain-text comment body.
-# Extracted from a native Click capture of an empty rung with comment.
+# RTF envelope prefix (105 bytes). Wraps plain-text comment body.
+# Uses the full native form with \ansicpg1252 and \deflang1033 so that
+# the payload length matches native captures and phase-A lands at the
+# correct absolute positions in the buffer. Click normalizes both the
+# short and long prefix forms on copy-back, but phase-A alignment is
+# critical because it overlaps the cell grid region.
 _PREFIX = (
-    b"{\\rtf1\\ansi\\deff0"
+    b"{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1033"
     b"{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}\r\n"
-    b"\\viewkind4\\uc1\\pard\\lang1033\\fs20 "
+    b"\\viewkind4\\uc1\\pard\\fs20 "
 )
 
 # RTF envelope suffix (11 bytes). Closes the RTF body.
@@ -333,16 +345,14 @@ def _normalize_af(token: str) -> str:
     raise ValueError(f"Unsupported AF token: {token!r}")
 
 
-def _apply_comment(out: bytearray, text: str) -> None:
+def _apply_comment(out: bytearray, text: str, comment_flag: int) -> None:
     """Write comment payload + phase-A into the payload region.
 
-    FUTURE: For instruction-bearing rungs, the payload region (0x0294+)
-    carries the instruction stream instead of (or in addition to) comment
-    data. The instruction stream uses type markers, function codes, and
-    variable-length UTF-16LE operands — a fundamentally different layout
-    from the fixed prefix+body+suffix comment envelope. A unified payload
-    builder will likely replace both _apply_comment and the future stream
-    builder, selecting the appropriate layout based on rung content.
+    The phase-A stream contains the comment flag value at a periodic
+    stride of 0x40 bytes (starting at relative offset 0x13), mirroring
+    the entry0 +0x17 header byte across all 63 cell-sized slots. Two
+    tail bytes at relative offsets 0x0FA1 and 0x0FA5 are set to 1 for
+    comment+grid rungs (flag 0x67) and 0 for comment-only (flag 0x65).
     """
     encoded = text.encode("cp1252")
     if len(encoded) > COMMENT_MAX_BYTES:
@@ -359,8 +369,18 @@ def _apply_comment(out: bytearray, text: str) -> None:
     # Payload body (at 0x0298)
     payload_end = PAYLOAD_BYTES_OFFSET + len(payload)
     out[PAYLOAD_BYTES_OFFSET:payload_end] = payload
-    # Phase-A immediately after payload
-    out[payload_end : payload_end + len(_PHASE_A)] = _PHASE_A
+
+    # Phase-A immediately after payload, patched with the comment flag
+    phase_a = bytearray(_PHASE_A)
+    # 63 periodic slots: phase_a[0x13 + 0x40*k] = comment_flag
+    for k in range(63):
+        phase_a[0x13 + 0x40 * k] = comment_flag
+    # Tail bytes: 1 for comment+grid (0x67), 0 for comment-only (0x65)
+    tail_val = 1 if comment_flag == COMMENT_FLAG_WITH_GRID else 0
+    phase_a[0x0FA1] = tail_val
+    phase_a[0x0FA5] = tail_val
+
+    out[payload_end : payload_end + len(phase_a)] = phase_a
 
 
 # ---------------------------------------------------------------------------
@@ -390,9 +410,9 @@ def encode_rung(
         ``""`` leaves it blank.
     comment:
         Optional single-line comment text (cp1252, max 1400 bytes).
-        Currently gated to 1-row rungs (multi-row needs extra page
+        Currently limited to 1-row rungs (multi-row needs extra page
         synthesis). Comment + wires and comment + NOP on 1-row rungs
-        are structurally sound but awaiting Click verification.
+        are supported (payload and cell grid occupy separate regions).
 
     Returns
     -------
@@ -438,8 +458,8 @@ def encode_rung(
     # exists because multi-row comments add an extra 0x1000 page to the
     # buffer for a terminal companion extent (font descriptors, CJK fallback
     # tables), and synthesis of that extra page is not yet built.
-    # Comment + wires on a 1-row rung is structurally sound but not yet
-    # Click-verified — leaving the empty-grid guard until verified.
+    # Comment + wires and comment + NOP on a 1-row rung are structurally
+    # sound — comment payload (0x0294+) and cell grid (0x0A60+) don't overlap.
 
     has_comment = comment is not None and comment != ""
     if has_comment:
@@ -447,16 +467,6 @@ def encode_rung(
             raise ValueError(
                 "Comments on multi-row rungs require terminal companion "
                 "page synthesis (not yet implemented)"
-            )
-        if any(t != "" for t in condition_rows[0]):
-            raise ValueError(
-                "Comment + wire topology is structurally sound but not yet "
-                "Click-verified — remove this guard after verification"
-            )
-        if _normalize_af(af_tokens[0]) != "":
-            raise ValueError(
-                "Comment + NOP is structurally sound but not yet "
-                "Click-verified — remove this guard after verification"
             )
 
     # --- Step 1–2: Allocate + header + cell structure ---
@@ -478,7 +488,56 @@ def encode_rung(
 
     out = bytearray(synthesize_empty_multirow(logical_rows))
 
-    # --- Step 3: Wire flags on condition columns (A..AE) ---
+    # --- Step 3: Comment ---
+    # Comment MUST be applied before wire flags because phase-A (0xFC8
+    # bytes after the RTF payload) overlaps the cell grid region for
+    # short comments in 1-row buffers. Writing wires after phase-A
+    # ensures wire flag bytes are not clobbered.
+    #
+    # FUTURE: Two known limitations to address:
+    #   1. Multi-row comments: the buffer needs an extra 0x1000 page for
+    #      a terminal companion extent carrying renderer/layout metadata
+    #      (font descriptors, CJK fallback tables). The page-extent model
+    #      is understood (handoff: row32 max1400 = 73728 = 18 pages vs
+    #      69632 = 17 pages without comment) but synthesis not yet built.
+    #   2. Styled comments (RTF bold/italic/underline): the payload is
+    #      standard RTF (\b, \i, \ul tokens) but styled probes crash
+    #      under the current model. Likely requires companion bytes in
+    #      the continuation stream that plain comments don't need.
+
+    if has_comment:
+        # Determine if the grid carries wires and/or NOP.
+        has_wires = any(t != "" for row in condition_rows for t in row)
+        has_nop = any(_normalize_af(af) == "NOP" for af in af_tokens)
+        has_grid_content = has_wires or has_nop
+
+        # Header entry0 +0x17: 0x65 = comment-only, 0x67 = comment + grid.
+        comment_flag = (
+            COMMENT_FLAG_WITH_GRID if has_grid_content else COMMENT_FLAG_EMPTY
+        )
+        out[0x0254 + 0x17] = comment_flag
+
+        # Wire seed: entry0 +0x05=0x01, +0x11=0x02, trailer 0x0A59=0x01
+        # when wires are present alongside a comment. Determined by diffing
+        # native comment+wire+NOP vs comment+NOP captures.
+        if has_wires:
+            out[0x0254 + 0x05] = 0x01
+            out[0x0254 + 0x11] = 0x02
+            out[0x0A59] = 0x01
+
+        _apply_comment(out, comment, comment_flag)
+
+        # Zero out everything after phase-A ends. The scaffold writes
+        # structural data for all 32 row positions, but comment rungs
+        # (especially with flag 0x67) expect zeros past the phase-A
+        # stream. Native captures confirm zeros in this region.
+        encoded = comment.encode("cp1252")
+        payload_len = len(_PREFIX) + len(encoded) + len(_SUFFIX)
+        phase_a_end = PAYLOAD_BYTES_OFFSET + payload_len + PHASE_A_LEN
+        out[phase_a_end:] = b"\x00" * (len(out) - phase_a_end)
+
+    # --- Step 4: Wire flags on condition columns (A..AE) ---
+    # Applied after comment so phase-A doesn't clobber wire flag bytes.
     # FUTURE: Contact tokens (NO, NC, edge, comparison, immediate variants)
     # will set wire flags the same as "-" (left=1, right=1, down=0) but
     # also write an instruction stream entry into the payload region. The
@@ -493,7 +552,7 @@ def encode_rung(
             left, right, down = _TOKEN_FLAGS[token]
             _set_wire_flags(out, row_idx, col_idx, left, right, down)
 
-    # --- Step 4: AF column (NOP encoding) ---
+    # --- Step 5: AF column (NOP encoding) ---
     # Minimal tested model: col31 +0x1D = 1 is sufficient for row 0.
     # Non-first-row NOP additionally requires col0 +0x15 = 1.
 
@@ -505,28 +564,5 @@ def encode_rung(
             if row_idx > 0:
                 col0_start = cell_offset(row_idx, 0)
                 out[col0_start + CELL_NOP_ROW_ENABLE_OFFSET] = 1
-
-    # --- Step 5: Comment ---
-    # The comment payload lives in the payload region (0x0294+), entirely
-    # separate from the cell grid (0x0A60+). Phase-A is a continuation
-    # stream anchored at payload_end — it is NOT cell grid data, even
-    # though for short comments in 1-row buffers it lands at addresses
-    # that overlap the grid range numerically.
-    #
-    # FUTURE: Two known limitations to address:
-    #   1. Multi-row comments: the buffer needs an extra 0x1000 page for
-    #      a terminal companion extent carrying renderer/layout metadata
-    #      (font descriptors, CJK fallback tables). The page-extent model
-    #      is understood (handoff: row32 max1400 = 73728 = 18 pages vs
-    #      69632 = 17 pages without comment) but synthesis not yet built.
-    #   2. Styled comments (RTF bold/italic/underline): the payload is
-    #      standard RTF (\b, \i, \ul tokens) but styled probes crash
-    #      under the current model. Likely requires companion bytes in
-    #      the continuation stream that plain comments don't need.
-
-    if has_comment:
-        # Header entry0 +0x17 = 0x65 signals "comment present" to Click.
-        out[0x0254 + 0x17] = 0x65
-        _apply_comment(out, comment)
 
     return bytes(out)
