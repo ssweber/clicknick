@@ -288,12 +288,17 @@ def test_verify_prepare_calls_ensure_before_clipboard_copy(tmp_path: Path) -> No
         }
 
     workflow = _make_workflow(tmp_path, fake, ensure_mdb_fn=ensure_mdb)
+    payload_path = tmp_path / "scratchpad" / "captures" / "verify_case.bin"
+    payload_path.parent.mkdir(parents=True, exist_ok=True)
+    payload_path.write_bytes(b"\x00" * 8192)
     workflow.entry_add(
         capture_type="synthetic",
         label="verify_case",
         scenario="verify",
         description="ensure ordering",
         rows=["R,X001,~X002,->,:,out(Y001..Y005)"],
+        payload_source_mode="file",
+        payload_file="scratchpad/captures/verify_case.bin",
     )
 
     result = workflow.verify_prepare(label="verify_case")
@@ -340,7 +345,7 @@ def test_verify_prepare_skips_ensure_when_disabled(tmp_path: Path) -> None:
         label="verify_case",
         scenario="verify",
         description="skip ensure",
-        rows=["R,X001,->,:,out(Y001)"],
+        rows=["R,->,:,NOP"],
     )
 
     result = workflow.verify_prepare(label="verify_case", ensure_mdb_addresses=False)
@@ -358,7 +363,7 @@ def test_verify_prepare_forwards_owner_hwnd(tmp_path: Path) -> None:
         label="verify_case",
         scenario="verify",
         description="owner spoof forwarding",
-        rows=["R,X001,->,:,out(Y001)"],
+        rows=["R,->,:,NOP"],
     )
 
     workflow.verify_prepare(
@@ -409,7 +414,7 @@ def test_verify_run_interactive_forwards_mdb_path_to_ensure(tmp_path: Path) -> N
         label="verify_case",
         scenario="verify",
         description="forward mdb path",
-        rows=["R,X001,->,:,out(Y001)"],
+        rows=["R,->,:,NOP"],
     )
     custom_mdb = tmp_path / "manual.mdb"
     custom_mdb.write_bytes(b"")
@@ -437,7 +442,7 @@ def test_verify_prepare_ensure_failure_is_fail_fast(tmp_path: Path) -> None:
         label="verify_case",
         scenario="verify",
         description="fail fast",
-        rows=["R,X001,->,:,out(Y001)"],
+        rows=["R,->,:,NOP"],
     )
 
     with pytest.raises(RuntimeError, match="ensure failed"):

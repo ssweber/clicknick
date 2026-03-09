@@ -1,8 +1,15 @@
 """Ladder module — encode/decode Click PLC clipboard rungs."""
 
 from .clipboard import clear_clipboard, copy_to_clipboard, read_from_clipboard
-from .codec import ClickCodec, EncodeResult, HeaderSeed
-from .codec_v2 import LadderRungV2, V2Degradation, V2EncodeReport, V2UnsupportedShapeError
+from .codec import (
+    ClickCodec,
+    EncodeResult,
+    HeaderSeed,
+    LadderRungV2,
+    V2Degradation,
+    V2EncodeReport,
+    V2UnsupportedShapeError,
+)
 from .empty_multirow import (
     EMPTY_MULTIROW_MAX_ROWS,
     EMPTY_MULTIROW_MIN_ROWS,
@@ -10,13 +17,7 @@ from .empty_multirow import (
     empty_multirow_row_word,
     synthesize_empty_multirow,
 )
-from .nonempty_multirow import (
-    NONEMPTY_MULTIROW_MAX_ROWS,
-    NONEMPTY_MULTIROW_MIN_ROWS,
-    nonempty_multirow_payload_length,
-    nonempty_multirow_row_word,
-    synthesize_nonempty_multirow,
-)
+from .encode import encode_rung
 from .model import Coil, Contact, InstructionType, RungGrid
 from .topology import (
     CELL_HORIZONTAL_LEFT_OFFSET,
@@ -59,11 +60,7 @@ __all__ = [
     "empty_multirow_payload_length",
     "empty_multirow_row_word",
     "synthesize_empty_multirow",
-    "NONEMPTY_MULTIROW_MIN_ROWS",
-    "NONEMPTY_MULTIROW_MAX_ROWS",
-    "nonempty_multirow_payload_length",
-    "nonempty_multirow_row_word",
-    "synthesize_nonempty_multirow",
+    "encode_rung",
     "parse_wire_topology",
     "read_from_clipboard",
 ]

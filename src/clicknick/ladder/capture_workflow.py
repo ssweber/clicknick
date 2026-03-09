@@ -401,7 +401,6 @@ class CaptureWorkflow:
             return ClickCodec().encode_rows(
                 entry["rung_rows"],
                 mode="strict",
-                legacy_fallback=True,
                 header_seed=header_seed,
             )
 

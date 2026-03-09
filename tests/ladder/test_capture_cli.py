@@ -65,7 +65,7 @@ def _make_workflow(
         label="verify_case",
         scenario="smoke",
         description="verify path test",
-        rows=["R,X001,->,:,out(Y001)"],
+        rows=["R,->,:,NOP"],
         payload_source_mode="shorthand",
     )
     return workflow
@@ -264,6 +264,35 @@ def test_verify_prepare_comment_rows_shorthand_supported_for_plain_empty_rung(tm
 
     assert rc == 0
     assert len(fake.copied_payloads) == 1
+
+
+def test_verify_prepare_strict_rejects_unsupported_instruction_shorthand(tmp_path: Path) -> None:
+    fake = _FakeClipboard(read_payload=b"\x11" * 8192)
+    workflow = _make_workflow(tmp_path, fake)
+    workflow.entry_add(
+        capture_type="synthetic",
+        label="unsupported_verify_case",
+        scenario="verify",
+        description="unsupported shorthand instruction path",
+        rows=["R,X001,->,:,out(Y001)"],
+    )
+    output: list[str] = []
+
+    rc = main(
+        [
+            "verify",
+            "prepare",
+            "--label",
+            "unsupported_verify_case",
+            "--no-ensure-mdb-addresses",
+        ],
+        workflow=workflow,
+        output_fn=output.append,
+    )
+
+    assert rc == 1
+    assert fake.copied_payloads == []
+    assert any("unsupported_condition" in line for line in output)
 
 
 def test_verify_prepare_seed_source_clipboard_applies_header_seed(tmp_path: Path) -> None:
@@ -713,7 +742,7 @@ def test_tui_verify_guided_queue_walks_unverified_entries_without_label_input(tm
         label="verify_case_2",
         scenario="guided_verify",
         description="second guided verify case",
-        rows=["R,X001,~X002,->,:,out(Y001)"],
+        rows=["R,->,:,NOP"],
         payload_source_mode="shorthand",
     )
     output: list[str] = []
