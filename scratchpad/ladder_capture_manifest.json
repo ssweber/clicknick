@@ -1016,7 +1016,7 @@
         "#,A",
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_result_file": "scratchpad/captures/regression-comment-1char_verify_back_20260309_173451.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T17:33:53Z",
@@ -1046,7 +1046,7 @@
         "#,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_result_file": "scratchpad/captures/regression-comment-max1400_verify_back_20260309_173608.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T17:33:53Z",
@@ -1073,7 +1073,7 @@
       "verify_observed_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_result_file": "scratchpad/captures/regression-empty-1row_verify_back_20260309_173619.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T17:33:54Z",
@@ -1100,7 +1100,7 @@
       "verify_observed_rows": [
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
       ],
-      "verify_result_file": "scratchpad/captures/regression-fullwire-1row_verify_back_20260309_173628.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T17:33:54Z",
@@ -1127,7 +1127,7 @@
       "verify_observed_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
       ],
-      "verify_result_file": "scratchpad/captures/regression-nop-1row_verify_back_20260309_173635.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T17:33:54Z",
@@ -1154,7 +1154,7 @@
       "verify_observed_rows": [
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
       ],
-      "verify_result_file": "scratchpad/captures/regression-fullwire-nop_verify_back_20260309_173641.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T17:33:55Z",
@@ -1184,7 +1184,7 @@
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_result_file": "scratchpad/captures/regression-empty-2row_verify_back_20260309_173651.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T17:33:55Z",
@@ -1457,7 +1457,7 @@
         "#,Hello world",
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-only_verify_back_20260309_192334.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T19:02:36Z",
@@ -1487,7 +1487,7 @@
         "#,A",
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-1char_verify_back_20260309_192341.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T19:02:36Z",
@@ -1517,7 +1517,7 @@
         "#,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-100char_verify_back_20260309_192353.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T19:02:37Z",
@@ -1547,7 +1547,7 @@
         "#,Partial wires",
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
       ],
-      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-nop_verify_back_20260309_192400.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T19:02:44Z",
@@ -1577,7 +1577,7 @@
         "#,Partial wires",
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
       ],
-      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-fullwire_verify_back_20260309_192407.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T19:02:54Z",
@@ -1607,7 +1607,7 @@
         "#,Partial wires",
         "R,,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-partial-wire_verify_back_20260309_192413.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T19:02:54Z",
@@ -1634,7 +1634,7 @@
       "verify_observed_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_result_file": "scratchpad/captures/verify-0x5A-empty-1row_verify_back_20260309_192440.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T19:02:54Z",
@@ -1661,7 +1661,7 @@
       "verify_observed_rows": [
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
       ],
-      "verify_result_file": "scratchpad/captures/verify-0x5A-fullwire-nop_verify_back_20260309_192446.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T19:02:55Z",
@@ -1691,7 +1691,7 @@
         "#,Wires and NOP",
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
       ],
-      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-fullwire-nop_verify_back_20260309_193831.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T19:37:54Z",
@@ -1721,7 +1721,7 @@
         "#,mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm",
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-100m_verify_back_20260309_193840.bin",
+      "verify_result_file": null,
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T19:37:54Z",
