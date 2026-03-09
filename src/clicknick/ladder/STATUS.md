@@ -24,9 +24,9 @@ as the short operational summary.
   - plain single-line comments on 1-row rungs, lengths 1..1400
   - 1-row plain comment + wires (full and sparse, via phase-A stride)
   - 1-row plain comment + `NOP` (via phase-A slot 62)
-  - 1-row plain comment + wires + `NOP` (combined)
+  - 1-row plain comment + wires + `NOP` (combined, up to max 1400 chars)
 - Not supported:
-  - multi-row comments
+  - multi-row comments (native 2-row captures collected for future work)
   - styled comments
   - contacts / comparisons
   - AF coils (`out`, `latch`, `reset`)

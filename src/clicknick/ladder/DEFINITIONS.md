@@ -174,10 +174,12 @@ stray bytes that Click misinterpreted as cell flags.
 - 32 rows: `0x11000` (69632)
 
 **Comment page**
-A max-length comment on a multi-row rung adds one extra `0x1000` page.
-This page is a terminal companion extent carrying renderer/layout
-metadata (font descriptors, CJK fallback tables). For 1-row rungs, the
-comment fits within the existing buffer.
+Comments on multi-row rungs may add one extra `0x1000` page for a
+terminal companion extent carrying renderer/layout metadata (font
+descriptors, CJK fallback tables). For 1-row rungs, the comment fits
+within the existing buffer. Native 2-row comment captures are 8192 bytes
+(same as without comment) — the extra page may only appear at higher row
+counts or longer comments.
 
 **Split signature**
 A verify-back length that is a multiple of the expected size indicates

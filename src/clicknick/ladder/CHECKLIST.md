@@ -14,8 +14,8 @@ Updated per integration session.
 | Comment (empty rung) | **Supported** | 1 | Plain text, 1–1400 chars, all lengths |
 | Comment + wires | **Supported** | 1 | Full and sparse wires verified (phase-A stride encoding) |
 | Comment + NOP | **Supported** | 1 | NOP via phase-A slot 62 + 0x25 |
-| Comment + wires + NOP | **Supported** | 1 | All three combined verified |
-| Comment (multi-row) | **Not supported** | 2–32 | Needs extra page + terminal companion synthesis |
+| Comment + wires + NOP | **Supported** | 1 | All three combined, including max 1400 + sparse + NOP |
+| Comment (multi-row) | **Not supported** | 2–32 | Native 2-row captures collected (8192 bytes — no extra page at 2 rows). Synthesis not built |
 | Condition contacts | **Not supported** | — | Needs instruction stream builder |
 | AF coils (out/latch/reset) | **Not supported** | — | Needs instruction stream + AF cell model |
 | Styled comments | **Not supported** | — | RTF bold/italic/underline crashes |
@@ -123,5 +123,6 @@ All "supported" items above are backed by Click round-trip verification
 | Plain comment (short) | `gpcx_short_exact_20260308` |
 | Plain comment (medium) | `gpcx_medium_exact_20260308` |
 | Plain comment (max1400) | `gpcx_max1400_exact_20260308` |
-| Comment + wires/NOP (0x5A flag) | `verify-0x5A-flag-20260309` (10 shapes: comment-only, 1char, 100char, 100m, NOP, fullwire, partial-wire, fullwire+NOP, empty baseline, fullwire+NOP baseline) |
+| Comment + wires/NOP (0x5A flag) | `verify-0x5A-flag-20260309` (11 shapes: comment-only, 1char, 100char, 100m, NOP, fullwire, partial-wire, fullwire+NOP, max1400+sparse+NOP, empty baseline, fullwire+NOP baseline) |
 | Native comment references | `comment-family-flag-20260309` (sparse wire, fullwire, NOP-only — all 0x5A) |
+| Native 2-row comment | `comment-multirow-20260309` (empty grid, wire grid — both 8192 bytes) |
