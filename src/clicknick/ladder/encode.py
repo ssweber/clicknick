@@ -220,13 +220,14 @@ PAYLOAD_BYTES_OFFSET = 0x0298
 PHASE_A_LEN = 0xFC8
 COMMENT_MAX_BYTES = 1400
 
-# Comment-present flag written to header entry0 +0x17.
-# 0x65 = comment on an otherwise empty rung (no wires, no NOP).
-# 0x67 = comment + grid content (wires and/or NOP present).
-# Determined by diffing native captures: comment-only natives use 0x65,
-# comment+wire/NOP natives use 0x67.
-COMMENT_FLAG_EMPTY = 0x65
-COMMENT_FLAG_WITH_GRID = 0x67
+# Comment-present flag written to header entry0 +0x17 and mirrored across
+# all 63 phase-A periodic slots.  Native captures from the current Click
+# version (v3.80) consistently produce 0x5A regardless of grid content
+# (empty, sparse wires, full wires, NOP).  Two older captures showed 0x67
+# and one legacy-prefix capture showed 0x65, but these appear to be
+# version/session artefacts — the 0x5A value is dominant and round-trips
+# cleanly.
+COMMENT_FLAG = 0x5A
 
 # NOTE: The native convention is len_dword = total payload bytes including
 # the trailing NUL in the suffix. The prefix is a fixed RTF ANSI header,
@@ -270,7 +271,7 @@ SUPPORTED_CONDITION_TOKENS = frozenset(_TOKEN_FLAGS)
 #   row 0 NOP:     col31 +0x1D = 1
 #   row N NOP:     col31 +0x1D = 1, col0 +0x15 = 1
 #   native parity: row0 col0 +0x15 = 0 (already zero from empty base)
-CELL_AF_NOP_OFFSET = 0x1D       # on col31: marks NOP output
+CELL_AF_NOP_OFFSET = 0x1D  # on col31: marks NOP output
 CELL_NOP_ROW_ENABLE_OFFSET = 0x15  # on col0: required for non-first-row NOP
 
 # FUTURE: AF instructions beyond NOP (out/latch/reset coils) will need:
@@ -303,9 +304,7 @@ _SUFFIX = b"\r\n\\par }\r\n\x00"
 # resource file extracted from a native capture. This is structural
 # scaffolding that Click expects immediately after the comment payload.
 _PHASE_A = (
-    resources.files("clicknick.ladder")
-    .joinpath("resources/comment_phase_a.bin")
-    .read_bytes()
+    resources.files("clicknick.ladder").joinpath("resources/comment_phase_a.bin").read_bytes()
 )
 
 
@@ -345,40 +344,29 @@ def _normalize_af(token: str) -> str:
     raise ValueError(f"Unsupported AF token: {token!r}")
 
 
-def _apply_comment(out: bytearray, text: str, comment_flag: int) -> None:
+def _apply_comment(out: bytearray, text: str) -> None:
     """Write comment payload + phase-A into the payload region.
 
-    The phase-A stream contains the comment flag value at a periodic
-    stride of 0x40 bytes (starting at relative offset 0x13), mirroring
-    the entry0 +0x17 header byte across all 63 cell-sized slots. Two
-    tail bytes at relative offsets 0x0FA1 and 0x0FA5 are set to 1 for
-    comment+grid rungs (flag 0x67) and 0 for comment-only (flag 0x65).
+    The phase-A stream contains COMMENT_FLAG (0x5A) at a periodic stride
+    of 0x40 bytes (starting at relative offset 0x13), mirroring the
+    entry0 +0x17 header byte across all 63 cell-sized slots.  Tail bytes
+    at +0x0FA1/+0x0FA5 are left at their resource-file baseline (0x00).
     """
     encoded = text.encode("cp1252")
     if len(encoded) > COMMENT_MAX_BYTES:
-        raise ValueError(
-            f"Comment exceeds {COMMENT_MAX_BYTES} bytes "
-            f"(got {len(encoded)})"
-        )
+        raise ValueError(f"Comment exceeds {COMMENT_MAX_BYTES} bytes (got {len(encoded)})")
     payload = _PREFIX + encoded + _SUFFIX
 
     # Payload length (4 bytes LE at 0x0294)
-    out[PAYLOAD_LENGTH_OFFSET:PAYLOAD_BYTES_OFFSET] = len(payload).to_bytes(
-        4, "little"
-    )
+    out[PAYLOAD_LENGTH_OFFSET:PAYLOAD_BYTES_OFFSET] = len(payload).to_bytes(4, "little")
     # Payload body (at 0x0298)
     payload_end = PAYLOAD_BYTES_OFFSET + len(payload)
     out[PAYLOAD_BYTES_OFFSET:payload_end] = payload
 
-    # Phase-A immediately after payload, patched with the comment flag
+    # Phase-A immediately after payload, patched with COMMENT_FLAG
     phase_a = bytearray(_PHASE_A)
-    # 63 periodic slots: phase_a[0x13 + 0x40*k] = comment_flag
     for k in range(63):
-        phase_a[0x13 + 0x40 * k] = comment_flag
-    # Tail bytes: 1 for comment+grid (0x67), 0 for comment-only (0x65)
-    tail_val = 1 if comment_flag == COMMENT_FLAG_WITH_GRID else 0
-    phase_a[0x0FA1] = tail_val
-    phase_a[0x0FA5] = tail_val
+        phase_a[0x13 + 0x40 * k] = COMMENT_FLAG
 
     out[payload_end : payload_end + len(phase_a)] = phase_a
 
@@ -423,29 +411,17 @@ def encode_rung(
     # --- Validate dimensions ---
 
     if not (MIN_ROWS <= logical_rows <= MAX_ROWS):
-        raise ValueError(
-            f"logical_rows must be {MIN_ROWS}..{MAX_ROWS}, got {logical_rows}"
-        )
+        raise ValueError(f"logical_rows must be {MIN_ROWS}..{MAX_ROWS}, got {logical_rows}")
     if len(condition_rows) != logical_rows:
-        raise ValueError(
-            f"Expected {logical_rows} condition rows, got {len(condition_rows)}"
-        )
+        raise ValueError(f"Expected {logical_rows} condition rows, got {len(condition_rows)}")
     if len(af_tokens) != logical_rows:
-        raise ValueError(
-            f"Expected {logical_rows} AF tokens, got {len(af_tokens)}"
-        )
+        raise ValueError(f"Expected {logical_rows} AF tokens, got {len(af_tokens)}")
     for row_idx, row in enumerate(condition_rows):
         if len(row) != CONDITION_COLUMNS:
-            raise ValueError(
-                f"Row {row_idx}: expected {CONDITION_COLUMNS} columns, "
-                f"got {len(row)}"
-            )
+            raise ValueError(f"Row {row_idx}: expected {CONDITION_COLUMNS} columns, got {len(row)}")
         for col_idx, token in enumerate(row):
             if token not in SUPPORTED_CONDITION_TOKENS:
-                raise ValueError(
-                    f"Unsupported token {token!r} at "
-                    f"row={row_idx}, col={col_idx}"
-                )
+                raise ValueError(f"Unsupported token {token!r} at row={row_idx}, col={col_idx}")
             if col_idx == 0 and token in ("|", "T"):
                 raise ValueError(
                     f"Vertical-down tokens are not allowed in column A "
@@ -505,64 +481,74 @@ def encode_rung(
     #      under the current model. Likely requires companion bytes in
     #      the continuation stream that plain comments don't need.
 
+    # Compute phase-A start once (used by steps 3-5 for comment rungs).
+    phase_a_start: int | None = None
     if has_comment:
-        # Determine if the grid carries wires and/or NOP.
-        has_wires = any(t != "" for row in condition_rows for t in row)
-        has_nop = any(_normalize_af(af) == "NOP" for af in af_tokens)
-        has_grid_content = has_wires or has_nop
+        # Header entry0 +0x17: unified comment flag (0x5A).
+        # Native captures from current Click version show 0x5A regardless
+        # of grid content (empty, sparse wires, full wires, NOP).
+        out[0x0254 + 0x17] = COMMENT_FLAG
 
-        # Header entry0 +0x17: 0x65 = comment-only, 0x67 = comment + grid.
-        comment_flag = (
-            COMMENT_FLAG_WITH_GRID if has_grid_content else COMMENT_FLAG_EMPTY
-        )
-        out[0x0254 + 0x17] = comment_flag
+        # Trailer byte 0x0A59 = 0x01 for all comment rungs (confirmed
+        # across sparse, full-wire, and NOP-only native captures).
+        out[0x0A59] = 0x01
 
-        # Wire seed: entry0 +0x05=0x01, +0x11=0x02, trailer 0x0A59=0x01
-        # when wires are present alongside a comment. Determined by diffing
-        # native comment+wire+NOP vs comment+NOP captures.
-        if has_wires:
-            out[0x0254 + 0x05] = 0x01
-            out[0x0254 + 0x11] = 0x02
-            out[0x0A59] = 0x01
+        _apply_comment(out, comment)
 
-        _apply_comment(out, comment, comment_flag)
-
-        # Zero out everything after phase-A ends. The scaffold writes
-        # structural data for all 32 row positions, but comment rungs
-        # (especially with flag 0x67) expect zeros past the phase-A
-        # stream. Native captures confirm zeros in this region.
         encoded = comment.encode("cp1252")
         payload_len = len(_PREFIX) + len(encoded) + len(_SUFFIX)
-        phase_a_end = PAYLOAD_BYTES_OFFSET + payload_len + PHASE_A_LEN
+        phase_a_start = PAYLOAD_BYTES_OFFSET + payload_len
+
+        # Zero out everything after phase-A ends.
+        phase_a_end = phase_a_start + PHASE_A_LEN
         out[phase_a_end:] = b"\x00" * (len(out) - phase_a_end)
 
     # --- Step 4: Wire flags on condition columns (A..AE) ---
-    # Applied after comment so phase-A doesn't clobber wire flag bytes.
-    # FUTURE: Contact tokens (NO, NC, edge, comparison, immediate variants)
-    # will set wire flags the same as "-" (left=1, right=1, down=0) but
-    # also write an instruction stream entry into the payload region. The
-    # stream is serialized at stream-relative offsets from a type marker
-    # (0x27XX), and operand strings are variable-length UTF-16LE — so each
-    # contact shifts all downstream field positions. A stream builder will
-    # need to track cumulative offset as it walks the condition grid left
-    # to right, top to bottom.
+    # For comment rungs, wire data lives in the phase-A stride, NOT in the
+    # cell grid.  Native captures confirm cell grid +0x19/+0x1D are all zero
+    # for comment rungs.  Instead, wires are at phase-A-relative positions:
+    #   slot = col_idx + 31   (within the phase-A 0x40-byte stride)
+    #   left  wire: slot_base + 0x21
+    #   right wire: slot_base + 0x25
+    # The phase-A stream starts immediately after the RTF payload, so wire
+    # positions shift with comment length.  This is payload-length-dependent
+    # but Click reads the payload length field and computes accordingly.
+    #
+    # For non-comment rungs, wires use the cell grid model as before.
 
-    for row_idx, row in enumerate(condition_rows):
-        for col_idx, token in enumerate(row):
-            left, right, down = _TOKEN_FLAGS[token]
-            _set_wire_flags(out, row_idx, col_idx, left, right, down)
+    if has_comment:
+        assert phase_a_start is not None
+        for col_idx, token in enumerate(condition_rows[0]):
+            left, right, _down = _TOKEN_FLAGS[token]
+            slot_base = phase_a_start + (col_idx + 31) * 0x40
+            if left:
+                out[slot_base + 0x21] = 1
+            if right:
+                out[slot_base + 0x25] = 1
+    else:
+        for row_idx, row in enumerate(condition_rows):
+            for col_idx, token in enumerate(row):
+                left, right, down = _TOKEN_FLAGS[token]
+                _set_wire_flags(out, row_idx, col_idx, left, right, down)
 
     # --- Step 5: AF column (NOP encoding) ---
-    # Minimal tested model: col31 +0x1D = 1 is sufficient for row 0.
-    # Non-first-row NOP additionally requires col0 +0x15 = 1.
+    # For comment rungs, NOP uses phase-A slot 62 + 0x25 (confirmed by
+    # native nop-only capture).  For non-comment rungs, cell grid model.
 
-    for row_idx, af in enumerate(af_tokens):
-        if _normalize_af(af) == "NOP":
-            nop_start = cell_offset(row_idx, AF_COLUMN)
-            out[nop_start + CELL_AF_NOP_OFFSET] = 1
+    if has_comment:
+        assert phase_a_start is not None
+        for af in af_tokens:
+            if _normalize_af(af) == "NOP":
+                slot_base = phase_a_start + (AF_COLUMN + 31) * 0x40
+                out[slot_base + 0x25] = 1
+    else:
+        for row_idx, af in enumerate(af_tokens):
+            if _normalize_af(af) == "NOP":
+                nop_start = cell_offset(row_idx, AF_COLUMN)
+                out[nop_start + CELL_AF_NOP_OFFSET] = 1
 
-            if row_idx > 0:
-                col0_start = cell_offset(row_idx, 0)
-                out[col0_start + CELL_NOP_ROW_ENABLE_OFFSET] = 1
+                if row_idx > 0:
+                    col0_start = cell_offset(row_idx, 0)
+                    out[col0_start + CELL_NOP_ROW_ENABLE_OFFSET] = 1
 
     return bytes(out)

@@ -1141,6 +1141,711 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T17:25:34Z",
       "updated_at": "2026-03-09T17:28:00Z"
+    },
+    {
+      "id": "a2f24416-7edb-4885-8ced-bae1c3ce3390",
+      "capture_label": "regression-comment-1char",
+      "capture_type": "synthetic",
+      "scenario": "regression-comment-20260309",
+      "description": "Regression: 1-char comment on empty 1-row rung",
+      "rung_rows": [
+        "#,A",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,A",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,A",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/regression-comment-1char_verify_back_20260309_173451.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T17:33:53Z",
+      "updated_at": "2026-03-09T17:34:51Z"
+    },
+    {
+      "id": "6a57b1e1-7042-4514-b642-6b9adc8c4549",
+      "capture_label": "regression-comment-100char",
+      "capture_type": "synthetic",
+      "scenario": "regression-comment-20260309",
+      "description": "Regression: 100-char comment on empty 1-row rung",
+      "rung_rows": [
+        "#,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "R,,->,:,... single empty column with line",
+      "verify_expected_rows": [
+        "#,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/regression-comment-100char_verify_back_20260309_173551.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T17:33:53Z",
+      "updated_at": "2026-03-09T17:35:51Z"
+    },
+    {
+      "id": "9822df7a-cf7d-4986-99a3-181f658d4e28",
+      "capture_label": "regression-comment-max1400",
+      "capture_type": "synthetic",
+      "scenario": "regression-comment-20260309",
+      "description": "Regression: 1400-char comment on empty 1-row rung",
+      "rung_rows": [
+        "#,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/regression-comment-max1400_verify_back_20260309_173608.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T17:33:53Z",
+      "updated_at": "2026-03-09T17:36:08Z"
+    },
+    {
+      "id": "70f668ed-02b3-4a13-9a6d-90f43f55c90c",
+      "capture_label": "regression-empty-1row",
+      "capture_type": "synthetic",
+      "scenario": "regression-comment-20260309",
+      "description": "Regression baseline: empty 1-row rung, no comment",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/regression-empty-1row_verify_back_20260309_173619.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T17:33:54Z",
+      "updated_at": "2026-03-09T17:36:19Z"
+    },
+    {
+      "id": "6b87b333-34c8-498c-a3cc-18a70ffa0d0f",
+      "capture_label": "regression-fullwire-1row",
+      "capture_type": "synthetic",
+      "scenario": "regression-comment-20260309",
+      "description": "Regression baseline: full wire 1-row rung, no comment",
+      "rung_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/regression-fullwire-1row_verify_back_20260309_173628.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T17:33:54Z",
+      "updated_at": "2026-03-09T17:36:28Z"
+    },
+    {
+      "id": "ab53a772-3a5c-471f-bb92-e4f5d8af01ed",
+      "capture_label": "regression-nop-1row",
+      "capture_type": "synthetic",
+      "scenario": "regression-comment-20260309",
+      "description": "Regression baseline: NOP-only 1-row rung, no comment",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/regression-nop-1row_verify_back_20260309_173635.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T17:33:54Z",
+      "updated_at": "2026-03-09T17:36:35Z"
+    },
+    {
+      "id": "23b7b6b1-b6f4-4c69-bd88-444c72b70802",
+      "capture_label": "regression-fullwire-nop",
+      "capture_type": "synthetic",
+      "scenario": "regression-comment-20260309",
+      "description": "Regression baseline: full wire + NOP 1-row rung, no comment",
+      "rung_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/regression-fullwire-nop_verify_back_20260309_173641.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T17:33:55Z",
+      "updated_at": "2026-03-09T17:36:41Z"
+    },
+    {
+      "id": "d0073b94-75ca-47b0-83f0-ccad87f7def4",
+      "capture_label": "regression-empty-2row",
+      "capture_type": "synthetic",
+      "scenario": "regression-comment-20260309",
+      "description": "Regression baseline: empty 2-row rung, no comment",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/regression-empty-2row_verify_back_20260309_173651.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T17:33:55Z",
+      "updated_at": "2026-03-09T17:36:51Z"
+    },
+    {
+      "id": "c2ef5f1d-395c-4ac1-9216-1076b34d73e3",
+      "capture_label": "native-comment-partial-wire-v2",
+      "capture_type": "native",
+      "scenario": "comment-combo-native-20260309",
+      "description": "Native comment+partial-wire: 'Partial wires' text, dash on B and D, 1-row",
+      "rung_rows": [
+        "#,Partial wires",
+        "R,,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/native-comment-partial-wire-v2.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Partial wires",
+        "R,,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T17:50:53Z",
+      "updated_at": "2026-03-09T18:03:04Z"
+    },
+    {
+      "id": "e5f26d8f-ca1f-4650-bfd5-0c50ce9e0c52",
+      "capture_label": "native-comment-fullwire",
+      "capture_type": "native",
+      "scenario": "comment-family-flag-20260309",
+      "description": "Native comment+fullwire (all 31 cols dashed) to confirm 0x67 family flag",
+      "rung_rows": [
+        "#,Partial wires",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/native-comment-fullwire.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Partial wires",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T18:02:07Z",
+      "updated_at": "2026-03-09T18:04:12Z"
+    },
+    {
+      "id": "1d3871dd-809f-4afe-9f29-d6041896c92a",
+      "capture_label": "native-comment-nop-only",
+      "capture_type": "native",
+      "scenario": "comment-family-flag-20260309",
+      "description": "Native comment+NOP-only (no wires) to check family flag (0x65 expected)",
+      "rung_rows": [
+        "#,Partial wires",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/native-comment-nop-only.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Partial wires",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T18:02:12Z",
+      "updated_at": "2026-03-09T18:03:54Z"
+    },
+    {
+      "id": "533e3467-842d-42c6-b9f0-8b403d83fc0e",
+      "capture_label": "native-comment-flag-A",
+      "capture_type": "native",
+      "scenario": "comment-flag-mapping-20260309",
+      "description": "Single char 'A' comment, empty row, for flag mapping",
+      "rung_rows": [
+        "#,A",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/native-comment-flag-A.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,A",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T18:34:57Z",
+      "updated_at": "2026-03-09T18:36:01Z"
+    },
+    {
+      "id": "0e64a8b0-096b-49aa-95ff-618e59716f9e",
+      "capture_label": "native-comment-flag-B",
+      "capture_type": "native",
+      "scenario": "comment-flag-mapping-20260309",
+      "description": "Single char 'B' comment, empty row, for flag mapping",
+      "rung_rows": [
+        "#,B",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/native-comment-flag-B.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,B",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T18:34:57Z",
+      "updated_at": "2026-03-09T18:36:14Z"
+    },
+    {
+      "id": "e5f6103f-b77a-4cc3-a2ba-e416d12cca41",
+      "capture_label": "native-comment-flag-C",
+      "capture_type": "native",
+      "scenario": "comment-flag-mapping-20260309",
+      "description": "Single char 'C' comment, empty row, for flag mapping",
+      "rung_rows": [
+        "#,C",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/native-comment-flag-C.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,C",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T18:34:58Z",
+      "updated_at": "2026-03-09T18:36:25Z"
+    },
+    {
+      "id": "5c86fd1a-4509-4906-9c34-2474941a9e94",
+      "capture_label": "native-comment-flag-AB",
+      "capture_type": "native",
+      "scenario": "comment-flag-mapping-20260309",
+      "description": "Two char 'AB' comment, empty row, for flag mapping",
+      "rung_rows": [
+        "#,AB",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/native-comment-flag-AB.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,AB",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T18:34:58Z",
+      "updated_at": "2026-03-09T18:36:39Z"
+    },
+    {
+      "id": "d4c5dce0-f530-4a41-bdbc-bf4439d74ffa",
+      "capture_label": "native-comment-flag-Test",
+      "capture_type": "native",
+      "scenario": "comment-flag-mapping-20260309",
+      "description": "'Test' comment, empty row, for flag mapping",
+      "rung_rows": [
+        "#,Test",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/native-comment-flag-Test.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Test",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T18:34:59Z",
+      "updated_at": "2026-03-09T18:36:55Z"
+    },
+    {
+      "id": "9826245a-dde6-4b58-bf39-49e9b97489b3",
+      "capture_label": "native-comment-flag-100x",
+      "capture_type": "native",
+      "scenario": "comment-flag-mapping-20260309",
+      "description": "100 x chars comment, empty row, for flag mapping (regression-100char text)",
+      "rung_rows": [
+        "#,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/native-comment-flag-100x.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T18:34:59Z",
+      "updated_at": "2026-03-09T18:37:59Z"
+    },
+    {
+      "id": "d794587b-310c-4c6b-8ff1-e033299e7b00",
+      "capture_label": "verify-0x5A-comment-only",
+      "capture_type": "synthetic",
+      "scenario": "verify-0x5A-flag-20260309",
+      "description": "Comment-only (no wires, no NOP) with 0x5A flag",
+      "rung_rows": [
+        "#,Hello world",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Hello world",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Hello world",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-only_verify_back_20260309_192334.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T19:02:36Z",
+      "updated_at": "2026-03-09T19:23:34Z"
+    },
+    {
+      "id": "7dc415b7-965d-4fdb-b40b-f36b0249c1d0",
+      "capture_label": "verify-0x5A-comment-1char",
+      "capture_type": "synthetic",
+      "scenario": "verify-0x5A-flag-20260309",
+      "description": "1-char comment with 0x5A flag",
+      "rung_rows": [
+        "#,A",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,A",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,A",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-1char_verify_back_20260309_192341.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T19:02:36Z",
+      "updated_at": "2026-03-09T19:23:41Z"
+    },
+    {
+      "id": "e58be0af-1a1d-4804-bc49-998516d3db16",
+      "capture_label": "verify-0x5A-comment-100char",
+      "capture_type": "synthetic",
+      "scenario": "verify-0x5A-flag-20260309",
+      "description": "100-char comment with 0x5A flag (previously failed with 0x65)",
+      "rung_rows": [
+        "#,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-100char_verify_back_20260309_192353.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T19:02:37Z",
+      "updated_at": "2026-03-09T19:23:53Z"
+    },
+    {
+      "id": "aa6b63ea-9fad-4f75-b13a-83ee6976d5ee",
+      "capture_label": "verify-0x5A-comment-nop",
+      "capture_type": "synthetic",
+      "scenario": "verify-0x5A-flag-20260309",
+      "description": "Comment + NOP with 0x5A flag",
+      "rung_rows": [
+        "#,Partial wires",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Partial wires",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "#,Partial wires",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-nop_verify_back_20260309_192400.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T19:02:44Z",
+      "updated_at": "2026-03-09T19:24:00Z"
+    },
+    {
+      "id": "eb2d2ff3-0b64-403c-9680-8ceef3a04dbc",
+      "capture_label": "verify-0x5A-comment-fullwire",
+      "capture_type": "synthetic",
+      "scenario": "verify-0x5A-flag-20260309",
+      "description": "Comment + full wire with 0x5A flag",
+      "rung_rows": [
+        "#,Partial wires",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Partial wires",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Partial wires",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-fullwire_verify_back_20260309_192407.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T19:02:54Z",
+      "updated_at": "2026-03-09T19:24:07Z"
+    },
+    {
+      "id": "cb790616-6077-4080-b612-62ddddfb320e",
+      "capture_label": "verify-0x5A-comment-partial-wire",
+      "capture_type": "synthetic",
+      "scenario": "verify-0x5A-flag-20260309",
+      "description": "Comment + sparse wires (dash B and D) with 0x5A flag",
+      "rung_rows": [
+        "#,Partial wires",
+        "R,,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Partial wires",
+        "R,,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Partial wires",
+        "R,,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-partial-wire_verify_back_20260309_192413.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T19:02:54Z",
+      "updated_at": "2026-03-09T19:24:13Z"
+    },
+    {
+      "id": "7ae5e78b-4d67-47c6-84a6-3cbfe40cbf6a",
+      "capture_label": "verify-0x5A-empty-1row",
+      "capture_type": "synthetic",
+      "scenario": "verify-0x5A-flag-20260309",
+      "description": "Empty 1-row rung (no comment) - regression baseline",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/verify-0x5A-empty-1row_verify_back_20260309_192440.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T19:02:54Z",
+      "updated_at": "2026-03-09T19:24:40Z"
+    },
+    {
+      "id": "5bb8cb91-567c-42c8-a5aa-91a1fc140d91",
+      "capture_label": "verify-0x5A-fullwire-nop",
+      "capture_type": "synthetic",
+      "scenario": "verify-0x5A-flag-20260309",
+      "description": "Full wire + NOP (no comment) - regression baseline",
+      "rung_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/verify-0x5A-fullwire-nop_verify_back_20260309_192446.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-09T19:02:55Z",
+      "updated_at": "2026-03-09T19:24:46Z"
     }
   ]
 }
