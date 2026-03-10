@@ -7,7 +7,7 @@
       "WebFetch(domain:ragardner.github.io)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(uv run pytest:*)",
-      "Bash(uv run repomapper:*)"
+      "Bash(uv run:*)",
     ]
   }
 }
