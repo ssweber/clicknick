@@ -89,8 +89,8 @@ Verified in Click (encode → paste → copy back → decode round-trip):
     [x] Full horizontal wire, 1 row
     [x] NOP on row 0
     [x] NOP on non-first rows (with col0 +0x15 enable)
-    [!] Plain comment, 1-row — REGRESSION: pastes as full wire, no
-        comment visible. Was previously verified; needs investigation.
+    [x] Plain comment, 1-row (empty, wire, NOP combos) — fixed by
+        removing 0x0A59 clobber and col-A left-wire skip
     [x] Plain comment on 2-row rung (empty, NOP on row 1, sparse wire)
     [x] Plain comment on 3-row rung (empty, NOP on row 2, wire on
         rows 1+2, same-col wire)
@@ -565,11 +565,12 @@ def encode_rung(
         phase_a_end = phase_a_start + PHASE_A_LEN
 
         if logical_rows == 1:
-            # Trailer byte 0x0A59 = 0x01 for all 1-row comment rungs
-            # (confirmed across sparse, full-wire, and NOP-only native
-            # captures).  This position is within phase-A; the resource
-            # has 0x00 at this offset, so we must set it explicitly.
-            out[0x0A59] = 0x01
+            # 0x0A59 is the "trailer byte" for non-comment rungs, but
+            # for 1-row comment rungs it falls inside the phase-A stream.
+            # Phase-A owns that byte — the resource file's value at the
+            # corresponding relative offset is what Click expects.
+            # Do NOT overwrite it; doing so corrupts phase-A and causes
+            # Click to split the rung into multiple records.
 
             # Zero out everything after phase-A ends (no row 1+ data).
             out[phase_a_end:] = b"\x00" * (len(out) - phase_a_end)
@@ -622,7 +623,9 @@ def encode_rung(
         for col_idx, token in enumerate(condition_rows[0]):
             left, right, down = _TOKEN_FLAGS[token]
             slot_base = phase_a_start + (col_idx + 31) * 0x40
-            if left:
+            # Column A (col_idx 0) is the leftmost column — native captures
+            # never set the left wire flag there (nothing to the left).
+            if left and col_idx > 0:
                 out[slot_base + 0x21] = 1
             if right:
                 out[slot_base + 0x25] = 1

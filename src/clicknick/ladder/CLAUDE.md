@@ -49,9 +49,7 @@ All tested shapes pass Click round-trip:
 
 ## Known regressions
 
-- **1-row comment rungs broken** — pastes as full wire, no comment visible.
-  Was previously verified (empty, wire, NOP combos). Needs investigation.
-  2+ row comment rungs are unaffected.
+_(none)_
 
 ## Known limitations (not yet implemented)
 
