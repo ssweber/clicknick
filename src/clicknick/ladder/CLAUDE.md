@@ -38,18 +38,23 @@ All tested shapes pass Click round-trip:
 - Empty rungs (1/2/8/32 rows)
 - Wire topologies (horizontal, vertical, T-junction, mixed, partial)
 - NOP on AF column (row 0, multi-row with wires)
-- Plain comments (1 char, 100 chars, 1400 max, cp1252 specials)
 - Edge cases (all 31 cols dashed, vertical B-only, T at column AE)
-- Comment + wires (full and sparse, 1-row)
-- Comment + NOP (1-row)
-- Comment + wires + NOP (1-row)
 - **Comment + empty (2-row)**
 - **Comment + NOP on row 1 (2-row)**
 - **Comment + sparse wire on both rows (2-row)**
+- **Comment + empty (3-row)**
+- **Comment + NOP on row 2 (3-row)**
+- **Comment + wire on rows 1+2, including same-col (3-row)**
+- **Comment + empty (4-row)**
+
+## Known regressions
+
+- **1-row comment rungs broken** — pastes as full wire, no comment visible.
+  Was previously verified (empty, wire, NOP combos). Needs investigation.
+  2+ row comment rungs are unaffected.
 
 ## Known limitations (not yet implemented)
 
-- Multi-row comments with 3+ rows (2-row verified; 3+ needs testing)
 - Multi-row comments with vertical wire (T on row 0, receiving wire on row 1; native capture exists but not yet verified as synthetic)
 - Styled comments (RTF bold/italic/underline — crashes under current model)
 - Contacts (NO, NC, edge, comparison, immediate variants)

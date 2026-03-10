@@ -89,15 +89,12 @@ Verified in Click (encode → paste → copy back → decode round-trip):
     [x] Full horizontal wire, 1 row
     [x] NOP on row 0
     [x] NOP on non-first rows (with col0 +0x15 enable)
-    [x] Plain comment, 1-row empty, short/medium/max1400 lengths
-    [x] Plain comment, all lengths 1..1400 (including formerly broken
-        mod-36 lengths like 100)
-    [x] Plain comment + wire topology (1-row; payload and grid are separate)
-    [x] Plain comment + NOP (1-row; payload and grid are separate)
+    [!] Plain comment, 1-row — REGRESSION: pastes as full wire, no
+        comment visible. Was previously verified; needs investigation.
     [x] Plain comment on 2-row rung (empty, NOP on row 1, sparse wire)
-
-    [ ] Plain comment on 3–32-row rung (2-row model may extend; needs
-        testing)
+    [x] Plain comment on 3-row rung (empty, NOP on row 2, wire on
+        rows 1+2, same-col wire)
+    [x] Plain comment on 4-row rung (empty — scaling test)
     [ ] Styled comments (bold/italic/underline RTF; crashes under
         current model)
     [ ] Contacts (NO, NC, edge, comparison, immediate variants)
@@ -352,37 +349,53 @@ def _write_continuation_stream(
     start: int,
     logical_rows: int,
 ) -> None:
-    """Write 32 continuation records after phase-A for multi-row comments.
+    """Write (logical_rows - 1) sets of 32 continuation records after phase-A.
 
-    Each record is a 0x40-byte structure with column index, sentinel row
-    index (= logical_rows), comment flag (0x5A), and standard structural
-    constants.  Column 31 (AF) has +0x38 = 0 and +0x3D = 0 (terminal
-    marker); all other columns have +0x38 = 1 and +0x3D = 2.
+    Each set represents one continuation row (row 1, row 2, ...).  Each
+    record is a 0x40-byte structure with column index, row sentinel, comment
+    flag, and structural constants.
 
-    Derived from native 2-row comment captures (native-comment-2row-empty,
-    native-comment-2row-wire).
+    Per-set rules (set S is 0-indexed, representing row S+1):
+        +0x05 (row sentinel) = S + 2   (1-indexed row: row 1 → 2, row 2 → 3)
+        +0x3D cols 0-30      = S + 2   (matches row sentinel)
+        +0x3D col 31         = S + 3   (link to next set) or 0x00 (terminal)
+        +0x38 col 31         = 0x01    (non-terminal) or 0x00 (terminal)
+
+    The last set (S = logical_rows - 2) is terminal: col 31 gets
+    +0x38 = 0x00 and +0x3D = 0x00.
+
+    Derived from native 2-row and 3-row comment captures.
     """
-    for k in range(COLS_PER_ROW):
-        base = start + k * 0x40
-        out[base + 0x01] = k
-        out[base + 0x05] = logical_rows
-        out[base + 0x09] = 0x01
-        out[base + 0x0A] = 0x01
-        out[base + 0x0B] = COMMENT_FLAG
-        out[base + 0x0C] = 0x01
-        out[base + 0x0D] = 0xFF
-        out[base + 0x0E] = 0xFF
-        out[base + 0x0F] = 0xFF
-        out[base + 0x10] = 0xFF
-        out[base + 0x11] = 0x01
-        if k < COLS_PER_ROW - 1:
-            out[base + 0x38] = 0x01
-            out[base + 0x3D] = 0x02
-        else:
-            # Terminal column (AF): explicitly zero these in case the
-            # scaffold had non-zero values at this address.
-            out[base + 0x38] = 0x00
-            out[base + 0x3D] = 0x00
+    num_sets = logical_rows - 1
+    for s in range(num_sets):
+        is_last_set = s == num_sets - 1
+        row_sentinel = s + 2  # row 1 → 2, row 2 → 3, etc.
+        set_base = start + s * COLS_PER_ROW * CELL_SIZE
+        for k in range(COLS_PER_ROW):
+            base = set_base + k * CELL_SIZE
+            # Zero the record first to clear scaffold cell grid
+            # contamination at non-written offsets.
+            out[base : base + CELL_SIZE] = b"\x00" * CELL_SIZE
+            out[base + 0x01] = k
+            out[base + 0x05] = row_sentinel
+            out[base + 0x09] = 0x01
+            out[base + 0x0A] = 0x01
+            out[base + 0x0B] = COMMENT_FLAG
+            out[base + 0x0C] = 0x01
+            out[base + 0x0D] = 0xFF
+            out[base + 0x0E] = 0xFF
+            out[base + 0x0F] = 0xFF
+            out[base + 0x10] = 0xFF
+            out[base + 0x11] = 0x01
+            if k < COLS_PER_ROW - 1:
+                out[base + 0x38] = 0x01
+                out[base + 0x3D] = row_sentinel
+            elif is_last_set:
+                out[base + 0x38] = 0x00
+                out[base + 0x3D] = 0x00
+            else:
+                out[base + 0x38] = 0x01
+                out[base + 0x3D] = row_sentinel + 1
 
 
 def _apply_comment(out: bytearray, text: str) -> int:
@@ -569,9 +582,10 @@ def encode_rung(
             out[phase_a_start + 0x0FC0] = 0x01
             out[phase_a_start + 0x0FC5] = 0x02
 
-            # Write continuation stream (32 × 0x40 records) after
-            # phase-A, then zero the rest.
-            cont_end = phase_a_end + COLS_PER_ROW * 0x40
+            # Write continuation stream: (logical_rows - 1) sets of
+            # 32 records each, after phase-A. Then zero the rest.
+            num_cont_sets = logical_rows - 1
+            cont_end = phase_a_end + num_cont_sets * COLS_PER_ROW * CELL_SIZE
             if cont_end > len(out):
                 raise ValueError(
                     f"Comment too long for {logical_rows}-row buffer "
@@ -615,17 +629,16 @@ def encode_rung(
             if down:
                 out[slot_base + 0x29] = 1
         # Rows 1+: continuation stream record model.
-        # Write wire data into cont records at +0x19/+0x1D/+0x21,
-        # indexed by column.  cont_start + col_idx * 0x40 is the
-        # base of the record for column col_idx.
+        # Each row R (1-indexed) writes into cont set (R-1), which
+        # starts at phase_a_end + (R-1) * 32 * 0x40.
         if logical_rows > 1:
             assert phase_a_end is not None
-            cont_base_start = phase_a_end  # = phase_a_start + PHASE_A_LEN
             for row_idx in range(1, logical_rows):
+                set_base = phase_a_end + (row_idx - 1) * COLS_PER_ROW * CELL_SIZE
                 for col_idx, token in enumerate(condition_rows[row_idx]):
                     left, right, down = _TOKEN_FLAGS[token]
                     if left or right or down:
-                        rec_base = cont_base_start + col_idx * CELL_SIZE
+                        rec_base = set_base + col_idx * CELL_SIZE
                         out[rec_base + CELL_HORIZONTAL_LEFT_OFFSET] = left
                         out[rec_base + CELL_HORIZONTAL_RIGHT_OFFSET] = right
                         out[rec_base + CELL_VERTICAL_DOWN_OFFSET] = down
@@ -650,18 +663,19 @@ def encode_rung(
             slot_base = phase_a_start + (AF_COLUMN + 31) * 0x40
             out[slot_base + 0x25] = 1
         # Rows 1+: continuation stream record model.
+        # Each row R writes NOP into cont set (R-1).
         # NOP in cont records: cont[31] +0x19=1 AND +0x1D=1, plus
         # cont[0] +0x15=1 (row enable).  Native capture confirms
         # both +0x19 and +0x1D are required (not just +0x1D alone).
         if logical_rows > 1:
             assert phase_a_end is not None
-            cont_base_start = phase_a_end
             for row_idx in range(1, logical_rows):
                 if _normalize_af(af_tokens[row_idx]) == "NOP":
-                    af_rec = cont_base_start + AF_COLUMN * CELL_SIZE
+                    set_base = phase_a_end + (row_idx - 1) * COLS_PER_ROW * CELL_SIZE
+                    af_rec = set_base + AF_COLUMN * CELL_SIZE
                     out[af_rec + CELL_HORIZONTAL_LEFT_OFFSET] = 1
                     out[af_rec + CELL_AF_NOP_OFFSET] = 1
-                    col0_rec = cont_base_start + 0 * CELL_SIZE
+                    col0_rec = set_base + 0 * CELL_SIZE
                     out[col0_rec + CELL_NOP_ROW_ENABLE_OFFSET] = 1
     else:
         for row_idx, af in enumerate(af_tokens):

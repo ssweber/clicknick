@@ -936,7 +936,7 @@
       "verify_clipboard_len": null,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T16:31:11Z",
-      "updated_at": "2026-03-09T16:32:18Z"
+      "updated_at": "2026-03-10T18:35:02Z"
     },
     {
       "id": "11dffb8b-aa7b-48c3-b109-3c6668485f59",
@@ -2036,6 +2036,489 @@
       "promoted_fixture_file": "tests/fixtures/ladder_captures/verify-comment-2row-sparse-wire.bin",
       "created_at": "2026-03-10T16:54:14Z",
       "updated_at": "2026-03-10T17:00:58Z"
+    },
+    {
+      "id": "79e4e460-be55-4105-aac3-9a5a8ef9a653",
+      "capture_label": "cmtR3-empty",
+      "capture_type": "synthetic",
+      "scenario": "comment-3row-v3",
+      "description": "3-row comment, all empty \u2014 per-record zeroing",
+      "rung_rows": [
+        "#,Three row test",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Three row test",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Three row test",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/cmtR3-empty_verify_back_20260310_183357.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T18:33:16Z",
+      "updated_at": "2026-03-10T18:33:57Z"
+    },
+    {
+      "id": "795b7b2f-e314-47f4-ac69-a4d63b8d52e2",
+      "capture_label": "cmtR3-nop-r2",
+      "capture_type": "synthetic",
+      "scenario": "comment-3row-v3",
+      "description": "3-row comment, NOP on row 2",
+      "rung_rows": [
+        "#,Three row NOP",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Three row NOP",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "#,Three row NOP",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/cmtR3-nop-r2_verify_back_20260310_183405.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T18:33:16Z",
+      "updated_at": "2026-03-10T18:34:05Z"
+    },
+    {
+      "id": "b4cd7849-b416-4277-a72b-6714bf2f7c6c",
+      "capture_label": "cmtR3-wire-r1r2",
+      "capture_type": "synthetic",
+      "scenario": "comment-3row-v3",
+      "description": "3-row comment, wire B@row1, wire D@row2",
+      "rung_rows": [
+        "#,Wire rows 1+2",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Wire rows 1+2",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Wire rows 1+2",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/cmtR3-wire-r1r2_verify_back_20260310_183413.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T18:33:16Z",
+      "updated_at": "2026-03-10T18:34:13Z"
+    },
+    {
+      "id": "ba256925-7b7a-41b8-91ff-acfe6d1f4a82",
+      "capture_label": "cmtR3-wire-same-col",
+      "capture_type": "synthetic",
+      "scenario": "comment-3row-v3",
+      "description": "3-row comment, wire B on rows 1 and 2",
+      "rung_rows": [
+        "#,Same col wire",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Same col wire",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Same col wire",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/cmtR3-wire-same-col_verify_back_20260310_183422.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T18:33:17Z",
+      "updated_at": "2026-03-10T18:34:22Z"
+    },
+    {
+      "id": "42cea210-d351-47a3-b375-43b1c193bac3",
+      "capture_label": "cmtR4-empty",
+      "capture_type": "synthetic",
+      "scenario": "comment-4row-v3",
+      "description": "4-row comment, all empty",
+      "rung_rows": [
+        "#,Four row test",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Four row test",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Four row test",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/cmtR4-empty_verify_back_20260310_183442.bin",
+      "verify_clipboard_len": 12288,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T18:33:17Z",
+      "updated_at": "2026-03-10T18:34:42Z"
+    },
+    {
+      "id": "8ee47b04-14c5-4e71-8f7b-119f4cdb7c38",
+      "capture_label": "reg-1row-empty",
+      "capture_type": "synthetic",
+      "scenario": "regression-v3",
+      "description": "1-row empty rung",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/reg-1row-empty_verify_back_20260310_183855.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T18:38:05Z",
+      "updated_at": "2026-03-10T18:38:55Z"
+    },
+    {
+      "id": "b518a3b1-7684-4b83-b58a-fc1bb8e86083",
+      "capture_label": "reg-1row-wire-nop",
+      "capture_type": "synthetic",
+      "scenario": "regression-v3",
+      "description": "1-row full wire + NOP",
+      "rung_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/reg-1row-wire-nop_verify_back_20260310_183903.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T18:38:05Z",
+      "updated_at": "2026-03-10T18:39:03Z"
+    },
+    {
+      "id": "11b87d4c-285d-4c7c-9263-41714c7d7042",
+      "capture_label": "reg-1row-cmt-empty",
+      "capture_type": "synthetic",
+      "scenario": "regression-v3",
+      "description": "1-row comment, empty grid",
+      "rung_rows": [
+        "#,Hello regression",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "Pasted as (no comment), R,-,-,...,:,",
+      "verify_expected_rows": [
+        "#,Hello regression",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Hello regression",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/reg-1row-cmt-empty_verify_back_20260310_183947.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T18:38:06Z",
+      "updated_at": "2026-03-10T18:39:47Z"
+    },
+    {
+      "id": "567fea75-ceec-4bbe-bb0e-46aa0df212ea",
+      "capture_label": "reg-1row-cmt-nop",
+      "capture_type": "synthetic",
+      "scenario": "regression-v3",
+      "description": "1-row comment + NOP",
+      "rung_rows": [
+        "#,Comment with NOP",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "pasted as (no comment) R,-,-,...,:,NOP",
+      "verify_expected_rows": [
+        "#,Comment with NOP",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "#,Comment with NOP",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/reg-1row-cmt-nop_verify_back_20260310_184022.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T18:38:06Z",
+      "updated_at": "2026-03-10T18:40:22Z"
+    },
+    {
+      "id": "0f8fd8c3-9597-442c-bbf5-3a1c4a145f27",
+      "capture_label": "reg-1row-cmt-wire",
+      "capture_type": "synthetic",
+      "scenario": "regression-v3",
+      "description": "1-row comment + sparse wire B,D",
+      "rung_rows": [
+        "#,Comment with wire",
+        "R,,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Comment with wire",
+        "R,,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T18:38:07Z",
+      "updated_at": "2026-03-10T18:40:32Z"
+    },
+    {
+      "id": "b0ed18d3-9c73-4800-bb31-919aad2af670",
+      "capture_label": "reg-2row-empty",
+      "capture_type": "synthetic",
+      "scenario": "regression-v3",
+      "description": "2-row empty, no comment",
+      "rung_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/reg-2row-empty_verify_back_20260310_184055.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T18:38:07Z",
+      "updated_at": "2026-03-10T18:40:55Z"
+    },
+    {
+      "id": "fe933ea6-fde3-4cb0-a724-2f2dd8509ad9",
+      "capture_label": "reg-2row-cmt-empty",
+      "capture_type": "synthetic",
+      "scenario": "regression-v3",
+      "description": "2-row comment, empty grid",
+      "rung_rows": [
+        "#,Two row comment",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Two row comment",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Two row comment",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/reg-2row-cmt-empty_verify_back_20260310_184103.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T18:38:07Z",
+      "updated_at": "2026-03-10T18:41:03Z"
+    },
+    {
+      "id": "999e4e62-ec9e-40e9-b007-7925da80531b",
+      "capture_label": "reg-2row-cmt-nop-r1",
+      "capture_type": "synthetic",
+      "scenario": "regression-v3",
+      "description": "2-row comment, NOP on row 1",
+      "rung_rows": [
+        "#,NOP row one",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,NOP row one",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "#,NOP row one",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/reg-2row-cmt-nop-r1_verify_back_20260310_184113.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T18:38:08Z",
+      "updated_at": "2026-03-10T18:41:13Z"
+    },
+    {
+      "id": "668ee4db-040e-40e8-abd6-f7e6a44d904e",
+      "capture_label": "reg-2row-cmt-wire-r1",
+      "capture_type": "synthetic",
+      "scenario": "regression-v3",
+      "description": "2-row comment, wire B,D on row 1",
+      "rung_rows": [
+        "#,Wire row one",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Wire row one",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Wire row one",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/reg-2row-cmt-wire-r1_verify_back_20260310_184122.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T18:38:08Z",
+      "updated_at": "2026-03-10T18:41:23Z"
+    },
+    {
+      "id": "c0e7ef98-41b2-4829-98c5-563e0d97614e",
+      "capture_label": "reg-2row-wire",
+      "capture_type": "synthetic",
+      "scenario": "regression-v3",
+      "description": "2-row wire no comment, full wire row 0, sparse row 1",
+      "rung_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/reg-2row-wire_verify_back_20260310_184133.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T18:38:08Z",
+      "updated_at": "2026-03-10T18:41:33Z"
     }
   ]
 }

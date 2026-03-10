@@ -725,7 +725,7 @@ def test_tui_native_capture_queue_walks_pending_entries_without_label_input(tmp_
     rc = main(
         ["tui"],
         workflow=workflow,
-        input_fn=_input_iter(["2", "", "", "s", "5"]),
+        input_fn=_input_iter(["2", "", "", "s", "6"]),
         output_fn=output.append,
     )
 
@@ -771,7 +771,7 @@ def test_tui_verify_guided_queue_walks_unverified_entries_without_label_input(
                 "",  # keep expected rows
                 "",  # keep default status
                 "q",  # second item action: stop queue
-                "5",  # exit
+                "6",  # exit
             ]
         ),
         output_fn=output.append,
@@ -810,7 +810,7 @@ def test_tui_verify_label_mode_can_force_file_source(tmp_path: Path) -> None:
                 "",  # note
                 "",  # keep expected rows
                 "",  # keep default status
-                "5",  # exit
+                "6",  # exit
             ]
         ),
         output_fn=output.append,
@@ -849,7 +849,7 @@ def test_tui_verify_label_mode_defaults_captured_native_to_file(tmp_path: Path) 
                 "",  # note
                 "",  # keep status as-is instead of blocked
                 "",  # keep current status
-                "5",  # exit
+                "6",  # exit
             ]
         ),
         output_fn=output.append,

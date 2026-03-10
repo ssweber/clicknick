@@ -1254,7 +1254,8 @@ def run_tui(
         output_fn("2) Capture native payload (guided)")
         output_fn("3) Verify run (Copied/Crash/Cancel)")
         output_fn("4) Promote entry")
-        output_fn("5) Exit")
+        output_fn("5) Quick capture (clipboard -> file)")
+        output_fn("6) Exit")
         choice = input_fn("Select an option: ").strip()
 
         if choice == "1":
@@ -1482,6 +1483,20 @@ def run_tui(
             continue
 
         if choice == "5":
+            name = input_fn("Filename (without .bin, blank to cancel): ").strip()
+            if not name:
+                continue
+            try:
+                data = engine._read_from_clipboard()
+                out_path = engine.paths.captures_dir / f"{name}.bin"
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path.write_bytes(data)
+                output_fn(f"Saved {len(data)} bytes -> {out_path}")
+            except Exception as exc:
+                output_fn(f"Error: {exc}")
+            continue
+
+        if choice == "6":
             return 0
 
         output_fn("Invalid option.")
