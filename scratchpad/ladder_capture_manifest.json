@@ -1154,11 +1154,11 @@
       "verify_observed_rows": [
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
       ],
-      "verify_result_file": null,
+      "verify_result_file": "scratchpad/captures/regression-fullwire-nop_verify_back_20260310_125015.bin",
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T17:33:55Z",
-      "updated_at": "2026-03-09T17:36:41Z"
+      "updated_at": "2026-03-10T12:50:15Z"
     },
     {
       "id": "d0073b94-75ca-47b0-83f0-ccad87f7def4",
@@ -1184,11 +1184,11 @@
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_result_file": null,
+      "verify_result_file": "scratchpad/captures/regression-empty-2row_verify_back_20260310_125022.bin",
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T17:33:55Z",
-      "updated_at": "2026-03-09T17:36:51Z"
+      "updated_at": "2026-03-10T12:50:22Z"
     },
     {
       "id": "c2ef5f1d-395c-4ac1-9216-1076b34d73e3",
@@ -1457,11 +1457,11 @@
         "#,Hello world",
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_result_file": null,
+      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-only_verify_back_20260310_125031.bin",
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T19:02:36Z",
-      "updated_at": "2026-03-09T19:23:34Z"
+      "updated_at": "2026-03-10T12:50:31Z"
     },
     {
       "id": "7dc415b7-965d-4fdb-b40b-f36b0249c1d0",
@@ -1547,11 +1547,11 @@
         "#,Partial wires",
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
       ],
-      "verify_result_file": null,
+      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-nop_verify_back_20260310_125041.bin",
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T19:02:44Z",
-      "updated_at": "2026-03-09T19:24:00Z"
+      "updated_at": "2026-03-10T12:50:41Z"
     },
     {
       "id": "eb2d2ff3-0b64-403c-9680-8ceef3a04dbc",
@@ -1577,11 +1577,11 @@
         "#,Partial wires",
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,..."
       ],
-      "verify_result_file": null,
+      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-fullwire_verify_back_20260310_125049.bin",
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T19:02:54Z",
-      "updated_at": "2026-03-09T19:24:07Z"
+      "updated_at": "2026-03-10T12:50:49Z"
     },
     {
       "id": "cb790616-6077-4080-b612-62ddddfb320e",
@@ -1691,11 +1691,11 @@
         "#,Wires and NOP",
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
       ],
-      "verify_result_file": null,
+      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-fullwire-nop_verify_back_20260310_152055.bin",
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T19:37:54Z",
-      "updated_at": "2026-03-09T19:38:31Z"
+      "updated_at": "2026-03-10T15:20:55Z"
     },
     {
       "id": "f859a076-5116-4202-a40d-822ed249caac",
@@ -1751,11 +1751,11 @@
         "#,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
         "R,,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
       ],
-      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-max1400-sparse-nop_verify_back_20260309_195359.bin",
+      "verify_result_file": "scratchpad/captures/verify-0x5A-comment-max1400-sparse-nop_verify_back_20260310_125104.bin",
       "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T19:50:41Z",
-      "updated_at": "2026-03-09T19:53:59Z"
+      "updated_at": "2026-03-10T12:51:04Z"
     },
     {
       "id": "31b24bdc-1888-4002-bd76-df4ead808e4d",
@@ -1814,6 +1814,228 @@
       "promoted_fixture_file": null,
       "created_at": "2026-03-09T19:50:41Z",
       "updated_at": "2026-03-09T19:53:33Z"
+    },
+    {
+      "id": "c1986feb-464a-461f-af67-a04bcc4dae0b",
+      "capture_label": "verify-comment-2row-empty",
+      "capture_type": "synthetic",
+      "scenario": "comment-multirow-20260310",
+      "description": "2-row comment, empty grid",
+      "rung_rows": [
+        "#,Two row test",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Two row test",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Two row test",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/verify-comment-2row-empty_verify_back_20260310_165330.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T12:55:04Z",
+      "updated_at": "2026-03-10T16:53:30Z"
+    },
+    {
+      "id": "95624bcf-069e-443e-abed-8eeac3b367d9",
+      "capture_label": "verify-comment-2row-fullwire-nop",
+      "capture_type": "synthetic",
+      "scenario": "comment-multirow-20260310",
+      "description": "2-row comment + full wire row0 + NOP row0, empty row1",
+      "rung_rows": [
+        "#,Wires and NOP",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "crash",
+      "verify_status": "blocked",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Wires and NOP",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T12:55:18Z",
+      "updated_at": "2026-03-10T15:13:59Z"
+    },
+    {
+      "id": "6f8aa531-5e29-4518-a96e-02e3609a8fcd",
+      "capture_label": "verify-comment-2row-nop-row1",
+      "capture_type": "synthetic",
+      "scenario": "comment-multirow-20260310",
+      "description": "2-row comment, NOP on row 1",
+      "rung_rows": [
+        "#,NOP row1",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,NOP row1",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "#,NOP row1",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/verify-comment-2row-nop-row1_verify_back_20260310_165244.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T12:57:19Z",
+      "updated_at": "2026-03-10T16:52:44Z"
+    },
+    {
+      "id": "9e2abfcc-385e-4024-b1ba-803e578f7c09",
+      "capture_label": "verify-comment-3row-wire-nop",
+      "capture_type": "synthetic",
+      "scenario": "comment-multirow-20260310",
+      "description": "3-row comment + full wire row0 + NOP row2",
+      "rung_rows": [
+        "#,Three rows",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_fail",
+      "verify_notes": "Pasted 2 rows, but missing 3rd with NOP",
+      "verify_expected_rows": [
+        "#,Three rows",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [
+        "#,Three rows",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/verify-comment-3row-wire-nop_verify_back_20260310_152012.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T12:57:26Z",
+      "updated_at": "2026-03-10T15:20:12Z"
+    },
+    {
+      "id": "94d5e03b-1847-4075-94ab-66d202fd2d73",
+      "capture_label": "native-comment-2row-vert-c",
+      "capture_type": "native",
+      "scenario": "multirow-comment-r4",
+      "description": "2-row comment, T at col C on row 0 with full wire, dash at C on row 1. Ground truth for down flags in phase-A/cont records.",
+      "rung_rows": [
+        "#,Vert test",
+        "R,-,-,T,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/native-comment-2row-vert-c.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Vert test",
+        "R,-,-,T,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T16:32:11Z",
+      "updated_at": "2026-03-10T16:35:56Z"
+    },
+    {
+      "id": "d65b3eba-eae6-4747-9f12-eb5c5ba42269",
+      "capture_label": "native-comment-2row-nop-row1",
+      "capture_type": "native",
+      "scenario": "multirow-comment-r4",
+      "description": "2-row comment, NOP on row 1 only, no wires. Ground truth for NOP in cont records.",
+      "rung_rows": [
+        "#,NOP test",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": "scratchpad/captures/native-comment-2row-nop-row1.bin",
+      "verify_clipboard_event": null,
+      "verify_status": "unverified",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,NOP test",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_observed_rows": [],
+      "verify_result_file": null,
+      "verify_clipboard_len": null,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T16:35:05Z",
+      "updated_at": "2026-03-10T16:37:39Z"
+    },
+    {
+      "id": "0f53b1ab-42e2-447d-9dcd-bce718532dd7",
+      "capture_label": "verify-comment-2row-sparse-wire",
+      "capture_type": "synthetic",
+      "scenario": "multirow-comment-r4",
+      "description": "2-row comment, sparse wire at B and D on both rows, no NOP",
+      "rung_rows": [
+        "#,Sparse test",
+        "R,,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "payload_source_mode": "shorthand",
+      "payload_source_file": null,
+      "payload_file": null,
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
+      "verify_notes": "",
+      "verify_expected_rows": [
+        "#,Sparse test",
+        "R,,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_observed_rows": [
+        "#,Sparse test",
+        "R,,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/verify-comment-2row-sparse-wire_verify_back_20260310_165508.bin",
+      "verify_clipboard_len": 8192,
+      "promoted_fixture_file": null,
+      "created_at": "2026-03-10T16:54:14Z",
+      "updated_at": "2026-03-10T16:55:08Z"
     }
   ]
 }

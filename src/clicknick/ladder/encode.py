@@ -42,9 +42,11 @@ Instruction stream:
     all downstream positions. NOT used in this version.
 
 NOP:
-    The simplest AF-column instruction. Encoded via a minimal byte
-    model: col31 +0x1D = 1 (all rows), plus col0 +0x15 = 1 for
-    non-first rows. Does not require an instruction stream entry.
+    The simplest AF-column instruction. At most one per rung. Encoded
+    via a minimal byte model: col31 +0x1D = 1 (all rows), plus col0
+    +0x15 = 1 for non-first rows. For multi-row comment rungs, NOP in
+    continuation stream records also requires col31 +0x19 = 1. Does
+    not require an instruction stream entry.
 
 Comment:
     Plain-text annotation on a rung. Stored as an RTF envelope (fixed
@@ -92,10 +94,10 @@ Verified in Click (encode → paste → copy back → decode round-trip):
         mod-36 lengths like 100)
     [x] Plain comment + wire topology (1-row; payload and grid are separate)
     [x] Plain comment + NOP (1-row; payload and grid are separate)
+    [x] Plain comment on 2-row rung (empty, NOP on row 1, sparse wire)
 
-    [ ] Plain comment on multi-row rung (requires extra page allocation
-        for terminal companion extent; model understood but synthesis
-        not built)
+    [ ] Plain comment on 3–32-row rung (2-row model may extend; needs
+        testing)
     [ ] Styled comments (bold/italic/underline RTF; crashes under
         current model)
     [ ] Contacts (NO, NC, edge, comparison, immediate variants)
@@ -197,6 +199,7 @@ from .empty_multirow import synthesize_empty_multirow
 from .topology import (
     CELL_HORIZONTAL_LEFT_OFFSET,
     CELL_HORIZONTAL_RIGHT_OFFSET,
+    CELL_SIZE,
     CELL_VERTICAL_DOWN_OFFSET,
     COLS_PER_ROW,
     cell_offset,
@@ -344,13 +347,61 @@ def _normalize_af(token: str) -> str:
     raise ValueError(f"Unsupported AF token: {token!r}")
 
 
-def _apply_comment(out: bytearray, text: str) -> None:
+def _write_continuation_stream(
+    out: bytearray,
+    start: int,
+    logical_rows: int,
+) -> None:
+    """Write 32 continuation records after phase-A for multi-row comments.
+
+    Each record is a 0x40-byte structure with column index, sentinel row
+    index (= logical_rows), comment flag (0x5A), and standard structural
+    constants.  Column 31 (AF) has +0x38 = 0 and +0x3D = 0 (terminal
+    marker); all other columns have +0x38 = 1 and +0x3D = 2.
+
+    Derived from native 2-row comment captures (native-comment-2row-empty,
+    native-comment-2row-wire).
+    """
+    for k in range(COLS_PER_ROW):
+        base = start + k * 0x40
+        out[base + 0x01] = k
+        out[base + 0x05] = logical_rows
+        out[base + 0x09] = 0x01
+        out[base + 0x0A] = 0x01
+        out[base + 0x0B] = COMMENT_FLAG
+        out[base + 0x0C] = 0x01
+        out[base + 0x0D] = 0xFF
+        out[base + 0x0E] = 0xFF
+        out[base + 0x0F] = 0xFF
+        out[base + 0x10] = 0xFF
+        out[base + 0x11] = 0x01
+        if k < COLS_PER_ROW - 1:
+            out[base + 0x38] = 0x01
+            out[base + 0x3D] = 0x02
+        else:
+            # Terminal column (AF): explicitly zero these in case the
+            # scaffold had non-zero values at this address.
+            out[base + 0x38] = 0x00
+            out[base + 0x3D] = 0x00
+
+
+def _apply_comment(out: bytearray, text: str) -> int:
     """Write comment payload + phase-A into the payload region.
 
     The phase-A stream contains COMMENT_FLAG (0x5A) at a periodic stride
     of 0x40 bytes (starting at relative offset 0x13), mirroring the
     entry0 +0x17 header byte across all 63 cell-sized slots.  Tail bytes
     at +0x0FA1/+0x0FA5 are left at their resource-file baseline (0x00).
+
+    No padding is applied — phase-A starts immediately after the RTF
+    payload.  Click locates phase-A and the continuation stream by
+    reading the payload length field, not by cell-grid alignment.
+    Native captures confirm unpadded layout.
+
+    Returns
+    -------
+    int
+        The payload length stored in the length field.
     """
     encoded = text.encode("cp1252")
     if len(encoded) > COMMENT_MAX_BYTES:
@@ -369,6 +420,7 @@ def _apply_comment(out: bytearray, text: str) -> None:
         phase_a[0x13 + 0x40 * k] = COMMENT_FLAG
 
     out[payload_end : payload_end + len(phase_a)] = phase_a
+    return len(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -398,9 +450,11 @@ def encode_rung(
         ``""`` leaves it blank.
     comment:
         Optional single-line comment text (cp1252, max 1400 bytes).
-        Currently limited to 1-row rungs (multi-row needs extra page
-        synthesis). Comment + wires and comment + NOP on 1-row rungs
-        are supported (payload and cell grid occupy separate regions).
+        Supported on 1-row and multi-row rungs. On multi-row rungs,
+        row 0 wires use phase-A stride encoding; rows 1+ use the
+        standard cell grid model. A continuation stream (0x800 bytes)
+        is appended after phase-A for multi-row comments. For 2-row
+        rungs the max comment length is ~1324 bytes (buffer limit).
 
     Returns
     -------
@@ -427,23 +481,31 @@ def encode_rung(
                     f"Vertical-down tokens are not allowed in column A "
                     f"(row={row_idx}, token={token!r})"
                 )
+            if row_idx == logical_rows - 1 and token in ("|", "T"):
+                raise ValueError(
+                    f"Vertical-down tokens are not allowed on the last row "
+                    f"(row={row_idx}, col={col_idx}, token={token!r})"
+                )
 
     # --- Validate comment constraints ---
     # Comments occupy the payload region (0x0294+), separate from the cell
-    # grid (0x0A60+). They do NOT conflict with wire flags. The 1-row limit
-    # exists because multi-row comments add an extra 0x1000 page to the
-    # buffer for a terminal companion extent (font descriptors, CJK fallback
-    # tables), and synthesis of that extra page is not yet built.
-    # Comment + wires and comment + NOP on a 1-row rung are structurally
-    # sound — comment payload (0x0294+) and cell grid (0x0A60+) don't overlap.
+    # grid (0x0A60+). They do NOT conflict with wire flags.
+    # Comment + wires and comment + NOP are structurally sound — comment
+    # payload (0x0294+) and cell grid (0x0A60+) are separate regions.
+    #
+    # Multi-row comments require a 32-record continuation stream (0x800
+    # bytes) after phase-A. For 2-row rungs, the buffer (0x2000) fits
+    # comments up to ~1324 bytes; longer comments would need an extra page
+    # (not yet supported). For 3+ rows the buffer is large enough for any
+    # comment length up to COMMENT_MAX_BYTES.
 
     has_comment = comment is not None and comment != ""
-    if has_comment:
-        if logical_rows != 1:
-            raise ValueError(
-                "Comments on multi-row rungs require terminal companion "
-                "page synthesis (not yet implemented)"
-            )
+
+    # Click supports at most one NOP per rung.  Multiple NOPs render as
+    # tiny dots instead of "NOP" — reject them.
+    nop_count = sum(1 for af in af_tokens if _normalize_af(af) == "NOP")
+    if nop_count > 1:
+        raise ValueError(f"Only one NOP per rung is allowed (got {nop_count})")
 
     # --- Step 1–2: Allocate + header + cell structure ---
     # FUTURE: Instruction-bearing rungs require a header seed that sets
@@ -466,20 +528,12 @@ def encode_rung(
 
     # --- Step 3: Comment ---
     # Comment MUST be applied before wire flags because phase-A (0xFC8
-    # bytes after the RTF payload) overlaps the cell grid region for
-    # short comments in 1-row buffers. Writing wires after phase-A
-    # ensures wire flag bytes are not clobbered.
+    # bytes after the RTF payload) overlaps the cell grid region.
+    # Writing wires after phase-A ensures wire flag bytes are not
+    # clobbered.
     #
-    # FUTURE: Two known limitations to address:
-    #   1. Multi-row comments: the buffer needs an extra 0x1000 page for
-    #      a terminal companion extent carrying renderer/layout metadata
-    #      (font descriptors, CJK fallback tables). The page-extent model
-    #      is understood (handoff: row32 max1400 = 73728 = 18 pages vs
-    #      69632 = 17 pages without comment) but synthesis not yet built.
-    #   2. Styled comments (RTF bold/italic/underline): the payload is
-    #      standard RTF (\b, \i, \ul tokens) but styled probes crash
-    #      under the current model. Likely requires companion bytes in
-    #      the continuation stream that plain comments don't need.
+    # FUTURE: Styled comments (RTF bold/italic/underline) are not
+    # supported — probes crash under the current model.
 
     # Compute phase-A start once (used by steps 3-5 for comment rungs).
     phase_a_start: int | None = None
@@ -489,42 +543,92 @@ def encode_rung(
         # of grid content (empty, sparse wires, full wires, NOP).
         out[0x0254 + 0x17] = COMMENT_FLAG
 
-        # Trailer byte 0x0A59 = 0x01 for all comment rungs (confirmed
-        # across sparse, full-wire, and NOP-only native captures).
-        out[0x0A59] = 0x01
+        # No padding — Click locates phase-A and cont records by
+        # reading the payload length field, not by cell grid alignment.
+        # Native 2-row captures confirm unpadded layout.
+        payload_len = _apply_comment(out, comment)
 
-        _apply_comment(out, comment)
-
-        encoded = comment.encode("cp1252")
-        payload_len = len(_PREFIX) + len(encoded) + len(_SUFFIX)
         phase_a_start = PAYLOAD_BYTES_OFFSET + payload_len
-
-        # Zero out everything after phase-A ends.
         phase_a_end = phase_a_start + PHASE_A_LEN
-        out[phase_a_end:] = b"\x00" * (len(out) - phase_a_end)
+
+        if logical_rows == 1:
+            # Trailer byte 0x0A59 = 0x01 for all 1-row comment rungs
+            # (confirmed across sparse, full-wire, and NOP-only native
+            # captures).  This position is within phase-A; the resource
+            # has 0x00 at this offset, so we must set it explicitly.
+            out[0x0A59] = 0x01
+
+            # Zero out everything after phase-A ends (no row 1+ data).
+            out[phase_a_end:] = b"\x00" * (len(out) - phase_a_end)
+        else:
+            # Phase-A tail bytes (last 8 of 0xFC8) encode structural
+            # flags for the last cell that overlaps phase-A.  The
+            # resource file (from a 1-row capture) has 0x00 at these
+            # positions; multi-row rungs need +0x38=1 and +0x3D=2 to
+            # match the cell grid's next-row flag/linkage.
+            out[phase_a_start + 0x0FC0] = 0x01
+            out[phase_a_start + 0x0FC5] = 0x02
+
+            # Write continuation stream (32 × 0x40 records) after
+            # phase-A, then zero the rest.
+            cont_end = phase_a_end + COLS_PER_ROW * 0x40
+            if cont_end > len(out):
+                raise ValueError(
+                    f"Comment too long for {logical_rows}-row buffer "
+                    f"(need {cont_end}, have {len(out)}). "
+                    f"Reduce comment length or use fewer rows."
+                )
+            _write_continuation_stream(out, phase_a_end, logical_rows)
+            out[cont_end:] = b"\x00" * (len(out) - cont_end)
 
     # --- Step 4: Wire flags on condition columns (A..AE) ---
-    # For comment rungs, wire data lives in the phase-A stride, NOT in the
-    # cell grid.  Native captures confirm cell grid +0x19/+0x1D are all zero
-    # for comment rungs.  Instead, wires are at phase-A-relative positions:
+    # For comment rungs, row 0 wire data lives in the phase-A stride, NOT
+    # in the cell grid.  Phase-A-relative positions:
     #   slot = col_idx + 31   (within the phase-A 0x40-byte stride)
     #   left  wire: slot_base + 0x21
     #   right wire: slot_base + 0x25
-    # The phase-A stream starts immediately after the RTF payload, so wire
-    # positions shift with comment length.  This is payload-length-dependent
-    # but Click reads the payload length field and computes accordingly.
     #
-    # For non-comment rungs, wires use the cell grid model as before.
+    # Rows 1+ on multi-row comment rungs: wire data goes into the
+    # continuation stream records at +0x19/+0x1D/+0x21, indexed by
+    # column.  Click reads row 1+ wire data from cont records (each
+    # identified by its +0x01 column_index byte), NOT from cell grid
+    # positions.  Cell grid row 1 positions physically overlap with
+    # phase-A (first few cols) and the cont stream (remaining cols),
+    # but at a comment-length-dependent shift that makes cell grid
+    # column indices wrong for the underlying records.
+    #
+    # For non-comment rungs, all rows use the cell grid model.
 
     if has_comment:
         assert phase_a_start is not None
+        # Row 0: phase-A stride model.
+        # Wire offsets in phase-A slots: +0x21 (left), +0x25 (right),
+        # +0x29 (down/vertical).  Native captures confirm +0x29 is used
+        # only at T-junction columns; horizontal-only columns omit it.
         for col_idx, token in enumerate(condition_rows[0]):
-            left, right, _down = _TOKEN_FLAGS[token]
+            left, right, down = _TOKEN_FLAGS[token]
             slot_base = phase_a_start + (col_idx + 31) * 0x40
             if left:
                 out[slot_base + 0x21] = 1
             if right:
                 out[slot_base + 0x25] = 1
+            if down:
+                out[slot_base + 0x29] = 1
+        # Rows 1+: continuation stream record model.
+        # Write wire data into cont records at +0x19/+0x1D/+0x21,
+        # indexed by column.  cont_start + col_idx * 0x40 is the
+        # base of the record for column col_idx.
+        if logical_rows > 1:
+            assert phase_a_end is not None
+            cont_base_start = phase_a_end  # = phase_a_start + PHASE_A_LEN
+            for row_idx in range(1, logical_rows):
+                for col_idx, token in enumerate(condition_rows[row_idx]):
+                    left, right, down = _TOKEN_FLAGS[token]
+                    if left or right or down:
+                        rec_base = cont_base_start + col_idx * CELL_SIZE
+                        out[rec_base + CELL_HORIZONTAL_LEFT_OFFSET] = left
+                        out[rec_base + CELL_HORIZONTAL_RIGHT_OFFSET] = right
+                        out[rec_base + CELL_VERTICAL_DOWN_OFFSET] = down
     else:
         for row_idx, row in enumerate(condition_rows):
             for col_idx, token in enumerate(row):
@@ -532,15 +636,33 @@ def encode_rung(
                 _set_wire_flags(out, row_idx, col_idx, left, right, down)
 
     # --- Step 5: AF column (NOP encoding) ---
-    # For comment rungs, NOP uses phase-A slot 62 + 0x25 (confirmed by
-    # native nop-only capture).  For non-comment rungs, cell grid model.
+    # Row 0 on comment rungs: phase-A slot 62 + 0x25.
+    # Rows 1+ on multi-row comment rungs: NOP goes into the continuation
+    # stream record for the AF column (+0x1D), and the row-enable byte
+    # goes into the cont record for col 0 (+0x15).  Same rationale as
+    # step 4: Click reads from cont records, not from cell grid positions.
+    # Non-comment rungs: cell grid model for all rows.
 
     if has_comment:
         assert phase_a_start is not None
-        for af in af_tokens:
-            if _normalize_af(af) == "NOP":
-                slot_base = phase_a_start + (AF_COLUMN + 31) * 0x40
-                out[slot_base + 0x25] = 1
+        # Row 0: phase-A stride model
+        if _normalize_af(af_tokens[0]) == "NOP":
+            slot_base = phase_a_start + (AF_COLUMN + 31) * 0x40
+            out[slot_base + 0x25] = 1
+        # Rows 1+: continuation stream record model.
+        # NOP in cont records: cont[31] +0x19=1 AND +0x1D=1, plus
+        # cont[0] +0x15=1 (row enable).  Native capture confirms
+        # both +0x19 and +0x1D are required (not just +0x1D alone).
+        if logical_rows > 1:
+            assert phase_a_end is not None
+            cont_base_start = phase_a_end
+            for row_idx in range(1, logical_rows):
+                if _normalize_af(af_tokens[row_idx]) == "NOP":
+                    af_rec = cont_base_start + AF_COLUMN * CELL_SIZE
+                    out[af_rec + CELL_HORIZONTAL_LEFT_OFFSET] = 1
+                    out[af_rec + CELL_AF_NOP_OFFSET] = 1
+                    col0_rec = cont_base_start + 0 * CELL_SIZE
+                    out[col0_rec + CELL_NOP_ROW_ENABLE_OFFSET] = 1
     else:
         for row_idx, af in enumerate(af_tokens):
             if _normalize_af(af) == "NOP":

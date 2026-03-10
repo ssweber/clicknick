@@ -64,16 +64,26 @@ Three single-byte flags per cell that control visual wire rendering:
   insufficient)
 - `+0x21` — vertical-down-to-next-row
 
-**Wire flags (phase-A stride model — comment rungs)**
-For comment rungs, wire data lives in the phase-A stride, NOT in the cell
-grid. The cell grid `+0x19/+0x1D` bytes are all zero in native comment
+**Wire flags (phase-A stride model — comment rungs, row 0)**
+For comment rungs, row 0 wire data lives in the phase-A stride, NOT in the
+cell grid. The cell grid `+0x19/+0x1D` bytes are all zero in native comment
 captures. Instead, wires are at phase-A-relative positions:
 - Phase-A slot = `col_idx + 31` (within the 0x40-byte stride)
 - `slot_base + 0x21` — left wire
 - `slot_base + 0x25` — right wire
+- `slot_base + 0x29` — down/vertical (T junctions only)
 - `slot_base = phase_a_start + slot × 0x40`
-- `phase_a_start = 0x0298 + payload_length`
+- `phase_a_start = 0x0298 + payload_length` (no padding)
 NOP uses phase-A slot 62 (AF column) + 0x25.
+
+**Wire flags (continuation stream — comment rungs, rows 1+)**
+For multi-row comment rungs, rows 1+ wire data lives in the continuation
+stream records (32 × 0x40 bytes after phase-A), NOT in cell grid positions.
+Each record is indexed by column (+0x01). Wire offsets within records:
+- `+0x19` — left wire
+- `+0x1D` — right wire
+No down flags in cont records — vertical connections from row 0 T junctions
+appear as horizontal wire (+0x19/+0x1D) at the receiving column on row 1.
 
 **Structural fields** (written by `synthesize_empty_multirow`)
 - `+0x01` — column index
@@ -85,8 +95,10 @@ NOP uses phase-A slot 62 (AF column) + 0x25.
 - `+0x3D` — next-row linkage pointer
 
 **NOP-specific**
-- `col31 +0x1D` — NOP marker on the AF column
+- `col31 +0x1D` — NOP marker on the AF column (cell grid and cont records)
+- `col31 +0x19` — also required for NOP in continuation stream records
 - `col0 +0x15` — row enable for non-first-row NOP
+- At most one NOP per rung (multiple NOPs render as tiny dots in Click)
 
 **Instruction-specific** *(not yet used in encode.py)*
 - `+0x39` — rung-assembly linkage flag (required = 1 on row0/row1 cells
@@ -110,12 +122,11 @@ row, `0x60` = 2 rows, `0x80` = 3 rows. Superseded by the full row word
 for row counts > 3.
 
 **Comment flag byte**
-`+0x17` on header entry 0. Set to `0x5A` for all comment rungs regardless
-of grid content (empty, sparse wires, full wires, NOP). This value is
-mirrored into all 63 phase-A periodic slots at `phase_a[0x13 + 0x40*k]`.
-Two older native captures showed `0x67` and one legacy-prefix capture
-showed `0x65`, but these appear to be version/session artefacts. The
-encoder uses `0x5A` universally.
+`+0x17` on header entry 0. Set to `0x5A` by the encoder for all comment
+rungs. This value is mirrored into all 63 phase-A periodic slots at
+`phase_a[0x13 + 0x40*k]` and into continuation stream records at `+0x0B`.
+Native captures show session-dependent variation (`0x5A`, `0x41`, `0x67`,
+`0x65`). Click accepts all observed values on paste.
 
 **Header seed bytes** *(instruction-specific, not yet used)*
 - `+0x05` — structural gate (zero for wire-only and comment rungs; e.g.
@@ -146,12 +157,21 @@ cp1252 body text + 11-byte RTF suffix (includes trailing NUL).
 
 **Phase-A**
 A fixed continuation stream of `0xFC8` bytes (63 slots × `0x40` + 8 tail
-bytes) written immediately after the payload body. Universal across all
-tested comment lengths. Contains the comment flag byte at periodic offset
-`+0x13` in each slot. For comment rungs, the phase-A stride also carries
-wire data at `+0x21` (left) and `+0x25` (right) — these positions overlap
-the cell grid address range but are distinct from the cell grid wire flag
-offsets (`+0x19/+0x1D`).
+bytes) written immediately after the payload body — no cell-size padding.
+Click locates phase-A by reading the payload length field, not by cell grid
+alignment. Universal across all tested comment lengths. Contains the comment
+flag byte at periodic offset `+0x13` in each slot. For comment rungs, the
+phase-A stride carries row 0 wire data at `+0x21` (left), `+0x25` (right),
+and `+0x29` (down) — these positions overlap the cell grid address range but
+are distinct from the cell grid wire flag offsets (`+0x19/+0x1D`).
+
+**Continuation stream** *(multi-row comment rungs only)*
+32 records × `0x40` bytes written immediately after phase-A. One record per
+column, indexed by `+0x01`. Contains structural constants (comment flag at
+`+0x0B`, logical_rows at `+0x05`, terminal flags at `+0x38/+0x3D`) and row
+1+ wire/NOP data at `+0x19/+0x1D`. Click reads row 1+ data from these
+records, NOT from cell grid positions (which overlap phase-A at a
+comment-length-dependent shift).
 
 **Phase-B** *(deleted from encoder)*
 A repeating block pattern that was observed after phase-A in the medium
