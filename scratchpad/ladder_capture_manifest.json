@@ -5397,19 +5397,22 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-2row-nop-row1.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-2row-nop-row1.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-2row-nop-row1_verify_back_20260310_212327.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:06Z",
-      "updated_at": "2026-03-10T21:21:06Z"
+      "updated_at": "2026-03-10T21:23:27Z"
     },
     {
       "id": "c61a2f1e-1be9-4457-a524-3a632c5366fa",
@@ -5454,8 +5457,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-32row-empty.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-32row-empty.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
@@ -5491,12 +5494,45 @@
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-32row-empty_verify_back_20260310_212337.bin",
+      "verify_clipboard_len": 69632,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:07Z",
-      "updated_at": "2026-03-10T21:21:07Z"
+      "updated_at": "2026-03-10T21:23:37Z"
     },
     {
       "id": "e8551bea-a27f-49c8-8497-7614fb07f7aa",
@@ -5511,19 +5547,22 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-1row-empty.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-1row-empty.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "#,Hello",
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "#,Hello",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-cmt-1row-empty_verify_back_20260310_212344.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:07Z",
-      "updated_at": "2026-03-10T21:21:07Z"
+      "updated_at": "2026-03-10T21:23:44Z"
     },
     {
       "id": "a4f4e9d0-660e-4340-8510-fa1da654b6b2",
@@ -5538,19 +5577,22 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-1row-fullwire-nop.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-1row-fullwire-nop.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "#,Hello",
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "#,Hello",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-cmt-1row-fullwire-nop_verify_back_20260310_212350.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:07Z",
-      "updated_at": "2026-03-10T21:21:07Z"
+      "updated_at": "2026-03-10T21:23:50Z"
     },
     {
       "id": "4791a855-a052-47db-8be2-832678884589",
@@ -5565,19 +5607,22 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-1row-partial-wire.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-1row-partial-wire.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "#,Hello",
         "R,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "#,Hello",
+        "R,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-cmt-1row-partial-wire_verify_back_20260310_212411.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:08Z",
-      "updated_at": "2026-03-10T21:21:08Z"
+      "updated_at": "2026-03-10T21:24:11Z"
     },
     {
       "id": "ae6bb7f0-0d79-4bdd-bd96-5a6d251a913b",
@@ -5592,19 +5637,22 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-1row-max1400.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-1row-max1400.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "#,Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. ",
         "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "#,Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. ",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-cmt-1row-max1400_verify_back_20260310_212417.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:08Z",
-      "updated_at": "2026-03-10T21:21:08Z"
+      "updated_at": "2026-03-10T21:24:17Z"
     },
     {
       "id": "70f221b8-e682-4830-855d-1ddbba09d75e",
@@ -5620,20 +5668,24 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-2row-empty.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-2row-empty.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "#,Test comment",
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "#,Test comment",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-cmt-2row-empty_verify_back_20260310_212422.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:09Z",
-      "updated_at": "2026-03-10T21:21:09Z"
+      "updated_at": "2026-03-10T21:24:22Z"
     },
     {
       "id": "24f3763e-c833-46e7-ab7f-57358f32655c",
@@ -5649,20 +5701,24 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-2row-wire-ac.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-2row-wire-ac.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "#,Test comment",
         "R,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "#,Test comment",
+        "R,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-cmt-2row-wire-ac_verify_back_20260310_212434.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:09Z",
-      "updated_at": "2026-03-10T21:21:09Z"
+      "updated_at": "2026-03-10T21:24:34Z"
     },
     {
       "id": "233c45e3-ddc0-443a-b780-cb9116cdde5c",
@@ -5678,20 +5734,24 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-2row-colA-wire.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-2row-colA-wire.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "#,Col A test",
         "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "#,Col A test",
+        "R,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-cmt-2row-colA-wire_verify_back_20260310_212439.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:09Z",
-      "updated_at": "2026-03-10T21:21:09Z"
+      "updated_at": "2026-03-10T21:24:39Z"
     },
     {
       "id": "f6e70898-e3c5-493e-98e7-73cb9c29db31",
@@ -5707,20 +5767,24 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-2row-nop-row1.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-2row-nop-row1.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "#,Test comment",
         "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "#,Test comment",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-cmt-2row-nop-row1_verify_back_20260310_212448.bin",
+      "verify_clipboard_len": 8192,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:10Z",
-      "updated_at": "2026-03-10T21:21:10Z"
+      "updated_at": "2026-03-10T21:24:48Z"
     },
     {
       "id": "a76530fa-8270-442e-968e-c608fc0c8b94",
@@ -5736,20 +5800,24 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-2row-max1324-nop.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-2row-max1324-nop.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "#,Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. ",
         "R,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "#,Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. Max comment for two row rung test. ",
+        "R,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-cmt-2row-max1324-nop_verify_back_20260310_212456.bin",
+      "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:10Z",
-      "updated_at": "2026-03-10T21:21:10Z"
+      "updated_at": "2026-03-10T21:24:56Z"
     },
     {
       "id": "8d79da72-a3a2-4094-993b-fb1b0d0d4e54",
@@ -5766,8 +5834,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-3row-empty.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-3row-empty.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "#,Three rows",
@@ -5775,12 +5843,17 @@
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "#,Three rows",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-cmt-3row-empty_verify_back_20260310_212500.bin",
+      "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:11Z",
-      "updated_at": "2026-03-10T21:21:11Z"
+      "updated_at": "2026-03-10T21:25:00Z"
     },
     {
       "id": "0ed6f6d8-3647-4c8a-8b92-e336d832defe",
@@ -5797,8 +5870,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-3row-mixed-wire.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-3row-mixed-wire.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "#,Three row mixed",
@@ -5806,12 +5879,17 @@
         ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "#,Three row mixed",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-cmt-3row-mixed-wire_verify_back_20260310_212508.bin",
+      "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:11Z",
-      "updated_at": "2026-03-10T21:21:11Z"
+      "updated_at": "2026-03-10T21:25:08Z"
     },
     {
       "id": "e850be00-587d-4ab3-b759-96f22fc7d2ad",
@@ -5828,8 +5906,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-3row-max1400.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-3row-max1400.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "#,Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. ",
@@ -5837,12 +5915,17 @@
         ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "#,Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. Max length comment test. ",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-cmt-3row-max1400_verify_back_20260310_212514.bin",
+      "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:11Z",
-      "updated_at": "2026-03-10T21:21:11Z"
+      "updated_at": "2026-03-10T21:25:14Z"
     },
     {
       "id": "ce95ee73-f153-4006-9828-a354adfba017",
@@ -5860,8 +5943,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-4row-wire.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-4row-wire.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "#,Four row wire",
@@ -5870,12 +5953,18 @@
         ",-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "#,Four row wire",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,...",
+        ",-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,...",
+        ",-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-cmt-4row-wire_verify_back_20260310_212520.bin",
+      "verify_clipboard_len": 12288,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:12Z",
-      "updated_at": "2026-03-10T21:21:12Z"
+      "updated_at": "2026-03-10T21:25:20Z"
     },
     {
       "id": "2146aea6-ddbf-49b4-8379-4526ca5b078c",
@@ -5894,8 +5983,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-5row-partial.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-5row-partial.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "#,Five row wire",
@@ -5905,12 +5994,19 @@
         ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "#,Five row wire",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-cmt-5row-partial_verify_back_20260310_212525.bin",
+      "verify_clipboard_len": 16384,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:12Z",
-      "updated_at": "2026-03-10T21:21:12Z"
+      "updated_at": "2026-03-10T21:25:25Z"
     },
     {
       "id": "80cd7a6d-767f-4549-9502-18cf108e641e",
@@ -5933,8 +6029,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-9row-partial.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-9row-partial.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "#,Nine row wire",
@@ -5948,12 +6044,23 @@
         ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "#,Nine row wire",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-cmt-9row-partial_verify_back_20260310_212533.bin",
+      "verify_clipboard_len": 24576,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:13Z",
-      "updated_at": "2026-03-10T21:21:13Z"
+      "updated_at": "2026-03-10T21:25:33Z"
     },
     {
       "id": "c42ef509-0287-49de-81fb-b7ea4b481a01",
@@ -5999,8 +6106,8 @@
       "payload_source_mode": "file",
       "payload_source_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-32row-partial.bin",
       "payload_file": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\fixtures\\ladder_captures\\golden\\encode-cmt-32row-partial.bin",
-      "verify_clipboard_event": null,
-      "verify_status": "unverified",
+      "verify_clipboard_event": "copied",
+      "verify_status": "verified_pass",
       "verify_notes": "",
       "verify_expected_rows": [
         "#,Max row wire",
@@ -6037,12 +6144,46 @@
         ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
         ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
       ],
-      "verify_observed_rows": [],
-      "verify_result_file": null,
-      "verify_clipboard_len": null,
+      "verify_observed_rows": [
+        "#,Max row wire",
+        "R,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verify_result_file": "scratchpad/captures/golden3-encode-cmt-32row-partial_verify_back_20260310_212540.bin",
+      "verify_clipboard_len": 69632,
       "promoted_fixture_file": null,
       "created_at": "2026-03-10T21:21:13Z",
-      "updated_at": "2026-03-10T21:21:13Z"
+      "updated_at": "2026-03-10T21:25:40Z"
     }
   ]
 }
