@@ -8,6 +8,7 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(uv run pytest:*)",
       "Bash(uv run:*)",
+      "Bash(do uv:*)"
     ]
   }
 }
