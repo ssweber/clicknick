@@ -1349,24 +1349,24 @@ def run_tui(
             if mode in {"q", "quit", "cancel"}:
                 continue
 
-            while True:
-                source_raw = (
-                    input_fn("Payload source override ([d]efault / [f]ile / [s]horthand): ")
-                    .strip()
-                    .lower()
-                )
-                if source_raw in {"", "d", "default"}:
-                    source_override: str | None = None
-                    break
-                if source_raw in {"f", "file"}:
-                    source_override = "file"
-                    break
-                if source_raw in {"s", "shorthand"}:
-                    source_override = "shorthand"
-                    break
-                output_fn("Please enter d, f, or s.")
-
             if mode in {"", "l", "label"}:
+                while True:
+                    source_raw = (
+                        input_fn("Payload source override ([d]efault / [f]ile / [s]horthand): ")
+                        .strip()
+                        .lower()
+                    )
+                    if source_raw in {"", "d", "default"}:
+                        source_override: str | None = None
+                        break
+                    if source_raw in {"f", "file"}:
+                        source_override = "file"
+                        break
+                    if source_raw in {"s", "shorthand"}:
+                        source_override = "shorthand"
+                        break
+                    output_fn("Please enter d, f, or s.")
+
                 label = input_fn("Label: ").strip()
                 if not label:
                     output_fn("Label is required.")
@@ -1413,9 +1413,20 @@ def run_tui(
 
                     for index, entry in enumerate(candidates, start=1):
                         label = entry["capture_label"]
+                        resolved_source = engine._default_verify_source_mode(
+                            entry, None
+                        )
+                        source_detail = resolved_source
+                        if resolved_source == "file":
+                            file_path = entry.get("payload_source_file") or entry.get(
+                                "payload_file"
+                            )
+                            if file_path:
+                                source_detail = f"file ({file_path})"
                         output_fn("")
                         output_fn(f"[{index}/{len(candidates)}] {label}")
                         output_fn(f"Type: {entry['capture_type']}")
+                        output_fn(f"Source: {source_detail}")
                         output_fn(f"Scenario: {entry['scenario']}")
                         if entry["description"]:
                             output_fn(f"Description: {entry['description']}")
@@ -1443,7 +1454,7 @@ def run_tui(
 
                         result = engine.verify_run_interactive(
                             label=label,
-                            source=source_override,
+                            source=None,
                             input_fn=input_fn,
                             output_fn=output_fn,
                         )

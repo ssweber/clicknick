@@ -222,8 +222,9 @@ Verify:
 - Start TUI: `uv run clicknick-ladder-capture tui`
 - In guided verify:
   1. Select `3` (Verify run), then `g` (guided queue).
-  2. Choose payload override `f` (file).
-  3. Enter a scenario filter for the current round.
+  2. Enter a scenario filter for the current round.
+  Source is auto-resolved per entry: synthetic entries regenerate from shorthand,
+  file-backed/native entries load from their payload file.
 - If you see `Entry has no payload_source_file or payload_file to load`, the entry is missing a
   captured/source payload; fix by running `entry capture --label <label>` (native) or adding a
   file-backed entry (`entry add ... --payload-source file --payload-file <path>`).
@@ -233,7 +234,8 @@ Verify:
   1. Build a scenario and add entries (`entry add` / `entry add-patch-batch`).
   2. Generate a queue doc under `scratchpad/` (for example `scratchpad/<scenario>_verify_queue_<date>.md`).
   3. Commit queue setup before operator manual steps.
-  4. Operator run path for verify queues: `tui -> 3 -> g -> f -> <scenario filter>`.
+  4. Operator run path for verify queues: `tui -> 3 -> g -> <scenario filter>`.
+     Source is auto-resolved per entry (shorthand for synthetic, file for native/file-backed).
   5. For copied events, operator must paste in Click, then copy back in Click, then press `c`.
   6. Operator responds `done`.
   7. Parse manifest outcomes, classify pass/fail/blocked, build next batch, and commit outcomes.
@@ -241,7 +243,7 @@ Verify:
   - do not manually edit failed rungs.
   - record `status`, `event`, and resulting clipboard length.
   - add a short note only when outcome is surprising/ambiguous (for example accidental mis-click).
-- For native recapture rounds, use: `tui -> 2` (capture queue), then `tui -> 3 -> g -> f` for verify.
+- For native recapture rounds, use: `tui -> 2` (capture queue), then `tui -> 3 -> g` for verify.
 - Preferred operator handoff message includes:
   - scenario name
   - case count
