@@ -1389,10 +1389,18 @@ def run_tui(
                     ).strip()
                     candidates = engine.entry_list(status="unverified")
                     if scenario_filter:
-                        needle = scenario_filter.lower()
-                        candidates = [
-                            row for row in candidates if needle in row["scenario"].lower()
-                        ]
+                        if scenario_filter.lower() == "today":
+                            today_str = datetime.now(UTC).strftime("%Y-%m-%d")
+                            candidates = [
+                                row
+                                for row in candidates
+                                if row.get("updated_at", "").startswith(today_str)
+                            ]
+                        else:
+                            needle = scenario_filter.lower()
+                            candidates = [
+                                row for row in candidates if needle in row["scenario"].lower()
+                            ]
                     if not candidates:
                         output_fn("No unverified entries match filter.")
                         continue

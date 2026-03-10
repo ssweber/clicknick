@@ -158,8 +158,30 @@ uv run clicknick-ladder-capture promote --label <label> --overwrite
 - Shorthand payload generation does not yet synthesize rung comments; comment-bearing entries should verify from file/native payloads unless you are only recording expected rows.
 - Wire shorthand tokens used in observed/expected rows:
   - `-` = horizontal wire
-  - `|` = vertical wire (valid on columns `B+`; not column `A`)
+  - `|` = vertical wire
   - `T` = both horizontal and vertical at the same cell
+  - `|` and `T` are **NOT allowed** in column A or on the last row of a rung
+    (vertical-down has nowhere to go from col A or the terminal row)
+- **Use compact shorthand with macros** — do NOT manually count 31 commas.
+  The parser in `shorthand.py` supports two fill macros:
+  - `->` = fill remaining condition columns with `-` (horizontal wire)
+  - `...` = fill remaining condition columns with empty (blank)
+  The macro must be the last condition token before the `:` separator.
+  Columns before the macro are positional (A, B, C, ...).
+- Compact shorthand examples:
+  - `R,...,:,` — 1-row empty rung (all 31 cols blank, AF blank)
+  - `R,->,:,NOP` — all 31 cols horizontal wire + NOP
+  - `R,,-,,-,...,:,` — wire at B and D only, rest blank
+  - `R,,-,,-,->,:,` — wire at B, D, and all cols E through AE
+  - `,...,:,` — continuation row, all blank
+  - `,,T,...,:,` — continuation row, T at col B, rest blank
+  - `,...,:,NOP` — continuation row, NOP only
+- Multi-row example (comment + 2 rows):
+  ```
+  --comment "Test comment" \
+  --row "R,->,:,NOP" \
+  --row ",...,:,"
+  ```
 - Empty commas in stored `--row` values often act as a shorthand placeholder for an otherwise wire-only baseline.
   - when Click visibly shows a full horizontal line, record the observed row using explicit `-` tokens if needed
   - do not assume the manifest shorthand string is the most human-readable rendering of the pasted rung
