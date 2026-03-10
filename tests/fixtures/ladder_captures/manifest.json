@@ -304,6 +304,36 @@
       "metadata_todo": false
     },
     {
+      "fixture_file": "native-comment-2row-nop-row1.bin",
+      "capture_label": "native-comment-2row-nop-row1",
+      "scenario": "multirow-comment-r4",
+      "source": "scratchpad/captures",
+      "description": "2-row comment, NOP on row 1 only, no wires. Ground truth for NOP in cont records.",
+      "rung_rows": [
+        "#,NOP test",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verified": false,
+      "codec_generatable": false,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "native-comment-2row-vert-c.bin",
+      "capture_label": "native-comment-2row-vert-c",
+      "scenario": "multirow-comment-r4",
+      "source": "scratchpad/captures",
+      "description": "2-row comment, T at col C on row 0 with full wire, dash at C on row 1. Ground truth for down flags in phase-A/cont records.",
+      "rung_rows": [
+        "#,Vert test",
+        "R,-,-,T,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,:,NOP",
+        ",,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verified": false,
+      "codec_generatable": false,
+      "metadata_todo": false
+    },
+    {
       "fixture_file": "native-comment-fullwire.bin",
       "capture_label": "native-comment-fullwire",
       "scenario": "comment-family-flag-20260309",
@@ -817,6 +847,51 @@
       ],
       "verified": false,
       "codec_generatable": true,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "verify-comment-2row-empty.bin",
+      "capture_label": "verify-comment-2row-empty",
+      "scenario": "comment-multirow-20260310",
+      "source": "scratchpad/captures",
+      "description": "2-row comment, empty grid",
+      "rung_rows": [
+        "#,Two row test",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verified": true,
+      "codec_generatable": false,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "verify-comment-2row-nop-row1.bin",
+      "capture_label": "verify-comment-2row-nop-row1",
+      "scenario": "comment-multirow-20260310",
+      "source": "scratchpad/captures",
+      "description": "2-row comment, NOP on row 1",
+      "rung_rows": [
+        "#,NOP row1",
+        "R,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,NOP"
+      ],
+      "verified": true,
+      "codec_generatable": false,
+      "metadata_todo": false
+    },
+    {
+      "fixture_file": "verify-comment-2row-sparse-wire.bin",
+      "capture_label": "verify-comment-2row-sparse-wire",
+      "scenario": "multirow-comment-r4",
+      "source": "scratchpad/captures",
+      "description": "2-row comment, sparse wire at B and D on both rows, no NOP",
+      "rung_rows": [
+        "#,Sparse test",
+        "R,,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,...",
+        ",,-,,-,,,,,,,,,,,,,,,,,,,,,,,,,,,,:,..."
+      ],
+      "verified": true,
+      "codec_generatable": false,
       "metadata_todo": false
     },
     {

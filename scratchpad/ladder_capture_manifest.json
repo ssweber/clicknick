@@ -1844,9 +1844,9 @@
       ],
       "verify_result_file": "scratchpad/captures/verify-comment-2row-empty_verify_back_20260310_165330.bin",
       "verify_clipboard_len": 8192,
-      "promoted_fixture_file": null,
+      "promoted_fixture_file": "tests/fixtures/ladder_captures/verify-comment-2row-empty.bin",
       "created_at": "2026-03-10T12:55:04Z",
-      "updated_at": "2026-03-10T16:53:30Z"
+      "updated_at": "2026-03-10T17:00:58Z"
     },
     {
       "id": "95624bcf-069e-443e-abed-8eeac3b367d9",
@@ -1906,9 +1906,9 @@
       ],
       "verify_result_file": "scratchpad/captures/verify-comment-2row-nop-row1_verify_back_20260310_165244.bin",
       "verify_clipboard_len": 8192,
-      "promoted_fixture_file": null,
+      "promoted_fixture_file": "tests/fixtures/ladder_captures/verify-comment-2row-nop-row1.bin",
       "created_at": "2026-03-10T12:57:19Z",
-      "updated_at": "2026-03-10T16:52:44Z"
+      "updated_at": "2026-03-10T17:00:58Z"
     },
     {
       "id": "9e2abfcc-385e-4024-b1ba-803e578f7c09",
@@ -1971,9 +1971,9 @@
       "verify_observed_rows": [],
       "verify_result_file": null,
       "verify_clipboard_len": null,
-      "promoted_fixture_file": null,
+      "promoted_fixture_file": "tests/fixtures/ladder_captures/native-comment-2row-vert-c.bin",
       "created_at": "2026-03-10T16:32:11Z",
-      "updated_at": "2026-03-10T16:35:56Z"
+      "updated_at": "2026-03-10T17:00:59Z"
     },
     {
       "id": "d65b3eba-eae6-4747-9f12-eb5c5ba42269",
@@ -2000,9 +2000,9 @@
       "verify_observed_rows": [],
       "verify_result_file": null,
       "verify_clipboard_len": null,
-      "promoted_fixture_file": null,
+      "promoted_fixture_file": "tests/fixtures/ladder_captures/native-comment-2row-nop-row1.bin",
       "created_at": "2026-03-10T16:35:05Z",
-      "updated_at": "2026-03-10T16:37:39Z"
+      "updated_at": "2026-03-10T17:00:59Z"
     },
     {
       "id": "0f53b1ab-42e2-447d-9dcd-bce718532dd7",
@@ -2033,9 +2033,9 @@
       ],
       "verify_result_file": "scratchpad/captures/verify-comment-2row-sparse-wire_verify_back_20260310_165508.bin",
       "verify_clipboard_len": 8192,
-      "promoted_fixture_file": null,
+      "promoted_fixture_file": "tests/fixtures/ladder_captures/verify-comment-2row-sparse-wire.bin",
       "created_at": "2026-03-10T16:54:14Z",
-      "updated_at": "2026-03-10T16:55:08Z"
+      "updated_at": "2026-03-10T17:00:58Z"
     }
   ]
 }
