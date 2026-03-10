@@ -83,18 +83,13 @@ Supported checklist
 
 Verified in Click (encode → paste → copy back → decode round-trip):
 
-    [x] Empty rung, 1 row
-    [x] Empty rung, 2..32 rows
-    [x] Wire topology, 2..32 rows (-, |, T in any valid position)
-    [x] Full horizontal wire, 1 row
-    [x] NOP on row 0
-    [x] NOP on non-first rows (with col0 +0x15 enable)
-    [x] Plain comment, 1-row (empty, wire, NOP combos) — fixed by
-        removing 0x0A59 clobber and col-A left-wire skip
-    [x] Plain comment on 2-row rung (empty, NOP on row 1, sparse wire)
-    [x] Plain comment on 3-row rung (empty, NOP on row 2, wire on
-        rows 1+2, same-col wire)
-    [x] Plain comment on 4-row rung (empty — scaling test)
+    [x] Empty rung, 1..32 rows
+    [x] Wire topology, 1..32 rows (-, |, T in any valid position)
+    [x] NOP on any row (with col0 +0x15 enable for non-first rows)
+    [x] Plain comment, 1-row (empty, wire, NOP, max 1400 bytes)
+    [x] Plain comment, 2-row (empty, NOP, wire incl. col-A, max 1324)
+    [x] Plain comment, 3-row (empty, NOP, wire, mixed, max 1400)
+    [x] Plain comment, 4..32 rows (wire combos, scaling)
     [ ] Styled comments (bold/italic/underline RTF; crashes under
         current model)
     [ ] Contacts (NO, NC, edge, comparison, immediate variants)

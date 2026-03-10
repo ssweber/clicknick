@@ -34,18 +34,31 @@ Write a prompt block the user can paste to a separate Claude Code session. Inclu
 
 ## Current state (2026-03-10)
 
-All tested shapes pass Click round-trip:
-- Empty rungs (1/2/8/32 rows)
+All tested shapes pass Click round-trip (verified via paste → copy-back):
+
+**Non-comment:**
+- Empty rungs (1/2/3/4/5/8/9/13/17/32 rows)
 - Wire topologies (horizontal, vertical, T-junction, mixed, partial)
 - NOP on AF column (row 0, multi-row with wires)
 - Edge cases (all 31 cols dashed, vertical B-only, T at column AE)
-- **Comment + empty (2-row)**
-- **Comment + NOP on row 1 (2-row)**
-- **Comment + sparse wire on both rows (2-row)**
-- **Comment + empty (3-row)**
-- **Comment + NOP on row 2 (3-row)**
-- **Comment + wire on rows 1+2, including same-col (3-row)**
-- **Comment + empty (4-row)**
+
+**Comment (1-row):**
+- Empty, full wire, partial wire, NOP, full wire + NOP
+- Max 1400-byte comment with full wire + NOP
+
+**Comment (2-row):**
+- Empty, NOP on row 1, sparse wire (B+D) on both rows
+- Wire at col A on both rows (left flag confirmed: Click writes left=1 in cont records)
+- Max 1324-byte comment (exact buffer limit) with wire + NOP
+
+**Comment (3+ rows):**
+- 3-row: empty, NOP on row 2, wire on rows 1+2, same-col wire, mixed wire, max 1400
+- 4-row: empty, full wire rows 0-2
+- 5/9/13/32-row: partial wire (full row 0, B+D on middle rows)
+- 5-row: max 1400-byte comment with wire
+
+**Golden regression tests:** 25 byte-exact fixtures in `tests/fixtures/ladder_captures/golden/`
+covering all shapes above. Regenerate with `uv run python scratchpad/generate_golden_fixtures.py`.
 
 ## Known regressions
 
@@ -53,11 +66,19 @@ _(none)_
 
 ## Known limitations (not yet implemented)
 
-- Multi-row comments with vertical wire (T on row 0, receiving wire on row 1; native capture exists but not yet verified as synthetic)
 - Styled comments (RTF bold/italic/underline — crashes under current model)
 - Contacts (NO, NC, edge, comparison, immediate variants)
 - Coils / AF instructions (out, latch, reset)
 - Instruction stream placement
+
+## Known parity gaps (non-blocking)
+
+- **AF left-wire flag:** When NOP has horizontal wire entering from the left,
+  native captures show phase-A slot 62 +0x21 = 1 (left flag). Encoder writes
+  only +0x25. Does not affect Click acceptance — cosmetic parity only.
+- **Col-A left-wire in phase-A stride:** Native captures are inconsistent
+  (some have left=1 at col 0, some have left=0). Click ignores it. Encoder
+  skips it (col_idx > 0 guard). Not structural.
 
 ## Validation rules
 

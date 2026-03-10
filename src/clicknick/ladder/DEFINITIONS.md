@@ -137,7 +137,10 @@ Native captures show session-dependent variation (`0x5A`, `0x41`, `0x67`,
   for instruction families)
 
 **Trailer byte**
-`0x0A59` — zero for wire-only rungs, `0x01` for comment rungs.
+`0x0A59` — zero for wire-only rungs. For 1-row comment rungs this offset
+falls inside the phase-A stream and is owned by the resource file — do NOT
+overwrite it. For multi-row non-comment rungs it is `0x01` when instructions
+are present (not yet used in encoder).
 
 **Volatile bytes**
 `+0x05` and `+0x11` on header entries can vary between capture sessions
@@ -193,13 +196,16 @@ stray bytes that Click misinterpreted as cell flags.
 - 3–4 rows: `0x3000` (12288)
 - 32 rows: `0x11000` (69632)
 
-**Comment page**
-Comments on multi-row rungs may add one extra `0x1000` page for a
-terminal companion extent carrying renderer/layout metadata (font
-descriptors, CJK fallback tables). For 1-row rungs, the comment fits
-within the existing buffer. Native 2-row comment captures are 8192 bytes
-(same as without comment) — the extra page may only appear at higher row
-counts or longer comments.
+**Comment buffer limits**
+Comments occupy the payload region (0x0294+), followed by phase-A
+(0xFC8 bytes) and continuation records ((rows-1) × 32 × 0x40 bytes).
+All must fit within the allocated buffer:
+- 1-row: max 1400 bytes (fits easily — phase-A ends at ~0x184C)
+- 2-row: max **1324 bytes** (payload 105+1324+11 = 1440 → phase-A ends
+  at 0x1800 → cont ends at exactly 0x2000 = buffer limit). Note: Click
+  accepts the 8192-byte paste but on copy-back allocates 12288 (extra
+  page). This is not corruption — Click is more generous on re-export.
+- 3+ rows: max 1400 bytes (buffer is large enough)
 
 **Split signature**
 A verify-back length that is a multiple of the expected size indicates
