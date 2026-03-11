@@ -164,6 +164,48 @@ def ensure_mdb_addresses(mdb_path: str | None, csv_path: Path) -> dict[str, Any]
 # ---------------------------------------------------------------------------
 
 
+def describe_fixture(name: str) -> str:
+    """Return a human-readable summary of a golden fixture's shape."""
+    csv_path = golden_dir() / f"{name}.csv"
+    logical_rows, condition_rows, af_tokens, comment = read_golden_csv(csv_path)
+
+    parts: list[str] = []
+    parts.append(f"{logical_rows} row{'s' if logical_rows > 1 else ''}")
+
+    if comment is not None:
+        if len(comment) > 40:
+            parts.append(f"comment ({len(comment)} chars)")
+        else:
+            parts.append(f'comment "{comment}"')
+
+    # Summarize wire pattern
+    wire_rows = 0
+    for conditions in condition_rows:
+        if any(c in ("-", "|", "T") for c in conditions):
+            wire_rows += 1
+    if wire_rows == logical_rows:
+        parts.append("all rows wired")
+    elif wire_rows > 0:
+        parts.append(f"{wire_rows} row{'s' if wire_rows > 1 else ''} wired")
+
+    # NOP placement
+    nop_rows = [i for i, af in enumerate(af_tokens) if af == "NOP"]
+    if nop_rows:
+        parts.append(f"NOP on row {nop_rows[0]}")
+
+    # Topology tokens
+    has_t = any("T" in cond for row in condition_rows for cond in row)
+    has_v = any("|" in cond for row in condition_rows for cond in row)
+    if has_t and has_v:
+        parts.append("T-junction + vertical")
+    elif has_t:
+        parts.append("T-junction")
+    elif has_v:
+        parts.append("vertical")
+
+    return ", ".join(parts)
+
+
 def encode_fixture(name: str) -> tuple[bytes, Path]:
     """Encode a golden CSV and return (payload_bytes, csv_path)."""
     csv_path = golden_dir() / f"{name}.csv"
@@ -178,6 +220,8 @@ def copy_fixture(name: str, mdb_path: str | None = None) -> None:
     """Encode a golden fixture, ensure MDB addresses, copy to clipboard."""
     payload, csv_path = encode_fixture(name)
 
+    print(f"  {describe_fixture(name)}")
+
     addresses = extract_addresses_from_csv(csv_path)
     if addresses:
         try:
@@ -190,7 +234,7 @@ def copy_fixture(name: str, mdb_path: str | None = None) -> None:
             print(f"  MDB: skipped ({exc})")
 
     copy_to_clipboard(payload)
-    print(f"  Copied {name} to clipboard ({len(payload):,} bytes)")
+    print(f"  Copied to clipboard ({len(payload):,} bytes)")
 
 
 def read_and_compare(name: str) -> bool:
@@ -230,28 +274,53 @@ def main() -> None:
     parser.add_argument("--list", action="store_true", help="List available fixtures")
     parser.add_argument("--copy", metavar="NAME", help="Encode fixture and copy to clipboard")
     parser.add_argument("--read", metavar="NAME", help="Read clipboard and compare against fixture")
+    parser.add_argument("--skip-to", metavar="NAME", help="Skip to named fixture in batch mode")
     parser.add_argument("--mdb-path", metavar="PATH", help="Explicit path to SC_.mdb")
 
     args = parser.parse_args()
 
     if args.list:
         for name in list_fixtures():
-            bin_exists = (golden_dir() / f"{name}.bin").exists()
-            status = "csv+bin" if bin_exists else "csv only"
-            print(f"  {name}  ({status})")
+            desc = describe_fixture(name)
+            bin_path = golden_dir() / f"{name}.bin"
+            if bin_path.exists():
+                size = bin_path.stat().st_size
+                tag = f" [verified, {size:,} bytes]"
+            else:
+                tag = ""
+            print(f"  {name}{tag}")
+            print(f"    {desc}")
         return
 
     if args.copy:
-        copy_fixture(args.copy, mdb_path=args.mdb_path)
+        try:
+            copy_fixture(args.copy, mdb_path=args.mdb_path)
+        except FileNotFoundError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
         return
 
     if args.read:
-        ok = read_and_compare(args.read)
+        try:
+            ok = read_and_compare(args.read)
+        except FileNotFoundError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
         sys.exit(0 if ok else 1)
 
     # Default: interactive batch verify
     fixtures = list_fixtures()
-    print(f"Golden fixtures: {len(fixtures)}")
+
+    if args.skip_to:
+        if args.skip_to not in fixtures:
+            print(f"Error: unknown fixture '{args.skip_to}'", file=sys.stderr)
+            sys.exit(1)
+        skip_idx = fixtures.index(args.skip_to)
+        fixtures = fixtures[skip_idx:]
+        print(f"Resuming from {args.skip_to} ({len(fixtures)} remaining)")
+    else:
+        print(f"Golden fixtures: {len(fixtures)}")
+
     print()
     print("For each fixture: copies to clipboard, waits for you to paste in Click")
     print("and copy back, then compares. Press Enter to proceed, 'q' to quit.")
