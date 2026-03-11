@@ -9,6 +9,7 @@ Usage:
     clicknick-ladder-verify --list                  # List available fixtures
     clicknick-ladder-verify --copy nc-1row-empty    # Encode + copy to clipboard
     clicknick-ladder-verify --read nc-1row-empty    # Read clipboard + compare
+    clicknick-ladder-verify --folder path/to/csvs   # Verify arbitrary CSVs
     clicknick-ladder-verify --mdb-path SC_.mdb ...  # Explicit MDB path
 """
 
@@ -17,6 +18,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -164,9 +166,22 @@ def ensure_mdb_addresses(mdb_path: str | None, csv_path: Path) -> dict[str, Any]
 # ---------------------------------------------------------------------------
 
 
-def describe_fixture(name: str) -> str:
-    """Return a human-readable summary of a golden fixture's shape."""
-    csv_path = golden_dir() / f"{name}.csv"
+def print_csv_shape(csv_path: Path) -> None:
+    """Print the CSV data rows (skip header), trimming trailing empty cells."""
+    import csv as csv_mod
+
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        reader = csv_mod.reader(f)
+        next(reader)  # skip header
+        for row in reader:
+            # Trim trailing empty cells
+            while row and row[-1] == "":
+                row.pop()
+            print(f"    {','.join(row)}")
+
+
+def describe_csv(csv_path: Path) -> str:
+    """Return a human-readable summary of a CSV fixture's shape."""
     logical_rows, condition_rows, af_tokens, comment = read_golden_csv(csv_path)
 
     parts: list[str] = []
@@ -206,21 +221,23 @@ def describe_fixture(name: str) -> str:
     return ", ".join(parts)
 
 
-def encode_fixture(name: str) -> tuple[bytes, Path]:
-    """Encode a golden CSV and return (payload_bytes, csv_path)."""
-    csv_path = golden_dir() / f"{name}.csv"
-    if not csv_path.exists():
-        raise FileNotFoundError(f"No golden CSV: {name}")
+def describe_fixture(name: str) -> str:
+    """Return a human-readable summary of a golden fixture's shape."""
+    return describe_csv(golden_dir() / f"{name}.csv")
+
+
+def encode_csv(csv_path: Path) -> bytes:
+    """Encode an arbitrary CSV file and return the payload bytes."""
     logical_rows, condition_rows, af_tokens, comment = read_golden_csv(csv_path)
-    payload = encode_rung(logical_rows, condition_rows, af_tokens, comment=comment)
-    return payload, csv_path
+    return encode_rung(logical_rows, condition_rows, af_tokens, comment=comment)
 
 
-def copy_fixture(name: str, mdb_path: str | None = None) -> None:
-    """Encode a golden fixture, ensure MDB addresses, copy to clipboard."""
-    payload, csv_path = encode_fixture(name)
+def _copy_and_describe(csv_path: Path, mdb_path: str | None) -> bytes:
+    """Describe, encode, provision MDB addresses, copy to clipboard. Return payload."""
+    print(f"  {describe_csv(csv_path)}")
+    print_csv_shape(csv_path)
 
-    print(f"  {describe_fixture(name)}")
+    payload = encode_csv(csv_path)
 
     addresses = extract_addresses_from_csv(csv_path)
     if addresses:
@@ -235,13 +252,21 @@ def copy_fixture(name: str, mdb_path: str | None = None) -> None:
 
     copy_to_clipboard(payload)
     print(f"  Copied to clipboard ({len(payload):,} bytes)")
+    return payload
 
 
-def read_and_compare(name: str) -> bool:
-    """Read clipboard, compare against golden .bin, return True if match."""
-    bin_path = golden_dir() / f"{name}.bin"
+def copy_fixture(name: str, mdb_path: str | None = None) -> None:
+    """Encode a golden fixture, ensure MDB addresses, copy to clipboard."""
+    csv_path = golden_dir() / f"{name}.csv"
+    if not csv_path.exists():
+        raise FileNotFoundError(f"No golden CSV: {name}")
+    _copy_and_describe(csv_path, mdb_path)
+
+
+def _compare_bin(name: str, bin_path: Path) -> bool:
+    """Read clipboard, compare against .bin file, return True if match."""
     if not bin_path.exists():
-        print(f"  No golden .bin for {name} — saving clipboard as new fixture")
+        print(f"  No .bin for {name} - saving clipboard as new fixture")
         data = read_from_clipboard()
         bin_path.write_bytes(data)
         print(f"  Saved {bin_path.name} ({len(data):,} bytes)")
@@ -261,6 +286,134 @@ def read_and_compare(name: str) -> bool:
     return False
 
 
+def read_and_compare(name: str) -> bool:
+    """Read clipboard, compare against golden .bin, return True if match."""
+    return _compare_bin(name, golden_dir() / f"{name}.bin")
+
+
+# ---------------------------------------------------------------------------
+# Interactive batch verification (shared by golden and folder modes)
+# ---------------------------------------------------------------------------
+
+
+def run_batch(
+    items: list[tuple[str, Path]],
+    *,
+    mdb_path: str | None = None,
+    results_dir: Path | None = None,
+) -> None:
+    """Interactive batch verify. Each item is (name, csv_path).
+
+    For [p]asted: compares against .bin if it exists, otherwise saves new .bin.
+    Results summary is printed and optionally written to *results_dir*.
+    """
+    print()
+    print("For each fixture: encodes and copies to clipboard.")
+    print("After pasting in Click, enter one of:")
+    print("  [p]asted  - paste worked, copy the rung back for comparison/saving")
+    print("  [c]rashed - Click crashed or errored")
+    print("  [n]ot as expected - pasted but looks wrong")
+    print("  [s]kip    - skip this fixture")
+    print("  [q]uit    - stop")
+    print()
+
+    results: list[tuple[str, str, str]] = []  # (name, status, detail)
+    remaining_names = [name for name, _ in items]
+
+    for idx, (name, csv_path) in enumerate(items):
+        print(f"--- {name} ---")
+
+        try:
+            _copy_and_describe(csv_path, mdb_path)
+        except Exception as exc:
+            print(f"  Error: {exc}")
+            results.append((name, "error", str(exc)))
+            print()
+            continue
+
+        print("  Paste in Click, then: [p]asted / [c]rashed / [n]ot as expected / [s]kip / [q]uit")
+        response = input("  > ").strip().lower()
+
+        if response == "q":
+            results.append((name, "skipped", "quit"))
+            for later_name in remaining_names[idx + 1 :]:
+                results.append((later_name, "skipped", "quit"))
+            break
+
+        if response == "s":
+            results.append((name, "skipped", "user"))
+            print()
+            continue
+
+        if response == "n":
+            note = input("  What looked wrong? > ").strip()
+            note_path = csv_path.with_suffix(".note.txt")
+            note_path.write_text(note or "(no description)", encoding="utf-8")
+            print(f"  Saved {note_path.name}")
+            print("  Copy the rung back if you want to save it, or just press Enter to skip.")
+            save = input("  Save .bin? [y/N] > ").strip().lower()
+            if save == "y":
+                data = read_from_clipboard()
+                bin_path = csv_path.with_suffix(".bin")
+                bin_path.write_bytes(data)
+                print(f"  Saved {bin_path.name} ({len(data):,} bytes)")
+            results.append((name, "unexpected", note or "no description"))
+            print()
+            continue
+
+        if response == "c":
+            note = input("  Any details? (Enter to skip) > ").strip()
+            if note:
+                note_path = csv_path.with_suffix(".note.txt")
+                note_path.write_text(note, encoding="utf-8")
+                print(f"  Saved {note_path.name}")
+            results.append((name, "crashed", note or ""))
+            print()
+            continue
+
+        # Default: "p" or Enter - pasted OK, read back and compare/save
+        bin_path = csv_path.with_suffix(".bin")
+        print("  Copy the rung back from Click, then press Enter.")
+        input("  > ")
+        if _compare_bin(name, bin_path):
+            results.append((name, "pasted", "PASS"))
+        else:
+            results.append((name, "pasted", "FAIL"))
+        print()
+
+    # Summary
+    print()
+    print("=" * 50)
+    print("Results:")
+    for name, status, detail in results:
+        extra = f" ({detail})" if detail else ""
+        print(f"  {name}: {status}{extra}")
+
+    counts: dict[str, int] = {}
+    for _, status, _ in results:
+        counts[status] = counts.get(status, 0) + 1
+    summary = ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
+    print(f"\nTotal: {summary}")
+
+    if results_dir:
+        ts = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
+        results_path = results_dir / f"results_{ts}.txt"
+        with open(results_path, "w", encoding="utf-8") as f:
+            f.write(f"Verify: {results_dir}\n")
+            f.write(f"Date: {datetime.now(tz=UTC).isoformat()}\n\n")
+            for name, status, detail in results:
+                extra = f" ({detail})" if detail else ""
+                f.write(f"{name}: {status}{extra}\n")
+            f.write(f"\nTotal: {summary}\n")
+        print(f"Results written to {results_path}")
+
+    has_failures = any(
+        s in ("crashed", "unexpected", "encode_error", "error") for _, s, _ in results
+    )
+    has_fail_compare = any(s == "pasted" and d == "FAIL" for _, s, d in results)
+    sys.exit(1 if (has_failures or has_fail_compare) else 0)
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -274,6 +427,7 @@ def main() -> None:
     parser.add_argument("--list", action="store_true", help="List available fixtures")
     parser.add_argument("--copy", metavar="NAME", help="Encode fixture and copy to clipboard")
     parser.add_argument("--read", metavar="NAME", help="Read clipboard and compare against fixture")
+    parser.add_argument("--folder", metavar="PATH", help="Verify arbitrary CSVs from a folder")
     parser.add_argument("--skip-to", metavar="NAME", help="Skip to named fixture in batch mode")
     parser.add_argument("--mdb-path", metavar="PATH", help="Explicit path to SC_.mdb")
 
@@ -308,7 +462,22 @@ def main() -> None:
             sys.exit(1)
         sys.exit(0 if ok else 1)
 
-    # Default: interactive batch verify
+    if args.folder:
+        folder = Path(args.folder)
+        if not folder.is_dir():
+            print(f"Error: not a directory: {folder}", file=sys.stderr)
+            sys.exit(1)
+        csvs = sorted(folder.glob("*.csv"))
+        if not csvs:
+            print(f"No CSV files found in {folder}")
+            sys.exit(1)
+        items = [(p.stem, p) for p in csvs]
+        print(f"Folder: {folder} ({len(items)} CSV files)")
+        run_batch(items, mdb_path=args.mdb_path, results_dir=folder)
+        return
+
+    # Default: golden batch verify
+    gdir = golden_dir()
     fixtures = list_fixtures()
 
     if args.skip_to:
@@ -321,31 +490,5 @@ def main() -> None:
     else:
         print(f"Golden fixtures: {len(fixtures)}")
 
-    print()
-    print("For each fixture: copies to clipboard, waits for you to paste in Click")
-    print("and copy back, then compares. Press Enter to proceed, 'q' to quit.")
-    print()
-
-    passed = 0
-    failed = 0
-
-    for name in fixtures:
-        print(f"--- {name} ---")
-        copy_fixture(name, mdb_path=args.mdb_path)
-        print("  Paste in Click, then copy the rung back. Press Enter when ready (q to quit):")
-
-        response = input("  > ").strip().lower()
-        if response == "q":
-            print(
-                f"\nStopped. {passed} passed, {failed} failed, {len(fixtures) - passed - failed} skipped."
-            )
-            sys.exit(1 if failed else 0)
-
-        if read_and_compare(name):
-            passed += 1
-        else:
-            failed += 1
-        print()
-
-    print(f"Done. {passed} passed, {failed} failed.")
-    sys.exit(0 if failed == 0 else 1)
+    items = [(name, gdir / f"{name}.csv") for name in fixtures]
+    run_batch(items, mdb_path=args.mdb_path)
