@@ -1,4 +1,4 @@
-# Ladder Encoder — CLAUDE Workflow
+# Ladder Capture Workflow — CLAUDE Workflow
 
 ## Shell hygiene
 Never inline multi-line content in bash commands (echo, printf, python -c, cat <<EOF).
@@ -7,91 +7,82 @@ Instead:
 - Use the Write/Edit tool to create .py scripts, then run them with `uv run`.
 - For quick Python one-liners, keep them truly single-line.
 
+## Scope
+
+The encoder/decoder core has been **extracted to the standalone [`laddercodec`](https://github.com/ssweber/laddercodec) package**. This directory (`ladder/`) contains only the **capture/testing workflow** that exercises laddercodec against live CLICK software:
+
+- **capture_cli.py** — CLI for ladder capture verify/prepare/complete workflows
+- **capture_workflow.py** — Shared workflow engine (used by CLI and TUI frontends)
+- **capture_registry.py** — Manifest registry for scratchpad capture tracking
+- **clipboard.py** — Windows clipboard interaction utilities (copy/read/clear)
+- **__init__.py** — Re-export shim from laddercodec for convenience imports
+
+For encoder/codec work (encode.py, codec.py, model.py, topology.py, empty_multirow.py, csv/), **work in the laddercodec repo** (`../laddercodec`).
+
+## Import patterns
+
+Clicknick modules import directly from `laddercodec`, not from local files:
+
+```python
+# capture_workflow.py
+from laddercodec import ClickCodec, HeaderSeed
+from laddercodec.csv.shorthand import format_comment_shorthand_row, normalize_shorthand_row
+from laddercodec.topology import HEADER_ENTRY_BASE, cell_offset, header_structural_equal, parse_wire_topology
+
+# capture_registry.py
+from laddercodec.csv.shorthand import normalize_shorthand_row, render_shorthand_row
+```
+
+The `__init__.py` re-exports top-level laddercodec symbols + local clipboard utilities for convenience.
+
 ## Roles
 
-**Lead (you):** High-level investigator. You read the user's results, decide what to try next, make code changes to `encode.py` / `codec.py`, and run tests (`make test`). You write prompts and interpret assistant findings. You own the encode pipeline and commit decisions.
+**Lead (you):** High-level investigator. You read the user's results, decide what to try next, and run tests (`make test`). For codec changes, direct the user to the laddercodec repo. For capture workflow changes, edit files in this directory.
 
-**Assistant (subagent):** Scut work. Binary diffing, byte-level analysis, building verify queue entries, generating patch payloads, narrowing isolation batches. Give them a self-contained prompt with file paths and specific instructions. They should always read `AGENTS.md` and `encode.py` first.
+**Assistant (subagent):** Scut work. Binary diffing, byte-level analysis, building verify queue entries, generating patch payloads, narrowing isolation batches. Give them a self-contained prompt. They should read `AGENTS.md` and `laddercodec/encode.py` (in the laddercodec repo) first.
 
 ## How to delegate
 
 Write a prompt block the user can paste to a separate Claude Code session. Include:
-- What files to read first (`AGENTS.md`, `encode.py`, relevant captures)
+- What files to read first (`AGENTS.md`, `laddercodec/encode.py`, relevant captures)
 - Specific byte-level tasks (diff two .bin files, check offsets, build patch payloads)
 - What NOT to do (don't edit source, don't run verify, etc.)
 - What to report back
 
 ## Key files
 
-- `encode.py` — Unified encoder. Public API is `encode_rung()`. Comment framing is hardcoded (prefix/suffix literals + `comment_phase_a.bin` resource).
-- `codec.py` — Compatibility shim. Routes shorthand rows through `encode_rung()`. Applies header seed for non-comment rungs. `_encode_compiled()` is the integration point.
-- `empty_multirow.py` — Scaffold synthesis (steps 1-2 of the pipeline).
-- `topology.py` — Cell offset math, wire flag constants.
-- `legacy_codec.py` — `HeaderSeed`, `RungGrid` decode, scaffold loading. Used by codec.py for decode and header seed extraction.
+- `capture_cli.py` — CLI entry point for verify/prepare/complete workflows
+- `capture_workflow.py` — Encode pipeline integration, clipboard round-trip, header seed management
+- `capture_registry.py` — Scratchpad manifest: tracks captured .bin files, labels, verify results
+- `clipboard.py` — Win32 clipboard read/write/clear
 - `AGENTS.md` — Capture/verify CLI guide. Give this to assistants.
-- `resources/comment_phase_a.bin` — Phase-A continuation stream (4040 bytes, native-derived).
-- `resources/grcecr_empty_native_20260308.bin` — Native empty donor (kept for reference diffing, not used in encode path).
 
-## Current state (2026-03-10)
+## Dependency
 
-All tested shapes pass Click round-trip (verified via paste → copy-back):
+`laddercodec` is declared in `pyproject.toml` as an editable local dep:
 
-**Non-comment:**
-- Empty rungs (1/2/3/4/5/8/9/13/17/32 rows)
-- Wire topologies (horizontal, vertical, T-junction, mixed, partial)
-- NOP on AF column (row 0, multi-row with wires)
-- Edge cases (all 31 cols dashed, vertical B-only, T at column AE)
+```toml
+[tool.uv.sources]
+laddercodec = { path = "../laddercodec", editable = true }
+```
 
-**Comment (1-row):**
-- Empty, full wire, partial wire, NOP, full wire + NOP
-- Max 1400-byte comment with full wire + NOP
+Both repos must be sibling directories. Changes to laddercodec are immediately visible.
 
-**Comment (2-row):**
-- Empty, NOP on row 1, sparse wire (B+D) on both rows
-- Wire at col A on both rows (left flag confirmed: Click writes left=1 in cont records)
-- Max 1324-byte comment (exact buffer limit) with wire + NOP
+## Verify workflow
 
-**Comment (3+ rows):**
-- 3-row: empty, NOP on row 2, wire on rows 1+2, same-col wire, mixed wire, max 1400
-- 4-row: empty, full wire rows 0-2
-- 5/9/13/32-row: partial wire (full row 0, B+D on middle rows)
-- 5-row: max 1400-byte comment with wire
+```bash
+uv run clicknick-ladder-capture verify prepare --label <label>   # load clipboard
+# User pastes in Click, copies back
+uv run clicknick-ladder-capture verify complete                  # or: verify run
+```
 
-**Golden regression tests:** 25 byte-exact fixtures in `tests/fixtures/ladder_captures/golden/`
-covering all shapes above. Regenerate with `uv run python scratchpad/generate_golden_fixtures.py`.
+## Golden fixtures
 
-## Known regressions
+25 byte-exact golden fixtures live in **laddercodec**: `tests/fixtures/ladder_captures/golden/`. Regenerate with `uv run python scratchpad/generate_golden_fixtures.py` (from the laddercodec repo).
 
-_(none)_
+## Known limitations (not yet implemented in laddercodec)
 
-## Known limitations (not yet implemented)
-
-- Styled comments (RTF bold/italic/underline — crashes under current model)
+- Styled comments (RTF bold/italic/underline)
 - Contacts (NO, NC, edge, comparison, immediate variants)
 - Coils / AF instructions (out, latch, reset)
 - Instruction stream placement
-
-## Known parity gaps (non-blocking)
-
-- **AF left-wire flag:** When NOP has horizontal wire entering from the left,
-  native captures show phase-A slot 62 +0x21 = 1 (left flag). Encoder writes
-  only +0x25. Does not affect Click acceptance — cosmetic parity only.
-- **Col-A left-wire in phase-A stride:** Native captures are inconsistent
-  (some have left=1 at col 0, some have left=0). Click ignores it. Encoder
-  skips it (col_idx > 0 guard). Not structural.
-
-## Validation rules
-
-- T/| tokens rejected on the last row (vertical-down has nowhere to go)
-- T/| tokens rejected on column A
-- At most one NOP per rung (multiple NOPs render as tiny dots in Click)
-
-## Important patterns
-
-- **Header seed clobbers comment bytes.** The `HeaderSeed.apply_to_buffer()` writes +0x05/+0x11/+0x17/+0x18 uniformly across all 32 header entries. Comment rungs need entry0 +0x17 = 0x5A. Fix: skip header seed entirely for comment rungs in `_encode_compiled()`.
-- **Comment wire encoding uses phase-A stride, not cell grid.** For comment rungs row 0, wire data goes at phase-A-relative positions (+0x21 left, +0x25 right, +0x29 down, slot = col_idx + 31), NOT at cell grid +0x19/+0x1D. NOP uses phase-A slot 62 + 0x25. The cell grid wire bytes are all zero in native comment captures.
-- **Comment row 1+ wire/NOP uses continuation stream records.** 32 records (one per column) after phase-A. Wire at +0x19/+0x1D. NOP at cont[31] +0x19=1 AND +0x1D=1, plus cont[0] +0x15=1.
-- **No payload padding.** Phase-A starts immediately after the RTF payload — no cell-size alignment. Click locates phase-A and cont records by reading the payload length field.
-- **Comment flag varies by session (0x5A, 0x41, 0x67, 0x65).** Not grid-dependent. Encoder uses 0x5A; Click accepts all observed values.
-- **Native captures are the ground truth.** When something doesn't work, capture a native rung with the same shape and diff against synthetic. The `scratchpad/captures/` directory has reference captures.
-- **Verify workflow:** `uv run clicknick-ladder-capture verify prepare --label <label>` loads clipboard, user pastes in Click, copies back, then `verify complete` or `verify run` records result.
