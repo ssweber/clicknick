@@ -167,21 +167,70 @@ def ensure_mdb_addresses(mdb_path: str | None, csv_path: Path) -> dict[str, Any]
 
 
 def print_csv_shape(csv_path: Path) -> None:
-    """Print the CSV data rows (skip header), trimming trailing empty cells."""
+    """Print the CSV data rows (skip header) as-is."""
     import csv as csv_mod
 
     with open(csv_path, newline="", encoding="utf-8") as f:
         reader = csv_mod.reader(f)
         next(reader)  # skip header
         for row in reader:
-            # Trim trailing empty cells
-            while row and row[-1] == "":
-                row.pop()
             print(f"    {','.join(row)}")
+
+
+def _collapse_cols(cols: list[str], all_col_names: tuple[str, ...]) -> str:
+    """Collapse column lists into ranges: A+C..AE or just A+C."""
+    if not cols:
+        return ""
+    # Convert to indices for contiguous-run detection
+    name_to_idx = {name: i for i, name in enumerate(all_col_names)}
+    indices = [name_to_idx[c] for c in cols]
+
+    # Group into contiguous runs
+    runs: list[list[int]] = []
+    for idx in indices:
+        if runs and idx == runs[-1][-1] + 1:
+            runs[-1].append(idx)
+        else:
+            runs.append([idx])
+
+    parts: list[str] = []
+    for run in runs:
+        if len(run) >= 3:
+            parts.append(f"{all_col_names[run[0]]}..{all_col_names[run[-1]]}")
+        else:
+            parts.extend(all_col_names[i] for i in run)
+    return "+".join(parts)
+
+
+def _describe_row_wires(conditions: list[str], col_names: tuple[str, ...]) -> str:
+    """Describe wire tokens on a single row, e.g. '-:A+C..AE T:B' or 'full'."""
+    by_token: dict[str, list[str]] = {}
+    for i, tok in enumerate(conditions):
+        if tok in ("-", "|", "T"):
+            by_token.setdefault(tok, []).append(col_names[i])
+
+    if not by_token:
+        return ""
+
+    # Check for full horizontal wire (all 31 columns are '-')
+    dash_cols = by_token.get("-", [])
+    if len(dash_cols) == len(col_names):
+        return "full"
+
+    parts: list[str] = []
+    for tok in ("-", "T", "|"):
+        cols = by_token.get(tok, [])
+        if not cols:
+            continue
+        col_str = _collapse_cols(cols, col_names)
+        parts.append(f"{tok}:{col_str}")
+    return " ".join(parts)
 
 
 def describe_csv(csv_path: Path) -> str:
     """Return a human-readable summary of a CSV fixture's shape."""
+    from laddercodec.csv.contract import CONDITION_COLUMNS
+
     logical_rows, condition_rows, af_tokens, comment = read_golden_csv(csv_path)
 
     parts: list[str] = []
@@ -193,30 +242,34 @@ def describe_csv(csv_path: Path) -> str:
         else:
             parts.append(f'comment "{comment}"')
 
-    # Summarize wire pattern
-    wire_rows = 0
-    for conditions in condition_rows:
-        if any(c in ("-", "|", "T") for c in conditions):
-            wire_rows += 1
-    if wire_rows == logical_rows:
-        parts.append("all rows wired")
-    elif wire_rows > 0:
-        parts.append(f"{wire_rows} row{'s' if wire_rows > 1 else ''} wired")
+    # Per-row wire + AF detail, collapsing consecutive identical rows
+    raw_descs: list[tuple[int, str]] = []  # (row_index, description)
+    for i, conditions in enumerate(condition_rows):
+        wire_desc = _describe_row_wires(conditions, CONDITION_COLUMNS)
+        af = af_tokens[i] if i < len(af_tokens) else ""
+        if af and wire_desc:
+            raw_descs.append((i, f"{wire_desc} AF={af}"))
+        elif af:
+            raw_descs.append((i, f"AF={af}"))
+        elif wire_desc:
+            raw_descs.append((i, wire_desc))
 
-    # NOP placement
-    nop_rows = [i for i, af in enumerate(af_tokens) if af == "NOP"]
-    if nop_rows:
-        parts.append(f"NOP on row {nop_rows[0]}")
-
-    # Topology tokens
-    has_t = any("T" in cond for row in condition_rows for cond in row)
-    has_v = any("|" in cond for row in condition_rows for cond in row)
-    if has_t and has_v:
-        parts.append("T-junction + vertical")
-    elif has_t:
-        parts.append("T-junction")
-    elif has_v:
-        parts.append("vertical")
+    # Collapse consecutive rows with identical descriptions
+    row_descs: list[str] = []
+    j = 0
+    while j < len(raw_descs):
+        start_idx, desc = raw_descs[j]
+        end_idx = start_idx
+        while j + 1 < len(raw_descs) and raw_descs[j + 1][1] == desc and raw_descs[j + 1][0] == end_idx + 1:
+            j += 1
+            end_idx = raw_descs[j][0]
+        if end_idx > start_idx:
+            row_descs.append(f"[{start_idx}..{end_idx}] {desc}")
+        else:
+            row_descs.append(f"[{start_idx}] {desc}")
+        j += 1
+    if row_descs:
+        parts.append("; ".join(row_descs))
 
     return ", ".join(parts)
 
@@ -263,32 +316,32 @@ def copy_fixture(name: str, mdb_path: str | None = None) -> None:
     _copy_and_describe(csv_path, mdb_path)
 
 
-def _compare_bin(name: str, bin_path: Path) -> bool:
-    """Read clipboard, compare against .bin file, return True if match."""
-    if not bin_path.exists():
-        print(f"  No .bin for {name} - saving clipboard as new fixture")
-        data = read_from_clipboard()
-        bin_path.write_bytes(data)
-        print(f"  Saved {bin_path.name} ({len(data):,} bytes)")
-        return True
+def _save_and_compare(name: str, bin_path: Path) -> None:
+    """Read clipboard, save as .bin, and report byte diff against encoder output.
 
-    expected = bin_path.read_bytes()
+    The comparison is informational only — Click re-encodes on copy-back,
+    so byte-exact match is not expected.
+    """
     actual = read_from_clipboard()
 
+    if not bin_path.exists():
+        bin_path.write_bytes(actual)
+        print(f"  Saved {bin_path.name} ({len(actual):,} bytes)")
+        return
+
+    expected = bin_path.read_bytes()
     if actual == expected:
-        print(f"  {name}: PASS ({len(actual):,} bytes)")
-        return True
-
-    print(f"  {name}: FAIL (expected {len(expected):,}, got {len(actual):,} bytes)")
-    if len(actual) == len(expected):
+        print(f"  {name}: exact match ({len(actual):,} bytes)")
+    elif len(actual) == len(expected):
         diffs = [i for i in range(len(actual)) if actual[i] != expected[i]]
-        print(f"  {len(diffs)} byte(s) differ, first at offset 0x{diffs[0]:04X}")
-    return False
+        print(f"  {name}: {len(diffs)} byte(s) differ from encoder, first at 0x{diffs[0]:04X}")
+    else:
+        print(f"  {name}: size differs (encoder {len(expected):,}, Click {len(actual):,} bytes)")
 
 
-def read_and_compare(name: str) -> bool:
-    """Read clipboard, compare against golden .bin, return True if match."""
-    return _compare_bin(name, golden_dir() / f"{name}.bin")
+def read_and_compare(name: str) -> None:
+    """Read clipboard, save and compare against golden .bin (informational)."""
+    _save_and_compare(name, golden_dir() / f"{name}.bin")
 
 
 # ---------------------------------------------------------------------------
@@ -296,21 +349,56 @@ def read_and_compare(name: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _read_progress(log_path: Path) -> dict[str, str]:
+    """Read progress log, return {name: status_line}."""
+    done: dict[str, str] = {}
+    if not log_path.exists():
+        return done
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        # Format: "name: status" or "name: status (detail)"
+        if ": " in line:
+            name = line.split(": ", 1)[0]
+            done[name] = line
+    return done
+
+
+def _append_result(log_path: Path, name: str, status: str, detail: str = "") -> None:
+    """Append one result line to the progress log."""
+    extra = f" ({detail})" if detail else ""
+    line = f"{name}: {status}{extra}\n"
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(line)
+
+
 def run_batch(
     items: list[tuple[str, Path]],
     *,
     mdb_path: str | None = None,
-    results_dir: Path | None = None,
+    log_path: Path | None = None,
 ) -> None:
     """Interactive batch verify. Each item is (name, csv_path).
 
-    For [p]asted: compares against .bin if it exists, otherwise saves new .bin.
-    Results summary is printed and optionally written to *results_dir*.
+    Progress is appended one line at a time to *log_path*. On resume,
+    already-completed fixtures are skipped automatically.
     """
+    # Load prior progress
+    done: dict[str, str] = {}
+    if log_path:
+        done = _read_progress(log_path)
+        if done:
+            print(f"Resuming: {len(done)} already done, {len(items) - len(done)} remaining")
+        else:
+            # Start fresh log with timestamp header
+            with open(log_path, "w", encoding="utf-8") as f:
+                f.write(f"# Verify {datetime.now(tz=UTC).isoformat()}\n")
+
     print()
     print("For each fixture: encodes and copies to clipboard.")
     print("After pasting in Click, enter one of:")
-    print("  [p]asted  - paste worked, copy the rung back for comparison/saving")
+    print("  [w]orked  - paste worked, copy the rung back for comparison/saving")
     print("  [c]rashed - Click crashed or errored")
     print("  [n]ot as expected - pasted but looks wrong")
     print("  [s]kip    - skip this fixture")
@@ -321,27 +409,32 @@ def run_batch(
     remaining_names = [name for name, _ in items]
 
     for idx, (name, csv_path) in enumerate(items):
-        print(f"--- {name} ---")
+        if name in done:
+            continue
+
+        print(f"--- {name} ({idx + 1}/{len(items)}) ---")
 
         try:
             _copy_and_describe(csv_path, mdb_path)
         except Exception as exc:
             print(f"  Error: {exc}")
             results.append((name, "error", str(exc)))
+            if log_path:
+                _append_result(log_path, name, "error", str(exc))
             print()
             continue
 
-        print("  Paste in Click, then: [p]asted / [c]rashed / [n]ot as expected / [s]kip / [q]uit")
+        print("  Paste in Click, then: [w]orked / [c]rashed / [n]ot as expected / [s]kip / [q]uit")
         response = input("  > ").strip().lower()
 
         if response == "q":
-            results.append((name, "skipped", "quit"))
-            for later_name in remaining_names[idx + 1 :]:
-                results.append((later_name, "skipped", "quit"))
+            print()
             break
 
         if response == "s":
-            results.append((name, "skipped", "user"))
+            results.append((name, "skipped", ""))
+            if log_path:
+                _append_result(log_path, name, "skipped")
             print()
             continue
 
@@ -358,6 +451,8 @@ def run_batch(
                 bin_path.write_bytes(data)
                 print(f"  Saved {bin_path.name} ({len(data):,} bytes)")
             results.append((name, "unexpected", note or "no description"))
+            if log_path:
+                _append_result(log_path, name, "unexpected", note or "no description")
             print()
             continue
 
@@ -368,50 +463,56 @@ def run_batch(
                 note_path.write_text(note, encoding="utf-8")
                 print(f"  Saved {note_path.name}")
             results.append((name, "crashed", note or ""))
+            if log_path:
+                _append_result(log_path, name, "crashed", note or "")
             print()
             continue
 
-        # Default: "p" or Enter - pasted OK, read back and compare/save
+        # Default: "w" or Enter - worked OK, read back and compare/save
         bin_path = csv_path.with_suffix(".bin")
         print("  Copy the rung back from Click, then press Enter.")
         input("  > ")
-        if _compare_bin(name, bin_path):
-            results.append((name, "pasted", "PASS"))
-        else:
-            results.append((name, "pasted", "FAIL"))
+        _save_and_compare(name, bin_path)
+        results.append((name, "worked", ""))
+        if log_path:
+            _append_result(log_path, name, "worked")
         print()
 
-    # Summary
+    # Summary — combine prior progress + this session
+    all_results: list[tuple[str, str]] = []
+    for name, _ in items:
+        if name in done:
+            # Parse status from log line
+            status = done[name].split(": ", 1)[1].split(" (")[0]
+            all_results.append((name, status))
+        else:
+            for rname, rstatus, _ in results:
+                if rname == name:
+                    all_results.append((name, rstatus))
+                    break
+
     print()
     print("=" * 50)
     print("Results:")
-    for name, status, detail in results:
-        extra = f" ({detail})" if detail else ""
-        print(f"  {name}: {status}{extra}")
+    for name, status in all_results:
+        print(f"  {name}: {status}")
 
     counts: dict[str, int] = {}
-    for _, status, _ in results:
+    for _, status in all_results:
         counts[status] = counts.get(status, 0) + 1
+    remaining = len(items) - len(all_results)
     summary = ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
+    if remaining:
+        summary += f", {remaining} remaining"
     print(f"\nTotal: {summary}")
 
-    if results_dir:
-        ts = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
-        results_path = results_dir / f"results_{ts}.txt"
-        with open(results_path, "w", encoding="utf-8") as f:
-            f.write(f"Verify: {results_dir}\n")
-            f.write(f"Date: {datetime.now(tz=UTC).isoformat()}\n\n")
-            for name, status, detail in results:
-                extra = f" ({detail})" if detail else ""
-                f.write(f"{name}: {status}{extra}\n")
-            f.write(f"\nTotal: {summary}\n")
-        print(f"Results written to {results_path}")
+    if log_path:
+        print(f"Progress log: {log_path}")
 
     has_failures = any(
-        s in ("crashed", "unexpected", "encode_error", "error") for _, s, _ in results
+        s in ("crashed", "unexpected", "error") for _, s in all_results
     )
-    has_fail_compare = any(s == "pasted" and d == "FAIL" for _, s, d in results)
-    sys.exit(1 if (has_failures or has_fail_compare) else 0)
+    sys.exit(1 if has_failures else 0)
 
 
 # ---------------------------------------------------------------------------
@@ -428,7 +529,7 @@ def main() -> None:
     parser.add_argument("--copy", metavar="NAME", help="Encode fixture and copy to clipboard")
     parser.add_argument("--read", metavar="NAME", help="Read clipboard and compare against fixture")
     parser.add_argument("--folder", metavar="PATH", help="Verify arbitrary CSVs from a folder")
-    parser.add_argument("--skip-to", metavar="NAME", help="Skip to named fixture in batch mode")
+    parser.add_argument("--restart", action="store_true", help="Clear progress and start fresh")
     parser.add_argument("--mdb-path", metavar="PATH", help="Explicit path to SC_.mdb")
 
     args = parser.parse_args()
@@ -456,11 +557,11 @@ def main() -> None:
 
     if args.read:
         try:
-            ok = read_and_compare(args.read)
+            read_and_compare(args.read)
         except FileNotFoundError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(1)
-        sys.exit(0 if ok else 1)
+        return
 
     if args.folder:
         folder = Path(args.folder)
@@ -472,23 +573,20 @@ def main() -> None:
             print(f"No CSV files found in {folder}")
             sys.exit(1)
         items = [(p.stem, p) for p in csvs]
+        log = folder / "verify_progress.log"
+        if args.restart and log.exists():
+            log.unlink()
         print(f"Folder: {folder} ({len(items)} CSV files)")
-        run_batch(items, mdb_path=args.mdb_path, results_dir=folder)
+        run_batch(items, mdb_path=args.mdb_path, log_path=log)
         return
 
     # Default: golden batch verify
     gdir = golden_dir()
     fixtures = list_fixtures()
+    log = gdir / "verify_progress.log"
+    if args.restart and log.exists():
+        log.unlink()
 
-    if args.skip_to:
-        if args.skip_to not in fixtures:
-            print(f"Error: unknown fixture '{args.skip_to}'", file=sys.stderr)
-            sys.exit(1)
-        skip_idx = fixtures.index(args.skip_to)
-        fixtures = fixtures[skip_idx:]
-        print(f"Resuming from {args.skip_to} ({len(fixtures)} remaining)")
-    else:
-        print(f"Golden fixtures: {len(fixtures)}")
-
+    print(f"Golden fixtures: {len(fixtures)}")
     items = [(name, gdir / f"{name}.csv") for name in fixtures]
-    run_batch(items, mdb_path=args.mdb_path)
+    run_batch(items, mdb_path=args.mdb_path, log_path=log)
