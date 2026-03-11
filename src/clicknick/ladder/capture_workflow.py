@@ -13,15 +13,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from laddercodec import ClickCodec, HeaderSeed
+from laddercodec.csv.shorthand import format_comment_shorthand_row, normalize_shorthand_row
+from laddercodec.topology import (
+    HEADER_ENTRY_BASE,
+    cell_offset,
+    header_structural_equal,
+    parse_wire_topology,
+)
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
 
-from ..csv.shorthand import format_comment_shorthand_row, normalize_shorthand_row
 from ..utils.mdb_operations import ensure_addresses_exist
 from ..utils.mdb_shared import find_click_database
 from . import capture_registry
 from .clipboard import copy_to_clipboard, find_click_hwnd, read_from_clipboard
-from .codec import ClickCodec, HeaderSeed
-from .topology import HEADER_ENTRY_BASE, cell_offset, header_structural_equal, parse_wire_topology
 
 FIXTURE_MANIFEST_VERSION = 2
 FIXTURE_MANIFEST_DESCRIPTION = (
@@ -1413,9 +1418,7 @@ def run_tui(
 
                     for index, entry in enumerate(candidates, start=1):
                         label = entry["capture_label"]
-                        resolved_source = engine._default_verify_source_mode(
-                            entry, None
-                        )
+                        resolved_source = engine._default_verify_source_mode(entry, None)
                         source_detail = resolved_source
                         if resolved_source == "file":
                             file_path = entry.get("payload_source_file") or entry.get(

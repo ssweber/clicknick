@@ -9,8 +9,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from laddercodec.csv.shorthand import normalize_shorthand_row
 
-from clicknick.csv.shorthand import normalize_shorthand_row
 from clicknick.ladder import capture_registry
 from clicknick.ladder.capture_workflow import (
     CaptureWorkflow,

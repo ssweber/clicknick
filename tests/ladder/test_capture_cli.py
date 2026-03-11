@@ -8,10 +8,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from laddercodec.topology import HEADER_ENTRY_BASE, cell_offset
 
 from clicknick.ladder.capture_cli import main
 from clicknick.ladder.capture_workflow import CaptureWorkflow, CaptureWorkflowPaths
-from clicknick.ladder.topology import HEADER_ENTRY_BASE, cell_offset
 
 
 class _FakeClipboard:

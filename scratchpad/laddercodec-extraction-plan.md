@@ -1,4 +1,4 @@
-# pyladdercodec Extraction Plan
+# laddercodec Extraction Plan
 
 Extract the pure-Python ladder encoder and CSV parser from clicknick into a
 standalone package. MPL-2.0 licensed (protects RE work, compatible with both
@@ -16,12 +16,12 @@ pyrung MPL and clicknick AGPL).
 ## Package structure
 
 ```
-pyladdercodec/
+laddercodec/
 ├── .github/workflows/ci.yml
 ├── pyproject.toml
 ├── Makefile
 ├── CLAUDE.md
-├── src/pyladdercodec/
+├── src/laddercodec/
 │   ├── __init__.py                   # public API
 │   ├── encode.py                     # encode_rung()
 │   ├── codec.py                      # ClickCodec (compile + encode + decode)
@@ -50,11 +50,11 @@ pyladdercodec/
     └── STATUS.md
 ```
 
-## File mapping (clicknick → pyladdercodec)
+## File mapping (clicknick → laddercodec)
 
 ### Moves (pure Python, zero deps)
 
-| clicknick source                     | pyladdercodec destination        | Notes                    |
+| clicknick source                     | laddercodec destination        | Notes                    |
 |--------------------------------------|----------------------------------|--------------------------|
 | `ladder/encode.py`                   | `encode.py`                      | as-is                    |
 | `ladder/codec.py`                    | `codec.py`                       | remove `legacy_fallback` |
@@ -100,7 +100,7 @@ pyladdercodec/
 
 ## Import changes in clicknick after extraction
 
-clicknick adds `pyladdercodec` as a dependency. Remaining ladder/ files update:
+clicknick adds `laddercodec` as a dependency. Remaining ladder/ files update:
 
 ```python
 # capture_workflow.py (before)
@@ -109,19 +109,19 @@ from .codec import ClickCodec, HeaderSeed
 from .topology import HEADER_ENTRY_BASE, cell_offset, ...
 
 # capture_workflow.py (after)
-from pyladdercodec.csv.shorthand import normalize_shorthand_row
-from pyladdercodec import ClickCodec, HeaderSeed
-from pyladdercodec.topology import HEADER_ENTRY_BASE, cell_offset, ...
+from laddercodec.csv.shorthand import normalize_shorthand_row
+from laddercodec import ClickCodec, HeaderSeed
+from laddercodec.topology import HEADER_ENTRY_BASE, cell_offset, ...
 ```
 
-clicknick's `ladder/__init__.py` can re-export from pyladdercodec for
+clicknick's `ladder/__init__.py` can re-export from laddercodec for
 backward compat during transition, then slim down later.
 
 ## pyproject.toml (key sections)
 
 ```toml
 [project]
-name = "pyladdercodec"
+name = "laddercodec"
 description = "Binary codec for AutomationDirect CLICK PLC ladder clipboard format"
 license = "MPL-2.0"
 requires-python = ">=3.11,<4.0"
@@ -131,7 +131,7 @@ dependencies = []   # zero deps
 source = "uv-dynamic-versioning"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pyladdercodec"]
+packages = ["src/laddercodec"]
 ```
 
 ## What pyrung gains (future)
@@ -140,18 +140,18 @@ packages = ["src/pyladdercodec"]
 # pyrung/click/tag_map.py
 def to_binary(self, program: Program) -> bytes:
     """Encode program as Click clipboard binary."""
-    from pyladdercodec import ClickCodec
+    from laddercodec import ClickCodec
     bundle = self.to_ladder(program)
     # bundle rows → shorthand → encode
     ...
 ```
 
-pyladdercodec becomes an optional dependency of pyrung (extras group).
+laddercodec becomes an optional dependency of pyrung (extras group).
 
 ## Ecosystem after extraction
 
 ```
-pyladdercodec  (MPL-2.0, zero deps)
+laddercodec  (MPL-2.0, zero deps)
   ├── encode/decode Click clipboard binary
   └── CSV shorthand parsing
 
@@ -163,9 +163,9 @@ pyclickplc  (MIT, zero deps)
 pyrung  (MPL-2.0, deps: pyclickplc, pyrsistent)
   ├── ladder DSL + simulator
   ├── to_ladder() → CSV rows
-  └── to_binary() → clipboard bytes (via optional pyladdercodec)
+  └── to_binary() → clipboard bytes (via optional laddercodec)
 
-clicknick  (AGPL-3.0, deps: pyclickplc, pyladdercodec, pywin32, ...)
+clicknick  (AGPL-3.0, deps: pyclickplc, laddercodec, pywin32, ...)
   ├── GUI: address editor, overlay, tag browser
   ├── ladder/clipboard.py (Win32 glue)
   └── ladder/capture_*.py (test workflow)

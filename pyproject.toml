@@ -37,6 +37,7 @@ classifiers = [
 # ---- Main dependencies ----
 
 dependencies = [
+    "laddercodec",
     "pyclickplc",
     "pywin32 >= 311",
     "pyodbc >= 5.3.0",
@@ -86,6 +87,9 @@ bump = true
 [tool.hatch.build.targets.wheel]
 # The source location for the package.
 packages = ["src/clicknick"]
+
+[tool.uv.sources]
+laddercodec = { path = "../laddercodec", editable = true }
 
 
 # ---- Settings ----
