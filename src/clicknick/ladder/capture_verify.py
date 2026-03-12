@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from laddercodec import encode_multi_rung
 from laddercodec.csv.contract import CSV_HEADER
 from laddercodec.encode import encode_rung
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
@@ -80,19 +81,82 @@ def read_golden_csv(
         if tuple(header) != CSV_HEADER:
             raise ValueError(f"Bad header in {path.name}")
 
-        comment: str | None = None
+        comment_lines: list[str] = []
         condition_rows: list[list[str]] = []
         af_tokens: list[str] = []
 
         for row in reader:
             marker = row[0]
             if marker == "#":
-                comment = row[1]
+                comment_lines.append(row[1] if len(row) > 1 else "")
             elif marker in ("R", ""):
                 condition_rows.append(row[1:32])
                 af_tokens.append(row[32])
 
+    comment = "\n".join(comment_lines) if comment_lines else None
     return len(condition_rows), condition_rows, af_tokens, comment
+
+
+def is_multi_rung_csv(path: Path) -> bool:
+    """Return True if the CSV has more than one rung (multiple R markers)."""
+    import csv as csv_mod
+
+    count = 0
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv_mod.reader(f)
+        next(reader)  # skip header
+        for row in reader:
+            if row and row[0] == "R":
+                count += 1
+                if count > 1:
+                    return True
+    return False
+
+
+def read_multi_rung_csv(
+    path: Path,
+) -> list[tuple[int, list[list[str]], list[str], str | None]]:
+    """Read a multi-rung golden CSV. Each R marker starts a new rung."""
+    import csv as csv_mod
+
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv_mod.reader(f)
+        header = next(reader)
+        if tuple(header) != CSV_HEADER:
+            raise ValueError(f"Bad header in {path.name}")
+
+        rungs: list[tuple[int, list[list[str]], list[str], str | None]] = []
+        pending_comment_lines: list[str] = []
+        rung_comment_lines: list[str] = []
+        current_conditions: list[list[str]] = []
+        current_af: list[str] = []
+        in_rung = False
+
+        for row in reader:
+            marker = row[0]
+            if marker == "#":
+                pending_comment_lines.append(row[1] if len(row) > 1 else "")
+                continue
+            if len(row) != 33:
+                continue
+            if marker == "R":
+                if in_rung:
+                    comment = "\n".join(rung_comment_lines) if rung_comment_lines else None
+                    rungs.append((len(current_conditions), current_conditions, current_af, comment))
+                rung_comment_lines = pending_comment_lines
+                pending_comment_lines = []
+                current_conditions = [row[1:32]]
+                current_af = [row[32]]
+                in_rung = True
+            elif marker == "" and in_rung:
+                current_conditions.append(row[1:32])
+                current_af.append(row[32])
+
+        if in_rung:
+            comment = "\n".join(rung_comment_lines) if rung_comment_lines else None
+            rungs.append((len(current_conditions), current_conditions, current_af, comment))
+
+    return rungs
 
 
 # ---------------------------------------------------------------------------
@@ -227,12 +291,14 @@ def _describe_row_wires(conditions: list[str], col_names: tuple[str, ...]) -> st
     return " ".join(parts)
 
 
-def describe_csv(csv_path: Path) -> str:
-    """Return a human-readable summary of a CSV fixture's shape."""
-    from laddercodec.csv.contract import CONDITION_COLUMNS
-
-    logical_rows, condition_rows, af_tokens, comment = read_golden_csv(csv_path)
-
+def _describe_single_rung(
+    condition_rows: list[list[str]],
+    af_tokens: list[str],
+    comment: str | None,
+    col_names: tuple[str, ...],
+) -> str:
+    """Return a human-readable summary of a single rung's shape."""
+    logical_rows = len(condition_rows)
     parts: list[str] = []
     parts.append(f"{logical_rows} row{'s' if logical_rows > 1 else ''}")
 
@@ -242,10 +308,9 @@ def describe_csv(csv_path: Path) -> str:
         else:
             parts.append(f'comment "{comment}"')
 
-    # Per-row wire + AF detail, collapsing consecutive identical rows
-    raw_descs: list[tuple[int, str]] = []  # (row_index, description)
+    raw_descs: list[tuple[int, str]] = []
     for i, conditions in enumerate(condition_rows):
-        wire_desc = _describe_row_wires(conditions, CONDITION_COLUMNS)
+        wire_desc = _describe_row_wires(conditions, col_names)
         af = af_tokens[i] if i < len(af_tokens) else ""
         if af and wire_desc:
             raw_descs.append((i, f"{wire_desc} AF={af}"))
@@ -254,13 +319,16 @@ def describe_csv(csv_path: Path) -> str:
         elif wire_desc:
             raw_descs.append((i, wire_desc))
 
-    # Collapse consecutive rows with identical descriptions
     row_descs: list[str] = []
     j = 0
     while j < len(raw_descs):
         start_idx, desc = raw_descs[j]
         end_idx = start_idx
-        while j + 1 < len(raw_descs) and raw_descs[j + 1][1] == desc and raw_descs[j + 1][0] == end_idx + 1:
+        while (
+            j + 1 < len(raw_descs)
+            and raw_descs[j + 1][1] == desc
+            and raw_descs[j + 1][0] == end_idx + 1
+        ):
             j += 1
             end_idx = raw_descs[j][0]
         if end_idx > start_idx:
@@ -274,6 +342,22 @@ def describe_csv(csv_path: Path) -> str:
     return ", ".join(parts)
 
 
+def describe_csv(csv_path: Path) -> str:
+    """Return a human-readable summary of a CSV fixture's shape."""
+    from laddercodec.csv.contract import CONDITION_COLUMNS
+
+    if is_multi_rung_csv(csv_path):
+        rung_items = read_multi_rung_csv(csv_path)
+        rung_descs = [
+            _describe_single_rung(cr, af, cmt, CONDITION_COLUMNS)
+            for _lr, cr, af, cmt in rung_items
+        ]
+        return f"{len(rung_items)} rungs: " + " | ".join(rung_descs)
+
+    logical_rows, condition_rows, af_tokens, comment = read_golden_csv(csv_path)
+    return _describe_single_rung(condition_rows, af_tokens, comment, CONDITION_COLUMNS)
+
+
 def describe_fixture(name: str) -> str:
     """Return a human-readable summary of a golden fixture's shape."""
     return describe_csv(golden_dir() / f"{name}.csv")
@@ -281,6 +365,9 @@ def describe_fixture(name: str) -> str:
 
 def encode_csv(csv_path: Path) -> bytes:
     """Encode an arbitrary CSV file and return the payload bytes."""
+    if is_multi_rung_csv(csv_path):
+        rung_items = read_multi_rung_csv(csv_path)
+        return encode_multi_rung([(lr, cr, af) for lr, cr, af, _ in rung_items])
     logical_rows, condition_rows, af_tokens, comment = read_golden_csv(csv_path)
     return encode_rung(logical_rows, condition_rows, af_tokens, comment=comment)
 
@@ -509,9 +596,7 @@ def run_batch(
     if log_path:
         print(f"Progress log: {log_path}")
 
-    has_failures = any(
-        s in ("crashed", "unexpected", "error") for _, s in all_results
-    )
+    has_failures = any(s in ("crashed", "unexpected", "error") for _, s in all_results)
     sys.exit(1 if has_failures else 0)
 
 
