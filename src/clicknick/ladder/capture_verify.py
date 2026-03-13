@@ -22,9 +22,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from laddercodec import encode_multi_rung
+from laddercodec import Coil, Contact, encode_multi_rung
 from laddercodec.csv.contract import CSV_HEADER
-from laddercodec.encode import encode_rung
+from laddercodec.encode import SUPPORTED_CONDITION_TOKENS, AfToken, ConditionToken, encode_rung
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
 
 from ..utils.mdb_operations import ensure_addresses_exist
@@ -69,9 +69,21 @@ def list_fixtures() -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+def _parse_condition(token: str) -> ConditionToken:
+    if token in SUPPORTED_CONDITION_TOKENS:
+        return token
+    return Contact.from_csv_token(token)
+
+
+def _parse_af(token: str) -> AfToken:
+    if token.strip().upper() in ("", "NOP"):
+        return token
+    return Coil.from_csv_token(token)
+
+
 def read_golden_csv(
     path: Path,
-) -> tuple[int, list[list[str]], list[str], str | None]:
+) -> tuple[int, list[list[ConditionToken]], list[AfToken], str | None]:
     """Read a golden CSV and return (logical_rows, condition_rows, af_tokens, comment)."""
     import csv as csv_mod
 
@@ -82,16 +94,16 @@ def read_golden_csv(
             raise ValueError(f"Bad header in {path.name}")
 
         comment_lines: list[str] = []
-        condition_rows: list[list[str]] = []
-        af_tokens: list[str] = []
+        condition_rows: list[list[ConditionToken]] = []
+        af_tokens: list[AfToken] = []
 
         for row in reader:
             marker = row[0]
             if marker == "#":
                 comment_lines.append(row[1] if len(row) > 1 else "")
             elif marker in ("R", ""):
-                condition_rows.append(row[1:32])
-                af_tokens.append(row[32])
+                condition_rows.append([_parse_condition(t) for t in row[1:32]])
+                af_tokens.append(_parse_af(row[32]))
 
     comment = "\n".join(comment_lines) if comment_lines else None
     return len(condition_rows), condition_rows, af_tokens, comment
@@ -115,7 +127,7 @@ def is_multi_rung_csv(path: Path) -> bool:
 
 def read_multi_rung_csv(
     path: Path,
-) -> list[tuple[int, list[list[str]], list[str], str | None]]:
+) -> list[tuple[int, list[list[ConditionToken]], list[AfToken], str | None]]:
     """Read a multi-rung golden CSV. Each R marker starts a new rung."""
     import csv as csv_mod
 
@@ -125,11 +137,11 @@ def read_multi_rung_csv(
         if tuple(header) != CSV_HEADER:
             raise ValueError(f"Bad header in {path.name}")
 
-        rungs: list[tuple[int, list[list[str]], list[str], str | None]] = []
+        rungs: list[tuple[int, list[list[ConditionToken]], list[AfToken], str | None]] = []
         pending_comment_lines: list[str] = []
         rung_comment_lines: list[str] = []
-        current_conditions: list[list[str]] = []
-        current_af: list[str] = []
+        current_conditions: list[list[ConditionToken]] = []
+        current_af: list[AfToken] = []
         in_rung = False
 
         for row in reader:
@@ -145,12 +157,12 @@ def read_multi_rung_csv(
                     rungs.append((len(current_conditions), current_conditions, current_af, comment))
                 rung_comment_lines = pending_comment_lines
                 pending_comment_lines = []
-                current_conditions = [row[1:32]]
-                current_af = [row[32]]
+                current_conditions = [[_parse_condition(t) for t in row[1:32]]]
+                current_af = [_parse_af(row[32])]
                 in_rung = True
             elif marker == "" and in_rung:
-                current_conditions.append(row[1:32])
-                current_af.append(row[32])
+                current_conditions.append([_parse_condition(t) for t in row[1:32]])
+                current_af.append(_parse_af(row[32]))
 
         if in_rung:
             comment = "\n".join(rung_comment_lines) if rung_comment_lines else None
@@ -164,7 +176,14 @@ def read_multi_rung_csv(
 # ---------------------------------------------------------------------------
 
 
-def _extract_operand_candidates(token: str) -> list[str]:
+def _extract_operand_candidates(token: ConditionToken | AfToken) -> list[str]:
+    if isinstance(token, Contact):
+        return [token.operand]
+    if isinstance(token, Coil):
+        ops = [token.operand]
+        if token.range_end:
+            ops.append(token.range_end)
+        return ops
     text = token.strip().upper()
     if not text:
         return []
@@ -367,7 +386,10 @@ def encode_csv(csv_path: Path) -> bytes:
     """Encode an arbitrary CSV file and return the payload bytes."""
     if is_multi_rung_csv(csv_path):
         rung_items = read_multi_rung_csv(csv_path)
-        return encode_multi_rung([(lr, cr, af) for lr, cr, af, _ in rung_items])
+        return encode_multi_rung(
+            [(lr, cr, af) for lr, cr, af, _ in rung_items],
+            comments=[cmt for _, _, _, cmt in rung_items],
+        )
     logical_rows, condition_rows, af_tokens, comment = read_golden_csv(csv_path)
     return encode_rung(logical_rows, condition_rows, af_tokens, comment=comment)
 
@@ -613,6 +635,7 @@ def main() -> None:
     parser.add_argument("--list", action="store_true", help="List available fixtures")
     parser.add_argument("--copy", metavar="NAME", help="Encode fixture and copy to clipboard")
     parser.add_argument("--read", metavar="NAME", help="Read clipboard and compare against fixture")
+    parser.add_argument("--file", metavar="PATH", help="Copy a raw .bin file to clipboard")
     parser.add_argument("--folder", metavar="PATH", help="Verify arbitrary CSVs from a folder")
     parser.add_argument("--restart", action="store_true", help="Clear progress and start fresh")
     parser.add_argument("--mdb-path", metavar="PATH", help="Explicit path to SC_.mdb")
@@ -646,6 +669,16 @@ def main() -> None:
         except FileNotFoundError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(1)
+        return
+
+    if args.file:
+        bin_path = Path(args.file)
+        if not bin_path.exists():
+            print(f"Error: file not found: {bin_path}", file=sys.stderr)
+            sys.exit(1)
+        data = bin_path.read_bytes()
+        copy_to_clipboard(data)
+        print(f"Copied {bin_path.name} to clipboard ({len(data):,} bytes)")
         return
 
     if args.folder:
