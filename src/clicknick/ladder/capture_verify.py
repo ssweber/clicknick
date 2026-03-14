@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from laddercodec import Coil, Contact, encode_multi_rung
+from laddercodec import Coil, CompareContact, Contact, Timer, encode_multi_rung
 from laddercodec.csv.contract import CSV_HEADER
 from laddercodec.encode import SUPPORTED_CONDITION_TOKENS, AfToken, ConditionToken, encode_rung
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
@@ -72,12 +72,17 @@ def list_fixtures() -> list[str]:
 def _parse_condition(token: str) -> ConditionToken:
     if token in SUPPORTED_CONDITION_TOKENS:
         return token
+    for op in ("==", "!=", ">=", "<=", ">", "<"):
+        if op in token:
+            return CompareContact.from_csv_token(token)
     return Contact.from_csv_token(token)
 
 
 def _parse_af(token: str) -> AfToken:
     if token.strip().upper() in ("", "NOP"):
         return token
+    if token.strip().startswith(("on_delay(", "off_delay(")):
+        return Timer.from_csv_token(token)
     return Coil.from_csv_token(token)
 
 
@@ -184,6 +189,13 @@ def _extract_operand_candidates(token: ConditionToken | AfToken) -> list[str]:
         if token.range_end:
             ops.append(token.range_end)
         return ops
+    if isinstance(token, CompareContact):
+        ops = [token.left]
+        # right may be a literal ("1", "FFFFh") — regex fallback handles filtering
+        ops.append(token.right)
+        return ops
+    if isinstance(token, Timer):
+        return [token.done_bit, token.current]
     text = token.strip().upper()
     if not text:
         return []
