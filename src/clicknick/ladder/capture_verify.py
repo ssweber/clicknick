@@ -380,8 +380,7 @@ def describe_csv(csv_path: Path) -> str:
     if is_multi_rung_csv(csv_path):
         rung_items = read_multi_rung_csv(csv_path)
         rung_descs = [
-            _describe_single_rung(cr, af, cmt, CONDITION_COLUMNS)
-            for _lr, cr, af, cmt in rung_items
+            _describe_single_rung(cr, af, cmt, CONDITION_COLUMNS) for _lr, cr, af, cmt in rung_items
         ]
         return f"{len(rung_items)} rungs: " + " | ".join(rung_descs)
 
@@ -647,7 +646,7 @@ def main() -> None:
     parser.add_argument("--list", action="store_true", help="List available fixtures")
     parser.add_argument("--copy", metavar="NAME", help="Encode fixture and copy to clipboard")
     parser.add_argument("--read", metavar="NAME", help="Read clipboard and compare against fixture")
-    parser.add_argument("--file", metavar="PATH", help="Copy a raw .bin file to clipboard")
+    parser.add_argument("--file", metavar="PATH", help="Copy a .bin or .csv file to clipboard")
     parser.add_argument("--folder", metavar="PATH", help="Verify arbitrary CSVs from a folder")
     parser.add_argument("--restart", action="store_true", help="Clear progress and start fresh")
     parser.add_argument("--mdb-path", metavar="PATH", help="Explicit path to SC_.mdb")
@@ -684,13 +683,16 @@ def main() -> None:
         return
 
     if args.file:
-        bin_path = Path(args.file)
-        if not bin_path.exists():
-            print(f"Error: file not found: {bin_path}", file=sys.stderr)
+        file_path = Path(args.file)
+        if not file_path.exists():
+            print(f"Error: file not found: {file_path}", file=sys.stderr)
             sys.exit(1)
-        data = bin_path.read_bytes()
-        copy_to_clipboard(data)
-        print(f"Copied {bin_path.name} to clipboard ({len(data):,} bytes)")
+        if file_path.suffix.lower() == ".csv":
+            _copy_and_describe(file_path, args.mdb_path)
+        else:
+            data = file_path.read_bytes()
+            copy_to_clipboard(data)
+            print(f"Copied {file_path.name} to clipboard ({len(data):,} bytes)")
         return
 
     if args.folder:
