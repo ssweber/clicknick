@@ -23,8 +23,8 @@ from pathlib import Path
 from typing import Any
 
 from laddercodec import Coil, CompareContact, Contact, Timer, encode_multi_rung
-from laddercodec.csv.contract import CSV_HEADER
-from laddercodec.encode import SUPPORTED_CONDITION_TOKENS, AfToken, ConditionToken, encode_rung
+from laddercodec.csv.reader import is_multi_rung_csv, read_golden_csv, read_multi_rung_csv
+from laddercodec.encode import AfToken, ConditionToken, encode_rung
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
 
 from ..utils.mdb_operations import ensure_addresses_exist
@@ -62,118 +62,6 @@ def golden_dir() -> Path:
 def list_fixtures() -> list[str]:
     """Return sorted list of golden fixture names (without extension)."""
     return sorted(p.stem for p in golden_dir().glob("*.csv"))
-
-
-# ---------------------------------------------------------------------------
-# CSV reading (standalone, no dependency on laddercodec test utilities)
-# ---------------------------------------------------------------------------
-
-
-def _parse_condition(token: str) -> ConditionToken:
-    if token in SUPPORTED_CONDITION_TOKENS:
-        return token
-    for op in ("==", "!=", ">=", "<=", ">", "<"):
-        if op in token:
-            return CompareContact.from_csv_token(token)
-    return Contact.from_csv_token(token)
-
-
-def _parse_af(token: str) -> AfToken:
-    if token.strip().upper() in ("", "NOP"):
-        return token
-    if token.strip().startswith(("on_delay(", "off_delay(")):
-        return Timer.from_csv_token(token)
-    return Coil.from_csv_token(token)
-
-
-def read_golden_csv(
-    path: Path,
-) -> tuple[int, list[list[ConditionToken]], list[AfToken], str | None]:
-    """Read a golden CSV and return (logical_rows, condition_rows, af_tokens, comment)."""
-    import csv as csv_mod
-
-    with open(path, newline="", encoding="utf-8") as f:
-        reader = csv_mod.reader(f)
-        header = next(reader)
-        if tuple(header) != CSV_HEADER:
-            raise ValueError(f"Bad header in {path.name}")
-
-        comment_lines: list[str] = []
-        condition_rows: list[list[ConditionToken]] = []
-        af_tokens: list[AfToken] = []
-
-        for row in reader:
-            marker = row[0]
-            if marker == "#":
-                comment_lines.append(row[1] if len(row) > 1 else "")
-            elif marker in ("R", ""):
-                condition_rows.append([_parse_condition(t) for t in row[1:32]])
-                af_tokens.append(_parse_af(row[32]))
-
-    comment = "\n".join(comment_lines) if comment_lines else None
-    return len(condition_rows), condition_rows, af_tokens, comment
-
-
-def is_multi_rung_csv(path: Path) -> bool:
-    """Return True if the CSV has more than one rung (multiple R markers)."""
-    import csv as csv_mod
-
-    count = 0
-    with open(path, newline="", encoding="utf-8") as f:
-        reader = csv_mod.reader(f)
-        next(reader)  # skip header
-        for row in reader:
-            if row and row[0] == "R":
-                count += 1
-                if count > 1:
-                    return True
-    return False
-
-
-def read_multi_rung_csv(
-    path: Path,
-) -> list[tuple[int, list[list[ConditionToken]], list[AfToken], str | None]]:
-    """Read a multi-rung golden CSV. Each R marker starts a new rung."""
-    import csv as csv_mod
-
-    with open(path, newline="", encoding="utf-8") as f:
-        reader = csv_mod.reader(f)
-        header = next(reader)
-        if tuple(header) != CSV_HEADER:
-            raise ValueError(f"Bad header in {path.name}")
-
-        rungs: list[tuple[int, list[list[ConditionToken]], list[AfToken], str | None]] = []
-        pending_comment_lines: list[str] = []
-        rung_comment_lines: list[str] = []
-        current_conditions: list[list[ConditionToken]] = []
-        current_af: list[AfToken] = []
-        in_rung = False
-
-        for row in reader:
-            marker = row[0]
-            if marker == "#":
-                pending_comment_lines.append(row[1] if len(row) > 1 else "")
-                continue
-            if len(row) != 33:
-                continue
-            if marker == "R":
-                if in_rung:
-                    comment = "\n".join(rung_comment_lines) if rung_comment_lines else None
-                    rungs.append((len(current_conditions), current_conditions, current_af, comment))
-                rung_comment_lines = pending_comment_lines
-                pending_comment_lines = []
-                current_conditions = [[_parse_condition(t) for t in row[1:32]]]
-                current_af = [_parse_af(row[32])]
-                in_rung = True
-            elif marker == "" and in_rung:
-                current_conditions.append([_parse_condition(t) for t in row[1:32]])
-                current_af.append(_parse_af(row[32]))
-
-        if in_rung:
-            comment = "\n".join(rung_comment_lines) if rung_comment_lines else None
-            rungs.append((len(current_conditions), current_conditions, current_af, comment))
-
-    return rungs
 
 
 # ---------------------------------------------------------------------------
