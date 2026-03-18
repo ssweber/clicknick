@@ -1,16 +1,14 @@
-"""Golden fixture verification against live CLICK software.
+"""Clipboard bridge for CLICK PLC ladder rungs.
 
-Reads golden CSV/BIN pairs from laddercodec, encodes each CSV via
-encode_rung(), copies to clipboard, and compares copy-back bytes
-against the golden .bin.
+Encodes CSV fixtures, copies to/from Click's private clipboard format,
+and provides interactive batch verification against live CLICK software.
 
 Usage:
-    clicknick-ladder-verify                         # Verify all golden fixtures
-    clicknick-ladder-verify --list                  # List available fixtures
-    clicknick-ladder-verify --copy nc-1row-empty    # Encode + copy to clipboard
-    clicknick-ladder-verify --read nc-1row-empty    # Read clipboard + compare
-    clicknick-ladder-verify --folder path/to/csvs   # Verify arbitrary CSVs
-    clicknick-ladder-verify --mdb-path SC_.mdb ...  # Explicit MDB path
+    clicknick-rung guided FOLDER                # Interactive batch verify
+    clicknick-rung guided FOLDER --list         # List CSVs with descriptions
+    clicknick-rung guided FOLDER --restart      # Clear progress, start fresh
+    clicknick-rung load FILE                    # Encode .csv/.bin → clipboard
+    clicknick-rung save FILE                    # Clipboard → .bin file
 """
 
 from __future__ import annotations
@@ -31,37 +29,10 @@ from ..utils.mdb_operations import ensure_addresses_exist
 from ..utils.mdb_shared import find_click_database
 from .clipboard import copy_to_clipboard, find_click_hwnd, read_from_clipboard
 
-# Golden fixtures live in the laddercodec package
-_GOLDEN_DIR: Path | None = None
-
 ADDRESS_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_])([A-Za-z]{1,3}\d{1,5})(?![A-Za-z0-9_])")
 ADDRESS_RANGE_RE = re.compile(
     r"(?<![A-Za-z0-9_])([A-Za-z]{1,3}\d{1,5})\s*\.\.\s*([A-Za-z]{1,3}\d{1,5})(?![A-Za-z0-9_])"
 )
-
-
-def golden_dir() -> Path:
-    """Locate the golden fixture directory from laddercodec's installed package."""
-    global _GOLDEN_DIR
-    if _GOLDEN_DIR is None:
-        import laddercodec
-
-        pkg_root = Path(laddercodec.__file__).resolve().parent
-        # Navigate from src/laddercodec/ up to repo root, then into tests/
-        repo_root = pkg_root.parent.parent
-        candidate = repo_root / "tests" / "fixtures" / "ladder_captures" / "golden"
-        if not candidate.is_dir():
-            raise FileNotFoundError(
-                f"Golden fixture directory not found at {candidate}. "
-                "Ensure laddercodec is installed as editable."
-            )
-        _GOLDEN_DIR = candidate
-    return _GOLDEN_DIR
-
-
-def list_fixtures() -> list[str]:
-    """Return sorted list of golden fixture names (without extension)."""
-    return sorted(p.stem for p in golden_dir().glob("*.csv"))
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +68,7 @@ def _extract_operand_candidates(token: ConditionToken | AfToken) -> list[str]:
 
 
 def extract_addresses_from_csv(path: Path) -> list[str]:
-    """Parse operand addresses from a golden CSV file."""
+    """Parse operand addresses from a CSV file."""
     _, condition_rows, af_tokens, _ = read_golden_csv(path)
     seen_keys: set[int] = set()
     parsed: list[str] = []
@@ -145,7 +116,7 @@ def ensure_mdb_addresses(mdb_path: str | None, csv_path: Path) -> dict[str, Any]
 
 
 # ---------------------------------------------------------------------------
-# Core verify operations
+# CSV description helpers
 # ---------------------------------------------------------------------------
 
 
@@ -276,13 +247,13 @@ def describe_csv(csv_path: Path) -> str:
     return _describe_single_rung(condition_rows, af_tokens, comment, CONDITION_COLUMNS)
 
 
-def describe_fixture(name: str) -> str:
-    """Return a human-readable summary of a golden fixture's shape."""
-    return describe_csv(golden_dir() / f"{name}.csv")
+# ---------------------------------------------------------------------------
+# Core operations
+# ---------------------------------------------------------------------------
 
 
 def encode_csv(csv_path: Path) -> bytes:
-    """Encode an arbitrary CSV file and return the payload bytes."""
+    """Encode a CSV file and return the payload bytes."""
     if is_multi_rung_csv(csv_path):
         rung_items = read_multi_rung_csv(csv_path)
         return encode_multi_rung(
@@ -293,7 +264,7 @@ def encode_csv(csv_path: Path) -> bytes:
     return encode_rung(logical_rows, condition_rows, af_tokens, comment=comment)
 
 
-def _copy_and_describe(csv_path: Path, mdb_path: str | None) -> bytes:
+def _load_csv(csv_path: Path, mdb_path: str | None) -> bytes:
     """Describe, encode, provision MDB addresses, copy to clipboard. Return payload."""
     print(f"  {describe_csv(csv_path)}")
     print_csv_shape(csv_path)
@@ -316,16 +287,8 @@ def _copy_and_describe(csv_path: Path, mdb_path: str | None) -> bytes:
     return payload
 
 
-def copy_fixture(name: str, mdb_path: str | None = None) -> None:
-    """Encode a golden fixture, ensure MDB addresses, copy to clipboard."""
-    csv_path = golden_dir() / f"{name}.csv"
-    if not csv_path.exists():
-        raise FileNotFoundError(f"No golden CSV: {name}")
-    _copy_and_describe(csv_path, mdb_path)
-
-
 def _save_and_compare(name: str, bin_path: Path) -> None:
-    """Read clipboard, save as .bin, and report byte diff against encoder output.
+    """Read clipboard, save as .bin, and report byte diff if .bin already exists.
 
     The comparison is informational only — Click re-encodes on copy-back,
     so byte-exact match is not expected.
@@ -347,13 +310,8 @@ def _save_and_compare(name: str, bin_path: Path) -> None:
         print(f"  {name}: size differs (encoder {len(expected):,}, Click {len(actual):,} bytes)")
 
 
-def read_and_compare(name: str) -> None:
-    """Read clipboard, save and compare against golden .bin (informational)."""
-    _save_and_compare(name, golden_dir() / f"{name}.bin")
-
-
 # ---------------------------------------------------------------------------
-# Interactive batch verification (shared by golden and folder modes)
+# Interactive batch verification
 # ---------------------------------------------------------------------------
 
 
@@ -381,11 +339,11 @@ def _append_result(log_path: Path, name: str, status: str, detail: str = "") -> 
         f.write(line)
 
 
-def run_batch(
+def _run_guided(
     items: list[tuple[str, Path]],
     *,
     mdb_path: str | None = None,
-    log_path: Path | None = None,
+    log_path: Path,
 ) -> None:
     """Interactive batch verify. Each item is (name, csv_path).
 
@@ -393,15 +351,13 @@ def run_batch(
     already-completed fixtures are skipped automatically.
     """
     # Load prior progress
-    done: dict[str, str] = {}
-    if log_path:
-        done = _read_progress(log_path)
-        if done:
-            print(f"Resuming: {len(done)} already done, {len(items) - len(done)} remaining")
-        else:
-            # Start fresh log with timestamp header
-            with open(log_path, "w", encoding="utf-8") as f:
-                f.write(f"# Verify {datetime.now(tz=UTC).isoformat()}\n")
+    done = _read_progress(log_path)
+    if done:
+        print(f"Resuming: {len(done)} already done, {len(items) - len(done)} remaining")
+    else:
+        # Start fresh log with timestamp header
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(f"# Verify {datetime.now(tz=UTC).isoformat()}\n")
 
     print()
     print("For each fixture: encodes and copies to clipboard.")
@@ -414,7 +370,6 @@ def run_batch(
     print()
 
     results: list[tuple[str, str, str]] = []  # (name, status, detail)
-    remaining_names = [name for name, _ in items]
 
     for idx, (name, csv_path) in enumerate(items):
         if name in done:
@@ -423,12 +378,11 @@ def run_batch(
         print(f"--- {name} ({idx + 1}/{len(items)}) ---")
 
         try:
-            _copy_and_describe(csv_path, mdb_path)
+            _load_csv(csv_path, mdb_path)
         except Exception as exc:
             print(f"  Error: {exc}")
             results.append((name, "error", str(exc)))
-            if log_path:
-                _append_result(log_path, name, "error", str(exc))
+            _append_result(log_path, name, "error", str(exc))
             print()
             continue
 
@@ -441,8 +395,7 @@ def run_batch(
 
         if response == "s":
             results.append((name, "skipped", ""))
-            if log_path:
-                _append_result(log_path, name, "skipped")
+            _append_result(log_path, name, "skipped")
             print()
             continue
 
@@ -459,8 +412,7 @@ def run_batch(
                 bin_path.write_bytes(data)
                 print(f"  Saved {bin_path.name} ({len(data):,} bytes)")
             results.append((name, "unexpected", note or "no description"))
-            if log_path:
-                _append_result(log_path, name, "unexpected", note or "no description")
+            _append_result(log_path, name, "unexpected", note or "no description")
             print()
             continue
 
@@ -471,8 +423,7 @@ def run_batch(
                 note_path.write_text(note, encoding="utf-8")
                 print(f"  Saved {note_path.name}")
             results.append((name, "crashed", note or ""))
-            if log_path:
-                _append_result(log_path, name, "crashed", note or "")
+            _append_result(log_path, name, "crashed", note or "")
             print()
             continue
 
@@ -482,8 +433,7 @@ def run_batch(
         input("  > ")
         _save_and_compare(name, bin_path)
         results.append((name, "worked", ""))
-        if log_path:
-            _append_result(log_path, name, "worked")
+        _append_result(log_path, name, "worked")
         print()
 
     # Summary — combine prior progress + this session
@@ -513,9 +463,7 @@ def run_batch(
     if remaining:
         summary += f", {remaining} remaining"
     print(f"\nTotal: {summary}")
-
-    if log_path:
-        print(f"Progress log: {log_path}")
+    print(f"Progress log: {log_path}")
 
     has_failures = any(s in ("crashed", "unexpected", "error") for _, s in all_results)
     sys.exit(1 if has_failures else 0)
@@ -528,62 +476,42 @@ def run_batch(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="clicknick-ladder-verify",
-        description="Verify golden ladder fixtures against live CLICK software.",
+        prog="clicknick-rung",
+        description="Clipboard bridge for CLICK PLC ladder rungs.",
     )
-    parser.add_argument("--list", action="store_true", help="List available fixtures")
-    parser.add_argument("--copy", metavar="NAME", help="Encode fixture and copy to clipboard")
-    parser.add_argument("--read", metavar="NAME", help="Read clipboard and compare against fixture")
-    parser.add_argument("--file", metavar="PATH", help="Copy a .bin or .csv file to clipboard")
-    parser.add_argument("--folder", metavar="PATH", help="Verify arbitrary CSVs from a folder")
-    parser.add_argument("--restart", action="store_true", help="Clear progress and start fresh")
     parser.add_argument("--mdb-path", metavar="PATH", help="Explicit path to SC_.mdb")
+    subparsers = parser.add_subparsers(dest="command")
+
+    # --- guided ---
+    guided = subparsers.add_parser(
+        "guided",
+        help="Interactive batch verify CSVs in a folder",
+    )
+    guided.add_argument("folder", metavar="FOLDER", help="Directory containing CSV fixtures")
+    guided.add_argument("--list", action="store_true", help="List fixtures with descriptions")
+    guided.add_argument("--restart", action="store_true", help="Clear progress and start fresh")
+
+    # --- load ---
+    load = subparsers.add_parser(
+        "load",
+        help="Encode a .csv or .bin file and copy to clipboard",
+    )
+    load.add_argument("file", metavar="FILE", help="Path to .csv or .bin file")
+
+    # --- save ---
+    save = subparsers.add_parser(
+        "save",
+        help="Read clipboard and save to a .bin file",
+    )
+    save.add_argument("file", metavar="FILE", help="Output .bin file path")
 
     args = parser.parse_args()
 
-    if args.list:
-        for name in list_fixtures():
-            desc = describe_fixture(name)
-            bin_path = golden_dir() / f"{name}.bin"
-            if bin_path.exists():
-                size = bin_path.stat().st_size
-                tag = f" [verified, {size:,} bytes]"
-            else:
-                tag = ""
-            print(f"  {name}{tag}")
-            print(f"    {desc}")
-        return
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
 
-    if args.copy:
-        try:
-            copy_fixture(args.copy, mdb_path=args.mdb_path)
-        except FileNotFoundError as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            sys.exit(1)
-        return
-
-    if args.read:
-        try:
-            read_and_compare(args.read)
-        except FileNotFoundError as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            sys.exit(1)
-        return
-
-    if args.file:
-        file_path = Path(args.file)
-        if not file_path.exists():
-            print(f"Error: file not found: {file_path}", file=sys.stderr)
-            sys.exit(1)
-        if file_path.suffix.lower() == ".csv":
-            _copy_and_describe(file_path, args.mdb_path)
-        else:
-            data = file_path.read_bytes()
-            copy_to_clipboard(data)
-            print(f"Copied {file_path.name} to clipboard ({len(data):,} bytes)")
-        return
-
-    if args.folder:
+    if args.command == "guided":
         folder = Path(args.folder)
         if not folder.is_dir():
             print(f"Error: not a directory: {folder}", file=sys.stderr)
@@ -592,21 +520,45 @@ def main() -> None:
         if not csvs:
             print(f"No CSV files found in {folder}")
             sys.exit(1)
+
+        if args.list:
+            for csv_path in csvs:
+                name = csv_path.stem
+                desc = describe_csv(csv_path)
+                bin_path = csv_path.with_suffix(".bin")
+                if bin_path.exists():
+                    size = bin_path.stat().st_size
+                    tag = f" [verified, {size:,} bytes]"
+                else:
+                    tag = ""
+                print(f"  {name}{tag}")
+                print(f"    {desc}")
+            return
+
         items = [(p.stem, p) for p in csvs]
         log = folder / "verify_progress.log"
         if args.restart and log.exists():
             log.unlink()
         print(f"Folder: {folder} ({len(items)} CSV files)")
-        run_batch(items, mdb_path=args.mdb_path, log_path=log)
+        _run_guided(items, mdb_path=args.mdb_path, log_path=log)
         return
 
-    # Default: golden batch verify
-    gdir = golden_dir()
-    fixtures = list_fixtures()
-    log = gdir / "verify_progress.log"
-    if args.restart and log.exists():
-        log.unlink()
+    if args.command == "load":
+        file_path = Path(args.file)
+        if not file_path.exists():
+            print(f"Error: file not found: {file_path}", file=sys.stderr)
+            sys.exit(1)
+        if file_path.suffix.lower() == ".csv":
+            _load_csv(file_path, args.mdb_path)
+        else:
+            data = file_path.read_bytes()
+            copy_to_clipboard(data)
+            print(f"Copied {file_path.name} to clipboard ({len(data):,} bytes)")
+        return
 
-    print(f"Golden fixtures: {len(fixtures)}")
-    items = [(name, gdir / f"{name}.csv") for name in fixtures]
-    run_batch(items, mdb_path=args.mdb_path, log_path=log)
+    if args.command == "save":
+        file_path = Path(args.file)
+        data = read_from_clipboard()
+        file_path.write_bytes(data)
+        print(f"Saved clipboard to {file_path} ({len(data):,} bytes)")
+        return
