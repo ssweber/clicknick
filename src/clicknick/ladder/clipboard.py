@@ -116,12 +116,17 @@ def copy_to_clipboard(data: bytes, owner_hwnd: int | None = None) -> None:
 
 
 def read_from_clipboard() -> bytes:
-    """Read Click clipboard data."""
+    """Read Click clipboard data.
+
+    Raises RuntimeError if Click's clipboard format is not present.
+    """
     import win32clipboard
 
     win32clipboard.OpenClipboard()
     try:
         raw = win32clipboard.GetClipboardData(CLICK_CLIPBOARD_FORMAT)
         return bytes(raw) if not isinstance(raw, bytes) else raw
+    except TypeError:
+        raise RuntimeError("No Click rung data on clipboard (format 522 not present).") from None
     finally:
         win32clipboard.CloseClipboard()

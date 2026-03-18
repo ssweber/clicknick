@@ -379,6 +379,28 @@ def _run_guided(
 
         try:
             _load_csv(csv_path, mdb_path)
+        except RuntimeError as exc:
+            # Clipboard / Click-not-running — prompt to retry
+            loaded = False
+            while not loaded:
+                print(f"  Clipboard error: {exc}")
+                print("  Open Click and press Enter to retry, or [s]kip / [q]uit")
+                choice = input("  > ").strip().lower()
+                if choice == "q":
+                    print()
+                    return
+                if choice == "s":
+                    results.append((name, "skipped", str(exc)))
+                    _append_result(log_path, name, "skipped", str(exc))
+                    break
+                try:
+                    _load_csv(csv_path, mdb_path)
+                    loaded = True
+                except RuntimeError as exc2:
+                    exc = exc2
+            if not loaded:
+                print()
+                continue
         except Exception as exc:
             print(f"  Error: {exc}")
             results.append((name, "error", str(exc)))
@@ -407,10 +429,14 @@ def _run_guided(
             print("  Copy the rung back if you want to save it, or just press Enter to skip.")
             save = input("  Save .bin? [y/N] > ").strip().lower()
             if save == "y":
-                data = read_from_clipboard()
-                bin_path = csv_path.with_suffix(".bin")
-                bin_path.write_bytes(data)
-                print(f"  Saved {bin_path.name} ({len(data):,} bytes)")
+                try:
+                    data = read_from_clipboard()
+                except RuntimeError as exc:
+                    print(f"  Clipboard error: {exc}")
+                else:
+                    bin_path = csv_path.with_suffix(".bin")
+                    bin_path.write_bytes(data)
+                    print(f"  Saved {bin_path.name} ({len(data):,} bytes)")
             results.append((name, "unexpected", note or "no description"))
             _append_result(log_path, name, "unexpected", note or "no description")
             print()
@@ -431,7 +457,15 @@ def _run_guided(
         bin_path = csv_path.with_suffix(".bin")
         print("  Copy the rung back from Click, then press Enter.")
         input("  > ")
-        _save_and_compare(name, bin_path)
+        while True:
+            try:
+                _save_and_compare(name, bin_path)
+                break
+            except RuntimeError as exc:
+                print(f"  Clipboard error: {exc}")
+                print("  Copy the rung back and press Enter to retry, or [s]kip")
+                if input("  > ").strip().lower() == "s":
+                    break
         results.append((name, "worked", ""))
         _append_result(log_path, name, "worked")
         print()
@@ -548,17 +582,25 @@ def main() -> None:
         if not file_path.exists():
             print(f"Error: file not found: {file_path}", file=sys.stderr)
             sys.exit(1)
-        if file_path.suffix.lower() == ".csv":
-            _load_csv(file_path, args.mdb_path)
-        else:
-            data = file_path.read_bytes()
-            copy_to_clipboard(data)
-            print(f"Copied {file_path.name} to clipboard ({len(data):,} bytes)")
+        try:
+            if file_path.suffix.lower() == ".csv":
+                _load_csv(file_path, args.mdb_path)
+            else:
+                data = file_path.read_bytes()
+                copy_to_clipboard(data)
+                print(f"Copied {file_path.name} to clipboard ({len(data):,} bytes)")
+        except RuntimeError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
         return
 
     if args.command == "save":
         file_path = Path(args.file)
-        data = read_from_clipboard()
+        try:
+            data = read_from_clipboard()
+        except RuntimeError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
         file_path.write_bytes(data)
         print(f"Saved clipboard to {file_path} ({len(data):,} bytes)")
         return
