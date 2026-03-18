@@ -471,26 +471,34 @@ def _run_guided(
         print()
 
     # Summary — combine prior progress + this session
-    all_results: list[tuple[str, str]] = []
+    all_results: list[tuple[str, str, str]] = []
     for name, _ in items:
         if name in done:
-            # Parse status from log line
-            status = done[name].split(": ", 1)[1].split(" (")[0]
-            all_results.append((name, status))
+            # Parse status and detail from log line "name: status (detail)"
+            rest = done[name].split(": ", 1)[1]
+            if " (" in rest and rest.endswith(")"):
+                status, detail = rest.split(" (", 1)
+                detail = detail[:-1]
+            else:
+                status, detail = rest, ""
+            all_results.append((name, status, detail))
         else:
-            for rname, rstatus, _ in results:
+            for rname, rstatus, rdetail in results:
                 if rname == name:
-                    all_results.append((name, rstatus))
+                    all_results.append((name, rstatus, rdetail))
                     break
 
     print()
     print("=" * 50)
     print("Results:")
-    for name, status in all_results:
-        print(f"  {name}: {status}")
+    for name, status, detail in all_results:
+        if detail:
+            print(f"  {name}: {status} — {detail}")
+        else:
+            print(f"  {name}: {status}")
 
     counts: dict[str, int] = {}
-    for _, status in all_results:
+    for _, status, _ in all_results:
         counts[status] = counts.get(status, 0) + 1
     remaining = len(items) - len(all_results)
     summary = ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
@@ -499,7 +507,7 @@ def _run_guided(
     print(f"\nTotal: {summary}")
     print(f"Progress log: {log_path}")
 
-    has_failures = any(s in ("crashed", "unexpected", "error") for _, s in all_results)
+    has_failures = any(s in ("crashed", "unexpected", "error") for _, s, _ in all_results)
     sys.exit(1 if has_failures else 0)
 
 
@@ -558,7 +566,10 @@ def main() -> None:
         if args.list:
             for csv_path in csvs:
                 name = csv_path.stem
-                desc = describe_csv(csv_path)
+                try:
+                    desc = describe_csv(csv_path)
+                except ValueError as exc:
+                    desc = f"<parse error: {exc}>"
                 bin_path = csv_path.with_suffix(".bin")
                 if bin_path.exists():
                     size = bin_path.stat().st_size
@@ -589,7 +600,7 @@ def main() -> None:
                 data = file_path.read_bytes()
                 copy_to_clipboard(data)
                 print(f"Copied {file_path.name} to clipboard ({len(data):,} bytes)")
-        except RuntimeError as exc:
+        except (RuntimeError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(1)
         return
