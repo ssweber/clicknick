@@ -34,8 +34,8 @@ clicknick-rung --mdb-path SC_.mdb ...       # Explicit MDB path (any subcommand)
 For each CSV: shows description, CSV shape, copies to clipboard, then prompts:
 
 - **[w]orked** — paste worked; copy rung back for comparison/saving
-- **[c]rashed** — Click crashed; optionally record details as `.note.txt`
-- **[n]ot as expected** — pasted but looks wrong; record description as `.note.txt`, optionally save `.bin`
+- **[c]rashed** — Click crashed; optionally record details in progress log
+- **[n]ot as expected** — pasted but looks wrong; record description in progress log, optionally save `.bin`
 - **[s]kip** — skip this fixture
 - **[q]uit** — stop
 

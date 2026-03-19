@@ -187,6 +187,15 @@ class TestProgressLog:
         log = tmp_path / "no_such_file.log"
         assert _read_progress(log) == {}
 
+    def test_append_adds_newline_if_missing(self, tmp_path: Path):
+        log = tmp_path / "progress.log"
+        log.write_text("fixture1: worked", encoding="utf-8")  # no trailing newline
+        _append_result(log, "fixture2", "crashed", "segfault")
+
+        done = _read_progress(log)
+        assert "fixture1" in done
+        assert "fixture2" in done
+
 
 # ---------------------------------------------------------------------------
 # CLI routing (main)

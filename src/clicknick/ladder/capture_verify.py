@@ -336,7 +336,13 @@ def _append_result(log_path: Path, name: str, status: str, detail: str = "") -> 
     """Append one result line to the progress log."""
     extra = f" ({detail})" if detail else ""
     line = f"{name}: {status}{extra}\n"
-    with open(log_path, "a", encoding="utf-8") as f:
+    with open(log_path, "a+", encoding="utf-8") as f:
+        # Ensure we start on a new line even if a trailing newline was removed
+        f.seek(0, 2)  # seek to end
+        if f.tell() > 0:
+            f.seek(f.tell() - 1)
+            if f.read(1) != "\n":
+                f.write("\n")
         f.write(line)
 
 
@@ -424,9 +430,6 @@ def _run_guided(
 
         if response == "n":
             note = input("  What looked wrong? > ").strip()
-            note_path = csv_path.with_suffix(".note.txt")
-            note_path.write_text(note or "(no description)", encoding="utf-8")
-            print(f"  Saved {note_path.name}")
             print("  Copy the rung back if you want to save it, or just press Enter to skip.")
             save = input("  Save .bin? [y/N] > ").strip().lower()
             if save == "y":
@@ -445,10 +448,6 @@ def _run_guided(
 
         if response == "c":
             note = input("  Any details? (Enter to skip) > ").strip()
-            if note:
-                note_path = csv_path.with_suffix(".note.txt")
-                note_path.write_text(note, encoding="utf-8")
-                print(f"  Saved {note_path.name}")
             results.append((name, "crashed", note or ""))
             _append_result(log_path, name, "crashed", note or "")
             print()
