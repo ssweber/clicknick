@@ -77,9 +77,9 @@ def _extract_operand_candidates(token: ConditionToken | AfToken) -> list[str]:
     return out
 
 
-def extract_addresses_from_csv(path: Path) -> list[str]:
+def extract_addresses_from_csv(path: Path, *, best_effort: bool = False) -> list[str]:
     """Parse operand addresses from a CSV file (single or multi-rung)."""
-    rungs = read_csv(path)
+    rungs = read_csv(path, strict=not best_effort)
     seen_keys: set[int] = set()
     parsed: list[str] = []
     for rung in rungs:
@@ -243,9 +243,9 @@ def _describe_single_rung(
     return ", ".join(parts)
 
 
-def describe_csv(csv_path: Path) -> str:
+def describe_csv(csv_path: Path, *, best_effort: bool = False) -> str:
     """Return a human-readable summary of a CSV fixture's shape."""
-    rungs = read_csv(csv_path)
+    rungs = read_csv(csv_path, strict=not best_effort)
     if len(rungs) > 1:
         rung_descs = [
             _describe_single_rung(r.condition_rows, r.af_tokens, r.comment, CONDITION_COLUMNS)
@@ -262,9 +262,9 @@ def describe_csv(csv_path: Path) -> str:
 # ---------------------------------------------------------------------------
 
 
-def encode_csv(csv_path: Path) -> bytes:
+def encode_csv(csv_path: Path, *, best_effort: bool = False) -> bytes:
     """Encode a CSV file and return the payload bytes."""
-    rungs = read_csv(csv_path)
+    rungs = read_csv(csv_path, strict=not best_effort)
     if len(rungs) > 1:
         return encode_rungs(
             [(r.logical_rows, r.condition_rows, r.af_tokens) for r in rungs],
@@ -274,14 +274,14 @@ def encode_csv(csv_path: Path) -> bytes:
     return encode_rung(lr, conds, afs, comment=comment)
 
 
-def _load_csv(csv_path: Path, mdb_path: str | None) -> bytes:
+def _load_csv(csv_path: Path, mdb_path: str | None, *, best_effort: bool = False) -> bytes:
     """Describe, encode, provision MDB addresses, copy to clipboard. Return payload."""
-    print(f"  {describe_csv(csv_path)}")
+    print(f"  {describe_csv(csv_path, best_effort=best_effort)}")
     print_csv_shape(csv_path)
 
-    payload = encode_csv(csv_path)
+    payload = encode_csv(csv_path, best_effort=best_effort)
 
-    addresses = extract_addresses_from_csv(csv_path)
+    addresses = extract_addresses_from_csv(csv_path, best_effort=best_effort)
     if addresses:
         try:
             mdb = resolve_mdb_path(mdb_path)
@@ -548,6 +548,11 @@ def main() -> None:
         help="Encode a .csv or .bin file and copy to clipboard",
     )
     load.add_argument("file", metavar="FILE", help="Path to .csv or .bin file")
+    load.add_argument(
+        "--best-effort",
+        action="store_true",
+        help="Skip unsupported AF instructions instead of failing",
+    )
 
     # --- save ---
     save = subparsers.add_parser(
@@ -608,7 +613,7 @@ def main() -> None:
             sys.exit(1)
         try:
             if file_path.suffix.lower() == ".csv":
-                _load_csv(file_path, args.mdb_path)
+                _load_csv(file_path, args.mdb_path, best_effort=args.best_effort)
             else:
                 data = file_path.read_bytes()
                 copy_to_clipboard(data)
