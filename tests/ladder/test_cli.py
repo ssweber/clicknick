@@ -322,7 +322,7 @@ class TestMainArgparse:
         csv_file.write_text("dummy", encoding="utf-8")
         called: list[Path] = []
 
-        def mock_load_csv(path, mdb_path):
+        def mock_load_csv(path, mdb_path, best_effort=False):
             called.append(path)
             return b""
 
