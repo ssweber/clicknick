@@ -20,10 +20,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from laddercodec import Coil, CompareContact, Contact, Timer, encode_multi_rung
-from laddercodec.csv import CONDITION_COLUMNS, read_csv
+from laddercodec import (
+    AfToken,
+    Coil,
+    CompareContact,
+    ConditionToken,
+    Contact,
+    Timer,
+    encode_rung,
+    encode_rungs,
+    read_csv,
+)
+from laddercodec.csv import CONDITION_COLUMNS
 from laddercodec.csv.writer import WriterError, decode_to_csv
-from laddercodec.encode import AfToken, ConditionToken, encode_rung
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
 
 from ..utils.mdb_operations import ensure_addresses_exist
@@ -257,7 +266,7 @@ def encode_csv(csv_path: Path) -> bytes:
     """Encode a CSV file and return the payload bytes."""
     rungs = read_csv(csv_path)
     if len(rungs) > 1:
-        return encode_multi_rung(
+        return encode_rungs(
             [(r.logical_rows, r.condition_rows, r.af_tokens) for r in rungs],
             comments=[r.comment for r in rungs],
         )
