@@ -1,4 +1,4 @@
-"""Tests for capture_verify.py — pure-logic functions and CLI routing."""
+"""Tests for ladder/cli.py — pure-logic functions and CLI routing."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 from laddercodec import Coil, CompareContact, Contact, Timer
 from laddercodec.csv.contract import CONDITION_COLUMNS
 
-from clicknick.ladder.capture_verify import (
+from clicknick.ladder.cli import (
     _append_result,
     _collapse_cols,
     _describe_row_wires,
@@ -208,7 +208,7 @@ class TestMainArgparse:
     def test_save_writes_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         out = tmp_path / "output.bin"
         monkeypatch.setattr(
-            "clicknick.ladder.capture_verify.read_from_clipboard",
+            "clicknick.ladder.cli.read_from_clipboard",
             lambda: b"\x01\x02\x03",
         )
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "save", str(out)])
@@ -218,7 +218,7 @@ class TestMainArgparse:
     def test_save_csv_decodes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         out = tmp_path / "output.csv"
         monkeypatch.setattr(
-            "clicknick.ladder.capture_verify.read_from_clipboard",
+            "clicknick.ladder.cli.read_from_clipboard",
             lambda: b"\x01\x02\x03",
         )
         decoded_calls: list[tuple[bytes, Path]] = []
@@ -227,7 +227,7 @@ class TestMainArgparse:
             decoded_calls.append((data, path))
             Path(path).write_text("decoded", encoding="utf-8")
 
-        monkeypatch.setattr("clicknick.ladder.capture_verify.decode_to_csv", mock_decode_to_csv)
+        monkeypatch.setattr("clicknick.ladder.cli.decode_to_csv", mock_decode_to_csv)
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "save", str(out)])
         main()
         assert len(decoded_calls) == 1
@@ -239,7 +239,7 @@ class TestMainArgparse:
     ):
         out = tmp_path / "output.csv"
         monkeypatch.setattr(
-            "clicknick.ladder.capture_verify.read_from_clipboard",
+            "clicknick.ladder.cli.read_from_clipboard",
             lambda: b"\x01\x02\x03",
         )
 
@@ -248,7 +248,7 @@ class TestMainArgparse:
 
             raise WriterError("unknown instruction")
 
-        monkeypatch.setattr("clicknick.ladder.capture_verify.decode_to_csv", mock_decode_to_csv)
+        monkeypatch.setattr("clicknick.ladder.cli.decode_to_csv", mock_decode_to_csv)
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "save", str(out)])
         with pytest.raises(SystemExit, match="1"):
             main()
@@ -257,14 +257,14 @@ class TestMainArgparse:
     def test_save_no_extension_writes_both(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         out = tmp_path / "my_rung"
         monkeypatch.setattr(
-            "clicknick.ladder.capture_verify.read_from_clipboard",
+            "clicknick.ladder.cli.read_from_clipboard",
             lambda: b"\x01\x02\x03",
         )
 
         def mock_decode_to_csv(data, path):
             Path(path).write_text("decoded", encoding="utf-8")
 
-        monkeypatch.setattr("clicknick.ladder.capture_verify.decode_to_csv", mock_decode_to_csv)
+        monkeypatch.setattr("clicknick.ladder.cli.decode_to_csv", mock_decode_to_csv)
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "save", str(out)])
         main()
         assert out.with_suffix(".bin").read_bytes() == b"\x01\x02\x03"
@@ -275,7 +275,7 @@ class TestMainArgparse:
     ):
         out = tmp_path / "my_rung"
         monkeypatch.setattr(
-            "clicknick.ladder.capture_verify.read_from_clipboard",
+            "clicknick.ladder.cli.read_from_clipboard",
             lambda: b"\x01\x02\x03",
         )
 
@@ -284,7 +284,7 @@ class TestMainArgparse:
 
             raise WriterError("unknown instruction")
 
-        monkeypatch.setattr("clicknick.ladder.capture_verify.decode_to_csv", mock_decode_to_csv)
+        monkeypatch.setattr("clicknick.ladder.cli.decode_to_csv", mock_decode_to_csv)
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "save", str(out)])
         main()
         assert out.with_suffix(".bin").read_bytes() == b"\x01\x02\x03"
@@ -299,7 +299,7 @@ class TestMainArgparse:
         def _raise():
             raise RuntimeError("No Click rung data on clipboard (format 522 not present).")
 
-        monkeypatch.setattr("clicknick.ladder.capture_verify.read_from_clipboard", _raise)
+        monkeypatch.setattr("clicknick.ladder.cli.read_from_clipboard", _raise)
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "save", str(out)])
         with pytest.raises(SystemExit, match="1"):
             main()
@@ -310,7 +310,7 @@ class TestMainArgparse:
         src.write_bytes(b"\xaa\xbb")
         copied: list[bytes] = []
         monkeypatch.setattr(
-            "clicknick.ladder.capture_verify.copy_to_clipboard",
+            "clicknick.ladder.cli.copy_to_clipboard",
             lambda data: copied.append(data),
         )
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "load", str(src)])
@@ -326,7 +326,7 @@ class TestMainArgparse:
             called.append(path)
             return b""
 
-        monkeypatch.setattr("clicknick.ladder.capture_verify._load_csv", mock_load_csv)
+        monkeypatch.setattr("clicknick.ladder.cli._load_csv", mock_load_csv)
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "load", str(csv_file)])
         main()
         assert called == [csv_file]
@@ -340,7 +340,7 @@ class TestMainArgparse:
         def _raise(data):
             raise RuntimeError("Click Programming Software not found. Is it running?")
 
-        monkeypatch.setattr("clicknick.ladder.capture_verify.copy_to_clipboard", _raise)
+        monkeypatch.setattr("clicknick.ladder.cli.copy_to_clipboard", _raise)
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "load", str(src)])
         with pytest.raises(SystemExit, match="1"):
             main()
@@ -353,7 +353,7 @@ class TestMainArgparse:
 
         # Mock describe_csv to avoid needing a real CSV
         monkeypatch.setattr(
-            "clicknick.ladder.capture_verify.describe_csv",
+            "clicknick.ladder.cli.describe_csv",
             lambda p: "1 row, full",
         )
         monkeypatch.setattr(

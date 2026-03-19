@@ -4,7 +4,7 @@
 
 The encoder/decoder core lives in the standalone [`laddercodec`](https://github.com/ssweber/laddercodec) package. This directory (`ladder/`) contains only **clipboard I/O and fixture verification** against live CLICK software:
 
-- **capture_verify.py** — `clicknick-rung` CLI (load/save/guided verify)
+- **cli.py** — `clicknick-rung` CLI (load/save/guided verify)
 - **clipboard.py** — Win32 clipboard interaction (copy/read/clear, Click format 522)
 
 For encoder/codec work, **work in the laddercodec repo** (`../laddercodec`).
