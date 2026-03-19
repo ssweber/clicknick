@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from laddercodec import Coil, CompareContact, Contact, Timer, encode_multi_rung
-from laddercodec.csv.reader import is_multi_rung_csv, read_golden_csv, read_multi_rung_csv
+from laddercodec.csv import CONDITION_COLUMNS, read_csv
 from laddercodec.csv.writer import WriterError, decode_to_csv
 from laddercodec.encode import AfToken, ConditionToken, encode_rung
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
@@ -69,22 +69,23 @@ def _extract_operand_candidates(token: ConditionToken | AfToken) -> list[str]:
 
 
 def extract_addresses_from_csv(path: Path) -> list[str]:
-    """Parse operand addresses from a CSV file."""
-    _, condition_rows, af_tokens, _ = read_golden_csv(path)
+    """Parse operand addresses from a CSV file (single or multi-rung)."""
+    rungs = read_csv(path)
     seen_keys: set[int] = set()
     parsed: list[str] = []
-    for conditions, af in zip(condition_rows, af_tokens, strict=True):
-        for token in [*conditions, af]:
-            for candidate in _extract_operand_candidates(token):
-                try:
-                    memory_type, address = parse_address(candidate)
-                except ValueError:
-                    continue
-                addr_key = get_addr_key(memory_type, address)
-                if addr_key in seen_keys:
-                    continue
-                seen_keys.add(addr_key)
-                parsed.append(format_address_display(memory_type, address))
+    for rung in rungs:
+        for conditions, af in zip(rung.condition_rows, rung.af_tokens, strict=True):
+            for token in [*conditions, af]:
+                for candidate in _extract_operand_candidates(token):
+                    try:
+                        memory_type, address = parse_address(candidate)
+                    except ValueError:
+                        continue
+                    addr_key = get_addr_key(memory_type, address)
+                    if addr_key in seen_keys:
+                        continue
+                    seen_keys.add(addr_key)
+                    parsed.append(format_address_display(memory_type, address))
     return parsed
 
 
@@ -235,17 +236,16 @@ def _describe_single_rung(
 
 def describe_csv(csv_path: Path) -> str:
     """Return a human-readable summary of a CSV fixture's shape."""
-    from laddercodec.csv.contract import CONDITION_COLUMNS
-
-    if is_multi_rung_csv(csv_path):
-        rung_items = read_multi_rung_csv(csv_path)
+    rungs = read_csv(csv_path)
+    if len(rungs) > 1:
         rung_descs = [
-            _describe_single_rung(cr, af, cmt, CONDITION_COLUMNS) for _lr, cr, af, cmt in rung_items
+            _describe_single_rung(r.condition_rows, r.af_tokens, r.comment, CONDITION_COLUMNS)
+            for r in rungs
         ]
-        return f"{len(rung_items)} rungs: " + " | ".join(rung_descs)
+        return f"{len(rungs)} rungs: " + " | ".join(rung_descs)
 
-    logical_rows, condition_rows, af_tokens, comment = read_golden_csv(csv_path)
-    return _describe_single_rung(condition_rows, af_tokens, comment, CONDITION_COLUMNS)
+    r = rungs[0]
+    return _describe_single_rung(r.condition_rows, r.af_tokens, r.comment, CONDITION_COLUMNS)
 
 
 # ---------------------------------------------------------------------------
@@ -255,14 +255,14 @@ def describe_csv(csv_path: Path) -> str:
 
 def encode_csv(csv_path: Path) -> bytes:
     """Encode a CSV file and return the payload bytes."""
-    if is_multi_rung_csv(csv_path):
-        rung_items = read_multi_rung_csv(csv_path)
+    rungs = read_csv(csv_path)
+    if len(rungs) > 1:
         return encode_multi_rung(
-            [(lr, cr, af) for lr, cr, af, _ in rung_items],
-            comments=[cmt for _, _, _, cmt in rung_items],
+            [(r.logical_rows, r.condition_rows, r.af_tokens) for r in rungs],
+            comments=[r.comment for r in rungs],
         )
-    logical_rows, condition_rows, af_tokens, comment = read_golden_csv(csv_path)
-    return encode_rung(logical_rows, condition_rows, af_tokens, comment=comment)
+    lr, conds, afs, comment = rungs[0]
+    return encode_rung(lr, conds, afs, comment=comment)
 
 
 def _load_csv(csv_path: Path, mdb_path: str | None) -> bytes:
