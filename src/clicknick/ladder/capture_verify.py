@@ -8,7 +8,7 @@ Usage:
     clicknick-rung guided FOLDER --list         # List CSVs with descriptions
     clicknick-rung guided FOLDER --restart      # Clear progress, start fresh
     clicknick-rung load FILE                    # Encode .csv/.bin → clipboard
-    clicknick-rung save FILE                    # Clipboard → .bin file
+    clicknick-rung save FILE                    # Clipboard → .bin/.csv/both
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from typing import Any
 
 from laddercodec import Coil, CompareContact, Contact, Timer, encode_multi_rung
 from laddercodec.csv.reader import is_multi_rung_csv, read_golden_csv, read_multi_rung_csv
+from laddercodec.csv.writer import WriterError, decode_to_csv
 from laddercodec.encode import AfToken, ConditionToken, encode_rung
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
 
@@ -543,9 +544,13 @@ def main() -> None:
     # --- save ---
     save = subparsers.add_parser(
         "save",
-        help="Read clipboard and save to a .bin file",
+        help="Save clipboard to file (.bin, .csv, or both)",
     )
-    save.add_argument("file", metavar="FILE", help="Output .bin file path")
+    save.add_argument(
+        "file",
+        metavar="FILE",
+        help="Output path: .bin for binary, .csv for decoded CSV, no extension for both",
+    )
 
     args = parser.parse_args()
 
@@ -612,6 +617,31 @@ def main() -> None:
         except RuntimeError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(1)
-        file_path.write_bytes(data)
-        print(f"Saved clipboard to {file_path} ({len(data):,} bytes)")
+
+        suffix = file_path.suffix.lower()
+
+        if suffix == ".bin":
+            file_path.write_bytes(data)
+            print(f"Saved {file_path} ({len(data):,} bytes)")
+        elif suffix == ".csv":
+            try:
+                decode_to_csv(data, file_path)
+            except (WriterError, Exception) as exc:
+                print(f"Error: could not decode to CSV: {exc}", file=sys.stderr)
+                sys.exit(1)
+            print(f"Saved {file_path}")
+        else:
+            # No recognized extension → save both .bin and .csv
+            bin_path = file_path.with_suffix(".bin")
+            csv_path = file_path.with_suffix(".csv")
+            bin_path.write_bytes(data)
+            print(f"Saved {bin_path} ({len(data):,} bytes)")
+            try:
+                decode_to_csv(data, csv_path)
+                print(f"Saved {csv_path}")
+            except (WriterError, Exception) as exc:
+                print(
+                    f"Warning: could not write CSV: {exc}",
+                    file=sys.stderr,
+                )
         return

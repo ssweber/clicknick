@@ -206,6 +206,82 @@ class TestMainArgparse:
         main()
         assert out.read_bytes() == b"\x01\x02\x03"
 
+    def test_save_csv_decodes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        out = tmp_path / "output.csv"
+        monkeypatch.setattr(
+            "clicknick.ladder.capture_verify.read_from_clipboard",
+            lambda: b"\x01\x02\x03",
+        )
+        decoded_calls: list[tuple[bytes, Path]] = []
+
+        def mock_decode_to_csv(data, path):
+            decoded_calls.append((data, path))
+            Path(path).write_text("decoded", encoding="utf-8")
+
+        monkeypatch.setattr("clicknick.ladder.capture_verify.decode_to_csv", mock_decode_to_csv)
+        monkeypatch.setattr("sys.argv", ["clicknick-rung", "save", str(out)])
+        main()
+        assert len(decoded_calls) == 1
+        assert decoded_calls[0] == (b"\x01\x02\x03", out)
+        assert not out.with_suffix(".bin").exists()
+
+    def test_save_csv_decode_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ):
+        out = tmp_path / "output.csv"
+        monkeypatch.setattr(
+            "clicknick.ladder.capture_verify.read_from_clipboard",
+            lambda: b"\x01\x02\x03",
+        )
+
+        def mock_decode_to_csv(data, path):
+            from laddercodec.csv.writer import WriterError
+
+            raise WriterError("unknown instruction")
+
+        monkeypatch.setattr("clicknick.ladder.capture_verify.decode_to_csv", mock_decode_to_csv)
+        monkeypatch.setattr("sys.argv", ["clicknick-rung", "save", str(out)])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        assert "could not decode to CSV" in capsys.readouterr().err
+
+    def test_save_no_extension_writes_both(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        out = tmp_path / "my_rung"
+        monkeypatch.setattr(
+            "clicknick.ladder.capture_verify.read_from_clipboard",
+            lambda: b"\x01\x02\x03",
+        )
+
+        def mock_decode_to_csv(data, path):
+            Path(path).write_text("decoded", encoding="utf-8")
+
+        monkeypatch.setattr("clicknick.ladder.capture_verify.decode_to_csv", mock_decode_to_csv)
+        monkeypatch.setattr("sys.argv", ["clicknick-rung", "save", str(out)])
+        main()
+        assert out.with_suffix(".bin").read_bytes() == b"\x01\x02\x03"
+        assert out.with_suffix(".csv").read_text(encoding="utf-8") == "decoded"
+
+    def test_save_no_extension_csv_failure_still_saves_bin(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ):
+        out = tmp_path / "my_rung"
+        monkeypatch.setattr(
+            "clicknick.ladder.capture_verify.read_from_clipboard",
+            lambda: b"\x01\x02\x03",
+        )
+
+        def mock_decode_to_csv(data, path):
+            from laddercodec.csv.writer import WriterError
+
+            raise WriterError("unknown instruction")
+
+        monkeypatch.setattr("clicknick.ladder.capture_verify.decode_to_csv", mock_decode_to_csv)
+        monkeypatch.setattr("sys.argv", ["clicknick-rung", "save", str(out)])
+        main()
+        assert out.with_suffix(".bin").read_bytes() == b"\x01\x02\x03"
+        assert not out.with_suffix(".csv").exists()
+        assert "could not write CSV" in capsys.readouterr().err
+
     def test_save_clipboard_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
     ):

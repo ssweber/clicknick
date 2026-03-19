@@ -25,7 +25,7 @@ clicknick-rung guided FOLDER                # Interactive batch verify CSVs
 clicknick-rung guided FOLDER --list         # List CSVs with descriptions
 clicknick-rung guided FOLDER --restart      # Clear progress, start fresh
 clicknick-rung load FILE                    # Encode .csv/.bin → clipboard
-clicknick-rung save FILE                    # Clipboard → .bin file
+clicknick-rung save FILE                    # Clipboard → .bin/.csv/both
 clicknick-rung --mdb-path SC_.mdb ...       # Explicit MDB path (any subcommand)
 ```
 
