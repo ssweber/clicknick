@@ -21,18 +21,13 @@ from pathlib import Path
 from typing import Any
 
 from laddercodec import (
-    AfToken,
-    Coil,
-    CompareContact,
-    ConditionToken,
-    Contact,
-    Timer,
-    encode_rung,
-    encode_rungs,
+    encode,
     read_csv,
 )
+from laddercodec.encode import AfToken, ConditionToken
+from laddercodec import decode, write_csv
 from laddercodec.csv import CONDITION_COLUMNS
-from laddercodec.csv.writer import WriterError, decode_to_csv
+from laddercodec.csv.writer import WriterError
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
 
 from ..utils.mdb_operations import ensure_addresses_exist
@@ -51,21 +46,13 @@ ADDRESS_RANGE_RE = re.compile(
 
 
 def _extract_operand_candidates(token: ConditionToken | AfToken) -> list[str]:
-    if isinstance(token, Contact):
-        return [token.operand]
-    if isinstance(token, Coil):
-        ops = [token.operand]
-        if token.range_end:
-            ops.append(token.range_end)
-        return ops
-    if isinstance(token, CompareContact):
-        ops = [token.left]
-        # right may be a literal ("1", "FFFFh") — regex fallback handles filtering
-        ops.append(token.right)
-        return ops
-    if isinstance(token, Timer):
-        return [token.done_bit, token.current]
-    text = token.strip().upper()
+    # Use to_csv() for any instruction object — future-proof against new types.
+    if isinstance(token, str):
+        text = token.strip().upper()
+    elif hasattr(token, "to_csv"):
+        text = token.to_csv().upper()
+    else:
+        return []
     if not text:
         return []
     out: list[str] = []
@@ -83,7 +70,7 @@ def extract_addresses_from_csv(path: Path, *, best_effort: bool = False) -> list
     seen_keys: set[int] = set()
     parsed: list[str] = []
     for rung in rungs:
-        for conditions, af in zip(rung.condition_rows, rung.af_tokens, strict=True):
+        for conditions, af in zip(rung.conditions, rung.instructions, strict=True):
             for token in [*conditions, af]:
                 for candidate in _extract_operand_candidates(token):
                     try:
@@ -248,13 +235,13 @@ def describe_csv(csv_path: Path, *, best_effort: bool = False) -> str:
     rungs = read_csv(csv_path, strict=not best_effort)
     if len(rungs) > 1:
         rung_descs = [
-            _describe_single_rung(r.condition_rows, r.af_tokens, r.comment, CONDITION_COLUMNS)
+            _describe_single_rung(r.conditions, r.instructions, r.comment, CONDITION_COLUMNS)
             for r in rungs
         ]
         return f"{len(rungs)} rungs: " + " | ".join(rung_descs)
 
     r = rungs[0]
-    return _describe_single_rung(r.condition_rows, r.af_tokens, r.comment, CONDITION_COLUMNS)
+    return _describe_single_rung(r.conditions, r.instructions, r.comment, CONDITION_COLUMNS)
 
 
 # ---------------------------------------------------------------------------
@@ -266,12 +253,8 @@ def encode_csv(csv_path: Path, *, best_effort: bool = False) -> bytes:
     """Encode a CSV file and return the payload bytes."""
     rungs = read_csv(csv_path, strict=not best_effort)
     if len(rungs) > 1:
-        return encode_rungs(
-            [(r.logical_rows, r.condition_rows, r.af_tokens) for r in rungs],
-            comments=[r.comment for r in rungs],
-        )
-    lr, conds, afs, comment = rungs[0]
-    return encode_rung(lr, conds, afs, comment=comment)
+        return encode(rungs)
+    return encode(rungs[0])
 
 
 def _load_csv(csv_path: Path, mdb_path: str | None, *, best_effort: bool = False) -> bytes:
@@ -638,7 +621,9 @@ def main() -> None:
             print(f"Saved {file_path} ({len(data):,} bytes)")
         elif suffix == ".csv":
             try:
-                decode_to_csv(data, file_path)
+                result = decode(data)
+                rungs = result if isinstance(result, list) else [result]
+                write_csv(file_path, rungs)
             except (WriterError, Exception) as exc:
                 print(f"Error: could not decode to CSV: {exc}", file=sys.stderr)
                 sys.exit(1)
@@ -650,7 +635,9 @@ def main() -> None:
             bin_path.write_bytes(data)
             print(f"Saved {bin_path} ({len(data):,} bytes)")
             try:
-                decode_to_csv(data, csv_path)
+                result = decode(data)
+                rungs = result if isinstance(result, list) else [result]
+                write_csv(csv_path, rungs)
                 print(f"Saved {csv_path}")
             except (WriterError, Exception) as exc:
                 print(
