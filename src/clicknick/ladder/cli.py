@@ -7,7 +7,8 @@ Usage:
     clicknick-rung guided FOLDER                # Interactive batch verify
     clicknick-rung guided FOLDER --list         # List CSVs with descriptions
     clicknick-rung guided FOLDER --restart      # Clear progress, start fresh
-    clicknick-rung program FOLDER               # Verify a program bundle (main.csv + subroutines/)
+    clicknick-rung program load FOLDER          # Verify a program bundle (main.csv + subroutines/)
+    clicknick-rung program save FOLDER          # Decode Scr*.tmp → main.csv + subroutines/
     clicknick-rung load FILE                    # Encode .csv/.bin → clipboard
     clicknick-rung save FILE                    # Clipboard → .bin/.csv/both
 """
@@ -27,13 +28,14 @@ from laddercodec import (
     Contact,
     Timer,
     decode,
+    decode_program,
     encode,
     read_csv,
     write_csv,
 )
-from laddercodec.encode import AfToken, ConditionToken
 from laddercodec.csv import CONDITION_COLUMNS
 from laddercodec.csv.writer import WriterError
+from laddercodec.encode import AfToken, ConditionToken
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
 
 from ..utils.mdb_operations import ensure_addresses_exist
@@ -372,6 +374,64 @@ def _save_and_compare(name: str, bin_path: Path) -> None:
         print(f"  {name}: size differs (encoder {len(expected):,}, Click {len(actual):,} bytes)")
 
 
+def _slugify(name: str) -> str:
+    """Convert a program name to a filesystem-safe slug."""
+    slug = re.sub(r"[^\w\s-]", "", name.strip()).strip()
+    slug = re.sub(r"[\s-]+", "_", slug)
+    return slug.lower()
+
+
+def _program_save(folder: Path) -> None:
+    """Decode all Scr*.tmp files in *folder* into a CSV bundle.
+
+    Writes main.csv for prog_idx 1 (main program) and subroutines/{slug}.csv
+    for prog_idx 2+.
+    """
+    scr_files = sorted(folder.glob("Scr*.tmp"))
+    if not scr_files:
+        print(f"Error: no Scr*.tmp files found in {folder}", file=sys.stderr)
+        sys.exit(1)
+
+    from laddercodec.model import Program
+
+    programs: list[Program] = []
+    for scr_path in scr_files:
+        data = scr_path.read_bytes()
+        prog = decode_program(data)
+        programs.append(prog)
+        print(f"  {scr_path.name} → {prog.name!r} (idx={prog.prog_idx}, {len(prog.rungs)} rungs)")
+
+    programs.sort(key=lambda p: p.prog_idx)
+
+    main_progs = [p for p in programs if p.prog_idx == 1]
+    sub_progs = [p for p in programs if p.prog_idx > 1]
+
+    if not main_progs:
+        print("Error: no main program (prog_idx=1) found", file=sys.stderr)
+        sys.exit(1)
+
+    # Write main.csv
+    main_csv = folder / "main.csv"
+    write_csv(main_csv, main_progs[0].rungs)
+    print(f"  Saved {main_csv}")
+
+    # Write subroutines
+    if sub_progs:
+        sub_dir = folder / "subroutines"
+        sub_dir.mkdir(exist_ok=True)
+        for prog in sub_progs:
+            slug = _slugify(prog.name)
+            csv_path = sub_dir / f"{slug}.csv"
+            write_csv(csv_path, prog.rungs)
+            print(f"  Saved {csv_path}")
+
+    total_rungs = sum(len(p.rungs) for p in programs)
+    print(
+        f"\nProgram bundle: {len(main_progs)} main + {len(sub_progs)} subroutine(s),"
+        f" {total_rungs} total rungs"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Interactive batch verification
 # ---------------------------------------------------------------------------
@@ -600,13 +660,27 @@ def main() -> None:
     guided.add_argument("--list", action="store_true", help="List fixtures with descriptions")
     guided.add_argument("--restart", action="store_true", help="Clear progress and start fresh")
 
-    # --- program ---
+    # --- program (with load/save subcommands) ---
     program = subparsers.add_parser(
         "program",
-        help="Interactive batch verify a program bundle (main.csv + subroutines/)",
+        help="Program bundle operations (load into Click or save from Scr*.tmp)",
     )
-    program.add_argument("folder", metavar="FOLDER", help="Directory with main.csv and subroutines/")
-    program.add_argument("--restart", action="store_true", help="Clear progress and start fresh")
+    prog_sub = program.add_subparsers(dest="program_command")
+
+    prog_load = prog_sub.add_parser(
+        "load",
+        help="Load a CSV bundle into Click via guided clipboard paste",
+    )
+    prog_load.add_argument(
+        "folder", metavar="FOLDER", help="Directory with main.csv and subroutines/"
+    )
+    prog_load.add_argument("--restart", action="store_true", help="Clear progress and start fresh")
+
+    prog_save = prog_sub.add_parser(
+        "save",
+        help="Decode Scr*.tmp files into a CSV bundle (main.csv + subroutines/)",
+    )
+    prog_save.add_argument("folder", metavar="FOLDER", help="Directory containing Scr*.tmp files")
 
     # --- load ---
     load = subparsers.add_parser(
@@ -673,10 +747,20 @@ def main() -> None:
         return
 
     if args.command == "program":
+        if not args.program_command:
+            program.print_help()
+            sys.exit(1)
+
         folder = Path(args.folder)
         if not folder.is_dir():
             print(f"Error: not a directory: {folder}", file=sys.stderr)
             sys.exit(1)
+
+        if args.program_command == "save":
+            _program_save(folder)
+            return
+
+        # program load
         main_csv = folder / "main.csv"
         if not main_csv.exists():
             print(f"Error: {folder} is missing required main.csv", file=sys.stderr)

@@ -24,6 +24,8 @@ laddercodec = { path = "../laddercodec", editable = true }
 clicknick-rung guided FOLDER                # Interactive batch verify CSVs
 clicknick-rung guided FOLDER --list         # List CSVs with descriptions
 clicknick-rung guided FOLDER --restart      # Clear progress, start fresh
+clicknick-rung program load FOLDER          # Load CSV bundle into Click (guided paste)
+clicknick-rung program save FOLDER          # Decode Scr*.tmp → main.csv + subroutines/
 clicknick-rung load FILE                    # Encode .csv/.bin → clipboard
 clicknick-rung save FILE                    # Clipboard → .bin/.csv/both
 clicknick-rung --mdb-path SC_.mdb ...       # Explicit MDB path (any subcommand)
