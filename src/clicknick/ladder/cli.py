@@ -7,6 +7,7 @@ Usage:
     clicknick-rung guided FOLDER                # Interactive batch verify
     clicknick-rung guided FOLDER --list         # List CSVs with descriptions
     clicknick-rung guided FOLDER --restart      # Clear progress, start fresh
+    clicknick-rung program FOLDER               # Verify a program bundle (main.csv + subroutines/)
     clicknick-rung load FILE                    # Encode .csv/.bin → clipboard
     clicknick-rung save FILE                    # Clipboard → .bin/.csv/both
 """
@@ -280,6 +281,32 @@ def _load_csv(csv_path: Path, mdb_path: str | None, *, best_effort: bool = False
     return payload
 
 
+def _load_program_csv(csv_path: Path, mdb_path: str | None) -> bytes:
+    """Encode a program/subroutine CSV and copy to clipboard. Minimal output."""
+    rungs = read_csv(csv_path, strict=True)
+    print(f"  {len(rungs)} rung{'s' if len(rungs) != 1 else ''}")
+
+    if len(rungs) > 1:
+        payload = encode(rungs)
+    else:
+        payload = encode(rungs[0])
+
+    addresses = extract_addresses_from_csv(csv_path)
+    if addresses:
+        try:
+            mdb = resolve_mdb_path(mdb_path)
+            result = ensure_addresses_exist(str(mdb), addresses)
+            inserted = result.get("inserted_count", 0)
+            if inserted:
+                print(f"  MDB: inserted {inserted} address(es) into {mdb.name}")
+        except (FileNotFoundError, RuntimeError) as exc:
+            print(f"  MDB: skipped ({exc})")
+
+    copy_to_clipboard(payload)
+    print(f"  Copied to clipboard ({len(payload):,} bytes)")
+    return payload
+
+
 def _save_and_compare(name: str, bin_path: Path) -> None:
     """Read clipboard, save as .bin, and report byte diff if .bin already exists.
 
@@ -338,17 +365,23 @@ def _append_result(log_path: Path, name: str, status: str, detail: str = "") -> 
         f.write(line)
 
 
+_Loader = Any  # Callable[[Path, str | None], bytes]
+
+
 def _run_guided(
     items: list[tuple[str, Path]],
     *,
     mdb_path: str | None = None,
     log_path: Path,
+    loader: _Loader = None,
 ) -> None:
     """Interactive batch verify. Each item is (name, csv_path).
 
     Progress is appended one line at a time to *log_path*. On resume,
     already-completed fixtures are skipped automatically.
     """
+    if loader is None:
+        loader = _load_csv
     # Load prior progress
     done = _read_progress(log_path)
     if done:
@@ -377,7 +410,7 @@ def _run_guided(
         print(f"--- {name} ({idx + 1}/{len(items)}) ---")
 
         try:
-            _load_csv(csv_path, mdb_path)
+            loader(csv_path, mdb_path)
         except RuntimeError as exc:
             # Clipboard / Click-not-running — prompt to retry
             loaded = False
@@ -393,7 +426,7 @@ def _run_guided(
                     _append_result(log_path, name, "skipped", str(exc))
                     break
                 try:
-                    _load_csv(csv_path, mdb_path)
+                    loader(csv_path, mdb_path)
                     loaded = True
                 except RuntimeError as exc2:
                     exc = exc2
@@ -525,6 +558,14 @@ def main() -> None:
     guided.add_argument("--list", action="store_true", help="List fixtures with descriptions")
     guided.add_argument("--restart", action="store_true", help="Clear progress and start fresh")
 
+    # --- program ---
+    program = subparsers.add_parser(
+        "program",
+        help="Interactive batch verify a program bundle (main.csv + subroutines/)",
+    )
+    program.add_argument("folder", metavar="FOLDER", help="Directory with main.csv and subroutines/")
+    program.add_argument("--restart", action="store_true", help="Clear progress and start fresh")
+
     # --- load ---
     load = subparsers.add_parser(
         "load",
@@ -587,6 +628,35 @@ def main() -> None:
             log.unlink()
         print(f"Folder: {folder} ({len(items)} CSV files)")
         _run_guided(items, mdb_path=args.mdb_path, log_path=log)
+        return
+
+    if args.command == "program":
+        folder = Path(args.folder)
+        if not folder.is_dir():
+            print(f"Error: not a directory: {folder}", file=sys.stderr)
+            sys.exit(1)
+        main_csv = folder / "main.csv"
+        if not main_csv.exists():
+            print(f"Error: {folder} is missing required main.csv", file=sys.stderr)
+            sys.exit(1)
+
+        # Subroutines first so user can create them in Click before pasting main
+        items: list[tuple[str, Path]] = []
+        sub_dir = folder / "subroutines"
+        if sub_dir.is_dir():
+            for p in sorted(sub_dir.glob("*.csv")):
+                items.append((p.stem, p))
+        items.append(("Main Program", main_csv))
+
+        print(f"Program bundle: {folder}")
+        for name, _ in items:
+            print(f"  {name}")
+        print()
+
+        log = folder / "verify_progress.log"
+        if args.restart and log.exists():
+            log.unlink()
+        _run_guided(items, mdb_path=args.mdb_path, log_path=log, loader=_load_program_csv)
         return
 
     if args.command == "load":
