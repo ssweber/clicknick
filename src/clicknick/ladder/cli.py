@@ -381,16 +381,19 @@ def _slugify(name: str) -> str:
     return slug.lower()
 
 
-def _program_save(folder: Path) -> None:
+def _program_save(folder: Path, output: Path | None = None) -> None:
     """Decode all Scr*.tmp files in *folder* into a CSV bundle.
 
     Writes main.csv for prog_idx 1 (main program) and subroutines/{slug}.csv
-    for prog_idx 2+.
+    for prog_idx 2+.  Output defaults to *folder* unless *output* is given.
     """
     scr_files = sorted(folder.glob("Scr*.tmp"))
     if not scr_files:
         print(f"Error: no Scr*.tmp files found in {folder}", file=sys.stderr)
         sys.exit(1)
+
+    dest = output or folder
+    dest.mkdir(parents=True, exist_ok=True)
 
     from laddercodec.model import Program
 
@@ -411,13 +414,13 @@ def _program_save(folder: Path) -> None:
         sys.exit(1)
 
     # Write main.csv
-    main_csv = folder / "main.csv"
+    main_csv = dest / "main.csv"
     write_csv(main_csv, main_progs[0].rungs)
     print(f"  Saved {main_csv}")
 
     # Write subroutines
     if sub_progs:
-        sub_dir = folder / "subroutines"
+        sub_dir = dest / "subroutines"
         sub_dir.mkdir(exist_ok=True)
         for prog in sub_progs:
             slug = _slugify(prog.name)
@@ -681,6 +684,9 @@ def main() -> None:
         help="Decode Scr*.tmp files into a CSV bundle (main.csv + subroutines/)",
     )
     prog_save.add_argument("folder", metavar="FOLDER", help="Directory containing Scr*.tmp files")
+    prog_save.add_argument(
+        "--output", "-o", metavar="DIR", help="Output directory for CSV bundle (default: FOLDER)"
+    )
 
     # --- load ---
     load = subparsers.add_parser(
@@ -757,7 +763,8 @@ def main() -> None:
             sys.exit(1)
 
         if args.program_command == "save":
-            _program_save(folder)
+            output = Path(args.output) if args.output else None
+            _program_save(folder, output)
             return
 
         # program load
