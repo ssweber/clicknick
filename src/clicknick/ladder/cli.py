@@ -22,11 +22,16 @@ from pathlib import Path
 from typing import Any
 
 from laddercodec import (
+    Coil,
+    CompareContact,
+    Contact,
+    Timer,
+    decode,
     encode,
     read_csv,
+    write_csv,
 )
 from laddercodec.encode import AfToken, ConditionToken
-from laddercodec import decode, write_csv
 from laddercodec.csv import CONDITION_COLUMNS
 from laddercodec.csv.writer import WriterError
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
@@ -47,7 +52,38 @@ ADDRESS_RANGE_RE = re.compile(
 
 
 def _extract_operand_candidates(token: ConditionToken | AfToken) -> list[str]:
-    # Use to_csv() for any instruction object — future-proof against new types.
+    def _append(value: str | None, *, address_only: bool = False) -> None:
+        if not value:
+            return
+        candidate = value.strip().upper()
+        if not candidate:
+            return
+        if address_only and not ADDRESS_TOKEN_RE.fullmatch(candidate):
+            return
+        out.append(candidate)
+
+    out: list[str] = []
+
+    # Prefer structured fields for core instruction types so we don't duplicate
+    # range endpoints or lose literal operands when laddercodec's CSV formatting changes.
+    if isinstance(token, Contact):
+        _append(token.operand)
+        return out
+    if isinstance(token, Coil):
+        _append(token.operand)
+        _append(token.range_end)
+        return out
+    if isinstance(token, CompareContact):
+        _append(token.left)
+        _append(token.right)
+        return out
+    if isinstance(token, Timer):
+        _append(token.done_bit)
+        _append(token.current)
+        _append(token.setpoint, address_only=True)
+        return out
+
+    # Use to_csv() for any other instruction object — future-proof against new types.
     if isinstance(token, str):
         text = token.strip().upper()
     elif hasattr(token, "to_csv"):
@@ -56,13 +92,12 @@ def _extract_operand_candidates(token: ConditionToken | AfToken) -> list[str]:
         return []
     if not text:
         return []
-    out: list[str] = []
     for match in ADDRESS_RANGE_RE.finditer(text):
-        out.append(match.group(1))
-        out.append(match.group(2))
+        _append(match.group(1))
+        _append(match.group(2))
     for match in ADDRESS_TOKEN_RE.finditer(text):
-        out.append(match.group(1))
-    return out
+        _append(match.group(1))
+    return list(dict.fromkeys(out))
 
 
 def extract_addresses_from_csv(path: Path, *, best_effort: bool = False) -> list[str]:
@@ -256,6 +291,13 @@ def encode_csv(csv_path: Path, *, best_effort: bool = False) -> bytes:
     if len(rungs) > 1:
         return encode(rungs)
     return encode(rungs[0])
+
+
+def decode_to_csv(data: bytes, path: Path) -> None:
+    """Decode clipboard/program bytes and write canonical CSV."""
+    result = decode(data)
+    rungs = result if isinstance(result, list) else [result]
+    write_csv(path, rungs)
 
 
 def _load_csv(csv_path: Path, mdb_path: str | None, *, best_effort: bool = False) -> bytes:
@@ -691,9 +733,7 @@ def main() -> None:
             print(f"Saved {file_path} ({len(data):,} bytes)")
         elif suffix == ".csv":
             try:
-                result = decode(data)
-                rungs = result if isinstance(result, list) else [result]
-                write_csv(file_path, rungs)
+                decode_to_csv(data, file_path)
             except (WriterError, Exception) as exc:
                 print(f"Error: could not decode to CSV: {exc}", file=sys.stderr)
                 sys.exit(1)
@@ -705,9 +745,7 @@ def main() -> None:
             bin_path.write_bytes(data)
             print(f"Saved {bin_path} ({len(data):,} bytes)")
             try:
-                result = decode(data)
-                rungs = result if isinstance(result, list) else [result]
-                write_csv(csv_path, rungs)
+                decode_to_csv(data, csv_path)
                 print(f"Saved {csv_path}")
             except (WriterError, Exception) as exc:
                 print(
