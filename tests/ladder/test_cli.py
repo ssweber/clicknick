@@ -6,16 +6,22 @@ import typing
 from pathlib import Path
 
 import pytest
-from laddercodec import Coil, CompareContact, Contact, Timer
+from laddercodec import Coil, CompareContact, Contact, Rung, Timer
 from laddercodec.csv.contract import CONDITION_COLUMNS
+from laddercodec.model import Program
 
 from clicknick.ladder.cli import (
     _append_result,
     _collapse_cols,
+    _dedupe_filename_stem,
     _describe_row_wires,
     _describe_single_rung,
     _extract_operand_candidates,
+    _load_csv_split_rungs,
+    _program_save,
     _read_progress,
+    _run_guided,
+    _slugify,
     main,
 )
 
@@ -198,6 +204,206 @@ class TestProgressLog:
 
 
 # ---------------------------------------------------------------------------
+# Filename sanitizing
+# ---------------------------------------------------------------------------
+
+
+class TestProgramFilenameSanitizing:
+    def test_slugify_preserves_case(self):
+        assert _slugify("ModeManualTimers") == "ModeManualTimers"
+
+    def test_slugify_preserves_spaces_and_hyphens(self):
+        assert _slugify("Mode Manual-Timers") == "Mode Manual-Timers"
+
+    def test_slugify_removes_windows_unsafe_chars(self):
+        assert _slugify('Bad<>:"/\\|?*Name') == "BadName"
+
+    def test_slugify_collapses_repeated_spaces_and_trims_trailing_space_dot(self):
+        assert _slugify("Mode   Manual.  ") == "Mode Manual"
+
+    def test_slugify_falls_back_when_name_becomes_empty(self):
+        assert _slugify(' <>:"/\\|?*. ') == "Untitled"
+
+    def test_dedupe_filename_stem_appends_windows_style_suffix(self):
+        used: set[str] = set()
+        assert _dedupe_filename_stem("ModeManualTimers", used) == "ModeManualTimers"
+        assert _dedupe_filename_stem("ModeManualTimers", used) == "ModeManualTimers (2)"
+        assert _dedupe_filename_stem("ModeManualTimers", used) == "ModeManualTimers (3)"
+
+    def test_dedupe_filename_stem_treats_case_only_difference_as_duplicate(self):
+        used: set[str] = set()
+        assert _dedupe_filename_stem("ModeManualTimers", used) == "ModeManualTimers"
+        assert _dedupe_filename_stem("modemanualtimers", used) == "modemanualtimers (2)"
+
+
+# ---------------------------------------------------------------------------
+# Program save
+# ---------------------------------------------------------------------------
+
+
+class TestProgramSave:
+    def test_program_save_preserves_case_spacing_and_dedupes(self, tmp_path: Path, monkeypatch):
+        src = tmp_path / "src"
+        src.mkdir()
+        for name in ("Scr1.tmp", "Scr10.tmp", "Scr11.tmp", "Scr12.tmp", "Scr13.tmp", "Scr14.tmp"):
+            (src / name).write_bytes(b"scr")
+
+        programs = iter(
+            [
+                Program(name="Main Program", prog_idx=1, rungs=[]),
+                Program(name="ModeManualTimers", prog_idx=10, rungs=[]),
+                Program(name="Mode Manual Timers", prog_idx=11, rungs=[]),
+                Program(name="Mode-Manual-Timers", prog_idx=12, rungs=[]),
+                Program(name='Mode<>:"/\\|?*ManualTimers', prog_idx=13, rungs=[]),
+                Program(name="ModeManualTimers.", prog_idx=14, rungs=[]),
+            ]
+        )
+
+        monkeypatch.setattr("clicknick.ladder.cli.decode_program", lambda data: next(programs))
+
+        written_paths: list[Path] = []
+
+        def _write_csv(path: Path, rungs) -> None:
+            written_paths.append(Path(path))
+
+        monkeypatch.setattr("clicknick.ladder.cli.write_csv", _write_csv)
+
+        out = tmp_path / "out"
+        _program_save(src, out)
+
+        assert written_paths == [
+            out / "main.csv",
+            out / "subroutines" / "ModeManualTimers.csv",
+            out / "subroutines" / "Mode Manual Timers.csv",
+            out / "subroutines" / "Mode-Manual-Timers.csv",
+            out / "subroutines" / "ModeManualTimers (2).csv",
+            out / "subroutines" / "ModeManualTimers (3).csv",
+        ]
+
+
+# ---------------------------------------------------------------------------
+# Split-rung load
+# ---------------------------------------------------------------------------
+
+
+class TestSplitRungLoad:
+    def test_load_csv_split_rungs_copies_each_rung(self, monkeypatch: pytest.MonkeyPatch):
+        rung1 = Rung(
+            logical_rows=1,
+            conditions=[[Contact(_IT.CONTACT_NO, "X001")] + ["-"] * 30],
+            instructions=[Coil(_IT.COIL_OUT, "Y001")],
+            comment="First comment",
+            comment_rtf=None,
+        )
+        rung2 = Rung(
+            logical_rows=1,
+            conditions=[[Contact(_IT.CONTACT_NO, "X002")] + ["-"] * 30],
+            instructions=[Coil(_IT.COIL_OUT, "Y002")],
+            comment=None,
+            comment_rtf=None,
+        )
+
+        monkeypatch.setattr("clicknick.ladder.cli.read_csv", lambda *args, **kwargs: [rung1, rung2])
+        monkeypatch.setattr("clicknick.ladder.cli.extract_addresses_from_csv", lambda *args, **kwargs: [])
+        monkeypatch.setattr(
+            "clicknick.ladder.cli.encode",
+            lambda rung: b"payload-1" if rung is rung1 else b"payload-2",
+        )
+
+        copied: list[bytes] = []
+        monkeypatch.setattr(
+            "clicknick.ladder.cli.copy_to_clipboard",
+            lambda payload: copied.append(payload),
+        )
+
+        responses = iter([""])
+        monkeypatch.setattr("builtins.input", lambda _prompt="": next(responses))
+
+        count = _load_csv_split_rungs(Path("demo.csv"), None)
+
+        assert count == 2
+        assert copied == [b"payload-1", b"payload-2"]
+
+
+# ---------------------------------------------------------------------------
+# Guided program mode
+# ---------------------------------------------------------------------------
+
+
+class TestGuidedProgramMode:
+    def test_run_guided_without_copyback_marks_worked_without_bin_roundtrip(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        csv_path = tmp_path / "sub.csv"
+        log_path = tmp_path / "progress.log"
+
+        monkeypatch.setattr("clicknick.ladder.cli._save_and_compare", lambda *args: pytest.fail())
+        monkeypatch.setattr(
+            "clicknick.ladder.cli.read_from_clipboard",
+            lambda: pytest.fail(),
+        )
+
+        responses = iter(["w"])
+        monkeypatch.setattr("builtins.input", lambda _prompt="": next(responses))
+
+        with pytest.raises(SystemExit) as excinfo:
+            _run_guided(
+                [("sub", csv_path)],
+                log_path=log_path,
+                loader=lambda _path, _mdb_path: b"",
+                save_copyback_bin=False,
+            )
+
+        assert excinfo.value.code == 0
+        assert "sub: worked" in log_path.read_text(encoding="utf-8")
+        assert not csv_path.with_suffix(".bin").exists()
+
+    def test_run_guided_without_copyback_skips_unexpected_bin_save_prompt(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        csv_path = tmp_path / "sub.csv"
+        log_path = tmp_path / "progress.log"
+
+        monkeypatch.setattr(
+            "clicknick.ladder.cli.read_from_clipboard",
+            lambda: pytest.fail(),
+        )
+
+        responses = iter(["n", "wrong branch"])
+        monkeypatch.setattr("builtins.input", lambda _prompt="": next(responses))
+
+        with pytest.raises(SystemExit) as excinfo:
+            _run_guided(
+                [("sub", csv_path)],
+                log_path=log_path,
+                loader=lambda _path, _mdb_path: b"",
+                save_copyback_bin=False,
+            )
+
+        assert excinfo.value.code == 1
+        assert "sub: unexpected (wrong branch)" in log_path.read_text(encoding="utf-8")
+        assert not csv_path.with_suffix(".bin").exists()
+
+    def test_program_load_routes_with_copyback_disabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        (tmp_path / "main.csv").write_text("dummy", encoding="utf-8")
+
+        captured: dict[str, object] = {}
+
+        def _capture(*args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+
+        monkeypatch.setattr("clicknick.ladder.cli._run_guided", _capture)
+        monkeypatch.setattr("sys.argv", ["clicknick-rung", "program", "load", str(tmp_path)])
+
+        main()
+
+        assert captured["kwargs"]["save_copyback_bin"] is False
+
+
+# ---------------------------------------------------------------------------
 # CLI routing (main)
 # ---------------------------------------------------------------------------
 
@@ -330,6 +536,31 @@ class TestMainArgparse:
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "load", str(csv_file)])
         main()
         assert called == [csv_file]
+
+    def test_load_csv_file_split_rungs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        csv_file = tmp_path / "rung.csv"
+        csv_file.write_text("dummy", encoding="utf-8")
+        called: list[Path] = []
+
+        def mock_load_split_csv(path, mdb_path, best_effort=False):
+            called.append(path)
+            return 1
+
+        monkeypatch.setattr("clicknick.ladder.cli._load_csv_split_rungs", mock_load_split_csv)
+        monkeypatch.setattr("sys.argv", ["clicknick-rung", "load", str(csv_file), "--split-rungs"])
+        main()
+        assert called == [csv_file]
+
+    def test_load_split_rungs_rejects_non_csv(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ):
+        src = tmp_path / "rung.bin"
+        src.write_bytes(b"\xaa\xbb")
+
+        monkeypatch.setattr("sys.argv", ["clicknick-rung", "load", str(src), "--split-rungs"])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        assert "--split-rungs is only supported for .csv files" in capsys.readouterr().err
 
     def test_load_clipboard_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture

@@ -10,6 +10,7 @@ Usage:
     clicknick-rung program load FOLDER          # Verify a program bundle (main.csv + subroutines/)
     clicknick-rung program save FOLDER          # Decode Scr*.tmp → main.csv + subroutines/
     clicknick-rung load FILE                    # Encode .csv/.bin → clipboard
+    clicknick-rung load FILE --split-rungs      # Copy one rung at a time from a multi-rung CSV
     clicknick-rung save FILE                    # Clipboard → .bin/.csv/both
 """
 
@@ -26,6 +27,7 @@ from laddercodec import (
     Coil,
     CompareContact,
     Contact,
+    Rung,
     Timer,
     decode,
     decode_program,
@@ -33,8 +35,8 @@ from laddercodec import (
     read_csv,
     write_csv,
 )
-from laddercodec.csv import CONDITION_COLUMNS
-from laddercodec.csv.writer import WriterError
+from laddercodec.csv import CONDITION_COLUMNS, CSV_HEADER
+from laddercodec.csv.writer import WriterError, decoded_rung_to_rows
 from laddercodec.encode import AfToken, ConditionToken
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
 
@@ -282,6 +284,29 @@ def describe_csv(csv_path: Path, *, best_effort: bool = False) -> str:
     return _describe_single_rung(r.conditions, r.instructions, r.comment, CONDITION_COLUMNS)
 
 
+def _token_to_csv_text(token: object) -> str:
+    """Render an in-memory rung token back to canonical CSV text for display."""
+    if isinstance(token, str):
+        return token
+    if hasattr(token, "to_csv"):
+        return token.to_csv()
+    return repr(token)
+
+
+def _describe_rung(rung: Rung) -> str:
+    """Return a human-readable summary for a single parsed rung."""
+    condition_rows = [[_token_to_csv_text(token) for token in row] for row in rung.conditions]
+    af_tokens = [_token_to_csv_text(token) for token in rung.instructions]
+    return _describe_single_rung(condition_rows, af_tokens, rung.comment, CONDITION_COLUMNS)
+
+
+def _print_single_rung_csv(rung: Rung) -> None:
+    """Print a single rung as standalone canonical CSV rows."""
+    print(f"    {','.join(CSV_HEADER)}")
+    for row in decoded_rung_to_rows(rung):
+        print(f"    {','.join(row)}")
+
+
 # ---------------------------------------------------------------------------
 # Core operations
 # ---------------------------------------------------------------------------
@@ -323,6 +348,50 @@ def _load_csv(csv_path: Path, mdb_path: str | None, *, best_effort: bool = False
     copy_to_clipboard(payload)
     print(f"  Copied to clipboard ({len(payload):,} bytes)")
     return payload
+
+
+def _load_csv_split_rungs(
+    csv_path: Path,
+    mdb_path: str | None,
+    *,
+    best_effort: bool = False,
+) -> int:
+    """Treat a CSV file as separate rung loads, copying one rung at a time."""
+    rungs = read_csv(csv_path, strict=not best_effort)
+    total = len(rungs)
+    print(f"  Split load: {total} rung{'s' if total != 1 else ''} from {csv_path.name}")
+
+    addresses = extract_addresses_from_csv(csv_path, best_effort=best_effort)
+    if addresses:
+        try:
+            mdb = resolve_mdb_path(mdb_path)
+            result = ensure_addresses_exist(str(mdb), addresses)
+            inserted = result.get("inserted_count", 0)
+            if inserted:
+                print(f"  MDB: inserted {inserted} address(es) into {mdb.name}")
+        except (FileNotFoundError, RuntimeError) as exc:
+            print(f"  MDB: skipped ({exc})")
+
+    copied = 0
+    for idx, rung in enumerate(rungs, start=1):
+        print()
+        print(f"--- Rung {idx}/{total} ---")
+        print(f"  {_describe_rung(rung)}")
+        _print_single_rung_csv(rung)
+
+        payload = encode(rung)
+        copy_to_clipboard(payload)
+        copied += 1
+        print(f"  Copied rung {idx}/{total} to clipboard ({len(payload):,} bytes)")
+
+        if idx < total:
+            response = input("  Press Enter for next rung, or [q]uit > ").strip().lower()
+            if response == "q":
+                break
+
+    print()
+    print(f"Loaded {copied} of {total} rung{'s' if total != 1 else ''} from {csv_path.name}")
+    return copied
 
 
 def _load_program_csv(csv_path: Path, mdb_path: str | None) -> bytes:
@@ -374,18 +443,38 @@ def _save_and_compare(name: str, bin_path: Path) -> None:
         print(f"  {name}: size differs (encoder {len(expected):,}, Click {len(actual):,} bytes)")
 
 
+_WINDOWS_UNSAFE_FILENAME_RE = re.compile(r'[<>:"/\\|?*]')
+
+
 def _slugify(name: str) -> str:
-    """Convert a program name to a filesystem-safe slug."""
-    slug = re.sub(r"[^\w\s-]", "", name.strip()).strip()
-    slug = re.sub(r"[\s-]+", "_", slug)
-    return slug.lower()
+    """Convert a program name to a filesystem-safe stem while preserving case.
+
+    Only Windows-unsafe path characters are removed. Repeated spaces collapse
+    to a single space, and trailing spaces/dots are trimmed to keep the final
+    filename valid on Windows.
+    """
+    stem = _WINDOWS_UNSAFE_FILENAME_RE.sub("", name.strip())
+    stem = re.sub(r" {2,}", " ", stem)
+    stem = stem.rstrip(" .")
+    return stem or "Untitled"
+
+
+def _dedupe_filename_stem(stem: str, used_stems: set[str]) -> str:
+    """Return a unique filename stem using a Windows-style `` (N)`` suffix."""
+    candidate = stem
+    next_suffix = 2
+    while candidate.casefold() in used_stems:
+        candidate = f"{stem} ({next_suffix})"
+        next_suffix += 1
+    used_stems.add(candidate.casefold())
+    return candidate
 
 
 def _program_save(folder: Path, output: Path | None = None) -> None:
     """Decode all Scr*.tmp files in *folder* into a CSV bundle.
 
-    Writes main.csv for prog_idx 1 (main program) and subroutines/{slug}.csv
-    for prog_idx 2+.  Output defaults to *folder* unless *output* is given.
+    Writes main.csv for prog_idx 1 (main program) and subroutines/{name}.csv
+    for prog_idx 2+. Output defaults to *folder* unless *output* is given.
     """
     scr_files = sorted(folder.glob("Scr*.tmp"))
     if not scr_files:
@@ -422,9 +511,10 @@ def _program_save(folder: Path, output: Path | None = None) -> None:
     if sub_progs:
         sub_dir = dest / "subroutines"
         sub_dir.mkdir(exist_ok=True)
+        used_subroutine_stems: set[str] = set()
         for prog in sub_progs:
-            slug = _slugify(prog.name)
-            csv_path = sub_dir / f"{slug}.csv"
+            stem = _dedupe_filename_stem(_slugify(prog.name), used_subroutine_stems)
+            csv_path = sub_dir / f"{stem}.csv"
             write_csv(csv_path, prog.rungs)
             print(f"  Saved {csv_path}")
 
@@ -479,6 +569,7 @@ def _run_guided(
     mdb_path: str | None = None,
     log_path: Path,
     loader: _Loader = None,
+    save_copyback_bin: bool = True,
 ) -> None:
     """Interactive batch verify. Each item is (name, csv_path).
 
@@ -499,7 +590,10 @@ def _run_guided(
     print()
     print("For each fixture: encodes and copies to clipboard.")
     print("After pasting in Click, enter one of:")
-    print("  [w]orked  - paste worked, copy the rung back for comparison/saving")
+    if save_copyback_bin:
+        print("  [w]orked  - paste worked, copy the rung back for comparison/saving")
+    else:
+        print("  [w]orked  - paste worked")
     print("  [c]rashed - Click crashed or errored")
     print("  [n]ot as expected - pasted but looks wrong")
     print("  [s]kip    - skip this fixture")
@@ -560,17 +654,18 @@ def _run_guided(
 
         if response == "n":
             note = input("  What looked wrong? > ").strip()
-            print("  Copy the rung back if you want to save it, or just press Enter to skip.")
-            save = input("  Save .bin? [y/N] > ").strip().lower()
-            if save == "y":
-                try:
-                    data = read_from_clipboard()
-                except RuntimeError as exc:
-                    print(f"  Clipboard error: {exc}")
-                else:
-                    bin_path = csv_path.with_suffix(".bin")
-                    bin_path.write_bytes(data)
-                    print(f"  Saved {bin_path.name} ({len(data):,} bytes)")
+            if save_copyback_bin:
+                print("  Copy the rung back if you want to save it, or just press Enter to skip.")
+                save = input("  Save .bin? [y/N] > ").strip().lower()
+                if save == "y":
+                    try:
+                        data = read_from_clipboard()
+                    except RuntimeError as exc:
+                        print(f"  Clipboard error: {exc}")
+                    else:
+                        bin_path = csv_path.with_suffix(".bin")
+                        bin_path.write_bytes(data)
+                        print(f"  Saved {bin_path.name} ({len(data):,} bytes)")
             results.append((name, "unexpected", note or "no description"))
             _append_result(log_path, name, "unexpected", note or "no description")
             print()
@@ -583,19 +678,20 @@ def _run_guided(
             print()
             continue
 
-        # Default: "w" or Enter - worked OK, read back and compare/save
-        bin_path = csv_path.with_suffix(".bin")
-        print("  Copy the rung back from Click, then press Enter.")
-        input("  > ")
-        while True:
-            try:
-                _save_and_compare(name, bin_path)
-                break
-            except RuntimeError as exc:
-                print(f"  Clipboard error: {exc}")
-                print("  Copy the rung back and press Enter to retry, or [s]kip")
-                if input("  > ").strip().lower() == "s":
+        # Default: "w" or Enter - worked OK.
+        if save_copyback_bin:
+            bin_path = csv_path.with_suffix(".bin")
+            print("  Copy the rung back from Click, then press Enter.")
+            input("  > ")
+            while True:
+                try:
+                    _save_and_compare(name, bin_path)
                     break
+                except RuntimeError as exc:
+                    print(f"  Clipboard error: {exc}")
+                    print("  Copy the rung back and press Enter to retry, or [s]kip")
+                    if input("  > ").strip().lower() == "s":
+                        break
         results.append((name, "worked", ""))
         _append_result(log_path, name, "worked")
         print()
@@ -699,6 +795,11 @@ def main() -> None:
         action="store_true",
         help="Skip unsupported AF instructions instead of failing",
     )
+    load.add_argument(
+        "--split-rungs",
+        action="store_true",
+        help="Treat a CSV as separate rung loads and copy one rung at a time",
+    )
 
     # --- save ---
     save = subparsers.add_parser(
@@ -789,7 +890,13 @@ def main() -> None:
         log = folder / "verify_progress.log"
         if args.restart and log.exists():
             log.unlink()
-        _run_guided(items, mdb_path=args.mdb_path, log_path=log, loader=_load_program_csv)
+        _run_guided(
+            items,
+            mdb_path=args.mdb_path,
+            log_path=log,
+            loader=_load_program_csv,
+            save_copyback_bin=False,
+        )
         return
 
     if args.command == "load":
@@ -799,8 +906,17 @@ def main() -> None:
             sys.exit(1)
         try:
             if file_path.suffix.lower() == ".csv":
-                _load_csv(file_path, args.mdb_path, best_effort=args.best_effort)
+                if args.split_rungs:
+                    _load_csv_split_rungs(file_path, args.mdb_path, best_effort=args.best_effort)
+                else:
+                    _load_csv(file_path, args.mdb_path, best_effort=args.best_effort)
             else:
+                if args.split_rungs:
+                    print(
+                        "Error: --split-rungs is only supported for .csv files",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
                 data = file_path.read_bytes()
                 copy_to_clipboard(data)
                 print(f"Copied {file_path.name} to clipboard ({len(data):,} bytes)")
