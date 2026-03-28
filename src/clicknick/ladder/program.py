@@ -414,6 +414,44 @@ def prepare_csv_load(
     )
 
 
+def list_csv_folder(folder: Path) -> list[tuple[str, Path]]:
+    """List CSV files in a folder for guided paste.
+
+    Excludes ``nicknames.csv``.  Main-level CSVs come first (sorted),
+    then ``subroutines/*.csv`` (sorted).
+    """
+    items: list[tuple[str, Path]] = []
+    for p in sorted(folder.glob("*.csv")):
+        if p.name.lower() == "nicknames.csv":
+            continue
+        items.append((p.name, p))
+    sub_dir = folder / "subroutines"
+    if sub_dir.is_dir():
+        for p in sorted(sub_dir.glob("*.csv")):
+            items.append((f"subroutines/{p.name}", p))
+    return items
+
+
+def read_csv_comment(csv_path: Path) -> str:
+    """Return the first ``# …`` comment line from a CSV, or ``''``."""
+    try:
+        with open(csv_path, encoding="utf-8") as f:
+            first_line = f.readline().strip()
+            if first_line.startswith("#"):
+                return first_line.lstrip("#").strip()
+    except OSError:
+        pass
+    return ""
+
+
+def count_csv_rungs(csv_path: Path) -> int:
+    """Count rungs in a ladder CSV.  Returns 0 on parse error."""
+    try:
+        return len(read_csv(csv_path, strict=False))
+    except Exception:
+        return 0
+
+
 def list_program_bundle(folder: Path) -> list[tuple[str, Path]]:
     """List CSV items in a program bundle (subroutines first, then main).
 

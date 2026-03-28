@@ -532,6 +532,36 @@ class ClickNickApp:
             "connected",
         )
 
+    def _load_ladder_folder(self):
+        """Open a folder of ladder CSVs in the guided paste panel."""
+        folder = filedialog.askdirectory(
+            title="Load Ladder Folder",
+            parent=self.root,
+        )
+        if not folder:
+            return
+
+        from pathlib import Path
+
+        from .utils.mdb_shared import find_click_database
+        from .views.guided_paste_window import GuidedPasteWindow
+
+        folder_path = Path(folder)
+
+        def get_mdb_path() -> Path | None:
+            """Resolve MDB from the currently connected Click instance."""
+            if not self.connected_click_hwnd:
+                return None
+            db_path = find_click_database(click_hwnd=self.connected_click_hwnd)
+            return Path(db_path) if db_path else None
+
+        GuidedPasteWindow(
+            self.root,
+            folder_path,
+            get_mdb_path=get_mdb_path,
+            get_click_hwnd=lambda: self.connected_click_hwnd,
+        )
+
     def _create_menu_bar(self):
         """Create the application menu bar."""
         menubar = tk.Menu(self.root)
@@ -541,6 +571,7 @@ class ClickNickApp:
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="Export Ladder CSV...", command=self._export_ladder_csv)
+        file_menu.add_command(label="Load Ladder Folder...", command=self._load_ladder_folder)
         file_menu.add_separator()
         file_menu.add_command(label="Load Nicknames from CSV...", command=self.browse_and_load_csv)
         file_menu.add_separator()
