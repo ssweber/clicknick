@@ -1,10 +1,11 @@
-# Ladder Rung CLI — CLAUDE Workflow
+# Ladder Module — CLAUDE Workflow
 
 ## Scope
 
-The encoder/decoder core lives in the standalone [`laddercodec`](https://github.com/ssweber/laddercodec) package. This directory (`ladder/`) contains only **clipboard I/O and fixture verification** against live CLICK software:
+The encoder/decoder core lives in the standalone [`laddercodec`](https://github.com/ssweber/laddercodec) package. This directory (`ladder/`) contains **clipboard I/O, program service functions, and the CLI**:
 
-- **cli.py** — `clicknick-rung` CLI (load/save/guided verify)
+- **program.py** — Service functions (encode, decode, MDB provisioning, program save/load). Pure logic, no print/input/sys.exit. Used by both CLI and GUI.
+- **cli.py** — `clicknick-rung` CLI. Thin wrapper: argparse, interactive prompts, presentation. Calls program.py services.
 - **clipboard.py** — Win32 clipboard interaction (copy/read/clear, Click format 522)
 
 For encoder/codec work, **work in the laddercodec repo** (`../laddercodec`).

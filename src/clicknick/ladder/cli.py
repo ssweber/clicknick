@@ -1,128 +1,40 @@
 """Clipboard bridge for CLICK PLC ladder rungs.
 
-Encodes CSV fixtures, copies to/from Click's private clipboard format,
-and provides interactive batch verification against live CLICK software.
+Thin CLI wrapper around service functions in ``program.py``.
 
 Usage:
     clicknick-rung guided FOLDER                # Interactive batch verify
     clicknick-rung guided FOLDER --list         # List CSVs with descriptions
     clicknick-rung guided FOLDER --restart      # Clear progress, start fresh
-    clicknick-rung program load FOLDER          # Verify a program bundle (main.csv + subroutines/)
+    clicknick-rung program load FOLDER          # Load a program bundle (guided paste)
     clicknick-rung program save FOLDER          # Decode Scr*.tmp → main.csv + subroutines/
     clicknick-rung load FILE                    # Encode .csv/.bin → clipboard
-    clicknick-rung load FILE --split-rungs      # Copy one rung at a time from a multi-rung CSV
     clicknick-rung save FILE                    # Clipboard → .bin/.csv/both
 """
 
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from laddercodec import (
-    Coil,
-    CompareContact,
-    Contact,
-    Rung,
-    Timer,
-    decode,
-    decode_program,
-    encode,
-    read_csv,
-    write_csv,
-)
-from laddercodec.csv import CONDITION_COLUMNS, CSV_HEADER
-from laddercodec.csv.writer import WriterError, decoded_rung_to_rows
-from laddercodec.encode import AfToken, ConditionToken
-from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
+from laddercodec.csv.writer import WriterError
 
-from ..utils.mdb_operations import ensure_addresses_exist
 from ..utils.mdb_shared import find_click_database
 from .clipboard import copy_to_clipboard, find_click_hwnd, read_from_clipboard
-
-ADDRESS_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_])([A-Za-z]{1,3}\d{1,5})(?![A-Za-z0-9_])")
-ADDRESS_RANGE_RE = re.compile(
-    r"(?<![A-Za-z0-9_])([A-Za-z]{1,3}\d{1,5})\s*\.\.\s*([A-Za-z]{1,3}\d{1,5})(?![A-Za-z0-9_])"
+from .program import (
+    decode_to_csv,
+    describe_csv,
+    list_program_bundle,
+    prepare_csv_load,
+    program_save,
 )
 
-
 # ---------------------------------------------------------------------------
-# MDB address provisioning
+# MDB path resolution (CLI convenience — auto-detect from running Click)
 # ---------------------------------------------------------------------------
-
-
-def _extract_operand_candidates(token: ConditionToken | AfToken) -> list[str]:
-    def _append(value: str | None, *, address_only: bool = False) -> None:
-        if not value:
-            return
-        candidate = value.strip().upper()
-        if not candidate:
-            return
-        if address_only and not ADDRESS_TOKEN_RE.fullmatch(candidate):
-            return
-        out.append(candidate)
-
-    out: list[str] = []
-
-    # Prefer structured fields for core instruction types so we don't duplicate
-    # range endpoints or lose literal operands when laddercodec's CSV formatting changes.
-    if isinstance(token, Contact):
-        _append(token.operand)
-        return out
-    if isinstance(token, Coil):
-        _append(token.operand)
-        _append(token.range_end)
-        return out
-    if isinstance(token, CompareContact):
-        _append(token.left)
-        _append(token.right)
-        return out
-    if isinstance(token, Timer):
-        _append(token.done_bit)
-        _append(token.current)
-        _append(token.setpoint, address_only=True)
-        return out
-
-    # Use to_csv() for any other instruction object — future-proof against new types.
-    if isinstance(token, str):
-        text = token.strip().upper()
-    elif hasattr(token, "to_csv"):
-        text = token.to_csv().upper()
-    else:
-        return []
-    if not text:
-        return []
-    for match in ADDRESS_RANGE_RE.finditer(text):
-        _append(match.group(1))
-        _append(match.group(2))
-    for match in ADDRESS_TOKEN_RE.finditer(text):
-        _append(match.group(1))
-    return list(dict.fromkeys(out))
-
-
-def extract_addresses_from_csv(path: Path, *, best_effort: bool = False) -> list[str]:
-    """Parse operand addresses from a CSV file (single or multi-rung)."""
-    rungs = read_csv(path, strict=not best_effort)
-    seen_keys: set[int] = set()
-    parsed: list[str] = []
-    for rung in rungs:
-        for conditions, af in zip(rung.conditions, rung.instructions, strict=True):
-            for token in [*conditions, af]:
-                for candidate in _extract_operand_candidates(token):
-                    try:
-                        memory_type, address = parse_address(candidate)
-                    except ValueError:
-                        continue
-                    addr_key = get_addr_key(memory_type, address)
-                    if addr_key in seen_keys:
-                        continue
-                    seen_keys.add(addr_key)
-                    parsed.append(format_address_display(memory_type, address))
-    return parsed
 
 
 def resolve_mdb_path(mdb_path: str | None = None) -> Path:
@@ -143,18 +55,8 @@ def resolve_mdb_path(mdb_path: str | None = None) -> Path:
     return resolved
 
 
-def ensure_mdb_addresses(mdb_path: str | None, csv_path: Path) -> dict[str, Any]:
-    """Parse operand addresses from CSV and ensure they exist in SC_.mdb."""
-    addresses = extract_addresses_from_csv(csv_path)
-    if not addresses:
-        return {"addresses": [], "inserted": 0}
-    resolved = resolve_mdb_path(mdb_path)
-    summary = ensure_addresses_exist(str(resolved), addresses)
-    return {"db_path": str(resolved), "addresses": addresses, **summary}
-
-
 # ---------------------------------------------------------------------------
-# CSV description helpers
+# CSV description (CLI-only presentation)
 # ---------------------------------------------------------------------------
 
 
@@ -169,162 +71,9 @@ def print_csv_shape(csv_path: Path) -> None:
             print(f"    {','.join(row)}")
 
 
-def _collapse_cols(cols: list[str], all_col_names: tuple[str, ...]) -> str:
-    """Collapse column lists into ranges: A+C..AE or just A+C."""
-    if not cols:
-        return ""
-    # Convert to indices for contiguous-run detection
-    name_to_idx = {name: i for i, name in enumerate(all_col_names)}
-    indices = [name_to_idx[c] for c in cols]
-
-    # Group into contiguous runs
-    runs: list[list[int]] = []
-    for idx in indices:
-        if runs and idx == runs[-1][-1] + 1:
-            runs[-1].append(idx)
-        else:
-            runs.append([idx])
-
-    parts: list[str] = []
-    for run in runs:
-        if len(run) >= 3:
-            parts.append(f"{all_col_names[run[0]]}..{all_col_names[run[-1]]}")
-        else:
-            parts.extend(all_col_names[i] for i in run)
-    return "+".join(parts)
-
-
-def _describe_row_wires(conditions: list[str], col_names: tuple[str, ...]) -> str:
-    """Describe wire tokens on a single row, e.g. '-:A+C..AE T:B' or 'full'."""
-    by_token: dict[str, list[str]] = {}
-    for i, tok in enumerate(conditions):
-        if tok in ("-", "|", "T"):
-            by_token.setdefault(tok, []).append(col_names[i])
-
-    if not by_token:
-        return ""
-
-    # Check for full horizontal wire (all 31 columns are '-')
-    dash_cols = by_token.get("-", [])
-    if len(dash_cols) == len(col_names):
-        return "full"
-
-    parts: list[str] = []
-    for tok in ("-", "T", "|"):
-        cols = by_token.get(tok, [])
-        if not cols:
-            continue
-        col_str = _collapse_cols(cols, col_names)
-        parts.append(f"{tok}:{col_str}")
-    return " ".join(parts)
-
-
-def _describe_single_rung(
-    condition_rows: list[list[str]],
-    af_tokens: list[str],
-    comment: str | None,
-    col_names: tuple[str, ...],
-) -> str:
-    """Return a human-readable summary of a single rung's shape."""
-    logical_rows = len(condition_rows)
-    parts: list[str] = []
-    parts.append(f"{logical_rows} row{'s' if logical_rows > 1 else ''}")
-
-    if comment is not None:
-        if len(comment) > 40:
-            parts.append(f"comment ({len(comment)} chars)")
-        else:
-            parts.append(f'comment "{comment}"')
-
-    raw_descs: list[tuple[int, str]] = []
-    for i, conditions in enumerate(condition_rows):
-        wire_desc = _describe_row_wires(conditions, col_names)
-        af = af_tokens[i] if i < len(af_tokens) else ""
-        if af and wire_desc:
-            raw_descs.append((i, f"{wire_desc} AF={af}"))
-        elif af:
-            raw_descs.append((i, f"AF={af}"))
-        elif wire_desc:
-            raw_descs.append((i, wire_desc))
-
-    row_descs: list[str] = []
-    j = 0
-    while j < len(raw_descs):
-        start_idx, desc = raw_descs[j]
-        end_idx = start_idx
-        while (
-            j + 1 < len(raw_descs)
-            and raw_descs[j + 1][1] == desc
-            and raw_descs[j + 1][0] == end_idx + 1
-        ):
-            j += 1
-            end_idx = raw_descs[j][0]
-        if end_idx > start_idx:
-            row_descs.append(f"[{start_idx}..{end_idx}] {desc}")
-        else:
-            row_descs.append(f"[{start_idx}] {desc}")
-        j += 1
-    if row_descs:
-        parts.append("; ".join(row_descs))
-
-    return ", ".join(parts)
-
-
-def describe_csv(csv_path: Path, *, best_effort: bool = False) -> str:
-    """Return a human-readable summary of a CSV fixture's shape."""
-    rungs = read_csv(csv_path, strict=not best_effort)
-    if len(rungs) > 1:
-        rung_descs = [
-            _describe_single_rung(r.conditions, r.instructions, r.comment, CONDITION_COLUMNS)
-            for r in rungs
-        ]
-        return f"{len(rungs)} rungs: " + " | ".join(rung_descs)
-
-    r = rungs[0]
-    return _describe_single_rung(r.conditions, r.instructions, r.comment, CONDITION_COLUMNS)
-
-
-def _token_to_csv_text(token: object) -> str:
-    """Render an in-memory rung token back to canonical CSV text for display."""
-    if isinstance(token, str):
-        return token
-    if hasattr(token, "to_csv"):
-        return token.to_csv()
-    return repr(token)
-
-
-def _describe_rung(rung: Rung) -> str:
-    """Return a human-readable summary for a single parsed rung."""
-    condition_rows = [[_token_to_csv_text(token) for token in row] for row in rung.conditions]
-    af_tokens = [_token_to_csv_text(token) for token in rung.instructions]
-    return _describe_single_rung(condition_rows, af_tokens, rung.comment, CONDITION_COLUMNS)
-
-
-def _print_single_rung_csv(rung: Rung) -> None:
-    """Print a single rung as standalone canonical CSV rows."""
-    print(f"    {','.join(CSV_HEADER)}")
-    for row in decoded_rung_to_rows(rung):
-        print(f"    {','.join(row)}")
-
-
 # ---------------------------------------------------------------------------
-# Core operations
+# Loaders (encode → provision MDB → clipboard, with CLI output)
 # ---------------------------------------------------------------------------
-
-
-def encode_csv(csv_path: Path, *, best_effort: bool = False) -> bytes:
-    """Encode a CSV file and return the payload bytes."""
-    rungs = read_csv(csv_path, strict=not best_effort)
-    if len(rungs) > 1:
-        return encode(rungs)
-    return encode(rungs[0])
-
-
-def decode_to_csv(data: bytes, path: Path) -> None:
-    """Decode clipboard/program bytes and write canonical CSV."""
-    result = decode(data)
-    rungs = result if isinstance(result, list) else [result]
-    write_csv(path, rungs)
 
 
 def _load_csv(csv_path: Path, mdb_path: str | None, *, best_effort: bool = False) -> bytes:
@@ -332,100 +81,54 @@ def _load_csv(csv_path: Path, mdb_path: str | None, *, best_effort: bool = False
     print(f"  {describe_csv(csv_path, best_effort=best_effort)}")
     print_csv_shape(csv_path)
 
-    payload = encode_csv(csv_path, best_effort=best_effort)
+    try:
+        resolved_mdb = resolve_mdb_path(mdb_path)
+    except (FileNotFoundError, RuntimeError):
+        resolved_mdb = None
 
-    addresses = extract_addresses_from_csv(csv_path, best_effort=best_effort)
-    if addresses:
-        try:
-            mdb = resolve_mdb_path(mdb_path)
-            result = ensure_addresses_exist(str(mdb), addresses)
-            inserted = result.get("inserted_count", 0)
-            if inserted:
-                print(f"  MDB: inserted {inserted} address(es) into {mdb.name}")
-        except (FileNotFoundError, RuntimeError) as exc:
-            print(f"  MDB: skipped ({exc})")
+    result = prepare_csv_load(csv_path, mdb_path=resolved_mdb, best_effort=best_effort)
 
-    copy_to_clipboard(payload)
-    print(f"  Copied to clipboard ({len(payload):,} bytes)")
-    return payload
+    if result.addresses_inserted:
+        print(
+            f"  MDB: inserted {result.addresses_inserted} address(es) into {result.mdb_path.name}"
+        )
+    elif result.mdb_error:
+        print(f"  MDB: skipped ({result.mdb_error})")
 
-
-def _load_csv_split_rungs(
-    csv_path: Path,
-    mdb_path: str | None,
-    *,
-    best_effort: bool = False,
-) -> int:
-    """Treat a CSV file as separate rung loads, copying one rung at a time."""
-    rungs = read_csv(csv_path, strict=not best_effort)
-    total = len(rungs)
-    print(f"  Split load: {total} rung{'s' if total != 1 else ''} from {csv_path.name}")
-
-    addresses = extract_addresses_from_csv(csv_path, best_effort=best_effort)
-    if addresses:
-        try:
-            mdb = resolve_mdb_path(mdb_path)
-            result = ensure_addresses_exist(str(mdb), addresses)
-            inserted = result.get("inserted_count", 0)
-            if inserted:
-                print(f"  MDB: inserted {inserted} address(es) into {mdb.name}")
-        except (FileNotFoundError, RuntimeError) as exc:
-            print(f"  MDB: skipped ({exc})")
-
-    copied = 0
-    for idx, rung in enumerate(rungs, start=1):
-        print()
-        print(f"--- Rung {idx}/{total} ---")
-        print(f"  {_describe_rung(rung)}")
-        _print_single_rung_csv(rung)
-
-        payload = encode(rung)
-        copy_to_clipboard(payload)
-        copied += 1
-        print(f"  Copied rung {idx}/{total} to clipboard ({len(payload):,} bytes)")
-
-        if idx < total:
-            response = input("  Press Enter for next rung, or [q]uit > ").strip().lower()
-            if response == "q":
-                break
-
-    print()
-    print(f"Loaded {copied} of {total} rung{'s' if total != 1 else ''} from {csv_path.name}")
-    return copied
+    copy_to_clipboard(result.payload)
+    print(f"  Copied to clipboard ({len(result.payload):,} bytes)")
+    return result.payload
 
 
 def _load_program_csv(csv_path: Path, mdb_path: str | None) -> bytes:
     """Encode a program/subroutine CSV and copy to clipboard. Minimal output."""
-    rungs = read_csv(csv_path, strict=True)
-    print(f"  {len(rungs)} rung{'s' if len(rungs) != 1 else ''}")
+    try:
+        resolved_mdb = resolve_mdb_path(mdb_path)
+    except (FileNotFoundError, RuntimeError):
+        resolved_mdb = None
 
-    if len(rungs) > 1:
-        payload = encode(rungs)
-    else:
-        payload = encode(rungs[0])
+    result = prepare_csv_load(csv_path, mdb_path=resolved_mdb)
 
-    addresses = extract_addresses_from_csv(csv_path)
-    if addresses:
-        try:
-            mdb = resolve_mdb_path(mdb_path)
-            result = ensure_addresses_exist(str(mdb), addresses)
-            inserted = result.get("inserted_count", 0)
-            if inserted:
-                print(f"  MDB: inserted {inserted} address(es) into {mdb.name}")
-        except (FileNotFoundError, RuntimeError) as exc:
-            print(f"  MDB: skipped ({exc})")
+    print(f"  {result.rung_count} rung{'s' if result.rung_count != 1 else ''}")
+    if result.addresses_inserted:
+        print(
+            f"  MDB: inserted {result.addresses_inserted} address(es) into {result.mdb_path.name}"
+        )
+    elif result.mdb_error:
+        print(f"  MDB: skipped ({result.mdb_error})")
 
-    copy_to_clipboard(payload)
-    print(f"  Copied to clipboard ({len(payload):,} bytes)")
-    return payload
+    copy_to_clipboard(result.payload)
+    print(f"  Copied to clipboard ({len(result.payload):,} bytes)")
+    return result.payload
+
+
+# ---------------------------------------------------------------------------
+# Clipboard save + compare (verification)
+# ---------------------------------------------------------------------------
 
 
 def _save_and_compare(name: str, bin_path: Path) -> None:
-    """Read clipboard, save as .bin, and report byte diff if .bin already exists.
-
-    The comparison is informational only — Click re-encodes on copy-back,
-    so byte-exact match is not expected.
-    """
+    """Read clipboard, save as .bin, and report byte diff if .bin already exists."""
     actual = read_from_clipboard()
 
     if not bin_path.exists():
@@ -443,90 +146,8 @@ def _save_and_compare(name: str, bin_path: Path) -> None:
         print(f"  {name}: size differs (encoder {len(expected):,}, Click {len(actual):,} bytes)")
 
 
-_WINDOWS_UNSAFE_FILENAME_RE = re.compile(r'[<>:"/\\|?*]')
-
-
-def _slugify(name: str) -> str:
-    """Convert a program name to a filesystem-safe stem while preserving case.
-
-    Only Windows-unsafe path characters are removed. Repeated spaces collapse
-    to a single space, and trailing spaces/dots are trimmed to keep the final
-    filename valid on Windows.
-    """
-    stem = _WINDOWS_UNSAFE_FILENAME_RE.sub("", name.strip())
-    stem = re.sub(r" {2,}", " ", stem)
-    stem = stem.rstrip(" .")
-    return stem or "Untitled"
-
-
-def _dedupe_filename_stem(stem: str, used_stems: set[str]) -> str:
-    """Return a unique filename stem using a Windows-style `` (N)`` suffix."""
-    candidate = stem
-    next_suffix = 2
-    while candidate.casefold() in used_stems:
-        candidate = f"{stem} ({next_suffix})"
-        next_suffix += 1
-    used_stems.add(candidate.casefold())
-    return candidate
-
-
-def _program_save(folder: Path, output: Path | None = None) -> None:
-    """Decode all Scr*.tmp files in *folder* into a CSV bundle.
-
-    Writes main.csv for prog_idx 1 (main program) and subroutines/{name}.csv
-    for prog_idx 2+. Output defaults to *folder* unless *output* is given.
-    """
-    scr_files = sorted(folder.glob("Scr*.tmp"))
-    if not scr_files:
-        print(f"Error: no Scr*.tmp files found in {folder}", file=sys.stderr)
-        sys.exit(1)
-
-    dest = output or folder
-    dest.mkdir(parents=True, exist_ok=True)
-
-    from laddercodec.model import Program
-
-    programs: list[Program] = []
-    for scr_path in scr_files:
-        data = scr_path.read_bytes()
-        prog = decode_program(data)
-        programs.append(prog)
-        print(f"  {scr_path.name} → {prog.name!r} (idx={prog.prog_idx}, {len(prog.rungs)} rungs)")
-
-    programs.sort(key=lambda p: p.prog_idx)
-
-    main_progs = [p for p in programs if p.prog_idx == 1]
-    sub_progs = [p for p in programs if p.prog_idx > 1]
-
-    if not main_progs:
-        print("Error: no main program (prog_idx=1) found", file=sys.stderr)
-        sys.exit(1)
-
-    # Write main.csv
-    main_csv = dest / "main.csv"
-    write_csv(main_csv, main_progs[0].rungs)
-    print(f"  Saved {main_csv}")
-
-    # Write subroutines
-    if sub_progs:
-        sub_dir = dest / "subroutines"
-        sub_dir.mkdir(exist_ok=True)
-        used_subroutine_stems: set[str] = set()
-        for prog in sub_progs:
-            stem = _dedupe_filename_stem(_slugify(prog.name), used_subroutine_stems)
-            csv_path = sub_dir / f"{stem}.csv"
-            write_csv(csv_path, prog.rungs)
-            print(f"  Saved {csv_path}")
-
-    total_rungs = sum(len(p.rungs) for p in programs)
-    print(
-        f"\nProgram bundle: {len(main_progs)} main + {len(sub_progs)} subroutine(s),"
-        f" {total_rungs} total rungs"
-    )
-
-
 # ---------------------------------------------------------------------------
-# Interactive batch verification
+# Progress log
 # ---------------------------------------------------------------------------
 
 
@@ -539,7 +160,6 @@ def _read_progress(log_path: Path) -> dict[str, str]:
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        # Format: "name: status" or "name: status (detail)"
         if ": " in line:
             name = line.split(": ", 1)[0]
             done[name] = line
@@ -551,7 +171,6 @@ def _append_result(log_path: Path, name: str, status: str, detail: str = "") -> 
     extra = f" ({detail})" if detail else ""
     line = f"{name}: {status}{extra}\n"
     with open(log_path, "a+", encoding="utf-8") as f:
-        # Ensure we start on a new line even if a trailing newline was removed
         f.seek(0, 2)  # seek to end
         if f.tell() > 0:
             f.seek(f.tell() - 1)
@@ -559,6 +178,10 @@ def _append_result(log_path: Path, name: str, status: str, detail: str = "") -> 
                 f.write("\n")
         f.write(line)
 
+
+# ---------------------------------------------------------------------------
+# Interactive batch verification
+# ---------------------------------------------------------------------------
 
 _Loader = Any  # Callable[[Path, str | None], bytes]
 
@@ -578,12 +201,10 @@ def _run_guided(
     """
     if loader is None:
         loader = _load_csv
-    # Load prior progress
     done = _read_progress(log_path)
     if done:
         print(f"Resuming: {len(done)} already done, {len(items) - len(done)} remaining")
     else:
-        # Start fresh log with timestamp header
         with open(log_path, "w", encoding="utf-8") as f:
             f.write(f"# Verify {datetime.now(tz=UTC).isoformat()}\n")
 
@@ -600,7 +221,7 @@ def _run_guided(
     print("  [q]uit    - stop")
     print()
 
-    results: list[tuple[str, str, str]] = []  # (name, status, detail)
+    results: list[tuple[str, str, str]] = []
 
     for idx, (name, csv_path) in enumerate(items):
         if name in done:
@@ -611,7 +232,6 @@ def _run_guided(
         try:
             loader(csv_path, mdb_path)
         except RuntimeError as exc:
-            # Clipboard / Click-not-running — prompt to retry
             loaded = False
             while not loaded:
                 print(f"  Clipboard error: {exc}")
@@ -678,7 +298,7 @@ def _run_guided(
             print()
             continue
 
-        # Default: "w" or Enter - worked OK.
+        # Default: "w" or Enter — worked OK.
         if save_copyback_bin:
             bin_path = csv_path.with_suffix(".bin")
             print("  Copy the rung back from Click, then press Enter.")
@@ -696,11 +316,10 @@ def _run_guided(
         _append_result(log_path, name, "worked")
         print()
 
-    # Summary — combine prior progress + this session
+    # Summary
     all_results: list[tuple[str, str, str]] = []
     for name, _ in items:
         if name in done:
-            # Parse status and detail from log line "name: status (detail)"
             rest = done[name].split(": ", 1)[1]
             if " (" in rest and rest.endswith(")"):
                 status, detail = rest.split(" (", 1)
@@ -795,11 +414,6 @@ def main() -> None:
         action="store_true",
         help="Skip unsupported AF instructions instead of failing",
     )
-    load.add_argument(
-        "--split-rungs",
-        action="store_true",
-        help="Treat a CSV as separate rung loads and copy one rung at a time",
-    )
 
     # --- save ---
     save = subparsers.add_parser(
@@ -865,22 +479,32 @@ def main() -> None:
 
         if args.program_command == "save":
             output = Path(args.output) if args.output else None
-            _program_save(folder, output)
+            try:
+                result = program_save(folder, output)
+            except (FileNotFoundError, ValueError) as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                sys.exit(1)
+
+            for info in result.programs:
+                print(
+                    f"  {info.source} → {info.name!r}"
+                    f" (idx={info.prog_idx}, {info.rung_count} rungs)"
+                )
+            print(f"  Saved {result.main_csv}")
+            for csv_path in result.subroutine_csvs:
+                print(f"  Saved {csv_path}")
+            print(
+                f"\nProgram bundle: 1 main + {len(result.subroutine_csvs)} subroutine(s),"
+                f" {result.total_rungs} total rungs"
+            )
             return
 
         # program load
-        main_csv = folder / "main.csv"
-        if not main_csv.exists():
-            print(f"Error: {folder} is missing required main.csv", file=sys.stderr)
+        try:
+            items = list_program_bundle(folder)
+        except FileNotFoundError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
             sys.exit(1)
-
-        # Subroutines first so user can create them in Click before pasting main
-        items: list[tuple[str, Path]] = []
-        sub_dir = folder / "subroutines"
-        if sub_dir.is_dir():
-            for p in sorted(sub_dir.glob("*.csv")):
-                items.append((p.stem, p))
-        items.append(("Main Program", main_csv))
 
         print(f"Program bundle: {folder}")
         for name, _ in items:
@@ -906,17 +530,8 @@ def main() -> None:
             sys.exit(1)
         try:
             if file_path.suffix.lower() == ".csv":
-                if args.split_rungs:
-                    _load_csv_split_rungs(file_path, args.mdb_path, best_effort=args.best_effort)
-                else:
-                    _load_csv(file_path, args.mdb_path, best_effort=args.best_effort)
+                _load_csv(file_path, args.mdb_path, best_effort=args.best_effort)
             else:
-                if args.split_rungs:
-                    print(
-                        "Error: --split-rungs is only supported for .csv files",
-                        file=sys.stderr,
-                    )
-                    sys.exit(1)
                 data = file_path.read_bytes()
                 copy_to_clipboard(data)
                 print(f"Copied {file_path.name} to clipboard ({len(data):,} bytes)")
@@ -946,7 +561,6 @@ def main() -> None:
                 sys.exit(1)
             print(f"Saved {file_path}")
         else:
-            # No recognized extension → save both .bin and .csv
             bin_path = file_path.with_suffix(".bin")
             csv_path = file_path.with_suffix(".csv")
             bin_path.write_bytes(data)

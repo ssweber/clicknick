@@ -1,4 +1,4 @@
-"""Tests for ladder/cli.py — pure-logic functions and CLI routing."""
+"""Tests for ladder CLI and program service functions."""
 
 from __future__ import annotations
 
@@ -6,23 +6,24 @@ import typing
 from pathlib import Path
 
 import pytest
-from laddercodec import Coil, CompareContact, Contact, Rung, Timer
+from laddercodec import Coil, CompareContact, Contact, Timer
 from laddercodec.csv.contract import CONDITION_COLUMNS
 from laddercodec.model import Program
 
 from clicknick.ladder.cli import (
     _append_result,
+    _read_progress,
+    _run_guided,
+    main,
+)
+from clicknick.ladder.program import (
     _collapse_cols,
     _dedupe_filename_stem,
     _describe_row_wires,
     _describe_single_rung,
     _extract_operand_candidates,
-    _load_csv_split_rungs,
-    _program_save,
-    _read_progress,
-    _run_guided,
     _slugify,
-    main,
+    program_save,
 )
 
 # Resolve the InstructionType enum used by Contact/Coil constructors
@@ -259,17 +260,17 @@ class TestProgramSave:
             ]
         )
 
-        monkeypatch.setattr("clicknick.ladder.cli.decode_program", lambda data: next(programs))
+        monkeypatch.setattr("clicknick.ladder.program.decode_program", lambda data: next(programs))
 
         written_paths: list[Path] = []
 
         def _write_csv(path: Path, rungs) -> None:
             written_paths.append(Path(path))
 
-        monkeypatch.setattr("clicknick.ladder.cli.write_csv", _write_csv)
+        monkeypatch.setattr("clicknick.ladder.program.write_csv", _write_csv)
 
         out = tmp_path / "out"
-        _program_save(src, out)
+        result = program_save(src, out)
 
         assert written_paths == [
             out / "main.csv",
@@ -280,49 +281,10 @@ class TestProgramSave:
             out / "subroutines" / "ModeManualTimers (3).csv",
         ]
 
-
-# ---------------------------------------------------------------------------
-# Split-rung load
-# ---------------------------------------------------------------------------
-
-
-class TestSplitRungLoad:
-    def test_load_csv_split_rungs_copies_each_rung(self, monkeypatch: pytest.MonkeyPatch):
-        rung1 = Rung(
-            logical_rows=1,
-            conditions=[[Contact(_IT.CONTACT_NO, "X001")] + ["-"] * 30],
-            instructions=[Coil(_IT.COIL_OUT, "Y001")],
-            comment="First comment",
-            comment_rtf=None,
-        )
-        rung2 = Rung(
-            logical_rows=1,
-            conditions=[[Contact(_IT.CONTACT_NO, "X002")] + ["-"] * 30],
-            instructions=[Coil(_IT.COIL_OUT, "Y002")],
-            comment=None,
-            comment_rtf=None,
-        )
-
-        monkeypatch.setattr("clicknick.ladder.cli.read_csv", lambda *args, **kwargs: [rung1, rung2])
-        monkeypatch.setattr("clicknick.ladder.cli.extract_addresses_from_csv", lambda *args, **kwargs: [])
-        monkeypatch.setattr(
-            "clicknick.ladder.cli.encode",
-            lambda rung: b"payload-1" if rung is rung1 else b"payload-2",
-        )
-
-        copied: list[bytes] = []
-        monkeypatch.setattr(
-            "clicknick.ladder.cli.copy_to_clipboard",
-            lambda payload: copied.append(payload),
-        )
-
-        responses = iter([""])
-        monkeypatch.setattr("builtins.input", lambda _prompt="": next(responses))
-
-        count = _load_csv_split_rungs(Path("demo.csv"), None)
-
-        assert count == 2
-        assert copied == [b"payload-1", b"payload-2"]
+        assert result.main_csv == out / "main.csv"
+        assert len(result.subroutine_csvs) == 5
+        assert result.total_rungs == 0
+        assert len(result.programs) == 6
 
 
 # ---------------------------------------------------------------------------
@@ -537,31 +499,6 @@ class TestMainArgparse:
         main()
         assert called == [csv_file]
 
-    def test_load_csv_file_split_rungs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        csv_file = tmp_path / "rung.csv"
-        csv_file.write_text("dummy", encoding="utf-8")
-        called: list[Path] = []
-
-        def mock_load_split_csv(path, mdb_path, best_effort=False):
-            called.append(path)
-            return 1
-
-        monkeypatch.setattr("clicknick.ladder.cli._load_csv_split_rungs", mock_load_split_csv)
-        monkeypatch.setattr("sys.argv", ["clicknick-rung", "load", str(csv_file), "--split-rungs"])
-        main()
-        assert called == [csv_file]
-
-    def test_load_split_rungs_rejects_non_csv(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
-    ):
-        src = tmp_path / "rung.bin"
-        src.write_bytes(b"\xaa\xbb")
-
-        monkeypatch.setattr("sys.argv", ["clicknick-rung", "load", str(src), "--split-rungs"])
-        with pytest.raises(SystemExit, match="1"):
-            main()
-        assert "--split-rungs is only supported for .csv files" in capsys.readouterr().err
-
     def test_load_clipboard_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
     ):
@@ -578,11 +515,9 @@ class TestMainArgparse:
         assert "Click Programming Software not found" in capsys.readouterr().err
 
     def test_guided_list(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        # Create a minimal valid CSV
         csv_file = tmp_path / "test.csv"
         csv_file.write_text("dummy", encoding="utf-8")
 
-        # Mock describe_csv to avoid needing a real CSV
         monkeypatch.setattr(
             "clicknick.ladder.cli.describe_csv",
             lambda p: "1 row, full",
@@ -591,7 +526,7 @@ class TestMainArgparse:
             "sys.argv",
             ["clicknick-rung", "guided", str(tmp_path), "--list"],
         )
-        main()  # should print listing and return without error
+        main()
 
     def test_no_subcommand(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr("sys.argv", ["clicknick-rung"])
