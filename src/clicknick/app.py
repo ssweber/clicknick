@@ -1,6 +1,6 @@
 import tkinter as tk
 from ctypes import windll
-from tkinter import PhotoImage, filedialog, font, ttk
+from tkinter import PhotoImage, filedialog, font, messagebox, ttk
 
 from .config import AppSettings
 from .data.address_store import AddressStore
@@ -487,6 +487,51 @@ class ClickNickApp:
         except Exception as e:
             self._update_status(f"Error cleaning MDB: {e}", "error")
 
+    def _export_ladder_csv(self):
+        """Export Scr*.tmp from the connected Click project to a CSV bundle."""
+        if not self.connected_click_hwnd:
+            messagebox.showwarning(
+                "Export Ladder CSV",
+                "Not connected to a Click project.\n\nStart monitoring first.",
+                parent=self.root,
+            )
+            return
+
+        from pathlib import Path
+
+        from .utils.mdb_shared import find_click_database
+
+        db_path = find_click_database(click_hwnd=self.connected_click_hwnd)
+        if not db_path:
+            messagebox.showerror(
+                "Export Ladder CSV",
+                "Could not locate the Click project folder.",
+                parent=self.root,
+            )
+            return
+        scr_folder = Path(db_path).parent
+
+        output = filedialog.askdirectory(
+            title="Export Ladder CSV — choose output folder",
+            parent=self.root,
+        )
+        if not output:
+            return
+
+        from .ladder.program import program_save
+
+        try:
+            result = program_save(scr_folder, Path(output))
+        except (FileNotFoundError, ValueError) as exc:
+            messagebox.showerror("Export Ladder CSV", str(exc), parent=self.root)
+            return
+
+        sub_count = len(result.subroutine_csvs)
+        self._update_status(
+            f"Exported {result.total_rungs} rungs, {sub_count} subroutine(s) to {output}",
+            "connected",
+        )
+
     def _create_menu_bar(self):
         """Create the application menu bar."""
         menubar = tk.Menu(self.root)
@@ -495,9 +540,11 @@ class ClickNickApp:
         # File menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Exit", command=self.on_closing)
+        file_menu.add_command(label="Export Ladder CSV...", command=self._export_ladder_csv)
         file_menu.add_separator()
         file_menu.add_command(label="Load Nicknames from CSV...", command=self.browse_and_load_csv)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.on_closing)
 
         # Tools menu
         tools_menu = tk.Menu(menubar, tearoff=0)
