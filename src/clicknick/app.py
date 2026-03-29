@@ -487,6 +487,37 @@ class ClickNickApp:
         except Exception as e:
             self._update_status(f"Error cleaning MDB: {e}", "error")
 
+    @staticmethod
+    def _get_export_popup_flag() -> "Path":
+        """Get path to the flag indicating the Export beta popup has been seen."""
+        import os
+        from pathlib import Path
+
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home()))
+        return base / "ClickNick" / "export_from_click_popup_seen"
+
+    def _show_export_popup(self) -> None:
+        """Show first-run info for the Export from Click beta (appears once per user)."""
+        flag_path = self._get_export_popup_flag()
+
+        if flag_path.exists():
+            return
+
+        popup_text = (
+            "Export from Click (Beta)\n\n"
+            "This feature decodes CLICK's internal program files into CSV.\n"
+            "Contacts, instructions, or entire rungs may decode incorrectly\n"
+            "or be missing. Email, Home, Position, and Velocity instructions\n"
+            "are exported as raw(...) placeholders.\n\n"
+            "If you encounter errors or unexpected output, please report\n"
+            "them — sample programs help us improve the decoder."
+        )
+
+        messagebox.showinfo("First-Time Tips", popup_text, parent=self.root)
+
+        flag_path.parent.mkdir(parents=True, exist_ok=True)
+        flag_path.touch()
+
     def _export_from_click(self):
         """Export Scr*.tmp from the connected Click project to a CSV bundle."""
         if not self.connected_click_hwnd:
@@ -510,6 +541,8 @@ class ClickNickApp:
             )
             return
         scr_folder = Path(db_path).parent
+
+        self._show_export_popup()
 
         output = filedialog.askdirectory(
             title="Export from Click — choose output folder",
@@ -639,7 +672,7 @@ class ClickNickApp:
         # Ladder menu
         ladder_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Ladder", menu=ladder_menu)
-        ladder_menu.add_command(label="Export from Click...", command=self._export_from_click)
+        ladder_menu.add_command(label="Export from Click (beta)...", command=self._export_from_click)
         ladder_menu.add_command(label="Convert to pyrung...", command=self._convert_to_pyrung)
         ladder_menu.add_command(label="Open in Guided Paste...", command=self._open_guided_paste)
 
