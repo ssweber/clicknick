@@ -12,6 +12,7 @@
 | **Address Editing** | One-by-one in app | ✅ **Bulk edit**, multi-window, search/replace |
 | **Tag View** | Flat list | ✅ **Color named blocks** + **tree outline** (hierarchy & arrays) |
 | **DataView** | Input raw addresses, limited reordering | ✅ **Autocomplete**, add entire grouped structures and blocks, drag and drop reordering |
+| **Ladder Portability** | Copy/paste within app | ✅ **Export** to CSV, **convert** to Python, paste between projects |
 | **Price** | Free (bundled) | Free (open source) |
 | **Best For** | Simple projects | Complex projects, productivity |
 
@@ -28,6 +29,7 @@ CLICK PLCs were my first PLC experience, but remembering addresses became painfu
 - **[📑 Tag Browser](#tag-browser)** – Tree view with automatic hierarchy and array grouping
 - **[📊 Dataview Editor](#dataview-editor)** – Tabbed interface, nickname lookup, unlimited reordering
 - **[🔌 Connectivity](#connectivity)** – CSV import and live ODBC database support
+- **[📐 Ladder Tools](#ladder-tools)** – Export ladder logic to CSV, convert to Python, paste between projects
 
 **Beta** – Review Address & Dataview changes before saving in CLICK. [Feedback welcome](https://github.com/ssweber/clicknick/issues).
 
@@ -140,6 +142,16 @@ Alm[1-2]
 
 - **CSV nickname import** – No drivers needed. Import from any spreadsheet
 - **Live ODBC database connection** – Direct, real-time access to CLICK project database
+
+---
+
+### <a name="ladder-tools"></a>📐 Ladder Tools
+
+Access these from the **Ladder** menu:
+
+- **Export from Click** – Decode your connected Click project's ladder logic into readable CSV files (powered by [laddercodec](https://github.com/ssweber/laddercodec))
+- **Convert to pyrung** – Generate a [pyrung](https://github.com/ssweber/pyrung) Python project from an exported ladder folder, for unit testing and simulation
+- **Guided Paste** – Load an exported ladder project and walk through importing it into Click, file by file
 
 ---
 
