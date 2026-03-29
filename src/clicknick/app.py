@@ -553,11 +553,23 @@ class ClickNickApp:
 
         from .ladder.program import program_save
 
-        try:
-            result = program_save(scr_folder, Path(output))
-        except (FileNotFoundError, ValueError) as exc:
-            messagebox.showerror("Export from Click", str(exc), parent=self.root)
-            return
+        while True:
+            try:
+                result = program_save(scr_folder, Path(output))
+            except (FileNotFoundError, ValueError) as exc:
+                messagebox.showerror("Export from Click", str(exc), parent=self.root)
+                return
+            except PermissionError as exc:
+                retry = messagebox.askretrycancel(
+                    "Export from Click",
+                    f"Cannot write to output folder — a file may be open"
+                    f" in another program.\n\n{exc}",
+                    parent=self.root,
+                )
+                if retry:
+                    continue
+                return
+            break
 
         # Write nicknames.csv from the MDB alongside the ladder CSVs
         nick_count = 0
@@ -569,6 +581,13 @@ class ClickNickApp:
                 all_rows = load_all_addresses(conn)
             nick_dest = Path(output) / "nicknames.csv"
             nick_count = CsvDataSource(str(nick_dest)).save_changes(list(all_rows.values()))
+        except PermissionError:
+            messagebox.showwarning(
+                "Export from Click",
+                "Could not write nicknames.csv — file may be open.\n"
+                "Ladder CSVs were exported successfully.",
+                parent=self.root,
+            )
         except Exception:
             pass  # nicknames export is best-effort
 
