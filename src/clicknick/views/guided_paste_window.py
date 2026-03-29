@@ -302,7 +302,7 @@ class GuidedPasteWindow(tk.Toplevel):
         self._show_nicks_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
             opts,
-            text="Show nicknames in math fields",
+            text="Show nicknames in math instructions",
             variable=self._show_nicks_var,
         ).pack(side=tk.RIGHT)
 

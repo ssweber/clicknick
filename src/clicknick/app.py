@@ -487,11 +487,11 @@ class ClickNickApp:
         except Exception as e:
             self._update_status(f"Error cleaning MDB: {e}", "error")
 
-    def _export_ladder_csv(self):
+    def _export_from_click(self):
         """Export Scr*.tmp from the connected Click project to a CSV bundle."""
         if not self.connected_click_hwnd:
             messagebox.showwarning(
-                "Export Ladder CSV",
+                "Export from Click",
                 "Not connected to a Click project.\n\nStart monitoring first.",
                 parent=self.root,
             )
@@ -504,7 +504,7 @@ class ClickNickApp:
         db_path = find_click_database(click_hwnd=self.connected_click_hwnd)
         if not db_path:
             messagebox.showerror(
-                "Export Ladder CSV",
+                "Export from Click",
                 "Could not locate the Click project folder.",
                 parent=self.root,
             )
@@ -512,7 +512,7 @@ class ClickNickApp:
         scr_folder = Path(db_path).parent
 
         output = filedialog.askdirectory(
-            title="Export Ladder CSV — choose output folder",
+            title="Export from Click — choose output folder",
             parent=self.root,
         )
         if not output:
@@ -523,7 +523,7 @@ class ClickNickApp:
         try:
             result = program_save(scr_folder, Path(output))
         except (FileNotFoundError, ValueError) as exc:
-            messagebox.showerror("Export Ladder CSV", str(exc), parent=self.root)
+            messagebox.showerror("Export from Click", str(exc), parent=self.root)
             return
 
         # Write nicknames.csv from the MDB alongside the ladder CSVs
@@ -548,10 +548,10 @@ class ClickNickApp:
             "connected",
         )
 
-    def _export_to_pyrung(self):
+    def _convert_to_pyrung(self):
         """Convert a ladder CSV folder into a pyrung Python project."""
         source = filedialog.askdirectory(
-            title="Export to pyrung — choose ladder CSV folder",
+            title="Convert to pyrung — choose ladder CSV folder",
             parent=self.root,
         )
         if not source:
@@ -562,15 +562,15 @@ class ClickNickApp:
         source_path = Path(source)
         if not (source_path / "main.csv").exists():
             messagebox.showerror(
-                "Export to pyrung",
+                "Convert to pyrung",
                 f"No main.csv found in {source}.\n\n"
-                "Use 'Export Ladder CSV' first to create a ladder folder.",
+                "Use 'Export from Click' first to create a ladder folder.",
                 parent=self.root,
             )
             return
 
         output = filedialog.askdirectory(
-            title="Export to pyrung — choose output folder",
+            title="Convert to pyrung — choose output folder",
             parent=self.root,
         )
         if not output:
@@ -586,7 +586,7 @@ class ClickNickApp:
                 output_dir=Path(output),
             )
         except Exception as exc:
-            messagebox.showerror("Export to pyrung", str(exc), parent=self.root)
+            messagebox.showerror("Convert to pyrung", str(exc), parent=self.root)
             return
 
         self._update_status(
@@ -594,10 +594,10 @@ class ClickNickApp:
             "connected",
         )
 
-    def _load_ladder_folder(self):
+    def _open_guided_paste(self):
         """Open a folder of ladder CSVs in the guided paste panel."""
         folder = filedialog.askdirectory(
-            title="Load Ladder Folder",
+            title="Open in Guided Paste — choose ladder CSV folder",
             parent=self.root,
         )
         if not folder:
@@ -632,13 +632,16 @@ class ClickNickApp:
         # File menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Export Ladder CSV...", command=self._export_ladder_csv)
-        file_menu.add_command(label="Convert Ladder to pyrung...", command=self._export_to_pyrung)
-        file_menu.add_command(label="Load Ladder Folder...", command=self._load_ladder_folder)
-        file_menu.add_separator()
         file_menu.add_command(label="Load Nicknames from CSV...", command=self.browse_and_load_csv)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.on_closing)
+
+        # Ladder menu
+        ladder_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Ladder", menu=ladder_menu)
+        ladder_menu.add_command(label="Export from Click...", command=self._export_from_click)
+        ladder_menu.add_command(label="Convert to pyrung...", command=self._convert_to_pyrung)
+        ladder_menu.add_command(label="Open in Guided Paste...", command=self._open_guided_paste)
 
         # Tools menu
         tools_menu = tk.Menu(menubar, tearoff=0)
