@@ -12,6 +12,7 @@ from tksheet import Sheet
 from ..ladder.clipboard import copy_to_clipboard
 from ..ladder.program import (
     count_csv_rungs,
+    import_nicknames_csv,
     list_csv_folder,
     prepare_csv_load,
     read_csv_comment,
@@ -33,6 +34,9 @@ _ICON_PENDING = "\u25cb"  # ○
 _BG_DONE = "#d4edda"
 _BG_CURRENT = "#cce5ff"
 
+# Special display name for the nicknames import step
+_NICKNAMES_NAME = "nicknames.csv"
+
 
 class GuidedPasteWindow(tk.Toplevel):
     """Non-modal panel that walks the user through pasting ladder CSVs."""
@@ -42,11 +46,20 @@ class GuidedPasteWindow(tk.Toplevel):
     # ------------------------------------------------------------------
 
     def _scan_folder(self) -> None:
+        # Insert nicknames.csv as the first step if it exists
+        nicks = self._folder / "nicknames.csv"
+        if nicks.exists():
+            self._nickname_path = nicks
+            self._items.append((_NICKNAMES_NAME, nicks, 0, "Import nicknames into MDB"))
+
         raw = list_csv_folder(self._folder)
         for name, path in raw:
             rungs = count_csv_rungs(path)
             desc = read_csv_comment(path)
             self._items.append((name, path, rungs, desc))
+
+    def _is_nickname_step(self, idx: int) -> bool:
+        return idx is not None and idx < len(self._items) and self._items[idx][0] == _NICKNAMES_NAME
 
     def _update_progress_text(self) -> None:
         done_n = sum(1 for name, *_ in self._items if name in self._done)
@@ -86,22 +99,69 @@ class GuidedPasteWindow(tk.Toplevel):
         data = []
         for name, _path, rungs, desc in self._items:
             icon = _ICON_DONE if name in self._done else _ICON_PENDING
-            data.append([icon, name, str(rungs), desc])
+            rung_str = "" if name == _NICKNAMES_NAME else str(rungs)
+            data.append([icon, name, rung_str, desc])
         self._sheet.set_sheet_data(data)
         self._update_highlights()
 
     def _all_done(self) -> None:
         self._current_idx = None
+        self._copied = False
         self._update_highlights()
         self._status_var.set("All CSVs have been pasted!")
-        self._done_btn.configure(state="disabled")
-        self._copy_btn.configure(state="disabled")
+        self._action_btn.configure(state="disabled", text="Done")
+        self._recopy_btn.configure(state="disabled")
 
     # ------------------------------------------------------------------
-    # Clipboard
+    # Action button state
     # ------------------------------------------------------------------
 
-    def _load_to_clipboard(self, idx: int) -> None:
+    def _update_action_btn(self) -> None:
+        """Update the main action button text based on current state."""
+        if self._current_idx is None:
+            self._action_btn.configure(state="disabled", text="Done")
+            self._recopy_btn.configure(state="disabled")
+            return
+
+        if self._copied:
+            self._action_btn.configure(state="normal", text="Next \u2192")
+            self._recopy_btn.configure(
+                state="normal",
+                text="Re-import" if self._is_nickname_step(self._current_idx) else "Re-copy",
+            )
+        else:
+            label = "Import" if self._is_nickname_step(self._current_idx) else "Copy"
+            self._action_btn.configure(state="normal", text=label)
+            self._recopy_btn.configure(state="disabled")
+
+    # ------------------------------------------------------------------
+    # Clipboard / Import
+    # ------------------------------------------------------------------
+
+    def _do_import_nicknames(self, idx: int) -> None:
+        """Import nicknames.csv into MDB."""
+        _name, path, _rungs, _ = self._items[idx]
+        mdb_path = self._get_mdb_path()
+        if not mdb_path:
+            self._status_var.set(
+                "No Click database found.\n"
+                "Connect to a Click instance first, then click 'Re-import'."
+            )
+            return
+
+        result = import_nicknames_csv(path, mdb_path)
+        if result.error:
+            self._status_var.set(f"Import error: {result.error}")
+            return
+
+        self._copied = True
+        msg = f"Imported {result.rows_written} nickname(s) into MDB"
+        msg += '\nClick "Next" to continue to ladder CSVs'
+        self._status_var.set(msg)
+        self._update_action_btn()
+
+    def _do_copy_to_clipboard(self, idx: int) -> None:
+        """Copy a ladder CSV to the clipboard."""
         name, path, _rungs, _ = self._items[idx]
         try:
             mdb_path = self._get_mdb_path()
@@ -111,18 +171,27 @@ class GuidedPasteWindow(tk.Toplevel):
             )
             copy_to_clipboard(result.payload, owner_hwnd=click_hwnd)
 
+            self._copied = True
             rung_word = "rung" if result.rung_count == 1 else "rungs"
-            msg = f"{name} loaded to clipboard ({result.rung_count} {rung_word})"
+            msg = f"{name} copied to clipboard ({result.rung_count} {rung_word})"
             if result.addresses_inserted:
                 msg += f"\nMDB: inserted {result.addresses_inserted} address(es)"
             elif result.mdb_error:
                 msg += f"\nMDB: {result.mdb_error}"
             msg += '\nPaste into CLICK (Ctrl+V on ladder screen), then click "Next"'
             self._status_var.set(msg)
+            self._update_action_btn()
         except RuntimeError as exc:
             self._status_var.set(f"Clipboard error: {exc}\nIs Click running?")
         except Exception as exc:
             self._status_var.set(f"Error loading {name}: {exc}")
+
+    def _perform_action(self, idx: int) -> None:
+        """Perform the copy or import action for the given row."""
+        if self._is_nickname_step(idx):
+            self._do_import_nicknames(idx)
+        else:
+            self._do_copy_to_clipboard(idx)
 
     def _select_row(self, idx: int) -> None:
         if idx < 0 or idx >= len(self._items):
@@ -131,9 +200,14 @@ class GuidedPasteWindow(tk.Toplevel):
         if name in self._done:
             return
         self._current_idx = idx
-        self._copy_btn.configure(state="normal")
+        self._copied = False
         self._update_highlights()
-        self._load_to_clipboard(idx)
+        self._update_action_btn()
+
+        if self._is_nickname_step(idx):
+            self._status_var.set('Click "Import" to import nicknames into the Click database')
+        else:
+            self._status_var.set(f'Click "Copy" to copy {name} to the clipboard')
 
     # ------------------------------------------------------------------
     # Navigation
@@ -171,21 +245,27 @@ class GuidedPasteWindow(tk.Toplevel):
         if 0 <= row < len(self._items):
             name = self._items[row][0]
             if name in self._done:
-                # Re-copy a completed row without changing current state
-                self._load_to_clipboard(row)
+                # Re-perform action on a completed row without changing state
+                self._perform_action(row)
             else:
                 self._select_row(row)
 
-    def _on_recopy(self) -> None:
-        if self._current_idx is not None:
-            self._load_to_clipboard(self._current_idx)
-
-    def _on_done(self) -> None:
+    def _on_action(self) -> None:
+        """Handle the main action button (Copy/Import or Next)."""
         if self._current_idx is None:
             return
-        name = self._items[self._current_idx][0]
-        self._done.add(name)
-        self._advance_to_next()
+        if self._copied:
+            # "Next" — mark done and advance
+            name = self._items[self._current_idx][0]
+            self._done.add(name)
+            self._advance_to_next()
+        else:
+            # "Copy" or "Import" — perform the action
+            self._perform_action(self._current_idx)
+
+    def _on_recopy(self) -> None:
+        if self._current_idx is not None:
+            self._perform_action(self._current_idx)
 
     def _on_skip(self) -> None:
         if self._current_idx is None:
@@ -201,7 +281,8 @@ class GuidedPasteWindow(tk.Toplevel):
             return
         self._done.clear()
         self._current_idx = None
-        self._done_btn.configure(state="normal")
+        self._copied = False
+        self._action_btn.configure(state="normal")
         self._populate_sheet()
         self._advance_to_first_pending()
 
@@ -228,11 +309,10 @@ class GuidedPasteWindow(tk.Toplevel):
         opts = ttk.Frame(main)
         opts.pack(fill=tk.X, pady=(0, 5))
 
-        nicks = self._folder / "nicknames.csv"
-        if nicks.exists():
+        if self._nickname_path:
             ttk.Label(opts, text="nicknames.csv found", foreground="gray").pack(side=tk.LEFT)
 
-        self._show_nicks_var = tk.BooleanVar(value=False)
+        self._show_nicks_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
             opts,
             text="Show nicknames in math fields",
@@ -301,13 +381,15 @@ class GuidedPasteWindow(tk.Toplevel):
 
         ttk.Button(btn_frame, text="Restart", command=self._on_restart, width=10).pack(side=tk.LEFT)
 
-        self._done_btn = ttk.Button(btn_frame, text="Next \u2192", command=self._on_done, width=10)
-        self._done_btn.pack(side=tk.RIGHT, padx=(5, 0))
+        self._action_btn = ttk.Button(
+            btn_frame, text="Copy", command=self._on_action, width=10, state="disabled"
+        )
+        self._action_btn.pack(side=tk.RIGHT, padx=(5, 0))
 
-        self._copy_btn = ttk.Button(
+        self._recopy_btn = ttk.Button(
             btn_frame, text="Re-copy", command=self._on_recopy, width=10, state="disabled"
         )
-        self._copy_btn.pack(side=tk.RIGHT, padx=(5, 0))
+        self._recopy_btn.pack(side=tk.RIGHT, padx=(5, 0))
 
         ttk.Button(btn_frame, text="Skip", command=self._on_skip, width=10).pack(side=tk.RIGHT)
 
@@ -321,8 +403,7 @@ class GuidedPasteWindow(tk.Toplevel):
     ):
         super().__init__(parent)
         self.title(f"Guided Paste \u2014 {folder.name}")
-        self.geometry("720x520")
-        self.minsize(520, 350)
+        self.minsize(520, 400)
 
         self._folder = folder
         self._get_mdb_path = get_mdb_path
@@ -332,8 +413,14 @@ class GuidedPasteWindow(tk.Toplevel):
         self._items: list[tuple[str, Path, int, str]] = []
         self._done: set[str] = set()
         self._current_idx: int | None = None
+        self._copied: bool = False
+        self._nickname_path: Path | None = None
 
         self._scan_folder()
         self._create_widgets()
         self._populate_sheet()
         self._advance_to_first_pending()
+
+        # Let geometry fit contents instead of a fixed size
+        self.update_idletasks()
+        self.geometry("")

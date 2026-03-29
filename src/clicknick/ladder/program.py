@@ -419,6 +419,36 @@ def prepare_csv_load(
     )
 
 
+@dataclass(frozen=True)
+class NicknameImportResult:
+    """Result of importing nicknames.csv into an MDB database."""
+
+    rows_written: int
+    error: str | None = None
+
+
+def import_nicknames_csv(csv_path: Path, mdb_path: Path) -> NicknameImportResult:
+    """Import nicknames from CSV into MDB database.
+
+    Reads a nicknames.csv (CsvDataSource format) and upserts rows into the
+    Access database so that addresses referenced by ladder CSVs already have
+    their nicknames and comments populated.
+    """
+    from ..data.data_source import CsvDataSource
+    from ..utils.mdb_operations import MdbConnection, save_changes
+
+    try:
+        rows = CsvDataSource(str(csv_path)).load_all_addresses()
+        if not rows:
+            return NicknameImportResult(rows_written=0)
+
+        with MdbConnection(str(mdb_path)) as conn:
+            n = save_changes(conn, list(rows.values()))
+        return NicknameImportResult(rows_written=n)
+    except Exception as exc:
+        return NicknameImportResult(rows_written=0, error=str(exc))
+
+
 def list_csv_folder(folder: Path) -> list[tuple[str, Path]]:
     """List CSV files in a folder for guided paste.
 
