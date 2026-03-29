@@ -39,6 +39,7 @@ classifiers = [
 dependencies = [
     "laddercodec",
     "pyclickplc",
+    "pyrung",
     "pywin32 >= 311",
     "pyodbc >= 5.3.0",
     "tksheet == 7.5.19",
@@ -90,6 +91,7 @@ packages = ["src/clicknick"]
 
 [tool.uv.sources]
 laddercodec = { path = "../laddercodec", editable = true }
+pyrung = { path = "../pyrung", editable = true }
 
 
 # ---- Settings ----

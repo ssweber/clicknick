@@ -526,9 +526,71 @@ class ClickNickApp:
             messagebox.showerror("Export Ladder CSV", str(exc), parent=self.root)
             return
 
+        # Write nicknames.csv from the MDB alongside the ladder CSVs
+        nick_count = 0
+        try:
+            from .data.data_source import CsvDataSource
+            from .utils.mdb_operations import MdbConnection, load_all_addresses
+
+            with MdbConnection(str(db_path)) as conn:
+                all_rows = load_all_addresses(conn)
+            nick_dest = Path(output) / "nicknames.csv"
+            nick_count = CsvDataSource(str(nick_dest)).save_changes(list(all_rows.values()))
+        except Exception:
+            pass  # nicknames export is best-effort
+
         sub_count = len(result.subroutine_csvs)
+        parts = [f"{result.total_rungs} rungs", f"{sub_count} subroutine(s)"]
+        if nick_count:
+            parts.append(f"{nick_count} tags")
         self._update_status(
-            f"Exported {result.total_rungs} rungs, {sub_count} subroutine(s) to {output}",
+            f"Exported {', '.join(parts)} to {output}",
+            "connected",
+        )
+
+    def _export_to_pyrung(self):
+        """Convert a ladder CSV folder into a pyrung Python project."""
+        source = filedialog.askdirectory(
+            title="Export to pyrung — choose ladder CSV folder",
+            parent=self.root,
+        )
+        if not source:
+            return
+
+        from pathlib import Path
+
+        source_path = Path(source)
+        if not (source_path / "main.csv").exists():
+            messagebox.showerror(
+                "Export to pyrung",
+                f"No main.csv found in {source}.\n\n"
+                "Use 'Export Ladder CSV' first to create a ladder folder.",
+                parent=self.root,
+            )
+            return
+
+        output = filedialog.askdirectory(
+            title="Export to pyrung — choose output folder",
+            parent=self.root,
+        )
+        if not output:
+            return
+
+        from pyrung.click import ladder_to_pyrung_project
+
+        nickname_csv = source_path / "nicknames.csv"
+        try:
+            files = ladder_to_pyrung_project(
+                source_path,
+                nickname_csv=nickname_csv if nickname_csv.exists() else None,
+                output_dir=Path(output),
+            )
+        except Exception as exc:
+            messagebox.showerror("Export to pyrung", str(exc), parent=self.root)
+            return
+
+        self._update_status(
+            f"Exported {len(files)} file(s) to {output}",
             "connected",
         )
 
@@ -571,6 +633,7 @@ class ClickNickApp:
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="Export Ladder CSV...", command=self._export_ladder_csv)
+        file_menu.add_command(label="Convert Ladder to pyrung...", command=self._export_to_pyrung)
         file_menu.add_command(label="Load Ladder Folder...", command=self._load_ladder_folder)
         file_menu.add_separator()
         file_menu.add_command(label="Load Nicknames from CSV...", command=self.browse_and_load_csv)
