@@ -384,6 +384,7 @@ def prepare_csv_load(
     *,
     mdb_path: Path | None = None,
     best_effort: bool = False,
+    show_nicknames: bool = False,
 ) -> PrepareResult:
     """Encode a CSV file and provision MDB addresses.
 
@@ -391,7 +392,11 @@ def prepare_csv_load(
     the owner HWND (GUI passes its tracked Click window, CLI auto-detects).
     """
     rungs = read_csv(csv_path, strict=not best_effort)
-    payload = encode(rungs) if len(rungs) > 1 else encode(rungs[0])
+    payload = (
+        encode(rungs, show_nicknames=show_nicknames)
+        if len(rungs) > 1
+        else encode(rungs[0], show_nicknames=show_nicknames)
+    )
 
     addresses = extract_addresses_from_csv(csv_path, best_effort=best_effort)
     addresses_inserted = 0

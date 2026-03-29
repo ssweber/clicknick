@@ -106,7 +106,9 @@ class GuidedPasteWindow(tk.Toplevel):
         try:
             mdb_path = self._get_mdb_path()
             click_hwnd = self._get_click_hwnd()
-            result = prepare_csv_load(path, mdb_path=mdb_path)
+            result = prepare_csv_load(
+                path, mdb_path=mdb_path, show_nicknames=self._show_nicks_var.get()
+            )
             copy_to_clipboard(result.payload, owner_hwnd=click_hwnd)
 
             rung_word = "rung" if result.rung_count == 1 else "rungs"
@@ -222,12 +224,20 @@ class GuidedPasteWindow(tk.Toplevel):
         self._progress_lbl = ttk.Label(header, text="")
         self._progress_lbl.pack(side=tk.RIGHT)
 
-        # --- nicknames status ---
+        # --- options row ---
+        opts = ttk.Frame(main)
+        opts.pack(fill=tk.X, pady=(0, 5))
+
         nicks = self._folder / "nicknames.csv"
         if nicks.exists():
-            nf = ttk.Frame(main)
-            nf.pack(fill=tk.X, pady=(0, 5))
-            ttk.Label(nf, text="nicknames.csv found", foreground="gray").pack(side=tk.LEFT)
+            ttk.Label(opts, text="nicknames.csv found", foreground="gray").pack(side=tk.LEFT)
+
+        self._show_nicks_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            opts,
+            text="Show nicknames in math fields",
+            variable=self._show_nicks_var,
+        ).pack(side=tk.RIGHT)
 
         # --- tksheet ---
         sheet_frame = tk.Frame(main, relief=tk.SUNKEN, borderwidth=2)
