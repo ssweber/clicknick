@@ -102,6 +102,7 @@ class GuidedPasteWindow(tk.Toplevel):
             rung_str = "" if name == _NICKNAMES_NAME else str(rungs)
             data.append([icon, name, rung_str, desc])
         self._sheet.set_sheet_data(data)
+        self._sheet.set_column_widths([30, 250, 45, 450])
         self._update_highlights()
 
     def _all_done(self) -> None:
@@ -110,7 +111,6 @@ class GuidedPasteWindow(tk.Toplevel):
         self._update_highlights()
         self._status_var.set("All CSVs have been pasted!")
         self._action_btn.configure(state="disabled", text="Done")
-        self._recopy_btn.configure(state="disabled")
 
     # ------------------------------------------------------------------
     # Action button state
@@ -120,19 +120,13 @@ class GuidedPasteWindow(tk.Toplevel):
         """Update the main action button text based on current state."""
         if self._current_idx is None:
             self._action_btn.configure(state="disabled", text="Done")
-            self._recopy_btn.configure(state="disabled")
             return
 
         if self._copied:
             self._action_btn.configure(state="normal", text="Next \u2192")
-            self._recopy_btn.configure(
-                state="normal",
-                text="Re-import" if self._is_nickname_step(self._current_idx) else "Re-copy",
-            )
         else:
-            label = "Import" if self._is_nickname_step(self._current_idx) else "Copy"
+            label = "Import" if self._is_nickname_step(self._current_idx) else "\U0001f4cb Copy"
             self._action_btn.configure(state="normal", text=label)
-            self._recopy_btn.configure(state="disabled")
 
     # ------------------------------------------------------------------
     # Clipboard / Import
@@ -244,10 +238,7 @@ class GuidedPasteWindow(tk.Toplevel):
         row = selected.row
         if 0 <= row < len(self._items):
             name = self._items[row][0]
-            if name in self._done:
-                # Re-perform action on a completed row without changing state
-                self._perform_action(row)
-            else:
+            if name not in self._done:
                 self._select_row(row)
 
     def _on_action(self) -> None:
@@ -261,10 +252,6 @@ class GuidedPasteWindow(tk.Toplevel):
             self._advance_to_next()
         else:
             # "Copy" or "Import" — perform the action
-            self._perform_action(self._current_idx)
-
-    def _on_recopy(self) -> None:
-        if self._current_idx is not None:
             self._perform_action(self._current_idx)
 
     def _on_skip(self) -> None:
@@ -357,11 +344,6 @@ class GuidedPasteWindow(tk.Toplevel):
         self._sheet.bind("<Button-3>", lambda e: "break")
         self._sheet.pack(fill=tk.BOTH, expand=True)
 
-        self._sheet.column_width(column=COL_STATUS, width=30)
-        self._sheet.column_width(column=COL_FILE, width=220)
-        self._sheet.column_width(column=COL_RUNGS, width=50)
-        self._sheet.column_width(column=COL_DESC, width=370)
-
         self._sheet.extra_bindings("cell_select", self._on_cell_select)
 
         # --- status label ---
@@ -379,17 +361,14 @@ class GuidedPasteWindow(tk.Toplevel):
         btn_frame = ttk.Frame(main)
         btn_frame.pack(fill=tk.X)
 
-        ttk.Button(btn_frame, text="Restart", command=self._on_restart, width=10).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="⟳ Restart", command=self._on_restart, width=10).pack(
+            side=tk.LEFT
+        )
 
         self._action_btn = ttk.Button(
-            btn_frame, text="Copy", command=self._on_action, width=10, state="disabled"
+            btn_frame, text="\U0001f4cb Copy", command=self._on_action, width=10, state="disabled"
         )
         self._action_btn.pack(side=tk.RIGHT, padx=(5, 0))
-
-        self._recopy_btn = ttk.Button(
-            btn_frame, text="Re-copy", command=self._on_recopy, width=10, state="disabled"
-        )
-        self._recopy_btn.pack(side=tk.RIGHT, padx=(5, 0))
 
         ttk.Button(btn_frame, text="Skip", command=self._on_skip, width=10).pack(side=tk.RIGHT)
 
@@ -403,6 +382,7 @@ class GuidedPasteWindow(tk.Toplevel):
     ):
         super().__init__(parent)
         self.title(f"Guided Paste \u2014 {folder.name}")
+        self.geometry("820x520")
         self.minsize(520, 400)
 
         self._folder = folder
@@ -420,7 +400,3 @@ class GuidedPasteWindow(tk.Toplevel):
         self._create_widgets()
         self._populate_sheet()
         self._advance_to_first_pending()
-
-        # Let geometry fit contents instead of a fixed size
-        self.update_idletasks()
-        self.geometry("")
