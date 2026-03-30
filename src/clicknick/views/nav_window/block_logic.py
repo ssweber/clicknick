@@ -7,10 +7,11 @@ Converts flat BlockRange results into a renderable tree model:
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from pyclickplc.blocks import BlockRange, group_udt_block_names, parse_structured_block_name
+from pyclickplc.blocks import BlockRange, parse_structured_block_name
 
 from ...models.address_row import AddressRow
 
@@ -44,6 +45,11 @@ class _BlockEntry:
     end_display: str
 
 
+_UDT_WITH_METADATA_RE = re.compile(
+    r"^(?P<base>[A-Za-z_][A-Za-z0-9_]*)\.(?P<field>[A-Za-z_][A-Za-z0-9_]*)(?P<meta>(?::.+|\s.+)?)$"
+)
+
+
 def _format_with_range(label: str, start: str, end: str) -> str:
     """Format block text with single-point or range display."""
     if start == end:
@@ -65,6 +71,21 @@ def _dedupe_addresses(
     return tuple(result)
 
 
+def _parse_grouping_name(name: str) -> tuple[str, str | None, str]:
+    """Parse block name for tree grouping, preserving child metadata after ':' or space."""
+    parsed = parse_structured_block_name(name)
+    if parsed.kind == "udt" and parsed.field is not None:
+        return parsed.base, parsed.field, parsed.kind
+
+    metadata_match = _UDT_WITH_METADATA_RE.fullmatch(name)
+    if metadata_match is not None:
+        field = metadata_match.group("field")
+        metadata = metadata_match.group("meta") or ""
+        return metadata_match.group("base"), field + metadata, "udt"
+
+    return parsed.base, None, parsed.kind
+
+
 def _build_entries(ranges: list[BlockRange], rows: Sequence[AddressRow]) -> list[_BlockEntry]:
     """Build normalized entries from matched block ranges."""
     entries: list[_BlockEntry] = []
@@ -73,17 +94,16 @@ def _build_entries(ranges: list[BlockRange], rows: Sequence[AddressRow]) -> list
         if not block_rows:
             continue
 
-        parsed = parse_structured_block_name(block.name)
-        field = parsed.field if parsed.kind == "udt" else None
+        base, field, kind = _parse_grouping_name(block.name)
         addresses = tuple((row.memory_type, row.address) for row in block_rows)
 
         entries.append(
             _BlockEntry(
                 idx=idx,
                 name=block.name,
-                base=parsed.base,
+                base=base,
                 field=field,
-                kind=parsed.kind,
+                kind=kind,
                 start_idx=block.start_idx,
                 bg_color=block.bg_color,
                 addresses=addresses,
@@ -110,25 +130,19 @@ def _build_udt_node(
     base: str, entries: list[_BlockEntry], *, sort_alphabetically: bool
 ) -> BlockTreeNode:
     """Create one UDT parent node and its field children."""
-    field_order_map = group_udt_block_names(entry.name for entry in entries)
-    field_order = list(field_order_map.get(base, ()))
-
     by_field: dict[str, list[_BlockEntry]] = {}
-    fallback_field_order: list[str] = []
+    field_order: list[str] = []
     for entry in entries:
         if entry.field is None:
             continue
         by_field.setdefault(entry.field, []).append(entry)
-        if entry.field not in fallback_field_order:
-            fallback_field_order.append(entry.field)
+        if entry.field not in field_order:
+            field_order.append(entry.field)
 
     if sort_alphabetically:
         ordered_fields = sorted(by_field.keys(), key=str.lower)
     else:
-        seen = set(field_order)
-        ordered_fields = field_order + [
-            field for field in fallback_field_order if field not in seen
-        ]
+        ordered_fields = field_order
 
     children: list[BlockTreeNode] = []
     for field in ordered_fields:

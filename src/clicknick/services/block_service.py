@@ -6,6 +6,7 @@ Core block tag model operations (parsing, range computation) are in models/block
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -44,6 +45,11 @@ __all__ = [
 ]
 
 
+_DOTTED_NAME_WITH_FLAG_RE = re.compile(
+    r"^(?P<base>[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+)(?P<suffix>\s.+)$"
+)
+
+
 def _transform_block_name_for_pair(name: str, source_type: str, target_type: str) -> str:
     """Transform block name for interleaved pair sync.
 
@@ -59,16 +65,22 @@ def _transform_block_name_for_pair(name: str, source_type: str, target_type: str
     Returns:
         Transformed block name for the target type
     """
-    # Structured block names keep metadata after the first separator.
+    # Structured block metadata keeps everything after ':' intact.
     # Example: "Timer:block" -> "Timer_D:block"
-    separator_positions = [idx for idx in (name.find(":"), name.find(".")) if idx != -1]
-    if separator_positions:
-        split_at = min(separator_positions)
+    split_at = name.find(":")
+    if split_at != -1:
         base_name = name[:split_at]
         suffix = name[split_at:]
     else:
         base_name = name
         suffix = ""
+
+        # Dotted names may carry trailing flags/metadata after a space.
+        # Example: "Custom.TasksStatus READONLY" -> "Custom.TasksStatus_D READONLY"
+        dotted_match = _DOTTED_NAME_WITH_FLAG_RE.fullmatch(name)
+        if dotted_match is not None:
+            base_name = dotted_match.group("base")
+            suffix = dotted_match.group("suffix")
 
     # Determine if source and target are base or data types
     base_types = {"T", "CT"}
