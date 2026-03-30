@@ -59,6 +59,17 @@ def _transform_block_name_for_pair(name: str, source_type: str, target_type: str
     Returns:
         Transformed block name for the target type
     """
+    # Structured block names keep metadata after the first separator.
+    # Example: "Timer:block" -> "Timer_D:block"
+    separator_positions = [idx for idx in (name.find(":"), name.find(".")) if idx != -1]
+    if separator_positions:
+        split_at = min(separator_positions)
+        base_name = name[:split_at]
+        suffix = name[split_at:]
+    else:
+        base_name = name
+        suffix = ""
+
     # Determine if source and target are base or data types
     base_types = {"T", "CT"}
     data_types = {"TD", "CTD"}
@@ -70,15 +81,15 @@ def _transform_block_name_for_pair(name: str, source_type: str, target_type: str
 
     if source_is_base and target_is_data:
         # T -> TD or CT -> CTD: add _D suffix if not already present
-        if not name.endswith("_D"):
-            return name + "_D"
-        return name
+        if not base_name.endswith("_D"):
+            return base_name + "_D" + suffix
+        return base_name + suffix
 
     if source_is_data and target_is_base:
         # TD -> T or CTD -> CT: remove _D suffix if present
-        if name.endswith("_D"):
-            return name[:-2]
-        return name
+        if base_name.endswith("_D"):
+            return base_name[:-2] + suffix
+        return base_name + suffix
 
     # Same type category (shouldn't happen in normal use)
     return name

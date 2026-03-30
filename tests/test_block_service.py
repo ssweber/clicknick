@@ -439,9 +439,12 @@ def test_transform_block_name_t_to_td():
     # Base name gets _D suffix
     assert _transform_block_name_for_pair("Pumps", "T", "TD") == "Pumps_D"
     assert _transform_block_name_for_pair("Motors", "CT", "CTD") == "Motors_D"
+    assert _transform_block_name_for_pair("Timer:block", "T", "TD") == "Timer_D:block"
+    assert _transform_block_name_for_pair("Alarm.Run", "T", "TD") == "Alarm_D.Run"
 
     # Already has _D suffix - keep it
     assert _transform_block_name_for_pair("Pumps_D", "T", "TD") == "Pumps_D"
+    assert _transform_block_name_for_pair("Timer_D:block", "T", "TD") == "Timer_D:block"
 
 
 def test_transform_block_name_td_to_t():
@@ -451,9 +454,12 @@ def test_transform_block_name_td_to_t():
     # Remove _D suffix
     assert _transform_block_name_for_pair("Pumps_D", "TD", "T") == "Pumps"
     assert _transform_block_name_for_pair("Motors_D", "CTD", "CT") == "Motors"
+    assert _transform_block_name_for_pair("Timer_D:block", "TD", "T") == "Timer:block"
+    assert _transform_block_name_for_pair("Alarm_D.Run", "TD", "T") == "Alarm.Run"
 
     # No _D suffix - keep as is
     assert _transform_block_name_for_pair("Pumps", "TD", "T") == "Pumps"
+    assert _transform_block_name_for_pair("Timer:block", "TD", "T") == "Timer:block"
 
 
 def test_interleaved_pair_sync_adds_suffix(store):
@@ -473,6 +479,20 @@ def test_interleaved_pair_sync_adds_suffix(store):
     assert "<Timers_D>" in td1_row.comment
 
 
+def test_interleaved_pair_sync_adds_suffix_before_metadata(store):
+    """Structured metadata should stay after the transformed base name."""
+    from pyclickplc.addresses import get_addr_key
+
+    t1_key = get_addr_key("T", 1)
+    td1_key = get_addr_key("TD", 1)
+
+    with store.edit_session("Add structured block on T") as session:
+        session.set_field(t1_key, "comment", "<Timer:block>")
+
+    td1_row = store.visible_state[td1_key]
+    assert "<Timer_D:block>" in td1_row.comment
+
+
 def test_interleaved_pair_sync_removes_suffix(store):
     """Test that TD → T block sync removes _D suffix."""
     from pyclickplc.addresses import get_addr_key
@@ -487,6 +507,20 @@ def test_interleaved_pair_sync_removes_suffix(store):
     # T1 should have the block tag without _D suffix
     t1_row = store.visible_state[t1_key]
     assert "<Timers>" in t1_row.comment
+
+
+def test_interleaved_pair_sync_removes_suffix_before_metadata(store):
+    """Structured metadata should survive TD → T sync without moving suffixes."""
+    from pyclickplc.addresses import get_addr_key
+
+    t1_key = get_addr_key("T", 1)
+    td1_key = get_addr_key("TD", 1)
+
+    with store.edit_session("Add structured block on TD") as session:
+        session.set_field(td1_key, "comment", "<Timer_D:block>")
+
+    t1_row = store.visible_state[t1_key]
+    assert "<Timer:block>" in t1_row.comment
 
 
 def test_interleaved_pair_sync_closing_tag_with_suffix(store):
