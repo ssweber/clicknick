@@ -688,13 +688,6 @@ class ClickNickApp:
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.on_closing)
 
-        # Ladder menu
-        ladder_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Ladder", menu=ladder_menu)
-        ladder_menu.add_command(label="Export from Click (beta)...", command=self._export_from_click)
-        ladder_menu.add_command(label="Convert to pyrung...", command=self._convert_to_pyrung)
-        ladder_menu.add_command(label="Open in Guided Paste...", command=self._open_guided_paste)
-
         # Tools menu
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Tools", menu=tools_menu)
@@ -704,6 +697,13 @@ class ClickNickApp:
             tools_menu.add_separator()
             tools_menu.add_command(label="Verify MDB & CDV...", command=self._verify_mdb_and_cdv)
             tools_menu.add_command(label="Clean MDB...", command=self._clean_mdb)
+
+        # Ladder menu
+        ladder_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Ladder", menu=ladder_menu)
+        ladder_menu.add_command(label="Export from Click (beta)...", command=self._export_from_click)
+        ladder_menu.add_command(label="Convert to pyrung...", command=self._convert_to_pyrung)
+        ladder_menu.add_command(label="Open in Guided Paste...", command=self._open_guided_paste)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
