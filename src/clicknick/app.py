@@ -1,5 +1,6 @@
 import tkinter as tk
 from ctypes import windll
+from pathlib import Path
 from tkinter import PhotoImage, filedialog, font, messagebox, ttk
 
 from .config import AppSettings
@@ -488,10 +489,9 @@ class ClickNickApp:
             self._update_status(f"Error cleaning MDB: {e}", "error")
 
     @staticmethod
-    def _get_export_popup_flag() -> "Path":
+    def _get_export_popup_flag() -> Path:
         """Get path to the flag indicating the Export beta popup has been seen."""
         import os
-        from pathlib import Path
 
         base = Path(os.environ.get("LOCALAPPDATA", Path.home()))
         return base / "ClickNick" / "export_from_click_popup_seen"
@@ -701,7 +701,9 @@ class ClickNickApp:
         # Ladder menu
         ladder_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Ladder", menu=ladder_menu)
-        ladder_menu.add_command(label="Export from Click (beta)...", command=self._export_from_click)
+        ladder_menu.add_command(
+            label="Export from Click (beta)...", command=self._export_from_click
+        )
         ladder_menu.add_command(label="Convert to pyrung...", command=self._convert_to_pyrung)
         ladder_menu.add_command(label="Open in Guided Paste...", command=self._open_guided_paste)
 

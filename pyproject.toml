@@ -51,10 +51,7 @@ dependencies = [
 dev = [
     "pytest>=8.3.5",
     "ruff>=0.11.0",
-    "codespell>=2.4.1",
-    "rich>=13.9.4",
-    "funlog>=0.2.0",
-    "ssort>=0.14.0",
+    "ssort==0.16.0",
 ]
 
 [project.scripts]
@@ -88,6 +85,10 @@ bump = true
 [tool.hatch.build.targets.wheel]
 # The source location for the package.
 packages = ["src/clicknick"]
+
+[tool.uv]
+exclude-newer = "7 days"
+exclude-newer-package = { pyclickplc = "0 days" }
 
 [tool.uv.sources]
 laddercodec = { path = "../laddercodec", editable = true }
@@ -165,11 +166,6 @@ reportUnreachable = false
 # reportUnnecessaryIsInstance = false
 # reportUnknownVariableType = false
 # reportUnknownArgumentType = false
-
-[tool.codespell]
-# Add here as needed:
-# ignore-words-list = "foo,bar"
-skip = "src/clicknick/ladder/*,src/clicknick/csv/*"
 
 [tool.ssort]
 exclude = ["src/clicknick/ladder/**", "src/clicknick/csv/**"]
