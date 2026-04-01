@@ -646,6 +646,56 @@ class ClickNickApp:
             "connected",
         )
 
+    def _load_ladder_csv(self):
+        """Load a single ladder CSV file to the Click clipboard."""
+        csv_file = filedialog.askopenfilename(
+            title="Load Ladder CSV to Clipboard",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            parent=self.root,
+        )
+        if not csv_file:
+            return
+
+        from pathlib import Path
+
+        from .ladder.clipboard import copy_to_clipboard
+        from .ladder.program import prepare_csv_load
+        from .utils.mdb_shared import find_click_database
+
+        csv_path = Path(csv_file)
+
+        mdb_path = None
+        if self.connected_click_hwnd:
+            db_path = find_click_database(click_hwnd=self.connected_click_hwnd)
+            if db_path:
+                mdb_path = Path(db_path)
+
+        try:
+            result = prepare_csv_load(csv_path, mdb_path=mdb_path)
+        except (ValueError, RuntimeError) as exc:
+            messagebox.showerror(
+                "Load Ladder CSV",
+                str(exc),
+                parent=self.root,
+            )
+            return
+
+        try:
+            copy_to_clipboard(result.payload, owner_hwnd=self.connected_click_hwnd)
+        except RuntimeError as exc:
+            messagebox.showerror(
+                "Load Ladder CSV",
+                f"Could not copy to clipboard:\n\n{exc}",
+                parent=self.root,
+            )
+            return
+
+        rungs = f"{result.rung_count} rung{'s' if result.rung_count != 1 else ''}"
+        self._update_status(
+            f"Copied {rungs} from {csv_path.name} to clipboard",
+            "connected",
+        )
+
     def _open_guided_paste(self):
         """Open a folder of ladder CSVs in the guided paste panel."""
         folder = filedialog.askdirectory(
@@ -704,6 +754,10 @@ class ClickNickApp:
         ladder_menu.add_command(
             label="Export from Click (beta)...", command=self._export_from_click
         )
+        ladder_menu.add_command(
+            label="Load Ladder CSV to Clipboard...", command=self._load_ladder_csv
+        )
+        ladder_menu.add_separator()
         ladder_menu.add_command(label="Convert to pyrung...", command=self._convert_to_pyrung)
         ladder_menu.add_command(label="Open in Guided Paste...", command=self._open_guided_paste)
 
