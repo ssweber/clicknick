@@ -3,11 +3,12 @@ revision = 3
 requires-python = ">=3.11, <4.0"
 
 [options]
-exclude-newer = "2026-03-25T15:22:57.7146106Z"
+exclude-newer = "2026-03-25T17:25:30.4665504Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
-pyclickplc = { timestamp = "2026-04-01T15:22:57.7146239Z", span = "PT0S" }
+pyclickplc = { timestamp = "2026-04-01T17:25:30.466556Z", span = "PT0S" }
+laddercodec = { timestamp = "2026-04-01T17:25:30.4665583Z", span = "PT0S" }
 
 [[package]]
 name = "clicknick"
@@ -76,7 +77,7 @@ dev = [
     { name = "ty", specifier = ">=0.0.14" },
 ]
 docs = [
-    { name = "mkdocs", specifier = ">=1.6.1" },
+    { name = "mkdocs", specifier = ">=1.6.1,<2" },
     { name = "mkdocs-gen-files", specifier = ">=0.5.0" },
     { name = "mkdocs-llmstxt", specifier = ">=0.3.0" },
     { name = "mkdocs-material", specifier = ">=9.6.0" },
@@ -235,7 +236,7 @@ dev = [
     { name = "ty", specifier = ">=0.0.14" },
 ]
 docs = [
-    { name = "mkdocs", specifier = ">=1.6.1" },
+    { name = "mkdocs", specifier = ">=1.6.1,<2" },
     { name = "mkdocs-gen-files", specifier = ">=0.5.0" },
     { name = "mkdocs-llmstxt", specifier = ">=0.3.0" },
     { name = "mkdocs-material", specifier = ">=9.6.0" },
