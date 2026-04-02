@@ -497,14 +497,14 @@ class ClickNickApp:
         return base / "ClickNick" / "export_from_click_popup_seen"
 
     def _show_export_popup(self) -> None:
-        """Show first-run info for the Export from Click beta (appears once per user)."""
+        """Show first-run info for Export from Click (appears once per user)."""
         flag_path = self._get_export_popup_flag()
 
         if flag_path.exists():
             return
 
         popup_text = (
-            "Export from Click (Beta)\n\n"
+            "Export from Click\n\n"
             "This feature decodes CLICK's internal program files into CSV.\n"
             "Contacts, instructions, or entire rungs may decode incorrectly\n"
             "or be missing. Email, Home, Position, and Velocity instructions\n"
@@ -696,6 +696,48 @@ class ClickNickApp:
             "connected",
         )
 
+    def _save_clipboard_csv(self):
+        """Save Click clipboard data to a CSV file."""
+        csv_file = filedialog.asksaveasfilename(
+            title="Save Clipboard to CSV",
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            parent=self.root,
+        )
+        if not csv_file:
+            return
+
+        from pathlib import Path
+
+        from .ladder.clipboard import read_from_clipboard
+        from .ladder.program import decode_to_csv
+
+        try:
+            data = read_from_clipboard()
+        except RuntimeError as exc:
+            messagebox.showerror(
+                "Save Clipboard to CSV",
+                str(exc),
+                parent=self.root,
+            )
+            return
+
+        csv_path = Path(csv_file)
+        try:
+            decode_to_csv(data, csv_path)
+        except Exception as exc:
+            messagebox.showerror(
+                "Save Clipboard to CSV",
+                f"Could not decode clipboard data:\n\n{exc}",
+                parent=self.root,
+            )
+            return
+
+        self._update_status(
+            f"Saved clipboard to {csv_path.name}",
+            "connected",
+        )
+
     def _open_guided_paste(self):
         """Open a folder of ladder CSVs in the guided paste panel."""
         folder = filedialog.askdirectory(
@@ -750,16 +792,15 @@ class ClickNickApp:
 
         # Ladder menu
         ladder_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Ladder", menu=ladder_menu)
-        ladder_menu.add_command(
-            label="Export from Click (beta)...", command=self._export_from_click
-        )
+        menubar.add_cascade(label="Ladder (beta)", menu=ladder_menu)
         ladder_menu.add_command(
             label="Load Ladder CSV to Clipboard...", command=self._load_ladder_csv
         )
-        ladder_menu.add_separator()
-        ladder_menu.add_command(label="Convert to pyrung...", command=self._convert_to_pyrung)
         ladder_menu.add_command(label="Open in Guided Paste...", command=self._open_guided_paste)
+        ladder_menu.add_separator()
+        ladder_menu.add_command(label="Save Clipboard to CSV...", command=self._save_clipboard_csv)
+        ladder_menu.add_command(label="Export from Click...", command=self._export_from_click)
+        ladder_menu.add_command(label="Convert to pyrung...", command=self._convert_to_pyrung)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)

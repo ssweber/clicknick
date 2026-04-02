@@ -127,6 +127,6 @@ def read_from_clipboard() -> bytes:
         raw = win32clipboard.GetClipboardData(CLICK_CLIPBOARD_FORMAT)
         return bytes(raw) if not isinstance(raw, bytes) else raw
     except TypeError:
-        raise RuntimeError("No Click rung data on clipboard (format 522 not present).") from None
+        raise RuntimeError("No Click rung data on clipboard.") from None
     finally:
         win32clipboard.CloseClipboard()
