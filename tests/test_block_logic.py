@@ -52,6 +52,56 @@ class TestBuildBlockTree:
         assert not pump.is_group
         assert pump.text == f"Pump ({rows[2].display_address})"
 
+    def test_udt_names_with_metadata_group_under_base_parent(self):
+        rows = _make_rows([("X", 1), ("X", 2), ("X", 3), ("X", 4)])
+        ranges = [
+            BlockRange(0, 0, "Parent.Childs", None, "X"),
+            BlockRange(1, 1, "Parent.Clothes:meta", None, "X"),
+            BlockRange(2, 2, "Parent.Cars", None, "X"),
+            BlockRange(3, 3, "Pump", None, "X"),
+        ]
+
+        nodes = build_block_tree(ranges, rows, sort_alphabetically=False)
+
+        assert len(nodes) == 2
+        parent = nodes[0]
+        assert parent.is_group
+        assert parent.text == "Parent"
+        assert [child.text for child in parent.children] == [
+            f"Childs ({rows[0].display_address})",
+            f"Clothes:meta ({rows[1].display_address})",
+            f"Cars ({rows[2].display_address})",
+        ]
+
+        pump = nodes[1]
+        assert not pump.is_group
+        assert pump.text == f"Pump ({rows[3].display_address})"
+
+    def test_udt_names_with_space_flags_group_under_base_parent(self):
+        rows = _make_rows([("X", 1), ("X", 2), ("X", 3), ("X", 4)])
+        ranges = [
+            BlockRange(0, 0, "Custom.Childs", None, "X"),
+            BlockRange(1, 1, "Custom.TasksStatus READONLY", None, "X"),
+            BlockRange(2, 2, "Custom.Cars", None, "X"),
+            BlockRange(3, 3, "Pump", None, "X"),
+        ]
+
+        nodes = build_block_tree(ranges, rows, sort_alphabetically=False)
+
+        assert len(nodes) == 2
+        custom = nodes[0]
+        assert custom.is_group
+        assert custom.text == "Custom"
+        assert [child.text for child in custom.children] == [
+            f"Childs ({rows[0].display_address})",
+            f"TasksStatus READONLY ({rows[1].display_address})",
+            f"Cars ({rows[2].display_address})",
+        ]
+
+        pump = nodes[1]
+        assert not pump.is_group
+        assert pump.text == f"Pump ({rows[3].display_address})"
+
     def test_unsorted_top_level_and_child_order_follow_first_occurrence(self):
         rows = _make_rows([("X", 1), ("X", 2), ("X", 3), ("X", 4), ("X", 5)])
         ranges = [

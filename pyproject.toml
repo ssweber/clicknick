@@ -37,7 +37,9 @@ classifiers = [
 # ---- Main dependencies ----
 
 dependencies = [
+    "laddercodec",
     "pyclickplc",
+    "pyrung",
     "pywin32 >= 311",
     "pyodbc >= 5.3.0",
     "tksheet == 7.5.19",
@@ -49,15 +51,13 @@ dependencies = [
 dev = [
     "pytest>=8.3.5",
     "ruff>=0.11.0",
-    "codespell>=2.4.1",
-    "rich>=13.9.4",
-    "funlog>=0.2.0",
-    "ssort>=0.14.0",
+    "ssort==0.16.0",
 ]
 
 [project.scripts]
 # Add script entry points here:
 clicknick-dev = "clicknick:main_dev"
+clicknick-rung = "clicknick.ladder.cli:main"
 
 [project.gui-scripts] 
 clicknick = "clicknick:main"
@@ -85,6 +85,10 @@ bump = true
 [tool.hatch.build.targets.wheel]
 # The source location for the package.
 packages = ["src/clicknick"]
+
+[tool.uv]
+exclude-newer = "7 days"
+exclude-newer-package = { pyclickplc = "0 days", laddercodec = "0 days", pyrung = "0 days" }
 
 
 # ---- Settings ----
@@ -159,10 +163,8 @@ reportUnreachable = false
 # reportUnknownVariableType = false
 # reportUnknownArgumentType = false
 
-[tool.codespell]
-# Add here as needed:
-# ignore-words-list = "foo,bar"
-# skip = "foo.py,bar.py"
+[tool.ssort]
+exclude = ["src/clicknick/ladder/**", "src/clicknick/csv/**"]
 
 [tool.pytest.ini_options]
 python_files = ["*.py"]

@@ -1,51 +1,68 @@
+import argparse
 import subprocess
-
-from funlog import log_calls
-from rich import get_console, reconfigure
-from rich import print as rprint
+import sys
 
 # Update as needed.
 SRC_PATHS = ["src", "tests", "devtools"]
-DOC_PATHS = ["README.md"]
 
 
-reconfigure(emoji=not get_console().options.legacy_windows)  # No emojis on legacy windows.
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run lint checks for the repository.")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Run read-only checks suitable for CI (no autofix).",
+    )
+    return parser.parse_args()
 
 
-@log_calls(level="warning", show_timing_only=True)
 def run(cmd: list[str]) -> int:
-    rprint()
-    rprint(f"[bold green]:arrow_forward: {' '.join(cmd)}[/bold green]")
-    errcount = 0
+    print()
+    print(f"==> {' '.join(cmd)}")
     try:
         subprocess.run(cmd, text=True, check=True)
-    except subprocess.CalledProcessError as e:
-        rprint(f"[bold red]Error: {e}[/bold red]")
-        errcount = 1
+    except subprocess.CalledProcessError as exc:
+        print(f"Error: {exc}")
+        return 1
+    except FileNotFoundError as exc:
+        print(f"Executable not found: {exc}")
+        return 1
 
-    return errcount
+    return 0
 
 
-def main():
-    rprint()
+def main() -> int:
+    args = parse_args()
+    print()
 
     errcount = 0
-    errcount += run(["codespell", "--write-changes", *SRC_PATHS, *DOC_PATHS])
-    errcount += run(["ssort", *SRC_PATHS])
-    errcount += run(["ruff", "check", "--fix", *SRC_PATHS])
-    errcount += run(["ruff", "format", *SRC_PATHS])
+    if args.check:
+        errcount += run(["ssort", "--check", *SRC_PATHS])
+    else:
+        errcount += run(["ssort", *SRC_PATHS])
+
+    if args.check:
+        errcount += run(["ruff", "check", *SRC_PATHS])
+    else:
+        errcount += run(["ruff", "check", "--fix", *SRC_PATHS])
+
+    if args.check:
+        errcount += run(["ruff", "format", "--check", *SRC_PATHS])
+    else:
+        errcount += run(["ruff", "format", *SRC_PATHS])
+
     # errcount += run(["basedpyright", *SRC_PATHS])
 
-    rprint()
+    print()
 
     if errcount != 0:
-        rprint(f"[bold red]:x: Lint failed with {errcount} errors.[/bold red]")
+        print(f"Lint failed with {errcount} error(s).")
     else:
-        rprint("[bold green]:white_check_mark: Lint passed![/bold green]")
-    rprint()
+        print("Lint passed.")
+    print()
 
     return errcount
 
 
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())

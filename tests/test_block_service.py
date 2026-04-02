@@ -439,9 +439,22 @@ def test_transform_block_name_t_to_td():
     # Base name gets _D suffix
     assert _transform_block_name_for_pair("Pumps", "T", "TD") == "Pumps_D"
     assert _transform_block_name_for_pair("Motors", "CT", "CTD") == "Motors_D"
+    assert _transform_block_name_for_pair("Timer:block", "T", "TD") == "Timer_D:block"
+    assert _transform_block_name_for_pair("Alarm.Run", "T", "TD") == "Alarm.Run_D"
+    assert _transform_block_name_for_pair("Alarm.Run:meta", "T", "TD") == "Alarm.Run_D:meta"
+    assert (
+        _transform_block_name_for_pair("Custom.TasksStatus READONLY", "T", "TD")
+        == "Custom.TasksStatus_D READONLY"
+    )
 
     # Already has _D suffix - keep it
     assert _transform_block_name_for_pair("Pumps_D", "T", "TD") == "Pumps_D"
+    assert _transform_block_name_for_pair("Timer_D:block", "T", "TD") == "Timer_D:block"
+    assert _transform_block_name_for_pair("Alarm.Run_D", "T", "TD") == "Alarm.Run_D"
+    assert (
+        _transform_block_name_for_pair("Custom.TasksStatus_D READONLY", "T", "TD")
+        == "Custom.TasksStatus_D READONLY"
+    )
 
 
 def test_transform_block_name_td_to_t():
@@ -451,9 +464,18 @@ def test_transform_block_name_td_to_t():
     # Remove _D suffix
     assert _transform_block_name_for_pair("Pumps_D", "TD", "T") == "Pumps"
     assert _transform_block_name_for_pair("Motors_D", "CTD", "CT") == "Motors"
+    assert _transform_block_name_for_pair("Timer_D:block", "TD", "T") == "Timer:block"
+    assert _transform_block_name_for_pair("Alarm.Run_D", "TD", "T") == "Alarm.Run"
+    assert _transform_block_name_for_pair("Alarm.Run_D:meta", "TD", "T") == "Alarm.Run:meta"
+    assert (
+        _transform_block_name_for_pair("Custom.TasksStatus_D READONLY", "TD", "T")
+        == "Custom.TasksStatus READONLY"
+    )
 
     # No _D suffix - keep as is
     assert _transform_block_name_for_pair("Pumps", "TD", "T") == "Pumps"
+    assert _transform_block_name_for_pair("Timer:block", "TD", "T") == "Timer:block"
+    assert _transform_block_name_for_pair("Alarm.Run", "TD", "T") == "Alarm.Run"
 
 
 def test_interleaved_pair_sync_adds_suffix(store):
@@ -473,6 +495,48 @@ def test_interleaved_pair_sync_adds_suffix(store):
     assert "<Timers_D>" in td1_row.comment
 
 
+def test_interleaved_pair_sync_adds_suffix_before_metadata(store):
+    """Structured metadata should stay after the transformed base name."""
+    from pyclickplc.addresses import get_addr_key
+
+    t1_key = get_addr_key("T", 1)
+    td1_key = get_addr_key("TD", 1)
+
+    with store.edit_session("Add structured block on T") as session:
+        session.set_field(t1_key, "comment", "<Timer:block>")
+
+    td1_row = store.visible_state[td1_key]
+    assert "<Timer_D:block>" in td1_row.comment
+
+
+def test_interleaved_pair_sync_adds_suffix_after_dotted_name(store):
+    """Dotted names stay intact and get the suffix at the end of the name."""
+    from pyclickplc.addresses import get_addr_key
+
+    t1_key = get_addr_key("T", 1)
+    td1_key = get_addr_key("TD", 1)
+
+    with store.edit_session("Add dotted block on T") as session:
+        session.set_field(t1_key, "comment", '<Adm.Timers bg="Red">')
+
+    td1_row = store.visible_state[td1_key]
+    assert '<Adm.Timers_D bg="Red">' in td1_row.comment
+
+
+def test_interleaved_pair_sync_adds_suffix_before_dotted_flag(store):
+    """Trailing flags on dotted names should remain after the transformed name."""
+    from pyclickplc.addresses import get_addr_key
+
+    t1_key = get_addr_key("T", 1)
+    td1_key = get_addr_key("TD", 1)
+
+    with store.edit_session("Add flagged dotted block on T") as session:
+        session.set_field(t1_key, "comment", '<Custom.TasksStatus READONLY bg="Blue">')
+
+    td1_row = store.visible_state[td1_key]
+    assert '<Custom.TasksStatus_D READONLY bg="Blue">' in td1_row.comment
+
+
 def test_interleaved_pair_sync_removes_suffix(store):
     """Test that TD → T block sync removes _D suffix."""
     from pyclickplc.addresses import get_addr_key
@@ -487,6 +551,48 @@ def test_interleaved_pair_sync_removes_suffix(store):
     # T1 should have the block tag without _D suffix
     t1_row = store.visible_state[t1_key]
     assert "<Timers>" in t1_row.comment
+
+
+def test_interleaved_pair_sync_removes_suffix_before_metadata(store):
+    """Structured metadata should survive TD → T sync without moving suffixes."""
+    from pyclickplc.addresses import get_addr_key
+
+    t1_key = get_addr_key("T", 1)
+    td1_key = get_addr_key("TD", 1)
+
+    with store.edit_session("Add structured block on TD") as session:
+        session.set_field(td1_key, "comment", "<Timer_D:block>")
+
+    t1_row = store.visible_state[t1_key]
+    assert "<Timer:block>" in t1_row.comment
+
+
+def test_interleaved_pair_sync_removes_suffix_after_dotted_name(store):
+    """Dotted names should remove the suffix from the full name, not the parent."""
+    from pyclickplc.addresses import get_addr_key
+
+    t1_key = get_addr_key("T", 1)
+    td1_key = get_addr_key("TD", 1)
+
+    with store.edit_session("Add dotted block on TD") as session:
+        session.set_field(td1_key, "comment", '<Adm.Timers_D bg="Red">')
+
+    t1_row = store.visible_state[t1_key]
+    assert '<Adm.Timers bg="Red">' in t1_row.comment
+
+
+def test_interleaved_pair_sync_removes_suffix_before_dotted_flag(store):
+    """Trailing flags on dotted names should survive TD -> T sync."""
+    from pyclickplc.addresses import get_addr_key
+
+    t1_key = get_addr_key("T", 1)
+    td1_key = get_addr_key("TD", 1)
+
+    with store.edit_session("Add flagged dotted block on TD") as session:
+        session.set_field(td1_key, "comment", '<Custom.TasksStatus_D READONLY bg="Blue">')
+
+    t1_row = store.visible_state[t1_key]
+    assert '<Custom.TasksStatus READONLY bg="Blue">' in t1_row.comment
 
 
 def test_interleaved_pair_sync_closing_tag_with_suffix(store):

@@ -1,6 +1,7 @@
 import tkinter as tk
 from ctypes import windll
-from tkinter import PhotoImage, filedialog, font, ttk
+from pathlib import Path
+from tkinter import PhotoImage, filedialog, font, messagebox, ttk
 
 from .config import AppSettings
 from .data.address_store import AddressStore
@@ -487,6 +488,286 @@ class ClickNickApp:
         except Exception as e:
             self._update_status(f"Error cleaning MDB: {e}", "error")
 
+    @staticmethod
+    def _get_export_popup_flag() -> Path:
+        """Get path to the flag indicating the Export beta popup has been seen."""
+        import os
+
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home()))
+        return base / "ClickNick" / "export_from_click_popup_seen"
+
+    def _show_export_popup(self) -> None:
+        """Show first-run info for Export from Click (appears once per user)."""
+        flag_path = self._get_export_popup_flag()
+
+        if flag_path.exists():
+            return
+
+        popup_text = (
+            "Export from Click\n\n"
+            "This feature decodes CLICK's internal program files into CSV.\n"
+            "Contacts, instructions, or entire rungs may decode incorrectly\n"
+            "or be missing. Email, Home, Position, and Velocity instructions\n"
+            "are exported as raw(...) placeholders.\n\n"
+            "If you encounter errors or unexpected output, please report\n"
+            "them — sample programs help us improve the decoder."
+        )
+
+        messagebox.showinfo("First-Time Tips", popup_text, parent=self.root)
+
+        flag_path.parent.mkdir(parents=True, exist_ok=True)
+        flag_path.touch()
+
+    def _export_from_click(self):
+        """Export Scr*.tmp from the connected Click project to a CSV bundle."""
+        if not self.connected_click_hwnd:
+            messagebox.showwarning(
+                "Export from Click",
+                "Not connected to a Click project.\n\nStart monitoring first.",
+                parent=self.root,
+            )
+            return
+
+        from pathlib import Path
+
+        from .utils.mdb_shared import find_click_database
+
+        db_path = find_click_database(click_hwnd=self.connected_click_hwnd)
+        if not db_path:
+            messagebox.showerror(
+                "Export from Click",
+                "Could not locate the Click project folder.",
+                parent=self.root,
+            )
+            return
+        scr_folder = Path(db_path).parent
+
+        self._show_export_popup()
+
+        output = filedialog.askdirectory(
+            title="Export from Click — choose output folder",
+            parent=self.root,
+        )
+        if not output:
+            return
+
+        from .ladder.program import program_save
+
+        while True:
+            try:
+                result = program_save(scr_folder, Path(output))
+            except (FileNotFoundError, ValueError) as exc:
+                messagebox.showerror("Export from Click", str(exc), parent=self.root)
+                return
+            except PermissionError as exc:
+                retry = messagebox.askretrycancel(
+                    "Export from Click",
+                    f"Cannot write to output folder — a file may be open"
+                    f" in another program.\n\n{exc}",
+                    parent=self.root,
+                )
+                if retry:
+                    continue
+                return
+            break
+
+        # Write nicknames.csv from the MDB alongside the ladder CSVs
+        nick_count = 0
+        try:
+            from .data.data_source import CsvDataSource
+            from .utils.mdb_operations import MdbConnection, load_all_addresses
+
+            with MdbConnection(str(db_path)) as conn:
+                all_rows = load_all_addresses(conn)
+            nick_dest = Path(output) / "nicknames.csv"
+            nick_count = CsvDataSource(str(nick_dest)).save_changes(list(all_rows.values()))
+        except PermissionError:
+            messagebox.showwarning(
+                "Export from Click",
+                "Could not write nicknames.csv — file may be open.\n"
+                "Ladder CSVs were exported successfully.",
+                parent=self.root,
+            )
+        except Exception:
+            pass  # nicknames export is best-effort
+
+        sub_count = len(result.subroutine_csvs)
+        parts = [f"{result.total_rungs} rungs", f"{sub_count} subroutine(s)"]
+        if nick_count:
+            parts.append(f"{nick_count} tags")
+        self._update_status(
+            f"Exported {', '.join(parts)} to {output}",
+            "connected",
+        )
+
+    def _convert_to_pyrung(self):
+        """Convert a ladder CSV folder into a pyrung Python project."""
+        source = filedialog.askdirectory(
+            title="Convert to pyrung — choose ladder CSV folder",
+            parent=self.root,
+        )
+        if not source:
+            return
+
+        from pathlib import Path
+
+        source_path = Path(source)
+        if not (source_path / "main.csv").exists():
+            messagebox.showerror(
+                "Convert to pyrung",
+                f"No main.csv found in {source}.\n\n"
+                "Use 'Export from Click' first to create a ladder folder.",
+                parent=self.root,
+            )
+            return
+
+        output = filedialog.askdirectory(
+            title="Convert to pyrung — choose output folder",
+            parent=self.root,
+        )
+        if not output:
+            return
+
+        from pyrung.click import ladder_to_pyrung_project
+
+        nickname_csv = source_path / "nicknames.csv"
+        try:
+            files = ladder_to_pyrung_project(
+                source_path,
+                nickname_csv=nickname_csv if nickname_csv.exists() else None,
+                output_dir=Path(output),
+            )
+        except Exception as exc:
+            messagebox.showerror("Convert to pyrung", str(exc), parent=self.root)
+            return
+
+        self._update_status(
+            f"Exported {len(files)} file(s) to {output}",
+            "connected",
+        )
+
+    def _load_ladder_csv(self):
+        """Load a single ladder CSV file to the Click clipboard."""
+        csv_file = filedialog.askopenfilename(
+            title="Load Ladder CSV to Clipboard",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            parent=self.root,
+        )
+        if not csv_file:
+            return
+
+        from pathlib import Path
+
+        from .ladder.clipboard import copy_to_clipboard
+        from .ladder.program import prepare_csv_load
+        from .utils.mdb_shared import find_click_database
+
+        csv_path = Path(csv_file)
+
+        mdb_path = None
+        if self.connected_click_hwnd:
+            db_path = find_click_database(click_hwnd=self.connected_click_hwnd)
+            if db_path:
+                mdb_path = Path(db_path)
+
+        try:
+            result = prepare_csv_load(csv_path, mdb_path=mdb_path)
+        except (ValueError, RuntimeError) as exc:
+            messagebox.showerror(
+                "Load Ladder CSV",
+                str(exc),
+                parent=self.root,
+            )
+            return
+
+        try:
+            copy_to_clipboard(result.payload, owner_hwnd=self.connected_click_hwnd)
+        except RuntimeError as exc:
+            messagebox.showerror(
+                "Load Ladder CSV",
+                f"Could not copy to clipboard:\n\n{exc}",
+                parent=self.root,
+            )
+            return
+
+        rungs = f"{result.rung_count} rung{'s' if result.rung_count != 1 else ''}"
+        self._update_status(
+            f"Copied {rungs} from {csv_path.name} to clipboard",
+            "connected",
+        )
+
+    def _save_clipboard_csv(self):
+        """Save Click clipboard data to a CSV file."""
+        csv_file = filedialog.asksaveasfilename(
+            title="Save Clipboard to CSV",
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            parent=self.root,
+        )
+        if not csv_file:
+            return
+
+        from pathlib import Path
+
+        from .ladder.clipboard import read_from_clipboard
+        from .ladder.program import decode_to_csv
+
+        try:
+            data = read_from_clipboard()
+        except RuntimeError as exc:
+            messagebox.showerror(
+                "Save Clipboard to CSV",
+                str(exc),
+                parent=self.root,
+            )
+            return
+
+        csv_path = Path(csv_file)
+        try:
+            decode_to_csv(data, csv_path)
+        except Exception as exc:
+            messagebox.showerror(
+                "Save Clipboard to CSV",
+                f"Could not decode clipboard data:\n\n{exc}",
+                parent=self.root,
+            )
+            return
+
+        self._update_status(
+            f"Saved clipboard to {csv_path.name}",
+            "connected",
+        )
+
+    def _open_guided_paste(self):
+        """Open a folder of ladder CSVs in the guided paste panel."""
+        folder = filedialog.askdirectory(
+            title="Open in Guided Paste — choose ladder CSV folder",
+            parent=self.root,
+        )
+        if not folder:
+            return
+
+        from pathlib import Path
+
+        from .utils.mdb_shared import find_click_database
+        from .views.guided_paste_window import GuidedPasteWindow
+
+        folder_path = Path(folder)
+
+        def get_mdb_path() -> Path | None:
+            """Resolve MDB from the currently connected Click instance."""
+            if not self.connected_click_hwnd:
+                return None
+            db_path = find_click_database(click_hwnd=self.connected_click_hwnd)
+            return Path(db_path) if db_path else None
+
+        GuidedPasteWindow(
+            self.root,
+            folder_path,
+            get_mdb_path=get_mdb_path,
+            get_click_hwnd=lambda: self.connected_click_hwnd,
+        )
+
     def _create_menu_bar(self):
         """Create the application menu bar."""
         menubar = tk.Menu(self.root)
@@ -495,9 +776,9 @@ class ClickNickApp:
         # File menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Exit", command=self.on_closing)
-        file_menu.add_separator()
         file_menu.add_command(label="Load Nicknames from CSV...", command=self.browse_and_load_csv)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.on_closing)
 
         # Tools menu
         tools_menu = tk.Menu(menubar, tearoff=0)
@@ -508,6 +789,18 @@ class ClickNickApp:
             tools_menu.add_separator()
             tools_menu.add_command(label="Verify MDB & CDV...", command=self._verify_mdb_and_cdv)
             tools_menu.add_command(label="Clean MDB...", command=self._clean_mdb)
+
+        # Ladder menu
+        ladder_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Ladder (beta)", menu=ladder_menu)
+        ladder_menu.add_command(
+            label="Load Ladder CSV to Clipboard...", command=self._load_ladder_csv
+        )
+        ladder_menu.add_command(label="Open in Guided Paste...", command=self._open_guided_paste)
+        ladder_menu.add_separator()
+        ladder_menu.add_command(label="Save Clipboard to CSV...", command=self._save_clipboard_csv)
+        ladder_menu.add_command(label="Export from Click...", command=self._export_from_click)
+        ladder_menu.add_command(label="Convert to pyrung...", command=self._convert_to_pyrung)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)

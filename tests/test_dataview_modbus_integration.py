@@ -166,7 +166,7 @@ class FakeModbusService:
         self.write_calls: list[list[tuple[str, object]]] = []
         self.write_result = [{"address": "X001", "ok": True, "error": None}]
 
-    def connect(self, host, port):
+    def connect(self, host, port, **kwargs):
         self.connect_calls.append((host, port))
 
     def set_poll_addresses(self, addresses):

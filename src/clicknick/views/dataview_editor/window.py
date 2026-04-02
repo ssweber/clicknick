@@ -13,7 +13,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import TYPE_CHECKING
 
-from pyclickplc import ConnectionState, ModbusService
+from pyclickplc import ConnectionState, ModbusService, ReconnectConfig
 from pyclickplc.addresses import get_addr_key
 from pyclickplc.banks import INTERLEAVED_PAIRS
 
@@ -204,6 +204,7 @@ class DataviewEditorWindow(tk.Toplevel):
             self._modbus = ModbusService(
                 on_state=self._on_modbus_state_callback,
                 on_values=self._on_modbus_values_callback,
+                reconnect=ReconnectConfig(delay_s=0.5, max_delay_s=5.0),
             )
         return self._modbus
 
@@ -287,7 +288,7 @@ class DataviewEditorWindow(tk.Toplevel):
         self._update_modbus_controls()
 
         self._run_modbus_action(
-            lambda: service.connect(host, port),
+            lambda: service.connect(host, port, timeout=3),
             lambda _result, error: self._on_connect_modbus_complete(error),
         )
 
