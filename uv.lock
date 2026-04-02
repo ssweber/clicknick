@@ -3,12 +3,13 @@ revision = 3
 requires-python = ">=3.11, <4.0"
 
 [options]
-exclude-newer = "2026-03-25T17:25:30.4665504Z"
+exclude-newer = "2026-03-26T14:48:46.1163265Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
-pyclickplc = { timestamp = "2026-04-01T17:25:30.466556Z", span = "PT0S" }
-laddercodec = { timestamp = "2026-04-01T17:25:30.4665583Z", span = "PT0S" }
+laddercodec = { timestamp = "2026-04-02T14:48:46.1163497Z", span = "PT0S" }
+pyrung = { timestamp = "2026-04-02T14:48:46.1163502Z", span = "PT0S" }
+pyclickplc = { timestamp = "2026-04-02T14:48:46.1163436Z", span = "PT0S" }
 
 [[package]]
 name = "clicknick"
@@ -31,10 +32,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "laddercodec", editable = "../laddercodec" },
+    { name = "laddercodec" },
     { name = "pyclickplc" },
     { name = "pyodbc", specifier = ">=5.3.0" },
-    { name = "pyrung", editable = "../pyrung" },
+    { name = "pyrung" },
     { name = "pywin32", specifier = ">=311" },
     { name = "tksheet", specifier = "==7.5.19" },
 ]
@@ -66,22 +67,11 @@ wheels = [
 
 [[package]]
 name = "laddercodec"
-source = { editable = "../laddercodec" }
-
-[package.metadata]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=8.3.5" },
-    { name = "ruff", specifier = ">=0.11.0" },
-    { name = "ty", specifier = ">=0.0.14" },
-]
-docs = [
-    { name = "mkdocs", specifier = ">=1.6.1,<2" },
-    { name = "mkdocs-gen-files", specifier = ">=0.5.0" },
-    { name = "mkdocs-llmstxt", specifier = ">=0.3.0" },
-    { name = "mkdocs-material", specifier = ">=9.6.0" },
-    { name = "mkdocstrings", extras = ["python"], specifier = ">=0.29.0" },
+version = "0.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ff/eb/de8572878a1a11210a61e80568c8c3c1104395c83a02f9b1c0055f03a2ec/laddercodec-0.1.2.tar.gz", hash = "sha256:ee7367603930a2b015a2048c8bf3118ffa72a5e9e469effee1936a9acffd79f4", size = 354866, upload-time = "2026-04-02T14:38:25.223Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c5/92/4fb95202cc3e1af89688a4cd84c5ec339026ec6eb659dbe3e3526e94a535/laddercodec-0.1.2-py3-none-any.whl", hash = "sha256:cf028a9140d4b633d70f514f079b1afc41af49575d1f324ad2eb5018694c3b29", size = 122974, upload-time = "2026-04-02T14:38:23.768Z" },
 ]
 
 [[package]]
@@ -217,30 +207,15 @@ wheels = [
 
 [[package]]
 name = "pyrung"
-source = { editable = "../pyrung" }
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyclickplc" },
     { name = "pyrsistent" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "pyclickplc", specifier = ">=0.3.0" },
-    { name = "pyrsistent", specifier = ">=0.20.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=8.3.5" },
-    { name = "ruff", specifier = ">=0.11.0" },
-    { name = "ty", specifier = ">=0.0.14" },
-]
-docs = [
-    { name = "mkdocs", specifier = ">=1.6.1,<2" },
-    { name = "mkdocs-gen-files", specifier = ">=0.5.0" },
-    { name = "mkdocs-llmstxt", specifier = ">=0.3.0" },
-    { name = "mkdocs-material", specifier = ">=9.6.0" },
-    { name = "mkdocstrings", extras = ["python"], specifier = ">=0.30.0" },
+sdist = { url = "https://files.pythonhosted.org/packages/e9/51/132855d0438903c481ec457297545a383d332fe558f74e35584484b53211/pyrung-0.2.0.tar.gz", hash = "sha256:8192e8e24e964fb90f2cc8f4670bade067de92a51d1ea8f2ab81a4833d3db23b", size = 983731, upload-time = "2026-04-02T14:48:29.099Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f8/07/63a2336969fa0dc2f310adcce44ce23b8413ff8540d2989e36f547beeb4f/pyrung-0.2.0-py3-none-any.whl", hash = "sha256:5b5ef29163178753a6a37ffc2afc2e450816cfb1a6c128ff5eb5dfe1ac2e062e", size = 327131, upload-time = "2026-04-02T14:48:27.391Z" },
 ]
 
 [[package]]
