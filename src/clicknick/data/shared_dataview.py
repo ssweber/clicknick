@@ -71,7 +71,7 @@ class SharedDataviewData:
         """Get the AddressStore for nickname lookups."""
         return self._store
 
-    def _on_address_data_changed(self, sender=None) -> None:
+    def _on_address_data_changed(self, sender=None, affected_keys=None) -> None:
         """Observer callback when AddressStore changes.
 
         Triggers nickname refresh in the dataview editor window.
