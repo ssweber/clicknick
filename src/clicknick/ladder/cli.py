@@ -28,6 +28,7 @@ from .program import (
     decode_to_csv,
     describe_csv,
     list_program_bundle,
+    prepare_bin_load,
     prepare_csv_load,
     program_save,
 )
@@ -76,6 +77,16 @@ def print_csv_shape(csv_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _print_mdb_status(result) -> None:
+    """Print MDB provisioning status for a prepared load result."""
+    if result.addresses_inserted:
+        print(
+            f"  MDB: inserted {result.addresses_inserted} address(es) into {result.mdb_path.name}"
+        )
+    elif result.mdb_error:
+        print(f"  MDB: skipped ({result.mdb_error})")
+
+
 def _load_csv(csv_path: Path, mdb_path: str | None, *, best_effort: bool = False) -> bytes:
     """Describe, encode, provision MDB addresses, copy to clipboard. Return payload."""
     print(f"  {describe_csv(csv_path, best_effort=best_effort)}")
@@ -88,13 +99,7 @@ def _load_csv(csv_path: Path, mdb_path: str | None, *, best_effort: bool = False
 
     result = prepare_csv_load(csv_path, mdb_path=resolved_mdb, best_effort=best_effort)
 
-    if result.addresses_inserted:
-        print(
-            f"  MDB: inserted {result.addresses_inserted} address(es) into {result.mdb_path.name}"
-        )
-    elif result.mdb_error:
-        print(f"  MDB: skipped ({result.mdb_error})")
-
+    _print_mdb_status(result)
     copy_to_clipboard(result.payload)
     print(f"  Copied to clipboard ({len(result.payload):,} bytes)")
     return result.payload
@@ -110,16 +115,32 @@ def _load_program_csv(csv_path: Path, mdb_path: str | None) -> bytes:
     result = prepare_csv_load(csv_path, mdb_path=resolved_mdb)
 
     print(f"  {result.rung_count} rung{'s' if result.rung_count != 1 else ''}")
-    if result.addresses_inserted:
-        print(
-            f"  MDB: inserted {result.addresses_inserted} address(es) into {result.mdb_path.name}"
-        )
-    elif result.mdb_error:
-        print(f"  MDB: skipped ({result.mdb_error})")
-
+    _print_mdb_status(result)
     copy_to_clipboard(result.payload)
     print(f"  Copied to clipboard ({len(result.payload):,} bytes)")
     return result.payload
+
+
+def _load_bin(bin_path: Path, mdb_path: str | None) -> bytes:
+    """Provision MDB addresses from a decoded .bin payload, then copy raw bytes."""
+    data = bin_path.read_bytes()
+
+    try:
+        resolved_mdb = resolve_mdb_path(mdb_path)
+    except (FileNotFoundError, RuntimeError):
+        resolved_mdb = None
+
+    if resolved_mdb is not None:
+        try:
+            result = prepare_bin_load(data, mdb_path=resolved_mdb)
+        except ValueError as exc:
+            print(f"  MDB: skipped (could not decode .bin for address extraction: {exc})")
+        else:
+            _print_mdb_status(result)
+
+    copy_to_clipboard(data)
+    print(f"Copied {bin_path.name} to clipboard ({len(data):,} bytes)")
+    return data
 
 
 # ---------------------------------------------------------------------------
@@ -531,6 +552,8 @@ def main() -> None:
         try:
             if file_path.suffix.lower() == ".csv":
                 _load_csv(file_path, args.mdb_path, best_effort=args.best_effort)
+            elif file_path.suffix.lower() == ".bin":
+                _load_bin(file_path, args.mdb_path)
             else:
                 data = file_path.read_bytes()
                 copy_to_clipboard(data)

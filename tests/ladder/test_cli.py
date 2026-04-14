@@ -12,17 +12,21 @@ from laddercodec.model import Program
 
 from clicknick.ladder.cli import (
     _append_result,
+    _load_bin,
     _read_progress,
     _run_guided,
     main,
 )
 from clicknick.ladder.program import (
+    PrepareResult,
     _collapse_cols,
     _dedupe_filename_stem,
     _describe_row_wires,
     _describe_single_rung,
     _extract_operand_candidates,
     _slugify,
+    extract_addresses_from_bin,
+    extract_addresses_from_csv,
     program_save,
 )
 
@@ -71,6 +75,24 @@ class TestExtractOperandCandidates:
 
     def test_empty_string(self):
         assert _extract_operand_candidates("") == []
+
+
+# ---------------------------------------------------------------------------
+# Address extraction
+# ---------------------------------------------------------------------------
+
+
+class TestExtractAddresses:
+    def test_extract_addresses_from_bin_matches_csv_fixture(self):
+        fixture_dir = (
+            Path(__file__).resolve().parents[1] / "fixtures" / "ladder_captures" / "golden"
+        )
+        csv_path = fixture_dir / "instr-6row-multi-output.csv"
+        bin_path = fixture_dir / "instr-6row-multi-output.bin"
+        expected = ["DS181", "C1061", "DS182"]
+
+        assert extract_addresses_from_csv(csv_path) == expected
+        assert extract_addresses_from_bin(bin_path.read_bytes()) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -476,14 +498,82 @@ class TestMainArgparse:
     def test_load_bin_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         src = tmp_path / "rung.bin"
         src.write_bytes(b"\xaa\xbb")
-        copied: list[bytes] = []
-        monkeypatch.setattr(
-            "clicknick.ladder.cli.copy_to_clipboard",
-            lambda data: copied.append(data),
-        )
+        called: list[tuple[Path, str | None]] = []
+
+        def mock_load_bin(path: Path, mdb_path: str | None) -> bytes:
+            called.append((path, mdb_path))
+            return b""
+
+        monkeypatch.setattr("clicknick.ladder.cli._load_bin", mock_load_bin)
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "load", str(src)])
         main()
+        assert called == [(src, None)]
+
+    def test_load_bin_provisions_mdb_addresses(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ):
+        src = tmp_path / "rung.bin"
+        src.write_bytes(b"\xaa\xbb")
+        resolved_mdb = tmp_path / "SC_.mdb"
+        copied: list[bytes] = []
+        prepare_calls: list[tuple[bytes, Path]] = []
+
+        monkeypatch.setattr("clicknick.ladder.cli.resolve_mdb_path", lambda _mdb_path: resolved_mdb)
+
+        def mock_prepare_bin_load(data: bytes, *, mdb_path: Path) -> PrepareResult:
+            prepare_calls.append((data, mdb_path))
+            return PrepareResult(
+                payload=data,
+                rung_count=1,
+                addresses=["X001"],
+                addresses_inserted=2,
+                mdb_path=mdb_path,
+                mdb_error=None,
+            )
+
+        monkeypatch.setattr("clicknick.ladder.cli.prepare_bin_load", mock_prepare_bin_load)
+        monkeypatch.setattr(
+            "clicknick.ladder.cli.copy_to_clipboard", lambda data: copied.append(data)
+        )
+
+        _load_bin(src, None)
+
+        out = capsys.readouterr().out
+        assert prepare_calls == [(b"\xaa\xbb", resolved_mdb)]
         assert copied == [b"\xaa\xbb"]
+        assert "MDB: inserted 2 address(es) into SC_.mdb" in out
+        assert "Copied rung.bin to clipboard (2 bytes)" in out
+
+    def test_load_bin_decode_failure_still_copies_payload(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ):
+        src = tmp_path / "rung.bin"
+        src.write_bytes(b"\xaa")
+        resolved_mdb = tmp_path / "SC_.mdb"
+        copied: list[bytes] = []
+
+        monkeypatch.setattr("clicknick.ladder.cli.resolve_mdb_path", lambda _mdb_path: resolved_mdb)
+
+        def _raise_decode_error(_data: bytes, *, mdb_path: Path) -> PrepareResult:
+            raise ValueError("bad binary")
+
+        monkeypatch.setattr("clicknick.ladder.cli.prepare_bin_load", _raise_decode_error)
+        monkeypatch.setattr(
+            "clicknick.ladder.cli.copy_to_clipboard", lambda data: copied.append(data)
+        )
+
+        _load_bin(src, None)
+
+        out = capsys.readouterr().out
+        assert copied == [b"\xaa"]
+        assert "MDB: skipped (could not decode .bin for address extraction: bad binary)" in out
+        assert "Copied rung.bin to clipboard (1 bytes)" in out
 
     def test_load_csv_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         csv_file = tmp_path / "rung.csv"
@@ -508,6 +598,10 @@ class TestMainArgparse:
         def _raise(data):
             raise RuntimeError("Click Programming Software not found. Is it running?")
 
+        monkeypatch.setattr(
+            "clicknick.ladder.cli.resolve_mdb_path",
+            lambda _mdb_path: (_ for _ in ()).throw(FileNotFoundError("no mdb")),
+        )
         monkeypatch.setattr("clicknick.ladder.cli.copy_to_clipboard", _raise)
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "load", str(src)])
         with pytest.raises(SystemExit, match="1"):

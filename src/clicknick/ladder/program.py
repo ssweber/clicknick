@@ -14,6 +14,7 @@ from laddercodec import (
     Coil,
     CompareContact,
     Contact,
+    Rung,
     Timer,
     decode,
     decode_program,
@@ -65,7 +66,7 @@ class SaveResult:
 
 @dataclass
 class PrepareResult:
-    """Result of prepare_csv_load(): encoded payload + MDB provisioning info."""
+    """Result of preparing a ladder payload plus MDB provisioning info."""
 
     payload: bytes
     rung_count: int
@@ -126,9 +127,8 @@ def _extract_operand_candidates(token: ConditionToken | AfToken) -> list[str]:
     return list(dict.fromkeys(out))
 
 
-def extract_addresses_from_csv(path: Path, *, best_effort: bool = False) -> list[str]:
-    """Parse operand addresses from a CSV file (single or multi-rung)."""
-    rungs = read_csv(path, strict=not best_effort)
+def extract_addresses_from_rungs(rungs: list[Rung]) -> list[str]:
+    """Parse operand addresses from already-parsed rung objects."""
     seen_keys: set[int] = set()
     parsed: list[str] = []
     for rung in rungs:
@@ -145,6 +145,40 @@ def extract_addresses_from_csv(path: Path, *, best_effort: bool = False) -> list
                     seen_keys.add(addr_key)
                     parsed.append(format_address_display(memory_type, address))
     return parsed
+
+
+def extract_addresses_from_csv(path: Path, *, best_effort: bool = False) -> list[str]:
+    """Parse operand addresses from a CSV file (single or multi-rung)."""
+    rungs = read_csv(path, strict=not best_effort)
+    return extract_addresses_from_rungs(rungs)
+
+
+def _decode_to_rungs(data: bytes) -> list[Rung]:
+    """Decode clipboard/program bytes into a normalized rung list."""
+    result = decode(data)
+    return result if isinstance(result, list) else [result]
+
+
+def extract_addresses_from_bin(data: bytes) -> list[str]:
+    """Parse operand addresses from a clipboard-format binary payload."""
+    return extract_addresses_from_rungs(_decode_to_rungs(data))
+
+
+def _provision_mdb_addresses(
+    addresses: list[str], *, mdb_path: Path | None = None
+) -> tuple[int, Path | None, str | None]:
+    """Insert missing addresses into the MDB when one is available."""
+    addresses_inserted = 0
+    mdb_error = None
+
+    if addresses and mdb_path:
+        try:
+            result = ensure_addresses_exist(str(mdb_path), addresses)
+            addresses_inserted = result.get("inserted_count", 0)
+        except (FileNotFoundError, RuntimeError) as exc:
+            mdb_error = str(exc)
+
+    return addresses_inserted, (mdb_path if not mdb_error else None), mdb_error
 
 
 # ---------------------------------------------------------------------------
@@ -279,8 +313,7 @@ def encode_csv(csv_path: Path, *, best_effort: bool = False) -> bytes:
 
 def decode_to_csv(data: bytes, path: Path) -> None:
     """Decode clipboard/program bytes and write canonical CSV."""
-    result = decode(data)
-    rungs = result if isinstance(result, list) else [result]
+    rungs = _decode_to_rungs(data)
     write_csv(path, rungs)
 
 
@@ -398,23 +431,37 @@ def prepare_csv_load(
         else encode(rungs[0], show_nicknames=show_nicknames)
     )
 
-    addresses = extract_addresses_from_csv(csv_path, best_effort=best_effort)
-    addresses_inserted = 0
-    mdb_error = None
-
-    if addresses and mdb_path:
-        try:
-            result = ensure_addresses_exist(str(mdb_path), addresses)
-            addresses_inserted = result.get("inserted_count", 0)
-        except (FileNotFoundError, RuntimeError) as exc:
-            mdb_error = str(exc)
+    addresses = extract_addresses_from_rungs(rungs)
+    addresses_inserted, resolved_mdb_path, mdb_error = _provision_mdb_addresses(
+        addresses,
+        mdb_path=mdb_path,
+    )
 
     return PrepareResult(
         payload=payload,
         rung_count=len(rungs),
         addresses=addresses,
         addresses_inserted=addresses_inserted,
-        mdb_path=mdb_path if not mdb_error else None,
+        mdb_path=resolved_mdb_path,
+        mdb_error=mdb_error,
+    )
+
+
+def prepare_bin_load(data: bytes, *, mdb_path: Path | None = None) -> PrepareResult:
+    """Decode a binary payload and provision MDB addresses."""
+    rungs = _decode_to_rungs(data)
+    addresses = extract_addresses_from_rungs(rungs)
+    addresses_inserted, resolved_mdb_path, mdb_error = _provision_mdb_addresses(
+        addresses,
+        mdb_path=mdb_path,
+    )
+
+    return PrepareResult(
+        payload=data,
+        rung_count=len(rungs),
+        addresses=addresses,
+        addresses_inserted=addresses_inserted,
+        mdb_path=resolved_mdb_path,
         mdb_error=mdb_error,
     )
 

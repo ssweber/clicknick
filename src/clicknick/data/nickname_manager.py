@@ -36,7 +36,7 @@ class NicknameManager:
                 "containsplus": ContainsPlusFilter(),
             }
 
-    def _on_data_changed(self, sender=None) -> None:
+    def _on_data_changed(self, sender=None, affected_keys=None) -> None:
         """Observer callback when SharedAddressData changes."""
         self._nickname_cache = None
 
