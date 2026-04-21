@@ -86,6 +86,16 @@ class FakeSheet:
     def delete_checkbox(self, row, col):
         return None
 
+    def delete_rows(self, rows, **kwargs):
+        for row_idx in sorted(rows, reverse=True):
+            if row_idx < len(self.data):
+                self.data.pop(row_idx)
+        self.cells = {
+            (row_idx, col_idx): value
+            for row_idx, row in enumerate(self.data)
+            for col_idx, value in enumerate(row)
+        }
+
     def highlight_cells(self, **kwargs):
         return None
 
@@ -318,6 +328,23 @@ def test_panel_row_delete_removes_model_row_and_pads_blank_bottom():
     assert len(panel.rows) == 100
     assert panel.sheet.get_cell_data(1, COL_ADDRESS) == "DS1"
     assert panel.sheet.get_cell_data(2, COL_ADDRESS) == ""
+    assert panel._is_dirty is True
+
+
+def test_panel_row_insert_uses_tksheet_table_index_and_trims_blank_bottom():
+    panel = _make_panel_stub(
+        [_row("X001"), _row("Y001"), _row("DS1")]
+        + [DataViewRecord() for _ in range(97)]
+    )
+
+    panel._on_rows_added(
+        {"added": {"rows": {"table": {"1": ["ds2"]}, "index": {}, "row_heights": {"1": 20}}}}
+    )
+
+    assert [row.address for row in panel.rows[:5]] == ["X001", "DS2", "Y001", "DS1", ""]
+    assert len(panel.rows) == 100
+    assert panel.sheet.get_cell_data(1, COL_ADDRESS) == "DS2"
+    assert panel.sheet.get_cell_data(2, COL_ADDRESS) == "Y001"
     assert panel._is_dirty is True
 
 
