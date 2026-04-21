@@ -382,26 +382,35 @@ class DataviewPanel(ttk.Frame):
         if not added:
             return
 
-        data_idx = added.get("data_index", 0)
-        num_added = added.get("num", 1)
+        table_rows = added.get("table", {})
+        if isinstance(table_rows, Mapping) and table_rows:
+            inserted_rows = sorted((int(idx), row_data) for idx, row_data in table_rows.items())
+        else:
+            data_idx = int(added.get("data_index", 0))
+            num_added = int(added.get("num", 1))
+            inserted_rows = [(data_idx + i, None) for i in range(num_added)]
 
-        # Insert new DataViewRecord objects at the insertion point
-        for i in range(num_added):
-            self.rows.insert(data_idx + i, DataViewRecord())
-            self._write_checks.insert(data_idx + i, False)
+        # Insert new DataViewRecord objects at the row indexes reported by tksheet.
+        for row_idx, row_data in inserted_rows:
+            insert_idx = max(0, min(row_idx, len(self.rows)))
+            row = DataViewRecord()
 
-        # Sync data model with sheet data (for paste operations with data)
-        for i in range(num_added):
-            row_idx = data_idx + i
-            if row_idx < len(self.rows):
+            address = ""
+            if isinstance(row_data, (list, tuple)) and len(row_data) > COL_ADDRESS:
+                address = row_data[COL_ADDRESS] or ""
+            if not address:
                 address = self.sheet.get_cell_data(row_idx, COL_ADDRESS) or ""
-                if address:
-                    self.rows[row_idx].address = address.strip().upper()
-                    self.rows[row_idx].update_data_type()
-                    if self.nickname_lookup:
-                        result = self.nickname_lookup(self.rows[row_idx].address)
-                        if result:
-                            self.rows[row_idx].nickname, self.rows[row_idx].comment = result
+
+            if address:
+                row.address = address.strip().upper()
+                row.update_data_type()
+                if self.nickname_lookup:
+                    result = self.nickname_lookup(row.address)
+                    if result:
+                        row.nickname, row.comment = result
+
+            self.rows.insert(insert_idx, row)
+            self._write_checks.insert(insert_idx, False)
 
         # Auto-pad: remove empty rows from bottom if over 100
         self._trim_empty_rows_from_bottom()
