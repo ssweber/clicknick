@@ -420,10 +420,6 @@ class DataviewPanel(ttk.Frame):
         while len(self.rows) < MAX_DATAVIEW_ROWS:
             self.rows.append(DataViewRecord())
             self._write_checks.append(False)
-            # Add row to sheet at end
-            row_idx = len(self.rows) - 1
-            self.sheet.insert_rows(rows=1, idx=row_idx, emit_event=False)
-            self._update_row_display(row_idx)
 
     def _on_rows_deleted(self, event) -> None:
         """Handle row deletion events.
@@ -441,9 +437,9 @@ class DataviewPanel(ttk.Frame):
 
         # Remove DataViewRecord objects that were deleted
         # The 'deleted' dict maps old indices to row data
-        deleted_indices = sorted(deleted.keys(), reverse=True)
+        deleted_indices = sorted((int(idx) for idx in deleted.keys()), reverse=True)
         for idx in deleted_indices:
-            if isinstance(idx, int) and idx < len(self.rows):
+            if 0 <= idx < len(self.rows):
                 del self.rows[idx]
                 del self._write_checks[idx]
 

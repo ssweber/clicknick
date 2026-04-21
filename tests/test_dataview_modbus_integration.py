@@ -10,6 +10,7 @@ from pyclickplc.addresses import normalize_address
 from pyclickplc.dataview import DataViewFile, DataViewRecord
 
 from clicknick.views.dataview_editor.panel import (
+    COL_ADDRESS,
     COL_NEW_VALUE,
     DataviewPanel,
 )
@@ -59,6 +60,8 @@ class FakeMenu:
 class FakeSheet:
     def __init__(self):
         self.cells: dict[tuple[int, int], object] = {}
+        self.data: list[list[object]] = []
+        self.index_data: list[str] = []
 
     def get_cell_data(self, row, col):
         return self.cells.get((row, col), "")
@@ -66,10 +69,24 @@ class FakeSheet:
     def set_cell_data(self, row, col, value):
         self.cells[(row, col)] = value
 
+    def set_sheet_data(self, data, **kwargs):
+        self.data = data
+        self.cells = {
+            (row_idx, col_idx): value
+            for row_idx, row in enumerate(data)
+            for col_idx, value in enumerate(row)
+        }
+
+    def set_index_data(self, data):
+        self.index_data = data
+
     def create_checkbox(self, r, c, checked=False, text=""):
         self.cells[(r, c)] = bool(checked)
 
     def delete_checkbox(self, row, col):
+        return None
+
+    def highlight_cells(self, **kwargs):
         return None
 
 
@@ -290,6 +307,18 @@ def test_panel_sheet_modified_updates_new_value_from_display_helper(monkeypatch)
 
     assert called["set"] == 1
     assert panel.rows[0].new_value == 7
+
+
+def test_panel_row_delete_removes_model_row_and_pads_blank_bottom():
+    panel = _make_panel_stub([_row("X001"), _row("Y001"), _row("DS1")])
+
+    panel._on_rows_deleted({"deleted": {"rows": {"1": ["Y001"]}}})
+
+    assert [row.address for row in panel.rows[:4]] == ["X001", "DS1", "", ""]
+    assert len(panel.rows) == 100
+    assert panel.sheet.get_cell_data(1, COL_ADDRESS) == "DS1"
+    assert panel.sheet.get_cell_data(2, COL_ADDRESS) == ""
+    assert panel._is_dirty is True
 
 
 def test_toolbar_toggle_routes_to_connect_disconnect_handlers():
