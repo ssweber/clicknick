@@ -333,8 +333,7 @@ def test_panel_row_delete_removes_model_row_and_pads_blank_bottom():
 
 def test_panel_row_insert_uses_tksheet_table_index_and_trims_blank_bottom():
     panel = _make_panel_stub(
-        [_row("X001"), _row("Y001"), _row("DS1")]
-        + [DataViewRecord() for _ in range(97)]
+        [_row("X001"), _row("Y001"), _row("DS1")] + [DataViewRecord() for _ in range(97)]
     )
 
     panel._on_rows_added(
