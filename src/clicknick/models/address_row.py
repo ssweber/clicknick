@@ -63,6 +63,9 @@ class AddressRow:
     # Track if row was loaded with invalid data
     loaded_with_error: bool = field(default=False, compare=False)
 
+    # Fields explicitly changed by the user (empty → row is not a user override)
+    dirty_fields: frozenset[str] = field(default=frozenset(), compare=False)
+
     @property
     def addr_key(self) -> int:
         """Get the AddrKey for this row."""

@@ -29,12 +29,13 @@ class FileMonitor:
         monitor.stop()
     """
 
-    def __init__(self, file_path: str | None, on_modified: Callable[[], None]) -> None:
+    def __init__(self, file_path: str | None, on_modified: Callable[[], bool | None]) -> None:
         """Initialize the file monitor.
 
         Args:
             file_path: Path to the file to monitor (can be None for no monitoring)
-            on_modified: Callback to invoke when file modification is detected
+            on_modified: Callback to invoke when file modification is detected.
+                Return False when the change could not be consumed and should be retried.
         """
         self._file_path = file_path
         self._on_modified = on_modified
@@ -106,8 +107,9 @@ class FileMonitor:
             if self._file_path and os.path.exists(self._file_path):
                 current_mtime = os.path.getmtime(self._file_path)
                 if current_mtime > self._last_mtime:
-                    self._last_mtime = current_mtime
-                    self._on_modified()
+                    consumed = self._on_modified()
+                    if consumed is not False:
+                        self._last_mtime = current_mtime
         except Exception:
             # File might be locked during write, skip this check
             pass

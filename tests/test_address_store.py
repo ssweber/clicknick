@@ -580,6 +580,32 @@ class TestExternalDatabaseUpdate:
         assert len(notifications) == 1
         assert addr_key in notifications[0]
 
+    def test_external_nickname_update_visible_when_user_only_edited_comment(self, store_with_data):
+        """External nickname change must propagate even when user has a comment override."""
+        from clicknick.models.address_row import AddressRow
+
+        addr_key = get_addr_key("X", 1)
+
+        # User edits only the comment
+        with store_with_data.edit_session("Edit") as session:
+            session.set_field(addr_key, "comment", "UserComment")
+
+        assert store_with_data.visible_state[addr_key].nickname == "Input1"
+
+        # CLICK writes a new nickname to the MDB
+        store_with_data._data_source._initial_rows[addr_key] = AddressRow(
+            memory_type="X",
+            address=1,
+            nickname="RenamedInput",
+            comment="Button",
+        )
+        store_with_data._on_database_update()
+
+        # Nickname should reflect the DB change (user didn't edit it)
+        assert store_with_data.visible_state[addr_key].nickname == "RenamedInput"
+        # Comment should still be the user's override
+        assert store_with_data.visible_state[addr_key].comment == "UserComment"
+
     def test_external_update_no_notification_when_no_change(self, store_with_data):
         """External update with no actual changes should not notify."""
         notifications = []
@@ -623,3 +649,59 @@ class TestExternalDatabaseUpdate:
         # Should be notified
         assert len(notifications) == 1
         assert addr_key in notifications[0]
+
+    def test_external_update_resets_rows_deleted_from_database(self, store_with_data):
+        """External row deletion should reset base/visible state and notify consumers."""
+        addr_key = get_addr_key("X", 1)
+        notifications = []
+
+        def observer(sender, affected_keys):
+            notifications.append(affected_keys)
+
+        store_with_data.add_observer(observer)
+
+        del store_with_data._data_source._initial_rows[addr_key]
+        result = store_with_data._on_database_update()
+
+        assert result is True
+        assert store_with_data.base_state[addr_key].nickname == ""
+        assert store_with_data.base_state[addr_key].comment == ""
+        assert store_with_data.visible_state[addr_key].nickname == ""
+        assert store_with_data.visible_state[addr_key].comment == ""
+        assert "Input1" not in store_with_data.all_nicknames.values()
+        assert len(notifications) == 1
+        assert addr_key in notifications[0]
+
+    def test_external_update_preserves_override_when_database_row_deleted(self, store_with_data):
+        """External row deletion updates base while preserving local user edits."""
+        addr_key = get_addr_key("X", 1)
+        notifications = []
+
+        def observer(sender, affected_keys):
+            notifications.append(affected_keys)
+
+        store_with_data.add_observer(observer)
+
+        with store_with_data.edit_session("Edit") as session:
+            session.set_field(addr_key, "comment", "UserComment")
+
+        notifications.clear()
+        del store_with_data._data_source._initial_rows[addr_key]
+
+        result = store_with_data._on_database_update()
+
+        assert result is True
+        assert store_with_data.base_state[addr_key].comment == ""
+        assert store_with_data.visible_state[addr_key].comment == "UserComment"
+        assert len(notifications) == 1
+        assert addr_key in notifications[0]
+
+    def test_external_update_returns_false_when_database_load_fails(self, store_with_data):
+        """A failed reload should tell FileMonitor to retry the same mtime."""
+
+        def fail_load():
+            raise RuntimeError("database locked")
+
+        store_with_data._data_source.load_all_addresses = fail_load
+
+        assert store_with_data._on_database_update() is False

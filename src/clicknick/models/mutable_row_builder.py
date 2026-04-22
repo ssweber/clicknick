@@ -74,6 +74,8 @@ class MutableRowBuilder:
         if not changes:
             return base
 
+        existing = getattr(base, "dirty_fields", frozenset())
+        changes["dirty_fields"] = existing | frozenset(changes.keys())
         return replace(base, **changes)
 
     def get_field(self, field_name: str) -> str | bool | None:
