@@ -86,6 +86,10 @@ bump = true
 # The source location for the package.
 packages = ["src/clicknick"]
 
+[tool.uv.sources]
+laddercodec = { path = "../laddercodec", editable = true }
+pyrung = { path = "../pyrung", editable = true }
+
 [tool.uv]
 exclude-newer = "7 days"
 exclude-newer-package = { pyclickplc = "0 days", laddercodec = "0 days", pyrung = "0 days" }

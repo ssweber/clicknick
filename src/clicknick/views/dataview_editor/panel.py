@@ -13,6 +13,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from pyclickplc.addresses import normalize_address
+from pyclickplc.banks import DataType
 from pyclickplc.dataview import (
     MAX_DATAVIEW_ROWS,
     DataViewFile,
@@ -44,6 +45,9 @@ COLOR_OVERFLOW_BG = "#e0e0e0"
 # Highlight for live value changes
 COLOR_LIVE_FLASH = "#90EE90"  # Light green
 LIVE_FLASH_DURATION_MS = 1500
+
+# Background tint for rows whose tag is currently forced in simulation
+COLOR_FORCED_BG = "#FFF3CD"  # Light amber
 
 # File monitoring interval in milliseconds
 FILE_MONITOR_INTERVAL_MS = 2000
@@ -90,6 +94,10 @@ class DataviewPanel(ttk.Frame):
         if not address:
             return ""
         value = self._live_values.get(address)
+        if value is None:
+            return ""
+        if self._live_bool_as_onoff and row.data_type == DataType.BIT:
+            return "ON" if value else "OFF"
         return DataViewFile.value_to_display(value, row.data_type)
 
     def _sync_write_checkbox(self, row_idx: int) -> None:
@@ -140,6 +148,21 @@ class DataviewPanel(ttk.Frame):
                     canvas="row_index",
                 )
 
+    def _apply_forced_styling(self) -> None:
+        """Tint forced rows amber. Leaves the Live column free for change flashes."""
+        for i, row in enumerate(self.rows):
+            canonical = self._canonical_address(row.address)
+            forced = canonical is not None and canonical in self._forced_addresses
+            is_overflow = i >= MAX_DATAVIEW_ROWS
+            for col in range(COL_WRITE + 1):
+                if forced:
+                    self.sheet.highlight_cells(row=i, column=col, bg=COLOR_FORCED_BG)
+                elif is_overflow:
+                    self.sheet.highlight_cells(row=i, column=col, bg=COLOR_OVERFLOW_BG)
+                else:
+                    self.sheet.dehighlight_cells(row=i, column=col)
+        self.sheet.set_refresh_timer()
+
     def _populate_sheet(self) -> None:
         """Populate sheet with current row data."""
         self._suppress_notifications = True
@@ -168,6 +191,8 @@ class DataviewPanel(ttk.Frame):
 
             # Apply overflow styling if needed
             self._apply_overflow_styling()
+            if self._forced_addresses:
+                self._apply_forced_styling()
         finally:
             self._suppress_notifications = False
 
@@ -514,6 +539,20 @@ class DataviewPanel(ttk.Frame):
 
         return event.value
 
+    def _on_watch_history_clicked(self) -> None:
+        """Right-click handler: request the selected row's address be watched."""
+        if not self.on_watch_history:
+            return
+        selected = self.sheet.get_currently_selected()
+        if selected is None:
+            return
+        row_idx = selected.row
+        if row_idx is None or row_idx < 0 or row_idx >= len(self.rows):
+            return
+        address = self.rows[row_idx].address.strip()
+        if address:
+            self.on_watch_history(address)
+
     def _create_widgets(self) -> None:
         """Create all panel widgets."""
         # Table (tksheet)
@@ -564,6 +603,9 @@ class DataviewPanel(ttk.Frame):
         # Handle row insert/delete for dynamic row management
         self.sheet.extra_bindings("end_add_rows", self._on_rows_added)
         self.sheet.extra_bindings("end_delete_rows", self._on_rows_deleted)
+
+        # Right-click menu entry for simulation history (no-op outside sim mode)
+        self.sheet.popup_menu_add_command("Watch in History", self._on_watch_history_clicked)
 
         # Initialize with empty data
         self._populate_sheet()
@@ -618,6 +660,7 @@ class DataviewPanel(ttk.Frame):
         on_addresses_changed: Callable[[DataviewPanel], None] | None = None,
         nickname_lookup: Callable[[str], tuple[str, str] | None] | None = None,
         address_normalizer: Callable[[str], str | None] | None = None,
+        on_watch_history: Callable[[str], None] | None = None,
         name: str | None = None,
     ):
         """Initialize the dataview panel.
@@ -629,6 +672,7 @@ class DataviewPanel(ttk.Frame):
             on_addresses_changed: Callback when row addresses change
             nickname_lookup: Callback to lookup (nickname, comment) for an address
             address_normalizer: Callback to normalize address to canonical form (e.g., "x1" -> "X001")
+            on_watch_history: Callback with a row address when "Watch in History" is chosen
             name: Custom name for new unsaved dataviews (used instead of "Untitled")
         """
         super().__init__(parent)
@@ -639,6 +683,7 @@ class DataviewPanel(ttk.Frame):
         self._custom_name = name
         self.nickname_lookup = nickname_lookup
         self.address_normalizer = address_normalizer
+        self.on_watch_history = on_watch_history
 
         # Data model
         self.rows: list[DataViewRecord] = create_empty_dataview()
@@ -647,6 +692,10 @@ class DataviewPanel(ttk.Frame):
         self._is_dirty = False
         self._write_checks: list[bool] = [False] * len(self.rows)
         self._live_values: dict[str, PlcValue] = {}
+
+        # Simulation overlay state
+        self._live_bool_as_onoff = False
+        self._forced_addresses: set[str] = set()
 
         # Suppress notifications during programmatic updates
         self._suppress_notifications = False
@@ -1102,6 +1151,19 @@ class DataviewPanel(ttk.Frame):
             except Exception:
                 pass
 
+    def set_live_bool_onoff(self, enabled: bool) -> None:
+        """When enabled, BIT live values render as ON/OFF instead of 1/0."""
+        if self._live_bool_as_onoff == enabled:
+            return
+        self._live_bool_as_onoff = enabled
+        for row_idx, row in enumerate(self.rows):
+            self.sheet.set_cell_data(row_idx, COL_LIVE, self._live_value_display(row))
+
+    def set_forced_addresses(self, addresses: set[str]) -> None:
+        """Mark which rows are currently forced in simulation (by address)."""
+        self._forced_addresses = {a.upper() for a in addresses}
+        self._apply_forced_styling()
+
     def get_write_rows(self) -> list[tuple[str, PlcValue]]:
         """Return checked writable rows with values."""
         payload: list[tuple[str, PlcValue]] = []
@@ -1136,8 +1198,12 @@ class DataviewPanel(ttk.Frame):
             self._write_checks[row_idx] = False
             self._sync_write_checkbox(row_idx)
 
-    def set_modbus_columns_visible(self, visible: bool) -> None:
-        """Show or hide the Modbus-related columns (New Value, Write, Live)."""
+    def set_overlay_columns_visible(self, visible: bool) -> None:
+        """Show or hide the transport-overlay columns (New Value, Write, Live).
+
+        These columns only carry meaning while a Modbus or Simulation transport
+        is active, so the window shows them as an overlay rather than core UI.
+        """
         columns = {COL_NEW_VALUE, COL_WRITE, COL_LIVE}
         if visible:
             self.sheet.show_columns(columns=columns)
