@@ -76,6 +76,8 @@ class DapService:
 
         self._proc: subprocess.Popen[bytes] | None = None
         self._reader_thread: threading.Thread | None = None
+        self._stderr_thread: threading.Thread | None = None
+        self._stderr_lines: list[str] = []
         self._lock = threading.Lock()
         self._seq = 0
         self._pending: dict[int, threading.Event] = {}
@@ -307,6 +309,22 @@ class DapService:
             elif msg_type == "event":
                 self._handle_event(msg)
 
+    def _stderr_loop(self) -> None:
+        proc = self._proc
+        if proc is None or proc.stderr is None:
+            return
+        for raw_line in proc.stderr:
+            line = raw_line.decode("utf-8", errors="replace").rstrip()
+            if line:
+                with self._lock:
+                    self._stderr_lines.append(line)
+
+    def _drain_stderr(self) -> str:
+        with self._lock:
+            lines = self._stderr_lines.copy()
+            self._stderr_lines.clear()
+        return "\n".join(lines)
+
     def _kill(self) -> None:
         proc = self._proc
         self._proc = None
@@ -349,21 +367,31 @@ class DapService:
             cwd=str(project_dir),
         )
 
+        self._stderr_lines.clear()
         self._reader_thread = threading.Thread(
             target=self._reader_loop, daemon=True, name="dap-reader"
         )
+        self._stderr_thread = threading.Thread(
+            target=self._stderr_loop, daemon=True, name="dap-stderr"
+        )
         self._reader_thread.start()
+        self._stderr_thread.start()
 
         resp = self._send_and_wait("initialize")
         if resp is None or not resp.get("success"):
+            stderr = self._drain_stderr()
             self._kill()
-            raise RuntimeError("DAP initialize failed")
+            raise RuntimeError(
+                f"DAP initialize failed\n{stderr}" if stderr else "DAP initialize failed"
+            )
 
         resp = self._send_and_wait("launch", {"program": str(run_py)})
         if resp is None or not resp.get("success"):
             error_msg = (resp or {}).get("message", "unknown error")
+            stderr = self._drain_stderr()
             self._kill()
-            raise RuntimeError(f"DAP launch failed: {error_msg}")
+            detail = f"{error_msg}\n{stderr}" if stderr else error_msg
+            raise RuntimeError(f"DAP launch failed: {detail}")
 
         self._send_and_wait("configurationDone")
 
@@ -427,6 +455,14 @@ class DapService:
         if resp and resp.get("success"):
             return (resp.get("body") or {}).get("forces", {})
         return {}
+
+    # ------------------------------------------------------------------
+    # Hot-reload
+    # ------------------------------------------------------------------
+
+    def reload(self) -> dict[str, Any] | None:
+        """Hot-reload the program file, preserving PLC state and forces."""
+        return self._send_and_wait("evaluate", {"expression": "reload", "context": "repl"})
 
     # ------------------------------------------------------------------
     # Causal analysis
