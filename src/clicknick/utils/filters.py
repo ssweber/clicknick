@@ -322,6 +322,42 @@ class ContainsPlusFilter(FilterBase):
             return self._filter_multiple_words(completion_list, search_words)
 
 
+ANALYSIS_PREFIXES = ("input:", "output:", "pivot:", "isolated:", "upstream:", "downstream:")
+_ARG_PREFIXES = ("upstream:", "downstream:")
+
+
+def parse_analysis_prefix(raw_filter: str) -> tuple[str | None, str | None, str]:
+    """Parse an analysis prefix from filter text.
+
+    Returns (prefix_name, prefix_arg, remaining_text).
+    - "upstream:MotorOut ^Alm" → ("upstream", "MotorOut", "^Alm")
+    - "input: pump"            → ("input", None, "pump")
+    - "input:"                 → ("input", None, "")
+    - "^Alm"                   → (None, None, "^Alm")
+    """
+    stripped = raw_filter.lstrip()
+    lower = stripped.lower()
+
+    for prefix in ANALYSIS_PREFIXES:
+        if not lower.startswith(prefix):
+            continue
+
+        after_prefix = stripped[len(prefix) :]
+
+        if prefix in _ARG_PREFIXES:
+            parts = after_prefix.split(None, 1)
+            arg = parts[0] if parts else None
+            remaining = parts[1] if len(parts) > 1 else ""
+        else:
+            remaining = after_prefix.lstrip()
+            arg = None
+
+        name = prefix.rstrip(":")
+        return name, arg, remaining
+
+    return None, None, raw_filter
+
+
 def text_matches_filter(text: str, filter_text: str, anchor_start: bool, anchor_end: bool) -> bool:
     """Check if text matches the filter with optional anchors.
 

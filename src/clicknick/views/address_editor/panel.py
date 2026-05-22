@@ -14,7 +14,8 @@ from pyclickplc.banks import DATA_TYPE_HINTS, NON_EDITABLE_TYPES, DataType
 from tksheet import num2alpha
 
 from ...models.address_row import AddressRow
-from ...utils.filters import text_matches_filter
+from ...services.analysis_service import AnalysisService
+from ...utils.filters import parse_analysis_prefix, text_matches_filter
 from ...widgets.char_limit_tooltip import CharLimitTooltip
 from .panel_constants import (
     COL_COMMENT,
@@ -160,13 +161,29 @@ class AddressPanel(ttk.Frame):
             # Row is not visible in current filter - clear saved selection
             pass
 
+    def _resolve_analysis_prefix(self, prefix: str, arg: str | None) -> set[int] | None:
+        """Resolve an analysis prefix to a set of addr_keys, or None."""
+        svc = self._analysis
+        if svc is None or not svc.is_available:
+            return None
+
+        if prefix in ("input", "output", "pivot", "isolated"):
+            return svc.get_role_keys(prefix)
+
+        if prefix in ("upstream", "downstream"):
+            if not arg or arg not in svc.known_tag_names():
+                return set()
+            if prefix == "upstream":
+                return svc.get_upstream_keys(arg)
+            return svc.get_downstream_keys(arg)
+
+        return None
+
     def _apply_filters(self) -> None:
         """Apply current filter settings using tksheet's display_rows().
 
-        Supports anchor patterns:
-        - ^pattern - matches at start of field
-        - pattern$ - matches at end of field
-        - ^pattern$ - exact match
+        Supports analysis prefixes (input:, output:, upstream:Tag, etc.)
+        and anchor patterns (^pattern, pattern$, ^pattern$).
         """
         # Save current selection before changing filter
         self._save_selection()
@@ -175,10 +192,18 @@ class AddressPanel(ttk.Frame):
         filter_enabled = self.filter_enabled_var.get()
         raw_filter = self.filter_var.get() if filter_enabled else ""
 
-        # Parse anchors from filter text
-        anchor_start = raw_filter.startswith("^")
-        anchor_end = raw_filter.endswith("$")
-        filter_text = raw_filter.lower()
+        # Parse analysis prefix
+        prefix_name, prefix_arg, remaining = parse_analysis_prefix(raw_filter)
+
+        # Resolve analysis prefix to addr_key set
+        analysis_keys: set[int] | None = None
+        if prefix_name is not None:
+            analysis_keys = self._resolve_analysis_prefix(prefix_name, prefix_arg)
+
+        # Parse anchors from remaining text
+        anchor_start = remaining.startswith("^")
+        anchor_end = remaining.endswith("$")
+        filter_text = remaining.lower()
         if anchor_start:
             filter_text = filter_text[1:]
         if anchor_end:
@@ -188,7 +213,7 @@ class AddressPanel(ttk.Frame):
         row_filter = self.row_filter_var.get()
 
         # Check if any filters are active
-        no_filters = not filter_text and row_filter == "all"
+        no_filters = not filter_text and row_filter == "all" and analysis_keys is None
 
         if no_filters:
             # Show all rows
@@ -198,6 +223,10 @@ class AddressPanel(ttk.Frame):
             # Build list of rows to display
             self._displayed_rows = []
             for i, row in enumerate(self.rows):
+                # Analysis pre-filter
+                if analysis_keys is not None and row.addr_key not in analysis_keys:
+                    continue
+
                 # Filter by text (matches address, nickname, or comment)
                 if filter_text:
                     addr_match = text_matches_filter(
@@ -638,6 +667,7 @@ class AddressPanel(ttk.Frame):
         on_validate_affected: Callable[[str, str], set[int]] | None = None,
         is_duplicate_fn: Callable[[str, int], bool] | None = None,
         section_boundaries: dict[str, int] | None = None,
+        analysis_service: AnalysisService | None = None,
     ):
         """Initialize the unified address panel.
 
@@ -648,6 +678,7 @@ class AddressPanel(ttk.Frame):
                 Returns set of validated addr_keys. Used for O(1) targeted validation.
             is_duplicate_fn: O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
             section_boundaries: Maps type_key to starting row index for navigation.
+            analysis_service: Optional AnalysisService for program-analysis filter prefixes.
         """
         super().__init__(parent)
 
@@ -655,6 +686,7 @@ class AddressPanel(ttk.Frame):
         self.on_validate_affected = on_validate_affected
         self.is_duplicate_fn = is_duplicate_fn
         self.section_boundaries = section_boundaries or {}
+        self._analysis = analysis_service
 
         self.rows: list[AddressRow] = []
         self._displayed_rows: list[int] = []  # Data indices of currently displayed rows

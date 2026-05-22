@@ -961,6 +961,7 @@ class AddressEditorWindow(tk.Toplevel):
                 on_validate_affected=self._store.validate_affected_rows,
                 is_duplicate_fn=self._store.is_duplicate_nickname,
                 section_boundaries=unified_view.section_boundaries,
+                analysis_service=self._analysis_service,
             )
 
             # Add to notebook
@@ -1426,6 +1427,7 @@ class AddressEditorWindow(tk.Toplevel):
         parent: tk.Widget,
         address_store: AddressStore,
         click_filename: str = "",
+        analysis_service: object | None = None,
     ):
         """Initialize the Address Editor window.
 
@@ -1433,11 +1435,13 @@ class AddressEditorWindow(tk.Toplevel):
             parent: Parent widget (main app window)
             address_store: AddressStore instance for data management
             click_filename: The connected Click project filename (e.g., "MyProject.ckp")
+            analysis_service: Optional AnalysisService for program-analysis filter prefixes.
         """
         super().__init__(parent)
 
         self._store = address_store
         self.click_filename = click_filename
+        self._analysis_service = analysis_service
         self.title(self._get_window_title())
         self.geometry("1025x700")
 

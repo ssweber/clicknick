@@ -290,6 +290,7 @@ class ClickNickApp:
                 self.root,
                 address_store=self._shared_address_data,
                 click_filename=self.connected_click_filename or "",
+                analysis_service=self._analysis_service,
             )
 
         except Exception as e:
@@ -877,6 +878,10 @@ class ClickNickApp:
         self._shared_address_data = None
         self._shared_data_source_path = None
 
+        # Program analysis service (built in background on connect)
+        self._analysis_service = None
+        self._scr_watcher = None
+
         # Initialize overlay early (before UI creation)
         self.overlay = None
 
@@ -906,6 +911,65 @@ class ClickNickApp:
 
         # Combobox overlay (initialized when needed)
         self.overlay = None
+
+    def _on_scr_changed(self, scr_folder, db_path) -> None:
+        """Rebuild analysis when Scr*.tmp files change."""
+        if self._analysis_service is None or self._shared_address_data is None:
+            return
+
+        import threading
+        from pathlib import Path
+
+        store = self._shared_address_data
+
+        def _rebuild() -> None:
+            try:
+                self._analysis_service.build(scr_folder, Path(db_path), store.base_state)
+            except Exception:
+                pass
+
+        threading.Thread(target=_rebuild, daemon=True).start()
+
+    def _start_analysis_build(self) -> None:
+        """Build program analysis in background if connected to a Click project."""
+        if not self.connected_click_hwnd or self._shared_address_data is None:
+            return
+
+        import threading
+        from pathlib import Path
+
+        from .services.analysis_service import AnalysisService
+        from .services.scr_watcher import ScrWatcher
+        from .utils.mdb_shared import find_click_database
+
+        db_path = find_click_database(click_hwnd=self.connected_click_hwnd)
+        if not db_path:
+            return
+        scr_folder = Path(db_path).parent
+
+        if not list(scr_folder.glob("Scr*.tmp")):
+            return
+
+        if self._analysis_service is None:
+            self._analysis_service = AnalysisService()
+
+        store = self._shared_address_data
+
+        def _build() -> None:
+            try:
+                self._analysis_service.build(scr_folder, Path(db_path), store.base_state)
+            except Exception:
+                pass
+
+        threading.Thread(target=_build, daemon=True).start()
+
+        # Watch Scr files for changes → rebuild
+        if self._scr_watcher is not None:
+            self._scr_watcher.stop()
+        self._scr_watcher = ScrWatcher(
+            scr_folder, lambda: self._on_scr_changed(scr_folder, db_path)
+        )
+        self._scr_watcher.start(self.root)
 
     def _update_window_title(self):
         """Update window title to reflect current connection and data source."""
@@ -1181,6 +1245,9 @@ class ClickNickApp:
 
         # Use centralized database loading method (now just starts monitoring)
         self.load_from_database()
+
+        # Build program analysis in background
+        self._start_analysis_build()
 
     def _handle_popup_window(self, window_id, window_class, edit_control):
         """Handle the detected popup window by showing or updating the nickname popup."""
