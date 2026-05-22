@@ -7,6 +7,7 @@ the Click project's temp folder.
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -77,12 +78,12 @@ def prepare(
 ) -> SimulateResult:
     """Export Scr*.tmp → CSV → pyrung project.
 
-    The output lands in ``scr_folder / "pyrung_project" / {csv,project}``.
+    The output lands in ``scr_folder / "pyrung" / {csv,project}``.
     *nickname_map* is ``{display_address: nickname}`` from AddressStore.
 
     Returns a :class:`SimulateResult` with paths and address↔tag maps.
     """
-    base = scr_folder / "pyrung_project"
+    base = scr_folder / "pyrung"
     csv_dir = base / "csv"
     project_dir = base / "project"
 
@@ -120,5 +121,8 @@ def rebuild(
     *,
     nickname_map: dict[str, str] | None = None,
 ) -> SimulateResult:
-    """Re-run the export pipeline, overwriting files in place."""
+    """Wipe previous output and re-run the pipeline."""
+    base = scr_folder / "pyrung"
+    if base.exists():
+        shutil.rmtree(base, ignore_errors=True)
     return prepare(scr_folder, db_path, nickname_map=nickname_map)

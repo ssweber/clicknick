@@ -1801,7 +1801,9 @@ class DataviewEditorWindow(tk.Toplevel):
             )
         return self._dap
 
-    def _sim_on_rebuild_complete(self, result: SimulateResult) -> None:
+    def _sim_on_rebuild_complete(
+        self, result: SimulateResult, saved_forces: dict[str, PlcValue]
+    ) -> None:
         self._sim_result = result
         # Re-baseline watched tags against the rebuilt sim.
         self._sim_history_last.clear()
@@ -1809,11 +1811,16 @@ class DataviewEditorWindow(tk.Toplevel):
             self._sim_history.panel.clear()
 
         if self._dap is not None:
-            resp = self._dap.reload()
-            if resp is None or not resp.get("success"):
-                error_msg = (resp or {}).get("body", {}).get("result", "unknown error")
-                messagebox.showerror("Simulation Error", f"Reload failed: {error_msg}", parent=self)
+            self._dap.terminate()
+            try:
+                self._dap.launch(result.project_dir)
+            except Exception as exc:
+                messagebox.showerror("Simulation Error", str(exc), parent=self)
                 return
+
+            for tag, value in saved_forces.items():
+                self._dap.force(tag, value)
+            self._sim_apply_forces(saved_forces)
 
             if self._sim_was_running:
                 self._dap.continue_()
@@ -1839,6 +1846,8 @@ class DataviewEditorWindow(tk.Toplevel):
         if self._dap.state != SimState.IDLE:
             self._dap.pause()
 
+        saved_forces = self._dap.list_forces()
+
         self._sim_state_var.set("REBUILDING")
         self._sim_update_controls()
 
@@ -1848,7 +1857,7 @@ class DataviewEditorWindow(tk.Toplevel):
             nickname_map = self._sim_build_nickname_map()
             try:
                 result = rebuild(self._sim_scr_folder, self._sim_db_path, nickname_map=nickname_map)
-                self.after(0, lambda: self._sim_on_rebuild_complete(result))
+                self.after(0, lambda: self._sim_on_rebuild_complete(result, saved_forces))
             except Exception as exc:
                 msg = str(exc)
                 self.after(
