@@ -13,8 +13,55 @@ from ..services.annotation_service import AnnotationService
 _DURATION_HINT = "e.g. 50ms, 2s, 1s500ms"
 
 
+def _bind_tooltip(widget: tk.Widget, text: str) -> None:
+    """Bind a hover tooltip to a widget."""
+    tip: tk.Toplevel | None = None
+
+    def show(event: tk.Event) -> None:
+        nonlocal tip
+        if tip is not None:
+            return
+        tip = tk.Toplevel(widget)
+        tip.overrideredirect(True)
+        tip.attributes("-topmost", True)
+        tip.attributes("-disabled", True)
+        label = tk.Label(
+            tip,
+            text=text,
+            bg="#ffffe0",
+            fg="black",
+            font=("Segoe UI", 9),
+            justify="left",
+            wraplength=350,
+            padx=6,
+            pady=3,
+        )
+        label.pack()
+        tip.update_idletasks()
+        x = event.x_root + 12
+        y = event.y_root + 12
+        screen_w = widget.winfo_screenwidth()
+        screen_h = widget.winfo_screenheight()
+        if x + tip.winfo_reqwidth() > screen_w:
+            x = screen_w - tip.winfo_reqwidth() - 4
+        if y + tip.winfo_reqheight() > screen_h:
+            y = event.y_root - tip.winfo_reqheight() - 4
+        tip.geometry(f"+{x}+{y}")
+
+    def hide(_: tk.Event) -> None:
+        nonlocal tip
+        if tip is not None:
+            tip.destroy()
+            tip = None
+
+    widget.bind("<Enter>", show, add="+")
+    widget.bind("<Leave>", hide, add="+")
+
+
 class AnnotationDialog(tk.Toplevel):
     """Dialog for structured editing of tag annotation metadata."""
+
+    _BOOL_CHOICES: dict[int | float | str, str] = {0: "False", 1: "True"}
 
     # ── Info bar ──
 
@@ -45,8 +92,6 @@ class AnnotationDialog(tk.Toplevel):
             return float(text)
         except ValueError:
             return None
-
-    _BOOL_CHOICES: dict[int | float | str, str] = {0: "False", 1: "True"}
 
     @staticmethod
     def _parse_choices_input(raw: str) -> dict[int | float | str, str] | None:
@@ -182,21 +227,29 @@ class AnnotationDialog(tk.Toplevel):
             row, text="readonly", variable=self._readonly_var, command=self._on_flag_changed
         )
         self._readonly_cb.pack(side=tk.LEFT, padx=(0, 10))
+        _bind_tooltip(self._readonly_cb, "Set via initial value, never written by the ladder")
 
         self._external_cb = ttk.Checkbutton(
             row, text="external", variable=self._external_var, command=self._on_flag_changed
         )
         self._external_cb.pack(side=tk.LEFT, padx=(0, 10))
+        _bind_tooltip(
+            self._external_cb, "Written by something outside the ladder (HMI, SCADA, comms)"
+        )
 
         self._final_cb = ttk.Checkbutton(
             row, text="final", variable=self._final_var, command=self._on_flag_changed
         )
         self._final_cb.pack(side=tk.LEFT, padx=(0, 10))
+        _bind_tooltip(self._final_cb, "Exactly one instruction in the program may write this tag")
 
         self._public_cb = ttk.Checkbutton(
             row, text="public", variable=self._public_var, command=self._on_flag_changed
         )
         self._public_cb.pack(side=tk.LEFT)
+        _bind_tooltip(
+            self._public_cb, "Part of the operator-facing interface, not internal plumbing"
+        )
 
     def _on_constraint_mode_changed(self) -> None:
         mode = self._constraint_mode.get()
@@ -228,20 +281,24 @@ class AnnotationDialog(tk.Toplevel):
             value="none",
             command=self._on_constraint_mode_changed,
         ).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Radiobutton(
+        choices_rb = ttk.Radiobutton(
             radio_row,
             text="Choices",
             variable=self._constraint_mode,
             value="choices",
             command=self._on_constraint_mode_changed,
-        ).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Radiobutton(
+        )
+        choices_rb.pack(side=tk.LEFT, padx=(0, 10))
+        _bind_tooltip(choices_rb, "Restrict valid values to a named set")
+        range_rb = ttk.Radiobutton(
             radio_row,
             text="Min / Max",
             variable=self._constraint_mode,
             value="range",
             command=self._on_constraint_mode_changed,
-        ).pack(side=tk.LEFT)
+        )
+        range_rb.pack(side=tk.LEFT)
+        _bind_tooltip(range_rb, "Declare the valid numeric range")
 
         self._choices_frame = ttk.Frame(frame)
         self._choices_frame.pack(fill=tk.X, pady=(4, 0))
@@ -273,9 +330,9 @@ class AnnotationDialog(tk.Toplevel):
         ttk.Label(self._uom_row, text="Unit:").pack(side=tk.LEFT)
         self._uom_var = tk.StringVar()
         self._uom_var.trace_add("write", lambda *_: self._update_preview())
-        ttk.Entry(self._uom_row, textvariable=self._uom_var, width=12).pack(
-            side=tk.LEFT, padx=(4, 4)
-        )
+        uom_entry = ttk.Entry(self._uom_row, textvariable=self._uom_var, width=12)
+        uom_entry.pack(side=tk.LEFT, padx=(4, 4))
+        _bind_tooltip(uom_entry, "Unit of measurement label")
         ttk.Label(self._uom_row, text="e.g. degC, PSI, RPM", foreground="gray").pack(side=tk.LEFT)
 
         self._on_constraint_mode_changed()
@@ -334,6 +391,13 @@ class AnnotationDialog(tk.Toplevel):
         self._physical_var.trace_add("write", lambda *_: self._on_physical_changed())
         self._physical_entry = ttk.Entry(name_row, textvariable=self._physical_var, width=20)
         self._physical_entry.pack(side=tk.LEFT, padx=(4, 0))
+        _bind_tooltip(
+            self._physical_entry,
+            "Name of the physical device this feedback represents.\n"
+            "Pair with on_delay/off_delay for simple delayed transitions "
+            "(contactors, limit switches) or profile for custom response "
+            "curves (thermocouples, encoders).",
+        )
 
         type_row = ttk.Frame(self._adv_frame)
         type_row.pack(fill=tk.X, pady=(0, 2))
@@ -370,7 +434,11 @@ class AnnotationDialog(tk.Toplevel):
             self._timing_frame, textvariable=self._off_delay_var, width=10
         )
         self._off_delay_entry.pack(side=tk.LEFT, padx=(4, 4))
-        ttk.Label(self._timing_frame, text=_DURATION_HINT, foreground="gray").pack(side=tk.LEFT)
+        timing_hint = ttk.Label(self._timing_frame, text=_DURATION_HINT, foreground="gray")
+        timing_hint.pack(side=tk.LEFT)
+        _bind_tooltip(
+            timing_hint, "How long the real device takes to respond after the command changes"
+        )
 
         self._profile_frame = ttk.Frame(self._adv_frame)
         ttk.Label(self._profile_frame, text="profile:").pack(side=tk.LEFT)
@@ -385,9 +453,9 @@ class AnnotationDialog(tk.Toplevel):
         ttk.Label(self._sys_row, text="system:").pack(side=tk.LEFT)
         self._system_var = tk.StringVar()
         self._system_var.trace_add("write", lambda *_: self._update_preview())
-        ttk.Entry(self._sys_row, textvariable=self._system_var, width=20).pack(
-            side=tk.LEFT, padx=(4, 0)
-        )
+        sys_entry = ttk.Entry(self._sys_row, textvariable=self._system_var, width=20)
+        sys_entry.pack(side=tk.LEFT, padx=(4, 0))
+        _bind_tooltip(sys_entry, "Group related physical devices together")
 
         link_row = ttk.Frame(self._adv_frame)
         link_row.pack(fill=tk.X, pady=(2, 0))
@@ -395,19 +463,21 @@ class AnnotationDialog(tk.Toplevel):
         self._link_var = tk.StringVar()
         self._link_var.trace_add("write", lambda *_: self._update_preview())
         ttk.Entry(link_row, textvariable=self._link_var, width=20).pack(side=tk.LEFT, padx=(4, 4))
-        ttk.Label(link_row, text="e.g. EnableField or State:RUNNING", foreground="gray").pack(
-            side=tk.LEFT
-        )
+        link_hint = ttk.Label(link_row, text="e.g. EnableField or State:RUNNING", foreground="gray")
+        link_hint.pack(side=tk.LEFT)
+        _bind_tooltip(link_hint, "Command field that drives this feedback signal")
 
         # ── Lock ──
         ttk.Separator(self._adv_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=4)
         self._lock_var = tk.BooleanVar()
-        ttk.Checkbutton(
+        lock_cb = ttk.Checkbutton(
             self._adv_frame,
             text="lock",
             variable=self._lock_var,
             command=self._update_preview,
-        ).pack(anchor=tk.W)
+        )
+        lock_cb.pack(anchor=tk.W)
+        _bind_tooltip(lock_cb, "Include in behavioral change tracking between program versions")
 
         self._on_phys_mode_changed()
 
