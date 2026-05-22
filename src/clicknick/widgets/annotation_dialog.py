@@ -46,15 +46,15 @@ class AnnotationDialog(tk.Toplevel):
         except ValueError:
             return None
 
+    _BOOL_CHOICES: dict[int | float | str, str] = {0: "False", 1: "True"}
+
     @staticmethod
     def _parse_choices_input(raw: str) -> dict[int | float | str, str] | None:
-        from pyrung.click.tag_map._parsers import _BOOL_CHOICE_PRESET, _CHOICE_PRESETS
-
         text = raw.strip()
         if not text:
             return None
-        if text in _CHOICE_PRESETS:
-            return dict(_BOOL_CHOICE_PRESET)
+        if text == "Bool":
+            return dict(AnnotationDialog._BOOL_CHOICES)
 
         choices: dict[int | float | str, str] = {}
         for pair in text.split("|"):
@@ -75,9 +75,7 @@ class AnnotationDialog(tk.Toplevel):
 
     @staticmethod
     def _format_choices_for_display(choices: dict[int | float | str, str]) -> str:
-        from pyrung.click.tag_map._parsers import _BOOL_CHOICE_PRESET
-
-        if choices == _BOOL_CHOICE_PRESET:
+        if choices == AnnotationDialog._BOOL_CHOICES:
             return "Bool"
         return "|".join(f"{label}:{value}" for value, label in choices.items())
 
