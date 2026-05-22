@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pyrung.core.analysis.pdg import ProgramGraph
+    from pyrung.core.program import Program
+    from pyrung.core.validation.report import ValidationReport
 
 
 @dataclass
@@ -22,6 +24,7 @@ class AnalysisResult:
     """Cached analysis output."""
 
     graph: ProgramGraph
+    program: Program
     tag_to_addr_key: dict[str, int] = field(default_factory=dict)
     addr_key_to_tag: dict[int, str] = field(default_factory=dict)
     role_cache: dict[str, set[int]] = field(default_factory=dict)
@@ -67,7 +70,7 @@ def _build_tag_addr_key_map(
     return tag_to_key, key_to_tag
 
 
-def _build_graph(scr_folder: Path, db_path: Path | None) -> ProgramGraph:
+def _build_graph(scr_folder: Path, db_path: Path | None) -> tuple[ProgramGraph, Program]:
     """Run the full pipeline: Scr*.tmp -> CSV -> pyrung code -> exec -> graph."""
     from pyrung.click import ladder_to_pyrung
     from pyrung.core.analysis import build_program_graph
@@ -94,7 +97,7 @@ def _build_graph(scr_folder: Path, db_path: Path | None) -> ProgramGraph:
         msg = f"Expected Program, got {type(program).__name__}"
         raise TypeError(msg)
 
-    return build_program_graph(program)
+    return build_program_graph(program), program
 
 
 class AnalysisService:
@@ -117,10 +120,11 @@ class AnalysisService:
 
         Called from a background thread; stores results for main-thread access.
         """
-        graph = _build_graph(scr_folder, db_path)
+        graph, program = _build_graph(scr_folder, db_path)
         tag_to_key, key_to_tag = _build_tag_addr_key_map(base_state)
         self._result = AnalysisResult(
             graph=graph,
+            program=program,
             tag_to_addr_key=tag_to_key,
             addr_key_to_tag=key_to_tag,
         )
@@ -200,3 +204,10 @@ class AnalysisService:
             for t in downstream_tags
             if t in self._result.tag_to_addr_key
         }
+
+    def run_validation(self) -> ValidationReport | None:
+        if self._result is None:
+            return None
+        from pyrung.core.validation import validate
+
+        return validate(self._result.program)

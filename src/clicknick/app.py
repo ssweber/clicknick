@@ -647,6 +647,40 @@ class ClickNickApp:
             "connected",
         )
 
+    def _analyze_program(self) -> None:
+        """Run program validation and display report."""
+        if self._analysis_service is None or not self._analysis_service.is_available:
+            messagebox.showinfo(
+                "Analysis Not Available",
+                "Program analysis requires a connected Click project.\n\n"
+                "Analysis builds automatically when connected to a project "
+                "with ladder files.",
+                parent=self.root,
+            )
+            return
+
+        try:
+            report = self._analysis_service.run_validation()
+        except Exception as exc:
+            messagebox.showerror(
+                "Analysis Error",
+                f"Validation failed:\n{exc}",
+                parent=self.root,
+            )
+            return
+
+        grouped: dict[str, list[tuple[str, str]]] = {}
+        if report:
+            for finding in report:
+                grouped.setdefault(finding.code, []).append((finding.target_name, finding.message))
+
+        from .views.analysis_report_window import (
+            AnalysisReportData,
+            AnalysisReportWindow,
+        )
+
+        AnalysisReportWindow(self.root, AnalysisReportData(grouped_findings=grouped))
+
     def _load_ladder_csv(self):
         """Load a single ladder CSV file to the Click clipboard."""
         csv_file = filedialog.askopenfilename(
@@ -802,6 +836,8 @@ class ClickNickApp:
         ladder_menu.add_command(label="Save Clipboard to CSV...", command=self._save_clipboard_csv)
         ladder_menu.add_command(label="Export from Click...", command=self._export_from_click)
         ladder_menu.add_command(label="Convert to pyrung...", command=self._convert_to_pyrung)
+        ladder_menu.add_separator()
+        ladder_menu.add_command(label="Analyze Program...", command=self._analyze_program)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)

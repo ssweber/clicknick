@@ -75,6 +75,7 @@ def _make_service_with_mock_graph(
     svc = AnalysisService()
     svc._result = AnalysisResult(
         graph=graph,
+        program=MagicMock(),
         tag_to_addr_key=dict(tag_to_addr_key),
         addr_key_to_tag=addr_key_to_tag,
     )
