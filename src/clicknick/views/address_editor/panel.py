@@ -15,7 +15,9 @@ from tksheet import num2alpha
 
 from ...models.address_row import AddressRow
 from ...services.analysis_service import AnalysisService
+from ...services.annotation_service import AnnotationService
 from ...utils.filters import parse_analysis_prefix, text_matches_filter
+from ...widgets.annotation_dialog import AnnotationDialog
 from ...widgets.char_limit_tooltip import CharLimitTooltip
 from .panel_constants import (
     COL_COMMENT,
@@ -429,15 +431,41 @@ class AddressPanel(ttk.Frame):
                         base_value = getattr(base_row, field)
                         self._store._current_session.set_field(addr_key, field, base_value)
 
-    def _update_discard_menu(
+    def _on_edit_annotations(self) -> None:
+        """Open annotation editor for the right-clicked comment cell."""
+        selected = self.sheet.get_selected_cells()
+        if not selected:
+            return
+
+        display_row, _col = next(iter(selected))
+        data_idx = self._get_data_index(display_row)
+        if data_idx is None:
+            return
+
+        row = self.rows[data_idx]
+        block_tag_str, current_meta, free_text = AnnotationService.decompose_comment(row.comment)
+
+        dialog = AnnotationDialog(self.winfo_toplevel(), current_meta, free_text, block_tag_str)
+        self.winfo_toplevel().wait_window(dialog)
+
+        if dialog.result is None:
+            return
+
+        new_comment = AnnotationService.recompose_comment(block_tag_str, dialog.result, free_text)
+        if new_comment == row.comment:
+            return
+
+        with self._store.edit_session("Edit annotations"):
+            self._store._current_session.set_field(row.addr_key, "comment", new_comment)
+
+    def _update_context_menu(
         self, region: str, clicked_row: int | None, clicked_col: int | None
     ) -> None:
         """Update the popup menu based on what was right-clicked."""
-        # Remove any existing discard menu items first
         self.sheet.popup_menu_del_command(label="↩ Discard changes")
+        self.sheet.popup_menu_del_command(label="Edit Annotations...")
 
         if region == "table" and clicked_row is not None and clicked_col is not None:
-            # Check if the clicked cell is dirty
             data_idx = self._get_data_index(clicked_row)
             if data_idx is None:
                 return
@@ -447,9 +475,8 @@ class AddressPanel(ttk.Frame):
                 return
 
             row = self.rows[data_idx]
-            is_dirty = self._store.is_field_dirty(row.addr_key, field_name)
 
-            if is_dirty:
+            if self._store.is_field_dirty(row.addr_key, field_name):
                 self.sheet.popup_menu_add_command(
                     label="↩ Discard changes",
                     func=self._discard_cell_changes,
@@ -459,8 +486,17 @@ class AddressPanel(ttk.Frame):
                     empty_space_menu=False,
                 )
 
+            if clicked_col == COL_COMMENT:
+                self.sheet.popup_menu_add_command(
+                    label="Edit Annotations...",
+                    func=self._on_edit_annotations,
+                    table_menu=True,
+                    index_menu=False,
+                    header_menu=False,
+                    empty_space_menu=False,
+                )
+
         elif region == "index" and clicked_row is not None:
-            # Check if the clicked row is dirty
             data_idx = self._get_data_index(clicked_row)
             if data_idx is None:
                 return
@@ -477,7 +513,7 @@ class AddressPanel(ttk.Frame):
                 )
 
     def _on_right_click(self, event) -> None:
-        """Handle right-click to conditionally show 'Discard changes' menu item.
+        """Handle right-click to conditionally update context menu items.
 
         Runs BEFORE tksheet's handler (via bindtag ordering) so the menu
         is updated before tksheet builds and shows the popup.
@@ -485,7 +521,7 @@ class AddressPanel(ttk.Frame):
         region = self.sheet.identify_region(event)
         clicked_row = self.sheet.identify_row(event)
         clicked_col = self.sheet.identify_column(event)
-        self._update_discard_menu(region, clicked_row, clicked_col)
+        self._update_context_menu(region, clicked_row, clicked_col)
 
     def _setup_header_notes(self) -> None:
         """Set up tooltip notes on column headers with hints."""
