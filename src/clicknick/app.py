@@ -646,81 +646,6 @@ class ClickNickApp:
             "connected",
         )
 
-    def _simulate_prepare_failed(self, msg: str) -> None:
-        messagebox.showerror("Simulate", msg, parent=self.root)
-        self._update_status("Simulation failed", "error")
-
-    def _simulate_open(self, result, scr_folder, db_path) -> None:
-        self._open_dataview_editor()
-
-        if (
-            not hasattr(self, "_dataview_editor_shared_data")
-            or self._dataview_editor_shared_data is None
-            or self._dataview_editor_shared_data._window is None
-        ):
-            self._update_status("Could not open Dataview Editor", "error")
-            return
-
-        window = self._dataview_editor_shared_data._window
-        window.start_simulation(result, scr_folder, db_path)
-        self._update_status(f"Simulation started ({result.file_count} files)", "connected")
-
-    def _build_simulate_nickname_map(self) -> dict[str, str] | None:
-        """Build {display_address: nickname} from AddressStore."""
-        if self._shared_address_data is None:
-            return None
-        nickname_map: dict[str, str] = {}
-        for row in self._shared_address_data.all_rows.values():
-            if row.nickname:
-                nickname_map[row.display_address] = row.nickname
-        return nickname_map or None
-
-    def _simulate(self):
-        """Launch a pyrung simulation of the connected Click project."""
-        if not self.connected_click_hwnd:
-            messagebox.showwarning(
-                "Simulate",
-                "Not connected to a Click project.\n\nStart monitoring first.",
-                parent=self.root,
-            )
-            return
-
-        if self._shared_address_data is None:
-            self._update_status("No data loaded", "error")
-            return
-
-        import threading
-        from pathlib import Path
-
-        from .utils.mdb_shared import find_click_database
-
-        db_path = find_click_database(click_hwnd=self.connected_click_hwnd)
-        if not db_path:
-            messagebox.showerror(
-                "Simulate",
-                "Could not locate the Click project folder.",
-                parent=self.root,
-            )
-            return
-        scr_folder = Path(db_path).parent
-
-        nickname_map = self._build_simulate_nickname_map()
-
-        self._update_status("Preparing simulation...", "warning")
-
-        def _prepare() -> None:
-            from .services.simulate_service import prepare
-
-            try:
-                result = prepare(scr_folder, Path(db_path), nickname_map=nickname_map)
-            except Exception as exc:
-                msg = str(exc)
-                self.root.after(0, lambda: self._simulate_prepare_failed(msg))
-                return
-            self.root.after(0, lambda: self._simulate_open(result, scr_folder, Path(db_path)))
-
-        threading.Thread(target=_prepare, daemon=True).start()
-
     def _load_ladder_csv(self):
         """Load a single ladder CSV file to the Click clipboard."""
         csv_file = filedialog.askopenfilename(
@@ -876,8 +801,6 @@ class ClickNickApp:
         ladder_menu.add_command(label="Save Clipboard to CSV...", command=self._save_clipboard_csv)
         ladder_menu.add_command(label="Export from Click...", command=self._export_from_click)
         ladder_menu.add_command(label="Convert to pyrung...", command=self._convert_to_pyrung)
-        ladder_menu.add_separator()
-        ladder_menu.add_command(label="Simulate...", command=self._simulate)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)

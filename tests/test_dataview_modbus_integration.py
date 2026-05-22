@@ -219,8 +219,6 @@ def _make_panel_stub(rows: list[DataViewRecord]) -> DataviewPanel:
     panel.on_addresses_changed = None
     panel._write_checks = [False] * len(rows)
     panel._live_values = {}
-    panel._live_bool_as_onoff = False
-    panel._forced_addresses = set()
     panel._suppress_notifications = False
     panel._is_dirty = False
     panel.sheet = FakeSheet()
@@ -248,8 +246,8 @@ def _make_window_stub(
     window._modbus_port_var = FakeVar("502")
     window._modbus_toggle_var = FakeVar("Connect")
     window._set_modbus_error_text = lambda text="": None
-    window.modbus_write_button = FakeWidget()
-    window.modbus_write_all_button = FakeWidget()
+    window.write_checked_button = FakeWidget()
+    window.write_all_button = FakeWidget()
     window.modbus_connect_button = FakeWidget()
     window.host_entry = FakeWidget()
     window.port_entry = FakeWidget()
@@ -257,12 +255,6 @@ def _make_window_stub(
     window._iter_open_panels = lambda: list(panels)
     window.after = MagicMock(side_effect=lambda _delay, callback: callback())
     window._run_background = lambda target, *args: target(*args)
-    window._dap = None
-    window._sim_result = None
-    window._sim_toolbar_var = FakeVar(False)
-    window._sim_history_var = FakeVar(False)
-    window._toggle_sim_toolbar = lambda: None
-    window._toggle_sim_history = lambda: None
     return window
 
 
@@ -387,10 +379,6 @@ def test_connection_menu_uses_same_handlers(monkeypatch):
     window._toggle_nav = MagicMock()
     window._toggle_modbus_toolbar = MagicMock()
     window._modbus_toolbar_var = FakeVar(True)
-    window._sim_toolbar_var = FakeVar(False)
-    window._toggle_sim_toolbar = MagicMock()
-    window._sim_history_var = FakeVar(False)
-    window._toggle_sim_history = MagicMock()
     window._connect_modbus = MagicMock()
     window._disconnect_modbus = MagicMock()
 
