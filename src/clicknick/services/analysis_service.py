@@ -87,7 +87,7 @@ def _build_graph(
 
     with tempfile.TemporaryDirectory(prefix="clicknick_analysis_") as tmp:
         csv_dir = Path(tmp)
-        program_save(scr_folder, csv_dir)
+        program_save(scr_folder, csv_dir, index=True)
 
         nickname_csv = None
         if db_path is not None:

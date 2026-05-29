@@ -346,7 +346,7 @@ def _dedupe_filename_stem(stem: str, used_stems: set[str]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def program_save(scr_folder: Path, output: Path | None = None) -> SaveResult:
+def program_save(scr_folder: Path, output: Path | None = None, *, index: bool = False) -> SaveResult:
     """Decode all Scr*.tmp files into a CSV bundle.
 
     Writes main.csv for prog_idx 1 and subroutines/{name}.csv for prog_idx 2+.
@@ -389,7 +389,7 @@ def program_save(scr_folder: Path, output: Path | None = None) -> SaveResult:
         raise ValueError("No main program (prog_idx=1) found")
 
     main_csv = dest / "main.csv"
-    write_csv(main_csv, main_progs[0].rungs)
+    write_csv(main_csv, main_progs[0].rungs, index=index)
 
     subroutine_csvs: list[Path] = []
     if sub_progs:
@@ -399,7 +399,7 @@ def program_save(scr_folder: Path, output: Path | None = None) -> SaveResult:
         for prog in sub_progs:
             stem = _dedupe_filename_stem(_slugify(prog.name), used_stems)
             csv_path = sub_dir / f"{stem}.csv"
-            write_csv(csv_path, prog.rungs)
+            write_csv(csv_path, prog.rungs, index=index)
             subroutine_csvs.append(csv_path)
 
     total_rungs = sum(len(p.rungs) for p in raw_programs)

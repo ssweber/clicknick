@@ -228,7 +228,7 @@ def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
 
     from pyrung.click import pyrung_to_ladder
 
-    bundle = pyrung_to_ladder(program, tag_map)
+    bundle = pyrung_to_ladder(program, tag_map, index=True)
 
     pending_dir = project_dir / "pending"
     bundle.write(pending_dir)
