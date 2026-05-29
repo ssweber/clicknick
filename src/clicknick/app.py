@@ -261,6 +261,73 @@ class ClickNickApp:
         # Pack the main frame
         options_frame.pack(fill=tk.X, pady=(0, 12))
 
+    def _on_dap_started(self, dap):
+        live_server = getattr(self, "_live_server", None)
+        if live_server is not None:
+            live_server._dap = dap
+        self._dap_btn.configure(text="■ Stop", state="normal")
+        self._dap_status_var.set("Running")
+
+    def _on_dap_failed(self, exc):
+        self._dap_btn.configure(state="normal")
+        self._dap_status_var.set(f"Error: {exc}")
+
+    def _toggle_dap(self):
+        from .services.dap_service import DapService, SimState
+
+        live_server = getattr(self, "_live_server", None)
+        if live_server is None:
+            return
+
+        dap = live_server._dap
+        if dap is not None and dap.state not in (SimState.IDLE, SimState.STOPPED, SimState.ERROR):
+            live_server._dap.terminate()
+            live_server._dap = None
+            self._dap_btn.configure(text="▶ Start")
+            self._dap_status_var.set("Stopped")
+            return
+
+        analysis = self._analysis_service
+        if analysis is None or not analysis.is_available:
+            self._dap_status_var.set("No program loaded")
+            return
+        project_dir = analysis.project_dir
+        if project_dir is None or not project_dir.is_dir():
+            self._dap_status_var.set("No pyrung project")
+            return
+
+        self._dap_status_var.set("Starting...")
+        self._dap_btn.configure(state="disabled")
+        self.root.update_idletasks()
+
+        import threading
+
+        def _launch():
+            try:
+                dap = DapService()
+                dap.launch(project_dir)
+                self.root.after(0, lambda: self._on_dap_started(dap))
+            except Exception as exc:
+                self.root.after(0, lambda e=exc: self._on_dap_failed(e))
+
+        threading.Thread(target=_launch, daemon=True, name="dap-launch").start()
+
+    def _create_simulation_section(self, parent):
+        """Create the simulation server section with DAP toggle."""
+        sim_frame = ttk.LabelFrame(parent, text="Simulation Server", padding=10)
+
+        row = ttk.Frame(sim_frame)
+        row.pack(fill=tk.X)
+
+        self._dap_status_var = tk.StringVar(value="Stopped")
+        self._dap_btn = ttk.Button(row, text="▶ Start", width=10, command=self._toggle_dap)
+        self._dap_btn.pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Label(row, textvariable=self._dap_status_var, foreground="gray").pack(
+            side=tk.LEFT, fill=tk.X, expand=True
+        )
+
+        sim_frame.pack(fill=tk.X, pady=(0, 12))
+
     def _create_about_dialog(self):
         """Create and show the About dialog."""
         AboutDialog(self.root, get_version())
@@ -893,6 +960,7 @@ class ClickNickApp:
         # Create all widgets
         self._create_click_instances_section(main_frame)
         self._create_options_section(main_frame)
+        self._create_simulation_section(main_frame)
 
         # Pack the main frame
         main_frame.pack(fill=tk.BOTH, expand=True)

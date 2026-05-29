@@ -12,8 +12,6 @@ Grammar (one command per connection)::
     set  <ID> <field> <value...>       -> edit a field (appears as unsaved change)
     tag  <subcommand> ...              -> annotation metadata operations
     rung <subcommand> ...              -> program listing / preview / apply
-    dap  <subcommand> ...              -> DAP simulation lifecycle
-
 ``<field>`` is one of: nickname, comment, initial_value, retentive.
 Values may be quoted (shlex), e.g. ``set DS1 comment "Main motor run"``.
 ``<ID>`` is a pyrung tag name (preferred) or CLICK display address (``DS1``, ``C100``).
@@ -45,7 +43,6 @@ class DispatchContext:
     resolve_tag: Callable[[str], int | None] | None = None
     analysis: Any | None = None  # AnalysisService (avoid import for lightweight CLI)
     annotation: AnnotationService = field(default_factory=AnnotationService)
-    dap: Any | None = None  # DapService instance (long-lived, not rebuilt per cycle)
     show_preview: Callable[..., None] | None = None
 
 
@@ -162,9 +159,4 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
 
         return dispatch_rung(ctx, parts[1:])
 
-    if verb == "dap":
-        from .dap_commands import dispatch_dap
-
-        return dispatch_dap(ctx, parts[1:])
-
-    raise ValueError(f"unknown command {verb!r} (expected: ping, info, get, set, tag, rung, dap)")
+    raise ValueError(f"unknown command {verb!r} (expected: ping, info, get, set, tag, rung)")

@@ -385,9 +385,9 @@ class DapService:
                 f"DAP initialize failed\n{stderr}" if stderr else "DAP initialize failed"
             )
 
-        resp = self._send_and_wait("launch", {"program": str(run_py)})
+        resp = self._send_and_wait("launch", {"program": str(run_py)}, timeout=60.0)
         if resp is None or not resp.get("success"):
-            error_msg = (resp or {}).get("message", "unknown error")
+            error_msg = (resp or {}).get("message") or str(resp)
             stderr = self._drain_stderr()
             self._kill()
             detail = f"{error_msg}\n{stderr}" if stderr else error_msg

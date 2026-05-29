@@ -81,7 +81,6 @@ class LiveServer:
         self._get_analysis = get_analysis
         self._get_click_hwnd = get_click_hwnd
         self._get_mdb_path = get_mdb_path
-        self._dap: Any | None = None  # Long-lived DapService instance
         self._listener: Listener | None = None
         self._accept_thread: threading.Thread | None = None
         self._stop = threading.Event()
@@ -164,7 +163,6 @@ class LiveServer:
             store=self._get_store(),
             resolve_tag=resolve_tag,
             analysis=analysis,
-            dap=self._dap,
             show_preview=show_preview,
         )
 
@@ -176,8 +174,6 @@ class LiveServer:
                 try:
                     ctx = self._build_context()
                     request.result = dispatch(ctx, request.command)
-                    if ctx.dap is not self._dap:
-                        self._dap = ctx.dap
                 except Exception as exc:  # noqa: BLE001 - reported back to client
                     request.result = f"ERROR: {exc}"
                 finally:
@@ -244,14 +240,8 @@ class LiveServer:
         self._refresh_advertisement()  # publish immediately, then reschedule
 
     def stop(self) -> None:
-        """Stop serving, terminate DAP if running, remove the port file, and close the socket."""
+        """Stop serving, remove the port file, and close the socket."""
         self._stop.set()
-        if self._dap is not None:
-            try:
-                self._dap.terminate()
-            except Exception:
-                pass
-            self._dap = None
         for after_id in (self._drain_after_id, self._advertise_after_id):
             if after_id is not None:
                 try:
