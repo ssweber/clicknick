@@ -110,6 +110,40 @@ class TestEditSession:
         assert len(store.undo_stack) == 1
         assert len(store.user_overrides) == 3
 
+    def test_separate_sessions_accumulate_fields_on_same_row(self, store):
+        """Editing different fields of one row across SEPARATE sessions must
+        preserve earlier edits.
+
+        Regression: visible_state rows carry an empty dirty_fields, so freezing
+        a later session against visible_state dropped the prior session's dirty
+        markers and _merge_base_with_override reverted those fields. (Reachable
+        in the UI: edit a nickname in the grid, then edit that row's comment via
+        the right-click annotation dialog.)
+        """
+        addr_key = get_addr_key("X", 1)
+
+        with store.edit_session("Set nickname") as session:
+            session.set_field(addr_key, "nickname", "Motor_Run")
+        with store.edit_session("Set comment") as session:
+            session.set_field(addr_key, "comment", "Main motor")
+
+        row = store.visible_state[addr_key]
+        assert row.nickname == "Motor_Run"
+        assert row.comment == "Main motor"
+        assert store.is_field_dirty(addr_key, "nickname")
+        assert store.is_field_dirty(addr_key, "comment")
+
+        # Reverse order behaves the same.
+        addr_key_2 = get_addr_key("X", 2)
+        with store.edit_session("Set comment") as session:
+            session.set_field(addr_key_2, "comment", "Switch")
+        with store.edit_session("Set nickname") as session:
+            session.set_field(addr_key_2, "nickname", "Pump")
+
+        row2 = store.visible_state[addr_key_2]
+        assert row2.nickname == "Pump"
+        assert row2.comment == "Switch"
+
     def test_nested_edit_session_raises(self, store):
         """Nested edit sessions should raise RuntimeError."""
         addr_key = get_addr_key("X", 1)

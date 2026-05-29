@@ -897,6 +897,22 @@ class ClickNickApp:
         # Pack the main frame
         main_frame.pack(fill=tk.BOTH, expand=True)
 
+    def _live_session_dir(self):
+        """Directory the live server advertises its port file in.
+
+        Co-locate with the connected CLICK instance (next to SC_.mdb) when a
+        window is connected; otherwise a ClickNick-owned fallback. A connected
+        CLICK window always has a temp folder, even without ODBC/CSV access.
+        """
+        from .live.session import click_temp_dir, fallback_dir
+
+        hwnd = self.connected_click_hwnd
+        if hwnd:
+            click_dir = click_temp_dir(hwnd)
+            if click_dir.is_dir():
+                return click_dir
+        return fallback_dir()
+
     def __init__(self):
         # Create main window
         self.root = tk.Tk()
@@ -942,6 +958,29 @@ class ClickNickApp:
         # Shared address data (single source of truth for all address data)
         self._shared_address_data = None
         self._shared_data_source_path = None
+
+        # Live editing server: lets `clicknick-live` push edits into this
+        # running instance. Holds getters (not snapshots) so it always targets
+        # the current store and advertises in the current session directory,
+        # both of which change on reconnect/project-switch.
+        from .live import LiveServer
+
+        self._live_server = LiveServer(
+            self.root,
+            lambda: self._shared_address_data,
+            self._live_session_dir,
+            lambda: (
+                self.connected_click_filename.removesuffix(".ckp")
+                if self.connected_click_filename
+                else None
+            ),
+            lambda: self._analysis_service,
+        )
+        try:
+            self._live_server.start()
+        except Exception as exc:  # noqa: BLE001 - never block app startup
+            print(f"Live server failed to start: {exc}")
+            self._live_server = None
 
         # Program analysis service (built in background on connect)
         self._analysis_service = None
@@ -989,7 +1028,10 @@ class ClickNickApp:
 
         def _rebuild() -> None:
             try:
-                self._analysis_service.build(scr_folder, Path(db_path), store.base_state)
+                persist = scr_folder / "pyrung_project"
+                self._analysis_service.build(
+                    scr_folder, Path(db_path), store.base_state, persist_dir=persist
+                )
             except Exception:
                 pass
 
@@ -1022,7 +1064,10 @@ class ClickNickApp:
 
         def _build() -> None:
             try:
-                self._analysis_service.build(scr_folder, Path(db_path), store.base_state)
+                persist = scr_folder / "pyrung_project"
+                self._analysis_service.build(
+                    scr_folder, Path(db_path), store.base_state, persist_dir=persist
+                )
             except Exception:
                 pass
 
@@ -1547,6 +1592,9 @@ class ClickNickApp:
         """Handle application shutdown."""
         if self.monitoring:
             self.stop_monitoring()
+        live_server = getattr(self, "_live_server", None)
+        if live_server is not None:
+            live_server.stop()
         self.root.destroy()
 
     def run(self):

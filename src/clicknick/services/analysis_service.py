@@ -28,6 +28,7 @@ class AnalysisResult:
     tag_to_addr_key: dict[str, int] = field(default_factory=dict)
     addr_key_to_tag: dict[int, str] = field(default_factory=dict)
     role_cache: dict[str, set[int]] = field(default_factory=dict)
+    project_dir: Path | None = None
 
 
 def _write_nicknames_csv(csv_dir: Path, db_path: Path) -> Path | None:
@@ -70,8 +71,15 @@ def _build_tag_addr_key_map(
     return tag_to_key, key_to_tag
 
 
-def _build_graph(scr_folder: Path, db_path: Path | None) -> tuple[ProgramGraph, Program]:
-    """Run the full pipeline: Scr*.tmp -> CSV -> pyrung code -> exec -> graph."""
+def _build_graph(
+    scr_folder: Path, db_path: Path | None, persist_dir: Path | None = None
+) -> tuple[ProgramGraph, Program, Path | None]:
+    """Run the full pipeline: Scr*.tmp -> CSV -> pyrung code -> exec -> graph.
+
+    When *persist_dir* is provided, also writes the full pyrung project
+    (tags.py, main.py, subroutines/) to disk for consumption by DAP and
+    rung preview commands.
+    """
     from pyrung.click import ladder_to_pyrung
     from pyrung.core.analysis import build_program_graph
 
@@ -87,6 +95,18 @@ def _build_graph(scr_folder: Path, db_path: Path | None) -> tuple[ProgramGraph, 
 
         code = ladder_to_pyrung(csv_dir, nickname_csv=nickname_csv)
 
+        project_dir = None
+        if persist_dir is not None:
+            from pyrung.click import ladder_to_pyrung_project
+
+            persist_dir.mkdir(parents=True, exist_ok=True)
+            ladder_to_pyrung_project(
+                csv_dir,
+                nickname_csv=nickname_csv,
+                output_dir=persist_dir,
+            )
+            project_dir = persist_dir
+
     namespace: dict[str, object] = {}
     exec(compile(code, "<analysis>", "exec"), namespace)  # noqa: S102
     program = namespace["logic"]
@@ -97,7 +117,7 @@ def _build_graph(scr_folder: Path, db_path: Path | None) -> tuple[ProgramGraph, 
         msg = f"Expected Program, got {type(program).__name__}"
         raise TypeError(msg)
 
-    return build_program_graph(program), program
+    return build_program_graph(program), program, project_dir
 
 
 class AnalysisService:
@@ -110,23 +130,40 @@ class AnalysisService:
     def is_available(self) -> bool:
         return self._result is not None
 
+    @property
+    def tag_to_addr_key(self) -> dict[str, int]:
+        """Tag name → addr_key map (empty if analysis not built)."""
+        if self._result is None:
+            return {}
+        return self._result.tag_to_addr_key
+
+    @property
+    def project_dir(self) -> Path | None:
+        """Path to the persisted pyrung_project/ directory (None if not built)."""
+        if self._result is None:
+            return None
+        return self._result.project_dir
+
     def build(
         self,
         scr_folder: Path,
         db_path: Path | None,
         base_state: Mapping[int, object],
+        persist_dir: Path | None = None,
     ) -> None:
         """Run the analysis pipeline and cache the result.
 
         Called from a background thread; stores results for main-thread access.
+        When *persist_dir* is given, the pyrung project is also written to disk.
         """
-        graph, program = _build_graph(scr_folder, db_path)
+        graph, program, project_dir = _build_graph(scr_folder, db_path, persist_dir)
         tag_to_key, key_to_tag = _build_tag_addr_key_map(base_state)
         self._result = AnalysisResult(
             graph=graph,
             program=program,
             tag_to_addr_key=tag_to_key,
             addr_key_to_tag=key_to_tag,
+            project_dir=project_dir,
         )
 
     def rebuild_mapping(self, base_state: Mapping[int, object]) -> None:

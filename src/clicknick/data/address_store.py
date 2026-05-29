@@ -595,8 +595,12 @@ class AddressStore:
             if not builder.has_changes():
                 continue
 
-            # Get current visible row as base for freeze
-            base = self.visible_state.get(addr_key)
+            # Freeze on top of any existing override so fields made dirty in a
+            # PRIOR session are preserved. visible_state rows carry an empty
+            # dirty_fields (they are recomputed from clean base + selective
+            # override), so freezing against them would drop earlier dirty
+            # markers and _merge_base_with_override would revert those fields.
+            base = self.user_overrides.get(addr_key) or self.visible_state.get(addr_key)
             if not base:
                 continue
 
