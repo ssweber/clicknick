@@ -262,9 +262,7 @@ class ClickNickApp:
         options_frame.pack(fill=tk.X, pady=(0, 12))
 
     def _on_dap_started(self, dap):
-        live_server = getattr(self, "_live_server", None)
-        if live_server is not None:
-            live_server._dap = dap
+        self._dap_service = dap
         self._dap_btn.configure(text="■ Stop", state="normal")
         self._dap_status_var.set("Running")
 
@@ -275,14 +273,10 @@ class ClickNickApp:
     def _toggle_dap(self):
         from .services.dap_service import DapService, SimState
 
-        live_server = getattr(self, "_live_server", None)
-        if live_server is None:
-            return
-
-        dap = live_server._dap
+        dap = getattr(self, "_dap_service", None)
         if dap is not None and dap.state not in (SimState.IDLE, SimState.STOPPED, SimState.ERROR):
-            live_server._dap.terminate()
-            live_server._dap = None
+            dap.terminate()
+            self._dap_service = None
             self._dap_btn.configure(text="▶ Start")
             self._dap_status_var.set("Stopped")
             return
@@ -1671,6 +1665,9 @@ class ClickNickApp:
         """Handle application shutdown."""
         if self.monitoring:
             self.stop_monitoring()
+        dap = getattr(self, "_dap_service", None)
+        if dap is not None:
+            dap.terminate()
         live_server = getattr(self, "_live_server", None)
         if live_server is not None:
             live_server.stop()
