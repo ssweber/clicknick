@@ -71,6 +71,22 @@ def _build_tag_addr_key_map(
     return tag_to_key, key_to_tag
 
 
+_PRESERVE = {".venv", "__pycache__", "pyproject.toml", "uv.lock"}
+
+
+def _clean_generated(persist_dir: Path) -> None:
+    """Remove generated files while preserving .venv, csv_output, etc."""
+    import shutil
+
+    for child in persist_dir.iterdir():
+        if child.name in _PRESERVE:
+            continue
+        if child.is_dir():
+            shutil.rmtree(child, ignore_errors=True)
+        else:
+            child.unlink(missing_ok=True)
+
+
 def _build_graph(
     scr_folder: Path, db_path: Path | None, persist_dir: Path | None = None
 ) -> tuple[ProgramGraph, Program, Path | None]:
@@ -98,11 +114,9 @@ def _build_graph(
         project_dir = None
         if persist_dir is not None:
             from pyrung.click import ladder_to_pyrung_project
-            import shutil
 
-            if persist_dir.exists():
-                shutil.rmtree(persist_dir)
             persist_dir.mkdir(parents=True, exist_ok=True)
+            _clean_generated(persist_dir)
 
             csv_persist = persist_dir / "csv"
             csv_persist.mkdir(exist_ok=True)
