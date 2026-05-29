@@ -897,6 +897,15 @@ class ClickNickApp:
         # Pack the main frame
         main_frame.pack(fill=tk.BOTH, expand=True)
 
+    def _live_mdb_path(self):
+        """Resolve the MDB path from the currently connected Click instance."""
+        if not self.connected_click_hwnd:
+            return None
+        from .utils.mdb_shared import find_click_database
+
+        db_path = find_click_database(click_hwnd=self.connected_click_hwnd)
+        return Path(db_path) if db_path else None
+
     def _live_session_dir(self):
         """Directory the live server advertises its port file in.
 
@@ -975,6 +984,8 @@ class ClickNickApp:
                 else None
             ),
             lambda: self._analysis_service,
+            get_click_hwnd=lambda: self.connected_click_hwnd,
+            get_mdb_path=self._live_mdb_path,
         )
         try:
             self._live_server.start()

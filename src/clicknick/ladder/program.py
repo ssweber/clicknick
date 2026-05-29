@@ -346,7 +346,9 @@ def _dedupe_filename_stem(stem: str, used_stems: set[str]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def program_save(scr_folder: Path, output: Path | None = None, *, index: bool = False) -> SaveResult:
+def program_save(
+    scr_folder: Path, output: Path | None = None, *, index: bool = False
+) -> SaveResult:
     """Decode all Scr*.tmp files into a CSV bundle.
 
     Writes main.csv for prog_idx 1 and subroutines/{name}.csv for prog_idx 2+.

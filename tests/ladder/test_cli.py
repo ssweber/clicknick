@@ -286,7 +286,7 @@ class TestProgramSave:
 
         written_paths: list[Path] = []
 
-        def _write_csv(path: Path, rungs) -> None:
+        def _write_csv(path: Path, rungs, **_kwargs) -> None:
             written_paths.append(Path(path))
 
         monkeypatch.setattr("clicknick.ladder.program.write_csv", _write_csv)

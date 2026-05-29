@@ -100,10 +100,19 @@ def _build_graph(
             from pyrung.click import ladder_to_pyrung_project
 
             persist_dir.mkdir(parents=True, exist_ok=True)
+
+            csv_persist = persist_dir / "csv"
+            csv_persist.mkdir(exist_ok=True)
+            program_save(scr_folder, csv_persist, index=True)
+            persist_nickname_csv = None
+            if db_path is not None:
+                persist_nickname_csv = _write_nicknames_csv(csv_persist, db_path)
+
             ladder_to_pyrung_project(
-                csv_dir,
-                nickname_csv=nickname_csv,
+                csv_persist,
+                nickname_csv=persist_nickname_csv,
                 output_dir=persist_dir,
+                index=True,
             )
             project_dir = persist_dir
 

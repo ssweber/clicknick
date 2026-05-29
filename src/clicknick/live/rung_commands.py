@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import difflib
 import re
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -55,15 +56,14 @@ def _extract_rungs(source: str) -> list[tuple[int, int, int, str]]:
     """Extract rung boundaries from pyrung source.
 
     Returns list of (rung_number, start_line, end_line, first_comment).
-    Detects ``def rung_N`` or ``# R<N>`` markers.
+    Detects ``# RN`` markers on ``with rung():`` lines.
     """
     lines = source.splitlines()
     rungs: list[tuple[int, int, int, str]] = []
-    rung_pattern = re.compile(r"^def rung_(\d+)\(")
-    marker_pattern = re.compile(r"^# R(\d+)")
+    rung_marker = re.compile(r"#\s*R(\d+)\s*$")
 
     for i, line in enumerate(lines):
-        m = rung_pattern.match(line) or marker_pattern.match(line)
+        m = rung_marker.search(line)
         if m:
             rung_num = int(m.group(1))
             comment = ""
@@ -113,6 +113,48 @@ def _cmd_list(ctx: DispatchContext, parts: list[str]) -> str:
     return f"{file_stem}: {len(rungs)} rungs\n" + "\n".join(lines)
 
 
+_HUNK_RE = re.compile(r"^@@ -(\d+)")
+
+
+def _annotate_hunk_headers(diff_lines: list[str], before_lines: list[str]) -> list[str]:
+    """Add rung markers to @@ hunk headers, like git's function-context display."""
+    rung_marker = re.compile(r"#\s*R(\d+)\s*$")
+    result: list[str] = []
+    for line in diff_lines:
+        m = _HUNK_RE.match(line)
+        if m:
+            start = int(m.group(1)) - 1
+            for i in range(min(start, len(before_lines) - 1), -1, -1):
+                rm = rung_marker.search(before_lines[i])
+                if rm:
+                    rung_tag = f"  # R{rm.group(1)}"
+                    line = line.rstrip() + rung_tag + "\n"
+                    break
+        result.append(line)
+    return result
+
+
+def _extract_changed_rungs(diff_lines: list[str]) -> list[int]:
+    """Scan a unified diff for ``# RN`` rung markers in changed hunks."""
+    found: set[int] = set()
+    current_rung: int | None = None
+    for line in diff_lines:
+        if line.startswith("@@"):
+            m = re.search(r"#\s*R(\d+)\s*$", line)
+            current_rung = int(m.group(1)) if m else None
+            continue
+        m = re.search(r"#\s*R(\d+)\s*$", line)
+        if m:
+            current_rung = int(m.group(1))
+        if (
+            current_rung is not None
+            and line.startswith(("+", "-"))
+            and not line.startswith(("+++", "---"))
+        ):
+            found.add(current_rung)
+    return sorted(found)
+
+
 def _filter_diff_by_rungs(diff_lines: list[str], rung_nums: set[int]) -> list[str]:
     """Filter unified diff to only show hunks touching the selected rungs."""
     result: list[str] = []
@@ -129,7 +171,7 @@ def _filter_diff_by_rungs(diff_lines: list[str], rung_nums: set[int]) -> list[st
             result.append(line)
             continue
         if not in_header:
-            rung_match = re.search(r"rung_(\d+)", line)
+            rung_match = re.search(r"#\s*R(\d+)\s*$", line)
             if rung_match and int(rung_match.group(1)) in rung_nums:
                 include_hunk = True
             if include_hunk:
@@ -159,80 +201,88 @@ def _cmd_preview(ctx: DispatchContext, parts: list[str]) -> str:
 
     project_dir = _get_project_dir(ctx)
     path = _resolve_file(project_dir, file_stem)
-    before = path.read_text(encoding="utf-8")
+    after = path.read_text(encoding="utf-8")
 
-    assert ctx.store is not None
-    nicknames: dict[str, str] = {}
-    for _addr_key, row in ctx.store.visible_state.items():
-        if row.nickname:
-            nicknames[row.display_address] = row.nickname
+    label = file_stem or "main"
 
-    from pyrung.click import ladder_to_pyrung
+    from pyrung.click import ladder_to_pyrung_project
 
-    analysis = ctx.analysis
-    assert analysis is not None
-    csv_dir = project_dir.parent
+    csv_dir = project_dir / "csv"
+    if not csv_dir.is_dir():
+        from ..ladder.program import program_save
+
+        scr_folder = project_dir.parent
+        csv_dir.mkdir(parents=True, exist_ok=True)
+        program_save(scr_folder, csv_dir, index=True)
+
     nickname_csv = csv_dir / "nicknames.csv" if (csv_dir / "nicknames.csv").exists() else None
-
-    after = ladder_to_pyrung(csv_dir, nickname_csv=nickname_csv, nicknames=nicknames)
+    before_files = ladder_to_pyrung_project(csv_dir, nickname_csv=nickname_csv, index=True)
+    relative_key = f"subroutines/{label}.py" if file_stem and file_stem != "main" else "main.py"
+    before = before_files.get(relative_key, "")
+    if not before:
+        raise ValueError(f"{relative_key} not found in generated project")
 
     before_lines = before.splitlines(keepends=True)
     after_lines = after.splitlines(keepends=True)
 
-    label = file_stem or "main"
     diff_lines = list(
         difflib.unified_diff(
             before_lines, after_lines, fromfile=f"a/{label}.py", tofile=f"b/{label}.py"
         )
     )
-
-    if selection:
-        rung_nums = set(_parse_rung_selection(selection))
-        filtered = _filter_diff_by_rungs(diff_lines, rung_nums)
-        if not filtered:
-            return f"(no changes in selected rungs: {selection})"
-        return "".join(filtered)
+    diff_lines = _annotate_hunk_headers(diff_lines, before_lines)
 
     if not diff_lines:
         return "(no changes)"
-    return "".join(diff_lines)
+
+    changed_rungs = _extract_changed_rungs(diff_lines)
+
+    if selection:
+        rung_nums_list = _parse_rung_selection(selection)
+        filtered = _filter_diff_by_rungs(diff_lines, set(rung_nums_list))
+        if not filtered:
+            return f"(no changes in selected rungs: {selection})"
+        diff_text = "".join(filtered)
+    else:
+        rung_nums_list = changed_rungs if changed_rungs else None
+        diff_text = "".join(diff_lines)
+
+    if ctx.show_preview is not None:
+        pending_dir = project_dir / "csv_output"
+        ctx.show_preview(
+            label,
+            selection,
+            diff_text,
+            rung_nums_list,
+            pending_dir if pending_dir.is_dir() else None,
+        )
+        n = len(rung_nums_list) if rung_nums_list else "all"
+        return f"OK: preview window opened for {label} ({n} rungs)"
+
+    return diff_text
 
 
 def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
-    file_stem = parts[0] if parts else None
+    import subprocess
+
     project_dir = _get_project_dir(ctx)
-    path = _resolve_file(project_dir, file_stem)
+    script = project_dir / "project_to_csv.py"
+    if not script.is_file():
+        raise ValueError("project_to_csv.py not found in project directory")
 
-    source = path.read_text(encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if result.returncode != 0:
+        raise ValueError(
+            result.stderr.strip() or f"project_to_csv.py exited with code {result.returncode}"
+        )
 
-    namespace: dict[str, object] = {}
-    exec(compile(source, str(path), "exec"), namespace)  # noqa: S102
-
-    from pyrung.core.program import Program
-
-    program = namespace.get("logic")
-    if not isinstance(program, Program):
-        raise ValueError(f"no valid Program found in {path.name}")
-
-    tags_path = project_dir / "tags.py"
-    if not tags_path.is_file():
-        raise ValueError("tags.py not found in project directory")
-    tags_ns: dict[str, object] = {}
-    exec(compile(tags_path.read_text(encoding="utf-8"), str(tags_path), "exec"), tags_ns)  # noqa: S102
-
-    from pyrung.click.tag_map import TagMap
-
-    tag_map = tags_ns.get("tags")
-    if not isinstance(tag_map, TagMap):
-        raise ValueError("no valid TagMap found in tags.py")
-
-    from pyrung.click import pyrung_to_ladder
-
-    bundle = pyrung_to_ladder(program, tag_map, index=True)
-
-    pending_dir = project_dir / "pending"
-    bundle.write(pending_dir)
-
+    pending_dir = project_dir / "csv_output"
     return f"OK: wrote ladder CSVs to {pending_dir}"
 
 

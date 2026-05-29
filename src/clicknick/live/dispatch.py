@@ -7,6 +7,7 @@ and trigger observer refreshes.
 Grammar (one command per connection)::
 
     ping                               -> "pong"
+    info                               -> project directory and connection state
     get  <ID>                          -> show current row fields + dirty flag
     set  <ID> <field> <value...>       -> edit a field (appears as unsaved change)
     tag  <subcommand> ...              -> annotation metadata operations
@@ -45,6 +46,7 @@ class DispatchContext:
     analysis: Any | None = None  # AnalysisService (avoid import for lightweight CLI)
     annotation: AnnotationService = field(default_factory=AnnotationService)
     dap: Any | None = None  # DapService instance (long-lived, not rebuilt per cycle)
+    show_preview: Callable[..., None] | None = None
 
 
 def _parse_bool(value: str) -> bool:
@@ -122,6 +124,19 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
     if verb == "ping":
         return "pong"
 
+    if verb == "info":
+        lines = []
+        if ctx.store is not None:
+            lines.append(f"store: connected ({len(ctx.store.visible_state)} rows)")
+        else:
+            lines.append("store: not connected")
+        if ctx.analysis is not None and ctx.analysis.is_available:
+            pdir = ctx.analysis.project_dir
+            lines.append(f"project_dir: {pdir}" if pdir else "project_dir: (not persisted)")
+        else:
+            lines.append("analysis: not available")
+        return "\n".join(lines)
+
     if ctx.store is None:
         raise ValueError("no project loaded (connect a CLICK project or load a CSV first)")
 
@@ -152,4 +167,4 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
 
         return dispatch_dap(ctx, parts[1:])
 
-    raise ValueError(f"unknown command {verb!r} (expected: ping, get, set, tag, rung, dap)")
+    raise ValueError(f"unknown command {verb!r} (expected: ping, info, get, set, tag, rung, dap)")

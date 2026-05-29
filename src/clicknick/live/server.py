@@ -37,7 +37,7 @@ _DRAIN_INTERVAL_MS = 50
 # How often the Tk thread re-checks where to advertise the port file (ms).
 _ADVERTISE_INTERVAL_MS = 1000
 # Max time the socket thread waits for the Tk thread to run a command (s).
-_REQUEST_TIMEOUT_S = 10.0
+_REQUEST_TIMEOUT_S = 60.0
 
 
 class _Request:
@@ -71,12 +71,16 @@ class LiveServer:
         get_session_dir: Callable[[], Path | None],
         get_session_label: Callable[[], str | None] | None = None,
         get_analysis: Callable[[], AnalysisService | None] | None = None,
+        get_click_hwnd: Callable[[], int | None] | None = None,
+        get_mdb_path: Callable[[], Path | None] | None = None,
     ) -> None:
         self._root = root
         self._get_store = get_store
         self._get_session_dir = get_session_dir
         self._get_session_label = get_session_label
         self._get_analysis = get_analysis
+        self._get_click_hwnd = get_click_hwnd
+        self._get_mdb_path = get_mdb_path
         self._dap: Any | None = None  # Long-lived DapService instance
         self._listener: Listener | None = None
         self._accept_thread: threading.Thread | None = None
@@ -128,11 +132,40 @@ class LiveServer:
         resolve_tag = None
         if analysis is not None and analysis.is_available:
             resolve_tag = analysis.tag_to_addr_key.get
+
+        show_preview = None
+        if self._root is not None:
+            get_hwnd = self._get_click_hwnd
+            get_mdb = self._get_mdb_path
+
+            def _open_preview(
+                file_stem: str,
+                selection: str | None,
+                diff_text: str,
+                rung_nums: list[int] | None,
+                pending_dir: Path,
+            ) -> None:
+                from ..views.rung_preview_window import RungPreviewWindow
+
+                RungPreviewWindow(
+                    self._root,
+                    diff_text,
+                    file_stem=file_stem,
+                    selection=selection,
+                    rung_nums=rung_nums,
+                    pending_dir=pending_dir,
+                    get_click_hwnd=get_hwnd,
+                    get_mdb_path=get_mdb,
+                )
+
+            show_preview = _open_preview
+
         return DispatchContext(
             store=self._get_store(),
             resolve_tag=resolve_tag,
             analysis=analysis,
             dap=self._dap,
+            show_preview=show_preview,
         )
 
     def _drain(self) -> None:
