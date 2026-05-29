@@ -8,7 +8,9 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(uv run pytest:*)",
       "Bash(uv run:*)",
-      "Bash(do uv:*)"
+      "Bash(do uv:*)",
+      "Read(//c/Users/Sam/Documents/GitHub/**)",
+      "Read(//c/Users/Sam/Documents/GitHub/pyrung/**)"
     ]
   }
 }
