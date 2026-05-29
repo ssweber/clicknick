@@ -285,32 +285,6 @@ def _cmd_clear_physical(ctx: DispatchContext, parts: list[str]) -> str:
     )
 
 
-def _cmd_list_unbounded(ctx: DispatchContext, _parts: list[str]) -> str:
-    assert ctx.store is not None
-    results = []
-    for _addr_key, row in ctx.store.visible_state.items():
-        if not row.nickname:
-            continue
-        _, meta, _ = AnnotationService.decompose_comment(row.comment)
-        if meta is not None and (meta.choices is not None or meta.min is not None):
-            continue
-        results.append(f"{row.display_address} {row.nickname}")
-    if not results:
-        return "(no unbounded tags found)"
-    return "\n".join(results)
-
-
-def _cmd_list_init_set(ctx: DispatchContext, _parts: list[str]) -> str:
-    assert ctx.store is not None
-    results = []
-    for _addr_key, row in ctx.store.visible_state.items():
-        if row.initial_value:
-            results.append(f"{row.display_address} {row.nickname or '-'} = {row.initial_value}")
-    if not results:
-        return "(no tags with initial values)"
-    return "\n".join(results)
-
-
 _SUBCOMMANDS = {
     "show": _cmd_show,
     "set-flag": _cmd_set_flag,
@@ -323,8 +297,6 @@ _SUBCOMMANDS = {
     "set-physical": _cmd_set_physical,
     "set-link": _cmd_set_link,
     "clear-physical": _cmd_clear_physical,
-    "list-unbounded": _cmd_list_unbounded,
-    "list-init-set": _cmd_list_init_set,
 }
 
 

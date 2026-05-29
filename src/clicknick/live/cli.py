@@ -17,7 +17,6 @@ Usage::
     clicknick-live tag set-range Temp_PV 0 100       # numeric range
     clicknick-live tag set-uom Temp_PV degC          # unit of measurement
     clicknick-live tag set-physical Clamp_FB Clamp --on-delay 50ms --off-delay 200ms
-    clicknick-live tag list-unbounded                # tags without constraints
 
     # Rung commands
     clicknick-live rung list                         # list available files
