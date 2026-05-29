@@ -98,7 +98,10 @@ def _build_graph(
         project_dir = None
         if persist_dir is not None:
             from pyrung.click import ladder_to_pyrung_project
+            import shutil
 
+            if persist_dir.exists():
+                shutil.rmtree(persist_dir)
             persist_dir.mkdir(parents=True, exist_ok=True)
 
             csv_persist = persist_dir / "csv"
