@@ -296,20 +296,43 @@ class ClickNickApp:
 
         import threading
 
+        snapshot_raw = self._snapshot_var.get().strip()
+        snapshot_path = Path(snapshot_raw) if snapshot_raw else None
+
         def _launch():
             try:
                 dap = DapService()
-                dap.launch(project_dir)
+                dap.launch(project_dir, snapshot_path=snapshot_path)
                 self.root.after(0, lambda: self._on_dap_started(dap))
             except Exception as exc:
                 self.root.after(0, lambda e=exc: self._on_dap_failed(e))
 
         threading.Thread(target=_launch, daemon=True, name="dap-launch").start()
 
+    def _browse_snapshot(self):
+        path = filedialog.askopenfilename(
+            title="Select PLC Data Snapshot",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+        if path:
+            self._snapshot_var.set(path)
+
     def _create_simulation_section(self, parent):
         """Create the simulation server section with DAP toggle."""
         sim_frame = ttk.LabelFrame(parent, text="Simulation Server", padding=10)
 
+        # Snapshot file picker
+        snap_row = ttk.Frame(sim_frame)
+        snap_row.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(snap_row, text="Snapshot:").pack(side=tk.LEFT, padx=(0, 4))
+        self._snapshot_var = tk.StringVar()
+        snap_entry = ttk.Entry(snap_row, textvariable=self._snapshot_var)
+        snap_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
+        ttk.Button(snap_row, text="Browse...", width=8, command=self._browse_snapshot).pack(
+            side=tk.LEFT
+        )
+
+        # Start/Stop button + status
         row = ttk.Frame(sim_frame)
         row.pack(fill=tk.X)
 
