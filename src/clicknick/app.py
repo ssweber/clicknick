@@ -274,7 +274,7 @@ class ClickNickApp:
         from .services.dap_service import DapService, SimState
 
         dap = getattr(self, "_dap_service", None)
-        if dap is not None and dap.state not in (SimState.IDLE, SimState.STOPPED, SimState.ERROR):
+        if dap is not None and dap.state not in (SimState.IDLE, SimState.ERROR):
             dap.terminate()
             self._dap_service = None
             self._dap_btn.configure(text="▶ Start")
