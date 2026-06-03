@@ -48,7 +48,7 @@ import argparse
 import sys
 
 from .client import send_command
-from .session import list_sessions
+from .session import find_sessions
 
 
 def main() -> None:
@@ -71,16 +71,18 @@ def main() -> None:
 
     # `list` (or no args) -> show sessions
     if (not args.session and not args.command) or (args.command and args.command[0] == "list"):
-        sessions = list_sessions()
+        sessions = find_sessions()
         if not sessions:
             print("No active sessions")
         elif len(sessions) == 1:
-            print(f"Active session: {sessions[0]}")
+            label, _, port_file = sessions[0]
+            print(f"Active session: {label}")
+            print(f"Project dir:    {port_file.parent / 'pyrung_project'}")
             print("Usage: clicknick-cli <command>  (e.g. clicknick-cli get Motor_Run)")
         else:
             print("Active sessions:")
-            for name in sessions:
-                print(f"  {name}")
+            for label, _, port_file in sessions:
+                print(f"  {label}  ({port_file.parent / 'pyrung_project'})")
             print("Usage: clicknick-cli -s <session> <command>")
         return
 
