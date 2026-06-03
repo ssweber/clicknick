@@ -21,8 +21,9 @@ Usage::
     # Rung commands
     clicknick-cli rung list                         # list available files
     clicknick-cli rung list main                    # rungs in main program
-    clicknick-cli rung preview main --select r3     # diff for rung 3
+    clicknick-cli rung preview                      # scan all files for changes
     clicknick-cli rung preview main                 # full program diff
+    clicknick-cli rung preview main --select r3     # diff for rung 3
     clicknick-cli rung apply main                   # pyrung -> ladder CSVs
 
     # DAP simulation

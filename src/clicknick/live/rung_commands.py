@@ -27,15 +27,40 @@ def _get_project_dir(ctx: DispatchContext) -> Path:
     return project_dir
 
 
-def _resolve_file(project_dir: Path, file_stem: str | None) -> Path:
+def _resolve_file(project_dir: Path, file_stem: str) -> Path:
     """Resolve a file stem (e.g. 'main', 'startup') to a .py path in the project."""
-    if file_stem is None or file_stem == "main":
+    if file_stem == "main":
         path = project_dir / "main.py"
     else:
         path = project_dir / "subroutines" / f"{file_stem}.py"
     if not path.is_file():
         raise ValueError(f"file not found: {path}")
     return path
+
+
+def _all_file_stems(project_dir: Path) -> list[str]:
+    """Return all file stems: main + sorted subroutines."""
+    stems = ["main"]
+    sub_dir = project_dir / "subroutines"
+    if sub_dir.is_dir():
+        stems.extend(p.stem for p in sorted(sub_dir.glob("*.py")))
+    return stems
+
+
+def _get_before_files(project_dir: Path) -> dict[str, str]:
+    """Generate the 'before' state by round-tripping ladder CSVs through pyrung."""
+    from pyrung.click import ladder_to_pyrung_project
+
+    csv_dir = project_dir / "csv"
+    if not csv_dir.is_dir():
+        from ..ladder.program import program_save
+
+        scr_folder = project_dir.parent
+        csv_dir.mkdir(parents=True, exist_ok=True)
+        program_save(scr_folder, csv_dir, index=True)
+
+    nickname_csv = csv_dir / "nicknames.csv" if (csv_dir / "nicknames.csv").exists() else None
+    return ladder_to_pyrung_project(csv_dir, nickname_csv=nickname_csv, index=True)
 
 
 def _parse_rung_selection(selection: str) -> list[int]:
@@ -90,11 +115,7 @@ def _cmd_list(ctx: DispatchContext, parts: list[str]) -> str:
     project_dir = _get_project_dir(ctx)
 
     if file_stem is None:
-        available = ["main"]
-        sub_dir = project_dir / "subroutines"
-        if sub_dir.is_dir():
-            available.extend(p.stem for p in sorted(sub_dir.glob("*.py")))
-        return "files: " + ", ".join(available)
+        return "files: " + ", ".join(_all_file_stems(project_dir))
 
     path = _resolve_file(project_dir, file_stem)
     source = path.read_text(encoding="utf-8")
@@ -184,6 +205,48 @@ def _filter_diff_by_rungs(diff_lines: list[str], rung_nums: set[int]) -> list[st
     )
 
 
+def _diff_one_file(
+    project_dir: Path,
+    before_files: dict[str, str],
+    stem: str,
+) -> tuple[list[str], list[int]]:
+    """Compute unified diff and changed rungs for a single file stem.
+
+    Returns (diff_lines, changed_rungs).  diff_lines is empty when unchanged.
+    """
+    path = _resolve_file(project_dir, stem)
+    after = path.read_text(encoding="utf-8")
+
+    relative_key = f"subroutines/{stem}.py" if stem != "main" else "main.py"
+    before = before_files.get(relative_key, "")
+    if not before:
+        return [], []
+
+    before_lines = before.splitlines(keepends=True)
+    after_lines = after.splitlines(keepends=True)
+
+    diff_lines = list(
+        difflib.unified_diff(
+            before_lines, after_lines, fromfile=f"a/{stem}.py", tofile=f"b/{stem}.py"
+        )
+    )
+    diff_lines = _annotate_hunk_headers(diff_lines, before_lines)
+    changed_rungs = _extract_changed_rungs(diff_lines) if diff_lines else []
+    return diff_lines, changed_rungs
+
+
+def _preview_all(project_dir: Path, before_files: dict[str, str]) -> str:
+    """Scan all files and summarize which ones have changes."""
+    changed: list[str] = []
+    for stem in _all_file_stems(project_dir):
+        _, rungs = _diff_one_file(project_dir, before_files, stem)
+        if rungs:
+            changed.append(f"  {stem}: {', '.join(f'R{r}' for r in rungs)}")
+    if not changed:
+        return "(no changes)"
+    return "changed files:\n" + "\n".join(changed)
+
+
 def _cmd_preview(ctx: DispatchContext, parts: list[str]) -> str:
     file_stem = None
     selection = None
@@ -200,42 +263,16 @@ def _cmd_preview(ctx: DispatchContext, parts: list[str]) -> str:
             raise ValueError(f"unexpected argument: {parts[i]}")
 
     project_dir = _get_project_dir(ctx)
-    path = _resolve_file(project_dir, file_stem)
-    after = path.read_text(encoding="utf-8")
+    before_files = _get_before_files(project_dir)
+
+    if file_stem is None and selection is None:
+        return _preview_all(project_dir, before_files)
 
     label = file_stem or "main"
-
-    from pyrung.click import ladder_to_pyrung_project
-
-    csv_dir = project_dir / "csv"
-    if not csv_dir.is_dir():
-        from ..ladder.program import program_save
-
-        scr_folder = project_dir.parent
-        csv_dir.mkdir(parents=True, exist_ok=True)
-        program_save(scr_folder, csv_dir, index=True)
-
-    nickname_csv = csv_dir / "nicknames.csv" if (csv_dir / "nicknames.csv").exists() else None
-    before_files = ladder_to_pyrung_project(csv_dir, nickname_csv=nickname_csv, index=True)
-    relative_key = f"subroutines/{label}.py" if file_stem and file_stem != "main" else "main.py"
-    before = before_files.get(relative_key, "")
-    if not before:
-        raise ValueError(f"{relative_key} not found in generated project")
-
-    before_lines = before.splitlines(keepends=True)
-    after_lines = after.splitlines(keepends=True)
-
-    diff_lines = list(
-        difflib.unified_diff(
-            before_lines, after_lines, fromfile=f"a/{label}.py", tofile=f"b/{label}.py"
-        )
-    )
-    diff_lines = _annotate_hunk_headers(diff_lines, before_lines)
+    diff_lines, changed_rungs = _diff_one_file(project_dir, before_files, label)
 
     if not diff_lines:
         return "(no changes)"
-
-    changed_rungs = _extract_changed_rungs(diff_lines)
 
     if selection:
         rung_nums_list = _parse_rung_selection(selection)
