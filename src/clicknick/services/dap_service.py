@@ -385,7 +385,7 @@ class DapService:
                 f"DAP initialize failed\n{stderr}" if stderr else "DAP initialize failed"
             )
 
-        launch_args: dict[str, str] = {"program": str(run_py)}
+        launch_args: dict[str, object] = {"program": str(run_py), "autoReload": True}
         if snapshot_path is not None:
             launch_args["snapshotPath"] = str(snapshot_path)
         resp = self._send_and_wait("launch", launch_args, timeout=60.0)
