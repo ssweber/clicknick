@@ -7,6 +7,7 @@ Each tab displays all memory types in a unified view.
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -62,6 +63,8 @@ class AddressEditorWindow(tk.Toplevel):
             parts.append(f"Modified: {total_modified}")
         if total_errors > 0:
             parts.append(f"Errors: {total_errors}")
+        if self._synced_pending > 0:
+            parts.append(f"({self._synced_pending}↑)")
 
         self.status_var.set(" | ".join(parts))
 
@@ -432,6 +435,9 @@ class AddressEditorWindow(tk.Toplevel):
 
         try:
             count = self._store.save_all_changes()
+
+            if self._on_synced is not None:
+                self._on_synced(count)
 
             self.status_var.set(f"{action_verb.capitalize()} {count} changes")
             messagebox.showinfo(
@@ -1428,6 +1434,7 @@ class AddressEditorWindow(tk.Toplevel):
         address_store: AddressStore,
         click_filename: str = "",
         analysis_service: object | None = None,
+        on_synced: Callable[[int], None] | None = None,
     ):
         """Initialize the Address Editor window.
 
@@ -1436,12 +1443,15 @@ class AddressEditorWindow(tk.Toplevel):
             address_store: AddressStore instance for data management
             click_filename: The connected Click project filename (e.g., "MyProject.ckp")
             analysis_service: Optional AnalysisService for program-analysis filter prefixes.
+            on_synced: Called with change count after a successful sync to MDB.
         """
         super().__init__(parent)
 
         self._store = address_store
         self.click_filename = click_filename
         self._analysis_service = analysis_service
+        self._on_synced = on_synced
+        self._synced_pending: int = 0
         self.title(self._get_window_title())
         self.geometry("1025x700")
 
@@ -1479,3 +1489,7 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Open Tag Browser by default
         self.after(100, self._toggle_nav)
+
+    def _update_sync_indicator(self, pending: int) -> None:
+        self._synced_pending = pending
+        self._update_status()

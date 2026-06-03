@@ -31,13 +31,30 @@ class ScrWatcher:
                 pass
         return best
 
-    def __init__(self, scr_folder: Path, on_changed: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        scr_folder: Path,
+        on_changed: Callable[[], None],
+        on_sync_status_changed: Callable[[int], None] | None = None,
+    ) -> None:
         self._folder = scr_folder
         self._on_changed = on_changed
+        self._on_sync_status_changed = on_sync_status_changed
+        self._synced_pending: int = 0
         self._last_mtime: float = self._newest_mtime()
         self._after_id: str | None = None
         self._active = False
         self._tk_root: tk.Tk | None = None
+
+    @property
+    def synced_pending(self) -> int:
+        return self._synced_pending
+
+    def record_sync(self, count: int) -> None:
+        if count > 0:
+            self._synced_pending += count
+            if self._on_sync_status_changed:
+                self._on_sync_status_changed(self._synced_pending)
 
     def _schedule(self) -> None:
         if self._active and self._tk_root:
@@ -67,6 +84,10 @@ class ScrWatcher:
             if current > self._last_mtime:
                 self._last_mtime = current
                 self._on_changed()
+                if self._synced_pending > 0:
+                    self._synced_pending = 0
+                    if self._on_sync_status_changed:
+                        self._on_sync_status_changed(0)
         except Exception:
             pass
         self._schedule()

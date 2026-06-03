@@ -363,6 +363,10 @@ class ClickNickApp:
         else:
             self.status_label.configure(style="Status.TLabel")
 
+    def _on_editor_synced(self, count: int) -> None:
+        if self._scr_watcher is not None:
+            self._scr_watcher.record_sync(count)
+
     def _open_address_editor(self):
         """Open the Address Editor window.
 
@@ -388,6 +392,7 @@ class ClickNickApp:
                 address_store=self._shared_address_data,
                 click_filename=self.connected_click_filename or "",
                 analysis_service=self._analysis_service,
+                on_synced=self._on_editor_synced,
             )
 
         except Exception as e:
@@ -1053,7 +1058,7 @@ class ClickNickApp:
         self._shared_address_data = None
         self._shared_data_source_path = None
 
-        # Live editing server: lets `clicknick-live` push edits into this
+        # Live editing server: lets `clicknick-cli` push edits into this
         # running instance. Holds getters (not snapshots) so it always targets
         # the current store and advertises in the current session directory,
         # both of which change on reconnect/project-switch.
@@ -1071,6 +1076,7 @@ class ClickNickApp:
             lambda: self._analysis_service,
             get_click_hwnd=lambda: self.connected_click_hwnd,
             get_mdb_path=self._live_mdb_path,
+            get_synced_pending=lambda: self._scr_watcher.synced_pending if self._scr_watcher else 0,
         )
         try:
             self._live_server.start()
@@ -1133,6 +1139,38 @@ class ClickNickApp:
 
         threading.Thread(target=_rebuild, daemon=True).start()
 
+    def _update_window_title(self):
+        """Update window title to reflect current connection and data source."""
+        if not self.connected_click_filename:
+            self.root.title("ClickNick")
+            return
+
+        # Determine source type
+        if self.csv_path_var.get():
+            source = "CSV"
+        elif self.using_database:
+            source = "DB"
+        else:
+            source = ""
+
+        if source:
+            title = f"ClickNick - {self.connected_click_filename} - {source}"
+        else:
+            title = f"ClickNick - {self.connected_click_filename}"
+
+        pending = self._scr_watcher.synced_pending if self._scr_watcher else 0
+        if pending > 0:
+            title += f" ({pending}↑)"
+
+        self.root.title(title)
+
+    def _on_sync_status_changed(self, pending: int) -> None:
+        self._update_window_title()
+        if self._shared_address_data is not None:
+            for window in self._shared_address_data._windows:
+                if hasattr(window, "_update_sync_indicator"):
+                    window._update_sync_indicator(pending)
+
     def _start_analysis_build(self) -> None:
         """Build program analysis in background if connected to a Click project."""
         if not self.connected_click_hwnd or self._shared_address_data is None:
@@ -1173,28 +1211,11 @@ class ClickNickApp:
         if self._scr_watcher is not None:
             self._scr_watcher.stop()
         self._scr_watcher = ScrWatcher(
-            scr_folder, lambda: self._on_scr_changed(scr_folder, db_path)
+            scr_folder,
+            lambda: self._on_scr_changed(scr_folder, db_path),
+            on_sync_status_changed=self._on_sync_status_changed,
         )
         self._scr_watcher.start(self.root)
-
-    def _update_window_title(self):
-        """Update window title to reflect current connection and data source."""
-        if not self.connected_click_filename:
-            self.root.title("ClickNick")
-            return
-
-        # Determine source type
-        if self.csv_path_var.get():
-            source = "CSV"
-        elif self.using_database:
-            source = "DB"
-        else:
-            source = ""
-
-        if source:
-            self.root.title(f"ClickNick - {self.connected_click_filename} - {source}")
-        else:
-            self.root.title(f"ClickNick - {self.connected_click_filename}")
 
     def _check_odbc_drivers_and_warn(self):
         """Check for ODBC drivers and show warning if none available."""

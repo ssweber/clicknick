@@ -6,12 +6,12 @@ and trigger observer refreshes.
 
 Grammar (one command per connection)::
 
-    ping                               -> "pong"
-    info                               -> project directory and connection state
+    ping                               -> liveness + connection state + status
     get  <ID>                          -> show current row fields + dirty flag
     set  <ID> <field> <value...>       -> edit a field (appears as unsaved change)
     tag  <subcommand> ...              -> annotation metadata operations
     rung <subcommand> ...              -> program listing / preview / apply
+    prompt-save                        -> pop a save reminder dialog in the GUI
 ``<field>`` is one of: nickname, comment, initial_value, retentive.
 Values may be quoted (shlex), e.g. ``set DS1 comment "Main motor run"``.
 ``<ID>`` is a pyrung tag name (preferred) or CLICK display address (``DS1``, ``C100``).
@@ -44,6 +44,8 @@ class DispatchContext:
     analysis: Any | None = None  # AnalysisService (avoid import for lightweight CLI)
     annotation: AnnotationService = field(default_factory=AnnotationService)
     show_preview: Callable[..., None] | None = None
+    show_save_prompt: Callable[[str, str], None] | None = None
+    synced_pending: int = 0
 
 
 def _parse_bool(value: str) -> bool:
@@ -106,10 +108,23 @@ def _cmd_set(ctx: DispatchContext, identifier: str, field_name: str, raw_value: 
     return f"OK: {identifier} {field_name} = {value!r} (unsaved change)"
 
 
+def _status_footer(ctx: DispatchContext) -> str:
+    parts: list[str] = []
+    if ctx.store is not None:
+        unsaved = len(ctx.store.user_overrides)
+        if unsaved > 0:
+            parts.append(f"{unsaved} unsaved")
+    if ctx.synced_pending > 0:
+        parts.append(f"{ctx.synced_pending}↑ not saved in Click")
+    if not parts:
+        return ""
+    return "\n[" + " | ".join(parts) + "]"
+
+
 _HELP_TEXT = """\
 connection:
   ping
-  info
+  help
 
 data:
   get <tag-or-addr>
@@ -132,7 +147,10 @@ rungs:
   rung list [file]
   rung preview [file] [--select r3,r7]
   rung apply [file]
-  (run apply before preview to enable the Copy button)"""
+  (run apply before preview to enable the Copy button)
+
+workflow:
+  prompt-save"""
 
 
 def _format_help() -> str:
@@ -155,20 +173,35 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
         return _format_help()
 
     if verb == "ping":
-        return "pong"
-
-    if verb == "info":
-        lines = []
+        lines = ["pong"]
         if ctx.store is not None:
-            lines.append(f"store: connected ({len(ctx.store.visible_state)} rows)")
+            lines.append(f"store: {len(ctx.store.visible_state)} rows")
+            unsaved = len(ctx.store.user_overrides)
+            if unsaved:
+                lines.append(f"unsaved: {unsaved}")
         else:
             lines.append("store: not connected")
+        if ctx.synced_pending > 0:
+            lines.append(f"synced: {ctx.synced_pending}↑ not saved in Click")
         if ctx.analysis is not None and ctx.analysis.is_available:
             pdir = ctx.analysis.project_dir
-            lines.append(f"project_dir: {pdir}" if pdir else "project_dir: (not persisted)")
-        else:
-            lines.append("analysis: not available")
+            lines.append(f"project: {pdir}" if pdir else "project: (not persisted)")
         return "\n".join(lines)
+
+    if verb == "prompt-save":
+        if ctx.store is None or not ctx.store.has_unsaved_changes():
+            return "no pending changes"
+        count = len(ctx.store.user_overrides)
+        if ctx.store.has_errors():
+            raise ValueError(f"{count} unsaved change(s) have validation errors — fix errors first")
+        if ctx.show_save_prompt is not None:
+            ctx.show_save_prompt(
+                "Unsaved Changes",
+                f"You have {count} unsaved change{'s' if count != 1 else ''} "
+                f"in the Address Editor.\n\n"
+                f"Use File → Sync to write them to the Click database.",
+            )
+        return f"prompted: {count} unsaved change{'s' if count != 1 else ''}"
 
     if ctx.store is None:
         raise ValueError("no project loaded (connect a CLICK project or load a CSV first)")
@@ -176,23 +209,23 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
     if verb == "get":
         if len(parts) != 2:
             raise ValueError("usage: get <ID>")
-        return _cmd_get(ctx, parts[1])
+        return _cmd_get(ctx, parts[1]) + _status_footer(ctx)
 
     if verb == "set":
         if len(parts) < 4:
             raise ValueError("usage: set <ID> <field> <value...>")
         identifier, field_name = parts[1], parts[2].lower()
         raw_value = " ".join(parts[3:])
-        return _cmd_set(ctx, identifier, field_name, raw_value)
+        return _cmd_set(ctx, identifier, field_name, raw_value) + _status_footer(ctx)
 
     if verb == "tag":
         from .tag_commands import dispatch_tag
 
-        return dispatch_tag(ctx, parts[1:])
+        return dispatch_tag(ctx, parts[1:]) + _status_footer(ctx)
 
     if verb == "rung":
         from .rung_commands import dispatch_rung
 
-        return dispatch_rung(ctx, parts[1:])
+        return dispatch_rung(ctx, parts[1:]) + _status_footer(ctx)
 
     raise ValueError(f"unknown command {verb!r} — try 'help' for a list of commands")

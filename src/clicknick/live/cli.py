@@ -3,7 +3,7 @@
 Usage::
 
     clicknick-cli list                              # show active sessions
-    clicknick-cli ping                              # liveness check
+    clicknick-cli ping                              # connection state + status
 
     # Inspect / edit (by pyrung tag name or Click address)
     clicknick-cli get Motor_Run                     # inspect a row
