@@ -106,6 +106,39 @@ def _cmd_set(ctx: DispatchContext, identifier: str, field_name: str, raw_value: 
     return f"OK: {identifier} {field_name} = {value!r} (unsaved change)"
 
 
+_HELP_TEXT = """\
+connection:
+  ping
+  info
+
+data:
+  get <tag-or-addr>
+  set <tag-or-addr> <field> <value>
+
+tags:
+  tag show <tag>
+  tag set-flag <tag> <flag>
+  tag clear-flag <tag> <flag>
+  tag set-choices <tag> <Label:val> ...
+  tag set-range <tag> <min> <max>
+  tag clear-constraints <tag>
+  tag set-uom <tag> <unit>
+  tag clear-uom <tag>
+  tag set-physical <tag> <name> [--on-delay D] [--off-delay D] [--profile P] [--system S]
+  tag set-link <tag> <link>
+  tag clear-physical <tag>
+
+rungs:
+  rung list [file]
+  rung preview [file] [--select r3,r7]
+  rung apply [file]
+  (run apply before preview to enable the Copy button)"""
+
+
+def _format_help() -> str:
+    return _HELP_TEXT
+
+
 def dispatch(ctx: DispatchContext, command: str) -> str:
     """Execute one *command* against *ctx*; return human-readable text.
 
@@ -117,6 +150,9 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
         raise ValueError("empty command")
 
     verb = parts[0].lower()
+
+    if verb == "help":
+        return _format_help()
 
     if verb == "ping":
         return "pong"
@@ -159,4 +195,4 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
 
         return dispatch_rung(ctx, parts[1:])
 
-    raise ValueError(f"unknown command {verb!r} (expected: ping, info, get, set, tag, rung)")
+    raise ValueError(f"unknown command {verb!r} — try 'help' for a list of commands")

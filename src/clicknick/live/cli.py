@@ -1,41 +1,41 @@
-"""``clicknick-live`` — push commands into a running ClickNick instance.
+"""``clicknick-cli`` — push commands into a running ClickNick instance.
 
 Usage::
 
-    clicknick-live list                              # show active sessions
-    clicknick-live ping                              # liveness check
+    clicknick-cli list                              # show active sessions
+    clicknick-cli ping                              # liveness check
 
     # Inspect / edit (by pyrung tag name or Click address)
-    clicknick-live get Motor_Run                     # inspect a row
-    clicknick-live set Motor_Run nickname MotorRun   # rename (unsaved change)
-    clicknick-live set DS1 comment "Main motor"      # quoting works
+    clicknick-cli get Motor_Run                     # inspect a row
+    clicknick-cli set Motor_Run nickname MotorRun   # rename (unsaved change)
+    clicknick-cli set DS1 comment "Main motor"      # quoting works
 
     # Tag annotations
-    clicknick-live tag show Motor_Run                # full tag metadata display
-    clicknick-live tag set-flag Motor_Run external   # set a boolean flag
-    clicknick-live tag set-choices Mode "Off:0" "Manual:1" "Auto:2"
-    clicknick-live tag set-range Temp_PV 0 100       # numeric range
-    clicknick-live tag set-uom Temp_PV degC          # unit of measurement
-    clicknick-live tag set-physical Clamp_FB Clamp --on-delay 50ms --off-delay 200ms
+    clicknick-cli tag show Motor_Run                # full tag metadata display
+    clicknick-cli tag set-flag Motor_Run external   # set a boolean flag
+    clicknick-cli tag set-choices Mode "Off:0" "Manual:1" "Auto:2"
+    clicknick-cli tag set-range Temp_PV 0 100       # numeric range
+    clicknick-cli tag set-uom Temp_PV degC          # unit of measurement
+    clicknick-cli tag set-physical Clamp_FB Clamp --on-delay 50ms --off-delay 200ms
 
     # Rung commands
-    clicknick-live rung list                         # list available files
-    clicknick-live rung list main                    # rungs in main program
-    clicknick-live rung preview main --select r3     # diff for rung 3
-    clicknick-live rung preview main                 # full program diff
-    clicknick-live rung apply main                   # pyrung -> ladder CSVs
+    clicknick-cli rung list                         # list available files
+    clicknick-cli rung list main                    # rungs in main program
+    clicknick-cli rung preview main --select r3     # diff for rung 3
+    clicknick-cli rung preview main                 # full program diff
+    clicknick-cli rung apply main                   # pyrung -> ladder CSVs
 
     # DAP simulation
-    clicknick-live dap start                         # launch pyrung DAP subprocess
-    clicknick-live dap status                        # check simulation state
-    clicknick-live dap stop                          # terminate
+    clicknick-cli dap start                         # launch pyrung DAP subprocess
+    clicknick-cli dap status                        # check simulation state
+    clicknick-cli dap stop                          # terminate
 
     # Pick a specific session
-    clicknick-live -s MyProject get DS1
+    clicknick-cli -s MyProject get DS1
 
 Commands may be chained with ``;``::
 
-    clicknick-live "set C1 nickname Pump ; set C2 nickname Valve"
+    clicknick-cli "set C1 nickname Pump ; set C2 nickname Valve"
 
 Sessions are identified by the .ckp project name. When exactly one session is
 active, ``--session`` may be omitted.
@@ -54,12 +54,13 @@ def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
 
     parser = argparse.ArgumentParser(
-        prog="clicknick-live",
+        prog="clicknick-cli",
         description="Attach to a running ClickNick instance and push live edits.",
         epilog=(
             "Identifiers: use pyrung tag names (Motor_Run) or Click addresses (DS1).\n"
             "All writes land as unsaved changes in the address editor (Ctrl+Z to undo).\n"
-            "Subcommands: tag (annotations), rung (program), dap (simulation)."
+            "Subcommands: tag (annotations), rung (program), dap (simulation).\n"
+            "Use 'clicknick-cli help' for a grouped command list."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -74,16 +75,23 @@ def main() -> None:
             print("No active sessions")
         elif len(sessions) == 1:
             print(f"Active session: {sessions[0]}")
-            print("Usage: clicknick-live <command>  (e.g. clicknick-live get Motor_Run)")
+            print("Usage: clicknick-cli <command>  (e.g. clicknick-cli get Motor_Run)")
         else:
             print("Active sessions:")
             for name in sessions:
                 print(f"  {name}")
-            print("Usage: clicknick-live -s <session> <command>")
+            print("Usage: clicknick-cli -s <session> <command>")
         return
 
     if not args.command:
         parser.error("no command given")
+
+    # `help` handled locally — no server connection needed
+    if args.command[0] == "help":
+        from .dispatch import _format_help
+
+        print(_format_help())
+        return
 
     raw = " ".join(args.command)
     commands = [c.strip() for c in raw.split(";") if c.strip()]

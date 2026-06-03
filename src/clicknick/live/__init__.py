@@ -13,7 +13,7 @@ Architecture
   marshaled onto the Tk main thread via a ``queue.Queue`` drained by a
   periodic ``root.after`` poll. This is required because tkinter is
   single-threaded: the socket thread must never touch widgets directly.
-- ``client``/``cli`` (client side) is the ``clicknick-live`` command. It
+- ``client``/``cli`` (client side) is the ``clicknick-cli live`` command. It
   reads the port file, connects, sends one command, prints the reply.
 
 Session discovery uses port files in a well-known directory:
