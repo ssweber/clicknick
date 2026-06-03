@@ -3,13 +3,13 @@ revision = 3
 requires-python = ">=3.11, <4.0"
 
 [options]
-exclude-newer = "2026-05-15T16:14:28.5077863Z"
+exclude-newer = "2026-05-27T16:51:16.5543545Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
-laddercodec = { timestamp = "2026-05-22T16:14:28.5078082Z", span = "PT0S" }
-pyrung = { timestamp = "2026-05-22T16:14:28.5078087Z", span = "PT0S" }
-pyclickplc = { timestamp = "2026-05-22T16:14:28.5078019Z", span = "PT0S" }
+laddercodec = { timestamp = "2026-06-03T16:51:16.5543621Z", span = "PT0S" }
+pyrung = { timestamp = "2026-06-03T16:51:16.5543626Z", span = "PT0S" }
+pyclickplc = { timestamp = "2026-06-03T16:51:16.5543598Z", span = "PT0S" }
 
 [[package]]
 name = "clicknick"
@@ -33,7 +33,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "laddercodec", editable = "../laddercodec" },
-    { name = "pyclickplc" },
+    { name = "pyclickplc", editable = "../pyclickplc" },
     { name = "pyodbc", specifier = ">=5.3.0" },
     { name = "pyrung", editable = "../pyrung" },
     { name = "pywin32", specifier = ">=311" },
@@ -124,14 +124,27 @@ wheels = [
 
 [[package]]
 name = "pyclickplc"
-version = "0.3.1"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "../pyclickplc" }
 dependencies = [
     { name = "pymodbus" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/04/da/61820cbb5cd9c6f94e701da89ca326828c386a1ff13615f2e1655c96c596/pyclickplc-0.3.1.tar.gz", hash = "sha256:75d06afba3f052f454038e7755f81ac3c49d47bed02d76a2d59b83994b7482a8", size = 137989, upload-time = "2026-03-29T19:29:23.026Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/06/72/97751ff252abdb637d1f1462bcd010dc422171d7cb5d4caef3488379b4fb/pyclickplc-0.3.1-py3-none-any.whl", hash = "sha256:b061a1167475dd956baf51541ce36c541587220268536e471bea323ff7efa068", size = 52592, upload-time = "2026-03-29T19:29:21.852Z" },
+
+[package.metadata]
+requires-dist = [{ name = "pymodbus", specifier = ">=3.12,<3.13" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.3.5" },
+    { name = "pytest-asyncio", specifier = ">=1.0" },
+    { name = "ruff", specifier = ">=0.11.0" },
+    { name = "ty", specifier = ">=0.0.14" },
+]
+docs = [
+    { name = "mkdocs", specifier = ">=1.6.1,<2" },
+    { name = "mkdocs-gen-files", specifier = ">=0.5.0" },
+    { name = "mkdocs-llmstxt", specifier = ">=0.3.0" },
+    { name = "mkdocs-material", specifier = ">=9.6.0" },
+    { name = "mkdocstrings", extras = ["python"], specifier = ">=0.29.0" },
 ]
 
 [[package]]

@@ -89,6 +89,7 @@ packages = ["src/clicknick"]
 
 [tool.uv.sources]
 laddercodec = { path = "../laddercodec", editable = true }
+pyclickplc = { path = "../pyclickplc", editable = true }
 pyrung = { path = "../pyrung", editable = true }
 
 [tool.uv]

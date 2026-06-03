@@ -658,7 +658,9 @@ class AddressEditorWindow(tk.Toplevel):
             return False, f"Block name '{name}' already exists.\nBlock names must be unique."
 
         # Show the Add Block dialog with validation
-        dialog = AddBlockDialog(self, validate_name=validate_block_name)
+        dialog = AddBlockDialog(
+            self, validate_name=validate_block_name, row_count=len(selected_rows)
+        )
         self.wait_window(dialog)
 
         if dialog.result is None:
