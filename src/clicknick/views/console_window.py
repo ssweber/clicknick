@@ -181,6 +181,14 @@ class ConsoleWindow(tk.Toplevel):
     def _show_help(self) -> None:
         self._submit_command_text("help")
 
+    def _open_project_folder(self) -> None:
+        analysis = self._get_analysis()
+        if analysis is None or not analysis.is_available:
+            return
+        project_dir = analysis.project_dir
+        if project_dir is not None and project_dir.is_dir():
+            os.startfile(project_dir)
+
     def _stop_file_watcher(self) -> None:
         if self._file_watch_after_id is not None:
             try:
@@ -247,6 +255,13 @@ class ConsoleWindow(tk.Toplevel):
             side=tk.LEFT, padx=(0, 4)
         )
         ttk.Button(toolbar, text="Help", width=6, command=self._show_help).pack(side=tk.LEFT)
+
+        ttk.Button(
+            toolbar,
+            text="\N{OPEN FILE FOLDER}",
+            width=3,
+            command=self._open_project_folder,
+        ).pack(side=tk.LEFT, padx=(4, 0))
 
         # Input row (at top, before output)
         input_frame = ttk.Frame(self, padding=(8, 0, 8, 6))
