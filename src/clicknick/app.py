@@ -1380,114 +1380,113 @@ class ClickNickApp:
 
         self.root.after(2000, self.refresh_click_instances)
 
-    def _monitor_task(self):
-        """Monitor task that runs every 100ms using after."""
-        if not self.monitoring:
-            return
+    def _handle_project_change(self, current_title: str, new_filename: str) -> bool:
+        """Handle Click project filename change. Returns False if monitoring stopped."""
+        has_open_windows = False
+        if self._session is not None:
+            has_open_windows = (
+                len(self._session.store._windows) > 0
+                or (
+                    self._session.dataview is not None
+                    and self._session.dataview._window is not None
+                )
+                or self._session.console is not None
+            )
+        if has_open_windows:
+            from tkinter import messagebox
 
-        # Use the stored HWND from connection time
-        window_id = self.connected_click_hwnd
+            messagebox.showinfo(
+                "Project Changed",
+                "The Click project was changed. Editor windows will now close.",
+            )
 
-        # First verify window still exists
-        if not window_id or not self.detector.check_window_exists(self.connected_click_pid):
-            self._handle_window_closed()
-            return
-
-        # Direct title check - no list scanning
-        current_title = self.detector.get_window_title(window_id)
-        new_filename = self._parse_filename_from_title(current_title)
+        if self._session is not None:
+            self._session.close(prompt_save=False)
+            self.nickname_manager.set_shared_data(None)
+            self._session = None
 
         csv_unloaded = False
-        if new_filename and new_filename != self.connected_click_filename:
-            has_open_windows = False
-            if self._session is not None:
-                has_open_windows = (
-                    len(self._session.store._windows) > 0
-                    or (
-                        self._session.dataview is not None
-                        and self._session.dataview._window is not None
-                    )
-                    or self._session.console is not None
-                )
-            if has_open_windows:
-                from tkinter import messagebox
+        if self.csv_path_var.get():
+            self.csv_path_var.set("")
+            self._update_status("⚠ CSV unloaded - filename changed", "error")
+            csv_unloaded = True
 
-                messagebox.showinfo(
-                    "Project Changed",
-                    "The Click project was changed. Editor windows will now close.",
-                )
+        for instance in self.click_instances:
+            if instance.pid == self.connected_click_pid:
+                instance.title = current_title
+                instance.filename = new_filename
+                break
 
-            if self._session is not None:
-                self._session.close(prompt_save=False)
-                self.nickname_manager.set_shared_data(None)
-                self._session = None
+        self.instances_combobox["values"] = [inst.filename for inst in self.click_instances]
+        self.connected_click_filename = new_filename
+        self.selected_instance_var.set(new_filename)
 
-            if self.csv_path_var.get():
-                self.csv_path_var.set("")
-                self._update_status("⚠ CSV unloaded - filename changed", "error")
-                csv_unloaded = True
+        if csv_unloaded:
+            self.using_database = False
+            self._update_window_title()
+            self.stop_monitoring(update_status=False)
+            return False
 
-            for instance in self.click_instances:
-                if instance.pid == self.connected_click_pid:
-                    instance.title = current_title
-                    instance.filename = new_filename
-                    break
+        from .connection_session import ConnectionSession
 
-            self.instances_combobox["values"] = [inst.filename for inst in self.click_instances]
-            self.connected_click_filename = new_filename
-            self.selected_instance_var.set(new_filename)
+        if self.nickname_manager.has_access_driver():
+            from .data.data_source import MdbDataSource
 
-            if csv_unloaded:
-                self.using_database = False
-                self._update_window_title()
-                self.stop_monitoring(update_status=False)
-            else:
-                from .connection_session import ConnectionSession
+            data_source = MdbDataSource(
+                click_pid=self.connected_click_pid,
+                click_hwnd=self.connected_click_hwnd,
+            )
+            store = AddressStore(data_source)
+            store.load_initial_data()
+            store.start_file_monitoring(self.root)
 
-                if self.nickname_manager.has_access_driver():
-                    from .data.data_source import MdbDataSource
+            self._session = ConnectionSession(
+                self.connected_click_pid,
+                self.connected_click_hwnd,
+                new_filename,
+                store,
+                on_sync_status_changed=self._on_sync_status_changed,
+            )
+            self.nickname_manager.set_shared_data(store)
 
-                    data_source = MdbDataSource(
-                        click_pid=self.connected_click_pid,
-                        click_hwnd=self.connected_click_hwnd,
-                    )
-                    store = AddressStore(data_source)
-                    store.load_initial_data()
-                    store.start_file_monitoring(self.root)
+            self.using_database = True
+            self._update_window_title()
+            self._start_analysis_build()
 
-                    self._session = ConnectionSession(
-                        self.connected_click_pid,
-                        self.connected_click_hwnd,
-                        new_filename,
-                        store,
-                        on_sync_status_changed=self._on_sync_status_changed,
-                    )
-                    self.nickname_manager.set_shared_data(store)
+        self._update_status(f"⚡ Monitoring {new_filename}", "connected")
+        return True
 
-                    self.using_database = True
-                    self._update_window_title()
-                    self._start_analysis_build()
-
-                self._update_status(f"⚡ Monitoring {new_filename}", "connected")
-
-        # Skip detection if overlay is visible and being managed
-        if self.overlay and self.overlay.is_active():
-            self.monitor_task_id = self.root.after(100, self._monitor_task)
-            return
-
-        # Check for popups belonging to our parent Click.exe
+    def _handle_popup_detection(self) -> None:
+        """Check for Click.exe child popups and show/hide overlay accordingly."""
         child_info = self.detector.detect_child_window(self.connected_click_pid)
         if child_info:
             if not self.detector.field_has_text(child_info.edit_control, child_info.window_id):
                 self._handle_popup_window(
                     child_info.window_id, child_info.window_class, child_info.edit_control
                 )
-        else:
-            # Hide overlay if no valid popup window is detected
-            if self.overlay:
-                self.overlay.withdraw()
+        elif self.overlay:
+            self.overlay.withdraw()
 
-        # Schedule next check
+    def _monitor_task(self):
+        """Monitor task that runs every 100ms using after."""
+        if not self.monitoring:
+            return
+
+        window_id = self.connected_click_hwnd
+        if not window_id or not self.detector.check_window_exists(self.connected_click_pid):
+            self._handle_window_closed()
+            return
+
+        current_title = self.detector.get_window_title(window_id)
+        new_filename = self._parse_filename_from_title(current_title)
+
+        if new_filename and new_filename != self.connected_click_filename:
+            if not self._handle_project_change(current_title, new_filename):
+                return
+
+        if not (self.overlay and self.overlay.is_active()):
+            self._handle_popup_detection()
+
         self.monitor_task_id = self.root.after(100, self._monitor_task)
 
     def _start_monitoring_internal(self) -> bool:
