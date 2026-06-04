@@ -14,7 +14,8 @@ from pathlib import Path
 from tkinter import filedialog, ttk
 from typing import TYPE_CHECKING, Any
 
-from ..widgets.nickname_combobox import NicknameCombobox
+from ..services.console_completer import ConsoleCompleter
+from ..widgets.console_input import ConsoleInput
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -25,7 +26,6 @@ if TYPE_CHECKING:
 _SESSION_NAME = "clicknick"
 _PLC_DATA_WATCH_MS = 2000
 _ANALYSIS_POLL_MS = 500
-_MAX_HISTORY = 200
 
 
 class ConsoleWindow(tk.Toplevel):
@@ -133,32 +133,21 @@ class ConsoleWindow(tk.Toplevel):
     def _set_busy(self, busy: bool) -> None:
         if busy:
             self._busy_tick = 0
-            self._input_entry.configure(state="disabled")
+            self._console_input.set_busy(True)
             self._send_btn.configure(state="disabled")
             self._animate_prompt()
         else:
             self._busy_tick = -1
             self._prompt_label.configure(text=">>>")
-            self._input_entry.configure(state="normal")
+            self._console_input.set_busy(False)
             self._send_btn.configure(state="normal")
-            self._input_entry.focus_set()
 
     # ------------------------------------------------------------------
     # Command dispatch via pyrung live
     # ------------------------------------------------------------------
 
-    def _submit_command(self) -> None:
-        command = self._input_var.get().strip()
-        if not command:
-            return
-        self._input_var.set("")
-
-        if not self._history or self._history[-1] != command:
-            self._history.append(command)
-            if len(self._history) > _MAX_HISTORY:
-                self._history.pop(0)
-        self._history_idx = len(self._history)
-
+    def _submit_command_text(self, command: str) -> None:
+        """Called by ConsoleInput when the user submits a command."""
         self._append_output(f">>> {command}\n", "prompt")
         self._set_busy(True)
 
@@ -186,33 +175,11 @@ class ConsoleWindow(tk.Toplevel):
         threading.Thread(target=_worker, daemon=True, name="console-cmd").start()
 
     # ------------------------------------------------------------------
-    # History
-    # ------------------------------------------------------------------
-
-    def _history_prev(self) -> None:
-        if not self._history:
-            return
-        self._history_idx = max(0, self._history_idx - 1)
-        self._input_var.set(self._history[self._history_idx])
-        self._input_entry.icursor(tk.END)
-
-    def _history_next(self) -> None:
-        if not self._history:
-            return
-        self._history_idx = min(len(self._history), self._history_idx + 1)
-        if self._history_idx == len(self._history):
-            self._input_var.set("")
-        else:
-            self._input_var.set(self._history[self._history_idx])
-        self._input_entry.icursor(tk.END)
-
-    # ------------------------------------------------------------------
     # Help
     # ------------------------------------------------------------------
 
     def _show_help(self) -> None:
-        self._input_var.set("help")
-        self._submit_command()
+        self._submit_command_text("help")
 
     def _stop_file_watcher(self) -> None:
         if self._file_watch_after_id is not None:
@@ -242,7 +209,7 @@ class ConsoleWindow(tk.Toplevel):
         self._start_dap()
 
     # ------------------------------------------------------------------
-    # Nickname insert
+    # Tag provider for autocomplete
     # ------------------------------------------------------------------
 
     def _provide_filtered_tags(self, search_text: str) -> list[str]:
@@ -263,17 +230,6 @@ class ConsoleWindow(tk.Toplevel):
             return candidates
         return [t for t in candidates if search_upper in t.upper()]
 
-    def _on_tag_selected(self, tag_name: str) -> None:
-        if not tag_name:
-            return
-        current = self._input_var.get()
-        cursor = self._input_entry.index(tk.INSERT)
-        new_text = current[:cursor] + tag_name + current[cursor:]
-        self._input_var.set(new_text)
-        self._input_entry.icursor(cursor + len(tag_name))
-        self._input_entry.focus_set()
-        self._nickname_combo.reset()
-
     # ------------------------------------------------------------------
     # Widget creation
     # ------------------------------------------------------------------
@@ -292,23 +248,23 @@ class ConsoleWindow(tk.Toplevel):
         )
         ttk.Button(toolbar, text="Help", width=6, command=self._show_help).pack(side=tk.LEFT)
 
-        # Nickname row
-        nick_row = ttk.Frame(self, padding=(8, 0, 8, 6))
-        nick_row.pack(fill=tk.X)
+        # Input row (at top, before output)
+        input_frame = ttk.Frame(self, padding=(8, 0, 8, 6))
+        input_frame.pack(fill=tk.X)
 
-        ttk.Label(nick_row, text="Nickname:").pack(side=tk.LEFT, padx=(0, 4))
-        combo_frame = ttk.Frame(nick_row)
-        combo_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
-        combo_frame.withdraw = lambda: None  # type: ignore[attr-defined]
-
-        self._nickname_combo = NicknameCombobox(combo_frame, width=30, skip_address_check=True)
-        self._nickname_combo.pack(fill=tk.X, expand=True)
-        self._nickname_combo.set_data_provider(self._provide_filtered_tags)
-        self._nickname_combo.set_selection_callback(self._on_tag_selected)
-
-        ttk.Button(
-            nick_row, text="Insert", width=8, command=self._nickname_combo.finalize_entry
-        ).pack(side=tk.LEFT)
+        self._prompt_label = ttk.Label(input_frame, text=">>>")
+        self._prompt_label.pack(side=tk.LEFT, padx=(0, 4))
+        self._console_input = ConsoleInput(
+            input_frame,
+            completer=self._completer,
+            tag_provider=self._provide_filtered_tags,
+            on_submit=self._submit_command_text,
+        )
+        self._console_input.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
+        self._send_btn = ttk.Button(
+            input_frame, text="Send", width=6, command=self._console_input.submit
+        )
+        self._send_btn.pack(side=tk.LEFT)
 
         # Output area
         output_frame = ttk.Frame(self)
@@ -336,21 +292,6 @@ class ConsoleWindow(tk.Toplevel):
         self._output.tag_configure("error", foreground="#f44747")
         self._output.tag_configure("output", foreground="#d4d4d4")
 
-        # Input row
-        input_frame = ttk.Frame(self, padding=(8, 0, 8, 6))
-        input_frame.pack(fill=tk.X)
-
-        self._prompt_label = ttk.Label(input_frame, text=">>>")
-        self._prompt_label.pack(side=tk.LEFT, padx=(0, 4))
-        self._input_var = tk.StringVar()
-        self._input_entry = ttk.Entry(input_frame, textvariable=self._input_var)
-        self._input_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
-        self._input_entry.bind("<Return>", lambda _: self._submit_command())
-        self._input_entry.bind("<Up>", lambda _: self._history_prev())
-        self._input_entry.bind("<Down>", lambda _: self._history_next())
-        self._send_btn = ttk.Button(input_frame, text="Send", width=6, command=self._submit_command)
-        self._send_btn.pack(side=tk.LEFT)
-
         # Status bar
         self._status_var = tk.StringVar(value="Starting...")
         status_bar = ttk.Frame(self, padding=(8, 2, 8, 4))
@@ -359,7 +300,7 @@ class ConsoleWindow(tk.Toplevel):
             side=tk.LEFT, fill=tk.X, expand=True
         )
 
-        self._input_entry.focus_set()
+        self._console_input.focus_set()
 
     # ------------------------------------------------------------------
     # Window lifecycle
@@ -374,6 +315,15 @@ class ConsoleWindow(tk.Toplevel):
         if self._on_destroy:
             self._on_destroy()
         self.destroy()
+
+    def _load_grammar(self) -> None:
+        def _load() -> None:
+            try:
+                self._completer.load_grammar()
+            except Exception:
+                pass
+
+        threading.Thread(target=_load, daemon=True, name="console-grammar").start()
 
     def __init__(
         self,
@@ -405,14 +355,14 @@ class ConsoleWindow(tk.Toplevel):
         self._plc_data_path: Path | None = None
         self._plc_data_mtime: float = 0.0
         self._file_watch_after_id: str | None = None
-        self._history: list[str] = []
-        self._history_idx: int = 0
         self._busy_tick: int = -1
         self._destroyed = False
+        self._completer = ConsoleCompleter()
 
         self._create_widgets()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._start_dap()
+        self._load_grammar()
 
     def _poll_analysis(self) -> None:
         if self._destroyed:
@@ -425,8 +375,7 @@ class ConsoleWindow(tk.Toplevel):
 
     def _on_dap_started(self, dap: Any) -> None:
         self._dap = dap
-        dap.continue_()
-        self._status_var.set("Running")
+        self._status_var.set("Paused")
         self._start_file_watcher()
 
     def _start_file_watcher(self) -> None:
