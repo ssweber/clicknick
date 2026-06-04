@@ -1160,16 +1160,7 @@ class AddressEditorWindow(tk.Toplevel):
                 if self._has_unsaved_changes():
                     return  # Save failed, don't close
 
-        # Close outline window if open
-        if self._nav_window is not None:
-            self._nav_window.destroy()
-            self._nav_window = None
-
-        # Unregister from shared data
-        self._store.remove_observer(self._on_address_store_changed)
-        self._store.unregister_window(self)
-
-        self.destroy()
+        self.close_without_prompt()
 
     def _update_save_ui_labels(self) -> None:
         """Update Save/Sync labels in UI based on data source type."""
@@ -1491,6 +1482,17 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Open Tag Browser by default
         self.after(100, self._toggle_nav)
+
+    def close_without_prompt(self) -> None:
+        """Clean up resources and destroy window without save prompts."""
+        if self._nav_window is not None:
+            self._nav_window.destroy()
+            self._nav_window = None
+
+        self._store.remove_observer(self._on_address_store_changed)
+        self._store.unregister_window(self)
+
+        self.destroy()
 
     def _update_sync_indicator(self, pending: int) -> None:
         self._synced_pending = pending

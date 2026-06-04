@@ -35,12 +35,14 @@ class FakeAddressStore:
         self.data_source = data_source
         self.load_initial_data = MagicMock()
         self.start_file_monitoring = MagicMock()
+        self.stop_file_monitoring = MagicMock()
 
 
 def _make_app_stub() -> ClickNickApp:
     app = ClickNickApp.__new__(ClickNickApp)
-    app._shared_address_data = None
-    app._shared_data_source_path = None
+    app._session = None
+    app._csv_only_store = None
+    app._csv_only_dataview = None
     app._update_status = MagicMock()
     app._update_window_title = MagicMock()
     app.start_monitoring = MagicMock()
@@ -76,17 +78,19 @@ def test_load_csv_with_stale_connection_skips_monitoring_and_clears_connection(m
     assert app.connected_click_hwnd is None
     assert app.connected_click_filename is None
     assert app.selected_instance_var.get() == ""
-    assert app._shared_data_source_path == "C:/tmp/NicknameExport.csv"
-    app.nickname_manager.set_shared_data.assert_called_once_with(app._shared_address_data)
+    assert app._csv_only_store is not None
+    app.nickname_manager.set_shared_data.assert_called_once()
 
 
 def test_handle_window_closed_preserves_csv_loaded_store():
     app = _make_app_stub()
-    csv_path = "C:/tmp/NicknameExport.csv"
-    store = SimpleNamespace(force_close_all_windows=MagicMock())
+    store = SimpleNamespace(
+        force_close_all_windows=MagicMock(),
+        stop_file_monitoring=MagicMock(),
+    )
 
-    app._shared_data_source_path = csv_path
-    app._shared_address_data = store
+    app._csv_only_store = store
+    app._session = None
     app.nickname_manager = SimpleNamespace(set_shared_data=MagicMock())
     app.selected_instance_var = FakeVar("MyProject.ckp")
     app.connected_click_pid = 111
@@ -98,8 +102,8 @@ def test_handle_window_closed_preserves_csv_loaded_store():
     app._handle_window_closed()
 
     app.stop_monitoring.assert_called_once_with(update_status=False)
-    assert app._shared_data_source_path == csv_path
-    assert app._shared_address_data is store
+    # CSV store survives — no session means nothing to force_close
+    assert app._csv_only_store is store
     app.nickname_manager.set_shared_data.assert_not_called()
     store.force_close_all_windows.assert_not_called()
     assert app.connected_click_pid is None
@@ -107,3 +111,65 @@ def test_handle_window_closed_preserves_csv_loaded_store():
     assert app.connected_click_filename is None
     assert app.selected_instance_var.get() == ""
     app.root.after.assert_called_once_with(2000, app.refresh_click_instances)
+
+
+def test_handle_window_closed_with_session_csv_detaches():
+    """When Click dies but data is CSV-backed, session resources close but store survives."""
+    app = _make_app_stub()
+    app.using_database = False
+
+    store = SimpleNamespace(
+        _windows=[],
+        force_close_all_windows=MagicMock(),
+        stop_file_monitoring=MagicMock(),
+    )
+    session = SimpleNamespace(
+        store=store,
+        dataview=None,
+        console=None,
+        force_close=MagicMock(),
+        detach_click_resources=MagicMock(),
+    )
+    app._session = session
+    app.nickname_manager = SimpleNamespace(set_shared_data=MagicMock())
+    app.selected_instance_var = FakeVar("MyProject.ckp")
+    app.connected_click_pid = 111
+    app.connected_click_hwnd = 222
+    app.connected_click_filename = "MyProject.ckp"
+    app.refresh_click_instances = MagicMock()
+    app.root = SimpleNamespace(after=MagicMock())
+
+    app._handle_window_closed()
+
+    session.detach_click_resources.assert_called_once()
+    assert app._csv_only_store is store
+    assert app._session is None
+    app.nickname_manager.set_shared_data.assert_not_called()
+
+
+def test_handle_window_closed_with_session_mdb_force_closes():
+    """When Click dies and data is MDB-backed, everything is torn down."""
+    app = _make_app_stub()
+    app.using_database = True
+
+    session = SimpleNamespace(
+        store=SimpleNamespace(_windows=[], force_close_all_windows=MagicMock()),
+        dataview=None,
+        console=None,
+        force_close=MagicMock(),
+        detach_click_resources=MagicMock(),
+    )
+    app._session = session
+    app.nickname_manager = SimpleNamespace(set_shared_data=MagicMock())
+    app.selected_instance_var = FakeVar("MyProject.ckp")
+    app.connected_click_pid = 111
+    app.connected_click_hwnd = 222
+    app.connected_click_filename = "MyProject.ckp"
+    app.refresh_click_instances = MagicMock()
+    app.root = SimpleNamespace(after=MagicMock())
+
+    app._handle_window_closed()
+
+    session.force_close.assert_called_once()
+    app.nickname_manager.set_shared_data.assert_called_once_with(None)
+    assert app._session is None

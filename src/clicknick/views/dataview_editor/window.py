@@ -644,24 +644,7 @@ class DataviewEditorWindow(tk.Toplevel):
             if result:  # Yes - save
                 self.save_all()
 
-        # Close navigation window if open
-        if self._nav_window is not None:
-            self._nav_window.destroy()
-            self._nav_window = None
-
-        # Detach Modbus service and clean up on a daemon thread to avoid
-        # deadlocking the Tcl interpreter (service callbacks use self.after).
-        service = self._modbus
-        self._modbus = None
-        self._clear_live_values_all_panels()
-        if service is not None:
-            self._run_background(self._disconnect_modbus_service, service)
-
-        # Unregister from shared data
-        self.shared_data.unregister_window(self)
-
-        # Destroy window
-        self.destroy()
+        self.close_without_prompt()
 
     def _refresh_navigation(self) -> None:
         """Refresh the navigation window with current data."""
@@ -1235,6 +1218,21 @@ class DataviewEditorWindow(tk.Toplevel):
         self.after(100, self._toggle_nav)
 
         self._update_modbus_controls()
+
+    def close_without_prompt(self) -> None:
+        """Clean up resources and destroy window without save prompts."""
+        if self._nav_window is not None:
+            self._nav_window.destroy()
+            self._nav_window = None
+
+        service = self._modbus
+        self._modbus = None
+        self._clear_live_values_all_panels()
+        if service is not None:
+            self._run_background(self._disconnect_modbus_service, service)
+
+        self.shared_data.unregister_window(self)
+        self.destroy()
 
     def refresh_nicknames_from_shared(self) -> None:
         """Called by SharedDataviewData when SharedAddressData changes.

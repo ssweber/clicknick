@@ -168,7 +168,6 @@ class SharedDataviewData:
         if self._window is None:
             return True
 
-        # Check for unsaved changes
         if prompt_save and hasattr(self._window, "has_unsaved_changes"):
             if self._window.has_unsaved_changes():
                 from tkinter import messagebox
@@ -184,9 +183,11 @@ class SharedDataviewData:
                     if hasattr(self._window, "save_all"):
                         self._window.save_all()
 
-        # Close window
         try:
-            self._window.destroy()
+            if hasattr(self._window, "close_without_prompt"):
+                self._window.close_without_prompt()
+            else:
+                self._window.destroy()
         except Exception:
             pass
 
@@ -197,7 +198,10 @@ class SharedDataviewData:
         """Force close the window without saving."""
         if self._window is not None:
             try:
-                self._window.destroy()
+                if hasattr(self._window, "close_without_prompt"):
+                    self._window.close_without_prompt()
+                else:
+                    self._window.destroy()
             except Exception:
                 pass
             self._window = None

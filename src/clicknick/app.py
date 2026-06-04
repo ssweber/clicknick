@@ -261,98 +261,6 @@ class ClickNickApp:
         # Pack the main frame
         options_frame.pack(fill=tk.X, pady=(0, 12))
 
-    def _on_dap_started(self, dap):
-        self._dap_service = dap
-        self._dap_btn.configure(text="■ Stop", state="normal")
-        self._dap_status_var.set("Running")
-
-    def _on_dap_failed(self, exc):
-        self._dap_btn.configure(state="normal")
-        self._dap_status_var.set(f"Error: {exc}")
-
-    def _toggle_dap(self):
-        from .services.dap_service import DapService, SimState
-
-        dap = getattr(self, "_dap_service", None)
-        if dap is not None and dap.state not in (SimState.IDLE, SimState.ERROR):
-            dap.terminate()
-            self._dap_service = None
-            self._dap_btn.configure(text="▶ Start")
-            self._dap_status_var.set("Stopped")
-            return
-
-        analysis = self._analysis_service
-        if analysis is None or not analysis.is_available:
-            self._dap_status_var.set("No program loaded")
-            return
-        project_dir = analysis.project_dir
-        if project_dir is None or not project_dir.is_dir():
-            self._dap_status_var.set("No pyrung project")
-            return
-
-        self._dap_status_var.set("Starting...")
-        self._dap_btn.configure(state="disabled")
-        self.root.update_idletasks()
-
-        import threading
-
-        snapshot_raw = self._snapshot_var.get().strip()
-        snapshot_path = Path(snapshot_raw) if snapshot_raw else None
-
-        def _launch():
-            try:
-                dap = DapService()
-                dap.launch(project_dir, snapshot_path=snapshot_path)
-                self.root.after(0, lambda: self._on_dap_started(dap))
-            except Exception as exc:
-                self.root.after(0, lambda e=exc: self._on_dap_failed(e))
-
-        threading.Thread(target=_launch, daemon=True, name="dap-launch").start()
-
-    def _browse_snapshot(self):
-        path = filedialog.askopenfilename(
-            title="Select PLC Data Snapshot",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-        )
-        if path:
-            self._snapshot_var.set(path)
-
-    def _create_simulation_section(self, parent):
-        """Create the simulation server section with DAP toggle."""
-        sim_frame = ttk.LabelFrame(parent, text="Simulation Server", padding=10)
-
-        # Snapshot file picker
-        snap_row = ttk.Frame(sim_frame)
-        snap_row.pack(fill=tk.X, pady=(0, 6))
-        ttk.Label(snap_row, text="Snapshot:").pack(side=tk.LEFT, padx=(0, 4))
-        self._snapshot_var = tk.StringVar()
-        snap_entry = ttk.Entry(snap_row, textvariable=self._snapshot_var)
-        snap_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
-        ttk.Button(snap_row, text="Browse...", width=8, command=self._browse_snapshot).pack(
-            side=tk.LEFT
-        )
-
-        # Start/Stop button + status
-        row = ttk.Frame(sim_frame)
-        row.pack(fill=tk.X)
-
-        self._dap_status_var = tk.StringVar(value="Stopped")
-        self._dap_btn = ttk.Button(row, text="▶ Start", width=10, command=self._toggle_dap)
-        self._dap_btn.pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Label(row, textvariable=self._dap_status_var, foreground="gray").pack(
-            side=tk.LEFT, fill=tk.X, expand=True
-        )
-
-        sim_frame.pack(fill=tk.X, pady=(0, 12))
-
-    def _create_about_dialog(self):
-        """Create and show the About dialog."""
-        AboutDialog(self.root, get_version())
-
-    def _show_odbc_warning(self):
-        """Show a warning dialog about missing ODBC drivers."""
-        OdbcWarningDialog(self.root)
-
     def _update_status(self, message, style="normal"):
         """Update status message with appropriate style."""
         self.status_var.set(message)
@@ -363,9 +271,70 @@ class ClickNickApp:
         else:
             self.status_label.configure(style="Status.TLabel")
 
+    def _get_store(self):
+        """Return the current AddressStore regardless of data source."""
+        if self._session is not None:
+            return self._session.store
+        return self._csv_only_store
+
+    def _live_mdb_path(self):
+        """Resolve the MDB path from the currently connected Click instance."""
+        if not self.connected_click_hwnd:
+            return None
+        from .utils.mdb_shared import find_click_database
+
+        db_path = find_click_database(click_hwnd=self.connected_click_hwnd)
+        return Path(db_path) if db_path else None
+
+    def _start_analysis_build(self) -> None:
+        """Build program analysis in background if connected to a Click project."""
+        if self._session is None:
+            return
+        self._session.start_analysis(self.root)
+
+    def _open_console(self):
+        """Open the Console window, or focus if already open."""
+        if self._session is None:
+            self._update_status("Connect to a Click project first", "error")
+            return
+
+        session = self._session
+        if session.console is not None:
+            try:
+                session.console.lift()
+                session.console.focus_force()
+                return
+            except tk.TclError:
+                session.console = None
+
+        analysis = session.analysis
+        if analysis is None or not analysis.is_available:
+            self._start_analysis_build()
+
+        from .views.console_window import ConsoleWindow
+
+        session.console = ConsoleWindow(
+            self.root,
+            get_store=lambda: session.store,
+            get_analysis=lambda: session.analysis,
+            get_click_hwnd=lambda: session.hwnd,
+            get_mdb_path=self._live_mdb_path,
+            get_synced_pending=lambda: session.synced_pending,
+            on_destroy=lambda: setattr(session, "console", None),
+            title_suffix=session.filename or "",
+        )
+
+    def _create_about_dialog(self):
+        """Create and show the About dialog."""
+        AboutDialog(self.root, get_version())
+
+    def _show_odbc_warning(self):
+        """Show a warning dialog about missing ODBC drivers."""
+        OdbcWarningDialog(self.root)
+
     def _on_editor_synced(self, count: int) -> None:
-        if self._scr_watcher is not None:
-            self._scr_watcher.record_sync(count)
+        if self._session is not None:
+            self._session.record_sync(count)
 
     def _open_address_editor(self):
         """Open the Address Editor window.
@@ -379,8 +348,8 @@ class ClickNickApp:
             self._show_odbc_warning()
             return
 
-        # Use the app-level SharedAddressData
-        if self._shared_address_data is None:
+        store = self._get_store()
+        if store is None:
             self._update_status("No data loaded", "error")
             return
 
@@ -389,9 +358,9 @@ class ClickNickApp:
 
             AddressEditorWindow(
                 self.root,
-                address_store=self._shared_address_data,
+                address_store=store,
                 click_filename=self.connected_click_filename or "",
-                analysis_service=self._analysis_service,
+                analysis_service=self._session.analysis if self._session else None,
                 on_synced=self._on_editor_synced,
             )
 
@@ -407,8 +376,8 @@ class ClickNickApp:
         The dataview editor allows creating and editing CLICK DataView files (.cdv).
         Only one DataviewEditorWindow can be open at a time.
         """
-        # Use the app-level SharedAddressData
-        if self._shared_address_data is None:
+        store = self._get_store()
+        if store is None:
             self._update_status("No data loaded", "error")
             return
 
@@ -417,10 +386,8 @@ class ClickNickApp:
             from .utils.mdb_shared import get_project_path_from_hwnd
             from .views.dataview_editor.window import DataviewEditorWindow
 
-            # Get project path from connected Click window
             project_path = get_project_path_from_hwnd(self.connected_click_hwnd)
 
-            # When no CLICK project, use CSV directory for CDV file discovery
             csv_fallback_folder = None
             if project_path is None:
                 csv_path = self.csv_path_var.get()
@@ -429,37 +396,37 @@ class ClickNickApp:
 
                     csv_fallback_folder = Path(csv_path).parent
 
-            # Create or reuse shared dataview data
-            if not hasattr(self, "_dataview_editor_shared_data"):
-                self._dataview_editor_shared_data = None
-            if not hasattr(self, "_dataview_editor_project_path"):
-                self._dataview_editor_project_path = None
+            # Get or create shared dataview data from session or CSV-only state
+            if self._session is not None:
+                shared = self._session.dataview
+                if shared is None:
+                    shared = SharedDataviewData(
+                        project_path=project_path,
+                        address_store=store,
+                        dataview_folder=csv_fallback_folder,
+                    )
+                    self._session.dataview = shared
+            else:
+                shared = self._csv_only_dataview
+                if shared is None:
+                    shared = SharedDataviewData(
+                        project_path=project_path,
+                        address_store=store,
+                        dataview_folder=csv_fallback_folder,
+                    )
+                    self._csv_only_dataview = shared
 
-            # Create new shared data if none exists or if project changed
-            if (
-                self._dataview_editor_shared_data is None
-                or self._dataview_editor_project_path != project_path
-            ):
-                self._dataview_editor_shared_data = SharedDataviewData(
-                    project_path=project_path,
-                    address_store=self._shared_address_data,
-                    dataview_folder=csv_fallback_folder,
-                )
-                self._dataview_editor_project_path = project_path
-
-            # If window already open, focus it instead of creating a new one
-            if self._dataview_editor_shared_data._window is not None:
+            if shared._window is not None:
                 try:
-                    self._dataview_editor_shared_data._window.lift()
-                    self._dataview_editor_shared_data._window.focus_force()
+                    shared._window.lift()
+                    shared._window.focus_force()
                     return
                 except Exception:
-                    # Window was destroyed, clear reference
-                    self._dataview_editor_shared_data._window = None
+                    shared._window = None
 
             DataviewEditorWindow(
                 self.root,
-                shared_data=self._dataview_editor_shared_data,
+                shared_data=shared,
                 title_suffix=self.connected_click_filename or "",
             )
 
@@ -478,7 +445,8 @@ class ClickNickApp:
             self._update_status("Connect to a ClickPLC window first", "error")
             return
 
-        if self._shared_address_data is None:
+        store = self._get_store()
+        if store is None:
             self._update_status("No data loaded", "error")
             return
 
@@ -488,7 +456,7 @@ class ClickNickApp:
         from .utils.verification import run_verification
 
         project_path = get_project_path_from_hwnd(self.connected_click_hwnd)
-        result = run_verification(self._shared_address_data, project_path)
+        result = run_verification(store, project_path)
 
         if result.passed:
             messagebox.showinfo(
@@ -534,7 +502,8 @@ class ClickNickApp:
             self._update_status("Connect to a ClickPLC window first", "error")
             return
 
-        if self._shared_address_data is None:
+        store = self._get_store()
+        if store is None:
             self._update_status("No data loaded", "error")
             return
 
@@ -543,7 +512,7 @@ class ClickNickApp:
         from .data.data_source import MdbDataSource
 
         # Get the MDB path from the current data source
-        data_source = self._shared_address_data._data_source
+        data_source = store._data_source
         if not hasattr(data_source, "file_path"):
             self._update_status("Current data source has no file path", "error")
             return
@@ -751,7 +720,8 @@ class ClickNickApp:
 
     def _analyze_program(self) -> None:
         """Run program validation and display report."""
-        if self._analysis_service is None or not self._analysis_service.is_available:
+        analysis = self._session.analysis if self._session else None
+        if analysis is None or not analysis.is_available:
             messagebox.showinfo(
                 "Analysis Not Available",
                 "Program analysis requires a connected Click project.\n\n"
@@ -762,7 +732,7 @@ class ClickNickApp:
             return
 
         try:
-            report = self._analysis_service.run_validation()
+            report = analysis.run_validation()
         except Exception as exc:
             messagebox.showerror(
                 "Analysis Error",
@@ -938,6 +908,7 @@ class ClickNickApp:
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Address Editor...", command=self._open_address_editor)
         tools_menu.add_command(label="Dataview Editor...", command=self._open_dataview_editor)
+        tools_menu.add_command(label="Console...", command=self._open_console)
         if _DEV_MODE:
             tools_menu.add_separator()
             tools_menu.add_command(label="Verify MDB & CDV...", command=self._verify_mdb_and_cdv)
@@ -982,19 +953,9 @@ class ClickNickApp:
         # Create all widgets
         self._create_click_instances_section(main_frame)
         self._create_options_section(main_frame)
-        self._create_simulation_section(main_frame)
 
         # Pack the main frame
         main_frame.pack(fill=tk.BOTH, expand=True)
-
-    def _live_mdb_path(self):
-        """Resolve the MDB path from the currently connected Click instance."""
-        if not self.connected_click_hwnd:
-            return None
-        from .utils.mdb_shared import find_click_database
-
-        db_path = find_click_database(click_hwnd=self.connected_click_hwnd)
-        return Path(db_path) if db_path else None
 
     def _live_session_dir(self):
         """Directory the live server advertises its port file in.
@@ -1054,9 +1015,15 @@ class ClickNickApp:
         self.nickname_manager = NicknameManager(self.settings, self.filter_strategies)
         self.detector = ClickWindowDetector(CLICK_PLC_WINDOW_MAPPING, self)
 
-        # Shared address data (single source of truth for all address data)
-        self._shared_address_data = None
-        self._shared_data_source_path = None
+        # Connection session: owns all resources scoped to a Click project
+        # (store, analysis, ScrWatcher, console, dataview editor).
+        from .connection_session import ConnectionSession
+
+        self._session: ConnectionSession | None = None
+
+        # CSV-only data (used when no Click connection is active)
+        self._csv_only_store = None
+        self._csv_only_dataview = None
 
         # Live editing server: lets `clicknick-cli` push edits into this
         # running instance. Holds getters (not snapshots) so it always targets
@@ -1066,27 +1033,23 @@ class ClickNickApp:
 
         self._live_server = LiveServer(
             self.root,
-            lambda: self._shared_address_data,
+            self._get_store,
             self._live_session_dir,
             lambda: (
                 self.connected_click_filename.removesuffix(".ckp")
                 if self.connected_click_filename
                 else None
             ),
-            lambda: self._analysis_service,
+            lambda: self._session.analysis if self._session else None,
             get_click_hwnd=lambda: self.connected_click_hwnd,
             get_mdb_path=self._live_mdb_path,
-            get_synced_pending=lambda: self._scr_watcher.synced_pending if self._scr_watcher else 0,
+            get_synced_pending=lambda: self._session.synced_pending if self._session else 0,
         )
         try:
             self._live_server.start()
         except Exception as exc:  # noqa: BLE001 - never block app startup
             print(f"Live server failed to start: {exc}")
             self._live_server = None
-
-        # Program analysis service (built in background on connect)
-        self._analysis_service = None
-        self._scr_watcher = None
 
         # Initialize overlay early (before UI creation)
         self.overlay = None
@@ -1118,27 +1081,6 @@ class ClickNickApp:
         # Combobox overlay (initialized when needed)
         self.overlay = None
 
-    def _on_scr_changed(self, scr_folder, db_path) -> None:
-        """Rebuild analysis when Scr*.tmp files change."""
-        if self._analysis_service is None or self._shared_address_data is None:
-            return
-
-        import threading
-        from pathlib import Path
-
-        store = self._shared_address_data
-
-        def _rebuild() -> None:
-            try:
-                persist = scr_folder / "pyrung_project"
-                self._analysis_service.build(
-                    scr_folder, Path(db_path), store.base_state, persist_dir=persist
-                )
-            except Exception:
-                pass
-
-        threading.Thread(target=_rebuild, daemon=True).start()
-
     def _update_window_title(self):
         """Update window title to reflect current connection and data source."""
         if not self.connected_click_filename:
@@ -1158,7 +1100,7 @@ class ClickNickApp:
         else:
             title = f"ClickNick - {self.connected_click_filename}"
 
-        pending = self._scr_watcher.synced_pending if self._scr_watcher else 0
+        pending = self._session.synced_pending if self._session else 0
         if pending > 0:
             title += f" ({pending}↑)"
 
@@ -1166,56 +1108,11 @@ class ClickNickApp:
 
     def _on_sync_status_changed(self, pending: int) -> None:
         self._update_window_title()
-        if self._shared_address_data is not None:
-            for window in self._shared_address_data._windows:
+        store = self._get_store()
+        if store is not None:
+            for window in store._windows:
                 if hasattr(window, "_update_sync_indicator"):
                     window._update_sync_indicator(pending)
-
-    def _start_analysis_build(self) -> None:
-        """Build program analysis in background if connected to a Click project."""
-        if not self.connected_click_hwnd or self._shared_address_data is None:
-            return
-
-        import threading
-        from pathlib import Path
-
-        from .services.analysis_service import AnalysisService
-        from .services.scr_watcher import ScrWatcher
-        from .utils.mdb_shared import find_click_database
-
-        db_path = find_click_database(click_hwnd=self.connected_click_hwnd)
-        if not db_path:
-            return
-        scr_folder = Path(db_path).parent
-
-        if not list(scr_folder.glob("Scr*.tmp")):
-            return
-
-        if self._analysis_service is None:
-            self._analysis_service = AnalysisService()
-
-        store = self._shared_address_data
-
-        def _build() -> None:
-            try:
-                persist = scr_folder / "pyrung_project"
-                self._analysis_service.build(
-                    scr_folder, Path(db_path), store.base_state, persist_dir=persist
-                )
-            except Exception:
-                pass
-
-        threading.Thread(target=_build, daemon=True).start()
-
-        # Watch Scr files for changes → rebuild
-        if self._scr_watcher is not None:
-            self._scr_watcher.stop()
-        self._scr_watcher = ScrWatcher(
-            scr_folder,
-            lambda: self._on_scr_changed(scr_folder, db_path),
-            on_sync_status_changed=self._on_sync_status_changed,
-        )
-        self._scr_watcher.start(self.root)
 
     def _check_odbc_drivers_and_warn(self):
         """Check for ODBC drivers and show warning if none available."""
@@ -1283,17 +1180,18 @@ class ClickNickApp:
             from .data.data_source import CsvDataSource
 
             data_source = CsvDataSource(csv_path)
-            self._shared_address_data = AddressStore(data_source)
-            self._shared_address_data.load_initial_data()
-            self._shared_data_source_path = csv_path
+            store = AddressStore(data_source)
+            store.load_initial_data()
+            store.start_file_monitoring(self.root)
 
-            # Start file monitoring for external changes
-            self._shared_address_data.start_file_monitoring(self.root)
+            if self._session is not None:
+                self._session.replace_store(store, self.root)
+            else:
+                if self._csv_only_store is not None:
+                    self._csv_only_store.stop_file_monitoring()
+                self._csv_only_store = store
 
-            # Wire NicknameManager to use AddressStore
-            self.nickname_manager.set_shared_data(self._shared_address_data)
-
-            # Apply user's sorting preference
+            self.nickname_manager.set_shared_data(store)
             self.nickname_manager.apply_sorting(self.settings.sort_by_nickname)
 
             self._update_status("✓ CSV loaded", "connected")
@@ -1341,8 +1239,7 @@ class ClickNickApp:
                 self._odbc_warning_shown = True
             return False
 
-        # SharedAddressData already created and loaded in connect_to_instance()
-        if self._shared_address_data is None:
+        if self._get_store() is None:
             self._update_status("⚠ DB load failed", "error")
             self.using_database = False
             return False
@@ -1357,66 +1254,25 @@ class ClickNickApp:
         self.start_monitoring()
         return True
 
-    def _close_editor_windows(self, prompt_save: bool = True) -> bool:
-        """Close all editor windows (Address Editor and Dataview Editor).
-
-        Args:
-            prompt_save: If True, prompt to save unsaved changes.
-
-        Returns:
-            True if all windows were closed, False if user cancelled.
-        """
-        # Close Address Editor windows
-        if self._shared_address_data is not None:
-            if not self._shared_address_data.close_all_windows(prompt_save=prompt_save):
-                return False
-            self._shared_address_data = None
-            self._shared_data_source_path = None
-
-        # Close Dataview Editor window
-        if (
-            hasattr(self, "_dataview_editor_shared_data")
-            and self._dataview_editor_shared_data is not None
-        ):
-            if self._dataview_editor_shared_data._window is not None:
-                try:
-                    # Check for unsaved changes in Dataview Editor
-                    window = self._dataview_editor_shared_data._window
-                    if (
-                        prompt_save
-                        and hasattr(window, "_has_unsaved_changes")
-                        and window._has_unsaved_changes()
-                    ):
-                        from tkinter import messagebox
-
-                        result = messagebox.askyesnocancel(
-                            "Unsaved Changes",
-                            "Dataview Editor has unsaved changes. Save before closing?",
-                            parent=window,
-                        )
-                        if result is None:  # Cancel
-                            return False
-                        if result:  # Yes - save
-                            window._save_current_file()
-                    window.destroy()
-                except Exception:
-                    pass  # Window may already be destroyed
-            self._dataview_editor_shared_data = None
-            self._dataview_editor_project_path = None
-
-        # Disconnect NicknameManager from old data
-        self.nickname_manager.set_shared_data(None)
-        return True
-
     def connect_to_instance(self, pid, title, filename, hwnd):
         """Connect to a specific Click.exe instance."""
-        # Close any open editor windows first (prompt to save if needed)
-        if not self._close_editor_windows(prompt_save=True):
-            # User cancelled - don't switch instances
-            # Restore combobox selection to current instance
-            if self.connected_click_filename:
-                self.selected_instance_var.set(self.connected_click_filename)
-            return
+        from .connection_session import ConnectionSession
+
+        # Close existing session (prompt to save)
+        if self._session is not None:
+            if not self._session.close(prompt_save=True):
+                self.selected_instance_var.set(self._session.filename)
+                return
+            self.nickname_manager.set_shared_data(None)
+            self._session = None
+
+        # Close CSV-only data if any
+        if self._csv_only_store is not None:
+            self._csv_only_store.stop_file_monitoring()
+            self._csv_only_store = None
+        if self._csv_only_dataview is not None:
+            self._csv_only_dataview.set_address_store(None)
+            self._csv_only_dataview = None
 
         # Stop monitoring if currently active
         if self.monitoring:
@@ -1437,43 +1293,37 @@ class ClickNickApp:
         if not self.nickname_manager.has_access_driver():
             fallback_csv = find_fallback_csv(hwnd)
             if fallback_csv:
-                # Show dialog prompting user to save a copy
                 default_name = f"{filename.replace('.ckp', '')}_Address.csv"
                 dialog = CsvFallbackDialog(self.root, fallback_csv, default_name)
                 saved_path = dialog.show()
                 if saved_path:
-                    # Load from the saved CSV copy
                     self.csv_path_var.set(saved_path)
                     self.load_csv()
                     return
-            # No fallback available or user cancelled - show standard ODBC warning
             self._update_status("⏹ Stopped - Use File → Load Nicknames...", "error")
             if not self._odbc_warning_shown:
                 self._show_odbc_warning()
                 self._odbc_warning_shown = True
             return
 
-        # Create SharedAddressData for the new connection (ODBC available)
+        # Create session with MDB-backed store
         from .data.data_source import MdbDataSource
 
-        data_source = MdbDataSource(
-            click_pid=self.connected_click_pid,
-            click_hwnd=self.connected_click_hwnd,
+        data_source = MdbDataSource(click_pid=pid, click_hwnd=hwnd)
+        store = AddressStore(data_source)
+        store.load_initial_data()
+        store.start_file_monitoring(self.root)
+
+        self._session = ConnectionSession(
+            pid,
+            hwnd,
+            filename,
+            store,
+            on_sync_status_changed=self._on_sync_status_changed,
         )
-        self._shared_address_data = AddressStore(data_source)
-        self._shared_address_data.load_initial_data()
-        self._shared_data_source_path = f"mdb:{pid}:{hwnd}"
 
-        # Start file monitoring for external changes
-        self._shared_address_data.start_file_monitoring(self.root)
-
-        # Wire NicknameManager to use AddressStore
-        self.nickname_manager.set_shared_data(self._shared_address_data)
-
-        # Use centralized database loading method (now just starts monitoring)
+        self.nickname_manager.set_shared_data(store)
         self.load_from_database()
-
-        # Build program analysis in background
         self._start_analysis_build()
 
     def _handle_popup_window(self, window_id, window_class, edit_control):
@@ -1508,20 +1358,17 @@ class ClickNickApp:
         self._update_status("⚠ Connected ClickPLC window closed", "error")
         self.stop_monitoring(update_status=False)
 
-        source_is_mdb = isinstance(
-            self._shared_data_source_path, str
-        ) and self._shared_data_source_path.startswith("mdb:")
+        if self._session is not None:
+            if self.using_database:
+                self._session.force_close()
+                self.nickname_manager.set_shared_data(None)
+            else:
+                # CSV data is still valid — keep the store but close Click resources
+                self._session.detach_click_resources()
+                self._csv_only_store = self._session.store
+                self._csv_only_dataview = self._session.dataview
+            self._session = None
 
-        # Force close editor windows only for MDB-backed data.
-        if source_is_mdb and self._shared_address_data is not None:
-            self._shared_address_data.force_close_all_windows()
-            self._shared_address_data = None
-            self._shared_data_source_path = None
-
-            # MDB data is no longer valid once the Click window is gone.
-            self.nickname_manager.set_shared_data(None)
-
-        # Always clear stale Click connection metadata.
         self._clear_connection_state()
         self.selected_instance_var.set("")
         self._update_window_title()
@@ -1547,40 +1394,40 @@ class ClickNickApp:
 
         csv_unloaded = False
         if new_filename and new_filename != self.connected_click_filename:
-            # File changed within the same Click window - close editor windows without prompting
-            # (user changed file in Click, so data loss is expected)
-            has_address_windows = (
-                self._shared_address_data is not None
-                and len(self._shared_address_data._windows) > 0
-            )
-            has_dataview_window = (
-                hasattr(self, "_dataview_editor_shared_data")
-                and self._dataview_editor_shared_data is not None
-                and self._dataview_editor_shared_data._window is not None
-            )
-            if has_address_windows or has_dataview_window:
+            has_open_windows = False
+            if self._session is not None:
+                has_open_windows = (
+                    len(self._session.store._windows) > 0
+                    or (
+                        self._session.dataview is not None
+                        and self._session.dataview._window is not None
+                    )
+                    or self._session.console is not None
+                )
+            if has_open_windows:
                 from tkinter import messagebox
 
                 messagebox.showinfo(
                     "Project Changed",
                     "The Click project was changed. Editor windows will now close.",
                 )
-            self._close_editor_windows(prompt_save=False)
 
-            # Clear CSV path if it was set
+            if self._session is not None:
+                self._session.close(prompt_save=False)
+                self.nickname_manager.set_shared_data(None)
+                self._session = None
+
             if self.csv_path_var.get():
                 self.csv_path_var.set("")
                 self._update_status("⚠ CSV unloaded - filename changed", "error")
                 csv_unloaded = True
 
-            # Update instances list with new filename
             for instance in self.click_instances:
                 if instance.pid == self.connected_click_pid:
                     instance.title = current_title
                     instance.filename = new_filename
                     break
 
-            # Update combobox values and selection
             self.instances_combobox["values"] = [inst.filename for inst in self.click_instances]
             self.connected_click_filename = new_filename
             self.selected_instance_var.set(new_filename)
@@ -1590,7 +1437,8 @@ class ClickNickApp:
                 self._update_window_title()
                 self.stop_monitoring(update_status=False)
             else:
-                # Recreate SharedAddressData for the new MDB file
+                from .connection_session import ConnectionSession
+
                 if self.nickname_manager.has_access_driver():
                     from .data.data_source import MdbDataSource
 
@@ -1598,20 +1446,22 @@ class ClickNickApp:
                         click_pid=self.connected_click_pid,
                         click_hwnd=self.connected_click_hwnd,
                     )
-                    self._shared_address_data = AddressStore(data_source)
-                    self._shared_address_data.load_initial_data()
-                    self._shared_data_source_path = (
-                        f"mdb:{self.connected_click_pid}:{self.connected_click_hwnd}"
+                    store = AddressStore(data_source)
+                    store.load_initial_data()
+                    store.start_file_monitoring(self.root)
+
+                    self._session = ConnectionSession(
+                        self.connected_click_pid,
+                        self.connected_click_hwnd,
+                        new_filename,
+                        store,
+                        on_sync_status_changed=self._on_sync_status_changed,
                     )
-
-                    # Start file monitoring for external changes
-                    self._shared_address_data.start_file_monitoring(self.root)
-
-                    # Wire NicknameManager to use new SharedAddressData
-                    self.nickname_manager.set_shared_data(self._shared_address_data)
+                    self.nickname_manager.set_shared_data(store)
 
                     self.using_database = True
                     self._update_window_title()
+                    self._start_analysis_build()
 
                 self._update_status(f"⚡ Monitoring {new_filename}", "connected")
 
@@ -1709,9 +1559,12 @@ class ClickNickApp:
         """Handle application shutdown."""
         if self.monitoring:
             self.stop_monitoring()
-        dap = getattr(self, "_dap_service", None)
-        if dap is not None:
-            dap.terminate()
+        if self._session is not None:
+            self._session.force_close()
+            self._session = None
+        if self._csv_only_store is not None:
+            self._csv_only_store.stop_file_monitoring()
+            self._csv_only_store = None
         live_server = getattr(self, "_live_server", None)
         if live_server is not None:
             live_server.stop()

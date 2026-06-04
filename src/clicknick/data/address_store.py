@@ -1040,7 +1040,10 @@ class AddressStore:
 
         for window in self._windows[:]:
             try:
-                window.destroy()
+                if hasattr(window, "close_without_prompt"):
+                    window.close_without_prompt()
+                else:
+                    window.destroy()
             except Exception:
                 pass
 
@@ -1053,7 +1056,10 @@ class AddressStore:
 
         for window in self._windows[:]:
             try:
-                window.destroy()
+                if hasattr(window, "close_without_prompt"):
+                    window.close_without_prompt()
+                else:
+                    window.destroy()
             except Exception:
                 pass
 

@@ -164,6 +164,13 @@ class AnalysisService:
         return self._result.tag_to_addr_key
 
     @property
+    def addr_key_to_tag(self) -> dict[int, str]:
+        """addr_key → tag name map (empty if analysis not built)."""
+        if self._result is None:
+            return {}
+        return self._result.addr_key_to_tag
+
+    @property
     def project_dir(self) -> Path | None:
         """Path to the persisted pyrung_project/ directory (None if not built)."""
         if self._result is None:
