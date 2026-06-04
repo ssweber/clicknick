@@ -1086,9 +1086,6 @@ class ClickNickApp:
         self.root.update_idletasks()
         self.root.deiconify()
 
-        # Combobox overlay (initialized when needed)
-        self.overlay = None
-
     def _update_window_title(self):
         """Update window title to reflect current connection and data source."""
         if not self.connected_click_filename:
@@ -1567,6 +1564,9 @@ class ClickNickApp:
         """Handle application shutdown."""
         if self.monitoring:
             self.stop_monitoring()
+        if self.overlay is not None:
+            self.overlay.destroy()
+            self.overlay = None
         if self._session is not None:
             self._session.force_close()
             self._session = None

@@ -1122,7 +1122,7 @@ class DataviewEditorWindow(tk.Toplevel):
         self.notebook.bind("<Button-3>", self._on_tab_right_click)
 
         # Initial sash position (sidebar width)
-        self.after(100, lambda: self.paned.sashpos(0, 180))
+        self._sash_after_id = self.after(100, lambda: self.paned.sashpos(0, 180))
 
     @staticmethod
     def _get_dataview_editor_popup_flag() -> Path:
@@ -1207,12 +1207,18 @@ class DataviewEditorWindow(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
         # Open Tag Browser by default
-        self.after(100, self._toggle_nav)
+        self._init_after_id = self.after(100, self._toggle_nav)
 
         self._update_modbus_controls()
 
     def close_without_prompt(self) -> None:
         """Clean up resources and destroy window without save prompts."""
+        for after_id in (self._sash_after_id, self._init_after_id):
+            if after_id is not None:
+                self.after_cancel(after_id)
+        self._sash_after_id = None
+        self._init_after_id = None
+
         if self._nav_window is not None:
             self._nav_window.destroy()
             self._nav_window = None

@@ -1481,10 +1481,14 @@ class AddressEditorWindow(tk.Toplevel):
         self.bind("<Control-Y>", lambda e: self._on_redo())
 
         # Open Tag Browser by default
-        self.after(100, self._toggle_nav)
+        self._init_after_id = self.after(100, self._toggle_nav)
 
     def close_without_prompt(self) -> None:
         """Clean up resources and destroy window without save prompts."""
+        if self._init_after_id is not None:
+            self.after_cancel(self._init_after_id)
+            self._init_after_id = None
+
         if self._nav_window is not None:
             self._nav_window.destroy()
             self._nav_window = None

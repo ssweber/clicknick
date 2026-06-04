@@ -21,7 +21,7 @@ from pyclickplc.addresses import (
 from ..views.dataview_editor.cdv_file import get_dataview_folder, list_cdv_files
 
 if TYPE_CHECKING:
-    from .data.address_store import AddressStore
+    from .address_store import AddressStore
 
 
 class SharedDataviewData:
