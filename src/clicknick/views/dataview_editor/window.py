@@ -950,25 +950,17 @@ class DataviewEditorWindow(tk.Toplevel):
         if not address_shared:
             return []
 
+        candidates = sorted(
+            row.nickname for row in address_shared.all_rows.values() if row.nickname
+        )
+
+        if self.shared_data.filter_func is not None:
+            return self.shared_data.filter_func(candidates, search_text)
+
         search_upper = search_text.strip().upper()
-
-        # Build list of matching nicknames
-        matches = []
-        for row in address_shared.all_rows.values():
-            nickname = row.nickname
-            if not nickname:
-                continue
-
-            # Match against nickname (contains search)
-            if search_upper:
-                if search_upper in nickname.upper():
-                    matches.append(nickname)
-            else:
-                matches.append(nickname)
-
-        # Sort and return
-        matches.sort()
-        return matches
+        if not search_upper:
+            return candidates
+        return [n for n in candidates if search_upper in n.upper()]
 
     def _on_nickname_selected(self, nickname: str) -> None:
         """Handle nickname selection from combobox.

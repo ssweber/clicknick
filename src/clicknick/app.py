@@ -292,6 +292,11 @@ class ClickNickApp:
             return
         self._session.start_analysis(self.root)
 
+    def _apply_active_filter(self, candidates: list[str], search_text: str) -> list[str]:
+        mode = self.settings.search_mode
+        strategy = self.filter_strategies.get(mode, self.filter_strategies["contains"])
+        return strategy.filter_matches(candidates, search_text)
+
     def _open_console(self):
         """Open the Console window, or focus if already open."""
         if self._session is None:
@@ -320,6 +325,7 @@ class ClickNickApp:
             get_click_hwnd=lambda: session.hwnd,
             get_mdb_path=self._live_mdb_path,
             get_synced_pending=lambda: session.synced_pending,
+            filter_func=self._apply_active_filter,
             on_destroy=lambda: setattr(session, "console", None),
             title_suffix=session.filename or "",
         )
@@ -404,6 +410,7 @@ class ClickNickApp:
                         project_path=project_path,
                         address_store=store,
                         dataview_folder=csv_fallback_folder,
+                        filter_func=self._apply_active_filter,
                     )
                     self._session.dataview = shared
             else:
@@ -413,6 +420,7 @@ class ClickNickApp:
                         project_path=project_path,
                         address_store=store,
                         dataview_folder=csv_fallback_folder,
+                        filter_func=self._apply_active_filter,
                     )
                     self._csv_only_dataview = shared
 

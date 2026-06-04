@@ -6,6 +6,7 @@ Manages CDV file discovery and the single dataview editor window.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -38,6 +39,7 @@ class SharedDataviewData:
         project_path: Path | None = None,
         address_store: AddressStore | None = None,
         dataview_folder: Path | None = None,
+        filter_func: Callable[[list[str], str], list[str]] | None = None,
     ):
         """Initialize the shared dataview data.
 
@@ -45,10 +47,12 @@ class SharedDataviewData:
             project_path: Path to the CLICK project folder
             address_store: AddressStore for nickname lookups
             dataview_folder: Explicit DataView folder override (e.g., CSV directory)
+            filter_func: Active filter strategy callback (candidates, search_text) -> filtered
         """
         self._project_path = project_path
         self._store: AddressStore | None = None
         self._dataview_folder: Path | None = dataview_folder
+        self.filter_func = filter_func
 
         # Single window tracking (only one dataview editor at a time)
         self._window = None

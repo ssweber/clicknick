@@ -255,10 +255,13 @@ class ConsoleWindow(tk.Toplevel):
                 tags = set(analysis.tag_to_addr_key.keys())
         if not tags:
             return []
+        candidates = sorted(tags)
+        if self._filter_func is not None:
+            return self._filter_func(candidates, search_text)
         search_upper = search_text.strip().upper()
         if not search_upper:
-            return sorted(tags)
-        return sorted(t for t in tags if search_upper in t.upper())
+            return candidates
+        return [t for t in candidates if search_upper in t.upper()]
 
     def _on_tag_selected(self, tag_name: str) -> None:
         if not tag_name:
@@ -298,7 +301,7 @@ class ConsoleWindow(tk.Toplevel):
         combo_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
         combo_frame.withdraw = lambda: None  # type: ignore[attr-defined]
 
-        self._nickname_combo = NicknameCombobox(combo_frame, width=30)
+        self._nickname_combo = NicknameCombobox(combo_frame, width=30, skip_address_check=True)
         self._nickname_combo.pack(fill=tk.X, expand=True)
         self._nickname_combo.set_data_provider(self._provide_filtered_tags)
         self._nickname_combo.set_selection_callback(self._on_tag_selected)
@@ -381,6 +384,7 @@ class ConsoleWindow(tk.Toplevel):
         get_click_hwnd: Callable[[], int | None],
         get_mdb_path: Callable[[], Path | None],
         get_synced_pending: Callable[[], int],
+        filter_func: Callable[[list[str], str], list[str]] | None = None,
         on_destroy: Callable[[], None] | None = None,
         title_suffix: str = "",
     ) -> None:
@@ -390,6 +394,7 @@ class ConsoleWindow(tk.Toplevel):
         self._get_click_hwnd = get_click_hwnd
         self._get_mdb_path = get_mdb_path
         self._get_synced_pending = get_synced_pending
+        self._filter_func = filter_func
         self._on_destroy = on_destroy
 
         self.title(f"Console — {title_suffix}" if title_suffix else "Console")
