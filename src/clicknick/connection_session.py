@@ -7,6 +7,7 @@ Provides orderly teardown in the correct dependency order.
 from __future__ import annotations
 
 import threading
+import traceback
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -73,7 +74,7 @@ class ConnectionSession:
                 persist = scr_folder / "pyrung_project"
                 analysis.build(scr_folder, Path(db_path), store.base_state, persist_dir=persist)
             except Exception:
-                pass
+                traceback.print_exc()
 
         threading.Thread(target=_rebuild, daemon=True).start()
 
@@ -104,7 +105,7 @@ class ConnectionSession:
                 persist = scr_folder / "pyrung_project"
                 analysis.build(scr_folder, Path(db_path), store.base_state, persist_dir=persist)
             except Exception:
-                pass
+                traceback.print_exc()
 
         threading.Thread(target=_build, daemon=True).start()
 

@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from ..data.address_store import AddressStore
     from ..services.analysis_service import AnalysisService
 
-_SESSION_NAME = "clicknick"
 _PLC_DATA_WATCH_MS = 2000
 _ANALYSIS_POLL_MS = 500
 
@@ -96,7 +95,7 @@ class ConsoleWindow(tk.Toplevel):
                 dap.launch(
                     project_dir,  # type: ignore[arg-type]
                     snapshot_path=snapshot_path,
-                    session_name=_SESSION_NAME,
+                    session_name=self._session_name,
                 )
                 self._schedule_ui(lambda: self._on_dap_started(dap))
             except Exception as exc:
@@ -116,7 +115,7 @@ class ConsoleWindow(tk.Toplevel):
         try:
             from pyrung.dap.live import send_command
 
-            return send_command(_SESSION_NAME, command)
+            return send_command(self._session_name, command)
         except FileNotFoundError:
             return False, "Session not available (DAP may still be starting)"
         except (ConnectionRefusedError, OSError) as exc:
@@ -352,6 +351,7 @@ class ConsoleWindow(tk.Toplevel):
         filter_func: Callable[[list[str], str], list[str]] | None = None,
         on_destroy: Callable[[], None] | None = None,
         title_suffix: str = "",
+        session_name: str = "clicknick",
     ) -> None:
         super().__init__(parent)
         self._get_store = get_store
@@ -366,6 +366,7 @@ class ConsoleWindow(tk.Toplevel):
         self.geometry("750x500")
         self.minsize(500, 300)
 
+        self._session_name = session_name
         self._dap: Any | None = None
         self._plc_data_path: Path | None = None
         self._plc_data_mtime: float = 0.0

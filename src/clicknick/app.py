@@ -328,6 +328,7 @@ class ClickNickApp:
             filter_func=self._apply_active_filter,
             on_destroy=lambda: setattr(session, "console", None),
             title_suffix=session.filename or "",
+            session_name=f"clicknick-{session.filename}-{session.hwnd}",
         )
 
     def _create_about_dialog(self):
