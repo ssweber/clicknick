@@ -96,7 +96,7 @@ def _build_graph(
     (tags.py, main.py, subroutines/) to disk for consumption by DAP and
     rung preview commands.
     """
-    from pyrung.click import ladder_to_pyrung
+    from pyrung.click import ladder_to_pyrung, reset_banks
     from pyrung.core.analysis import build_program_graph
 
     from ..ladder.program import program_save
@@ -134,6 +134,7 @@ def _build_graph(
             project_dir = persist_dir
 
     namespace: dict[str, object] = {}
+    reset_banks()
     exec(compile(code, "<analysis>", "exec"), namespace)  # noqa: S102
     program = namespace["logic"]
 
