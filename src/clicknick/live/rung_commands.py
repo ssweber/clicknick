@@ -16,6 +16,22 @@ if TYPE_CHECKING:
     from .dispatch import DispatchContext
 
 
+_SUBROUTINE_NAME_RE = re.compile(r'@subroutine\("([^"]+)"\)')
+
+
+def _get_csv_stem(project_dir: Path, stem: str) -> str:
+    """Map a Python file stem to the subroutine display name used in CSV filenames."""
+    if stem == "main":
+        return "main"
+    path = project_dir / "subroutines" / f"{stem}.py"
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError:
+        return stem
+    m = _SUBROUTINE_NAME_RE.search(source)
+    return m.group(1) if m else stem
+
+
 def _get_project_dir(ctx: DispatchContext) -> Path:
     """Get the persisted pyrung_project directory, or raise."""
     analysis = ctx.analysis
@@ -156,23 +172,37 @@ def _annotate_hunk_headers(diff_lines: list[str], before_lines: list[str]) -> li
 
 
 def _extract_changed_rungs(diff_lines: list[str]) -> list[int]:
-    """Scan a unified diff for ``# RN`` rung markers in changed hunks."""
+    """Scan a unified diff for ``# RN`` rung markers in changed hunks.
+
+    Looks both backward (current_rung) and forward to associate changes
+    with the nearest rung marker — handles comments placed before a rung.
+    """
+    rung_re = re.compile(r"#\s*R(\d+)\s*$")
     found: set[int] = set()
     current_rung: int | None = None
-    for line in diff_lines:
+    unassigned: list[int] = []
+
+    for i, line in enumerate(diff_lines):
         if line.startswith("@@"):
-            m = re.search(r"#\s*R(\d+)\s*$", line)
+            m = rung_re.search(line)
             current_rung = int(m.group(1)) if m else None
             continue
-        m = re.search(r"#\s*R(\d+)\s*$", line)
+        m = rung_re.search(line)
         if m:
-            current_rung = int(m.group(1))
-        if (
-            current_rung is not None
-            and line.startswith(("+", "-"))
-            and not line.startswith(("+++", "---"))
-        ):
-            found.add(current_rung)
+            rung_num = int(m.group(1))
+            if unassigned:
+                found.add(rung_num)
+                unassigned.clear()
+            current_rung = rung_num
+        if line.startswith(("+", "-")) and not line.startswith(("+++", "---")):
+            if current_rung is not None:
+                found.add(current_rung)
+            else:
+                unassigned.append(i)
+
+    if unassigned and current_rung is not None:
+        found.add(current_rung)
+
     return sorted(found)
 
 
@@ -235,13 +265,25 @@ def _diff_one_file(
     return diff_lines, changed_rungs
 
 
-def _preview_all(project_dir: Path, before_files: dict[str, str]) -> str:
-    """Scan all files and summarize which ones have changes."""
+def _preview_all(ctx: DispatchContext, project_dir: Path, before_files: dict[str, str]) -> str:
+    """Scan all files; open preview windows for changed ones."""
     changed: list[str] = []
     for stem in _all_file_stems(project_dir):
-        _, rungs = _diff_one_file(project_dir, before_files, stem)
-        if rungs:
-            changed.append(f"  {stem}: {', '.join(f'R{r}' for r in rungs)}")
+        diff_lines, rungs = _diff_one_file(project_dir, before_files, stem)
+        if not rungs:
+            continue
+        changed.append(f"  {stem}: {', '.join(f'R{r}' for r in rungs)}")
+        if ctx.show_preview is not None:
+            pending_dir = project_dir / "csv_output"
+            csv_stem = _get_csv_stem(project_dir, stem)
+            ctx.show_preview(
+                stem,
+                None,
+                "".join(diff_lines),
+                rungs,
+                pending_dir if pending_dir.is_dir() else None,
+                csv_stem,
+            )
     if not changed:
         return "(no changes)"
     return "changed files:\n" + "\n".join(changed)
@@ -266,7 +308,7 @@ def _cmd_preview(ctx: DispatchContext, parts: list[str]) -> str:
     before_files = _get_before_files(project_dir)
 
     if file_stem is None and selection is None:
-        return _preview_all(project_dir, before_files)
+        return _preview_all(ctx, project_dir, before_files)
 
     label = file_stem or "main"
     diff_lines, changed_rungs = _diff_one_file(project_dir, before_files, label)
@@ -286,12 +328,14 @@ def _cmd_preview(ctx: DispatchContext, parts: list[str]) -> str:
 
     if ctx.show_preview is not None:
         pending_dir = project_dir / "csv_output"
+        csv_stem = _get_csv_stem(project_dir, label)
         ctx.show_preview(
             label,
             selection,
             diff_text,
             rung_nums_list,
             pending_dir if pending_dir.is_dir() else None,
+            csv_stem,
         )
         n = len(rung_nums_list) if rung_nums_list else "all"
         return f"OK: preview window opened for {label} ({n} rungs)"

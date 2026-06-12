@@ -111,7 +111,7 @@ class RungPreviewWindow(tk.Toplevel):
 
             from ..ladder.clipboard import copy_to_clipboard
 
-            csv_stem = self._file_stem or "main"
+            csv_stem = self._csv_stem
             if csv_stem == "main":
                 csv_path = self._pending_dir / "main.csv"
             else:
@@ -247,6 +247,7 @@ class RungPreviewWindow(tk.Toplevel):
         pending_dir: Path | None = None,
         get_click_hwnd: Callable[[], int | None] | None = None,
         get_mdb_path: Callable[[], Path | None] | None = None,
+        csv_stem: str | None = None,
     ):
         super().__init__(parent)
         self.title(f"Rung Preview — {file_stem}")
@@ -255,6 +256,7 @@ class RungPreviewWindow(tk.Toplevel):
 
         self._diff_text = diff_text
         self._file_stem = file_stem
+        self._csv_stem = csv_stem or file_stem
         self._selection = selection
         self._pending_dir = pending_dir
         self._get_click_hwnd = get_click_hwnd

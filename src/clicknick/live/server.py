@@ -145,6 +145,7 @@ class LiveServer:
                 diff_text: str,
                 rung_nums: list[int] | None,
                 pending_dir: Path,
+                csv_stem: str | None = None,
             ) -> None:
                 from ..views.rung_preview_window import RungPreviewWindow
 
@@ -157,6 +158,7 @@ class LiveServer:
                     pending_dir=pending_dir,
                     get_click_hwnd=get_hwnd,
                     get_mdb_path=get_mdb,
+                    csv_stem=csv_stem,
                 )
 
             show_preview = _open_preview
