@@ -312,6 +312,14 @@ class ClickNickApp:
             except tk.TclError:
                 session.console = None
 
+        mdb_path = self._live_mdb_path()
+        if mdb_path is None or not list(mdb_path.parent.glob("Scr*.tmp")):
+            self._update_status(
+                "Project not saved to disk. Please save in Click Software first.",
+                "error",
+            )
+            return
+
         analysis = session.analysis
         if analysis is None or not analysis.is_available:
             self._start_analysis_build()
