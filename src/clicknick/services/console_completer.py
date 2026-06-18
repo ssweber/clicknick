@@ -287,6 +287,10 @@ class ConsoleCompleter:
         tag_provider: Callable[[str], list[str]] | None,
     ) -> CompletionResult:
         if slot.kind in ("tag", "tags", "expression"):
+            # ~ is a slot prefix (negation): strip for filtering, preserve in output
+            if prefix.startswith("~"):
+                prefix = prefix[1:]
+                tok_start += 1
             if tag_provider is not None:
                 candidates = tag_provider(prefix)
             else:

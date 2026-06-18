@@ -323,6 +323,22 @@ class TestComplete:
         assert r.slot_kind == "expression"
         assert "Motor_Run" in r.candidates
 
+    def test_tilde_prefix_strips_for_tag_filtering(self, completer: ConsoleCompleter):
+        r = completer.complete("get ~Mot", 8, _tag_provider)
+        assert r.candidates == ["Motor_Run", "Motor_Start"]
+        assert r.token_start == 5  # after the ~
+        assert r.token_end == 8
+
+    def test_tilde_prefix_in_expression_slot(self, completer: ConsoleCompleter):
+        r = completer.complete("how ~Pum", 8, _tag_provider)
+        assert r.candidates == ["Pump_On"]
+        assert r.token_start == 5
+
+    def test_bare_tilde_returns_all_tags(self, completer: ConsoleCompleter):
+        r = completer.complete("get ~", 5, _tag_provider)
+        assert r.candidates == ALL_TAGS
+        assert r.token_start == 5
+
 
 # ---------------------------------------------------------------------------
 # Grammar loading (integration, requires pyrung)
