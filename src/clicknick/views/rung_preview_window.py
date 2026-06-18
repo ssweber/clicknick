@@ -72,6 +72,9 @@ class RungPreviewWindow(tk.Toplevel):
         if not self._groups or self._pending_dir is None:
             self._status_var.set(_diff_summary(self._diff_text))
             self._copy_btn.configure(state="disabled")
+            self._copy_all_btn.configure(
+                state="normal" if self._pending_dir is not None else "disabled"
+            )
             self._next_btn.pack_forget()
             return
 
@@ -81,8 +84,11 @@ class RungPreviewWindow(tk.Toplevel):
         if self._group_idx >= n:
             self._status_var.set(f"Done — all {n} group(s) pasted")
             self._copy_btn.configure(state="disabled")
+            self._copy_all_btn.configure(state="disabled")
             self._next_btn.configure(state="disabled")
             return
+
+        self._copy_all_btn.configure(state="normal")
 
         prefix = f"Group {self._group_idx + 1}/{n}: {label}"
         if self._copied:
@@ -102,26 +108,67 @@ class RungPreviewWindow(tk.Toplevel):
     # Actions
     # ------------------------------------------------------------------
 
+    def _read_csv(self) -> list | None:
+        """Read the CSV file for this preview, returning rungs or None on error."""
+        from laddercodec import read_csv
+
+        if self._pending_dir is None:
+            return None
+
+        csv_stem = self._csv_stem
+        if csv_stem == "main":
+            csv_path = self._pending_dir / "main.csv"
+        else:
+            csv_path = self._pending_dir / "subroutines" / f"{csv_stem}.csv"
+
+        if not csv_path.is_file():
+            self._status_var.set(f"Error: {csv_path.name} not found in pending/")
+            return None
+        return read_csv(csv_path)
+
+    def _on_copy_all(self) -> None:
+        if self._pending_dir is None:
+            return
+        try:
+            from laddercodec import encode
+
+            from ..ladder.clipboard import copy_to_clipboard
+
+            all_rungs = self._read_csv()
+            if all_rungs is None:
+                return
+
+            payload = encode(all_rungs) if len(all_rungs) > 1 else encode(all_rungs[0])
+
+            hwnd = self._get_click_hwnd() if self._get_click_hwnd else None
+            copy_to_clipboard(payload, owner_hwnd=hwnd)
+
+            self._group_idx = len(self._groups)
+            self._copied = True
+            self._copy_all_btn.configure(state="disabled")
+            self._copy_btn.configure(state="disabled")
+            self._next_btn.configure(state="disabled")
+            self._status_var.set(
+                f"Copied all {len(all_rungs)} rung(s) for {self._csv_stem}, paste in Click"
+            )
+        except RuntimeError as exc:
+            self._status_var.set(f"Clipboard error: {exc}")
+        except Exception as exc:
+            self._status_var.set(f"Error: {exc}")
+
     def _on_copy(self) -> None:
         group = self._current_group()
         if group is None or self._pending_dir is None:
             return
         try:
-            from laddercodec import encode, read_csv
+            from laddercodec import encode
 
             from ..ladder.clipboard import copy_to_clipboard
 
-            csv_stem = self._csv_stem
-            if csv_stem == "main":
-                csv_path = self._pending_dir / "main.csv"
-            else:
-                csv_path = self._pending_dir / "subroutines" / f"{csv_stem}.csv"
-
-            if not csv_path.is_file():
-                self._status_var.set(f"Error: {csv_path.name} not found in pending/")
+            all_rungs = self._read_csv()
+            if all_rungs is None:
                 return
 
-            all_rungs = read_csv(csv_path)
             selected = [all_rungs[i - 1] for i in group if 1 <= i <= len(all_rungs)]
             if not selected:
                 self._status_var.set("Error: selected rungs out of range")
@@ -215,6 +262,15 @@ class RungPreviewWindow(tk.Toplevel):
             state="disabled",
         )
         self._copy_btn.pack(side=tk.RIGHT)
+
+        self._copy_all_btn = ttk.Button(
+            btn_frame,
+            text="\U0001f4cb Copy All",
+            command=self._on_copy_all,
+            width=14,
+            state="disabled",
+        )
+        self._copy_all_btn.pack(side=tk.LEFT)
 
         self.bind("<Escape>", lambda _e: self.destroy())
 
