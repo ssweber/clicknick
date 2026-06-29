@@ -325,3 +325,7 @@ class RungPreviewWindow(tk.Toplevel):
         self._create_widgets()
         self._populate_diff()
         self._update_status()
+
+        # Raise to front and force focus (matches other popup windows)
+        self.lift()
+        self.focus_force()
