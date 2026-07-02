@@ -236,8 +236,8 @@ class ConsoleCompleter:
         except ImportError:
             return
 
-        for verb, (_handler, usage, group) in _REGISTRY.items():
-            self._specs[verb] = _parse_usage(verb, usage, group)
+        for verb, entry in _REGISTRY.items():
+            self._specs[verb] = _parse_usage(verb, entry.usage, entry.group)
         self._verbs = sorted(self._specs)
         self._loaded = True
 
