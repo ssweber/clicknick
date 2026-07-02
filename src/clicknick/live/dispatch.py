@@ -9,7 +9,7 @@ Grammar (one command per connection)::
     ping                               -> liveness + connection state + status
     get  <ID>                          -> show current row fields + dirty flag
     set  <ID> <field> <value...>       -> edit a field (appears as unsaved change)
-    unused <type-or-addr> [count]      -> next free address(es) in a bank
+    unused <type-or-addr>... [count]   -> free address(es); one per hint
     tag  <subcommand> ...              -> annotation metadata operations
     rung <subcommand> ...              -> program listing / preview / apply
     prompt-save                        -> pop a save reminder dialog in the GUI
@@ -127,41 +127,80 @@ def _iter_bank_addresses(memory_type: str, start: int | None):
             yield addr
 
 
-def _cmd_unused(ctx: DispatchContext, token: str, count: int) -> str:
-    """Return the next *count* free addresses in a memory bank.
+def _parse_hint(hint: str) -> tuple[str, int | None]:
+    """Parse a hint into (memory_type, start).
 
-    *token* is a bare memory type ("C", "DS") to scan the whole bank, or a
-    display address ("C100") to resume scanning from there. An address is
-    "free" when it is not used in the program and carries no content
-    (nickname/comment/non-default initial value or retentive).
+    A bare memory type ("C", "DS") scans the whole bank (start is None); a
+    display address ("C100") resumes scanning from there. Parsed via display
+    rules so X/Y padding and XD/YD encoding resolve to the right MDB address.
     """
-    assert ctx.store is not None
+    if any(ch.isdigit() for ch in hint):
+        return parse_address(hint)
+    memory_type = hint.upper()
+    if memory_type not in BANKS:
+        raise ValueError(f"unknown memory type {memory_type!r}")
+    return memory_type, None
 
-    # A digit in the token means "start here"; parse via display rules so
-    # X/Y padding and XD/YD encoding resolve to the right MDB address.
-    start: int | None = None
-    if any(ch.isdigit() for ch in token):
-        memory_type, start = parse_address(token)
-    else:
-        memory_type = token.upper()
-        if memory_type not in BANKS:
-            raise ValueError(f"unknown memory type {memory_type!r}")
 
-    found: list[str] = []
+def _first_free(
+    store, memory_type: str, start: int | None, taken: set[int]
+) -> tuple[int, str] | None:
+    """Return (addr_key, display) of the first free address at or after *start*.
+
+    An address is "free" when it is not used in the program and carries no
+    content (nickname/comment/non-default initial value or retentive), and is
+    not already in *taken*. Returns None if the bank has no such address.
+    """
     for addr in _iter_bank_addresses(memory_type, start):
-        row = ctx.store.visible_state.get(get_addr_key(memory_type, addr))
+        addr_key = get_addr_key(memory_type, addr)
+        if addr_key in taken:
+            continue
+        row = store.visible_state.get(addr_key)
         if row is None:
             continue
         if not row.used and not row.has_content:
-            found.append(row.display_address)
-            if len(found) >= count:
+            return addr_key, row.display_address
+    return None
+
+
+def _cmd_unused(ctx: DispatchContext, hints: list[str], count: int) -> str:
+    """Return free addresses, one per output line.
+
+    With a single hint and ``count`` > 1, returns that many consecutive free
+    addresses at or after the hint. With multiple hints, returns one free
+    address per hint, each distinct from the others (so grabbing a pair for an
+    interlock never hands back the same bit twice).
+    """
+    assert ctx.store is not None
+    taken: set[int] = set()
+    results: list[str] = []
+
+    if count > 1:
+        # count mode: one hint, `count` consecutive free addresses.
+        memory_type, start = _parse_hint(hints[0])
+        for _ in range(count):
+            found = _first_free(ctx.store, memory_type, start, taken)
+            if found is None:
                 break
+            addr_key, display = found
+            taken.add(addr_key)
+            results.append(display)
+        if not results:
+            where = f" at or after {hints[0].upper()}" if start is not None else ""
+            raise ValueError(f"no free {memory_type} addresses{where}")
+        return "\n".join(results)
 
-    if not found:
-        where = f" at or after {token.upper()}" if start is not None else ""
-        raise ValueError(f"no free {memory_type} addresses{where}")
-
-    return "\n".join(found)
+    # hint mode: one free address per hint (each must resolve).
+    for hint in hints:
+        memory_type, start = _parse_hint(hint)
+        found = _first_free(ctx.store, memory_type, start, taken)
+        if found is None:
+            where = f" at or after {hint.upper()}" if start is not None else ""
+            raise ValueError(f"no free {memory_type} addresses{where}")
+        addr_key, display = found
+        taken.add(addr_key)
+        results.append(display)
+    return "\n".join(results)
 
 
 def _status_footer(ctx: DispatchContext) -> str:
@@ -185,7 +224,10 @@ connection:
 data:
   get <tag-or-addr>
   set <tag-or-addr> <field> <value>
-  unused <type-or-addr> [count]   (alias: free) -> next free address(es)
+  unused <type-or-addr>... [count]   (alias: free) -> free address(es)
+    unused C            -> first free C          (e.g. C5)
+    unused C 3          -> 3 consecutive free C
+    unused C1031 C1414  -> one free bit near each neighbor
 
 tags:
   tag show <tag>
@@ -276,18 +318,22 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
         return _cmd_set(ctx, identifier, field_name, raw_value) + _status_footer(ctx)
 
     if verb in ("unused", "free"):
-        if not 2 <= len(parts) <= 3:
-            raise ValueError("usage: unused <type-or-addr> [count]  (e.g. 'unused C')")
+        hints = parts[1:]
+        if not hints:
+            raise ValueError(
+                "usage: unused <type-or-addr> [more...|count]  "
+                "(e.g. 'unused C', 'unused C 3', 'unused C1031 C1414')"
+            )
+        # A single hint followed by a bare integer means "count" (a bare number
+        # is never a valid address hint, so this is unambiguous).
         count = 1
-        if len(parts) == 3:
-            try:
-                count = int(parts[2])
-            except ValueError:
-                raise ValueError(f"count must be an integer, got {parts[2]!r}") from None
+        if len(hints) == 2 and hints[1].isdigit():
+            count = int(hints[1])
             if count < 1:
                 raise ValueError("count must be >= 1")
+            hints = hints[:1]
         # No status footer: keep output clean/scriptable (just the address(es)).
-        return _cmd_unused(ctx, parts[1], count)
+        return _cmd_unused(ctx, hints, count)
 
     if verb == "tag":
         from .tag_commands import dispatch_tag

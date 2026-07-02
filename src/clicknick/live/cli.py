@@ -14,6 +14,7 @@ Usage::
     clicknick-cli unused C                          # next free C bit -> C5
     clicknick-cli unused DS 3                        # next 3 free DS addresses
     clicknick-cli unused C100                        # next free C at or after C100
+    clicknick-cli unused C1031 C1414                # one free bit near each neighbor
 
     # Tag annotations
     clicknick-cli tag show Motor_Run                # full tag metadata display

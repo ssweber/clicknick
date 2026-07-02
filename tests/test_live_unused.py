@@ -79,6 +79,34 @@ def test_free_is_an_alias(store):
     assert dispatch(_ctx(store), "free DS") == "DS1"
 
 
+def test_multiple_hints_one_free_each(store):
+    # Grab a bit near each interlock neighbor in one command.
+    assert dispatch(_ctx(store), "unused C1031 C1414") == "C1031\nC1414"
+
+
+def test_multiple_hints_return_distinct_bits(store):
+    # Same start twice must not hand back the same bit.
+    assert dispatch(_ctx(store), "unused C1031 C1031") == "C1031\nC1032"
+
+
+def test_multiple_hints_skip_taken_content(store):
+    with store.edit_session("seed") as s:
+        s.set_field(get_addr_key("C", 1414), "nickname", "Guard")
+    # First hint -> C1031; second hint's C1414 is taken -> C1415.
+    assert dispatch(_ctx(store), "unused C1031 C1414") == "C1031\nC1415"
+
+
+def test_multiple_hints_across_banks(store):
+    assert dispatch(_ctx(store), "free C DS") == "C1\nDS1"
+
+
+def test_multiple_hints_raise_when_one_bank_full(store):
+    with store.edit_session("seed") as s:
+        s.set_field(get_addr_key("DH", 500), "comment", "last")
+    with pytest.raises(ValueError, match="no free DH addresses at or after DH500"):
+        dispatch(_ctx(store), "unused C1031 DH500")
+
+
 def test_respects_pending_unsaved_edits(store):
     # An unsaved nickname edit should make the address unavailable immediately.
     with store.edit_session("edit") as s:
@@ -91,9 +119,15 @@ def test_unknown_type_raises(store):
         dispatch(_ctx(store), "unused ZZ")
 
 
-def test_bad_count_raises(store):
-    with pytest.raises(ValueError, match="count must be an integer"):
-        dispatch(_ctx(store), "unused C x")
+def test_zero_count_raises(store):
+    with pytest.raises(ValueError, match="count must be >= 1"):
+        dispatch(_ctx(store), "unused C 0")
+
+
+def test_non_integer_second_token_is_a_hint(store):
+    # 'X' is not a count -> treated as a second bank hint, not an error.
+    # (X addresses display zero-padded: X001.)
+    assert dispatch(_ctx(store), "unused C X") == "C1\nX001"
 
 
 def test_no_free_at_or_after_raises(store):
