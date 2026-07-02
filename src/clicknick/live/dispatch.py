@@ -224,7 +224,7 @@ connection:
 data:
   get <tag-or-addr>
   set <tag-or-addr> <field> <value>
-  unused <type-or-addr>... [count]   (alias: free) -> free address(es)
+  unused <type-or-addr>... [count]   -> free address(es)
     unused C            -> first free C          (e.g. C5)
     unused C 3          -> 3 consecutive free C
     unused C1031 C1414  -> one free bit near each neighbor
@@ -317,7 +317,7 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
         raw_value = " ".join(parts[3:])
         return _cmd_set(ctx, identifier, field_name, raw_value) + _status_footer(ctx)
 
-    if verb in ("unused", "free"):
+    if verb == "unused":
         hints = parts[1:]
         if not hints:
             raise ValueError(

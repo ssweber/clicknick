@@ -10,7 +10,7 @@ Usage::
     clicknick-cli set Motor_Run nickname MotorRun   # rename (unsaved change)
     clicknick-cli set DS1 comment "Main motor"      # quoting works
 
-    # Find free addresses (alias: free)
+    # Find free addresses
     clicknick-cli unused C                          # next free C bit -> C5
     clicknick-cli unused DS 3                        # next 3 free DS addresses
     clicknick-cli unused C100                        # next free C at or after C100

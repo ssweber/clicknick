@@ -1,4 +1,4 @@
-"""Tests for the ``unused``/``free`` live command (next free address)."""
+"""Tests for the ``unused`` live command (next free address)."""
 
 from dataclasses import replace
 
@@ -75,10 +75,6 @@ def test_start_address_skips_taken(store):
     assert dispatch(_ctx(store), "unused C100") == "C101"
 
 
-def test_free_is_an_alias(store):
-    assert dispatch(_ctx(store), "free DS") == "DS1"
-
-
 def test_multiple_hints_one_free_each(store):
     # Grab a bit near each interlock neighbor in one command.
     assert dispatch(_ctx(store), "unused C1031 C1414") == "C1031\nC1414"
@@ -97,7 +93,7 @@ def test_multiple_hints_skip_taken_content(store):
 
 
 def test_multiple_hints_across_banks(store):
-    assert dispatch(_ctx(store), "free C DS") == "C1\nDS1"
+    assert dispatch(_ctx(store), "unused C DS") == "C1\nDS1"
 
 
 def test_multiple_hints_raise_when_one_bank_full(store):
