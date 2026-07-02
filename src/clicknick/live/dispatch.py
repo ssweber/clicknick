@@ -9,6 +9,7 @@ Grammar (one command per connection)::
     ping                               -> liveness + connection state + status
     get  <ID>                          -> show current row fields + dirty flag
     set  <ID> <field> <value...>       -> edit a field (appears as unsaved change)
+    unused <type-or-addr> [count]      -> next free address(es) in a bank
     tag  <subcommand> ...              -> annotation metadata operations
     rung <subcommand> ...              -> program listing / preview / apply
     prompt-save                        -> pop a save reminder dialog in the GUI
@@ -23,7 +24,8 @@ import shlex
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from pyclickplc.addresses import get_addr_key, parse_address
+from pyclickplc.addresses import get_addr_key, is_xd_yd_hidden_slot, parse_address
+from pyclickplc.banks import BANKS
 
 from ..services.annotation_service import AnnotationService
 
@@ -108,6 +110,60 @@ def _cmd_set(ctx: DispatchContext, identifier: str, field_name: str, raw_value: 
     return f"OK: {identifier} {field_name} = {value!r} (unsaved change)"
 
 
+def _iter_bank_addresses(memory_type: str, start: int | None):
+    """Yield MDB addresses for *memory_type* in ascending order.
+
+    Skips hidden XD/YD slots. If *start* is given, addresses below it are
+    skipped (used to resume scanning from a specific address).
+    """
+    bank = BANKS[memory_type]
+    ranges = bank.valid_ranges or ((bank.min_addr, bank.max_addr),)
+    for lo, hi in ranges:
+        for addr in range(lo, hi + 1):
+            if start is not None and addr < start:
+                continue
+            if is_xd_yd_hidden_slot(memory_type, addr):
+                continue
+            yield addr
+
+
+def _cmd_unused(ctx: DispatchContext, token: str, count: int) -> str:
+    """Return the next *count* free addresses in a memory bank.
+
+    *token* is a bare memory type ("C", "DS") to scan the whole bank, or a
+    display address ("C100") to resume scanning from there. An address is
+    "free" when it is not used in the program and carries no content
+    (nickname/comment/non-default initial value or retentive).
+    """
+    assert ctx.store is not None
+
+    # A digit in the token means "start here"; parse via display rules so
+    # X/Y padding and XD/YD encoding resolve to the right MDB address.
+    start: int | None = None
+    if any(ch.isdigit() for ch in token):
+        memory_type, start = parse_address(token)
+    else:
+        memory_type = token.upper()
+        if memory_type not in BANKS:
+            raise ValueError(f"unknown memory type {memory_type!r}")
+
+    found: list[str] = []
+    for addr in _iter_bank_addresses(memory_type, start):
+        row = ctx.store.visible_state.get(get_addr_key(memory_type, addr))
+        if row is None:
+            continue
+        if not row.used and not row.has_content:
+            found.append(row.display_address)
+            if len(found) >= count:
+                break
+
+    if not found:
+        where = f" at or after {token.upper()}" if start is not None else ""
+        raise ValueError(f"no free {memory_type} addresses{where}")
+
+    return "\n".join(found)
+
+
 def _status_footer(ctx: DispatchContext) -> str:
     parts: list[str] = []
     if ctx.store is not None:
@@ -129,6 +185,7 @@ connection:
 data:
   get <tag-or-addr>
   set <tag-or-addr> <field> <value>
+  unused <type-or-addr> [count]   (alias: free) -> next free address(es)
 
 tags:
   tag show <tag>
@@ -217,6 +274,20 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
         identifier, field_name = parts[1], parts[2].lower()
         raw_value = " ".join(parts[3:])
         return _cmd_set(ctx, identifier, field_name, raw_value) + _status_footer(ctx)
+
+    if verb in ("unused", "free"):
+        if not 2 <= len(parts) <= 3:
+            raise ValueError("usage: unused <type-or-addr> [count]  (e.g. 'unused C')")
+        count = 1
+        if len(parts) == 3:
+            try:
+                count = int(parts[2])
+            except ValueError:
+                raise ValueError(f"count must be an integer, got {parts[2]!r}") from None
+            if count < 1:
+                raise ValueError("count must be >= 1")
+        # No status footer: keep output clean/scriptable (just the address(es)).
+        return _cmd_unused(ctx, parts[1], count)
 
     if verb == "tag":
         from .tag_commands import dispatch_tag
