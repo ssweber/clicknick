@@ -111,11 +111,16 @@ class ConsoleWindow(tk.Toplevel):
                 pass
             self._dap = None
 
-    def _send(self, command: str) -> tuple[bool, str]:
+    def _send(
+        self,
+        command: str,
+        *,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> tuple[bool, str]:
         try:
             from pyrung.dap.live import send_command
 
-            return send_command(self._session_name, command)
+            return send_command(self._session_name, command, on_progress=on_progress)
         except FileNotFoundError:
             return False, "Session not available (DAP may still be starting)"
         except (ConnectionRefusedError, OSError) as exc:
@@ -152,10 +157,13 @@ class ConsoleWindow(tk.Toplevel):
 
         subs = [s.strip() for s in command.split(";") if s.strip()]
 
+        def _on_progress(text: str) -> None:
+            self._schedule_ui(lambda: self._append_output(text, "progress"))
+
         def _run() -> list[tuple[bool, str]]:
             results: list[tuple[bool, str]] = []
             for sub in subs:
-                ok, text = self._send(sub)
+                ok, text = self._send(sub, on_progress=_on_progress)
                 results.append((ok, text))
                 if not ok:
                     break
@@ -305,6 +313,7 @@ class ConsoleWindow(tk.Toplevel):
         self._output.tag_configure("prompt", foreground="#569cd6")
         self._output.tag_configure("error", foreground="#f44747")
         self._output.tag_configure("output", foreground="#d4d4d4")
+        self._output.tag_configure("progress", foreground="#808080")
 
         # Status bar
         self._status_var = tk.StringVar(value="Starting...")
