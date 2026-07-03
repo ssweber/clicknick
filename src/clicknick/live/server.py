@@ -74,6 +74,7 @@ class LiveServer:
         get_click_hwnd: Callable[[], int | None] | None = None,
         get_mdb_path: Callable[[], Path | None] | None = None,
         get_synced_pending: Callable[[], int] | None = None,
+        open_editor: Callable[[str], None] | None = None,
     ) -> None:
         self._root = root
         self._get_store = get_store
@@ -83,6 +84,7 @@ class LiveServer:
         self._get_click_hwnd = get_click_hwnd
         self._get_mdb_path = get_mdb_path
         self._get_synced_pending = get_synced_pending
+        self._open_editor = open_editor
         self._listener: Listener | None = None
         self._accept_thread: threading.Thread | None = None
         self._stop = threading.Event()
@@ -163,6 +165,8 @@ class LiveServer:
 
             show_preview = _open_preview
 
+        show_address_editor = self._open_editor
+
         show_save_prompt = None
         if self._root is not None:
 
@@ -180,6 +184,7 @@ class LiveServer:
             resolve_tag=resolve_tag,
             analysis=analysis,
             show_preview=show_preview,
+            show_address_editor=show_address_editor,
             show_save_prompt=show_save_prompt,
             synced_pending=synced_pending,
         )

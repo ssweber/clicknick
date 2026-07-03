@@ -343,10 +343,14 @@ def _cmd_preview(ctx: DispatchContext, parts: list[str]) -> str:
     return diff_text
 
 
-def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
+def _run_export(project_dir: Path) -> Path:
+    """Run ``project_to_csv.py`` to regenerate ``csv_output/``; return that dir.
+
+    Shared by ``rung apply`` (ladder CSVs) and ``tag apply`` (nicknames.csv);
+    both come out of the same project export. Raises on failure.
+    """
     import subprocess
 
-    project_dir = _get_project_dir(ctx)
     script = project_dir / "project_to_csv.py"
     if not script.is_file():
         raise ValueError("project_to_csv.py not found in project directory")
@@ -362,8 +366,12 @@ def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
         raise ValueError(
             result.stderr.strip() or f"project_to_csv.py exited with code {result.returncode}"
         )
+    return project_dir / "csv_output"
 
-    pending_dir = project_dir / "csv_output"
+
+def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
+    project_dir = _get_project_dir(ctx)
+    pending_dir = _run_export(project_dir)
     return f"OK: wrote ladder CSVs to {pending_dir}"
 
 

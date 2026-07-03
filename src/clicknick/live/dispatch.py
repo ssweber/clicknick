@@ -46,6 +46,7 @@ class DispatchContext:
     analysis: Any | None = None  # AnalysisService (avoid import for lightweight CLI)
     annotation: AnnotationService = field(default_factory=AnnotationService)
     show_preview: Callable[..., None] | None = None
+    show_address_editor: Callable[[str], None] | None = None
     show_save_prompt: Callable[[str, str], None] | None = None
     synced_pending: int = 0
 
@@ -241,6 +242,8 @@ tags:
   tag set-physical <tag> <name> [--on-delay D] [--off-delay D] [--profile P] [--system S]
   tag set-link <tag> <link>
   tag clear-physical <tag>
+  tag apply                          -> edit tags.py, then push the diff
+    (regenerates nicknames.csv, lands changed rows, opens Address Editor → Changed)
 
 rungs:
   rung list [file]

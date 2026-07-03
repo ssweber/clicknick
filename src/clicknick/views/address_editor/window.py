@@ -1498,6 +1498,24 @@ class AddressEditorWindow(tk.Toplevel):
 
         self.destroy()
 
+    def apply_row_filter(self, row_filter: str) -> None:
+        """Switch the current tab to a row filter (e.g. 'changed') and surface it.
+
+        Used by ``clicknick-cli tag apply`` to drop the engineer straight onto
+        the rows it just changed. Clears any text filter so nothing is hidden,
+        then raises the window.
+        """
+        panel = self._get_current_panel()
+        if panel is None:
+            return
+        panel.filter_enabled_var.set(False)
+        panel.filter_var.set("")
+        panel.row_filter_var.set(row_filter)
+        panel._apply_filters()
+        self.deiconify()
+        self.lift()
+        self.focus_force()
+
     def _update_sync_indicator(self, pending: int) -> None:
         self._synced_pending = pending
         self._update_status()

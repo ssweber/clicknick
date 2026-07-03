@@ -351,11 +351,15 @@ class ClickNickApp:
         if self._session is not None:
             self._session.record_sync(count)
 
-    def _open_address_editor(self):
+    def _open_address_editor(self, initial_filter: str | None = None):
         """Open the Address Editor window.
 
         Multiple windows can be opened and they will share the same data.
         Changes made in one window are automatically reflected in others.
+
+        Args:
+            initial_filter: If given (e.g. "changed"), the new window's first tab
+                is switched to that row filter once its data has loaded.
         """
         # Check for ODBC drivers (MDB mode requires them)
         csv_path = self.csv_path_var.get()
@@ -371,19 +375,38 @@ class ClickNickApp:
         try:
             from .views.address_editor.window import AddressEditorWindow
 
-            AddressEditorWindow(
+            window = AddressEditorWindow(
                 self.root,
                 address_store=store,
                 click_filename=self.connected_click_filename or "",
                 analysis_service=self._session.analysis if self._session else None,
                 on_synced=self._on_editor_synced,
             )
+            if initial_filter:
+                window.apply_row_filter(initial_filter)
 
         except Exception as e:
             import traceback
 
             traceback.print_exc()
             self._update_status(f"Error opening editor: {e}", "error")
+
+    def _live_open_address_editor(self, initial_filter: str = "changed") -> None:
+        """Open or focus the Address Editor filtered to *initial_filter*.
+
+        Callback for ``clicknick-cli tag apply``. Reuses an already-open editor
+        (they all share one store) rather than stacking new windows on repeat
+        applies. Runs on the Tk main thread (the live server marshals it there).
+        """
+        store = self._get_store()
+        if store is not None:
+            from .views.address_editor.window import AddressEditorWindow
+
+            for win in store._windows:
+                if isinstance(win, AddressEditorWindow) and win.winfo_exists():
+                    win.apply_row_filter(initial_filter)
+                    return
+        self._open_address_editor(initial_filter=initial_filter)
 
     def _open_dataview_editor(self):
         """Open the Dataview Editor window, or focus if already open.
@@ -1061,6 +1084,7 @@ class ClickNickApp:
             get_click_hwnd=lambda: self.connected_click_hwnd,
             get_mdb_path=self._live_mdb_path,
             get_synced_pending=lambda: self._session.synced_pending if self._session else 0,
+            open_editor=self._live_open_address_editor,
         )
         try:
             self._live_server.start()
