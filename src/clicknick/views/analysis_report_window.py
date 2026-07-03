@@ -1,4 +1,10 @@
-"""Program analysis report window."""
+"""Program analysis report window.
+
+Rule identity, order, titles, and severity are owned by pyrung's validation
+registry — this window reads them at render time (``ordered_rules()``) instead of
+keeping its own copy.  Add or rename a rule in pyrung and it shows up here
+automatically; the only display knowledge clicknick owns is the severity palette.
+"""
 
 from __future__ import annotations
 
@@ -6,31 +12,14 @@ import tkinter as tk
 from dataclasses import dataclass, field
 from tkinter import ttk
 
-RULE_ORDER = [
-    "CORE_STUCK_HIGH",
-    "CORE_STUCK_LOW",
-    "CORE_CONFLICTING_OUTPUT",
-    "CORE_ANTITOGGLE",
-    "CORE_READONLY_WRITE",
-    "CORE_CHOICES_VIOLATION",
-    "CORE_FINAL_MULTIPLE_WRITERS",
-    "CORE_RANGE_VIOLATION",
-    "CORE_MISSING_PROFILE",
-    "CORE_POINTER_DEFAULT_BEFORE_BLOCK_START",
-]
-
-RULE_LABELS = {
-    "CORE_STUCK_HIGH": "Stuck High (never reset)",
-    "CORE_STUCK_LOW": "Stuck Low (never latched)",
-    "CORE_CONFLICTING_OUTPUT": "Conflicting Output",
-    "CORE_ANTITOGGLE": "Anti-Toggle Oscillation",
-    "CORE_READONLY_WRITE": "Writes to Read-Only",
-    "CORE_CHOICES_VIOLATION": "Choices Violation",
-    "CORE_FINAL_MULTIPLE_WRITERS": "Final Tag — Multiple Writers",
-    "CORE_RANGE_VIOLATION": "Range Violation",
-    "CORE_MISSING_PROFILE": "Missing Physical Profile",
-    "CORE_POINTER_DEFAULT_BEFORE_BLOCK_START": "Pointer Default Before Block",
+# Severity -> text colour.  Severities come from pyrung's registry.
+_SEVERITY_COLOR = {
+    "error": "#B22222",
+    "warning": "#CC6600",
+    "info": "#1E6FB8",
+    "advisory": "#777777",
 }
+_PASS_COLOR = "#228B22"
 
 
 @dataclass
@@ -40,10 +29,26 @@ class AnalysisReportData:
     grouped_findings: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
 
 
+def _rule_rows(grouped: dict[str, list[tuple[str, str]]]) -> list[tuple[str, str, str]]:
+    """`(code, title, severity)` rows in display order, straight from the registry.
+
+    Registry rules come first in canonical (severity-desc) order; any finding
+    whose code the installed pyrung doesn't know is appended — never dropped —
+    with the raw code as its title and warning styling.
+    """
+    from pyrung.core.validation import ordered_rules
+
+    specs = ordered_rules()
+    known = {s.code for s in specs}
+    rows = [(s.code, s.title, s.severity) for s in specs]
+    rows += [(code, code, "warning") for code in sorted(grouped) if code not in known]
+    return rows
+
+
 class AnalysisReportWindow:
     def __init__(self, parent: tk.Tk | tk.Toplevel, data: AnalysisReportData) -> None:
         self.window = tk.Toplevel(parent)
-        self.window.title("Program Analysis Report")
+        self.window.title("Program Check")
         self.window.geometry("700x500")
         self.window.minsize(500, 300)
         self.window.transient(parent)
@@ -77,20 +82,20 @@ class AnalysisReportWindow:
         text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        text.tag_configure("pass", foreground="#228B22")
-        text.tag_configure("warning", foreground="#CC6600")
+        text.tag_configure("pass", foreground=_PASS_COLOR)
         text.tag_configure("finding", foreground="#333333", lmargin1=30, lmargin2=30)
+        for severity, color in _SEVERITY_COLOR.items():
+            text.tag_configure(severity, foreground=color)
 
-        for code in RULE_ORDER:
-            label = RULE_LABELS.get(code, code)
+        for code, title, severity in _rule_rows(data.grouped_findings):
             findings = data.grouped_findings.get(code, [])
-
+            style = severity if severity in _SEVERITY_COLOR else "warning"
             if findings:
-                text.insert(tk.END, f"⚠ {label} ({len(findings)})\n", "warning")
+                text.insert(tk.END, f"⚠ {title} ({len(findings)})\n", style)
                 for tag_name, message in findings:
                     text.insert(tk.END, f"{tag_name} — {message}\n", "finding")
             else:
-                text.insert(tk.END, f"✓ {label}\n", "pass")
+                text.insert(tk.END, f"✓ {title}\n", "pass")
 
         text.config(state=tk.DISABLED)
 

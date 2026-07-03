@@ -949,6 +949,7 @@ class ClickNickApp:
         tools_menu.add_command(label="Address Editor...", command=self._open_address_editor)
         tools_menu.add_command(label="Dataview Editor...", command=self._open_dataview_editor)
         tools_menu.add_command(label="Console...", command=self._open_console)
+        tools_menu.add_command(label="Check Program...", command=self._analyze_program)
         if _DEV_MODE:
             tools_menu.add_separator()
             tools_menu.add_command(label="Verify MDB & CDV...", command=self._verify_mdb_and_cdv)
@@ -965,8 +966,6 @@ class ClickNickApp:
         ladder_menu.add_command(label="Save Clipboard to CSV...", command=self._save_clipboard_csv)
         ladder_menu.add_command(label="Export from Click...", command=self._export_from_click)
         ladder_menu.add_command(label="Convert to pyrung...", command=self._convert_to_pyrung)
-        ladder_menu.add_separator()
-        ladder_menu.add_command(label="Analyze Program...", command=self._analyze_program)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
