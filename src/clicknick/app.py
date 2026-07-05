@@ -36,19 +36,6 @@ def get_version():
         return "Development"
 
 
-def _stuck_group_label(group) -> str:
-    """Display label for a grouped stuck-bit finding.
-
-    Single-member groups use the tag's own name; multi-member groups use the
-    shared name prefix (``A_Alm*``) so a block clear reads as one entry.  The
-    member count lives in the group message, so it isn't repeated here.
-    """
-    if len(group.findings) == 1:
-        return group.findings[0].target_name
-    prefix = group.common_prefix
-    return f"{prefix}*" if prefix else "(multiple tags)"
-
-
 class ClickNickApp:
     """Main application for the ClickNick App."""
 
@@ -781,26 +768,25 @@ class ClickNickApp:
             )
             return
 
+        from pyrung.core.validation.display import FindingDisplay
         from pyrung.core.validation.stuck_bits import StuckBitFinding, StuckBitReport
 
-        grouped: dict[str, list[tuple[str, str]]] = {}
+        # Each finding hands over a presentation-ready FindingDisplay built by
+        # pyrung; the report window renders it directly (no message parsing).
+        grouped: dict[str, list[FindingDisplay]] = {}
         if report:
             # Stuck-bit findings get grouped: a range reset/fill that clears a
             # whole block of coils emits one finding per tag, which collapses to
             # a single entry keyed on the shared write site.  Everything else is
-            # rendered one line per finding.
+            # rendered one entry per finding.
             stuck: list[StuckBitFinding] = []
             for finding in report:
                 if isinstance(finding, StuckBitFinding):
                     stuck.append(finding)
                 else:
-                    grouped.setdefault(finding.code, []).append(
-                        (finding.target_name, finding.message)
-                    )
+                    grouped.setdefault(finding.code, []).append(finding.display)
             for group in StuckBitReport(findings=tuple(stuck)).grouped():
-                grouped.setdefault(group.code, []).append(
-                    (_stuck_group_label(group), group.message)
-                )
+                grouped.setdefault(group.code, []).append(group.display)
 
         from .views.analysis_report_window import (
             AnalysisReportData,
@@ -949,7 +935,7 @@ class ClickNickApp:
         tools_menu.add_command(label="Address Editor...", command=self._open_address_editor)
         tools_menu.add_command(label="Dataview Editor...", command=self._open_dataview_editor)
         tools_menu.add_command(label="Console...", command=self._open_console)
-        tools_menu.add_command(label="Check Program...", command=self._analyze_program)
+        tools_menu.add_command(label="Check Program", command=self._analyze_program)
         if _DEV_MODE:
             tools_menu.add_separator()
             tools_menu.add_command(label="Verify MDB & CDV...", command=self._verify_mdb_and_cdv)
