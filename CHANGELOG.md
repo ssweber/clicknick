@@ -23,6 +23,7 @@
 
 ### Fixed
 
+- Console autocomplete now reads pyrung's published command grammar (`pyrung.dap.grammar`) instead of parsing its help text, so it completes multi-target `how A, B` (with or without a space after the comma), offers tag names inside `avoid`/`via` clauses — which never worked before — and suggests the `avoid` and `via` keywords themselves once a target is typed. Older pyrung versions without that module fall back to the previous help-text parsing.
 - Importing a nickname CSV no longer fails outright with `cannot assign to field 'nickname'`.
 - Unchecking a block in the import dialog now actually excludes it — previously a tagged block sitting between untagged rows was imported anyway, under the wrong block's merge options.
 - Rows no longer show as **Changed** with no visible edit, and are no longer rewritten to the database on save, when a value is written back unchanged (re-typing the same text, or importing a CSV that already matches the project).

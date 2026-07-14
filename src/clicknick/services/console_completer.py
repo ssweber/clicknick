@@ -1,14 +1,21 @@
 """Context-aware command completer for the pyrung DAP console.
 
-Pure Python — no tkinter dependency. Parses the pyrung command registry
-at runtime so clicknick stays in sync automatically when pyrung adds
-new commands.
+Pure Python — no tkinter dependency. The grammar comes from pyrung at runtime, so
+clicknick stays in sync automatically when pyrung adds or changes commands.
+
+We read ``pyrung.dap.grammar.command_grammar()`` — the published, machine-readable
+contract, which pyrung tests against its own usage strings. Older pyrung versions
+don't have that module, so we fall back to parsing the ``usage=`` prose in
+``_REGISTRY`` ourselves (``_parse_usage`` below). That fallback is a best-effort
+heuristic: it cannot recover the facts prose doesn't state — which clauses are
+keyword-introduced (``avoid``/``via``), and which slots take comma-separated
+conjuncts (``how A, B``). Prefer the published grammar.
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
@@ -26,6 +33,13 @@ class SlotSpec:
     required: bool = True
     choices: tuple[str, ...] = ()
     label: str = ""
+    #: The slot may be given more than once.
+    repeat: bool = False
+    #: What separates repeats — "," for comma-separated conjuncts (`how A, B`).
+    #: A comma is then a token boundary *inside* one slot, not the end of it.
+    separator: str = " "
+    #: Literal word introducing this slot (`how X avoid Y`). Empty = positional.
+    keyword: str = ""
 
 
 @dataclass(frozen=True)
@@ -50,6 +64,7 @@ class CompletionResult:
 
 _PAREN_RE = re.compile(r"\s*\(.*?\)\s*$")
 _TAG_WORDS = {"tag", "tag2"}
+_EXPR_RE = re.compile(r"\bexpr(ession)?\b", re.IGNORECASE)
 
 
 def _tokenize_usage(text: str) -> list[str]:
@@ -136,8 +151,10 @@ def _classify_usage_token(token: str) -> SlotSpec | None:
             return SlotSpec(kind="freeform", required=False, label=inner)
         return SlotSpec(kind="choices", required=False, choices=(inner,), label=inner)
 
-    # Expression: contains tag names mixed with operators, offer tag completions
-    if "expression" in inner.lower():
+    # Expression: contains tag names mixed with operators, offer tag completions.
+    # Match `expr` as well as `expression` — pyrung abbreviates in some usage strings,
+    # and a miss here silently downgrades the slot to freeform (no tag completion).
+    if _EXPR_RE.search(inner):
         return SlotSpec(kind="expression", required=not optional, label=inner)
 
     # Freeform: <value>, <filepath>, etc.
@@ -201,6 +218,35 @@ def _find_token_at_cursor(text: str, cursor: int) -> tuple[list[str], str, int, 
     return preceding, current, last_start, last_end
 
 
+#: pyrung's slot kinds -> ours. pyrung has no separate "tags" kind; a repeating tag
+#: slot carries ``repeat=True`` instead. Its "value"/"text" are both uncompletable.
+_PYRUNG_KINDS: dict[str, SlotKind] = {
+    "tag": "tag",
+    "expression": "expression",
+    "choices": "choices",
+    "flag": "flag",
+    "value": "freeform",
+    "text": "freeform",
+}
+
+
+def _from_pyrung_slot(slot: object) -> SlotSpec:
+    """Convert a ``pyrung.dap.grammar.Slot`` into our :class:`SlotSpec`."""
+    kind = _PYRUNG_KINDS.get(getattr(slot, "kind", ""), "freeform")
+    repeat = bool(getattr(slot, "repeat", False))
+    if kind == "tag" and repeat:
+        kind = "tags"
+    return SlotSpec(
+        kind=kind,
+        required=bool(getattr(slot, "required", True)),
+        choices=tuple(getattr(slot, "choices", ())),
+        label=str(getattr(slot, "label", "")),
+        repeat=repeat,
+        separator=str(getattr(slot, "separator", " ")),
+        keyword=str(getattr(slot, "keyword", "")),
+    )
+
+
 def _prefix_filter(items: list[str], prefix: str) -> list[str]:
     if not prefix:
         return items
@@ -220,11 +266,21 @@ class ConsoleCompleter:
     def is_loaded(self) -> bool:
         return self._loaded
 
-    def load_grammar(self) -> None:
-        """Import pyrung console modules and parse ``_REGISTRY``."""
-        if self._loaded:
-            return
+    def _load_published_grammar(self) -> bool:
+        try:
+            from pyrung.dap.grammar import command_grammar
+        except ImportError:
+            return False
 
+        for verb, cg in command_grammar().items():
+            self._specs[verb] = CommandSpec(
+                verb=verb,
+                slots=tuple(_from_pyrung_slot(s) for s in cg.slots),
+                group=cg.group,
+            )
+        return bool(self._specs)
+
+    def _load_legacy_registry(self) -> bool:
         try:
             import pyrung.dap.bounds_console  # noqa: F401
             import pyrung.dap.capture  # noqa: F401
@@ -234,12 +290,31 @@ class ConsoleCompleter:
             import pyrung.dap.spec_console  # noqa: F401
             from pyrung.dap.console import _REGISTRY
         except ImportError:
-            return
+            return False
 
         for verb, entry in _REGISTRY.items():
             self._specs[verb] = _parse_usage(verb, entry.usage, entry.group)
-        self._verbs = sorted(self._specs)
-        self._loaded = True
+        return bool(self._specs)
+
+    def load_grammar(self) -> None:
+        """Load the console grammar from pyrung.
+
+        Prefers ``pyrung.dap.grammar`` — the published, machine-readable contract,
+        which pyrung tests against its own usage strings. Falls back to parsing
+        ``_REGISTRY`` usage prose ourselves on older pyrung, where that module does
+        not exist yet.
+        """
+        if self._loaded:
+            return
+
+        if self._load_published_grammar():
+            self._verbs = sorted(self._specs)
+            self._loaded = True
+            return
+
+        if self._load_legacy_registry():
+            self._verbs = sorted(self._specs)
+            self._loaded = True
 
     def load_from_specs(self, specs: dict[str, CommandSpec]) -> None:
         """Load grammar from pre-built specs (for testing)."""
@@ -248,11 +323,26 @@ class ConsoleCompleter:
         self._loaded = True
 
     def _resolve_slot(
-        self, spec: CommandSpec, slot_idx: int, current_token: str = ""
+        self,
+        spec: CommandSpec,
+        slot_idx: int,
+        current_token: str = "",
+        args: tuple[str, ...] = (),
     ) -> SlotSpec | None:
-        """Find the slot at *slot_idx*, handling variadic/greedy slots."""
+        """Find the slot the cursor is in, handling keyword clauses and repeats."""
         if not spec.slots:
             return None
+
+        # Keyword clauses (`how X avoid Y via Z`) are not positional: the most recent
+        # keyword among the typed args decides which slot we are in.
+        keyworded = {s.keyword.lower(): s for s in spec.slots if s.keyword}
+        if keyworded:
+            for tok in reversed(args):
+                slot = keyworded.get(tok.lower())
+                if slot is not None:
+                    return slot
+            positional = [s for s in spec.slots if not s.keyword]
+            return positional[-1] if positional else None
 
         if slot_idx < len(spec.slots):
             return spec.slots[slot_idx]
@@ -287,6 +377,18 @@ class ConsoleCompleter:
         tag_provider: Callable[[str], list[str]] | None,
     ) -> CompletionResult:
         if slot.kind in ("tag", "tags", "expression"):
+            # A comma-separated slot (multi-target `how A,B`, union `avoid A,B`) holds
+            # several conjuncts in one slot: only the text after the last comma is the
+            # tag being typed. Everything before it is already-committed input.
+            if slot.separator == ",":
+                comma = prefix.rfind(",")
+                if comma != -1:
+                    prefix = prefix[comma + 1 :]
+                    tok_start += comma + 1
+                    # `how A, B` — the space after the comma is not part of the tag.
+                    leading = len(prefix) - len(prefix.lstrip())
+                    prefix = prefix[leading:]
+                    tok_start += leading
             # ~ is a slot prefix (negation): strip for filtering, preserve in output
             if prefix.startswith("~"):
                 prefix = prefix[1:]
@@ -330,6 +432,30 @@ class ConsoleCompleter:
             hint=slot.label or "",
         )
 
+    def _offer_keywords(
+        self,
+        spec: CommandSpec,
+        args: tuple[str, ...],
+        current: str,
+        result: CompletionResult,
+    ) -> CompletionResult:
+        """Append a command's unused clause keywords (`avoid`, `via`) as candidates.
+
+        Only at the start of a fresh token — mid-conjunct (`how A, av…`) a comma is
+        still open, so the user is naming a tag, not opening a clause.
+        """
+        if "," in current or not args:
+            return result
+        typed = {a.lower() for a in args}
+        keywords = [
+            s.keyword
+            for s in spec.slots
+            if s.keyword and s.keyword.lower() not in typed and s.keyword.startswith(current)
+        ]
+        if not keywords:
+            return result
+        return replace(result, candidates=[*result.candidates, *keywords])
+
     def complete(
         self,
         text: str,
@@ -357,9 +483,11 @@ class ConsoleCompleter:
         if spec is None:
             return CompletionResult(token_start=tok_start, token_end=tok_end)
 
+        args = tuple(preceding[1:])
         slot_idx = len(preceding) - 1
-        slot = self._resolve_slot(spec, slot_idx, current)
+        slot = self._resolve_slot(spec, slot_idx, current, args)
         if slot is None:
             return CompletionResult(token_start=tok_start, token_end=tok_end)
 
-        return self._complete_slot(slot, current, tok_start, tok_end, tag_provider)
+        result = self._complete_slot(slot, current, tok_start, tok_end, tag_provider)
+        return self._offer_keywords(spec, args, current, result)

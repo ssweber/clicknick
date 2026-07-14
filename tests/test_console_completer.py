@@ -202,9 +202,22 @@ def _make_completer() -> ConsoleCompleter:
                 (SlotSpec("choices", True, choices=("install", "remove", "status")),),
                 "capture",
             ),
+            # Mirrors pyrung's declared grammar for `how` (see pyrung.dap.grammar):
+            # comma-separated targets, plus keyword-introduced avoid/via clauses.
             "how": CommandSpec(
                 "how",
-                (SlotSpec("expression", True, label="expression"),),
+                (
+                    SlotSpec("expression", True, label="target", repeat=True, separator=","),
+                    SlotSpec(
+                        "expression",
+                        False,
+                        label="avoid",
+                        repeat=True,
+                        separator=",",
+                        keyword="avoid",
+                    ),
+                    SlotSpec("expression", False, label="via", keyword="via"),
+                ),
                 "analysis",
             ),
         }
@@ -323,6 +336,35 @@ class TestComplete:
         assert r.slot_kind == "expression"
         assert "Motor_Run" in r.candidates
 
+    def test_multi_target_after_comma_space(self, completer: ConsoleCompleter):
+        """`how A, B` — the second target completes like the first."""
+        text = "how Motor_Run, Pum"
+        r = completer.complete(text, len(text), _tag_provider)
+        assert r.slot_kind == "expression"
+        assert r.candidates == ["Pump_On"]
+        # Splice must replace only the second target, leaving the first intact.
+        assert text[: r.token_start] + "Pump_On" + text[r.token_end :] == "how Motor_Run, Pump_On"
+
+    def test_multi_target_comma_no_space(self, completer: ConsoleCompleter):
+        """`how A,B` — a comma with no space still starts a fresh tag."""
+        text = "how Motor_Run,Pum"
+        r = completer.complete(text, len(text), _tag_provider)
+        assert r.candidates == ["Pump_On"]
+        assert text[: r.token_start] + "Pump_On" + text[r.token_end :] == "how Motor_Run,Pump_On"
+
+    def test_multi_target_bare_comma_returns_all_tags(self, completer: ConsoleCompleter):
+        text = "how Motor_Run,"
+        r = completer.complete(text, len(text), _tag_provider)
+        assert r.candidates == ALL_TAGS
+        assert r.token_start == len(text)
+
+    def test_multi_target_comma_then_tilde(self, completer: ConsoleCompleter):
+        """The comma and ~ prefixes compose: `how A, ~B`."""
+        text = "how Motor_Run, ~Pum"
+        r = completer.complete(text, len(text), _tag_provider)
+        assert r.candidates == ["Pump_On"]
+        assert text[: r.token_start] + "Pump_On" + text[r.token_end :] == "how Motor_Run, ~Pump_On"
+
     def test_tilde_prefix_strips_for_tag_filtering(self, completer: ConsoleCompleter):
         r = completer.complete("get ~Mot", 8, _tag_provider)
         assert r.candidates == ["Motor_Run", "Motor_Start"]
@@ -377,3 +419,59 @@ class TestGrammarLoading:
         spec = c._specs["prove"]
         assert spec.slots[0].kind == "choices"
         assert "always" in spec.slots[0].choices
+
+    def test_how_slots_all_offer_tags(self):
+        """Every `how` slot — target, avoid, via — must complete tags.
+
+        The grammar comes from pyrung; a change there can silently downgrade a slot
+        to freeform and kill completion. Pin it against real pyrung.
+        """
+        c = ConsoleCompleter()
+        c.load_grammar()
+        spec = c._specs["how"]
+        assert spec.slots, "how has no parsed slots"
+        assert all(s.kind == "expression" for s in spec.slots), spec.slots
+
+    def test_how_grammar_carries_comma_and_keyword_metadata(self):
+        """We consume pyrung's published grammar, not our fallback usage parser.
+
+        The fallback cannot recover `keyword` (it is not in the usage prose), so its
+        presence proves the published-grammar path is the one being used.
+        """
+        c = ConsoleCompleter()
+        c.load_grammar()
+        slots = c._specs["how"].slots
+        target = slots[0]
+        assert target.repeat is True
+        assert target.separator == ","
+        assert {s.keyword for s in slots if s.keyword} == {"avoid", "via"}
+
+    def test_how_completes_second_target_against_real_grammar(self):
+        c = ConsoleCompleter()
+        c.load_grammar()
+        text = "how Motor_Run, Pum"
+        r = c.complete(text, len(text), _tag_provider)
+        assert r.slot_kind == "expression"
+        assert r.candidates == ["Pump_On"]
+
+    def test_avoid_clause_completes_tags_against_real_grammar(self):
+        c = ConsoleCompleter()
+        c.load_grammar()
+        text = "how Motor_Run avoid Pum"
+        r = c.complete(text, len(text), _tag_provider)
+        assert r.candidates == ["Pump_On"]
+
+    def test_clause_keywords_are_offered_after_a_target(self):
+        c = ConsoleCompleter()
+        c.load_grammar()
+        text = "how Motor_Run av"
+        r = c.complete(text, len(text), _tag_provider)
+        assert r.candidates == ["avoid"]
+
+    def test_used_keyword_not_offered_again(self):
+        c = ConsoleCompleter()
+        c.load_grammar()
+        text = "how Motor_Run avoid Pump_On "
+        r = c.complete(text, len(text), _tag_provider)
+        assert "avoid" not in r.candidates
+        assert "via" in r.candidates
