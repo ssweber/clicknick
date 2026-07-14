@@ -59,30 +59,8 @@ def _rule_rows(grouped: dict[str, list[FindingDisplay]]) -> list[tuple[str, str,
 
 
 class AnalysisReportWindow:
-    def __init__(self, parent: tk.Tk | tk.Toplevel, data: AnalysisReportData) -> None:
-        self.window = tk.Toplevel(parent)
-        self.window.title("Check Program")
-        self.window.geometry("950x560")
-        self.window.minsize(640, 360)
-        self.window.transient(parent)
-        self.window.bind("<Escape>", lambda _e: self.window.destroy())
-
-        self._grouped = data.grouped_findings
-        rows = _rule_rows(data.grouped_findings)
-        failing = [(c, t, s) for c, t, s in rows if data.grouped_findings.get(c)]
-        passing = [(c, t, s) for c, t, s in rows if not data.grouped_findings.get(c)]
-        total_findings = sum(len(data.grouped_findings.get(c, [])) for c, _, _ in failing)
-
-        main = ttk.Frame(self.window, padding=(12, 10))
-        main.pack(fill=tk.BOTH, expand=True)
-
-        self._build_summary(main, failing, passing, total_findings)
-
-        text = self._build_text(main)
-        self._render(text, failing, passing, data.grouped_findings)
-        text.config(state=tk.DISABLED)
-
-        ttk.Button(main, text="Close", command=self.window.destroy).pack(pady=(10, 0))
+    def _count(self, code: str) -> int:
+        return len(self._grouped.get(code, []))
 
     def _build_summary(
         self,
@@ -128,9 +106,6 @@ class AnalysisReportWindow:
             font=("Segoe UI", 9),
             foreground=_MUTED,
         ).pack(side=tk.RIGHT)
-
-    def _count(self, code: str) -> int:
-        return len(self._grouped.get(code, []))
 
     def _build_text(self, parent: ttk.Frame) -> tk.Text:
         frame = ttk.Frame(parent)
@@ -202,33 +177,6 @@ class AnalysisReportWindow:
         text.tag_configure("pass_muted", foreground=_MUTED, lmargin1=16, lmargin2=30)
         return text
 
-    def _render(
-        self,
-        text: tk.Text,
-        failing: list[tuple[str, str, str]],
-        passing: list[tuple[str, str, str]],
-        grouped: dict[str, list[FindingDisplay]],
-    ) -> None:
-        if failing:
-            text.insert(tk.END, "FINDINGS\n", "section")
-        for code, title, sev in failing:
-            displays = grouped.get(code, [])
-            _color, glyph = _SEVERITY_STYLE.get(sev, _SEVERITY_STYLE["warning"])
-            rule_tag = f"rule_{sev}"
-            self._ensure_rule_tag(text, rule_tag, sev)
-            text.insert(tk.END, f"{glyph}  {title}  · {len(displays)}\n", rule_tag)
-
-            for index, d in enumerate(displays):
-                if index:
-                    text.insert(tk.END, "\n")  # separate consecutive findings
-                self._insert_body(text, d, sev)
-
-        if passing:
-            text.insert(tk.END, f"\nPASSED ({len(passing)})\n", "section")
-            for _code, title, _sev in passing:
-                text.insert(tk.END, _PASS_GLYPH + " ", "pass")
-                text.insert(tk.END, title + "\n", "pass_muted")
-
     @staticmethod
     def _ensure_rule_tag(text: tk.Text, rule_tag: str, severity: str) -> None:
         color, _glyph = _SEVERITY_STYLE.get(severity, _SEVERITY_STYLE["warning"])
@@ -258,3 +206,55 @@ class AnalysisReportWindow:
                 text.insert(tk.END, "  |\n", "rail")
         if display.hint:
             text.insert(tk.END, f"  = hint: {display.hint}\n", "hint")
+
+    def _render(
+        self,
+        text: tk.Text,
+        failing: list[tuple[str, str, str]],
+        passing: list[tuple[str, str, str]],
+        grouped: dict[str, list[FindingDisplay]],
+    ) -> None:
+        if failing:
+            text.insert(tk.END, "FINDINGS\n", "section")
+        for code, title, sev in failing:
+            displays = grouped.get(code, [])
+            _color, glyph = _SEVERITY_STYLE.get(sev, _SEVERITY_STYLE["warning"])
+            rule_tag = f"rule_{sev}"
+            self._ensure_rule_tag(text, rule_tag, sev)
+            text.insert(tk.END, f"{glyph}  {title}  · {len(displays)}\n", rule_tag)
+
+            for index, d in enumerate(displays):
+                if index:
+                    text.insert(tk.END, "\n")  # separate consecutive findings
+                self._insert_body(text, d, sev)
+
+        if passing:
+            text.insert(tk.END, f"\nPASSED ({len(passing)})\n", "section")
+            for _code, title, _sev in passing:
+                text.insert(tk.END, _PASS_GLYPH + " ", "pass")
+                text.insert(tk.END, title + "\n", "pass_muted")
+
+    def __init__(self, parent: tk.Tk | tk.Toplevel, data: AnalysisReportData) -> None:
+        self.window = tk.Toplevel(parent)
+        self.window.title("Check Program")
+        self.window.geometry("950x560")
+        self.window.minsize(640, 360)
+        self.window.transient(parent)
+        self.window.bind("<Escape>", lambda _e: self.window.destroy())
+
+        self._grouped = data.grouped_findings
+        rows = _rule_rows(data.grouped_findings)
+        failing = [(c, t, s) for c, t, s in rows if data.grouped_findings.get(c)]
+        passing = [(c, t, s) for c, t, s in rows if not data.grouped_findings.get(c)]
+        total_findings = sum(len(data.grouped_findings.get(c, [])) for c, _, _ in failing)
+
+        main = ttk.Frame(self.window, padding=(12, 10))
+        main.pack(fill=tk.BOTH, expand=True)
+
+        self._build_summary(main, failing, passing, total_findings)
+
+        text = self._build_text(main)
+        self._render(text, failing, passing, data.grouped_findings)
+        text.config(state=tk.DISABLED)
+
+        ttk.Button(main, text="Close", command=self.window.destroy).pack(pady=(10, 0))
