@@ -12,7 +12,6 @@
 
 ### Features
 
-- **Ladder rung import/export** — a new `clicknick-rung` CLI loads and saves rungs via the clipboard and decodes a whole program to CSV, alongside a beta Ladder menu and a step-through Guided Paste panel for pasting a folder of ladder CSVs into Click with nickname import; loading a decoded `.bin` payload provisions any missing addresses into the project MDB and reports how many were inserted.
 - **Check Program** — a new Tools > "Check Program..." window reports pyrung's static validation findings as compiler-style diagnostics with a source frame, severity-coloured caret, and fix hint, driven by the validation registry so new rules appear automatically.
 - **Program analysis filters** — the Address Editor filter box accepts `input:`, `output:`, `pivot:`, `isolated:`, `upstream:Tag`, and `downstream:Tag` prefixes, which compose with existing text filters.
 - **Interactive pyrung Console** — a new Console window runs simulations against the open project, with slot-aware autocomplete, live streaming of `how()` progress, and a button to open the `pyrung_project` directory.
@@ -31,8 +30,6 @@
 - A blank initial value and `0` now count as the same default on numeric addresses, so importing a Click CSV export no longer marks every numeric address changed; TXT still treats `0` as real content.
 - A CSV that reuses a block name no longer has one block's import options clobber another's.
 - Nickname changes made externally in Click now reliably reach the Address Editor and Overlay — a locked or failed MDB read no longer drops the change permanently, and editing only a comment no longer freezes the old nickname back over later refreshes.
-- Nickname edits in the Address Editor now immediately refresh autocomplete and the Dataview Editor instead of leaving stale values behind.
-- Inserting, deleting, or pasting rows in the Dataview Editor keeps the underlying data in sync with what is shown, so rows no longer land at the wrong index or leave orphaned data.
 - Console autocomplete now completes `~`-prefixed tags, respects your Filter Mode setting rather than always matching case-insensitively, and no longer scrolls the input, misplaces the cursor, or floods the dropdown on a bare space.
 - Opening the Console on a project with no saved `Scr*.tmp` files now tells you to save in Click Software first instead of opening a Console that cannot find the program.
 - Running several ClickNick instances at once no longer makes them fight over a single shared simulation session.
@@ -44,9 +41,40 @@
 ### Changed
 
 - The import dialog's **Init Val** and **Retentive** columns are now a single **First Scan** column: the two are imported together, so importing a retentive setting can no longer silently shadow an initial value the program relies on.
+
+## v0.19.3 — 2026-04-21
+
+### Fixed
+
+- Inserting rows in the Dataview Editor (including multi-row pastes) keeps the underlying data in sync with what is shown, so rows no longer land at the wrong index.
+
+## v0.19.2 — 2026-04-21
+
+### Fixed
+
+- Deleting rows in the Dataview Editor keeps the underlying data in sync with what is shown, so deletes no longer leave orphaned data behind.
+
+## v0.19.1 — 2026-04-14
+
+### Features
+
+- Loading a decoded `.bin` rung payload provisions any missing addresses into the project MDB, as CSV loads already did, and reports how many were inserted.
+
+### Fixed
+
+- Nickname edits in the Address Editor immediately refresh autocomplete and the Dataview Editor instead of leaving stale values behind.
+
+## v0.19.0 — 2026-04-02
+
+### Features
+
+- **Ladder rung import/export** — a new `clicknick-rung` CLI loads and saves rungs via the clipboard and decodes a whole program to CSV, alongside a beta Ladder menu and a step-through Guided Paste panel for pasting a folder of ladder CSVs into Click with nickname import.
+
+### Changed
+
 - The Dataview Editor can reconnect to the PLC and uses more forgiving timeout defaults.
 
-## 2026-02-13
+## v0.18.0 — 2026-02-27
 
 ### Changed
 - Restored local ownership of `export_cdv`, `get_dataview_folder`, and `list_cdv_files` in `clicknick.views.dataview_editor.cdv_file`.

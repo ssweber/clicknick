@@ -23,6 +23,7 @@ Usage::
     clicknick-cli tag set-range Temp_PV 0 100       # numeric range
     clicknick-cli tag set-uom Temp_PV degC          # unit of measurement
     clicknick-cli tag set-physical Clamp_FB Clamp --on-delay 50ms --off-delay 200ms
+    clicknick-cli tag apply                         # edit tags.py, then push the diff
 
     # Rung commands
     clicknick-cli rung list                         # list available files
@@ -32,10 +33,9 @@ Usage::
     clicknick-cli rung preview main --select r3     # diff for rung 3
     clicknick-cli rung apply main                   # pyrung -> ladder CSVs
 
-    # DAP simulation
-    clicknick-cli dap start                         # launch pyrung DAP subprocess
-    clicknick-cli dap status                        # check simulation state
-    clicknick-cli dap stop                          # terminate
+    # Workflow
+    clicknick-cli prompt-save                       # pop a save reminder in the GUI
+    clicknick-cli help                              # grouped command list
 
     # Pick a specific session
     clicknick-cli -s MyProject get DS1
@@ -66,7 +66,7 @@ def main() -> None:
         epilog=(
             "Identifiers: use pyrung tag names (Motor_Run) or Click addresses (DS1).\n"
             "All writes land as unsaved changes in the address editor (Ctrl+Z to undo).\n"
-            "Subcommands: tag (annotations), rung (program), dap (simulation).\n"
+            "Subcommands: tag (annotations), rung (program).\n"
             "Use 'clicknick-cli help' for a grouped command list."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
