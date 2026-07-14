@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from pyrung.click.tag_map import TagMeta, format_tag_meta
 
+from ..models.address_row import initial_values_differ
 from ..services.annotation_service import AnnotationService
 from .dispatch import _resolve_identifier
 
@@ -285,17 +286,6 @@ def _cmd_clear_physical(ctx: DispatchContext, parts: list[str]) -> str:
     )
 
 
-def _initial_value_differs(cur: object, new: object) -> bool:
-    """Compare initial values, treating "" and "0" as the same default.
-
-    The exported CSV always writes "0" for a defaulted numeric while a store or
-    baseline row may hold "" — without this normalization every row looks changed.
-    """
-    if cur.is_default_initial_value and new.is_default_initial_value:  # type: ignore[attr-defined]
-        return False
-    return cur.initial_value != new.initial_value  # type: ignore[attr-defined]
-
-
 def _export_nicknames(tags_source: str, out_csv) -> None:
     """Exec a ``tags.py`` source and write its full Click nickname CSV.
 
@@ -374,7 +364,7 @@ def _compute_tag_changes(base_rows, cur_rows, store) -> list[tuple[int, str, str
             changes.append((addr_key, "nickname", cur.nickname))
         if cur.comment != base.comment:
             changes.append((addr_key, "comment", cur.comment))
-        if _initial_value_differs(base, cur):
+        if initial_values_differ(base, cur):
             changes.append((addr_key, "initial_value", cur.initial_value))
         if cur.retentive != base.retentive:
             changes.append((addr_key, "retentive", cur.retentive))

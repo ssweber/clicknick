@@ -2,6 +2,7 @@
 
 import pytest
 from pyclickplc.addresses import get_addr_key
+from pyclickplc.banks import DataType
 
 from clicknick.data.address_store import AddressStore
 from clicknick.data.undo_frame import MAX_UNDO_DEPTH
@@ -284,6 +285,146 @@ class TestDirtyState:
         assert addr_key_1 in dirty
         assert addr_key_2 in dirty
         assert len(dirty) == 2
+
+
+class TestNoOpEdits:
+    """Writing a row's existing value back must not mark it changed.
+
+    A builder marks a field set whenever it is assigned, even if assigned its
+    current value. Since is_dirty() is presence-based, a no-op write used to leave
+    an override behind: the row reported as changed, showed under the "Changed"
+    filter and was written on save, while every cell compared equal to base so no
+    highlight appeared. Dirty fields are recomputed against base_state to prevent it.
+    """
+
+    def test_writing_the_same_value_does_not_dirty_the_row(self, store_with_data):
+        addr_key = get_addr_key("X", 1)
+
+        # Write back exactly what the row already holds (e.g. importing a CSV
+        # whose values already match the project)
+        with store_with_data.edit_session("No-op") as session:
+            session.set_field(addr_key, "nickname", "Input1")
+            session.set_field(addr_key, "comment", "Button")
+
+        assert store_with_data.is_dirty(addr_key) is False
+        assert store_with_data.has_unsaved_changes() is False
+
+    def test_no_op_write_agrees_with_per_field_dirty(self, store_with_data):
+        """The row-level and cell-level dirty checks must not disagree."""
+        addr_key = get_addr_key("X", 1)
+
+        with store_with_data.edit_session("No-op") as session:
+            session.set_field(addr_key, "nickname", "Input1")
+
+        # Cells show no diff, so the row must not claim to be changed
+        assert not any(
+            store_with_data.is_field_dirty(addr_key, field)
+            for field in ("nickname", "comment", "initial_value", "retentive")
+        )
+        assert store_with_data.is_dirty(addr_key) is False
+
+    def test_editing_back_to_the_original_value_clears_dirty(self, store_with_data):
+        addr_key = get_addr_key("X", 1)
+
+        with store_with_data.edit_session("Change") as session:
+            session.set_field(addr_key, "nickname", "Changed")
+        assert store_with_data.is_dirty(addr_key) is True
+
+        with store_with_data.edit_session("Change back") as session:
+            session.set_field(addr_key, "nickname", "Input1")
+
+        assert store_with_data.is_dirty(addr_key) is False
+        assert store_with_data.get_visible_row(addr_key).nickname == "Input1"
+
+    def test_no_op_field_does_not_dirty_alongside_a_real_change(self, store_with_data):
+        """A no-op on one field must not make that field look changed."""
+        addr_key = get_addr_key("X", 1)
+
+        with store_with_data.edit_session("Mixed") as session:
+            session.set_field(addr_key, "nickname", "Input1")  # no-op
+            session.set_field(addr_key, "comment", "Changed")  # real
+
+        assert store_with_data.is_dirty(addr_key) is True
+        assert store_with_data.is_field_dirty(addr_key, "nickname") is False
+        assert store_with_data.is_field_dirty(addr_key, "comment") is True
+
+    def test_a_real_change_still_dirties_the_row(self, store_with_data):
+        addr_key = get_addr_key("X", 1)
+
+        with store_with_data.edit_session("Change") as session:
+            session.set_field(addr_key, "nickname", "Changed")
+
+        assert store_with_data.is_dirty(addr_key) is True
+        assert store_with_data.is_field_dirty(addr_key, "nickname") is True
+
+    def test_undo_after_edit_back_restores_the_change(self, store_with_data):
+        """Dropping the override must not break the undo stack."""
+        addr_key = get_addr_key("X", 1)
+
+        with store_with_data.edit_session("Change") as session:
+            session.set_field(addr_key, "nickname", "Changed")
+        with store_with_data.edit_session("Change back") as session:
+            session.set_field(addr_key, "nickname", "Input1")
+
+        store_with_data.undo()
+
+        assert store_with_data.get_visible_row(addr_key).nickname == "Changed"
+        assert store_with_data.is_dirty(addr_key) is True
+
+
+class TestBlankVsZeroInitialValue:
+    """ "" and "0" are the same default for a numeric address.
+
+    Click's CSV export writes "0" for every defaulted numeric while a store skeleton
+    or baseline row holds "". Comparing the strings raw would report every defaulted
+    numeric as changed on import, and rewrite it to the database on save.
+    """
+
+    def store_with(self, memory_type, data_type, initial_value):
+        addr_key = get_addr_key(memory_type, 1)
+        rows = {
+            addr_key: AddressRow(
+                memory_type=memory_type,
+                address=1,
+                data_type=data_type,
+                nickname="N",
+                initial_value=initial_value,
+            )
+        }
+        s = AddressStore(MockDataSource(rows))
+        s.load_initial_data()
+        return s, addr_key
+
+    @pytest.mark.parametrize(("base_value", "new_value"), [("", "0"), ("0", "")])
+    def test_numeric_blank_and_zero_are_not_a_change(self, base_value, new_value):
+        store, addr_key = self.store_with("DS", DataType.INT, base_value)
+
+        with store.edit_session("Edit") as session:
+            session.set_field(addr_key, "initial_value", new_value)
+
+        assert store.is_dirty(addr_key) is False
+        assert store.is_field_dirty(addr_key, "initial_value") is False
+
+    @pytest.mark.parametrize(("base_value", "new_value"), [("", "5"), ("5", ""), ("0", "5")])
+    def test_numeric_real_value_changes_are_still_dirty(self, base_value, new_value):
+        store, addr_key = self.store_with("DS", DataType.INT, base_value)
+
+        with store.edit_session("Edit") as session:
+            session.set_field(addr_key, "initial_value", new_value)
+
+        assert store.is_dirty(addr_key) is True
+        assert store.is_field_dirty(addr_key, "initial_value") is True
+
+    @pytest.mark.parametrize(("base_value", "new_value"), [("", "0"), ("0", "")])
+    def test_txt_treats_zero_as_a_real_value(self, base_value, new_value):
+        """For TXT only "" is default, so "0" is genuine content."""
+        store, addr_key = self.store_with("TXT", DataType.TXT, base_value)
+
+        with store.edit_session("Edit") as session:
+            session.set_field(addr_key, "initial_value", new_value)
+
+        assert store.is_dirty(addr_key) is True
+        assert store.is_field_dirty(addr_key, "initial_value") is True
 
 
 class TestBaseOverlayMerge:

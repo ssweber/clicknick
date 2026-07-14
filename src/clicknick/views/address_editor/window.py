@@ -559,9 +559,9 @@ class AddressEditorWindow(tk.Toplevel):
         try:
             # Apply merge via ImportService within edit_session
             # edit_session handles validation and notification automatically
-            with self._store.edit_session("Import from CSV"):
+            with self._store.edit_session("Import from CSV") as session:
                 updated_count = ImportService.merge_blocks(
-                    self._store, selected_blocks, import_options_per_block
+                    self._store, session, selected_blocks, import_options_per_block
                 )
 
             # edit_session exited - validation and notification happened automatically
