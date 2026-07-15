@@ -314,7 +314,7 @@ def encode_csv(csv_path: Path, *, best_effort: bool = False) -> bytes:
 def decode_to_csv(data: bytes, path: Path) -> None:
     """Decode clipboard/program bytes and write canonical CSV."""
     rungs = _decode_to_rungs(data)
-    write_csv(path, rungs)
+    write_csv(path, rungs, index=True)
 
 
 # ---------------------------------------------------------------------------
