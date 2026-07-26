@@ -310,6 +310,20 @@ class ClickNickApp:
         analysis = session.analysis
         if analysis is None or not analysis.is_available:
             self._start_analysis_build()
+            analysis = session.analysis
+
+        # A conversion that already failed will not fix itself by opening a
+        # console -- say so up front rather than showing an inert window.
+        if analysis is not None and not analysis.is_available:
+            from .services.analysis_service import AnalysisStatus
+
+            if analysis.status is AnalysisStatus.FAILED:
+                messagebox.showerror(
+                    "Cannot Open Console",
+                    f"{analysis.error}\n\nThe Console needs the project converted to pyrung.",
+                    parent=self.root,
+                )
+                return
 
         from .views.console_window import ConsoleWindow
 
@@ -322,6 +336,7 @@ class ClickNickApp:
             get_synced_pending=lambda: session.synced_pending,
             filter_func=self._apply_active_filter,
             on_destroy=lambda: setattr(session, "console", None),
+            on_retry_analysis=self._start_analysis_build,
             title_suffix=session.filename or "",
             session_name=f"clicknick-{session.filename}-{session.hwnd}",
         )
@@ -749,13 +764,29 @@ class ClickNickApp:
         """Run program validation and display report."""
         analysis = self._session.analysis if self._session else None
         if analysis is None or not analysis.is_available:
-            messagebox.showinfo(
-                "Analysis Not Available",
-                "Program analysis requires a connected Click project.\n\n"
-                "Analysis builds automatically when connected to a project "
-                "with ladder files.",
-                parent=self.root,
-            )
+            from .services.analysis_service import AnalysisStatus
+
+            status = analysis.status if analysis else None
+            if status is AnalysisStatus.FAILED:
+                messagebox.showerror(
+                    "Analysis Failed",
+                    f"{analysis.error}\n\nCheck Program needs the project converted to pyrung.",
+                    parent=self.root,
+                )
+            elif status is AnalysisStatus.BUILDING:
+                messagebox.showinfo(
+                    "Analysis In Progress",
+                    "The program is still being converted for analysis.\n\nTry again in a moment.",
+                    parent=self.root,
+                )
+            else:
+                messagebox.showinfo(
+                    "Analysis Not Available",
+                    "Program analysis requires a connected Click project.\n\n"
+                    "Analysis builds automatically when connected to a project "
+                    "with ladder files.",
+                    parent=self.root,
+                )
             return
 
         try:

@@ -7,7 +7,9 @@ queries that return addr_key sets for address editor filtering.
 
 from __future__ import annotations
 
+import enum
 import tempfile
+import traceback
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,6 +19,19 @@ if TYPE_CHECKING:
     from pyrung.core.analysis.pdg import ProgramGraph
     from pyrung.core.program import Program
     from pyrung.core.validation.report import ValidationReport
+
+
+class AnalysisStatus(enum.Enum):
+    """Lifecycle of the pyrung conversion.
+
+    Views poll this instead of only ``is_available``, which cannot tell
+    "still building" apart from "failed and never coming".
+    """
+
+    IDLE = "idle"
+    BUILDING = "building"
+    READY = "ready"
+    FAILED = "failed"
 
 
 @dataclass
@@ -151,10 +166,50 @@ class AnalysisService:
 
     def __init__(self) -> None:
         self._result: AnalysisResult | None = None
+        # Written from the build thread, read from the UI thread. Plain
+        # attribute assignment is atomic enough; there is no read-modify-write.
+        self._status = AnalysisStatus.IDLE
+        self._error: str | None = None
+        self._error_detail: str | None = None
+        self._generation = 0
 
     @property
     def is_available(self) -> bool:
         return self._result is not None
+
+    @property
+    def status(self) -> AnalysisStatus:
+        return self._status
+
+    @property
+    def generation(self) -> int:
+        """Bumped when a build starts, i.e. when the project folder is rewritten.
+
+        Consumers that read the generated project off disk capture this before
+        they start and compare afterwards: a change means the files moved under
+        them and whatever they saw was a half-written project, not a real error.
+        """
+        return self._generation
+
+    @property
+    def error(self) -> str | None:
+        """One-line reason the conversion failed, or None."""
+        return self._error
+
+    @property
+    def error_detail(self) -> str | None:
+        """Full traceback for a failed conversion, or None."""
+        return self._error_detail
+
+    def mark_failed(self, reason: str, detail: str | None = None) -> None:
+        """Record a failure the build thread never got to raise.
+
+        Used for pre-flight bail-outs (no project database, no saved ladder
+        files) so views can say *why* instead of waiting forever.
+        """
+        self._status = AnalysisStatus.FAILED
+        self._error = reason
+        self._error_detail = detail
 
     @property
     def tag_to_addr_key(self) -> dict[str, int]:
@@ -188,9 +243,26 @@ class AnalysisService:
 
         Called from a background thread; stores results for main-thread access.
         When *persist_dir* is given, the pyrung project is also written to disk.
+
+        On failure the status becomes FAILED and the reason is recorded before
+        the exception is re-raised — a caller that swallows it still leaves the
+        UI able to explain itself. Any previous good result is kept, so a failed
+        *rebuild* does not take working analysis away from open windows.
         """
-        graph, program, project_dir = _build_graph(scr_folder, db_path, persist_dir)
-        tag_to_key, key_to_tag = _build_tag_addr_key_map(base_state)
+        # Bumped first: _build_graph empties the project folder before writing
+        # it, so from this moment anything reading that folder sees rubble.
+        self._generation += 1
+        self._status = AnalysisStatus.BUILDING
+        self._error = None
+        self._error_detail = None
+        try:
+            graph, program, project_dir = _build_graph(scr_folder, db_path, persist_dir)
+            tag_to_key, key_to_tag = _build_tag_addr_key_map(base_state)
+        except Exception as exc:
+            self._status = AnalysisStatus.FAILED
+            self._error = f"{type(exc).__name__}: {exc}"
+            self._error_detail = traceback.format_exc()
+            raise
         self._result = AnalysisResult(
             graph=graph,
             program=program,
@@ -198,6 +270,7 @@ class AnalysisService:
             addr_key_to_tag=key_to_tag,
             project_dir=project_dir,
         )
+        self._status = AnalysisStatus.READY
 
     def rebuild_mapping(self, base_state: Mapping[int, object]) -> None:
         """Refresh the tag<->addr_key mapping after a base_state change."""
@@ -210,6 +283,9 @@ class AnalysisService:
 
     def invalidate(self) -> None:
         self._result = None
+        self._status = AnalysisStatus.IDLE
+        self._error = None
+        self._error_detail = None
 
     def known_tag_names(self) -> frozenset[str]:
         """Tag names present in both the graph and the addr_key map."""

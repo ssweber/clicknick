@@ -86,25 +86,36 @@ class ConnectionSession:
         from .services.scr_watcher import ScrWatcher
         from .utils.mdb_shared import find_click_database
 
+        # Created before the pre-flight checks so a bail-out has somewhere to
+        # record *why* -- otherwise views wait on analysis that never starts.
+        if self.analysis is None:
+            self.analysis = AnalysisService()
+        analysis = self.analysis
+
         db_path = find_click_database(click_hwnd=self.hwnd)
         if not db_path:
+            analysis.mark_failed(
+                "No Click project database found. Connect to a project in Click Software."
+            )
             return
         scr_folder = Path(db_path).parent
 
         if not list(scr_folder.glob("Scr*.tmp")):
+            analysis.mark_failed(
+                "No saved ladder files (Scr*.tmp) in the project folder. "
+                "Save the project in Click Software first."
+            )
             return
 
-        if self.analysis is None:
-            self.analysis = AnalysisService()
-
         store = self.store
-        analysis = self.analysis
 
         def _build() -> None:
             try:
                 persist = scr_folder / "pyrung_project"
                 analysis.build(scr_folder, Path(db_path), store.base_state, persist_dir=persist)
             except Exception:
+                # build() has already recorded the reason on the service, which
+                # is what the UI reads; this is only for a dev console.
                 traceback.print_exc()
 
         threading.Thread(target=_build, daemon=True).start()

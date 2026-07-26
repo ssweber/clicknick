@@ -13,7 +13,8 @@
 ### Features
 
 - **Console Stop button** — while a command runs, Send becomes Stop, which cancels a long-running `how` without restarting the simulation, so forces and scan position survive; needs a pyrung new enough to provide the `stop` verb.
-- **Console copy and edit conveniences** — a 📋 button beside the status bar copies the output (or just the selected text) to the clipboard, and the command entry has a right-click Cut/Copy/Paste/Select All menu.
+- **Console copy and edit conveniences** — a Copy button beside the status bar copies the output (or just the selected text) to the clipboard, and the command entry has a right-click Cut/Copy/Paste/Select All menu.
+- **Copy the Check Program report** — a "Copy Report" button puts the whole report on the clipboard as plain text, summary line first, ready to paste into an email or issue.
 - **Check Program** — a new Tools > "Check Program..." window reports pyrung's static validation findings as compiler-style diagnostics with a source frame, severity-coloured caret, and fix hint, driven by the validation registry so new rules appear automatically.
 - **Program analysis filters** — the Address Editor filter box accepts `input:`, `output:`, `pivot:`, `isolated:`, `upstream:Tag`, and `downstream:Tag` prefixes, which compose with existing text filters.
 - **Interactive pyrung Console** — a new Console window runs simulations against the open project, with slot-aware autocomplete, live streaming of `how()` progress, and a button to open the `pyrung_project` directory.
@@ -25,7 +26,12 @@
 
 ### Fixed
 
-- The Console status bar is visible again — the output pane's natural height pushed it off the bottom of the window, so the connection state and scan counter never actually appeared.
+- Copy buttons are plain text instead of a 📋 emoji, which rendered in colour from a different font and clashed with the surrounding monochrome controls (Console, Check Program, Rung preview, Guided paste).
+- Opening the Console just after a save no longer reports a half-written project as an error — "No run.py found in ...pyrung_project", "No module named 'subroutines'", and anything else of that shape. A rebuild empties the generated project folder and rewrites it in place while the previous analysis still advertises it, so the Console now refuses to launch during a build at all, and treats a launch that lost a race with one as a wait-and-relaunch rather than a failure. Genuine launch failures are still reported, with a Retry.
+- Opening the Console before the program has finished converting no longer leaves it stuck on "Building program analysis..." forever — it shows how long it has been waiting, gives up after two minutes, and offers a Retry button.
+- A pyrung conversion that fails now says so. The failure used to be printed to a console that does not exist in a windowed app, leaving every feature that depends on it silently inert; the reason is now recorded and shown — as a dialog when you open the Console or Check Program, and inline with the traceback in the Console itself.
+- Check Program no longer claims analysis "requires a connected Click project" when the real cause was a conversion failure or a build still in progress; each case now reports itself.
+- Rung preview's buttons — Copy All, Copy to Click, Next, and Close — are visible again; the whole row was pushed off the bottom of the window, making the copy-to-Click workflow unreachable without resizing first. Check Program's buttons and the Console status bar were hidden by the same layout fault: a text pane asking for more height than the window has, starving the rows packed after it.
 - The Console no longer hangs in the busy state when the simulation backend dies mid-command; the input is released and the failure is reported.
 - Console autocomplete now reads pyrung's published command grammar (`pyrung.dap.grammar`) instead of parsing its help text, so it completes multi-target `how A, B` (with or without a space after the comma), offers tag names inside `avoid`/`via` clauses — which never worked before — and suggests the `avoid` and `via` keywords themselves once a target is typed. Older pyrung versions without that module fall back to the previous help-text parsing.
 - Importing a nickname CSV no longer fails outright with `cannot assign to field 'nickname'`.

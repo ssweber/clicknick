@@ -34,6 +34,12 @@ _PASS_COLOR = "#228B22"
 _PASS_GLYPH = "✓"  # ✓
 _MUTED = "#888888"
 
+# Plain text, not a clipboard emoji: the emoji renders in colour from a
+# different font and sits oddly among ttk's monochrome controls.
+_COPY_LABEL = "Copy Report"
+_COPIED_LABEL = "Copied"
+_COPY_FLASH_MS = 1200
+
 
 @dataclass
 class AnalysisReportData:
@@ -79,6 +85,7 @@ class AnalysisReportWindow:
                 font=("Segoe UI", 12, "bold"),
                 foreground=_PASS_COLOR,
             ).pack(side=tk.LEFT)
+            self._summary_line = "All checks passed"
             return
 
         # One coloured chip per severity that actually occurs, most-severe first.
@@ -86,6 +93,7 @@ class AnalysisReportWindow:
         for code, _title, sev in failing:
             by_sev[sev] = by_sev.get(sev, 0) + self._count(code)
 
+        chips: list[str] = []
         for sev in ("error", "warning", "info", "advisory"):
             n = by_sev.get(sev)
             if not n:
@@ -98,6 +106,7 @@ class AnalysisReportWindow:
                 font=("Segoe UI", 11, "bold"),
                 foreground=color,
             ).pack(side=tk.LEFT, padx=(0, 16))
+            chips.append(f"{n} {label}")
 
         checked = len(failing) + len(passing)
         ttk.Label(
@@ -106,6 +115,7 @@ class AnalysisReportWindow:
             font=("Segoe UI", 9),
             foreground=_MUTED,
         ).pack(side=tk.RIGHT)
+        self._summary_line = f"{', '.join(chips)} - {len(passing)}/{checked} checks passed"
 
     def _build_text(self, parent: ttk.Frame) -> tk.Text:
         frame = ttk.Frame(parent)
@@ -115,6 +125,7 @@ class AnalysisReportWindow:
             frame,
             wrap=tk.WORD,
             font=("Segoe UI", 10),
+            height=10,
             padx=12,
             pady=10,
             cursor="arrow",
@@ -234,6 +245,30 @@ class AnalysisReportWindow:
                 text.insert(tk.END, _PASS_GLYPH + " ", "pass")
                 text.insert(tk.END, title + "\n", "pass_muted")
 
+    def _restore_copy_button(self) -> None:
+        self._copy_flash_after_id = None
+        try:
+            self._copy_btn.configure(text=_COPY_LABEL)
+        except tk.TclError:  # window closed while the flash was pending
+            pass
+
+    def _copy_report(self) -> None:
+        """Copy the report as plain text: summary line, then the rendered body."""
+        body = self._text.get("1.0", "end-1c").strip()
+        report = f"Check Program - {self._summary_line}\n"
+        if body:
+            report += f"\n{body}\n"
+        self.window.clipboard_clear()
+        self.window.clipboard_append(report)
+
+        if self._copy_flash_after_id is not None:
+            try:
+                self.window.after_cancel(self._copy_flash_after_id)
+            except Exception:
+                pass
+        self._copy_btn.configure(text=_COPIED_LABEL)
+        self._copy_flash_after_id = self.window.after(_COPY_FLASH_MS, self._restore_copy_button)
+
     def __init__(self, parent: tk.Tk | tk.Toplevel, data: AnalysisReportData) -> None:
         self.window = tk.Toplevel(parent)
         self.window.title("Check Program")
@@ -243,6 +278,8 @@ class AnalysisReportWindow:
         self.window.bind("<Escape>", lambda _e: self.window.destroy())
 
         self._grouped = data.grouped_findings
+        self._summary_line = ""
+        self._copy_flash_after_id: str | None = None
         rows = _rule_rows(data.grouped_findings)
         failing = [(c, t, s) for c, t, s in rows if data.grouped_findings.get(c)]
         passing = [(c, t, s) for c, t, s in rows if not data.grouped_findings.get(c)]
@@ -253,8 +290,14 @@ class AnalysisReportWindow:
 
         self._build_summary(main, failing, passing, total_findings)
 
-        text = self._build_text(main)
-        self._render(text, failing, passing, data.grouped_findings)
-        text.config(state=tk.DISABLED)
+        # Packed against the bottom *before* the report body: the Text asks for
+        # more height than the window has, and pack starves whatever comes last.
+        buttons = ttk.Frame(main)
+        buttons.pack(side=tk.BOTTOM, pady=(10, 0))
+        self._copy_btn = ttk.Button(buttons, text=_COPY_LABEL, command=self._copy_report)
+        self._copy_btn.pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(buttons, text="Close", command=self.window.destroy).pack(side=tk.LEFT)
 
-        ttk.Button(main, text="Close", command=self.window.destroy).pack(pady=(10, 0))
+        self._text = self._build_text(main)
+        self._render(self._text, failing, passing, data.grouped_findings)
+        self._text.config(state=tk.DISABLED)

@@ -213,6 +213,17 @@ class RungPreviewWindow(tk.Toplevel):
                 side=tk.RIGHT
             )
 
+        # Status and buttons are packed against the bottom *before* the diff:
+        # the Text asks for its natural 24-line height, which oversubscribes the
+        # window, and pack starves whatever is packed last. Bottom-up order.
+        btn_frame = ttk.Frame(main)
+        btn_frame.pack(side=tk.BOTTOM, fill=tk.X)
+
+        self._status_var = tk.StringVar(value="")
+        status_frame = ttk.LabelFrame(main, text="Status", padding=5)
+        status_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 5))
+        ttk.Label(status_frame, textvariable=self._status_var, foreground="gray").pack(fill=tk.X)
+
         # --- diff text ---
         diff_frame = tk.Frame(main, relief=tk.SUNKEN, borderwidth=2)
         diff_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
@@ -221,6 +232,7 @@ class RungPreviewWindow(tk.Toplevel):
             diff_frame,
             font=("Consolas", 10),
             wrap=tk.NONE,
+            height=10,
             state=tk.DISABLED,
             background="#fafafa",
         )
@@ -237,16 +249,7 @@ class RungPreviewWindow(tk.Toplevel):
         self._text.tag_configure("hunk", foreground="#0366d6")
         self._text.tag_configure("file_header", foreground="#6a737d", font=("Consolas", 10, "bold"))
 
-        # --- status ---
-        self._status_var = tk.StringVar(value="")
-        status_frame = ttk.LabelFrame(main, text="Status", padding=5)
-        status_frame.pack(fill=tk.X, pady=(0, 5))
-        ttk.Label(status_frame, textvariable=self._status_var, foreground="gray").pack(fill=tk.X)
-
-        # --- buttons ---
-        btn_frame = ttk.Frame(main)
-        btn_frame.pack(fill=tk.X)
-
+        # --- buttons (frame packed above, before the diff) ---
         ttk.Button(btn_frame, text="Close", command=self.destroy, width=10).pack(side=tk.RIGHT)
 
         self._next_btn = ttk.Button(
@@ -256,7 +259,7 @@ class RungPreviewWindow(tk.Toplevel):
 
         self._copy_btn = ttk.Button(
             btn_frame,
-            text="\U0001f4cb Copy to Click",
+            text="Copy to Click",
             command=self._on_copy,
             width=16,
             state="disabled",
@@ -265,7 +268,7 @@ class RungPreviewWindow(tk.Toplevel):
 
         self._copy_all_btn = ttk.Button(
             btn_frame,
-            text="\U0001f4cb Copy All",
+            text="Copy All",
             command=self._on_copy_all,
             width=14,
             state="disabled",

@@ -27,6 +27,12 @@ if TYPE_CHECKING:
 _PLC_DATA_WATCH_MS = 2000
 _ANALYSIS_POLL_MS = 500
 _COPY_FLASH_MS = 1200
+#: Give a large program room to convert, but never poll forever.
+_ANALYSIS_TIMEOUT_MS = 120_000
+# Plain text, not a clipboard emoji: the emoji renders in colour from a
+# different font and sits oddly among ttk's monochrome controls.
+_COPY_LABEL = "Copy"
+_COPIED_LABEL = "Copied"
 
 
 class ConsoleWindow(tk.Toplevel):
@@ -48,7 +54,7 @@ class ConsoleWindow(tk.Toplevel):
     def _restore_copy_button(self) -> None:
         self._copy_flash_after_id = None
         if not self._destroyed:
-            self._copy_btn.configure(text="\N{CLIPBOARD}")
+            self._copy_btn.configure(text=_COPY_LABEL)
 
     def _flash_copy_button(self) -> None:
         if self._copy_flash_after_id is not None:
@@ -56,7 +62,7 @@ class ConsoleWindow(tk.Toplevel):
                 self.after_cancel(self._copy_flash_after_id)
             except Exception:
                 pass
-        self._copy_btn.configure(text="\N{CHECK MARK}")
+        self._copy_btn.configure(text=_COPIED_LABEL)
         self._copy_flash_after_id = self.after(_COPY_FLASH_MS, self._restore_copy_button)
 
     def _copy_output(self) -> None:
@@ -72,9 +78,60 @@ class ConsoleWindow(tk.Toplevel):
         self.clipboard_append(text)
         self._flash_copy_button()
 
+    # ------------------------------------------------------------------
+    # DAP lifecycle
+    # ------------------------------------------------------------------
+
+    def _show_retry(self) -> None:
+        if not self._retry_btn.winfo_ismapped():
+            self._retry_btn.pack(side=tk.LEFT, padx=(4, 0))
+
+    def _report_startup_failure(self, reason: str, detail: str | None = None) -> None:
+        """Explain why the console cannot start, and offer a retry."""
+        self._append_output(f"Cannot start simulation: {reason}\n", "error")
+        if detail:
+            self._append_output(detail.rstrip() + "\n", "progress")
+        self._status_var.set("Not available")
+        self._show_retry()
+
+    def _wait_for_analysis(self) -> None:
+        """Show progress while the conversion runs, and schedule the next poll.
+
+        Every waiting path routes through here, so the timeout is enforced in
+        one place no matter which check decided to wait.
+        """
+        if self._analysis_waited_ms >= _ANALYSIS_TIMEOUT_MS:
+            self._report_startup_failure(
+                f"timed out after {_ANALYSIS_TIMEOUT_MS // 1000}s waiting for "
+                "program analysis to finish."
+            )
+            return
+        seconds = self._analysis_waited_ms // 1000
+        elapsed = f" ({seconds}s)" if seconds else ""
+        self._status_var.set(f"Building program analysis...{elapsed}")
+        self._analysis_waited_ms += _ANALYSIS_POLL_MS
+        self._analysis_after_id = self.after(_ANALYSIS_POLL_MS, self._poll_analysis)
+
     def _on_dap_failed(self, exc: Exception) -> None:
-        self._append_output(f"DAP failed: {exc}\n", "error")
+        from ..services.analysis_service import AnalysisStatus
+
+        analysis = self._get_analysis()
+        if analysis is not None and (
+            analysis.status is AnalysisStatus.BUILDING
+            or analysis.generation != self._launch_generation
+        ):
+            # The launch runs on a worker thread against files on disk, so a
+            # rebuild can rewrite the project underneath it -- yielding partial
+            # imports ("No module named 'subroutines'"), a missing run.py, or
+            # anything else half-written. The generation check catches the case
+            # where that rebuild also *finished* before we got here, so the
+            # status alone no longer looks suspicious. Wait and relaunch rather
+            # than reporting the rubble as a real failure.
+            self._wait_for_analysis()
+            return
+        self._append_output(f"Simulation backend failed to start: {exc}\n", "error")
         self._status_var.set("Error")
+        self._show_retry()
 
     def _schedule_ui(self, callback: Callable[[], None]) -> None:
         if self._destroyed:
@@ -93,25 +150,63 @@ class ConsoleWindow(tk.Toplevel):
     def _on_dap_scan_bg(self, scan_id: int | None) -> None:
         self._schedule_ui(lambda: self._status_var.set(f"Running | Scan: {scan_id}"))
 
-    # ------------------------------------------------------------------
-    # DAP lifecycle
-    # ------------------------------------------------------------------
+    def _hide_retry(self) -> None:
+        if self._retry_btn.winfo_ismapped():
+            self._retry_btn.pack_forget()
 
     def _start_dap(self) -> None:
+        from ..services.analysis_service import AnalysisStatus
+
         analysis = self._get_analysis()
-        if analysis is None or not analysis.is_available:
-            self._status_var.set("Building program analysis...")
-            self.after(_ANALYSIS_POLL_MS, self._poll_analysis)
+        if analysis is None:
+            self._report_startup_failure(
+                "program analysis has not started. Connect to a Click project, "
+                "then save it in Click Software."
+            )
             return
 
+        # A build rewrites the generated project in place, so while one is
+        # running the folder on disk is rubble regardless of what the previous
+        # result still advertises. Wait it out before touching any of it.
+        if analysis.status is AnalysisStatus.BUILDING:
+            self._wait_for_analysis()
+            return
+
+        # A usable result wins even if a later rebuild failed -- stale analysis
+        # beats no console.
+        if not analysis.is_available:
+            if analysis.status is AnalysisStatus.FAILED:
+                self._report_startup_failure(
+                    analysis.error or "converting the program to pyrung failed.",
+                    analysis.error_detail,
+                )
+                return
+            self._wait_for_analysis()
+            return
+
+        self._hide_retry()
         project_dir = analysis.project_dir
-        if project_dir is None or not project_dir.is_dir():
-            self._append_output("No pyrung project directory found.\n", "error")
-            self._status_var.set("No project")
+        if project_dir is None:
+            self._report_startup_failure(
+                "no pyrung project folder was generated. "
+                "Save the project in Click Software, then retry."
+            )
+            return
+
+        # A rebuild empties this folder before regenerating it, so while one is
+        # running the directory can exist with run.py not yet written.
+        if not (project_dir / "run.py").is_file():
+            self._report_startup_failure(
+                f"the generated project at {project_dir} has no run.py. "
+                "Save the project in Click Software, then retry."
+            )
             return
 
         self._status_var.set("Starting...")
         snapshot_path = self._plc_data_path
+        # Remembered so a failure can tell "the project was rewritten under the
+        # launch" from "this project genuinely does not run".
+        self._launch_generation = analysis.generation
 
         def _launch() -> None:
             from ..services.dap_service import DapService
@@ -131,6 +226,18 @@ class ConsoleWindow(tk.Toplevel):
                 self._schedule_ui(lambda e=exc: self._on_dap_failed(e))  # type: ignore[misc]
 
         threading.Thread(target=_launch, daemon=True, name="console-dap-launch").start()
+
+    def _retry_startup(self) -> None:
+        """Rebuild the analysis (if we can) and try to launch the DAP again."""
+        self._hide_retry()
+        self._analysis_waited_ms = 0
+        self._append_output("Retrying...\n", "progress")
+        if self._on_retry_analysis is not None:
+            try:
+                self._on_retry_analysis()
+            except Exception as exc:
+                self._append_output(f"Retry failed: {exc}\n", "error")
+        self._start_dap()
 
     def _stop_dap(self) -> None:
         if self._dap is not None:
@@ -331,6 +438,9 @@ class ConsoleWindow(tk.Toplevel):
             command=self._open_project_folder,
         ).pack(side=tk.LEFT, padx=(4, 0))
 
+        # Packed only while startup is in a failed state (see _show_retry).
+        self._retry_btn = ttk.Button(toolbar, text="Retry", width=6, command=self._retry_startup)
+
         # Input row (at top, before output)
         input_frame = ttk.Frame(self, padding=(8, 0, 8, 6))
         input_frame.pack(fill=tk.X)
@@ -356,7 +466,7 @@ class ConsoleWindow(tk.Toplevel):
         status_bar = ttk.Frame(self, padding=(8, 2, 8, 4))
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
         self._copy_btn = ttk.Button(
-            status_bar, text="\N{CLIPBOARD}", width=3, command=self._copy_output
+            status_bar, text=_COPY_LABEL, width=8, command=self._copy_output
         )
         self._copy_btn.pack(side=tk.RIGHT)
         bind_tooltip(self._copy_btn, "Copy output (or the current selection) to the clipboard")
@@ -403,6 +513,12 @@ class ConsoleWindow(tk.Toplevel):
             return
         self._destroyed = True
         self._stop_file_watcher()
+        if self._analysis_after_id is not None:
+            try:
+                self.after_cancel(self._analysis_after_id)
+            except Exception:
+                pass
+            self._analysis_after_id = None
         self._stop_dap()
         if self._on_destroy:
             self._on_destroy()
@@ -428,6 +544,7 @@ class ConsoleWindow(tk.Toplevel):
         get_synced_pending: Callable[[], int],
         filter_func: Callable[[list[str], str], list[str]] | None = None,
         on_destroy: Callable[[], None] | None = None,
+        on_retry_analysis: Callable[[], None] | None = None,
         title_suffix: str = "",
         session_name: str = "clicknick",
     ) -> None:
@@ -439,6 +556,7 @@ class ConsoleWindow(tk.Toplevel):
         self._get_synced_pending = get_synced_pending
         self._filter_func = filter_func
         self._on_destroy = on_destroy
+        self._on_retry_analysis = on_retry_analysis
 
         self.title(f"Console — {title_suffix}" if title_suffix else "Console")
         self.geometry("750x500")
@@ -450,6 +568,9 @@ class ConsoleWindow(tk.Toplevel):
         self._plc_data_mtime: float = 0.0
         self._file_watch_after_id: str | None = None
         self._copy_flash_after_id: str | None = None
+        self._analysis_after_id: str | None = None
+        self._analysis_waited_ms: int = 0
+        self._launch_generation: int = -1
         self._busy_tick: int = -1
         self._cancel_requested = False
         self._destroyed = False
@@ -461,16 +582,32 @@ class ConsoleWindow(tk.Toplevel):
         self._load_grammar()
 
     def _poll_analysis(self) -> None:
+        self._analysis_after_id = None
         if self._destroyed:
             return
+
         analysis = self._get_analysis()
         if analysis is not None and analysis.is_available:
             self._start_dap()
-        else:
-            self.after(_ANALYSIS_POLL_MS, self._poll_analysis)
+            return
+
+        from ..services.analysis_service import AnalysisStatus
+
+        if analysis is not None and analysis.status is AnalysisStatus.FAILED:
+            self._report_startup_failure(
+                analysis.error or "converting the program to pyrung failed.",
+                analysis.error_detail,
+            )
+            return
+
+        self._wait_for_analysis()
 
     def _on_dap_started(self, dap: Any) -> None:
         self._dap = dap
+        # Confirm success in the transcript. Without it a "Retrying..." or
+        # "Reloading..." line just trails off with no visible outcome.
+        self._append_output("OK - simulation ready.\n", "progress")
+        self._hide_retry()
         self._status_var.set("Paused")
         self._start_file_watcher()
 

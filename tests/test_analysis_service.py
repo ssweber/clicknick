@@ -9,9 +9,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from unittest.mock import MagicMock
 
+import pytest
+
 from clicknick.services.analysis_service import (
     AnalysisResult,
     AnalysisService,
+    AnalysisStatus,
     _build_tag_addr_key_map,
 )
 
@@ -189,3 +192,104 @@ class TestAnalysisServiceLifecycle:
         svc.rebuild_mapping({100: FakeRow(nickname="NewName", display_address="X001")})
         assert svc._result.tag_to_addr_key == {"NewName": 100}
         assert svc._result.role_cache == {}
+
+
+class TestAnalysisStatus:
+    """The status machine views poll to tell 'still building' from 'failed'."""
+
+    def test_starts_idle(self):
+        svc = AnalysisService()
+        assert svc.status is AnalysisStatus.IDLE
+        assert svc.error is None
+        assert not svc.is_available
+
+    def test_mark_failed_records_reason(self):
+        svc = AnalysisService()
+        svc.mark_failed("No saved ladder files.")
+        assert svc.status is AnalysisStatus.FAILED
+        assert svc.error == "No saved ladder files."
+        assert not svc.is_available
+
+    def test_build_failure_records_reason_and_reraises(self, monkeypatch, tmp_path):
+        svc = AnalysisService()
+
+        def _boom(*_args, **_kwargs):
+            msg = "bad rung"
+            raise ValueError(msg)
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _boom)
+        with pytest.raises(ValueError, match="bad rung"):
+            svc.build(tmp_path, None, {})
+
+        assert svc.status is AnalysisStatus.FAILED
+        assert svc.error == "ValueError: bad rung"
+        assert "bad rung" in (svc.error_detail or "")
+        assert not svc.is_available
+
+    def test_build_success_is_ready(self, monkeypatch, tmp_path):
+        svc = AnalysisService()
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path),
+        )
+        svc.build(tmp_path, None, {100: FakeRow(nickname="A", display_address="X001")})
+        assert svc.status is AnalysisStatus.READY
+        assert svc.error is None
+        assert svc.is_available
+
+    def test_failed_rebuild_keeps_previous_result(self, monkeypatch, tmp_path):
+        """A failed rebuild must not take working analysis away from open windows."""
+        svc = AnalysisService()
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path),
+        )
+        svc.build(tmp_path, None, {100: FakeRow(nickname="A", display_address="X001")})
+        assert svc.is_available
+
+        def _boom(*_args, **_kwargs):
+            raise RuntimeError("conversion broke")
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _boom)
+        with pytest.raises(RuntimeError):
+            svc.build(tmp_path, None, {})
+
+        assert svc.status is AnalysisStatus.FAILED
+        assert svc.is_available, "previous good result was discarded"
+
+    def test_invalidate_clears_error(self):
+        svc = AnalysisService()
+        svc.mark_failed("nope")
+        svc.invalidate()
+        assert svc.status is AnalysisStatus.IDLE
+        assert svc.error is None
+
+
+class TestGeneration:
+    """Bumped whenever the generated project folder starts being rewritten."""
+
+    def test_starts_at_zero(self):
+        assert AnalysisService().generation == 0
+
+    def test_bumps_on_each_build_attempt(self, monkeypatch, tmp_path):
+        svc = AnalysisService()
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path),
+        )
+        svc.build(tmp_path, None, {})
+        assert svc.generation == 1
+        svc.build(tmp_path, None, {})
+        assert svc.generation == 2
+
+    def test_bumps_even_when_the_build_fails(self, monkeypatch, tmp_path):
+        """The folder is wiped before the failure, so readers must still notice."""
+        svc = AnalysisService()
+
+        def _boom(*_args, **_kwargs):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _boom)
+        with pytest.raises(RuntimeError):
+            svc.build(tmp_path, None, {})
+        assert svc.generation == 1
