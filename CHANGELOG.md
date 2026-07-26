@@ -12,6 +12,8 @@
 
 ### Features
 
+- **Console Stop button** — while a command runs, Send becomes Stop, which cancels a long-running `how` without restarting the simulation, so forces and scan position survive; needs a pyrung new enough to provide the `stop` verb.
+- **Console copy and edit conveniences** — a 📋 button beside the status bar copies the output (or just the selected text) to the clipboard, and the command entry has a right-click Cut/Copy/Paste/Select All menu.
 - **Check Program** — a new Tools > "Check Program..." window reports pyrung's static validation findings as compiler-style diagnostics with a source frame, severity-coloured caret, and fix hint, driven by the validation registry so new rules appear automatically.
 - **Program analysis filters** — the Address Editor filter box accepts `input:`, `output:`, `pivot:`, `isolated:`, `upstream:Tag`, and `downstream:Tag` prefixes, which compose with existing text filters.
 - **Interactive pyrung Console** — a new Console window runs simulations against the open project, with slot-aware autocomplete, live streaming of `how()` progress, and a button to open the `pyrung_project` directory.
@@ -23,6 +25,8 @@
 
 ### Fixed
 
+- The Console status bar is visible again — the output pane's natural height pushed it off the bottom of the window, so the connection state and scan counter never actually appeared.
+- The Console no longer hangs in the busy state when the simulation backend dies mid-command; the input is released and the failure is reported.
 - Console autocomplete now reads pyrung's published command grammar (`pyrung.dap.grammar`) instead of parsing its help text, so it completes multi-target `how A, B` (with or without a space after the comma), offers tag names inside `avoid`/`via` clauses — which never worked before — and suggests the `avoid` and `via` keywords themselves once a target is typed. Older pyrung versions without that module fall back to the previous help-text parsing.
 - Importing a nickname CSV no longer fails outright with `cannot assign to field 'nickname'`.
 - Unchecking a block in the import dialog now actually excludes it — previously a tagged block sitting between untagged rows was imported anyway, under the wrong block's merge options.

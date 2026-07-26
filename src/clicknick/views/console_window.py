@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..services.console_completer import ConsoleCompleter
 from ..widgets.console_input import ConsoleInput
+from ..widgets.tooltip import bind_tooltip
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
 
 _PLC_DATA_WATCH_MS = 2000
 _ANALYSIS_POLL_MS = 500
+_COPY_FLASH_MS = 1200
 
 
 class ConsoleWindow(tk.Toplevel):
@@ -42,6 +44,33 @@ class ConsoleWindow(tk.Toplevel):
             self._output.insert(tk.END, text)
         self._output.configure(state="disabled")
         self._output.see(tk.END)
+
+    def _restore_copy_button(self) -> None:
+        self._copy_flash_after_id = None
+        if not self._destroyed:
+            self._copy_btn.configure(text="\N{CLIPBOARD}")
+
+    def _flash_copy_button(self) -> None:
+        if self._copy_flash_after_id is not None:
+            try:
+                self.after_cancel(self._copy_flash_after_id)
+            except Exception:
+                pass
+        self._copy_btn.configure(text="\N{CHECK MARK}")
+        self._copy_flash_after_id = self.after(_COPY_FLASH_MS, self._restore_copy_button)
+
+    def _copy_output(self) -> None:
+        """Copy the output selection, or the whole transcript when nothing is selected."""
+        if self._output.tag_ranges(tk.SEL):
+            text = self._output.get(tk.SEL_FIRST, tk.SEL_LAST)
+        else:
+            text = self._output.get("1.0", tk.END)
+        text = text.rstrip("\n")
+        if not text:
+            return
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        self._flash_copy_button()
 
     def _on_dap_failed(self, exc: Exception) -> None:
         self._append_output(f"DAP failed: {exc}\n", "error")
@@ -123,7 +152,9 @@ class ConsoleWindow(tk.Toplevel):
             return send_command(self._session_name, command, on_progress=on_progress)
         except FileNotFoundError:
             return False, "Session not available (DAP may still be starting)"
-        except (ConnectionRefusedError, OSError) as exc:
+        except (ConnectionRefusedError, OSError, EOFError) as exc:
+            # EOFError is what a killed DAP looks like mid-command: the socket
+            # closes before the result frame arrives.
             return False, f"Connection failed: {exc}"
 
     def _animate_prompt(self) -> None:
@@ -134,17 +165,36 @@ class ConsoleWindow(tk.Toplevel):
         self._busy_tick += 1
         self.after(400, self._animate_prompt)
 
+    def _request_stop(self) -> None:
+        """Ask the live session to cancel the in-flight command."""
+        if self._cancel_requested:
+            return
+        self._cancel_requested = True
+        self._send_btn.configure(state="disabled")
+        self._append_output("Stopping...\n", "progress")
+
+        def _worker() -> None:
+            ok, text = self._send("stop")
+            if not ok:
+                self._schedule_ui(lambda: self._append_output(f"{text}\n", "error"))
+
+        threading.Thread(target=_worker, daemon=True, name="console-stop").start()
+
     def _set_busy(self, busy: bool) -> None:
         if busy:
             self._busy_tick = 0
             self._console_input.set_busy(True)
-            self._send_btn.configure(state="disabled")
+            # Repurpose Send as Stop rather than greying it out -- it's the
+            # control the user's hand is already on.
+            self._send_btn.configure(text="Stop", state="normal", command=self._request_stop)
             self._animate_prompt()
         else:
             self._busy_tick = -1
             self._prompt_label.configure(text=">>>")
             self._console_input.set_busy(False)
-            self._send_btn.configure(state="normal")
+            self._send_btn.configure(
+                text="Send", state="normal", command=self._console_input.submit
+            )
 
     # ------------------------------------------------------------------
     # Command dispatch via pyrung live
@@ -153,6 +203,7 @@ class ConsoleWindow(tk.Toplevel):
     def _submit_command_text(self, command: str) -> None:
         """Called by ConsoleInput when the user submits a command."""
         self._append_output(f">>> {command}\n", "prompt")
+        self._cancel_requested = False
         self._set_busy(True)
 
         subs = [s.strip() for s in command.split(";") if s.strip()]
@@ -171,12 +222,22 @@ class ConsoleWindow(tk.Toplevel):
 
         def _done(results: list[tuple[bool, str]]) -> None:
             for ok, text in results:
-                if text:
-                    self._append_output(text + "\n", "output" if ok else "error")
+                if not text:
+                    continue
+                if ok:
+                    tag = "output"
+                else:
+                    # A stop we asked for isn't a failure -- don't shout it in red.
+                    tag = "progress" if self._cancel_requested else "error"
+                self._append_output(text + "\n", tag)
+            self._cancel_requested = False
             self._set_busy(False)
 
         def _worker() -> None:
-            results = _run()
+            try:
+                results = _run()
+            except Exception as exc:  # never leave the console stuck busy
+                results = [(False, f"Console error: {exc}")]
             self._schedule_ui(lambda: _done(results))
 
         threading.Thread(target=_worker, daemon=True, name="console-cmd").start()
@@ -288,6 +349,21 @@ class ConsoleWindow(tk.Toplevel):
         )
         self._send_btn.pack(side=tk.LEFT)
 
+        # Status bar. Packed against the bottom *before* the output area: the
+        # output Text asks for its natural 24-line height, which oversubscribes
+        # the window, and pack starves whatever was packed last.
+        self._status_var = tk.StringVar(value="Starting...")
+        status_bar = ttk.Frame(self, padding=(8, 2, 8, 4))
+        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        self._copy_btn = ttk.Button(
+            status_bar, text="\N{CLIPBOARD}", width=3, command=self._copy_output
+        )
+        self._copy_btn.pack(side=tk.RIGHT)
+        bind_tooltip(self._copy_btn, "Copy output (or the current selection) to the clipboard")
+        ttk.Label(status_bar, textvariable=self._status_var, foreground="gray").pack(
+            side=tk.LEFT, fill=tk.X, expand=True
+        )
+
         # Output area
         output_frame = ttk.Frame(self)
         output_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 4))
@@ -296,6 +372,7 @@ class ConsoleWindow(tk.Toplevel):
             output_frame,
             wrap=tk.WORD,
             state="disabled",
+            height=10,
             font=("Consolas", 10),
             bg="#1e1e1e",
             fg="#d4d4d4",
@@ -314,14 +391,6 @@ class ConsoleWindow(tk.Toplevel):
         self._output.tag_configure("error", foreground="#f44747")
         self._output.tag_configure("output", foreground="#d4d4d4")
         self._output.tag_configure("progress", foreground="#808080")
-
-        # Status bar
-        self._status_var = tk.StringVar(value="Starting...")
-        status_bar = ttk.Frame(self, padding=(8, 2, 8, 4))
-        status_bar.pack(fill=tk.X)
-        ttk.Label(status_bar, textvariable=self._status_var, foreground="gray").pack(
-            side=tk.LEFT, fill=tk.X, expand=True
-        )
 
         self._console_input.focus_set()
 
@@ -380,7 +449,9 @@ class ConsoleWindow(tk.Toplevel):
         self._plc_data_path: Path | None = None
         self._plc_data_mtime: float = 0.0
         self._file_watch_after_id: str | None = None
+        self._copy_flash_after_id: str | None = None
         self._busy_tick: int = -1
+        self._cancel_requested = False
         self._destroyed = False
         self._completer = ConsoleCompleter()
 

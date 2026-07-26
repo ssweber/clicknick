@@ -169,6 +169,58 @@ class ConsoleInput(ttk.Combobox):
         selected = self.get()
         self._accept_completion(selected)
 
+    # ------------------------------------------------------------------
+    # Right-click edit menu
+    # ------------------------------------------------------------------
+
+    def _is_editable(self) -> bool:
+        return str(self.cget("state")) != "disabled"
+
+    def _clipboard_has_text(self) -> bool:
+        try:
+            return bool(self.clipboard_get())
+        except tk.TclError:
+            return False
+
+    def _edit_event(self, virtual: str) -> None:
+        """Fire a Tk edit virtual event, refreshing completions afterwards."""
+        self.event_generate(virtual)
+        self.after_idle(self._update_completions)
+
+    def _select_all(self) -> None:
+        self.select_range(0, tk.END)
+        self.icursor(tk.END)
+
+    def _build_edit_menu(self) -> tk.Menu:
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(label="Cut", command=lambda: self._edit_event("<<Cut>>"))
+        menu.add_command(label="Copy", command=lambda: self._edit_event("<<Copy>>"))
+        menu.add_command(label="Paste", command=lambda: self._edit_event("<<Paste>>"))
+        menu.add_separator()
+        menu.add_command(label="Select All", command=self._select_all)
+        return menu
+
+    def _on_right_click(self, event: tk.Event) -> str:  # type: ignore[type-arg]
+        self._dropdown.hide_dropdown()
+        if self._is_editable():
+            self.focus_set()
+
+        editable = self._is_editable()
+        has_selection = self.selection_present()
+        menu = self._edit_menu
+        menu.entryconfigure("Cut", state="normal" if editable and has_selection else "disabled")
+        menu.entryconfigure("Copy", state="normal" if has_selection else "disabled")
+        menu.entryconfigure(
+            "Paste", state="normal" if editable and self._clipboard_has_text() else "disabled"
+        )
+        menu.entryconfigure("Select All", state="normal" if self.get() else "disabled")
+
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+        return "break"
+
     def __init__(
         self,
         parent: tk.Widget,
@@ -192,6 +244,9 @@ class ConsoleInput(ttk.Combobox):
         self._pre_token: str = ""
         self._post_token: str = ""
 
+        self._edit_menu = self._build_edit_menu()
+
+        self.bind("<Button-3>", self._on_right_click)
         self.bind("<KeyRelease>", self._on_key_release)
         self.bind("<KeyPress-Return>", self._on_return)
         self.bind("<KeyPress-Up>", self._on_up)
