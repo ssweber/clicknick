@@ -203,7 +203,7 @@ def _make_completer() -> ConsoleCompleter:
                 "capture",
             ),
             # Mirrors pyrung's declared grammar for `how` (see pyrung.dap.grammar):
-            # comma-separated targets, plus keyword-introduced avoid/via clauses.
+            # comma-separated targets, plus the keyword-introduced avoid clause.
             "how": CommandSpec(
                 "how",
                 (
@@ -216,7 +216,6 @@ def _make_completer() -> ConsoleCompleter:
                         separator=",",
                         keyword="avoid",
                     ),
-                    SlotSpec("expression", False, label="via", keyword="via"),
                 ),
                 "analysis",
             ),
@@ -421,7 +420,7 @@ class TestGrammarLoading:
         assert "always" in spec.slots[0].choices
 
     def test_how_slots_all_offer_tags(self):
-        """Every `how` slot — target, avoid, via — must complete tags.
+        """Every `how` slot — target and avoid — must complete tags.
 
         The grammar comes from pyrung; a change there can silently downgrade a slot
         to freeform and kill completion. Pin it against real pyrung.
@@ -444,7 +443,7 @@ class TestGrammarLoading:
         target = slots[0]
         assert target.repeat is True
         assert target.separator == ","
-        assert {s.keyword for s in slots if s.keyword} == {"avoid", "via"}
+        assert {s.keyword for s in slots if s.keyword} == {"avoid"}
 
     def test_how_completes_second_target_against_real_grammar(self):
         c = ConsoleCompleter()
@@ -474,4 +473,5 @@ class TestGrammarLoading:
         text = "how Motor_Run avoid Pump_On "
         r = c.complete(text, len(text), _tag_provider)
         assert "avoid" not in r.candidates
-        assert "via" in r.candidates
+        assert r.slot_kind == "expression"
+        assert r.hint == "avoid"

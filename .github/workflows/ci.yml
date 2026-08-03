@@ -37,10 +37,10 @@ jobs:
           fetch-depth: 0
 
       - name: Install uv (official Astral action)
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v8
         with:
           # Update this as needed:
-          version: "0.9.25"
+          version: "0.11.29"
           enable-cache: true
           python-version: ${{ matrix.python-version }}
 

@@ -8,7 +8,7 @@ contract, which pyrung tests against its own usage strings. Older pyrung version
 don't have that module, so we fall back to parsing the ``usage=`` prose in
 ``_REGISTRY`` ourselves (``_parse_usage`` below). That fallback is a best-effort
 heuristic: it cannot recover the facts prose doesn't state — which clauses are
-keyword-introduced (``avoid``/``via``), and which slots take comma-separated
+keyword-introduced (such as ``avoid``), and which slots take comma-separated
 conjuncts (``how A, B``). Prefer the published grammar.
 """
 
@@ -333,7 +333,7 @@ class ConsoleCompleter:
         if not spec.slots:
             return None
 
-        # Keyword clauses (`how X avoid Y via Z`) are not positional: the most recent
+        # Keyword clauses (`how X avoid Y`) are not positional: the most recent
         # keyword among the typed args decides which slot we are in.
         keyworded = {s.keyword.lower(): s for s in spec.slots if s.keyword}
         if keyworded:
@@ -439,7 +439,7 @@ class ConsoleCompleter:
         current: str,
         result: CompletionResult,
     ) -> CompletionResult:
-        """Append a command's unused clause keywords (`avoid`, `via`) as candidates.
+        """Append a command's unused clause keywords (for example, `avoid`) as candidates.
 
         Only at the start of a fresh token — mid-conjunct (`how A, av…`) a comma is
         still open, so the user is naming a tag, not opening a clause.

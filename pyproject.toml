@@ -50,7 +50,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.3.5",
-    "ruff>=0.11.0",
+    "ruff>=0.16.0",
     "ssort==0.16.0",
 ]
 
@@ -93,6 +93,7 @@ pyclickplc = { path = "../pyclickplc", editable = true }
 pyrung = { path = "../pyrung", editable = true }
 
 [tool.uv]
+required-version = ">=0.11.29"
 exclude-newer = "7 days"
 exclude-newer-package = { pyclickplc = "0 days", laddercodec = "0 days", pyrung = "0 days" }
 
@@ -102,7 +103,7 @@ exclude-newer-package = { pyclickplc = "0 days", laddercodec = "0 days", pyrung 
 [tool.ruff]
 # Set as desired, typically 88 (black standard) or 100 (wide).
 line-length = 100
-extend-exclude = ["src/clicknick/widgets/custom_notebook.py"]
+extend-exclude = ["*.md", "src/clicknick/widgets/custom_notebook.py"]
 
 [tool.ruff.lint]
 select = [
