@@ -87,19 +87,13 @@ def _build_tag_addr_key_map(
 
 
 _PRESERVE = {".venv", "__pycache__", "pyproject.toml", "tests", "uv.lock"}
-_GENERATED_TEST_FILES = {"conftest.py", "test_smoke.py"}
 
 
 def _clean_generated(persist_dir: Path) -> None:
-    """Remove generated files while preserving environments and custom tests."""
+    """Remove generated files while preserving session-local workspace files."""
     import shutil
 
     for child in persist_dir.iterdir():
-        if child.name == "tests" and child.is_dir():
-            for generated_name in _GENERATED_TEST_FILES:
-                (child / generated_name).unlink(missing_ok=True)
-            shutil.rmtree(child / "__pycache__", ignore_errors=True)
-            continue
         if child.name in _PRESERVE:
             continue
         if child.is_dir():

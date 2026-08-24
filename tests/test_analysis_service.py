@@ -296,13 +296,16 @@ class TestGeneration:
         assert svc.generation == 1
 
 
-def test_clean_generated_preserves_custom_tests_and_refreshes_scaffolding(tmp_path):
+def test_clean_generated_preserves_entire_tests_directory(tmp_path):
     tests_dir = tmp_path / "tests"
     tests_dir.mkdir()
     custom_test = tests_dir / "test_interlock.py"
     custom_test.write_text("def test_interlock(): pass\n", encoding="utf-8")
     (tests_dir / "conftest.py").write_text("old fixture\n", encoding="utf-8")
     (tests_dir / "test_smoke.py").write_text("old smoke\n", encoding="utf-8")
+    test_cache = tests_dir / "__pycache__"
+    test_cache.mkdir()
+    (test_cache / "cached.pyc").write_bytes(b"cache")
     generated_source = tmp_path / "src" / "plc"
     generated_source.mkdir(parents=True)
     (generated_source / "main.py").write_text("old logic\n", encoding="utf-8")
@@ -310,6 +313,7 @@ def test_clean_generated_preserves_custom_tests_and_refreshes_scaffolding(tmp_pa
     _clean_generated(tmp_path)
 
     assert custom_test.is_file()
-    assert not (tests_dir / "conftest.py").exists()
-    assert not (tests_dir / "test_smoke.py").exists()
+    assert (tests_dir / "conftest.py").read_text(encoding="utf-8") == "old fixture\n"
+    assert (tests_dir / "test_smoke.py").read_text(encoding="utf-8") == "old smoke\n"
+    assert (test_cache / "cached.pyc").is_file()
     assert not (tmp_path / "src").exists()
