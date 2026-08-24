@@ -164,3 +164,37 @@ def test_tag_apply_requires_project(store):
     # No analysis -> no persisted project dir -> clear error, not a crash.
     with pytest.raises(ValueError, match="analysis not available"):
         dispatch(DispatchContext(store=store), "tag apply")
+
+
+def test_load_export_rows_reads_src_plc_tags(tmp_path, monkeypatch):
+    from clicknick.data import data_source
+    from clicknick.live import rung_commands
+
+    tags_dir = tmp_path / "src" / "plc"
+    tags_dir.mkdir(parents=True)
+    (tags_dir / "tags.py").write_text("current tags\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        rung_commands,
+        "_get_before_files",
+        lambda _project_dir: {"src/plc/tags.py": "baseline tags\n"},
+    )
+    exported: list[str] = []
+    monkeypatch.setattr(
+        tag_commands,
+        "_export_nicknames",
+        lambda source, _path: exported.append(source),
+    )
+
+    class FakeDataSource:
+        def __init__(self, path):
+            self.path = path
+
+        def load_all_addresses(self):
+            return {self.path: self.path}
+
+    monkeypatch.setattr(data_source, "CsvDataSource", FakeDataSource)
+
+    tag_commands._load_export_rows(tmp_path)
+
+    assert exported == ["baseline tags\n", "current tags\n"]

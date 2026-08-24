@@ -23,7 +23,7 @@ Usage::
     clicknick-cli tag set-range Temp_PV 0 100       # numeric range
     clicknick-cli tag set-uom Temp_PV degC          # unit of measurement
     clicknick-cli tag set-physical Clamp_FB Clamp --on-delay 50ms --off-delay 200ms
-    clicknick-cli tag apply                         # edit tags.py, then push the diff
+    clicknick-cli tag apply                         # edit src/plc/tags.py, then push
 
     # Rung commands
     clicknick-cli rung list                         # list available files

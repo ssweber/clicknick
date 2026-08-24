@@ -287,14 +287,14 @@ def _cmd_clear_physical(ctx: DispatchContext, parts: list[str]) -> str:
 
 
 def _export_nicknames(tags_source: str, out_csv) -> None:
-    """Exec a ``tags.py`` source and write its full Click nickname CSV.
+    """Exec a ``src/plc/tags.py`` source and write its full Click nickname CSV.
 
     Passes the ``blocks`` ClickBlockSet so configured-but-unmapped slots (plain
     nicknames + annotations, the bulk of the table) are written, not just the
     TagMap ``map_to`` entries. tags.py is generated project code, trusted here.
     """
     ns: dict[str, object] = {}
-    exec(compile(tags_source, "tags.py", "exec"), ns)  # noqa: S102
+    exec(compile(tags_source, "src/plc/tags.py", "exec"), ns)  # noqa: S102
     mapping = ns.get("mapping")
     if mapping is None:
         raise ValueError("tags.py did not define `mapping`")
@@ -304,7 +304,7 @@ def _export_nicknames(tags_source: str, out_csv) -> None:
 def _load_export_rows(project_dir):
     """Return (baseline_rows, current_rows): addr_key -> AddressRow.
 
-    ``baseline`` is the pristine tags.py reconstructed from the persisted ladder
+    ``baseline`` is the pristine tags module reconstructed from the persisted ladder
     CSVs (what the project exported *before* the agent's edits); ``current`` is
     the tags.py on disk (with edits). Diffing the two exports cancels every
     systematic round-trip artifact (``[external]`` inference, bank-default
@@ -315,12 +315,13 @@ def _load_export_rows(project_dir):
     from pathlib import Path
 
     from ..data.data_source import CsvDataSource
+    from ..services.project_workspace import plc_source_dir
     from .rung_commands import _get_before_files
 
-    baseline_src = _get_before_files(project_dir).get("tags.py")
+    baseline_src = _get_before_files(project_dir).get("src/plc/tags.py")
     if not baseline_src:
         raise ValueError("could not reconstruct baseline tags.py from persisted CSVs")
-    current_src = (project_dir / "tags.py").read_text(encoding="utf-8")
+    current_src = (plc_source_dir(project_dir) / "tags.py").read_text(encoding="utf-8")
 
     with tempfile.TemporaryDirectory(prefix="clicknick_tagapply_") as td:
         base_csv = Path(td) / "baseline.csv"
@@ -372,7 +373,7 @@ def _compute_tag_changes(base_rows, cur_rows, store) -> list[tuple[int, str, str
 
 
 def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
-    """Push the agent's tags.py edits into the store, then open the editor.
+    """Push the agent's src/plc/tags.py edits into the store, then open the editor.
 
     Exports both the pristine (baseline) and edited (current) tags.py, diffs
     them so only real edits survive, lands them as one batched unsaved change,

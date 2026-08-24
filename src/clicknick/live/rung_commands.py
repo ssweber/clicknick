@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .dispatch import DispatchContext
 
+from ..services.project_workspace import plc_source_dir, project_environment
 
 _SUBROUTINE_NAME_RE = re.compile(r'@subroutine\("([^"]+)"\)')
 
@@ -23,7 +24,7 @@ def _get_csv_stem(project_dir: Path, stem: str) -> str:
     """Map a Python file stem to the subroutine display name used in CSV filenames."""
     if stem == "main":
         return "main"
-    path = project_dir / "subroutines" / f"{stem}.py"
+    path = plc_source_dir(project_dir) / "subroutines" / f"{stem}.py"
     try:
         source = path.read_text(encoding="utf-8")
     except OSError:
@@ -46,9 +47,9 @@ def _get_project_dir(ctx: DispatchContext) -> Path:
 def _resolve_file(project_dir: Path, file_stem: str) -> Path:
     """Resolve a file stem (e.g. 'main', 'startup') to a .py path in the project."""
     if file_stem == "main":
-        path = project_dir / "main.py"
+        path = plc_source_dir(project_dir) / "main.py"
     else:
-        path = project_dir / "subroutines" / f"{file_stem}.py"
+        path = plc_source_dir(project_dir) / "subroutines" / f"{file_stem}.py"
     if not path.is_file():
         raise ValueError(f"file not found: {path}")
     return path
@@ -57,9 +58,9 @@ def _resolve_file(project_dir: Path, file_stem: str) -> Path:
 def _all_file_stems(project_dir: Path) -> list[str]:
     """Return all file stems: main + sorted subroutines."""
     stems = ["main"]
-    sub_dir = project_dir / "subroutines"
+    sub_dir = plc_source_dir(project_dir) / "subroutines"
     if sub_dir.is_dir():
-        stems.extend(p.stem for p in sorted(sub_dir.glob("*.py")))
+        stems.extend(p.stem for p in sorted(sub_dir.glob("*.py")) if p.stem != "__init__")
     return stems
 
 
@@ -247,7 +248,7 @@ def _diff_one_file(
     path = _resolve_file(project_dir, stem)
     after = path.read_text(encoding="utf-8")
 
-    relative_key = f"subroutines/{stem}.py" if stem != "main" else "main.py"
+    relative_key = f"src/plc/subroutines/{stem}.py" if stem != "main" else "src/plc/main.py"
     before = before_files.get(relative_key, "")
     if not before:
         return [], []
@@ -358,6 +359,7 @@ def _run_export(project_dir: Path) -> Path:
     result = subprocess.run(
         [sys.executable, str(script)],
         cwd=str(project_dir),
+        env=project_environment(project_dir),
         capture_output=True,
         text=True,
         timeout=60,

@@ -16,6 +16,7 @@ from clicknick.services.analysis_service import (
     AnalysisService,
     AnalysisStatus,
     _build_tag_addr_key_map,
+    _clean_generated,
 )
 
 
@@ -293,3 +294,22 @@ class TestGeneration:
         with pytest.raises(RuntimeError):
             svc.build(tmp_path, None, {})
         assert svc.generation == 1
+
+
+def test_clean_generated_preserves_custom_tests_and_refreshes_scaffolding(tmp_path):
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    custom_test = tests_dir / "test_interlock.py"
+    custom_test.write_text("def test_interlock(): pass\n", encoding="utf-8")
+    (tests_dir / "conftest.py").write_text("old fixture\n", encoding="utf-8")
+    (tests_dir / "test_smoke.py").write_text("old smoke\n", encoding="utf-8")
+    generated_source = tmp_path / "src" / "plc"
+    generated_source.mkdir(parents=True)
+    (generated_source / "main.py").write_text("old logic\n", encoding="utf-8")
+
+    _clean_generated(tmp_path)
+
+    assert custom_test.is_file()
+    assert not (tests_dir / "conftest.py").exists()
+    assert not (tests_dir / "test_smoke.py").exists()
+    assert not (tmp_path / "src").exists()

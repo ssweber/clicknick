@@ -242,7 +242,7 @@ tags:
   tag set-physical <tag> <name> [--on-delay D] [--off-delay D] [--profile P] [--system S]
   tag set-link <tag> <link>
   tag clear-physical <tag>
-  tag apply                          -> edit tags.py, then push the diff
+  tag apply                          -> edit src/plc/tags.py, then push the diff
     (regenerates nicknames.csv, lands changed rows, opens Address Editor → Changed)
 
 rungs:

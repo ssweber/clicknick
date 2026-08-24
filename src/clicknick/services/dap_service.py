@@ -16,6 +16,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from .project_workspace import project_environment
+
 
 class SimState(enum.Enum):
     IDLE = "idle"
@@ -376,6 +378,7 @@ class DapService:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             cwd=str(project_dir),
+            env=project_environment(project_dir),
         )
 
         self._stderr_lines.clear()

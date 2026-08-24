@@ -86,14 +86,20 @@ def _build_tag_addr_key_map(
     return tag_to_key, key_to_tag
 
 
-_PRESERVE = {".venv", "__pycache__", "pyproject.toml", "uv.lock"}
+_PRESERVE = {".venv", "__pycache__", "pyproject.toml", "tests", "uv.lock"}
+_GENERATED_TEST_FILES = {"conftest.py", "test_smoke.py"}
 
 
 def _clean_generated(persist_dir: Path) -> None:
-    """Remove generated files while preserving .venv, csv_output, etc."""
+    """Remove generated files while preserving environments and custom tests."""
     import shutil
 
     for child in persist_dir.iterdir():
+        if child.name == "tests" and child.is_dir():
+            for generated_name in _GENERATED_TEST_FILES:
+                (child / generated_name).unlink(missing_ok=True)
+            shutil.rmtree(child / "__pycache__", ignore_errors=True)
+            continue
         if child.name in _PRESERVE:
             continue
         if child.is_dir():
@@ -108,7 +114,7 @@ def _build_graph(
     """Run the full pipeline: Scr*.tmp -> CSV -> pyrung code -> exec -> graph.
 
     When *persist_dir* is provided, also writes the full pyrung project
-    (tags.py, main.py, subroutines/) to disk for consumption by DAP and
+    (src/plc/) to disk for consumption by DAP and
     rung preview commands.
     """
     from pyrung.click import ladder_to_pyrung
