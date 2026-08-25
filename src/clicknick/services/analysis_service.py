@@ -256,7 +256,9 @@ class AnalysisService:
             if not destination.is_dir():
                 raise ValueError(f"export destination is not a directory: {destination}")
             if any(destination.iterdir()):
-                raise FileExistsError("export destination must be empty")
+                raise FileExistsError(
+                    f"export folder already exists and must be empty: {destination}"
+                )
         if not destination.parent.is_dir():
             raise FileNotFoundError(
                 f"export destination parent does not exist: {destination.parent}"

@@ -749,21 +749,22 @@ class ClickNickApp:
             return
 
         output = filedialog.askdirectory(
-            title="Export pyrung Project — choose a new or empty folder",
+            title="Export pyrung Project — choose where to save pyrung_project",
             parent=self.root,
             mustexist=False,
         )
         if not output:
             return
 
+        destination = Path(output) / "pyrung_project"
         try:
-            file_count = analysis.export_project(Path(output))
+            file_count = analysis.export_project(destination)
         except Exception as exc:
             messagebox.showerror("Export pyrung Project", str(exc), parent=self.root)
             return
 
         self._update_status(
-            f"Exported pyrung project ({file_count} files) to {output}",
+            f"Exported pyrung project ({file_count} files) to {destination}",
             "connected",
         )
 
