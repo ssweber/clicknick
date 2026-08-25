@@ -6,7 +6,7 @@ import typing
 from pathlib import Path
 
 import pytest
-from laddercodec import Coil, CompareContact, Contact, Timer
+from laddercodec import BlockCopy, Coil, CompareContact, Contact, Rung, Timer
 from laddercodec.csv.contract import CONDITION_COLUMNS
 from laddercodec.model import Program
 
@@ -27,6 +27,7 @@ from clicknick.ladder.program import (
     _slugify,
     extract_addresses_from_bin,
     extract_addresses_from_csv,
+    prepare_rungs_load,
     program_save,
 )
 
@@ -93,6 +94,30 @@ class TestExtractAddresses:
 
         assert extract_addresses_from_csv(csv_path) == expected
         assert extract_addresses_from_bin(bin_path.read_bytes()) == expected
+
+    def test_prepare_rungs_load_provisions_blockcopy_range_endpoints(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        rung = Rung(
+            logical_rows=2,
+            conditions=[["-"] * 31, [""] * 31],
+            instructions=[BlockCopy("DS201", "DS210", "DS202", "DS211"), ""],
+            comment=None,
+        )
+        provisioned: list[str] = []
+
+        def _ensure(_db_path: str, addresses: list[str]) -> dict[str, int]:
+            provisioned.extend(addresses)
+            return {"inserted_count": 1}
+
+        monkeypatch.setattr("clicknick.ladder.program.ensure_addresses_exist", _ensure)
+
+        result = prepare_rungs_load([rung], mdb_path=Path("SC_.mdb"))
+
+        assert result.addresses == ["DS201", "DS210", "DS202", "DS211"]
+        assert provisioned == result.addresses
+        assert result.addresses_inserted == 1
+        assert result.payload
 
 
 # ---------------------------------------------------------------------------

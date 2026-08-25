@@ -26,6 +26,8 @@
 
 ### Fixed
 
+- Rung preview now compares canonical Click ladder rungs, so inserting a rung selects only the new logic for Guided Paste and shows displaced existing rungs as neutral renumbering instead of removal and re-addition.
+- Copying rungs from the preview now provisions every referenced address in the Click project first, including block-copy range endpoints that were not otherwise materialized.
 - Copy buttons are plain text instead of a 📋 emoji, which rendered in colour from a different font and clashed with the surrounding monochrome controls (Console, Check Program, Rung preview, Guided paste).
 - Opening the Console just after a save no longer reports a half-written project as an error — "No run.py found in ...pyrung_project", "No module named 'subroutines'", and anything else of that shape. A rebuild empties the generated project folder and rewrites it in place while the previous analysis still advertises it, so the Console now refuses to launch during a build at all, and treats a launch that lost a race with one as a wait-and-relaunch rather than a failure. Genuine launch failures are still reported, with a Retry.
 - Opening the Console before the program has finished converting no longer leaves it stuck on "Building program analysis..." forever — it shows how long it has been waiting, gives up after two minutes, and offers a Retry button.

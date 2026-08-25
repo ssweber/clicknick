@@ -414,19 +414,13 @@ def program_save(
     )
 
 
-def prepare_csv_load(
-    csv_path: Path,
+def prepare_rungs_load(
+    rungs: list[Rung],
     *,
     mdb_path: Path | None = None,
-    best_effort: bool = False,
     show_nicknames: bool = False,
 ) -> PrepareResult:
-    """Encode a CSV file and provision MDB addresses.
-
-    Does NOT copy to clipboard — the caller handles that so it can choose
-    the owner HWND (GUI passes its tracked Click window, CLI auto-detects).
-    """
-    rungs = read_csv(csv_path, strict=not best_effort)
+    """Encode parsed rungs and provision every referenced MDB address."""
     payload = (
         encode(rungs, show_nicknames=show_nicknames)
         if len(rungs) > 1
@@ -446,6 +440,26 @@ def prepare_csv_load(
         addresses_inserted=addresses_inserted,
         mdb_path=resolved_mdb_path,
         mdb_error=mdb_error,
+    )
+
+
+def prepare_csv_load(
+    csv_path: Path,
+    *,
+    mdb_path: Path | None = None,
+    best_effort: bool = False,
+    show_nicknames: bool = False,
+) -> PrepareResult:
+    """Encode a CSV file and provision MDB addresses.
+
+    Does NOT copy to clipboard — the caller handles that so it can choose
+    the owner HWND (GUI passes its tracked Click window, CLI auto-detects).
+    """
+    rungs = read_csv(csv_path, strict=not best_effort)
+    return prepare_rungs_load(
+        rungs,
+        mdb_path=mdb_path,
+        show_nicknames=show_nicknames,
     )
 
 

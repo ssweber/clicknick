@@ -1498,6 +1498,12 @@ class AddressEditorWindow(tk.Toplevel):
 
         self.destroy()
 
+    def _raise_and_focus(self) -> None:
+        """Surface the mapped editor and give it keyboard focus."""
+        self.deiconify()
+        self.lift()
+        self.focus_force()
+
     def apply_row_filter(self, row_filter: str) -> None:
         """Switch the current tab to a row filter (e.g. 'changed') and surface it.
 
@@ -1512,9 +1518,10 @@ class AddressEditorWindow(tk.Toplevel):
         panel.filter_var.set("")
         panel.row_filter_var.set(row_filter)
         panel._apply_filters()
-        self.deiconify()
-        self.lift()
-        self.focus_force()
+
+        # A newly-created Toplevel may not be mapped until Tk returns idle;
+        # Windows can ignore activation requests made before then.
+        self.after_idle(self._raise_and_focus)
 
     def _update_sync_indicator(self, pending: int) -> None:
         self._synced_pending = pending
