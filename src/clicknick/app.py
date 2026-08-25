@@ -714,49 +714,56 @@ class ClickNickApp:
             "connected",
         )
 
-    def _convert_to_pyrung(self):
-        """Convert a ladder CSV folder into a pyrung Python project."""
-        source = filedialog.askdirectory(
-            title="Convert to pyrung — choose ladder CSV folder",
-            parent=self.root,
-        )
-        if not source:
+    def _export_pyrung_project(self):
+        """Copy the connected project's ready pyrung workspace."""
+        from .services.analysis_service import AnalysisStatus
+
+        analysis = self._session.analysis if self._session else None
+        if analysis is None:
+            messagebox.showinfo(
+                "Export pyrung Project",
+                "Connect to a Click project before exporting its pyrung project.",
+                parent=self.root,
+            )
             return
-
-        from pathlib import Path
-
-        source_path = Path(source)
-        if not (source_path / "main.csv").exists():
+        if analysis.status is AnalysisStatus.BUILDING:
+            messagebox.showinfo(
+                "Export pyrung Project",
+                "The pyrung project is still being built. Try again in a moment.",
+                parent=self.root,
+            )
+            return
+        if analysis.status is AnalysisStatus.FAILED:
             messagebox.showerror(
-                "Convert to pyrung",
-                f"No main.csv found in {source}.\n\n"
-                "Use 'Export from Click' first to create a ladder folder.",
+                "Export pyrung Project",
+                analysis.error or "The pyrung project could not be built.",
+                parent=self.root,
+            )
+            return
+        if not analysis.is_available or analysis.project_dir is None:
+            messagebox.showinfo(
+                "Export pyrung Project",
+                "Save the project in Click Software, then try again.",
                 parent=self.root,
             )
             return
 
         output = filedialog.askdirectory(
-            title="Convert to pyrung — choose output folder",
+            title="Export pyrung Project — choose a new or empty folder",
             parent=self.root,
+            mustexist=False,
         )
         if not output:
             return
 
-        from pyrung.click import ladder_to_pyrung_project
-
-        nickname_csv = source_path / "nicknames.csv"
         try:
-            files = ladder_to_pyrung_project(
-                source_path,
-                nickname_csv=nickname_csv if nickname_csv.exists() else None,
-                output_dir=Path(output),
-            )
+            file_count = analysis.export_project(Path(output))
         except Exception as exc:
-            messagebox.showerror("Convert to pyrung", str(exc), parent=self.root)
+            messagebox.showerror("Export pyrung Project", str(exc), parent=self.root)
             return
 
         self._update_status(
-            f"Exported {len(files)} file(s) to {output}",
+            f"Exported pyrung project ({file_count} files) to {output}",
             "connected",
         )
 
@@ -974,7 +981,7 @@ class ClickNickApp:
 
         # Ladder menu
         ladder_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Ladder (beta)", menu=ladder_menu)
+        menubar.add_cascade(label="Ladder", menu=ladder_menu)
         ladder_menu.add_command(
             label="Load Ladder CSV to Clipboard...", command=self._load_ladder_csv
         )
@@ -982,7 +989,9 @@ class ClickNickApp:
         ladder_menu.add_separator()
         ladder_menu.add_command(label="Save Clipboard to CSV...", command=self._save_clipboard_csv)
         ladder_menu.add_command(label="Export from Click...", command=self._export_from_click)
-        ladder_menu.add_command(label="Convert to pyrung...", command=self._convert_to_pyrung)
+        ladder_menu.add_command(
+            label="Export pyrung Project...", command=self._export_pyrung_project
+        )
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)

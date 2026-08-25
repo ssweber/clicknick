@@ -6,6 +6,7 @@ so these tests focus on the mapping and query layers using a mock graph.
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from unittest.mock import MagicMock
 
@@ -294,6 +295,75 @@ class TestGeneration:
         with pytest.raises(RuntimeError):
             svc.build(tmp_path, None, {})
         assert svc.generation == 1
+
+
+class TestProjectExport:
+    @staticmethod
+    def _ready_service(project_dir):
+        svc = AnalysisService()
+        svc._result = AnalysisResult(
+            graph=MagicMock(),
+            program=MagicMock(),
+            project_dir=project_dir,
+        )
+        svc._status = AnalysisStatus.READY
+        return svc
+
+    def test_copies_project_without_disposable_environment(self, tmp_path):
+        source = tmp_path / "active"
+        (source / "src" / "plc").mkdir(parents=True)
+        (source / "src" / "plc" / "main.py").write_text("logic\n", encoding="utf-8")
+        (source / "tests").mkdir()
+        (source / "tests" / "test_logic.py").write_text("test\n", encoding="utf-8")
+        (source / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        (source / ".venv").mkdir()
+        (source / ".venv" / "marker").write_text("large\n", encoding="utf-8")
+        (source / "tests" / "__pycache__").mkdir()
+        (source / "tests" / "__pycache__" / "test.pyc").write_bytes(b"cache")
+
+        destination = tmp_path / "exported"
+        count = self._ready_service(source).export_project(destination)
+
+        assert count == 3
+        assert (destination / "src" / "plc" / "main.py").is_file()
+        assert (destination / "tests" / "test_logic.py").is_file()
+        assert (destination / "pyproject.toml").is_file()
+        assert not (destination / ".venv").exists()
+        assert not (destination / "tests" / "__pycache__").exists()
+
+    def test_requires_new_or_empty_destination(self, tmp_path):
+        source = tmp_path / "active"
+        source.mkdir()
+        (source / "run.py").write_text("run\n", encoding="utf-8")
+        destination = tmp_path / "existing"
+        destination.mkdir()
+        marker = destination / "keep.txt"
+        marker.write_text("keep\n", encoding="utf-8")
+
+        with pytest.raises(FileExistsError, match="must be empty"):
+            self._ready_service(source).export_project(destination)
+
+        assert marker.read_text(encoding="utf-8") == "keep\n"
+
+    def test_discards_staged_copy_if_project_rebuild_starts(self, monkeypatch, tmp_path):
+        source = tmp_path / "active"
+        source.mkdir()
+        (source / "run.py").write_text("run\n", encoding="utf-8")
+        destination = tmp_path / "exported"
+        svc = self._ready_service(source)
+        real_copytree = shutil.copytree
+
+        def copy_and_rebuild(*args, **kwargs):
+            result = real_copytree(*args, **kwargs)
+            svc._generation += 1
+            return result
+
+        monkeypatch.setattr("clicknick.services.analysis_service.shutil.copytree", copy_and_rebuild)
+
+        with pytest.raises(RuntimeError, match="changed during export"):
+            svc.export_project(destination)
+
+        assert not destination.exists()
 
 
 def test_clean_generated_preserves_entire_tests_directory(tmp_path):

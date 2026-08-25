@@ -8,6 +8,7 @@ queries that return addr_key sets for address editor filtering.
 from __future__ import annotations
 
 import enum
+import shutil
 import tempfile
 import traceback
 from collections.abc import Mapping
@@ -87,6 +88,7 @@ def _build_tag_addr_key_map(
 
 
 _PRESERVE = {".venv", "__pycache__", "pyproject.toml", "tests", "uv.lock"}
+_EXPORT_IGNORE = shutil.ignore_patterns(".venv", "__pycache__", "*.pyc")
 
 
 def _clean_generated(persist_dir: Path) -> None:
@@ -231,6 +233,57 @@ class AnalysisService:
         if self._result is None:
             return None
         return self._result.project_dir
+
+    def export_project(self, destination: Path) -> int:
+        """Copy the ready generated project to a new or empty directory.
+
+        The copy is staged beside *destination* and published only if no
+        analysis rebuild started while files were being copied. Disposable
+        virtual environments and Python caches are omitted.
+        """
+        if self._status is not AnalysisStatus.READY or self._result is None:
+            raise RuntimeError("pyrung project is not ready to export")
+        if self._result.project_dir is None:
+            raise RuntimeError("pyrung project was not persisted to disk")
+
+        source = self._result.project_dir.resolve()
+        destination = destination.resolve()
+        if not source.is_dir():
+            raise RuntimeError(f"pyrung project folder does not exist: {source}")
+        if destination == source or source in destination.parents or destination in source.parents:
+            raise ValueError("export destination must be separate from the active project folder")
+        if destination.exists():
+            if not destination.is_dir():
+                raise ValueError(f"export destination is not a directory: {destination}")
+            if any(destination.iterdir()):
+                raise FileExistsError("export destination must be empty")
+        if not destination.parent.is_dir():
+            raise FileNotFoundError(
+                f"export destination parent does not exist: {destination.parent}"
+            )
+
+        generation = self._generation
+        with tempfile.TemporaryDirectory(
+            prefix=f".{destination.name}-export-", dir=destination.parent
+        ) as stage_root:
+            staged = Path(stage_root) / "project"
+            shutil.copytree(source, staged, ignore=_EXPORT_IGNORE)
+
+            if (
+                self._generation != generation
+                or self._status is not AnalysisStatus.READY
+                or self._result.project_dir is None
+                or self._result.project_dir.resolve() != source
+            ):
+                raise RuntimeError(
+                    "Click project changed during export; try again after conversion finishes"
+                )
+
+            file_count = sum(path.is_file() for path in staged.rglob("*"))
+            if destination.exists():
+                destination.rmdir()
+            staged.replace(destination)
+        return file_count
 
     def build(
         self,
