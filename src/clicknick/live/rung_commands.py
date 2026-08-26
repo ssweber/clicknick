@@ -803,8 +803,8 @@ def _cmd_preview(ctx: DispatchContext, parts: list[str]) -> str:
 def _run_export(project_dir: Path) -> Path:
     """Run ``project_to_csv.py`` to regenerate ``csv_output/``; return that dir.
 
-    Shared by ``rung apply`` (ladder CSVs) and ``tag apply`` (nicknames.csv);
-    both come out of the same project export. Raises on failure.
+    Used by ``rung apply`` to produce the proposed ladder and nickname CSVs.
+    Raises on failure.
     """
     import subprocess
 
@@ -828,9 +828,16 @@ def _run_export(project_dir: Path) -> Path:
 
 
 def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
+    from ..services.project_workspace import backup_plc_source
+
     project_dir = _get_project_dir(ctx)
+    backup_dir, file_count = backup_plc_source(project_dir)
     pending_dir = _run_export(project_dir)
-    return f"OK: wrote ladder CSVs to {pending_dir}"
+    return (
+        f"OK: backed up {file_count} source file{'s' if file_count != 1 else ''} "
+        f"to {backup_dir}\n"
+        f"OK: wrote ladder CSVs to {pending_dir}"
+    )
 
 
 _SUBCOMMANDS = {

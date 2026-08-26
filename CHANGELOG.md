@@ -12,6 +12,7 @@
 
 ### Features
 
+- **Source recovery commands** — `clicknick-cli rung apply` now snapshots `src/plc/` before export, while `clicknick-cli backup` and `restore` provide explicit recovery around generated-project refreshes.
 - **Console Stop button** — while a command runs, Send becomes Stop, which cancels a long-running `how` without restarting the simulation, so forces and scan position survive; needs a pyrung new enough to provide the `stop` verb.
 - **Console copy and edit conveniences** — a Copy button beside the status bar copies the output (or just the selected text) to the clipboard, and the command entry has a right-click Cut/Copy/Paste/Select All menu.
 - **Copy the Check Program report** — a "Copy Report" button puts the whole report on the clipboard as plain text, summary line first, ready to paste into an email or issue.

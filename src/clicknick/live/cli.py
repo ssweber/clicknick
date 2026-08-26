@@ -33,6 +33,10 @@ Usage::
     clicknick-cli rung preview main --select r3     # diff for rung 3
     clicknick-cli rung apply main                   # pyrung -> ladder CSVs
 
+    # Workspace recovery
+    clicknick-cli backup                            # snapshot src/plc
+    clicknick-cli restore                           # restore that snapshot
+
     # Workflow
     clicknick-cli prompt-save                       # pop a save reminder in the GUI
     clicknick-cli help                              # grouped command list

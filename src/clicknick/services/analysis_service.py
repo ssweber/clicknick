@@ -87,7 +87,7 @@ def _build_tag_addr_key_map(
     return tag_to_key, key_to_tag
 
 
-_PRESERVE = {".venv", "__pycache__", "pyproject.toml", "tests", "uv.lock"}
+_PRESERVE = {".venv", "__pycache__", "backup", "pyproject.toml", "tests", "uv.lock"}
 _EXPORT_IGNORE = shutil.ignore_patterns(".venv", "__pycache__", "*.pyc")
 
 

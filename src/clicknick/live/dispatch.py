@@ -10,6 +10,8 @@ Grammar (one command per connection)::
     get  <ID>                          -> show current row fields + dirty flag
     set  <ID> <field> <value...>       -> edit a field (appears as unsaved change)
     unused <type-or-addr>... [count]   -> free address(es); one per hint
+    backup                             -> snapshot src/plc for recovery
+    restore                            -> replace src/plc from that snapshot
     tag  <subcommand> ...              -> annotation metadata operations
     rung <subcommand> ...              -> program listing / preview / apply
     prompt-save                        -> pop a save reminder dialog in the GUI
@@ -256,6 +258,10 @@ data:
     unused C 3          -> 3 consecutive free C
     unused C1031 C1414  -> one free bit near each neighbor
 
+workspace:
+  backup                              -> snapshot src/plc to backup/src/plc
+  restore                             -> replace src/plc from backup/src/plc
+
 tags:
   tag show <tag>
   tag set-flag <tag> <flag>
@@ -366,6 +372,23 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
             hints = hints[:1]
         # No status footer: keep output clean/scriptable (just the address(es)).
         return _cmd_unused(ctx, hints, count)
+
+    if verb in ("backup", "restore"):
+        if len(parts) != 1:
+            raise ValueError(f"usage: {verb}")
+
+        from ..services.project_workspace import backup_plc_source, restore_plc_source
+        from .rung_commands import _get_project_dir
+
+        project_dir = _get_project_dir(ctx)
+        if verb == "backup":
+            path, file_count = backup_plc_source(project_dir)
+            action, preposition = "backed up", "to"
+        else:
+            path, file_count = restore_plc_source(project_dir)
+            action, preposition = "restored", "from"
+        files = "source file" if file_count == 1 else "source files"
+        return f"OK: {action} {file_count} {files} {preposition} {path}" + _status_footer(ctx)
 
     if verb == "tag":
         from .tag_commands import dispatch_tag

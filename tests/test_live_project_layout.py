@@ -11,7 +11,11 @@ from clicknick.live.rung_commands import (
     _get_csv_stem,
     _resolve_file,
 )
-from clicknick.services.project_workspace import project_environment
+from clicknick.services.project_workspace import (
+    backup_plc_source,
+    project_environment,
+    restore_plc_source,
+)
 
 
 def _write_project(project_dir: Path) -> None:
@@ -43,6 +47,32 @@ def test_project_environment_prepends_src_to_pythonpath(tmp_path: Path, monkeypa
     env = project_environment(tmp_path)
 
     assert env["PYTHONPATH"] == os.pathsep.join((str(tmp_path / "src"), "existing"))
+
+
+def test_backup_and_restore_replace_the_complete_plc_tree(tmp_path: Path):
+    _write_project(tmp_path)
+    source = tmp_path / "src" / "plc"
+    (source / "__pycache__").mkdir()
+    (source / "__pycache__" / "main.pyc").write_bytes(b"cache")
+
+    backup_dir, file_count = backup_plc_source(tmp_path)
+
+    assert backup_dir == tmp_path / "backup" / "src" / "plc"
+    assert file_count == 3
+    assert not (backup_dir / "__pycache__").exists()
+
+    (source / "main.py").write_text("changed\n", encoding="utf-8")
+    (source / "extra.py").write_text("remove me\n", encoding="utf-8")
+    (source / "subroutines" / "startup.py").unlink()
+
+    restored_from, restored_count = restore_plc_source(tmp_path)
+
+    assert restored_from == backup_dir
+    assert restored_count == 3
+    assert (source / "main.py").read_text(encoding="utf-8") == "logic = object()\n"
+    assert (source / "subroutines" / "startup.py").is_file()
+    assert not (source / "extra.py").exists()
+    assert (backup_dir / "main.py").is_file()
 
 
 def test_rung_list_metadata_uses_preceding_click_comments():

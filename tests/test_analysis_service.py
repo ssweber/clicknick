@@ -376,6 +376,9 @@ def test_clean_generated_preserves_entire_tests_directory(tmp_path):
     test_cache = tests_dir / "__pycache__"
     test_cache.mkdir()
     (test_cache / "cached.pyc").write_bytes(b"cache")
+    backup_source = tmp_path / "backup" / "src" / "plc"
+    backup_source.mkdir(parents=True)
+    (backup_source / "main.py").write_text("proposed logic\n", encoding="utf-8")
     generated_source = tmp_path / "src" / "plc"
     generated_source.mkdir(parents=True)
     (generated_source / "main.py").write_text("old logic\n", encoding="utf-8")
@@ -386,4 +389,5 @@ def test_clean_generated_preserves_entire_tests_directory(tmp_path):
     assert (tests_dir / "conftest.py").read_text(encoding="utf-8") == "old fixture\n"
     assert (tests_dir / "test_smoke.py").read_text(encoding="utf-8") == "old smoke\n"
     assert (test_cache / "cached.pyc").is_file()
+    assert (backup_source / "main.py").read_text(encoding="utf-8") == "proposed logic\n"
     assert not (tmp_path / "src").exists()
