@@ -32,6 +32,9 @@ Usage::
     clicknick-cli rung apply main                   # stage main and open its paste window
     clicknick-cli rung apply main --select r3       # stage and show rung 3
 
+    # Program analysis
+    clicknick-cli check                             # lint the editable pyrung proposal
+
     # Workspace recovery
     clicknick-cli backup                            # snapshot src/plc
     clicknick-cli restore                           # restore that snapshot

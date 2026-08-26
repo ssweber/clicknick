@@ -12,6 +12,7 @@
 
 ### Features
 
+- **Agent-facing Check Program** — `clicknick-cli check` runs the same lint-style pyrung analysis as Tools → Check Program against the editable `src/plc` proposal, while export failures remain the responsibility of `rung apply`.
 - **Unified rung apply workflow** — `clicknick-cli rung apply` now stages the export and opens its review-and-paste window directly, while CLI status composes staged tags, synced tags, and staged rung differences into the next engineer actions.
 - **Source recovery commands** — `clicknick-cli rung apply` now snapshots `src/plc/` before export, while `clicknick-cli backup` and `restore` provide explicit recovery around generated-project refreshes.
 - **Console Stop button** — while a command runs, Send becomes Stop, which cancels a long-running `how` without restarting the simulation, so forces and scan position survive; needs a pyrung new enough to provide the `stop` verb.

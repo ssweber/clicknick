@@ -807,25 +807,11 @@ class ClickNickApp:
             )
             return
 
-        from pyrung.core.validation.display import FindingDisplay
-        from pyrung.core.validation.stuck_bits import StuckBitFinding, StuckBitReport
+        from .services.program_check import group_validation_findings
 
-        # Each finding hands over a presentation-ready FindingDisplay built by
-        # pyrung; the report window renders it directly (no message parsing).
-        grouped: dict[str, list[FindingDisplay]] = {}
-        if report:
-            # Stuck-bit findings get grouped: a range reset/fill that clears a
-            # whole block of coils emits one finding per tag, which collapses to
-            # a single entry keyed on the shared write site.  Everything else is
-            # rendered one entry per finding.
-            stuck: list[StuckBitFinding] = []
-            for finding in report:
-                if isinstance(finding, StuckBitFinding):
-                    stuck.append(finding)
-                else:
-                    grouped.setdefault(finding.code, []).append(finding.display)
-            for group in StuckBitReport(findings=tuple(stuck)).grouped():
-                grouped.setdefault(group.code, []).append(group.display)
+        # The GUI and clicknick-cli use the same finding grouping and pyrung
+        # presentation model; only their renderers differ.
+        grouped = group_validation_findings(report)
 
         from .views.analysis_report_window import (
             AnalysisReportData,

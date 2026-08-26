@@ -12,6 +12,7 @@ Grammar (one command per connection)::
     unused <type-or-addr>... [count]   -> free address(es); one per hint
     backup                             -> snapshot src/plc for recovery
     restore                            -> replace src/plc from that snapshot
+    check                              -> lint the editable pyrung proposal
     tag  <subcommand> ...              -> annotation metadata operations
     rung <subcommand> ...              -> program listing / apply
     prompt-save                        -> pop a save reminder dialog in the GUI
@@ -293,6 +294,9 @@ workspace:
   backup                              -> snapshot src/plc to backup/src/plc
   restore                             -> replace src/plc from backup/src/plc
 
+analysis:
+  check                               -> lint src/plc (Tools -> Check Program rules)
+
 tags:
   tag show <tag>
   tag set-flag <tag> <flag>
@@ -423,6 +427,15 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
             action, preposition = "restored", "from"
         files = "source file" if file_count == 1 else "source files"
         return f"OK: {action} {file_count} {files} {preposition} {path}" + _status_footer(ctx)
+
+    if verb == "check":
+        if len(parts) != 1:
+            raise ValueError("usage: check")
+
+        from ..services.program_check import run_project_check
+        from .rung_commands import _get_project_dir
+
+        return run_project_check(_get_project_dir(ctx)) + _status_footer(ctx)
 
     if verb == "tag":
         from .tag_commands import dispatch_tag
