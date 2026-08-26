@@ -90,6 +90,7 @@ class AddressStore:
         self.base_state: dict[int, AddressRow] = {}
         self.user_overrides: dict[int, AddressRow] = {}
         self.visible_state: dict[int, AddressRow] = {}
+        self.loaded_row_count = 0
 
         # Display order (addr_keys in the order they should appear)
         self.row_order: list[int] = []
@@ -421,6 +422,7 @@ class AddressStore:
             new_rows = self._data_source.load_all_addresses()
         except Exception:
             return False
+        self.loaded_row_count = len(new_rows)
 
         affected_keys: set[int] = set()
         nickname_changes: dict[int, str] = {}
@@ -478,6 +480,7 @@ class AddressStore:
 
         # Load from data source
         db_rows = self._data_source.load_all_addresses()
+        self.loaded_row_count = len(db_rows)
 
         # Hydrate base_state with loaded data
         for addr_key, db_row in db_rows.items():

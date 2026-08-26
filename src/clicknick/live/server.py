@@ -74,6 +74,7 @@ class LiveServer:
         get_click_hwnd: Callable[[], int | None] | None = None,
         get_mdb_path: Callable[[], Path | None] | None = None,
         get_synced_pending: Callable[[], int] | None = None,
+        get_pyrung_live_available: Callable[[], bool] | None = None,
         open_editor: Callable[[str], None] | None = None,
     ) -> None:
         self._root = root
@@ -84,6 +85,7 @@ class LiveServer:
         self._get_click_hwnd = get_click_hwnd
         self._get_mdb_path = get_mdb_path
         self._get_synced_pending = get_synced_pending
+        self._get_pyrung_live_available = get_pyrung_live_available
         self._open_editor = open_editor
         self._listener: Listener | None = None
         self._accept_thread: threading.Thread | None = None
@@ -132,6 +134,8 @@ class LiveServer:
     def _build_context(self) -> DispatchContext:
         """Build a fresh dispatch context from current getter values."""
         analysis = self._get_analysis() if self._get_analysis else None
+        mdb_path = self._get_mdb_path() if self._get_mdb_path else None
+        project_saved = None if mdb_path is None else any(mdb_path.parent.glob("Scr*.tmp"))
         resolve_tag = None
         if analysis is not None and analysis.is_available:
             resolve_tag = analysis.tag_to_addr_key.get
@@ -178,6 +182,9 @@ class LiveServer:
             show_save_prompt = _prompt_save
 
         synced_pending = self._get_synced_pending() if self._get_synced_pending else 0
+        pyrung_live_available = (
+            self._get_pyrung_live_available() if self._get_pyrung_live_available else False
+        )
 
         return DispatchContext(
             store=self._get_store(),
@@ -187,6 +194,8 @@ class LiveServer:
             show_address_editor=show_address_editor,
             show_save_prompt=show_save_prompt,
             synced_pending=synced_pending,
+            project_saved=project_saved,
+            pyrung_live_available=pyrung_live_available,
         )
 
     def _drain(self) -> None:

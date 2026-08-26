@@ -581,6 +581,11 @@ class ConsoleWindow(tk.Toplevel):
         self._start_dap()
         self._load_grammar()
 
+    @property
+    def pyrung_live_available(self) -> bool:
+        """Whether this Console currently owns a running pyrung DAP session."""
+        return self._dap is not None
+
     def _poll_analysis(self) -> None:
         self._analysis_after_id = None
         if self._destroyed:

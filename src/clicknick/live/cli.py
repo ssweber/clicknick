@@ -6,9 +6,9 @@ Usage::
     clicknick-cli ping                              # connection state + status
 
     # Inspect / edit (by pyrung tag name or Click address)
-    clicknick-cli get Motor_Run                     # inspect a row
-    clicknick-cli set Motor_Run nickname MotorRun   # rename (unsaved change)
-    clicknick-cli set DS1 comment "Main motor"      # quoting works
+    clicknick-cli get ExampleTag                    # inspect a row
+    clicknick-cli set ExampleTag nickname RenamedTag # rename (unsaved change)
+    clicknick-cli set DS1 comment "Example comment" # quoting works
 
     # Find free addresses
     clicknick-cli unused C                          # next free C bit -> C5
@@ -17,8 +17,8 @@ Usage::
     clicknick-cli unused C1031 C1414                # one free bit near each neighbor
 
     # Tag annotations
-    clicknick-cli tag show Motor_Run                # full tag metadata display
-    clicknick-cli tag set-flag Motor_Run external   # set a boolean flag
+    clicknick-cli tag show ExampleTag               # full tag metadata display
+    clicknick-cli tag set-flag ExampleTag external  # set a boolean flag
     clicknick-cli tag set-choices Mode "Off:0" "Manual:1" "Auto:2"
     clicknick-cli tag set-range Temp_PV 0 100       # numeric range
     clicknick-cli tag set-uom Temp_PV degC          # unit of measurement
@@ -64,7 +64,7 @@ def main() -> None:
         prog="clicknick-cli",
         description="Attach to a running ClickNick instance and push live edits.",
         epilog=(
-            "Identifiers: use pyrung tag names (Motor_Run) or Click addresses (DS1).\n"
+            "Identifiers: use pyrung tag names (ExampleTag) or Click addresses (DS1).\n"
             "All writes land as unsaved changes in the address editor (Ctrl+Z to undo).\n"
             "Subcommands: tag (annotations), rung (program).\n"
             "Use 'clicknick-cli help' for a grouped command list."
@@ -84,7 +84,7 @@ def main() -> None:
             label, _, port_file = sessions[0]
             print(f"Active session: {label}")
             print(f"Project dir:    {port_file.parent / 'pyrung_project'}")
-            print("Usage: clicknick-cli <command>  (e.g. clicknick-cli get Motor_Run)")
+            print("Usage: clicknick-cli <command>  (e.g. clicknick-cli get ExampleTag)")
         else:
             print("Active sessions:")
             for label, _, port_file in sessions:

@@ -1110,6 +1110,11 @@ class ClickNickApp:
             get_click_hwnd=lambda: self.connected_click_hwnd,
             get_mdb_path=self._live_mdb_path,
             get_synced_pending=lambda: self._session.synced_pending if self._session else 0,
+            get_pyrung_live_available=lambda: bool(
+                self._session
+                and self._session.console
+                and self._session.console.pyrung_live_available
+            ),
             open_editor=self._live_open_address_editor,
         )
         try:

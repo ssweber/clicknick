@@ -49,6 +49,8 @@ class DispatchContext:
     show_address_editor: Callable[[str], None] | None = None
     show_save_prompt: Callable[[str, str], None] | None = None
     synced_pending: int = 0
+    project_saved: bool | None = None
+    pyrung_live_available: bool = False
 
 
 def _parse_bool(value: str) -> bool:
@@ -204,6 +206,27 @@ def _cmd_unused(ctx: DispatchContext, hints: list[str], count: int) -> str:
     return "\n".join(results)
 
 
+def _project_status(ctx: DispatchContext) -> str | None:
+    """Return the current pyrung-project capability in user-facing terms."""
+    if ctx.project_saved is False:
+        return "project unsaved | only tag commands available"
+
+    analysis = ctx.analysis
+    if analysis is None:
+        return None
+    if analysis.is_available:
+        if ctx.pyrung_live_available:
+            return "pyrung live available"
+        return "project ready | open Console for pyrung live"
+
+    status = getattr(getattr(analysis, "status", None), "value", None)
+    if status == "building":
+        return "pyrung project preparing"
+    if status == "failed":
+        return "pyrung project unavailable"
+    return None
+
+
 def _status_footer(ctx: DispatchContext) -> str:
     parts: list[str] = []
     if ctx.store is not None:
@@ -212,6 +235,9 @@ def _status_footer(ctx: DispatchContext) -> str:
             parts.append(f"{unsaved} unsaved")
     if ctx.synced_pending > 0:
         parts.append(f"{ctx.synced_pending}↑ not saved in Click")
+    project_status = _project_status(ctx)
+    if project_status is not None:
+        parts.append(project_status)
     if not parts:
         return ""
     return "\n[" + " | ".join(parts) + "]"
@@ -277,7 +303,7 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
     if verb == "ping":
         lines = ["pong"]
         if ctx.store is not None:
-            lines.append(f"store: {len(ctx.store.visible_state)} rows")
+            lines.append(f"store: {ctx.store.loaded_row_count} rows")
             unsaved = len(ctx.store.user_overrides)
             if unsaved:
                 lines.append(f"unsaved: {unsaved}")
@@ -288,6 +314,9 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
         if ctx.analysis is not None and ctx.analysis.is_available:
             pdir = ctx.analysis.project_dir
             lines.append(f"project: {pdir}" if pdir else "project: (not persisted)")
+        project_status = _project_status(ctx)
+        if project_status is not None:
+            lines.append(f"status: {project_status}")
         return "\n".join(lines)
 
     if verb == "prompt-save":

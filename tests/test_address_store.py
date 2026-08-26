@@ -64,6 +64,15 @@ def store_with_data():
     return s
 
 
+def test_loaded_row_count_tracks_source_rows(store, store_with_data):
+    assert store.loaded_row_count == 0
+    assert store_with_data.loaded_row_count == 2
+
+    store_with_data._data_source._initial_rows = {}
+    assert store_with_data._on_database_update() is True
+    assert store_with_data.loaded_row_count == 0
+
+
 class TestEditSession:
     """Tests for edit_session context manager."""
 
