@@ -76,10 +76,14 @@ def console(tk_root, monkeypatch):
 
     from clicknick.views.console_window import ConsoleWindow
 
-    # Grammar loading is an unrelated background task.  Letting it retain a
-    # real Tk window beyond fixture teardown can finalize the window's Tk
-    # variables on that worker thread.
-    monkeypatch.setattr(ConsoleWindow, "_load_grammar", lambda _self: None)
+    # These tests exercise startup decisions, not the worker implementation.
+    # A worker retaining a real Tk window beyond fixture teardown can finalize
+    # the window's Tk variables on that worker thread.
+    monkeypatch.setattr(
+        ConsoleWindow,
+        "_start_background",
+        lambda _self, _target, *, name: None,
+    )
 
     built = []
 

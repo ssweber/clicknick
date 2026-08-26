@@ -38,6 +38,10 @@ _COPIED_LABEL = "Copied"
 class ConsoleWindow(tk.Toplevel):
     """Interactive pyrung simulation console."""
 
+    def _start_background(self, target: Callable[[], None], *, name: str) -> None:
+        """Start a named daemon worker."""
+        threading.Thread(target=target, daemon=True, name=name).start()
+
     # ------------------------------------------------------------------
     # Output helpers
     # ------------------------------------------------------------------
@@ -225,7 +229,7 @@ class ConsoleWindow(tk.Toplevel):
             except Exception as exc:
                 self._schedule_ui(lambda e=exc: self._on_dap_failed(e))  # type: ignore[misc]
 
-        threading.Thread(target=_launch, daemon=True, name="console-dap-launch").start()
+        self._start_background(_launch, name="console-dap-launch")
 
     def _retry_startup(self) -> None:
         """Rebuild the analysis (if we can) and try to launch the DAP again."""
@@ -285,7 +289,7 @@ class ConsoleWindow(tk.Toplevel):
             if not ok:
                 self._schedule_ui(lambda: self._append_output(f"{text}\n", "error"))
 
-        threading.Thread(target=_worker, daemon=True, name="console-stop").start()
+        self._start_background(_worker, name="console-stop")
 
     def _set_busy(self, busy: bool) -> None:
         if busy:
@@ -347,7 +351,7 @@ class ConsoleWindow(tk.Toplevel):
                 results = [(False, f"Console error: {exc}")]
             self._schedule_ui(lambda: _done(results))
 
-        threading.Thread(target=_worker, daemon=True, name="console-cmd").start()
+        self._start_background(_worker, name="console-cmd")
 
     # ------------------------------------------------------------------
     # Help
@@ -531,7 +535,7 @@ class ConsoleWindow(tk.Toplevel):
             except Exception:
                 pass
 
-        threading.Thread(target=_load, daemon=True, name="console-grammar").start()
+        self._start_background(_load, name="console-grammar")
 
     def __init__(
         self,
