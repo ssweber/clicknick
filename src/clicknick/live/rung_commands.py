@@ -281,6 +281,20 @@ def _is_named_call(node: ast.AST, name: str) -> bool:
     return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == name
 
 
+def _statement_rung_number(
+    statement: ast.stmt,
+    lines: list[str],
+    rung_marker: re.Pattern[str],
+) -> int | None:
+    """Read a rung marker anywhere in a possibly multiline statement."""
+    end_line = statement.end_lineno or statement.lineno
+    for line in lines[statement.lineno - 1 : end_line]:
+        marker = rung_marker.search(line)
+        if marker:
+            return int(marker.group(1))
+    return None
+
+
 def _semantic_rungs(source: str) -> list[tuple[int, str]]:
     """Return ``(display_number, fingerprint)`` pairs in source order.
 
@@ -309,13 +323,13 @@ def _semantic_rungs(source: str) -> list[tuple[int, str]]:
                 _is_named_call(item.context_expr, "rung") for item in statement.items
             )
             if is_rung:
-                marker = rung_marker.search(lines[statement.lineno - 1])
-                if marker:
+                rung_number = _statement_rung_number(statement, lines, rung_marker)
+                if rung_number is not None:
                     nodes: list[ast.AST] = [*pending_comments, statement]
                     fingerprint = "\n".join(
                         ast.dump(node, include_attributes=False) for node in nodes
                     )
-                    result.append((int(marker.group(1)), fingerprint))
+                    result.append((rung_number, fingerprint))
                 pending_comments.clear()
                 continue
 
@@ -398,8 +412,8 @@ def _source_chunks(source: str) -> list[_SourceChunk]:
                 kind = next((value for value in kinds if value is not None), None)
 
             if kind == "primary":
-                marker = rung_marker.search(lines[statement.lineno - 1])
-                if marker:
+                rung_number = _statement_rung_number(statement, lines, rung_marker)
+                if rung_number is not None:
                     comment = ""
                     if pending_comments:
                         call = pending_comments[-1].value
@@ -411,7 +425,7 @@ def _source_chunks(source: str) -> list[_SourceChunk]:
                         ):
                             comment = _comment_summary(call.args[0].value)
                     active = _SourceChunk(
-                        number=int(marker.group(1)),
+                        number=rung_number,
                         marker_line=statement.lineno,
                         start_line=(
                             pending_comments[0].lineno if pending_comments else statement.lineno

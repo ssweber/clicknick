@@ -164,3 +164,71 @@ def test_canonical_diff_uses_exporter_manifest_for_source_chunk(tmp_path: Path):
     assert changed == [2]
     assert "+    with rung(C1):  # R70" in diff
     assert "+R2  # New rung" not in diff
+
+
+def test_canonical_diff_renders_multiline_rung_replacing_placeholder(tmp_path: Path):
+    before = """\
+from pyrung import Program, rung
+
+with Program() as logic:
+    with rung():  # R9
+        pass
+"""
+    after = """\
+from pyrung import Or, Program, comment, out, rung
+
+with Program() as logic:
+    comment('Flag bottom thickness outside tolerance while recording')
+    with rung(
+        C2,
+        Or(
+            DS201 < DS3,
+            DS201 > DS4,
+        ),
+    ):  # R9
+        out(C4)
+"""
+    _write_ladder(tmp_path / "csv" / "main.csv", [""])
+    _write_ladder(
+        tmp_path / "csv_output" / "main.csv",
+        ["Flag bottom thickness outside tolerance while recording"],
+    )
+    marker_line = next(
+        index for index, line in enumerate(after.splitlines(), start=1) if "with rung(" in line
+    )
+    manifest = {
+        "version": 1,
+        "main": [
+            {
+                "rung": 1,
+                "sources": [
+                    {
+                        "source_file": str(tmp_path / "src" / "plc" / "main.py"),
+                        "source_line": marker_line,
+                        "end_line": marker_line + 7,
+                    }
+                ],
+            }
+        ],
+        "subroutines": {},
+    }
+    (tmp_path / "csv_output" / "rung_sources.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+
+    result = _canonical_diff(
+        tmp_path,
+        stem="main",
+        csv_stem="main",
+        before=before,
+        after=after,
+    )
+
+    assert result is not None
+    diff_lines, changed = result
+    diff = "".join(diff_lines)
+    assert changed == [1]
+    assert "+    with rung(" in diff
+    assert "+            DS201 < DS3," in diff
+    assert "+        out(C4)" in diff
+    assert "+R1  # Flag bottom thickness" not in diff
