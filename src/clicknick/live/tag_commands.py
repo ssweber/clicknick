@@ -57,7 +57,7 @@ def _apply_meta(
         session.set_field(addr_key, "comment", new_comment)
 
     bracket = format_tag_meta(meta)
-    return f"OK: {identifier} -> {bracket or '(no annotations)'} (unsaved change)"
+    return f"OK: {identifier} -> {bracket or '(no annotations)'} (staged change)"
 
 
 def _cmd_show(ctx: DispatchContext, parts: list[str]) -> str:
@@ -376,7 +376,7 @@ def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
     """Push the agent's src/plc/tags.py edits into the store, then open the editor.
 
     Exports both the pristine (baseline) and edited (current) tags.py, diffs
-    them so only real edits survive, lands them as one batched unsaved change,
+    them so only real edits survive, lands them as one batched staged change,
     and pops the Address Editor filtered to "Changed" for review + Sync.
     """
     from .rung_commands import _get_project_dir

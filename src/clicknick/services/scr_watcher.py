@@ -41,6 +41,7 @@ class ScrWatcher:
         self._on_changed = on_changed
         self._on_sync_status_changed = on_sync_status_changed
         self._synced_pending: int = 0
+        self._staged_rungs: int = 0
         self._last_mtime: float = self._newest_mtime()
         self._after_id: str | None = None
         self._active = False
@@ -50,11 +51,19 @@ class ScrWatcher:
     def synced_pending(self) -> int:
         return self._synced_pending
 
+    @property
+    def staged_rungs(self) -> int:
+        return self._staged_rungs
+
     def record_sync(self, count: int) -> None:
         if count > 0:
             self._synced_pending += count
             if self._on_sync_status_changed:
                 self._on_sync_status_changed(self._synced_pending)
+
+    def record_rung_stage(self, count: int) -> None:
+        """Record how many proposed rungs differ from the saved CLICK project."""
+        self._staged_rungs = max(0, count)
 
     def _schedule(self) -> None:
         if self._active and self._tk_root:
@@ -88,6 +97,7 @@ class ScrWatcher:
                     self._synced_pending = 0
                     if self._on_sync_status_changed:
                         self._on_sync_status_changed(0)
+                self._staged_rungs = 0
         except Exception:
             pass
         self._schedule()

@@ -8,12 +8,12 @@ Grammar (one command per connection)::
 
     ping                               -> liveness + connection state + status
     get  <ID>                          -> show current row fields + dirty flag
-    set  <ID> <field> <value...>       -> edit a field (appears as unsaved change)
+    set  <ID> <field> <value...>       -> edit a field (appears as a staged change)
     unused <type-or-addr>... [count]   -> free address(es); one per hint
     backup                             -> snapshot src/plc for recovery
     restore                            -> replace src/plc from that snapshot
     tag  <subcommand> ...              -> annotation metadata operations
-    rung <subcommand> ...              -> program listing / preview / apply
+    rung <subcommand> ...              -> program listing / apply
     prompt-save                        -> pop a save reminder dialog in the GUI
 ``<field>`` is one of: nickname, comment, initial_value, retentive.
 Values may be quoted (shlex), e.g. ``set DS1 comment "Main motor run"``.
@@ -50,7 +50,9 @@ class DispatchContext:
     show_preview: Callable[..., None] | None = None
     show_address_editor: Callable[[str], None] | None = None
     show_save_prompt: Callable[[str, str], None] | None = None
+    record_staged_rungs: Callable[[int], None] | None = None
     synced_pending: int = 0
+    staged_rungs: int = 0
     project_saved: bool | None = None
     pyrung_live_available: bool = False
 
@@ -89,7 +91,7 @@ def _cmd_get(ctx: DispatchContext, identifier: str) -> str:
     row = ctx.store.get_visible_row(addr_key)
     if row is None:
         return f"{identifier}: <not in store>"
-    dirty = " (unsaved)" if ctx.store.is_dirty(addr_key) else ""
+    dirty = " (staged)" if ctx.store.is_dirty(addr_key) else ""
     return (
         f"{identifier}{dirty}: nickname={row.nickname!r} comment={row.comment!r} "
         f"initial_value={row.initial_value!r} retentive={row.retentive}"
@@ -112,7 +114,7 @@ def _cmd_set(ctx: DispatchContext, identifier: str, field_name: str, raw_value: 
     with ctx.store.edit_session(f"AI: set {identifier} {field_name}") as session:
         session.set_field(addr_key, field_name, value)
 
-    return f"OK: {identifier} {field_name} = {value!r} (unsaved change)"
+    return f"OK: {identifier} {field_name} = {value!r} (staged change)"
 
 
 def _iter_bank_addresses(memory_type: str, start: int | None):
@@ -229,20 +231,49 @@ def _project_status(ctx: DispatchContext) -> str | None:
     return None
 
 
-def _status_footer(ctx: DispatchContext) -> str:
-    parts: list[str] = []
+def _workflow_status(ctx: DispatchContext) -> str | None:
+    """Compose known outgoing changes and their next engineer actions."""
+    facts: list[str] = []
+    steps: list[str] = []
+    staged_tags = 0
     if ctx.store is not None:
-        unsaved = len(ctx.store.user_overrides)
-        if unsaved > 0:
-            parts.append(f"{unsaved} unsaved")
+        staged_tags = len(ctx.store.user_overrides)
+        if staged_tags > 0:
+            noun = "tag" if staged_tags == 1 else "tags"
+            facts.append(f"{staged_tags} {noun} staged")
+            steps.append("Sync tags in ClickNick" if staged_tags != 1 else "Sync in ClickNick")
     if ctx.synced_pending > 0:
-        parts.append(f"{ctx.synced_pending}↑ not saved in Click")
+        noun = "tag" if ctx.synced_pending == 1 else "tags"
+        facts.append(f"{ctx.synced_pending} {noun} synced")
+    if ctx.staged_rungs > 0:
+        noun = "rung" if ctx.staged_rungs == 1 else "rungs"
+        facts.append(f"{ctx.staged_rungs} {noun} staged")
+        steps.append("paste rungs if needed" if ctx.staged_rungs != 1 else "paste if needed")
+
+    if ctx.synced_pending > 0 or ctx.staged_rungs > 0:
+        steps.append("Save in CLICK")
+    if not facts:
+        return None
+
+    if len(steps) == 1:
+        action = steps[0]
+    else:
+        action = ", ".join(steps[:-1]) + f", then {steps[-1]}"
+    action = action[:1].upper() + action[1:]
+    return " | ".join([*facts, f"Next: {action}"])
+
+
+def _status_footer(ctx: DispatchContext) -> str:
+    lines: list[str] = []
+    workflow_status = _workflow_status(ctx)
+    if workflow_status is not None:
+        lines.append(f"[{workflow_status}]")
     project_status = _project_status(ctx)
     if project_status is not None:
-        parts.append(project_status)
-    if not parts:
+        lines.append(f"[{project_status}]")
+    if not lines:
         return ""
-    return "\n[" + " | ".join(parts) + "]"
+    return "\n" + "\n".join(lines)
 
 
 _HELP_TEXT = """\
@@ -279,9 +310,7 @@ tags:
 
 rungs:
   rung list [file]
-  rung preview [file] [--select r3,r7]
-  rung apply [file]
-  (run apply before preview to enable the Copy button)
+  rung apply [file] [--select r3,r7]  -> stage and open the paste window
 
 workflow:
   prompt-save"""
@@ -310,13 +339,18 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
         lines = ["pong"]
         if ctx.store is not None:
             lines.append(f"store: {ctx.store.loaded_row_count} rows")
-            unsaved = len(ctx.store.user_overrides)
-            if unsaved:
-                lines.append(f"unsaved: {unsaved}")
+            staged = len(ctx.store.user_overrides)
+            if staged:
+                lines.append(f"tags staged: {staged}")
         else:
             lines.append("store: not connected")
         if ctx.synced_pending > 0:
-            lines.append(f"synced: {ctx.synced_pending}↑ not saved in Click")
+            lines.append(f"tags synced: {ctx.synced_pending}")
+        if ctx.staged_rungs > 0:
+            lines.append(f"rungs staged: {ctx.staged_rungs}")
+        workflow_status = _workflow_status(ctx)
+        if workflow_status is not None:
+            lines.append(f"workflow: {workflow_status}")
         if ctx.analysis is not None and ctx.analysis.is_available:
             pdir = ctx.analysis.project_dir
             lines.append(f"project: {pdir}" if pdir else "project: (not persisted)")

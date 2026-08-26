@@ -7,6 +7,7 @@ from pyclickplc.banks import DataType
 from clicknick.data.address_store import AddressStore
 from clicknick.data.undo_frame import MAX_UNDO_DEPTH
 from clicknick.models.address_row import AddressRow
+from clicknick.views.address_editor.view_builder import build_unified_view
 
 
 class MockDataSource:
@@ -515,6 +516,18 @@ class TestObservers:
 
         assert len(notifications) == 1
         assert addr_key in notifications[0]
+
+    def test_edit_refreshes_cached_unified_view_before_notification(self, store):
+        """A newly opened editor must see edits made before it registered."""
+        addr_key = get_addr_key("C", 10)
+        view = build_unified_view(store.visible_state, store.all_nicknames)
+        store.set_unified_view(view)
+
+        with store.edit_session("AI: tag apply") as session:
+            session.set_field(addr_key, "nickname", "Idle")
+
+        row_idx = next(i for i, row in enumerate(view.rows) if row.addr_key == addr_key)
+        assert view.rows[row_idx].nickname == "Idle"
 
     def test_observer_notified_on_undo(self, store):
         """Observer should be notified on undo."""

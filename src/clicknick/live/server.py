@@ -74,6 +74,8 @@ class LiveServer:
         get_click_hwnd: Callable[[], int | None] | None = None,
         get_mdb_path: Callable[[], Path | None] | None = None,
         get_synced_pending: Callable[[], int] | None = None,
+        get_staged_rungs: Callable[[], int] | None = None,
+        record_staged_rungs: Callable[[int], None] | None = None,
         get_pyrung_live_available: Callable[[], bool] | None = None,
         open_editor: Callable[[str], None] | None = None,
     ) -> None:
@@ -85,6 +87,8 @@ class LiveServer:
         self._get_click_hwnd = get_click_hwnd
         self._get_mdb_path = get_mdb_path
         self._get_synced_pending = get_synced_pending
+        self._get_staged_rungs = get_staged_rungs
+        self._record_staged_rungs = record_staged_rungs
         self._get_pyrung_live_available = get_pyrung_live_available
         self._open_editor = open_editor
         self._listener: Listener | None = None
@@ -182,6 +186,7 @@ class LiveServer:
             show_save_prompt = _prompt_save
 
         synced_pending = self._get_synced_pending() if self._get_synced_pending else 0
+        staged_rungs = self._get_staged_rungs() if self._get_staged_rungs else 0
         pyrung_live_available = (
             self._get_pyrung_live_available() if self._get_pyrung_live_available else False
         )
@@ -193,7 +198,9 @@ class LiveServer:
             show_preview=show_preview,
             show_address_editor=show_address_editor,
             show_save_prompt=show_save_prompt,
+            record_staged_rungs=self._record_staged_rungs,
             synced_pending=synced_pending,
+            staged_rungs=staged_rungs,
             project_saved=project_saved,
             pyrung_live_available=pyrung_live_available,
         )

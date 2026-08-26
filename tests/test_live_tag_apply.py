@@ -2,7 +2,7 @@
 
 ``tag apply`` exports the pristine (baseline) and edited (current) ``tags.py``,
 diffs the two exports so only the agent's real edits survive, lands them as one
-batched unsaved change, and asks the GUI to open the Address Editor filtered to
+batched staged change, and asks the GUI to open the Address Editor filtered to
 "Changed". The diff-of-two-exports is what cancels pyrung's systematic
 round-trip artifacts (``[external]`` inference, bank-default retentive/initial on
 unnamed slots, hex padding) — see ``_compute_tag_changes``.

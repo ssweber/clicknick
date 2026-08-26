@@ -62,11 +62,17 @@ def test_rung_apply_backs_up_before_export(tmp_path: Path, monkeypatch):
         return project_dir / "csv_output"
 
     monkeypatch.setattr(rung_commands, "_run_export", _export)
+    monkeypatch.setattr(rung_commands, "_open_proposal", lambda _ctx, _parts: ("opened", 1))
 
-    result = dispatch(_context(tmp_path), "rung apply main")
+    staged: list[int] = []
+    ctx = _context(tmp_path)
+    ctx.record_staged_rungs = staged.append
+    result = dispatch(ctx, "rung apply main")
 
     assert "backed up 1 source file" in result
     assert "wrote ladder CSVs" in result
+    assert "opened" in result
+    assert staged == [1]
     assert (tmp_path / "backup" / "src" / "plc" / "main.py").read_text(
         encoding="utf-8"
     ) == "proposal\n"
@@ -86,3 +92,10 @@ def test_failed_rung_apply_still_leaves_the_source_backup(tmp_path: Path, monkey
     assert (tmp_path / "backup" / "src" / "plc" / "main.py").read_text(
         encoding="utf-8"
     ) == "proposal\n"
+
+
+def test_rung_preview_command_was_folded_into_apply(tmp_path: Path):
+    _write_source(tmp_path, "proposal\n")
+
+    with pytest.raises(ValueError, match="unknown rung subcommand 'preview'"):
+        dispatch(_context(tmp_path), "rung preview")

@@ -92,7 +92,7 @@ class RungPreviewWindow(tk.Toplevel):
 
         prefix = f"Group {self._group_idx + 1}/{n}: {label}"
         if self._copied:
-            self._status_var.set(f"{prefix} — Copied, paste in Click")
+            self._status_var.set(f"{prefix} — Copied, paste in CLICK")
             self._copy_btn.configure(state="disabled")
             if self._group_idx < n - 1:
                 self._next_btn.configure(state="normal")
@@ -145,10 +145,12 @@ class RungPreviewWindow(tk.Toplevel):
 
             self._group_idx = len(self._groups)
             self._copied = True
-            self._copy_all_btn.configure(state="disabled")
+            # Keep this available: the engineer may overwrite the clipboard
+            # accidentally before pasting and need to copy the proposal again.
+            self._copy_all_btn.configure(state="normal")
             self._copy_btn.configure(state="disabled")
             self._next_btn.configure(state="disabled")
-            status = f"Copied all {len(all_rungs)} rung(s) for {self._csv_stem}, paste in Click"
+            status = f"Copied all {len(all_rungs)} rung(s) for {self._csv_stem}, paste in CLICK"
             if result.addresses_inserted:
                 status += f" - inserted {result.addresses_inserted} MDB address(es)"
             elif result.mdb_error:

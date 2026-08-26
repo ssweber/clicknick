@@ -116,6 +116,7 @@ class AddressStore:
 
         # Cached unified view
         self._unified_view: UnifiedView | None = None
+        self._unified_row_indices: dict[int, int] = {}
 
         # Rows by type cache (for compatibility)
         self.rows_by_type: dict[str, list[AddressRow]] = {}
@@ -301,8 +302,22 @@ class AddressStore:
         """Rebuild the nickname reverse index."""
         self._nickname_service.rebuild_index(self.visible_state.values())
 
+    def _sync_unified_view(self, affected_keys: set[int] | None) -> None:
+        """Replace cached immutable rows with their current visible versions."""
+        view = self._unified_view
+        if view is None:
+            return
+
+        keys = self.visible_state.keys() if affected_keys is None else affected_keys
+        for addr_key in keys:
+            row_idx = self._unified_row_indices.get(addr_key)
+            current = self.visible_state.get(addr_key)
+            if row_idx is not None and current is not None:
+                view.rows[row_idx] = current
+
     def _notify_observers(self, affected_keys: set[int] | None = None) -> None:
         """Notify all observers of data changes."""
+        self._sync_unified_view(affected_keys)
         for callback in self._observers:
             try:
                 callback(self, affected_keys)
@@ -1145,6 +1160,7 @@ class AddressStore:
     def set_unified_view(self, view: UnifiedView) -> None:
         """Store the unified view and apply initial block colors."""
         self._unified_view = view
+        self._unified_row_indices = {row.addr_key: i for i, row in enumerate(view.rows)}
         # Apply block colors computed during view building to visible_state
         self._apply_initial_block_colors(view)
 

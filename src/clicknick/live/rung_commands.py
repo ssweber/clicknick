@@ -719,13 +719,17 @@ def _diff_one_file(
     return diff_lines, changed_rungs
 
 
-def _preview_all(ctx: DispatchContext, project_dir: Path, before_files: dict[str, str]) -> str:
+def _preview_all(
+    ctx: DispatchContext, project_dir: Path, before_files: dict[str, str]
+) -> tuple[str, int]:
     """Scan all files; open preview windows for changed ones."""
     changed: list[str] = []
+    staged_rungs = 0
     for stem in _all_file_stems(project_dir):
         diff_lines, rungs = _diff_one_file(project_dir, before_files, stem)
         if not rungs:
             continue
+        staged_rungs += len(rungs)
         changed.append(f"  {stem}: {', '.join(f'R{r}' for r in rungs)}")
         if ctx.show_preview is not None:
             pending_dir = project_dir / "csv_output"
@@ -739,11 +743,11 @@ def _preview_all(ctx: DispatchContext, project_dir: Path, before_files: dict[str
                 csv_stem,
             )
     if not changed:
-        return "(no changes)"
-    return "changed files:\n" + "\n".join(changed)
+        return "(no changes)", 0
+    return "changed files:\n" + "\n".join(changed), staged_rungs
 
 
-def _cmd_preview(ctx: DispatchContext, parts: list[str]) -> str:
+def _open_proposal(ctx: DispatchContext, parts: list[str]) -> tuple[str, int]:
     file_stem = None
     selection = None
 
@@ -774,7 +778,7 @@ def _cmd_preview(ctx: DispatchContext, parts: list[str]) -> str:
     )
 
     if not diff_lines:
-        return "(no changes)"
+        return "(no changes)", 0
 
     if selection:
         rung_nums_list = _parse_rung_selection(selection)
@@ -795,9 +799,9 @@ def _cmd_preview(ctx: DispatchContext, parts: list[str]) -> str:
             csv_stem,
         )
         n = len(rung_nums_list) if rung_nums_list else "all"
-        return f"OK: preview window opened for {label} ({n} rungs)"
+        return f"OK: paste window opened for {label} ({n} rungs)", len(rung_nums_list or [])
 
-    return diff_text
+    return diff_text, len(rung_nums_list or [])
 
 
 def _run_export(project_dir: Path) -> Path:
@@ -833,16 +837,20 @@ def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
     project_dir = _get_project_dir(ctx)
     backup_dir, file_count = backup_plc_source(project_dir)
     pending_dir = _run_export(project_dir)
+    proposal_status, staged_rungs = _open_proposal(ctx, parts)
+    ctx.staged_rungs = staged_rungs
+    if ctx.record_staged_rungs is not None:
+        ctx.record_staged_rungs(staged_rungs)
     return (
         f"OK: backed up {file_count} source file{'s' if file_count != 1 else ''} "
         f"to {backup_dir}\n"
-        f"OK: wrote ladder CSVs to {pending_dir}"
+        f"OK: wrote ladder CSVs to {pending_dir}\n"
+        f"{proposal_status}"
     )
 
 
 _SUBCOMMANDS = {
     "list": _cmd_list,
-    "preview": _cmd_preview,
     "apply": _cmd_apply,
 }
 

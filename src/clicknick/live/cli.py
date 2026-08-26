@@ -7,7 +7,7 @@ Usage::
 
     # Inspect / edit (by pyrung tag name or Click address)
     clicknick-cli get ExampleTag                    # inspect a row
-    clicknick-cli set ExampleTag nickname RenamedTag # rename (unsaved change)
+    clicknick-cli set ExampleTag nickname RenamedTag # rename (staged change)
     clicknick-cli set DS1 comment "Example comment" # quoting works
 
     # Find free addresses
@@ -28,10 +28,9 @@ Usage::
     # Rung commands
     clicknick-cli rung list                         # list available files
     clicknick-cli rung list main                    # rungs in main program
-    clicknick-cli rung preview                      # scan all files for changes
-    clicknick-cli rung preview main                 # full program diff
-    clicknick-cli rung preview main --select r3     # diff for rung 3
-    clicknick-cli rung apply main                   # pyrung -> ladder CSVs
+    clicknick-cli rung apply                        # stage all changes and open paste windows
+    clicknick-cli rung apply main                   # stage main and open its paste window
+    clicknick-cli rung apply main --select r3       # stage and show rung 3
 
     # Workspace recovery
     clicknick-cli backup                            # snapshot src/plc
@@ -69,7 +68,7 @@ def main() -> None:
         description="Attach to a running ClickNick instance and push live edits.",
         epilog=(
             "Identifiers: use pyrung tag names (ExampleTag) or Click addresses (DS1).\n"
-            "All writes land as unsaved changes in the address editor (Ctrl+Z to undo).\n"
+            "All writes land as staged changes in the address editor (Ctrl+Z to undo).\n"
             "Subcommands: tag (annotations), rung (program).\n"
             "Use 'clicknick-cli help' for a grouped command list."
         ),

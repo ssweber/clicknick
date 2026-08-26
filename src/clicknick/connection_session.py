@@ -58,9 +58,17 @@ class ConnectionSession:
     def synced_pending(self) -> int:
         return self.scr_watcher.synced_pending if self.scr_watcher else 0
 
+    @property
+    def staged_rungs(self) -> int:
+        return self.scr_watcher.staged_rungs if self.scr_watcher else 0
+
     def record_sync(self, count: int) -> None:
         if self.scr_watcher is not None:
             self.scr_watcher.record_sync(count)
+
+    def record_rung_stage(self, count: int) -> None:
+        if self.scr_watcher is not None:
+            self.scr_watcher.record_rung_stage(count)
 
     def _on_scr_changed(self, scr_folder: Path, db_path: str) -> None:
         """Rebuild analysis when Scr*.tmp files change."""

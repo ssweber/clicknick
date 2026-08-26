@@ -111,7 +111,7 @@ def _build_graph(
 
     When *persist_dir* is provided, also writes the full pyrung project
     (src/plc/) to disk for consumption by DAP and
-    rung preview commands.
+    rung apply commands.
     """
     from pyrung.click import ladder_to_pyrung
     from pyrung.core.analysis import build_program_graph

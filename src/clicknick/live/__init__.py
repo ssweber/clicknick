@@ -3,7 +3,7 @@
 A small request/response IPC (modeled on ``pyrung live``) that lets an
 external process — a CLI, or an LLM tool — push edits into a *running*
 ClickNick instance. Edits flow through the same ``AddressStore.edit_session``
-path the UI uses, so they appear as ordinary unsaved (dirty) changes,
+path the UI uses, so they appear as ordinary staged (dirty) changes,
 undoable with Ctrl+Z, whether or not the Address Editor is open.
 
 Architecture

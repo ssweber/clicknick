@@ -12,6 +12,7 @@
 
 ### Features
 
+- **Unified rung apply workflow** — `clicknick-cli rung apply` now stages the export and opens its review-and-paste window directly, while CLI status composes staged tags, synced tags, and staged rung differences into the next engineer actions.
 - **Source recovery commands** — `clicknick-cli rung apply` now snapshots `src/plc/` before export, while `clicknick-cli backup` and `restore` provide explicit recovery around generated-project refreshes.
 - **Console Stop button** — while a command runs, Send becomes Stop, which cancels a long-running `how` without restarting the simulation, so forces and scan position survive; needs a pyrung new enough to provide the `stop` verb.
 - **Console copy and edit conveniences** — a Copy button beside the status bar copies the output (or just the selected text) to the clipboard, and the command entry has a right-click Cut/Copy/Paste/Select All menu.
@@ -20,13 +21,14 @@
 - **Program analysis filters** — the Address Editor filter box accepts `input:`, `output:`, `pivot:`, `isolated:`, `upstream:Tag`, and `downstream:Tag` prefixes, which compose with existing text filters.
 - **Interactive pyrung Console** — a new Console window runs simulations against the open project, with slot-aware autocomplete, live streaming of `how()` progress, and a button to open the `pyrung_project` directory.
 - **Simulation Server** — a Start/Stop toggle launches the pyrung simulation backend in the background, seedable from a CSV snapshot, and hot-reloads when project `.py` files change instead of needing a manual restart.
-- **Rung preview** — a preview window shows coloured unified diffs of pending rung changes with per-group "Copy to Click" export and a Copy All button for a whole program; `rung preview` with no argument scans main plus all subroutines.
-- **Agent CLI (`clicknick-cli`)** — the IPC CLI grew into an agent-facing interface with `tag`, `rung`, `info`, and `help` commands; `tag apply` pushes `tags.py` edits into the Address Editor as one batched unsaved edit, and `unused` returns the next free address(es) in a bank from one or more address hints.
+- **Rung preview** — the `rung apply` review window shows coloured unified diffs of pending rung changes with per-group "Copy to Click" export and a repeatable Copy All button for a whole program.
+- **Agent CLI (`clicknick-cli`)** — the IPC CLI grew into an agent-facing interface with `tag`, `rung`, `info`, and `help` commands; `tag apply` pushes `tags.py` edits into the Address Editor as one batched staged edit, and `unused` returns the next free address(es) in a bank from one or more address hints.
 - **Right-click annotation editor** — comment-field annotations (flags, choices, min/max, unit of measure, physical/link) can be edited in a structured dialog with hover tooltips instead of hand-typed bracket syntax.
 - **Add Block dialog** gained an Advanced section for `:block`, `:named_array`, and `:udt` structured block kinds, with live preview and row-count display.
 
 ### Fixed
 
+- Tag changes applied before opening the Address Editor now display their current nicknames instead of stale blank cached rows.
 - Rung preview now compares canonical Click ladder rungs, so inserting a rung selects only the new logic for Guided Paste and shows displaced existing rungs as neutral renumbering instead of removal and re-addition.
 - Rung preview now renders complete multiline rung source, including conditions whose `# R` marker appears on the closing line.
 - Copying rungs from the preview now provisions every referenced address in the Click project first, including block-copy range endpoints that were not otherwise materialized.

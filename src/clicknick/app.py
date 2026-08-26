@@ -1110,6 +1110,10 @@ class ClickNickApp:
             get_click_hwnd=lambda: self.connected_click_hwnd,
             get_mdb_path=self._live_mdb_path,
             get_synced_pending=lambda: self._session.synced_pending if self._session else 0,
+            get_staged_rungs=lambda: self._session.staged_rungs if self._session else 0,
+            record_staged_rungs=lambda count: (
+                self._session.record_rung_stage(count) if self._session else None
+            ),
             get_pyrung_live_available=lambda: bool(
                 self._session
                 and self._session.console
@@ -1171,7 +1175,8 @@ class ClickNickApp:
 
         pending = self._session.synced_pending if self._session else 0
         if pending > 0:
-            title += f" ({pending}↑)"
+            noun = "tag" if pending == 1 else "tags"
+            title += f" ({pending} {noun} synced - Save in CLICK)"
 
         self.root.title(title)
 

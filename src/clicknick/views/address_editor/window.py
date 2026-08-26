@@ -64,7 +64,8 @@ class AddressEditorWindow(tk.Toplevel):
         if total_errors > 0:
             parts.append(f"Errors: {total_errors}")
         if self._synced_pending > 0:
-            parts.append(f"({self._synced_pending}↑)")
+            noun = "tag" if self._synced_pending == 1 else "tags"
+            parts.append(f"{self._synced_pending} {noun} synced - Save in CLICK")
 
         self.status_var.set(" | ".join(parts))
 
