@@ -66,23 +66,26 @@ def test_autocomplete_options_menu_uses_existing_setting_variables() -> None:
 
 def test_workspace_options_menu_exposes_mirror_and_folder_actions() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
-    app._setup_workspace_mirror = MagicMock()
     app._sync_workspace_mirror = MagicMock()
     app._open_generated_workspace = MagicMock()
     app._open_mirror_folder = MagicMock()
+    app._open_mirror_setup_window = MagicMock()
     menu = MagicMock()
 
     app._populate_workspace_options_menu(menu)
 
     assert menu.mock_calls == [
-        call.add_command(label="Setup Mirror...", command=app._setup_workspace_mirror),
         call.add_command(label="Sync Now", command=app._sync_workspace_mirror),
-        call.add_separator(),
         call.add_command(
             label="Open Generated Workspace",
             command=app._open_generated_workspace,
         ),
         call.add_command(label="Open Mirror Folder", command=app._open_mirror_folder),
+        call.add_separator(),
+        call.add_command(
+            label="View/Setup Mirror...",
+            command=app._open_mirror_setup_window,
+        ),
     ]
 
 
@@ -95,6 +98,7 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
         "mirror_status_var",
         "mirror_detail_var",
         "mirror_path_var",
+        "mirror_setup_action_var",
         "plc_name_var",
         "generated_dir_var",
         "source_project_var",
@@ -104,6 +108,7 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
     for name in variable_names:
         setattr(app, name, MagicMock())
     app._workspace_refresh_after_id = None
+    app._workspace_config = object()
     app.connected_click_filename = "Example.ckp"
     app._get_workspace_status = MagicMock(
         return_value=WorkspaceStatus(WorkspaceState.CLEAN, "Clean")
@@ -131,5 +136,6 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
     app.project_name_var.set.assert_called_once_with("Example.ckp")
     app.mirror_status_var.set.assert_called_once_with("Paired")
     app.mirror_path_var.set.assert_called_once_with(str(mirror))
+    app.mirror_setup_action_var.set.assert_called_once_with("Change...")
     app.plc_name_var.set.assert_called_once_with("IMHERE")
     app.source_project_var.set.assert_called_once_with(str(project))

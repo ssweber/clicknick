@@ -59,6 +59,7 @@ class ClickNickApp:
         self.mirror_status_var = tk.StringVar(value="Not configured")
         self.mirror_detail_var = tk.StringVar(value="")
         self.mirror_path_var = tk.StringVar(value="Not configured")
+        self.mirror_setup_action_var = tk.StringVar(value="Set Up...")
         self.generated_dir_var = tk.StringVar(value="Not available")
         self.source_project_var = tk.StringVar(value="Not located")
         self.plc_name_var = tk.StringVar(value="Not available")
@@ -69,6 +70,7 @@ class ClickNickApp:
         self._odbc_warning_shown = False
         self._workspace_refresh_after_id = None
         self._project_info_window = None
+        self._mirror_setup_window = None
 
     def _setup_styles(self):
         """Configure ttk styles for the application."""
@@ -251,6 +253,7 @@ class ClickNickApp:
         self.mirror_status_var.set(mirror.label)
         self.mirror_detail_var.set(mirror.detail or "")
         self.mirror_path_var.set(str(mirror.path) if mirror.path else "Not configured")
+        self.mirror_setup_action_var.set("Change..." if self._workspace_config else "Set Up...")
 
         info = self._get_workspace_directory_info()
         self.plc_name_var.set(self._current_plc_name() or "Not available")
@@ -719,29 +722,45 @@ class ClickNickApp:
             self._update_status("Connect to a CLICK project first", "error")
             return
 
-        project_value = filedialog.askopenfilename(
-            title=f"Locate the source CLICK project ({filename})",
-            initialfile=filename,
-            filetypes=[("CLICK project", "*.ckp"), ("All files", "*.*")],
-            parent=self.root,
+        dialog_parent = getattr(self, "_mirror_setup_window", None) or self.root
+        configured_project = (
+            self._workspace_config.project_file if self._workspace_config is not None else None
         )
-        if not project_value:
-            return
-        project_file = Path(project_value)
-        if project_file.name.casefold() != filename.casefold():
-            messagebox.showerror(
-                "Setup Workspace Mirror",
-                f"Select the connected project named {filename}.",
-                parent=self.root,
+        if (
+            configured_project is not None
+            and configured_project.is_file()
+            and configured_project.name.casefold() == filename.casefold()
+        ):
+            project_file = configured_project
+        else:
+            project_value = filedialog.askopenfilename(
+                title=f"Locate the source CLICK project ({filename})",
+                initialfile=filename,
+                filetypes=[("CLICK project", "*.ckp"), ("All files", "*.*")],
+                parent=dialog_parent,
             )
-            return
+            if not project_value:
+                return
+            project_file = Path(project_value)
+            if project_file.name.casefold() != filename.casefold():
+                messagebox.showerror(
+                    "Setup Workspace Mirror",
+                    f"Select the connected project named {filename}.",
+                    parent=dialog_parent,
+                )
+                return
 
         workspace_folder_name = f"{project_file.stem} Workspace"
+        initial_location = (
+            self._workspace_config.mirror_path.parent
+            if self._workspace_config is not None
+            else project_file.parent
+        )
         selected_location = filedialog.askdirectory(
             title=f"Choose where to create {workspace_folder_name}",
-            initialdir=project_file.parent,
+            initialdir=initial_location,
             mustexist=True,
-            parent=self.root,
+            parent=dialog_parent,
         )
         if not selected_location:
             return
@@ -752,7 +771,7 @@ class ClickNickApp:
         try:
             mirror_is_nonempty = mirror_path.exists() and any(mirror_path.iterdir())
         except OSError as exc:
-            messagebox.showerror("Setup Workspace Mirror", str(exc), parent=self.root)
+            messagebox.showerror("Setup Workspace Mirror", str(exc), parent=dialog_parent)
             self._update_status(f"Workspace mirror setup failed: {exc}", "error")
             return
         if mirror_is_nonempty:
@@ -762,7 +781,7 @@ class ClickNickApp:
                 "ClickNick will update generated files under src/plc and csv, plus "
                 "its generation scripts and data. It will not delete unrelated files "
                 "or replace existing tests, documentation, or editor settings.",
-                parent=self.root,
+                parent=dialog_parent,
             )
             if not confirmed:
                 return
@@ -787,7 +806,7 @@ class ClickNickApp:
             sidecar = save_project_workspace_config(config)
             remember_project_sidecar(sidecar)
         except (OSError, ValueError) as exc:
-            messagebox.showerror("Setup Workspace Mirror", str(exc), parent=self.root)
+            messagebox.showerror("Setup Workspace Mirror", str(exc), parent=dialog_parent)
             self._update_status(f"Workspace mirror setup failed: {exc}", "error")
             return
 
@@ -828,16 +847,81 @@ class ClickNickApp:
             unavailable="Workspace mirror is not configured",
         )
 
+    def _details_value(self, parent, label: str, variable: tk.StringVar) -> None:
+        ttk.Label(parent, text=label).pack(anchor=tk.W, pady=(4, 0))
+        ttk.Label(
+            parent,
+            textvariable=variable,
+            style="Status.TLabel",
+            wraplength=440,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, fill=tk.X)
+
+    def _close_mirror_setup_window(self) -> None:
+        window = self._mirror_setup_window
+        self._mirror_setup_window = None
+        if window is not None:
+            window.destroy()
+
+    def _create_mirror_setup_contents(self, parent) -> None:
+        """Create the deliberate view-first mirror setup surface."""
+        mirror = ttk.LabelFrame(parent, text="Workspace Mirror", padding=8)
+        self._details_value(mirror, "Status", self.mirror_status_var)
+        self._details_value(mirror, "Mirror workspace", self.mirror_path_var)
+        ttk.Label(
+            mirror,
+            textvariable=self.mirror_detail_var,
+            style="Error.TLabel",
+            wraplength=440,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, fill=tk.X)
+        mirror.pack(fill=tk.X, pady=(0, 10))
+
+        buttons = ttk.Frame(parent)
+        ttk.Button(
+            buttons,
+            textvariable=self.mirror_setup_action_var,
+            command=self._setup_workspace_mirror,
+        ).pack(side=tk.LEFT)
+        ttk.Button(buttons, text="Close", command=self._close_mirror_setup_window).pack(
+            side=tk.RIGHT
+        )
+        buttons.pack(fill=tk.X)
+
+    def _open_mirror_setup_window(self) -> None:
+        """Show mirror details before offering setup or reconfiguration."""
+        if self._mirror_setup_window is not None:
+            try:
+                self._mirror_setup_window.lift()
+                self._mirror_setup_window.focus_force()
+                return
+            except tk.TclError:
+                self._mirror_setup_window = None
+
+        window = tk.Toplevel(self.root)
+        window.title("Workspace Mirror")
+        window.transient(self.root)
+        window.minsize(520, 0)
+        window.protocol("WM_DELETE_WINDOW", self._close_mirror_setup_window)
+        contents = ttk.Frame(window, padding=12)
+        self._create_mirror_setup_contents(contents)
+        contents.pack(fill=tk.BOTH, expand=True)
+        self._mirror_setup_window = window
+        self._refresh_workspace_ui()
+
     def _populate_workspace_options_menu(self, menu: tk.Menu) -> None:
         """Add mirror and folder commands to the Workspace options menu."""
-        menu.add_command(label="Setup Mirror...", command=self._setup_workspace_mirror)
         menu.add_command(label="Sync Now", command=self._sync_workspace_mirror)
-        menu.add_separator()
         menu.add_command(
             label="Open Generated Workspace",
             command=self._open_generated_workspace,
         )
         menu.add_command(label="Open Mirror Folder", command=self._open_mirror_folder)
+        menu.add_separator()
+        menu.add_command(
+            label="View/Setup Mirror...",
+            command=self._open_mirror_setup_window,
+        )
 
     def _create_action_section(self, parent) -> None:
         """Create the primary Edit, Test, and Workspace action groups."""
@@ -906,16 +990,6 @@ class ClickNickApp:
         test.grid(row=0, column=1, sticky="nsew", padx=5)
         workspace.grid(row=0, column=2, sticky="nsew", padx=(5, 0))
         actions.pack(fill=tk.BOTH, expand=True)
-
-    def _details_value(self, parent, label: str, variable: tk.StringVar) -> None:
-        ttk.Label(parent, text=label).pack(anchor=tk.W, pady=(4, 0))
-        ttk.Label(
-            parent,
-            textvariable=variable,
-            style="Status.TLabel",
-            wraplength=440,
-            justify=tk.LEFT,
-        ).pack(anchor=tk.W, fill=tk.X)
 
     def _close_project_info_window(self) -> None:
         window = self._project_info_window
@@ -1115,118 +1189,6 @@ class ClickNickApp:
             )
         except Exception as e:
             self._update_status(f"Error cleaning MDB: {e}", "error")
-
-    @staticmethod
-    def _get_export_popup_flag() -> Path:
-        """Get path to the flag indicating the Export beta popup has been seen."""
-        import os
-
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home()))
-        return base / "ClickNick" / "export_from_click_popup_seen"
-
-    def _show_export_popup(self) -> None:
-        """Show first-run info for Export from Click (appears once per user)."""
-        flag_path = self._get_export_popup_flag()
-
-        if flag_path.exists():
-            return
-
-        popup_text = (
-            "Export from Click\n\n"
-            "This feature decodes CLICK's internal program files into CSV.\n"
-            "Contacts, instructions, or entire rungs may decode incorrectly\n"
-            "or be missing. Email, Home, Position, and Velocity instructions\n"
-            "are exported as raw(...) placeholders.\n\n"
-            "If you encounter errors or unexpected output, please report\n"
-            "them — sample programs help us improve the decoder."
-        )
-
-        messagebox.showinfo("First-Time Tips", popup_text, parent=self.root)
-
-        flag_path.parent.mkdir(parents=True, exist_ok=True)
-        flag_path.touch()
-
-    def _export_from_click(self):
-        """Export Scr*.tmp from the connected Click project to a CSV bundle."""
-        if not self.connected_click_hwnd:
-            messagebox.showwarning(
-                "Export from Click",
-                "Not connected to a Click project.\n\nStart monitoring first.",
-                parent=self.root,
-            )
-            return
-
-        from pathlib import Path
-
-        from .utils.mdb_shared import find_click_database
-
-        db_path = find_click_database(click_hwnd=self.connected_click_hwnd)
-        if not db_path:
-            messagebox.showerror(
-                "Export from Click",
-                "Could not locate the Click project folder.",
-                parent=self.root,
-            )
-            return
-        scr_folder = Path(db_path).parent
-
-        self._show_export_popup()
-
-        output = filedialog.askdirectory(
-            title="Export from Click — choose output folder",
-            parent=self.root,
-        )
-        if not output:
-            return
-
-        from .ladder.program import program_save
-
-        while True:
-            try:
-                result = program_save(scr_folder, Path(output))
-            except (FileNotFoundError, ValueError) as exc:
-                messagebox.showerror("Export from Click", str(exc), parent=self.root)
-                return
-            except PermissionError as exc:
-                retry = messagebox.askretrycancel(
-                    "Export from Click",
-                    f"Cannot write to output folder — a file may be open"
-                    f" in another program.\n\n{exc}",
-                    parent=self.root,
-                )
-                if retry:
-                    continue
-                return
-            break
-
-        # Write nicknames.csv from the MDB alongside the ladder CSVs
-        nick_count = 0
-        try:
-            from .data.data_source import CsvDataSource
-            from .utils.mdb_operations import MdbConnection, load_all_addresses
-
-            with MdbConnection(str(db_path)) as conn:
-                all_rows = load_all_addresses(conn)
-            nick_dest = Path(output) / "nicknames.csv"
-            nick_count = CsvDataSource(str(nick_dest)).save_changes(list(all_rows.values()))
-        except PermissionError:
-            messagebox.showwarning(
-                "Export from Click",
-                "Could not write nicknames.csv — file may be open.\n"
-                "Ladder CSVs were exported successfully.",
-                parent=self.root,
-            )
-        except Exception:
-            pass  # nicknames export is best-effort
-
-        sub_count = len(result.subroutine_csvs)
-        parts = [f"{result.total_rungs} rungs", f"{sub_count} subroutine(s)"]
-        if nick_count:
-            parts.append(f"{nick_count} tags")
-        self._update_status(
-            f"Exported {', '.join(parts)} to {output}",
-            "connected",
-        )
 
     def _export_pyrung_project(self):
         """Copy the connected project's ready workspace."""
@@ -1437,14 +1399,17 @@ class ClickNickApp:
             label="Reload from CLICK...", command=self._workspace_reload_from_click
         )
         workspace_menu.add_separator()
-        workspace_menu.add_command(label="Setup Mirror...", command=self._setup_workspace_mirror)
         workspace_menu.add_command(label="Sync Now", command=self._sync_workspace_mirror)
         workspace_menu.add_command(
             label="Open Generated Workspace", command=self._open_generated_workspace
         )
         workspace_menu.add_command(label="Open Mirror Folder", command=self._open_mirror_folder)
-        workspace_menu.add_separator()
         workspace_menu.add_command(label="Export Workspace...", command=self._export_pyrung_project)
+        workspace_menu.add_separator()
+        workspace_menu.add_command(
+            label="View/Setup Mirror...",
+            command=self._open_mirror_setup_window,
+        )
 
         # Ladder menu
         ladder_menu = tk.Menu(menubar, tearoff=0)
@@ -1455,7 +1420,6 @@ class ClickNickApp:
         ladder_menu.add_command(label="Open in Guided Paste...", command=self._open_guided_paste)
         ladder_menu.add_separator()
         ladder_menu.add_command(label="Save Clipboard to CSV...", command=self._save_clipboard_csv)
-        ladder_menu.add_command(label="Export from Click...", command=self._export_from_click)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
