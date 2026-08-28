@@ -21,6 +21,7 @@ from pathlib import Path
 
 PORT_FILENAME = "clicknick-live.port"
 LABEL_FILENAME = "clicknick-live.label"
+WORKSPACE_FILENAME = "clicknick-live.workspace"
 
 _LOCALAPPDATA = Path(os.environ.get("LOCALAPPDATA") or Path.home())
 
@@ -58,6 +59,16 @@ def label_for_dir(directory: Path) -> str:
     if name.startswith("CLICK (") and name.endswith(")"):
         return name[len("CLICK (") : -1]
     return "standalone"
+
+
+def workspace_for_port_file(port_file: Path) -> Path | None:
+    """Read the active workspace advertised beside one live port file."""
+    workspace_file = port_file.parent / WORKSPACE_FILENAME
+    try:
+        value = workspace_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return Path(value) if value else None
 
 
 def iter_session_dirs() -> list[Path]:

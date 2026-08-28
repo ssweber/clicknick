@@ -1,4 +1,4 @@
-"""Project-local pairing and conservative one-way workspace mirroring."""
+"""Project-local sidecars and durable active-workspace configuration."""
 
 from __future__ import annotations
 
@@ -46,16 +46,21 @@ def sidecar_path_for(project_file: Path) -> Path:
 
 @dataclass(frozen=True)
 class ProjectWorkspaceConfig:
-    """Pairing stored beside one CLICK project file."""
+    """Active workspace pairing stored beside one CLICK project file."""
 
     project_file: Path
-    mirror_path: Path
+    workspace_path: Path
     last_synced_at: dt.datetime | None = None
     plc_name: str | None = None
 
     @property
     def sidecar_path(self) -> Path:
         return sidecar_path_for(self.project_file)
+
+    @property
+    def mirror_path(self) -> Path:
+        """Legacy name retained while loading pre-workspace UI callers."""
+        return self.workspace_path
 
 
 @dataclass(frozen=True)
@@ -89,13 +94,18 @@ def _normalized(path: Path) -> Path:
     return Path(os.path.normpath(path.resolve(strict=False)))
 
 
-def mirror_path_for_selection(selection: Path, project_file: Path) -> Path:
+def workspace_path_for_selection(selection: Path, project_file: Path) -> Path:
     """Resolve a folder-picker selection to ``<project> Workspace``."""
     selection = _normalized(selection)
     folder_name = f"{Path(project_file).stem} Workspace"
     if selection.name.casefold() == folder_name.casefold():
         return selection
     return selection / folder_name
+
+
+def mirror_path_for_selection(selection: Path, project_file: Path) -> Path:
+    """Compatibility alias for sidecars created by the former mirror UI."""
+    return workspace_path_for_selection(selection, project_file)
 
 
 def _stored_mirror_path(project_file: Path, mirror_path: Path) -> str:
@@ -109,20 +119,19 @@ def _stored_mirror_path(project_file: Path, mirror_path: Path) -> str:
 
 
 def save_project_workspace_config(config: ProjectWorkspaceConfig) -> Path:
-    """Atomically write project-specific mirror configuration."""
+    """Atomically write project-specific active-workspace configuration."""
     project_file = _normalized(config.project_file)
     sidecar = sidecar_path_for(project_file)
     sidecar.parent.mkdir(parents=True, exist_ok=True)
-    mirror_value = _stored_mirror_path(project_file, config.mirror_path)
+    workspace_value = _stored_mirror_path(project_file, config.workspace_path)
     lines = [
-        "# One-way only: generated ClickNick workspace -> mirror.",
-        "# ClickNick replaces src/plc, csv, nicknames.csv, project_to_csv.py, and run.py.",
-        "# Sync never deletes files from the mirror.",
+        "# ClickNick uses this as the active workspace for the paired CLICK project.",
+        "# ClickNick owns generated PLC source/data and preserves tests, docs, and tooling.",
         "",
         "version = 1",
         "",
         "[workspace]",
-        f"mirror_path = {json.dumps(mirror_value)}",
+        f"workspace_path = {json.dumps(workspace_value)}",
     ]
     if config.plc_name:
         lines.append(f"plc_name = {json.dumps(config.plc_name)}")
@@ -146,16 +155,18 @@ def load_project_workspace_config(sidecar: Path) -> ProjectWorkspaceConfig:
         if data.get("version") != 1:
             raise ValueError("unsupported sidecar version")
         workspace = data["workspace"]
-        mirror_value = workspace["mirror_path"]
-        if not isinstance(mirror_value, str) or not mirror_value.strip():
-            raise ValueError("workspace.mirror_path must be a non-empty string")
+        workspace_value = workspace.get("workspace_path", workspace.get("mirror_path"))
+        if not isinstance(workspace_value, str) or not workspace_value.strip():
+            raise ValueError("workspace.workspace_path must be a non-empty string")
     except (KeyError, OSError, TypeError, UnicodeError, tomllib.TOMLDecodeError) as exc:
         raise ValueError(f"invalid ClickNick project sidecar: {sidecar}") from exc
 
     project_name = sidecar.name[: -len(SIDECAR_SUFFIX)] + ".ckp"
     project_file = sidecar.with_name(project_name)
-    raw_mirror = Path(mirror_value)
-    mirror_path = raw_mirror if raw_mirror.is_absolute() else sidecar.parent / raw_mirror
+    raw_workspace = Path(workspace_value)
+    workspace_path = (
+        raw_workspace if raw_workspace.is_absolute() else sidecar.parent / raw_workspace
+    )
 
     last_synced_at = None
     raw_synced = workspace.get("last_synced_at")
@@ -172,7 +183,7 @@ def load_project_workspace_config(sidecar: Path) -> ProjectWorkspaceConfig:
 
     return ProjectWorkspaceConfig(
         project_file=_normalized(project_file),
-        mirror_path=_normalized(mirror_path),
+        workspace_path=_normalized(workspace_path),
         last_synced_at=last_synced_at,
         plc_name=plc_name,
     )
@@ -290,11 +301,11 @@ def _copy_tree(source: Path, destination: Path, *, overwrite: bool) -> int:
 
 
 def validate_mirror_destination(source: Path, mirror: Path) -> None:
-    """Reject mirror paths that overlap the active generated workspace."""
+    """Reject a new workspace that overlaps the current active workspace."""
     source = _normalized(source)
     mirror = _normalized(mirror)
     if source == mirror or source in mirror.parents or mirror in source.parents:
-        raise ValueError("mirror directory must be separate from the active workspace")
+        raise ValueError("workspace directory must be separate from the active workspace")
 
 
 def sync_workspace_to_mirror(source: Path, mirror: Path) -> MirrorSyncResult:

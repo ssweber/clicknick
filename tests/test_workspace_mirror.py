@@ -1,29 +1,25 @@
-"""One-way durable Workspace mirror behavior."""
+"""Durable active Workspace configuration and migration behavior."""
 
 from __future__ import annotations
 
 import datetime as dt
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import pytest
 
 from clicknick.app import ClickNickApp
 from clicknick.services.workspace_mirror import (
-    MirrorState,
     ProjectWorkspaceConfig,
     find_project_configs,
-    get_mirror_status,
     get_workspace_directory_info,
     load_project_workspace_config,
-    mirror_path_for_selection,
     read_plc_name,
-    record_successful_sync,
     remember_project_sidecar,
     save_project_workspace_config,
     sync_workspace_to_mirror,
     validate_mirror_destination,
+    workspace_path_for_selection,
 )
 
 
@@ -38,24 +34,39 @@ def _write_workspace(root: Path, main: str = "generated\n") -> Path:
     return root
 
 
-def test_project_sidecar_uses_project_name_and_relative_mirror(tmp_path: Path) -> None:
+def test_project_sidecar_uses_project_name_and_relative_workspace(tmp_path: Path) -> None:
     project = tmp_path / "Example Project.ckp"
     project.write_text("click", encoding="utf-8")
-    mirror = tmp_path / "Example Project Workspace"
+    workspace = tmp_path / "Example Project Workspace"
     synced = dt.datetime(2026, 8, 28, 12, 30, tzinfo=dt.UTC)
-    config = ProjectWorkspaceConfig(project, mirror, synced, plc_name="Line 1")
+    config = ProjectWorkspaceConfig(project, workspace, synced, plc_name="Line 1")
 
     sidecar = save_project_workspace_config(config)
     loaded = load_project_workspace_config(sidecar)
 
     assert sidecar == tmp_path / "Example Project.clicknick.toml"
-    assert "generated ClickNick workspace -> mirror" in sidecar.read_text(encoding="utf-8")
-    assert "Sync never deletes files" in sidecar.read_text(encoding="utf-8")
-    assert 'mirror_path = "Example Project Workspace"' in sidecar.read_text(encoding="utf-8")
+    assert "active workspace" in sidecar.read_text(encoding="utf-8")
+    assert "preserves tests, docs, and tooling" in sidecar.read_text(encoding="utf-8")
+    assert 'workspace_path = "Example Project Workspace"' in sidecar.read_text(encoding="utf-8")
     assert 'plc_name = "Line 1"' in sidecar.read_text(encoding="utf-8")
     assert loaded == ProjectWorkspaceConfig(
-        project.resolve(), mirror.resolve(), synced, plc_name="Line 1"
+        project.resolve(), workspace.resolve(), synced, plc_name="Line 1"
     )
+
+
+def test_project_sidecar_loads_legacy_mirror_path(tmp_path: Path) -> None:
+    project = tmp_path / "Legacy.ckp"
+    project.write_text("click", encoding="utf-8")
+    sidecar = tmp_path / "Legacy.clicknick.toml"
+    sidecar.write_text(
+        'version = 1\n\n[workspace]\nmirror_path = "Legacy Workspace"\n',
+        encoding="utf-8",
+    )
+
+    config = load_project_workspace_config(sidecar)
+
+    assert config.project_file == project.resolve()
+    assert config.workspace_path == (tmp_path / "Legacy Workspace").resolve()
 
 
 def test_read_plc_name_from_click_project_ini(tmp_path: Path) -> None:
@@ -66,20 +77,21 @@ def test_read_plc_name_from_click_project_ini(tmp_path: Path) -> None:
     assert read_plc_name(tmp_path / "missing.ini") is None
 
 
-def test_mirror_selection_creates_project_named_child_directory(tmp_path: Path) -> None:
+def test_workspace_selection_creates_project_named_child_directory(tmp_path: Path) -> None:
     project = tmp_path / "projects" / "LaserBall.ckp"
     desktop = tmp_path / "Desktop"
 
     assert (
-        mirror_path_for_selection(desktop, project) == (desktop / "LaserBall Workspace").resolve()
+        workspace_path_for_selection(desktop, project)
+        == (desktop / "LaserBall Workspace").resolve()
     )
 
 
-def test_mirror_selection_reuses_matching_workspace_directory(tmp_path: Path) -> None:
+def test_workspace_selection_reuses_matching_workspace_directory(tmp_path: Path) -> None:
     project = tmp_path / "LaserBall.ckp"
     workspace = tmp_path / "laserball workspace"
 
-    assert mirror_path_for_selection(workspace, project) == workspace.resolve()
+    assert workspace_path_for_selection(workspace, project) == workspace.resolve()
 
 
 def test_locator_finds_matching_project_without_duplicating_config(tmp_path: Path) -> None:
@@ -171,37 +183,6 @@ def test_destination_validation_can_run_before_sidecar_is_written(tmp_path: Path
     validate_mirror_destination(source, tmp_path / "durable workspace")
 
 
-def test_mirror_status_detects_owned_file_drift(tmp_path: Path) -> None:
-    source = _write_workspace(tmp_path / "active")
-    mirror = tmp_path / "mirror"
-    result = sync_workspace_to_mirror(source, mirror)
-    project = tmp_path / "Example.ckp"
-    project.write_text("click", encoding="utf-8")
-    config = ProjectWorkspaceConfig(project, mirror, result.synced_at)
-
-    status = get_mirror_status(config, source)
-    assert status.state is MirrorState.SYNCED
-    assert status.label == "Synced"
-
-    (source / "src" / "plc" / "main.py").write_text("changed\n", encoding="utf-8")
-    status = get_mirror_status(config, source)
-    assert status.state is MirrorState.PAIRED
-    assert status.label == "Paired"
-
-
-def test_successful_sync_timestamp_is_saved_in_sidecar(tmp_path: Path) -> None:
-    source = _write_workspace(tmp_path / "active")
-    mirror = tmp_path / "mirror"
-    project = tmp_path / "Example.ckp"
-    project.write_text("click", encoding="utf-8")
-    config = ProjectWorkspaceConfig(project, mirror)
-
-    updated = record_successful_sync(config, sync_workspace_to_mirror(source, mirror))
-
-    assert updated.last_synced_at is not None
-    assert load_project_workspace_config(updated.sidecar_path) == updated
-
-
 def test_directory_info_reports_generation_and_backup_times(tmp_path: Path) -> None:
     generated = _write_workspace(tmp_path / "active")
     state = generated / "backup" / "generated-source.json"
@@ -244,35 +225,6 @@ def test_app_loads_only_unambiguous_project_pairing(monkeypatch, tmp_path: Path)
     assert app._workspace_config is None
 
 
-def test_app_syncs_workspace_and_persists_success(monkeypatch, tmp_path: Path) -> None:
-    source = _write_workspace(tmp_path / "active")
-    config = ProjectWorkspaceConfig(tmp_path / "Example.ckp", tmp_path / "mirror")
-    synced = dt.datetime(2026, 8, 28, 14, 0, tzinfo=dt.UTC)
-    result = SimpleNamespace(copied_files=6, mirror_path=config.mirror_path, synced_at=synced)
-    updated = ProjectWorkspaceConfig(config.project_file, config.mirror_path, synced)
-    sync = MagicMock(return_value=result)
-    record = MagicMock(return_value=updated)
-    monkeypatch.setattr("clicknick.services.workspace_mirror.sync_workspace_to_mirror", sync)
-    monkeypatch.setattr("clicknick.services.workspace_mirror.record_successful_sync", record)
-
-    app = ClickNickApp.__new__(ClickNickApp)
-    app.root = MagicMock()
-    app._workspace_config = config
-    app._workspace_mirror_error = "old error"
-    app._workspace_source_dir = MagicMock(return_value=source)
-    app._update_status = MagicMock()
-
-    app._sync_workspace_mirror()
-
-    sync.assert_called_once_with(source, config.mirror_path)
-    record.assert_called_once_with(config, result)
-    assert app._workspace_config == updated
-    assert app._workspace_mirror_error is None
-    app._update_status.assert_called_once_with(
-        f"Workspace mirror synced (6 files): {config.mirror_path}", "connected"
-    )
-
-
 def test_setup_creates_project_workspace_inside_selected_location(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -290,14 +242,14 @@ def test_setup_creates_project_workspace_inside_selected_location(
 
     app = ClickNickApp.__new__(ClickNickApp)
     app.root = MagicMock()
-    app._session = object()
+    app._session = MagicMock()
     app.connected_click_filename = project.name
     app._workspace_config = None
     app._workspace_mirror_error = None
     app._current_plc_name = MagicMock(return_value="IMHERE")
     app._workspace_source_dir = MagicMock(return_value=None)
     app._update_status = MagicMock()
-    app._refresh_workspace_ui = MagicMock()
+    app._start_analysis_build = MagicMock()
     app.mirror_project_selection_var = MagicMock()
     app.mirror_project_selection_var.get.return_value = str(project)
     app.mirror_location_selection_var = MagicMock()
@@ -308,11 +260,14 @@ def test_setup_creates_project_workspace_inside_selected_location(
 
     assert workspace.is_dir()
     config = save_config.call_args.args[0]
-    assert config.project_file == project
-    assert config.mirror_path == workspace.resolve()
+    assert config.project_file == project.resolve()
+    assert config.workspace_path == workspace.resolve()
     assert config.plc_name == "IMHERE"
     remember.assert_called_once_with(project.with_suffix(".clicknick.toml"))
     assert app._workspace_config == config
+    app._session.use_workspace.assert_called_once_with(workspace)
+    app._session.record_rung_stage.assert_called_once_with(0)
+    app._start_analysis_build.assert_called_once_with()
 
 
 def test_browse_mirror_location_previews_named_workspace_without_applying(
@@ -342,54 +297,16 @@ def test_browse_mirror_location_previews_named_workspace_without_applying(
     )
 
 
-def test_explicit_open_actions_do_not_conflate_generated_and_mirror_folders(
-    tmp_path: Path,
-) -> None:
-    generated = tmp_path / "active"
-    mirror = tmp_path / "LaserBall Workspace"
+def test_open_workspace_uses_single_active_folder(tmp_path: Path) -> None:
+    workspace = tmp_path / "LaserBall Workspace"
     app = ClickNickApp.__new__(ClickNickApp)
-    app._workspace_config = ProjectWorkspaceConfig(tmp_path / "LaserBall.ckp", mirror)
-    app._workspace_source_dir = MagicMock(return_value=generated)
+    app._workspace_display_dir = MagicMock(return_value=workspace)
     app._open_folder = MagicMock()
 
-    app._open_generated_workspace()
-    app._open_mirror_folder()
+    app._open_workspace()
 
-    assert app._open_folder.call_args_list == [
-        call(
-            generated,
-            title="Open Generated Workspace",
-            unavailable="Generated workspace is not available",
-        ),
-        call(
-            mirror,
-            title="Open Mirror Folder",
-            unavailable="Workspace mirror is not configured",
-        ),
-    ]
-
-
-def test_app_surfaces_workspace_sync_failure(monkeypatch, tmp_path: Path) -> None:
-    source = _write_workspace(tmp_path / "active")
-    config = ProjectWorkspaceConfig(tmp_path / "Example.ckp", tmp_path / "mirror")
-    monkeypatch.setattr(
-        "clicknick.services.workspace_mirror.sync_workspace_to_mirror",
-        MagicMock(side_effect=OSError("disk unavailable")),
-    )
-    showerror = MagicMock()
-    monkeypatch.setattr("clicknick.app.messagebox.showerror", showerror)
-
-    app = ClickNickApp.__new__(ClickNickApp)
-    app.root = MagicMock()
-    app._workspace_config = config
-    app._workspace_mirror_error = None
-    app._workspace_source_dir = MagicMock(return_value=source)
-    app._update_status = MagicMock()
-
-    app._sync_workspace_mirror()
-
-    assert app._workspace_mirror_error == "disk unavailable"
-    showerror.assert_called_once_with("Sync Workspace Mirror", "disk unavailable", parent=app.root)
-    app._update_status.assert_called_once_with(
-        "Workspace mirror sync failed: disk unavailable", "error"
+    app._open_folder.assert_called_once_with(
+        workspace,
+        title="Open Workspace",
+        unavailable="Workspace is not available",
     )

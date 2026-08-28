@@ -60,7 +60,7 @@ import argparse
 import sys
 
 from .client import send_command
-from .session import find_sessions
+from .session import find_sessions, workspace_for_port_file
 
 
 def main() -> None:
@@ -89,12 +89,14 @@ def main() -> None:
         elif len(sessions) == 1:
             label, _, port_file = sessions[0]
             print(f"Active session: {label}")
-            print(f"Project dir:    {port_file.parent / 'pyrung_project'}")
+            workspace = workspace_for_port_file(port_file)
+            print(f"Project dir:    {workspace or '(building)'}")
             print("Usage: clicknick-cli <command>  (e.g. clicknick-cli get ExampleTag)")
         else:
             print("Active sessions:")
             for label, _, port_file in sessions:
-                print(f"  {label}  ({port_file.parent / 'pyrung_project'})")
+                workspace = workspace_for_port_file(port_file)
+                print(f"  {label}  ({workspace or 'building'})")
             print("Usage: clicknick-cli -s <session> <command>")
         return
 

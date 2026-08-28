@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .dispatch import DispatchContext, dispatch
-from .session import LABEL_FILENAME, PORT_FILENAME
+from .session import LABEL_FILENAME, PORT_FILENAME, WORKSPACE_FILENAME
 
 if TYPE_CHECKING:
     import tkinter as tk
@@ -71,6 +71,7 @@ class LiveServer:
         get_session_dir: Callable[[], Path | None],
         get_session_label: Callable[[], str | None] | None = None,
         get_analysis: Callable[[], AnalysisService | None] | None = None,
+        get_workspace_dir: Callable[[], Path | None] | None = None,
         get_click_hwnd: Callable[[], int | None] | None = None,
         get_mdb_path: Callable[[], Path | None] | None = None,
         get_synced_pending: Callable[[], int] | None = None,
@@ -84,6 +85,7 @@ class LiveServer:
         self._get_session_dir = get_session_dir
         self._get_session_label = get_session_label
         self._get_analysis = get_analysis
+        self._get_workspace_dir = get_workspace_dir
         self._get_click_hwnd = get_click_hwnd
         self._get_mdb_path = get_mdb_path
         self._get_synced_pending = get_synced_pending
@@ -233,12 +235,27 @@ class LiveServer:
     def _unpublish(self) -> None:
         """Remove the port and label files from the directory they were last published to."""
         if self._published_dir is not None:
-            for fname in (PORT_FILENAME, LABEL_FILENAME):
+            for fname in (PORT_FILENAME, LABEL_FILENAME, WORKSPACE_FILENAME):
                 try:
                     (self._published_dir / fname).unlink(missing_ok=True)
                 except OSError:
                     pass
             self._published_dir = None
+
+    def _refresh_workspace_metadata(self) -> None:
+        """Advertise the active path without coupling it to port discovery."""
+        directory = self._published_dir
+        if directory is None:
+            return
+        workspace_file = directory / WORKSPACE_FILENAME
+        try:
+            workspace = self._get_workspace_dir() if self._get_workspace_dir else None
+            if workspace is None:
+                workspace_file.unlink(missing_ok=True)
+            else:
+                workspace_file.write_text(str(workspace), encoding="utf-8")
+        except OSError:
+            pass
 
     def _refresh_advertisement(self) -> None:
         """Republish the port file if the target session dir changed."""
@@ -260,6 +277,7 @@ class LiveServer:
                     self._published_dir = target
                 except OSError:
                     self._published_dir = None
+        self._refresh_workspace_metadata()
         if not self._stop.is_set():
             self._advertise_after_id = self._root.after(
                 _ADVERTISE_INTERVAL_MS, self._refresh_advertisement

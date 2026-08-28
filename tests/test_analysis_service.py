@@ -272,6 +272,21 @@ class TestAnalysisStatus:
         assert svc.status is AnalysisStatus.IDLE
         assert svc.error is None
 
+    def test_invalidated_inflight_build_cannot_publish_stale_result(self, monkeypatch, tmp_path):
+        svc = AnalysisService()
+
+        def _build_then_switch(*_args, **_kwargs):
+            svc.invalidate()
+            return MagicMock(), MagicMock(), tmp_path / "old-workspace"
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _build_then_switch)
+
+        svc.build(tmp_path, None, {})
+
+        assert svc.status is AnalysisStatus.IDLE
+        assert not svc.is_available
+        assert svc.project_dir is None
+
 
 class TestGeneration:
     """Bumped whenever the generated project folder starts being rewritten."""
@@ -420,6 +435,30 @@ def test_dirty_source_is_snapshotted_before_click_regeneration(tmp_path):
     assert (persist / "backup" / "src" / "plc" / "main.py").read_text(
         encoding="utf-8"
     ) == "unfinished work\n"
+
+
+def test_regeneration_preserves_workspace_owned_files(tmp_path):
+    persist = tmp_path / "Example Workspace"
+    (persist / ".git").mkdir(parents=True)
+    (persist / ".git" / "HEAD").write_text("ref: user\n", encoding="utf-8")
+    (persist / "tests").mkdir()
+    (persist / "tests" / "test_machine.py").write_text("user test\n", encoding="utf-8")
+    (persist / "README.md").write_text("user docs\n", encoding="utf-8")
+    (persist / "pyproject.toml").write_text("user config\n", encoding="utf-8")
+
+    staged = _staged_project(tmp_path / "staged", "generated\n")
+    (staged / "tests").mkdir()
+    (staged / "tests" / "test_machine.py").write_text("default test\n", encoding="utf-8")
+    (staged / "README.md").write_text("default docs\n", encoding="utf-8")
+    (staged / "pyproject.toml").write_text("default config\n", encoding="utf-8")
+
+    _publish_generated_project(staged, persist)
+
+    assert (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8") == ("generated\n")
+    assert (persist / ".git" / "HEAD").read_text(encoding="utf-8") == "ref: user\n"
+    assert (persist / "tests" / "test_machine.py").read_text(encoding="utf-8") == ("user test\n")
+    assert (persist / "README.md").read_text(encoding="utf-8") == "user docs\n"
+    assert (persist / "pyproject.toml").read_text(encoding="utf-8") == "user config\n"
 
 
 def test_clean_regeneration_does_not_replace_existing_recovery_snapshot(tmp_path):

@@ -40,12 +40,14 @@ class ConnectionSession:
         filename: str,
         store: AddressStore,
         *,
+        workspace_dir: Path | None = None,
         on_sync_status_changed: Callable[[int], None] | None = None,
     ) -> None:
         self.pid = pid
         self.hwnd = hwnd
         self.filename = filename
         self.store = store
+        self.workspace_dir = workspace_dir.resolve() if workspace_dir is not None else None
 
         self.analysis: AnalysisService | None = None
         self.scr_watcher: ScrWatcher | None = None
@@ -82,11 +84,11 @@ class ConnectionSession:
         store = self.store
         analysis = self.analysis
         assert analysis is not None
+        persist = self.workspace_dir or (scr_folder / "pyrung_project")
 
         def _rebuild() -> None:
             error: str | None = None
             try:
-                persist = scr_folder / "pyrung_project"
                 analysis.build(scr_folder, db_path, store.base_state, persist_dir=persist)
             except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"
@@ -98,6 +100,23 @@ class ConnectionSession:
                     root.after(0, lambda: on_complete(error is None, error))
 
         threading.Thread(target=_rebuild, daemon=True).start()
+
+    # -- Private helpers ---------------------------------------------------
+
+    def _close_console(self) -> None:
+        if self.console is not None:
+            try:
+                self.console._on_close()
+            except Exception:
+                pass
+            self.console = None
+
+    def use_workspace(self, workspace_dir: Path) -> None:
+        """Move future analysis builds to one configured durable workspace."""
+        self._close_console()
+        self.workspace_dir = workspace_dir.resolve()
+        if self.analysis is not None:
+            self.analysis.invalidate()
 
     def _on_scr_changed(self, scr_folder: Path, db_path: str) -> None:
         """Rebuild analysis when Scr*.tmp files change."""
@@ -173,16 +192,6 @@ class ConnectionSession:
         self.store.stop_file_monitoring()
         self.store = new_store
         self.store.start_file_monitoring(root)
-
-    # -- Private helpers ---------------------------------------------------
-
-    def _close_console(self) -> None:
-        if self.console is not None:
-            try:
-                self.console._on_close()
-            except Exception:
-                pass
-            self.console = None
 
     def _stop_watchers(self) -> None:
         if self.scr_watcher is not None:

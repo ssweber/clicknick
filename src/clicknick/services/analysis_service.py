@@ -87,21 +87,37 @@ def _build_tag_addr_key_map(
     return tag_to_key, key_to_tag
 
 
-_PRESERVE = {".venv", "__pycache__", "backup", "pyproject.toml", "tests", "uv.lock"}
+_GENERATED_DIR_NAMES = {"src", "csv", "csv_output"}
+_GENERATED_FILE_NAMES = {"nicknames.csv", "project_to_csv.py", "run.py"}
 _EXPORT_IGNORE = shutil.ignore_patterns(".venv", "__pycache__", "*.pyc")
 
 
 def _clean_generated(persist_dir: Path, *, preserve_source: bool = False) -> None:
-    """Remove generated files while preserving session-local workspace files."""
-    import shutil
-
+    """Remove only ClickNick-owned outputs from an active workspace."""
     for child in persist_dir.iterdir():
-        if child.name in _PRESERVE or (preserve_source and child.name == "src"):
+        managed = child.name in _GENERATED_DIR_NAMES or child.name in _GENERATED_FILE_NAMES
+        if not managed or (preserve_source and child.name == "src"):
             continue
         if child.is_dir():
             shutil.rmtree(child, ignore_errors=True)
         else:
             child.unlink(missing_ok=True)
+
+
+def _copy_missing(source: Path, destination: Path) -> None:
+    """Seed generated support files without replacing workspace-owned files."""
+    if source.is_dir():
+        for child in source.rglob("*"):
+            relative = child.relative_to(source)
+            target = destination / relative
+            if child.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+            elif not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(child, target)
+    elif not destination.exists():
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
 
 
 def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
@@ -128,10 +144,12 @@ def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
         if child.name == "src":
             continue
         destination = persist_dir / child.name
-        if child.is_dir():
+        if child.name in _GENERATED_DIR_NAMES:
             shutil.copytree(child, destination, dirs_exist_ok=True)
-        else:
+        elif child.name in _GENERATED_FILE_NAMES:
             shutil.copy2(child, destination)
+        else:
+            _copy_missing(child, destination)
 
     _replace_tree(staged_source, plc_source_dir(persist_dir))
     record_generated_plc_source(persist_dir)
@@ -220,6 +238,7 @@ class AnalysisService:
         self._error: str | None = None
         self._error_detail: str | None = None
         self._generation = 0
+        self._epoch = 0
 
     @property
     def is_available(self) -> bool:
@@ -255,6 +274,7 @@ class AnalysisService:
         Used for pre-flight bail-outs (no project database, no saved ladder
         files) so views can say *why* instead of waiting forever.
         """
+        self._epoch += 1
         self._status = AnalysisStatus.FAILED
         self._error = reason
         self._error_detail = detail
@@ -353,6 +373,8 @@ class AnalysisService:
         # Bumped first: _build_graph empties the project folder before writing
         # it, so from this moment anything reading that folder sees rubble.
         self._generation += 1
+        self._epoch += 1
+        epoch = self._epoch
         self._status = AnalysisStatus.BUILDING
         self._error = None
         self._error_detail = None
@@ -360,10 +382,13 @@ class AnalysisService:
             graph, program, project_dir = _build_graph(scr_folder, db_path, persist_dir)
             tag_to_key, key_to_tag = _build_tag_addr_key_map(base_state)
         except Exception as exc:
-            self._status = AnalysisStatus.FAILED
-            self._error = f"{type(exc).__name__}: {exc}"
-            self._error_detail = traceback.format_exc()
+            if self._epoch == epoch:
+                self._status = AnalysisStatus.FAILED
+                self._error = f"{type(exc).__name__}: {exc}"
+                self._error_detail = traceback.format_exc()
             raise
+        if self._epoch != epoch:
+            return
         self._result = AnalysisResult(
             graph=graph,
             program=program,
@@ -383,6 +408,7 @@ class AnalysisService:
         self._result.role_cache.clear()
 
     def invalidate(self) -> None:
+        self._epoch += 1
         self._result = None
         self._status = AnalysisStatus.IDLE
         self._error = None

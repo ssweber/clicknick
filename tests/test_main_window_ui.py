@@ -7,11 +7,7 @@ from unittest.mock import MagicMock, call
 import pytest
 
 from clicknick.app import ClickNickApp
-from clicknick.services.workspace_mirror import (
-    MirrorState,
-    MirrorStatus,
-    WorkspaceDirectoryInfo,
-)
+from clicknick.services.workspace_mirror import WorkspaceDirectoryInfo
 from clicknick.services.workspace_service import WorkspaceState, WorkspaceStatus
 
 
@@ -64,26 +60,19 @@ def test_autocomplete_options_menu_uses_existing_setting_variables() -> None:
     ]
 
 
-def test_workspace_options_menu_exposes_mirror_and_folder_actions() -> None:
+def test_workspace_options_menu_exposes_active_folder_and_setup() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
-    app._sync_workspace_mirror = MagicMock()
-    app._open_generated_workspace = MagicMock()
-    app._open_mirror_folder = MagicMock()
+    app._open_workspace = MagicMock()
     app._open_mirror_setup_window = MagicMock()
     menu = MagicMock()
 
     app._populate_workspace_options_menu(menu)
 
     assert menu.mock_calls == [
-        call.add_command(label="Sync Now", command=app._sync_workspace_mirror),
-        call.add_command(
-            label="Open Generated Workspace",
-            command=app._open_generated_workspace,
-        ),
-        call.add_command(label="Open Mirror Folder", command=app._open_mirror_folder),
+        call.add_command(label="Open Workspace", command=app._open_workspace),
         call.add_separator(),
         call.add_command(
-            label="View/Setup Mirror...",
+            label="View/Setup Workspace...",
             command=app._open_mirror_setup_window,
         ),
     ]
@@ -140,15 +129,14 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
         setattr(app, name, MagicMock())
     app._workspace_refresh_after_id = None
     app._workspace_config = object()
+    app._workspace_mirror_error = None
     app.connected_click_filename = "Example.ckp"
     app._get_workspace_status = MagicMock(
         return_value=WorkspaceStatus(WorkspaceState.CLEAN, "Clean")
     )
     mirror = tmp_path / "IMHERE Workspace"
     project = tmp_path / "Example.ckp"
-    app._get_workspace_mirror_status = MagicMock(
-        return_value=MirrorStatus(MirrorState.PAIRED, "Paired", path=mirror)
-    )
+    app._workspace_display_dir = MagicMock(return_value=mirror)
     app._get_workspace_directory_info = MagicMock(
         return_value=WorkspaceDirectoryInfo(
             generated_dir=tmp_path / "pyrung_project",
@@ -165,7 +153,7 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
     app.workspace_status_var.set.assert_called_once_with("Clean")
     app.workspace_group_title_var.set.assert_called_once_with("Workspace - Clean")
     app.project_name_var.set.assert_called_once_with("Example.ckp")
-    app.mirror_status_var.set.assert_called_once_with("Paired")
+    app.mirror_status_var.set.assert_called_once_with("Durable")
     app.mirror_path_var.set.assert_called_once_with(str(mirror))
     app.mirror_setup_status_var.set.assert_called_once_with("✓ Configured")
     app.plc_name_var.set.assert_called_once_with("IMHERE")
