@@ -59,7 +59,9 @@ class ClickNickApp:
         self.mirror_status_var = tk.StringVar(value="Not configured")
         self.mirror_detail_var = tk.StringVar(value="")
         self.mirror_path_var = tk.StringVar(value="Not configured")
-        self.mirror_setup_action_var = tk.StringVar(value="Set Up...")
+        self.mirror_setup_status_var = tk.StringVar(value="Not configured")
+        self.mirror_project_selection_var = tk.StringVar(value="")
+        self.mirror_location_selection_var = tk.StringVar(value="")
         self.generated_dir_var = tk.StringVar(value="Not available")
         self.source_project_var = tk.StringVar(value="Not located")
         self.plc_name_var = tk.StringVar(value="Not available")
@@ -253,7 +255,9 @@ class ClickNickApp:
         self.mirror_status_var.set(mirror.label)
         self.mirror_detail_var.set(mirror.detail or "")
         self.mirror_path_var.set(str(mirror.path) if mirror.path else "Not configured")
-        self.mirror_setup_action_var.set("Change..." if self._workspace_config else "Set Up...")
+        self.mirror_setup_status_var.set(
+            "✓ Configured" if self._workspace_config else "Not configured"
+        )
 
         info = self._get_workspace_directory_info()
         self.plc_name_var.set(self._current_plc_name() or "Not available")
@@ -715,50 +719,53 @@ class ClickNickApp:
         )
         self._refresh_workspace_ui()
 
-    def _setup_workspace_mirror(self) -> None:
-        """Pair the connected project with a durable one-way mirror directory."""
+    def _select_mirror_project_file(self) -> None:
+        """Choose the source CLICK project without changing mirror configuration."""
         filename = self.connected_click_filename
         if self._session is None or not filename:
             self._update_status("Connect to a CLICK project first", "error")
             return
 
         dialog_parent = getattr(self, "_mirror_setup_window", None) or self.root
-        configured_project = (
-            self._workspace_config.project_file if self._workspace_config is not None else None
+        current_value = self.mirror_project_selection_var.get().strip()
+        current_path = Path(current_value) if current_value else None
+        project_value = filedialog.askopenfilename(
+            title=f"Select the source CLICK project ({filename})",
+            initialdir=current_path.parent if current_path else None,
+            initialfile=filename,
+            filetypes=[("CLICK project", "*.ckp"), ("All files", "*.*")],
+            parent=dialog_parent,
         )
-        if (
-            configured_project is not None
-            and configured_project.is_file()
-            and configured_project.name.casefold() == filename.casefold()
-        ):
-            project_file = configured_project
-        else:
-            project_value = filedialog.askopenfilename(
-                title=f"Locate the source CLICK project ({filename})",
-                initialfile=filename,
-                filetypes=[("CLICK project", "*.ckp"), ("All files", "*.*")],
+        if not project_value:
+            return
+        project_file = Path(project_value)
+        if project_file.name.casefold() != filename.casefold():
+            messagebox.showerror(
+                "Setup Workspace Mirror",
+                f"Select the connected project named {filename}.",
                 parent=dialog_parent,
             )
-            if not project_value:
-                return
-            project_file = Path(project_value)
-            if project_file.name.casefold() != filename.casefold():
-                messagebox.showerror(
-                    "Setup Workspace Mirror",
-                    f"Select the connected project named {filename}.",
-                    parent=dialog_parent,
-                )
-                return
+            return
+        self.mirror_project_selection_var.set(str(project_file.resolve()))
 
-        workspace_folder_name = f"{project_file.stem} Workspace"
-        initial_location = (
-            self._workspace_config.mirror_path.parent
-            if self._workspace_config is not None
-            else project_file.parent
-        )
+    def _select_mirror_location(self) -> None:
+        """Choose a parent folder and preview the named mirror destination."""
+        project_value = self.mirror_project_selection_var.get().strip()
+        project_file = Path(project_value) if project_value else None
+        dialog_parent = getattr(self, "_mirror_setup_window", None) or self.root
+        if project_file is None or not project_file.is_file():
+            messagebox.showinfo(
+                "Workspace Mirror",
+                "Select the source CLICK project first.",
+                parent=dialog_parent,
+            )
+            return
+
+        current_value = self.mirror_location_selection_var.get().strip()
+        current_path = Path(current_value) if current_value else None
         selected_location = filedialog.askdirectory(
-            title=f"Choose where to create {workspace_folder_name}",
-            initialdir=initial_location,
+            title="Choose workspace location",
+            initialdir=current_path.parent if current_path else project_file.parent,
             mustexist=True,
             parent=dialog_parent,
         )
@@ -768,13 +775,46 @@ class ClickNickApp:
         from .services.workspace_mirror import mirror_path_for_selection
 
         mirror_path = mirror_path_for_selection(Path(selected_location), project_file)
+        self.mirror_location_selection_var.set(str(mirror_path))
+
+    def _apply_workspace_mirror_setup(self) -> None:
+        """Validate and persist the mirror choices currently shown in the popup."""
+        filename = self.connected_click_filename
+        dialog_parent = getattr(self, "_mirror_setup_window", None) or self.root
+        project_value = self.mirror_project_selection_var.get().strip()
+        mirror_value = self.mirror_location_selection_var.get().strip()
+        if self._session is None or not filename:
+            self._update_status("Connect to a CLICK project first", "error")
+            return
+        if not project_value or not mirror_value:
+            messagebox.showinfo(
+                "Workspace Mirror",
+                "Select both the source CLICK project and workspace location.",
+                parent=dialog_parent,
+            )
+            return
+
+        project_file = Path(project_value)
+        mirror_path = Path(mirror_value)
+        if not project_file.is_file() or project_file.name.casefold() != filename.casefold():
+            messagebox.showerror(
+                "Setup Workspace Mirror",
+                f"Select the connected project named {filename}.",
+                parent=dialog_parent,
+            )
+            return
+
         try:
             mirror_is_nonempty = mirror_path.exists() and any(mirror_path.iterdir())
         except OSError as exc:
             messagebox.showerror("Setup Workspace Mirror", str(exc), parent=dialog_parent)
             self._update_status(f"Workspace mirror setup failed: {exc}", "error")
             return
-        if mirror_is_nonempty:
+        current_mirror = self._workspace_config.mirror_path if self._workspace_config else None
+        same_mirror = (
+            current_mirror is not None and mirror_path.resolve() == current_mirror.resolve()
+        )
+        if mirror_is_nonempty and not same_mirror:
             confirmed = messagebox.askokcancel(
                 "Use Existing Workspace Folder?",
                 f"Use the existing folder?\n\n{mirror_path}\n\n"
@@ -812,6 +852,8 @@ class ClickNickApp:
 
         self._workspace_config = config
         self._workspace_mirror_error = None
+        self.mirror_project_selection_var.set(str(project_file.resolve()))
+        self.mirror_location_selection_var.set(str(mirror_path.resolve()))
         if source is not None:
             self._sync_workspace_mirror()
         else:
@@ -864,24 +906,53 @@ class ClickNickApp:
             window.destroy()
 
     def _create_mirror_setup_contents(self, parent) -> None:
-        """Create the deliberate view-first mirror setup surface."""
+        """Create an embedded, review-before-apply mirror setup form."""
         mirror = ttk.LabelFrame(parent, text="Workspace Mirror", padding=8)
-        self._details_value(mirror, "Status", self.mirror_status_var)
-        self._details_value(mirror, "Mirror workspace", self.mirror_path_var)
+        ttk.Label(
+            mirror,
+            textvariable=self.mirror_setup_status_var,
+            style="Connected.TLabel",
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
+        mirror.columnconfigure(1, weight=1)
+
+        ttk.Label(mirror, text="Source CLICK project").grid(row=1, column=0, sticky="w")
+        ttk.Entry(
+            mirror,
+            textvariable=self.mirror_project_selection_var,
+            state="readonly",
+        ).grid(row=1, column=1, sticky="ew", padx=8)
+        ttk.Button(
+            mirror,
+            text="Browse...",
+            command=self._select_mirror_project_file,
+        ).grid(row=1, column=2)
+
+        ttk.Label(mirror, text="Mirror workspace").grid(row=2, column=0, sticky="w", pady=(8, 0))
+        ttk.Entry(
+            mirror,
+            textvariable=self.mirror_location_selection_var,
+            state="readonly",
+        ).grid(row=2, column=1, sticky="ew", padx=8, pady=(8, 0))
+        ttk.Button(
+            mirror,
+            text="Browse...",
+            command=self._select_mirror_location,
+        ).grid(row=2, column=2, pady=(8, 0))
+
         ttk.Label(
             mirror,
             textvariable=self.mirror_detail_var,
             style="Error.TLabel",
             wraplength=440,
             justify=tk.LEFT,
-        ).pack(anchor=tk.W, fill=tk.X)
+        ).grid(row=3, column=0, columnspan=3, sticky="ew", pady=(8, 0))
         mirror.pack(fill=tk.X, pady=(0, 10))
 
         buttons = ttk.Frame(parent)
         ttk.Button(
             buttons,
-            textvariable=self.mirror_setup_action_var,
-            command=self._setup_workspace_mirror,
+            text="Apply",
+            command=self._apply_workspace_mirror_setup,
         ).pack(side=tk.LEFT)
         ttk.Button(buttons, text="Close", command=self._close_mirror_setup_window).pack(
             side=tk.RIGHT
@@ -898,10 +969,13 @@ class ClickNickApp:
             except tk.TclError:
                 self._mirror_setup_window = None
 
+        config = self._workspace_config
+        self.mirror_project_selection_var.set(str(config.project_file) if config else "")
+        self.mirror_location_selection_var.set(str(config.mirror_path) if config else "")
         window = tk.Toplevel(self.root)
         window.title("Workspace Mirror")
         window.transient(self.root)
-        window.minsize(520, 0)
+        window.minsize(640, 0)
         window.protocol("WM_DELETE_WINDOW", self._close_mirror_setup_window)
         contents = ttk.Frame(window, padding=12)
         self._create_mirror_setup_contents(contents)

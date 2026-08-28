@@ -98,7 +98,7 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
         "mirror_status_var",
         "mirror_detail_var",
         "mirror_path_var",
-        "mirror_setup_action_var",
+        "mirror_setup_status_var",
         "plc_name_var",
         "generated_dir_var",
         "source_project_var",
@@ -136,6 +136,6 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
     app.project_name_var.set.assert_called_once_with("Example.ckp")
     app.mirror_status_var.set.assert_called_once_with("Paired")
     app.mirror_path_var.set.assert_called_once_with(str(mirror))
-    app.mirror_setup_action_var.set.assert_called_once_with("Change...")
+    app.mirror_setup_status_var.set.assert_called_once_with("✓ Configured")
     app.plc_name_var.set.assert_called_once_with("IMHERE")
     app.source_project_var.set.assert_called_once_with(str(project))

@@ -283,8 +283,6 @@ def test_setup_creates_project_workspace_inside_selected_location(
     desktop.mkdir()
     save_config = MagicMock(return_value=project.with_suffix(".clicknick.toml"))
     remember = MagicMock()
-    monkeypatch.setattr("clicknick.app.filedialog.askopenfilename", lambda **_kwargs: str(project))
-    monkeypatch.setattr("clicknick.app.filedialog.askdirectory", lambda **_kwargs: str(desktop))
     monkeypatch.setattr(
         "clicknick.services.workspace_mirror.save_project_workspace_config", save_config
     )
@@ -300,10 +298,14 @@ def test_setup_creates_project_workspace_inside_selected_location(
     app._workspace_source_dir = MagicMock(return_value=None)
     app._update_status = MagicMock()
     app._refresh_workspace_ui = MagicMock()
-
-    app._setup_workspace_mirror()
-
+    app.mirror_project_selection_var = MagicMock()
+    app.mirror_project_selection_var.get.return_value = str(project)
+    app.mirror_location_selection_var = MagicMock()
     workspace = desktop / "LaserBall Workspace"
+    app.mirror_location_selection_var.get.return_value = str(workspace)
+
+    app._apply_workspace_mirror_setup()
+
     assert workspace.is_dir()
     config = save_config.call_args.args[0]
     assert config.project_file == project
@@ -313,7 +315,7 @@ def test_setup_creates_project_workspace_inside_selected_location(
     assert app._workspace_config == config
 
 
-def test_change_mirror_reuses_known_project_after_explicit_action(
+def test_browse_mirror_location_previews_named_workspace_without_applying(
     monkeypatch, tmp_path: Path
 ) -> None:
     project = tmp_path / "projects" / "LaserBall.ckp"
@@ -322,34 +324,22 @@ def test_change_mirror_reuses_known_project_after_explicit_action(
     old_mirror = tmp_path / "old" / "LaserBall Workspace"
     new_parent = tmp_path / "new"
     new_parent.mkdir()
-    ask_project = MagicMock()
     ask_location = MagicMock(return_value=str(new_parent))
-    save_config = MagicMock(return_value=project.with_suffix(".clicknick.toml"))
-    monkeypatch.setattr("clicknick.app.filedialog.askopenfilename", ask_project)
     monkeypatch.setattr("clicknick.app.filedialog.askdirectory", ask_location)
-    monkeypatch.setattr(
-        "clicknick.services.workspace_mirror.save_project_workspace_config", save_config
-    )
-    monkeypatch.setattr("clicknick.services.workspace_mirror.remember_project_sidecar", MagicMock())
 
     app = ClickNickApp.__new__(ClickNickApp)
     app.root = MagicMock()
-    app._session = object()
-    app.connected_click_filename = project.name
-    app._workspace_config = ProjectWorkspaceConfig(project, old_mirror)
-    app._workspace_mirror_error = None
-    app._current_plc_name = MagicMock(return_value="IMHERE")
-    app._workspace_source_dir = MagicMock(return_value=None)
-    app._update_status = MagicMock()
-    app._refresh_workspace_ui = MagicMock()
+    app.mirror_project_selection_var = MagicMock()
+    app.mirror_project_selection_var.get.return_value = str(project)
+    app.mirror_location_selection_var = MagicMock()
+    app.mirror_location_selection_var.get.return_value = str(old_mirror)
 
-    app._setup_workspace_mirror()
+    app._select_mirror_location()
 
-    ask_project.assert_not_called()
     assert ask_location.call_args.kwargs["initialdir"] == old_mirror.parent
-    config = save_config.call_args.args[0]
-    assert config.project_file == project
-    assert config.mirror_path == (new_parent / "LaserBall Workspace").resolve()
+    app.mirror_location_selection_var.set.assert_called_once_with(
+        str((new_parent / "LaserBall Workspace").resolve())
+    )
 
 
 def test_explicit_open_actions_do_not_conflate_generated_and_mirror_folders(
