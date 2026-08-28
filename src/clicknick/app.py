@@ -1036,9 +1036,9 @@ class ClickNickApp:
         ).pack(fill=tk.X)
 
         # The custom header includes a menubutton and is taller than the plain
-        # Edit/Test legends.  Reduce only its interior top inset so all six
-        # action buttons begin on the same rows.
-        workspace = ttk.LabelFrame(actions, padding=(10, 1, 10, 10))
+        # Edit/Test legends.  Remove its interior top inset so all six action
+        # buttons begin on the same rows.
+        workspace = ttk.LabelFrame(actions, padding=(10, 0, 10, 10))
         workspace_header = ttk.Frame(workspace)
         ttk.Label(workspace_header, textvariable=self.workspace_group_title_var).pack(side=tk.LEFT)
         workspace_options_button = ttk.Menubutton(workspace_header, text="Options")
@@ -1570,6 +1570,7 @@ class ClickNickApp:
 
         # Hide the window immediately
         self.root.withdraw()
+        self._main_window_shown = False
 
         # Initialize settings first
         self.settings = AppSettings()
@@ -1665,9 +1666,16 @@ class ClickNickApp:
         # Create UI components
         self._create_widgets()
 
-        # Show the window after everything is created
+    def _show_main_window(self) -> None:
+        """Reveal the fully initialized root at one stable initial size."""
+        if self._main_window_shown:
+            return
         self.root.update_idletasks()
+        width = self.root.winfo_reqwidth()
+        height = self.root.winfo_reqheight()
+        self.root.geometry(f"{width}x{height}")
         self.root.deiconify()
+        self._main_window_shown = True
 
     def _load_workspace_pairing(self) -> None:
         """Load the sole known sidecar matching the connected project name."""
@@ -1900,6 +1908,9 @@ class ClickNickApp:
 
         # Check for ODBC drivers - if missing, try CSV fallback
         if not self.nickname_manager.has_access_driver():
+            # Modal fallback/warning dialogs need a visible parent even during
+            # the otherwise-hidden startup connection pass.
+            self._show_main_window()
             fallback_csv = find_fallback_csv(hwnd)
             if fallback_csv:
                 default_name = f"{filename.replace('.ckp', '')}_Address.csv"
@@ -2185,6 +2196,7 @@ class ClickNickApp:
     def run(self):
         """Run the ClickNick Application"""
         self.refresh_click_instances()
+        self._show_main_window()
         self.root.mainloop()
 
 

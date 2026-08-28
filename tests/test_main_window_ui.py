@@ -89,6 +89,37 @@ def test_workspace_options_menu_exposes_mirror_and_folder_actions() -> None:
     ]
 
 
+def test_main_window_is_revealed_once_at_its_settled_requested_size() -> None:
+    app = ClickNickApp.__new__(ClickNickApp)
+    app.root = MagicMock()
+    app.root.winfo_reqwidth.return_value = 760
+    app.root.winfo_reqheight.return_value = 450
+    app._main_window_shown = False
+
+    app._show_main_window()
+    app._show_main_window()
+
+    app.root.update_idletasks.assert_called_once_with()
+    app.root.geometry.assert_called_once_with("760x450")
+    app.root.deiconify.assert_called_once_with()
+    assert app._main_window_shown is True
+
+
+def test_run_finishes_initial_refresh_before_revealing_main_window() -> None:
+    app = ClickNickApp.__new__(ClickNickApp)
+    app.root = MagicMock()
+    app.refresh_click_instances = MagicMock()
+    app._show_main_window = MagicMock()
+    lifecycle = MagicMock()
+    lifecycle.attach_mock(app.refresh_click_instances, "refresh")
+    lifecycle.attach_mock(app._show_main_window, "show")
+    lifecycle.attach_mock(app.root.mainloop, "mainloop")
+
+    app.run()
+
+    assert lifecycle.mock_calls == [call.refresh(), call.show(), call.mainloop()]
+
+
 def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> None:
     app = ClickNickApp.__new__(ClickNickApp)
     variable_names = (
