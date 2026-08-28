@@ -863,6 +863,9 @@ class ClickNickApp:
         ttk.Button(mirror, text="Setup Mirror...", command=self._setup_workspace_mirror).pack(
             anchor=tk.W, pady=(8, 4)
         )
+        ttk.Button(mirror, text="Sync Now", command=self._sync_workspace_mirror).pack(
+            anchor=tk.W, pady=(0, 4)
+        )
         ttk.Button(
             mirror,
             text="Open Workspace Folder",
@@ -876,18 +879,7 @@ class ClickNickApp:
         self._details_value(directories, "Source CLICK project", self.source_project_var)
         self._details_value(directories, "Last regenerated", self.last_regenerated_var)
         self._details_value(directories, "Last backup", self.last_backup_var)
-        directories.pack(fill=tk.X, pady=(0, 10))
-
-        tools = ttk.LabelFrame(parent, text="Tools", padding=8)
-        ttk.Button(tools, text="Sync Now", command=self._sync_workspace_mirror).pack(
-            side=tk.LEFT, padx=(0, 6)
-        )
-        ttk.Button(
-            tools,
-            text="Open in File Explorer",
-            command=self._open_workspace_folder,
-        ).pack(side=tk.LEFT)
-        tools.pack(fill=tk.X)
+        directories.pack(fill=tk.X)
 
     def _close_advanced_window(self) -> None:
         window = self._advanced_window
