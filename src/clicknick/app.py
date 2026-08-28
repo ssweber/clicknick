@@ -779,17 +779,19 @@ class ClickNickApp:
             )
             return
 
-        plc_name = self._current_plc_name()
-        workspace_name = plc_name or project_file.stem
-        mirror_value = filedialog.askdirectory(
-            title=f"Select or create {workspace_name} Workspace",
+        workspace_folder_name = f"{project_file.stem} Workspace"
+        selected_location = filedialog.askdirectory(
+            title=f"Choose where to create {workspace_folder_name}",
             initialdir=project_file.parent,
-            mustexist=False,
+            mustexist=True,
             parent=self.root,
         )
-        if not mirror_value:
+        if not selected_location:
             return
-        mirror_path = Path(mirror_value)
+
+        from .services.workspace_mirror import mirror_path_for_selection
+
+        mirror_path = mirror_path_for_selection(Path(selected_location), project_file)
         try:
             mirror_is_nonempty = mirror_path.exists() and any(mirror_path.iterdir())
         except OSError as exc:
@@ -799,6 +801,7 @@ class ClickNickApp:
         if mirror_is_nonempty:
             confirmed = messagebox.askokcancel(
                 "Use Existing Workspace Folder?",
+                f"Use the existing folder?\n\n{mirror_path}\n\n"
                 "ClickNick will update generated files under src/plc and csv, plus "
                 "its generation scripts and data. It will not delete unrelated files "
                 "or replace existing tests, documentation, or editor settings.",
@@ -817,12 +820,13 @@ class ClickNickApp:
         config = ProjectWorkspaceConfig(
             project_file=project_file,
             mirror_path=mirror_path,
-            plc_name=plc_name,
+            plc_name=self._current_plc_name(),
         )
         try:
             source = self._workspace_source_dir()
             if source is not None:
                 validate_mirror_destination(source, mirror_path)
+            mirror_path.mkdir(parents=True, exist_ok=True)
             sidecar = save_project_workspace_config(config)
             remember_project_sidecar(sidecar)
         except (OSError, ValueError) as exc:
@@ -838,22 +842,34 @@ class ClickNickApp:
             self._update_status(f"Workspace mirror paired: {mirror_path}", "connected")
             self._refresh_workspace_ui()
 
-    def _open_workspace_folder(self) -> None:
-        """Open the paired mirror, or the active generated workspace as fallback."""
-        path = (
-            self._workspace_config.mirror_path
-            if self._workspace_config is not None
-            else self._workspace_source_dir()
-        )
+    def _open_folder(self, path: Path | None, *, title: str, unavailable: str) -> None:
+        """Open one explicit workspace location in File Explorer."""
         if path is None or not path.is_dir():
-            self._update_status("Workspace folder is not available", "error")
+            self._update_status(unavailable, "error")
             return
         try:
             import os
 
             os.startfile(path)  # noqa: S606 - explicit user action on Windows
         except OSError as exc:
-            messagebox.showerror("Open Workspace Folder", str(exc), parent=self.root)
+            messagebox.showerror(title, str(exc), parent=self.root)
+
+    def _open_generated_workspace(self) -> None:
+        """Open the active generated workspace used by Rung Apply."""
+        self._open_folder(
+            self._workspace_source_dir(),
+            title="Open Generated Workspace",
+            unavailable="Generated workspace is not available",
+        )
+
+    def _open_mirror_folder(self) -> None:
+        """Open the configured durable mirror without implying it is active."""
+        path = self._workspace_config.mirror_path if self._workspace_config else None
+        self._open_folder(
+            path,
+            title="Open Mirror Folder",
+            unavailable="Workspace mirror is not configured",
+        )
 
     def _create_advanced_contents(self, parent) -> None:
         """Create global preferences and Workspace details in Advanced."""
@@ -895,8 +911,13 @@ class ClickNickApp:
         )
         ttk.Button(
             mirror,
-            text="Open Workspace Folder",
-            command=self._open_workspace_folder,
+            text="Open Generated Workspace",
+            command=self._open_generated_workspace,
+        ).pack(anchor=tk.W, pady=(0, 4))
+        ttk.Button(
+            mirror,
+            text="Open Mirror Folder",
+            command=self._open_mirror_folder,
         ).pack(anchor=tk.W)
         mirror.pack(fill=tk.X, pady=(0, 10))
 
@@ -1404,8 +1425,9 @@ class ClickNickApp:
         workspace_menu.add_command(label="Setup Mirror...", command=self._setup_workspace_mirror)
         workspace_menu.add_command(label="Sync Now", command=self._sync_workspace_mirror)
         workspace_menu.add_command(
-            label="Open Workspace Folder", command=self._open_workspace_folder
+            label="Open Generated Workspace", command=self._open_generated_workspace
         )
+        workspace_menu.add_command(label="Open Mirror Folder", command=self._open_mirror_folder)
         workspace_menu.add_separator()
         workspace_menu.add_command(label="Export Workspace...", command=self._export_pyrung_project)
 

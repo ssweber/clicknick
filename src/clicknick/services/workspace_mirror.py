@@ -89,6 +89,15 @@ def _normalized(path: Path) -> Path:
     return Path(os.path.normpath(path.resolve(strict=False)))
 
 
+def mirror_path_for_selection(selection: Path, project_file: Path) -> Path:
+    """Resolve a folder-picker selection to ``<project> Workspace``."""
+    selection = _normalized(selection)
+    folder_name = f"{Path(project_file).stem} Workspace"
+    if selection.name.casefold() == folder_name.casefold():
+        return selection
+    return selection / folder_name
+
+
 def _stored_mirror_path(project_file: Path, mirror_path: Path) -> str:
     project_parent = _normalized(project_file).parent
     mirror_path = _normalized(mirror_path)

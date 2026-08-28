@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -17,6 +17,7 @@ from clicknick.services.workspace_mirror import (
     get_mirror_status,
     get_workspace_directory_info,
     load_project_workspace_config,
+    mirror_path_for_selection,
     read_plc_name,
     record_successful_sync,
     remember_project_sidecar,
@@ -63,6 +64,22 @@ def test_read_plc_name_from_click_project_ini(tmp_path: Path) -> None:
 
     assert read_plc_name(project_ini) == "IMHERE"
     assert read_plc_name(tmp_path / "missing.ini") is None
+
+
+def test_mirror_selection_creates_project_named_child_directory(tmp_path: Path) -> None:
+    project = tmp_path / "projects" / "LaserBall.ckp"
+    desktop = tmp_path / "Desktop"
+
+    assert (
+        mirror_path_for_selection(desktop, project) == (desktop / "LaserBall Workspace").resolve()
+    )
+
+
+def test_mirror_selection_reuses_matching_workspace_directory(tmp_path: Path) -> None:
+    project = tmp_path / "LaserBall.ckp"
+    workspace = tmp_path / "laserball workspace"
+
+    assert mirror_path_for_selection(workspace, project) == workspace.resolve()
 
 
 def test_locator_finds_matching_project_without_duplicating_config(tmp_path: Path) -> None:
@@ -254,6 +271,73 @@ def test_app_syncs_workspace_and_persists_success(monkeypatch, tmp_path: Path) -
     app._update_status.assert_called_once_with(
         f"Workspace mirror synced (6 files): {config.mirror_path}", "connected"
     )
+
+
+def test_setup_creates_project_workspace_inside_selected_location(
+    monkeypatch, tmp_path: Path
+) -> None:
+    project = tmp_path / "projects" / "LaserBall.ckp"
+    project.parent.mkdir()
+    project.write_text("click", encoding="utf-8")
+    desktop = tmp_path / "Desktop"
+    desktop.mkdir()
+    save_config = MagicMock(return_value=project.with_suffix(".clicknick.toml"))
+    remember = MagicMock()
+    monkeypatch.setattr("clicknick.app.filedialog.askopenfilename", lambda **_kwargs: str(project))
+    monkeypatch.setattr("clicknick.app.filedialog.askdirectory", lambda **_kwargs: str(desktop))
+    monkeypatch.setattr(
+        "clicknick.services.workspace_mirror.save_project_workspace_config", save_config
+    )
+    monkeypatch.setattr("clicknick.services.workspace_mirror.remember_project_sidecar", remember)
+
+    app = ClickNickApp.__new__(ClickNickApp)
+    app.root = MagicMock()
+    app._session = object()
+    app.connected_click_filename = project.name
+    app._workspace_config = None
+    app._workspace_mirror_error = None
+    app._current_plc_name = MagicMock(return_value="IMHERE")
+    app._workspace_source_dir = MagicMock(return_value=None)
+    app._update_status = MagicMock()
+    app._refresh_workspace_ui = MagicMock()
+
+    app._setup_workspace_mirror()
+
+    workspace = desktop / "LaserBall Workspace"
+    assert workspace.is_dir()
+    config = save_config.call_args.args[0]
+    assert config.project_file == project
+    assert config.mirror_path == workspace.resolve()
+    assert config.plc_name == "IMHERE"
+    remember.assert_called_once_with(project.with_suffix(".clicknick.toml"))
+    assert app._workspace_config == config
+
+
+def test_explicit_open_actions_do_not_conflate_generated_and_mirror_folders(
+    tmp_path: Path,
+) -> None:
+    generated = tmp_path / "active"
+    mirror = tmp_path / "LaserBall Workspace"
+    app = ClickNickApp.__new__(ClickNickApp)
+    app._workspace_config = ProjectWorkspaceConfig(tmp_path / "LaserBall.ckp", mirror)
+    app._workspace_source_dir = MagicMock(return_value=generated)
+    app._open_folder = MagicMock()
+
+    app._open_generated_workspace()
+    app._open_mirror_folder()
+
+    assert app._open_folder.call_args_list == [
+        call(
+            generated,
+            title="Open Generated Workspace",
+            unavailable="Generated workspace is not available",
+        ),
+        call(
+            mirror,
+            title="Open Mirror Folder",
+            unavailable="Workspace mirror is not configured",
+        ),
+    ]
 
 
 def test_app_surfaces_workspace_sync_failure(monkeypatch, tmp_path: Path) -> None:
