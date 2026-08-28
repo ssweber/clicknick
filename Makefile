@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := default
 
-.PHONY: default install lint test upgrade build clean
+.PHONY: default install lint test upgrade build action-icons clean
 
 default: install lint test
 
@@ -23,6 +23,9 @@ upgrade:
 
 build:
 	uv build
+
+action-icons:
+	powershell -NoProfile -ExecutionPolicy Bypass -File devtools/generate_action_icons.ps1
 
 # Improved Windows detection
 ifeq ($(OS),Windows_NT)

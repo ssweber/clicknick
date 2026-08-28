@@ -8,6 +8,7 @@ from .data.address_store import AddressStore
 from .data.nickname_manager import NicknameManager
 from .detection.window_detector import ClickWindowDetector
 from .detection.window_mapping import CLICK_PLC_WINDOW_MAPPING
+from .resources.action_icons import ActionIconCache
 from .resources.icon_data import ICON_PNG_BASE64
 from .utils.filters import (  # preserve lru_cache
     ContainsFilter,
@@ -650,25 +651,51 @@ class ClickNickApp:
             actions.columnconfigure(column, weight=1, uniform="main-actions")
 
         edit = ttk.LabelFrame(actions, text="Edit", padding=10)
-        ttk.Button(edit, text="Address Editor", command=self._open_address_editor).pack(
-            fill=tk.X, pady=(0, 8)
-        )
-        ttk.Button(edit, text="Data View", command=self._open_dataview_editor).pack(fill=tk.X)
+        ttk.Button(
+            edit,
+            text="Address Editor",
+            image=self._action_icons.get("address_editor"),
+            compound=tk.LEFT,
+            command=self._open_address_editor,
+        ).pack(fill=tk.X, pady=(0, 8))
+        ttk.Button(
+            edit,
+            text="Data View",
+            image=self._action_icons.get("data_view"),
+            compound=tk.LEFT,
+            command=self._open_dataview_editor,
+        ).pack(fill=tk.X)
 
         test = ttk.LabelFrame(actions, text="Test", padding=10)
-        ttk.Button(test, text="Check Program", command=self._analyze_program).pack(
-            fill=tk.X, pady=(0, 8)
-        )
-        ttk.Button(test, text="Console", command=self._open_console).pack(fill=tk.X)
+        ttk.Button(
+            test,
+            text="Check Program",
+            image=self._action_icons.get("check_program"),
+            compound=tk.LEFT,
+            command=self._analyze_program,
+        ).pack(fill=tk.X, pady=(0, 8))
+        ttk.Button(
+            test,
+            text="Console",
+            image=self._action_icons.get("console"),
+            compound=tk.LEFT,
+            command=self._open_console,
+        ).pack(fill=tk.X)
 
         workspace = ttk.LabelFrame(actions, text="Workspace - Unavailable", padding=10)
         self.workspace_group = workspace
-        ttk.Button(workspace, text="Rung Apply", command=self._workspace_rung_apply).pack(
-            fill=tk.X, pady=(0, 8)
-        )
+        ttk.Button(
+            workspace,
+            text="Rung Apply",
+            image=self._action_icons.get("rung_apply"),
+            compound=tk.LEFT,
+            command=self._workspace_rung_apply,
+        ).pack(fill=tk.X, pady=(0, 8))
         ttk.Button(
             workspace,
             text="Reload from CLICK",
+            image=self._action_icons.get("reload_from_click"),
+            compound=tk.LEFT,
             command=self._workspace_reload_from_click,
         ).pack(fill=tk.X)
 
@@ -1556,6 +1583,9 @@ class ClickNickApp:
 
         # Setup UI styles
         self._setup_styles()
+
+        # Tk images must be retained for as long as their buttons exist.
+        self._action_icons = ActionIconCache(self.root)
 
         # Create UI components
         self._create_widgets()
