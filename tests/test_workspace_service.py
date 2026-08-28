@@ -107,7 +107,7 @@ def test_connection_session_reload_reports_unsaved_click_project(tmp_path, monke
     )
 
 
-def test_main_window_rung_apply_uses_consolidated_workflow() -> None:
+def test_main_window_preview_changes_uses_consolidated_workflow() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
     app.root = MagicMock()
     app._update_status = MagicMock()
@@ -123,7 +123,7 @@ def test_main_window_rung_apply_uses_consolidated_workflow() -> None:
     app._workspace_rung_apply()
 
     app._live_server.dispatch_now.assert_called_once_with("rung apply")
-    app._update_status.assert_called_once_with("Rung Apply: reviewing 4 changed rungs", "connected")
+    app._update_status.assert_called_once_with("Previewing 4 changed rungs", "connected")
 
 
 def test_successful_main_window_reload_clears_changed_rung_count() -> None:

@@ -81,6 +81,7 @@ class ClickNickApp:
         # Configure common styles
         style.configure("TButton", padding=6)
         style.configure("TLabel", padding=2)
+        style.configure("Header.TMenubutton", padding=(2, 0))
 
         # Status label styles
         bold_font = (self._default_family, self._default_size, "bold")  # Only add 'bold'
@@ -385,7 +386,7 @@ class ClickNickApp:
             self._workspace_refresh_after_id = self.root.after(250, self._poll_workspace_ui)
 
     def _workspace_rung_apply(self) -> None:
-        """Run the consolidated reviewed proposal flow for workspace rungs."""
+        """Preview workspace changes through the reviewed proposal flow."""
         if self._session is None or self._live_server is None:
             self._update_status("Connect to a CLICK project first", "error")
             return
@@ -393,15 +394,15 @@ class ClickNickApp:
         try:
             self._live_server.dispatch_now("rung apply")
         except Exception as exc:
-            messagebox.showerror("Rung Apply", str(exc), parent=self.root)
-            self._update_status(f"Rung Apply failed: {exc}", "error")
+            messagebox.showerror("Preview Changes", str(exc), parent=self.root)
+            self._update_status(f"Preview failed: {exc}", "error")
             return
 
         status = self._get_workspace_status()
         if status.changed_rungs:
-            self._update_status(f"Rung Apply: reviewing {status.label}", "connected")
+            self._update_status(f"Previewing {status.label}", "connected")
         else:
-            self._update_status("Workspace clean; no changed rungs to apply", "connected")
+            self._update_status("Workspace clean; no changed rungs to preview", "connected")
 
     def _workspace_reload_finished(self, success: bool, error: str | None) -> None:
         """Report completion of an explicit CLICK-to-workspace reload."""
@@ -873,7 +874,7 @@ class ClickNickApp:
             messagebox.showerror(title, str(exc), parent=self.root)
 
     def _open_generated_workspace(self) -> None:
-        """Open the active generated workspace used by Rung Apply."""
+        """Open the active generated workspace used by Preview Changes."""
         self._open_folder(
             self._workspace_source_dir(),
             title="Open Generated Workspace",
@@ -1035,13 +1036,14 @@ class ClickNickApp:
             command=self._open_console,
         ).pack(fill=tk.X)
 
-        # The custom header includes a menubutton and is taller than the plain
-        # Edit/Test legends.  Remove its interior top inset so all six action
-        # buttons begin on the same rows.
-        workspace = ttk.LabelFrame(actions, padding=(10, 0, 10, 10))
+        workspace = ttk.LabelFrame(actions, padding=10)
         workspace_header = ttk.Frame(workspace)
         ttk.Label(workspace_header, textvariable=self.workspace_group_title_var).pack(side=tk.LEFT)
-        workspace_options_button = ttk.Menubutton(workspace_header, text="Options")
+        workspace_options_button = ttk.Menubutton(
+            workspace_header,
+            text="Options",
+            style="Header.TMenubutton",
+        )
         workspace_options_menu = tk.Menu(workspace_options_button, tearoff=0)
         self._populate_workspace_options_menu(workspace_options_menu)
         workspace_options_button.configure(menu=workspace_options_menu)
@@ -1050,7 +1052,7 @@ class ClickNickApp:
         self.workspace_options_menu = workspace_options_menu
         ttk.Button(
             workspace,
-            text="Rung Apply",
+            text="Preview Changes",
             image=self._action_icons.get("rung_apply"),
             compound=tk.LEFT,
             command=self._workspace_rung_apply,
@@ -1471,7 +1473,7 @@ class ClickNickApp:
         # refresh; these commands own the stable behavior in the meantime.
         workspace_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Workspace", menu=workspace_menu)
-        workspace_menu.add_command(label="Rung Apply", command=self._workspace_rung_apply)
+        workspace_menu.add_command(label="Preview Changes", command=self._workspace_rung_apply)
         workspace_menu.add_command(
             label="Reload from CLICK...", command=self._workspace_reload_from_click
         )
