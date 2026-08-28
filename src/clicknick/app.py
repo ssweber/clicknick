@@ -81,7 +81,6 @@ class ClickNickApp:
         # Configure common styles
         style.configure("TButton", padding=6)
         style.configure("TLabel", padding=2)
-        style.configure("Header.TMenubutton", padding=(2, 0))
 
         # Status label styles
         bold_font = (self._default_family, self._default_size, "bold")  # Only add 'bold'
@@ -1004,7 +1003,12 @@ class ClickNickApp:
         for column in range(3):
             actions.columnconfigure(column, weight=1, uniform="main-actions")
 
-        edit = ttk.LabelFrame(actions, text="Edit", padding=10)
+        edit = ttk.LabelFrame(actions, padding=10)
+        edit_header = ttk.Frame(edit)
+        ttk.Label(edit_header, text="Edit").pack(side=tk.LEFT)
+        edit_header_spacer = ttk.Frame(edit_header, width=1, height=1)
+        edit_header_spacer.pack(side=tk.LEFT)
+        edit.configure(labelwidget=edit_header)
         ttk.Button(
             edit,
             text="Address Editor",
@@ -1020,7 +1024,12 @@ class ClickNickApp:
             command=self._open_dataview_editor,
         ).pack(fill=tk.X)
 
-        test = ttk.LabelFrame(actions, text="Test", padding=10)
+        test = ttk.LabelFrame(actions, padding=10)
+        test_header = ttk.Frame(test)
+        ttk.Label(test_header, text="Test").pack(side=tk.LEFT)
+        test_header_spacer = ttk.Frame(test_header, width=1, height=1)
+        test_header_spacer.pack(side=tk.LEFT)
+        test.configure(labelwidget=test_header)
         ttk.Button(
             test,
             text="Check Program",
@@ -1039,17 +1048,21 @@ class ClickNickApp:
         workspace = ttk.LabelFrame(actions, padding=10)
         workspace_header = ttk.Frame(workspace)
         ttk.Label(workspace_header, textvariable=self.workspace_group_title_var).pack(side=tk.LEFT)
-        workspace_options_button = ttk.Menubutton(
-            workspace_header,
-            text="Options",
-            style="Header.TMenubutton",
-        )
+        workspace_options_button = ttk.Menubutton(workspace_header, text="Options")
         workspace_options_menu = tk.Menu(workspace_options_button, tearoff=0)
         self._populate_workspace_options_menu(workspace_options_menu)
         workspace_options_button.configure(menu=workspace_options_menu)
         workspace_options_button.pack(side=tk.LEFT, padx=(8, 0))
         workspace.configure(labelwidget=workspace_header)
         self.workspace_options_menu = workspace_options_menu
+
+        # Give all three legends the same theme-derived height.  The invisible
+        # spacers make Edit/Test use the Workspace menubutton's height while
+        # leaving their visible labels centered on the same baseline.
+        workspace_options_button.update_idletasks()
+        header_height = workspace_options_button.winfo_reqheight()
+        edit_header_spacer.configure(height=header_height)
+        test_header_spacer.configure(height=header_height)
         ttk.Button(
             workspace,
             text="Preview Changes",
