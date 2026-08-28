@@ -1035,7 +1035,10 @@ class ClickNickApp:
             command=self._open_console,
         ).pack(fill=tk.X)
 
-        workspace = ttk.LabelFrame(actions, padding=10)
+        # The custom header includes a menubutton and is taller than the plain
+        # Edit/Test legends.  Reduce only its interior top inset so all six
+        # action buttons begin on the same rows.
+        workspace = ttk.LabelFrame(actions, padding=(10, 1, 10, 10))
         workspace_header = ttk.Frame(workspace)
         ttk.Label(workspace_header, textvariable=self.workspace_group_title_var).pack(side=tk.LEFT)
         workspace_options_button = ttk.Menubutton(workspace_header, text="Options")
