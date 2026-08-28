@@ -91,6 +91,7 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
     variable_names = (
         "workspace_status_var",
         "workspace_group_title_var",
+        "project_name_var",
         "mirror_status_var",
         "mirror_detail_var",
         "mirror_path_var",
@@ -103,6 +104,7 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
     for name in variable_names:
         setattr(app, name, MagicMock())
     app._workspace_refresh_after_id = None
+    app.connected_click_filename = "Example.ckp"
     app._get_workspace_status = MagicMock(
         return_value=WorkspaceStatus(WorkspaceState.CLEAN, "Clean")
     )
@@ -126,6 +128,7 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
 
     app.workspace_status_var.set.assert_called_once_with("Clean")
     app.workspace_group_title_var.set.assert_called_once_with("Workspace - Clean")
+    app.project_name_var.set.assert_called_once_with("Example.ckp")
     app.mirror_status_var.set.assert_called_once_with("Paired")
     app.mirror_path_var.set.assert_called_once_with(str(mirror))
     app.plc_name_var.set.assert_called_once_with("IMHERE")

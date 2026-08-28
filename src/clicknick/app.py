@@ -55,6 +55,7 @@ class ClickNickApp:
         self.match_mode_index_var = tk.DoubleVar(value=float(match_index))
         self.workspace_status_var = tk.StringVar(value="Unavailable")
         self.workspace_group_title_var = tk.StringVar(value="Workspace - Unavailable")
+        self.project_name_var = tk.StringVar(value="Not connected")
         self.mirror_status_var = tk.StringVar(value="Not configured")
         self.mirror_detail_var = tk.StringVar(value="")
         self.mirror_path_var = tk.StringVar(value="Not configured")
@@ -67,7 +68,7 @@ class ClickNickApp:
         self.using_database = False  # Flag to track if database is being used
         self._odbc_warning_shown = False
         self._workspace_refresh_after_id = None
-        self._advanced_window = None
+        self._project_info_window = None
 
     def _setup_styles(self):
         """Configure ttk styles for the application."""
@@ -234,6 +235,7 @@ class ClickNickApp:
         workspace = self._get_workspace_status()
         self.workspace_status_var.set(workspace.label)
         self.workspace_group_title_var.set(f"Workspace - {workspace.label}")
+        self.project_name_var.set(self.connected_click_filename or "Not connected")
 
         if workspace.state is WorkspaceState.PREPARING:
             if self._workspace_refresh_after_id is None:
@@ -915,54 +917,58 @@ class ClickNickApp:
             justify=tk.LEFT,
         ).pack(anchor=tk.W, fill=tk.X)
 
-    def _create_advanced_contents(self, parent) -> None:
-        """Create Workspace and directory details in Advanced."""
+    def _close_project_info_window(self) -> None:
+        window = self._project_info_window
+        self._project_info_window = None
+        if window is not None:
+            window.destroy()
+
+    def _create_project_info_contents(self, parent) -> None:
+        """Create the read-only CLICK project and Workspace summary."""
+        project = ttk.LabelFrame(parent, text="CLICK Project", padding=8)
+        self._details_value(project, "Project", self.project_name_var)
+        self._details_value(project, "PLC name", self.plc_name_var)
+        self._details_value(project, "Source project file", self.source_project_var)
+        project.pack(fill=tk.X, pady=(0, 10))
+
         mirror = ttk.LabelFrame(parent, text="Workspace / Mirror", padding=8)
-        self._details_value(mirror, "Status", self.mirror_status_var)
-        self._details_value(mirror, "Mirror path", self.mirror_path_var)
-        self.mirror_detail_label = ttk.Label(
+        self._details_value(mirror, "Workspace status", self.workspace_status_var)
+        self._details_value(mirror, "Generated workspace", self.generated_dir_var)
+        self._details_value(mirror, "Mirror status", self.mirror_status_var)
+        self._details_value(mirror, "Mirror workspace", self.mirror_path_var)
+        mirror_detail_label = ttk.Label(
             mirror,
             textvariable=self.mirror_detail_var,
             style="Error.TLabel",
             wraplength=440,
             justify=tk.LEFT,
         )
-        self.mirror_detail_label.pack(anchor=tk.W, fill=tk.X)
+        mirror_detail_label.pack(anchor=tk.W, fill=tk.X)
+        self._details_value(mirror, "Last regenerated", self.last_regenerated_var)
+        self._details_value(mirror, "Last backup", self.last_backup_var)
         mirror.pack(fill=tk.X, pady=(0, 10))
 
-        directories = ttk.LabelFrame(parent, text="Directory Information", padding=8)
-        self._details_value(directories, "PLC name", self.plc_name_var)
-        self._details_value(directories, "Generated workspace", self.generated_dir_var)
-        self._details_value(directories, "Source CLICK project", self.source_project_var)
-        self._details_value(directories, "Last regenerated", self.last_regenerated_var)
-        self._details_value(directories, "Last backup", self.last_backup_var)
-        directories.pack(fill=tk.X)
+        ttk.Button(parent, text="Close", command=self._close_project_info_window).pack(anchor=tk.E)
 
-    def _close_advanced_window(self) -> None:
-        window = self._advanced_window
-        self._advanced_window = None
-        if window is not None:
-            window.destroy()
-
-    def _open_advanced_window(self) -> None:
-        """Open or focus the global Advanced settings/details window."""
-        if self._advanced_window is not None:
+    def _open_project_info_window(self) -> None:
+        """Open or focus the current CLICK project's information window."""
+        if self._project_info_window is not None:
             try:
-                self._advanced_window.lift()
-                self._advanced_window.focus_force()
+                self._project_info_window.lift()
+                self._project_info_window.focus_force()
                 return
             except tk.TclError:
-                self._advanced_window = None
+                self._project_info_window = None
 
         window = tk.Toplevel(self.root)
-        window.title("ClickNick Advanced")
+        window.title("About Click Project")
         window.transient(self.root)
         window.minsize(520, 0)
-        window.protocol("WM_DELETE_WINDOW", self._close_advanced_window)
+        window.protocol("WM_DELETE_WINDOW", self._close_project_info_window)
         contents = ttk.Frame(window, padding=12)
-        self._create_advanced_contents(contents)
+        self._create_project_info_contents(contents)
         contents.pack(fill=tk.BOTH, expand=True)
-        self._advanced_window = window
+        self._project_info_window = window
         self._refresh_workspace_ui()
 
     def _create_about_dialog(self):
@@ -1454,6 +1460,10 @@ class ClickNickApp:
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(
+            label="About Click Project...",
+            command=self._open_project_info_window,
+        )
         help_menu.add_command(label="About ClickNick...", command=self._create_about_dialog)
         help_menu.add_separator()
         help_menu.add_command(
@@ -1476,13 +1486,6 @@ class ClickNickApp:
         self._create_click_instances_section(primary)
         self._create_options_section(primary)
         self._create_action_section(primary)
-        advanced_row = ttk.Frame(primary)
-        ttk.Button(
-            advanced_row,
-            text="Advanced...",
-            command=self._open_advanced_window,
-        ).pack(side=tk.RIGHT)
-        advanced_row.pack(fill=tk.X, pady=(10, 0))
 
         main_frame.pack(fill=tk.BOTH, expand=True)
         self._refresh_workspace_ui()
