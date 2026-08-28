@@ -18,7 +18,10 @@ def test_all_action_icon_resources_are_packaged_pngs() -> None:
         "reload_from_click",
     }
     for filename in ACTION_ICON_FILES.values():
-        assert resources.joinpath(filename).read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+        png = resources.joinpath(filename).read_bytes()
+        assert png.startswith(b"\x89PNG\r\n\x1a\n")
+        assert int.from_bytes(png[16:20]) == 24
+        assert int.from_bytes(png[20:24]) == 24
 
 
 def test_action_icon_cache_loads_each_image_only_once() -> None:

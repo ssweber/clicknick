@@ -37,7 +37,17 @@ function Convert-Point([float] $x, [float] $y) {
 function Save-Icon($bitmap, $graphics, [string] $name) {
     $graphics.Dispose()
     $destination = Join-Path $outputDirectory "$name.png"
-    $bitmap.Save($destination, [System.Drawing.Imaging.ImageFormat]::Png)
+    $icon = [System.Drawing.Bitmap]::new($size, $size)
+    $icon.SetResolution(96, 96)
+    $iconGraphics = [System.Drawing.Graphics]::FromImage($icon)
+    $iconGraphics.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+    $iconGraphics.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+    $iconGraphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $iconGraphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $iconGraphics.DrawImage($bitmap, 0, 0, $size, $size)
+    $iconGraphics.Dispose()
+    $icon.Save($destination, [System.Drawing.Imaging.ImageFormat]::Png)
+    $icon.Dispose()
     $bitmap.Dispose()
     Write-Host "Generated $destination"
 }
@@ -132,15 +142,42 @@ $graphics.DrawLine($pen, (Convert-Point 19 20), (Convert-Point 19 15))
 $pen.Dispose()
 Save-Icon $bitmap $graphics "rung_apply"
 
-# Reload from CLICK: clockwise refresh arrows.
+# Reload from CLICK: two conventional clockwise refresh arcs.
 $canvas = New-IconCanvas
 $bitmap = $canvas[0]
 $graphics = $canvas[1]
 $pen = New-IconPen $orange 2.1
-$graphics.DrawArc($pen, 4 * $scale, 4 * $scale, 16 * $scale, 16 * $scale, 205, 220)
-$graphics.DrawLine($pen, (Convert-Point 18.5 4.5), (Convert-Point 19.4 9.5))
-$graphics.DrawLine($pen, (Convert-Point 19.4 9.5), (Convert-Point 14.5 8.5))
-$graphics.DrawLine($pen, (Convert-Point 5.5 19.5), (Convert-Point 4.6 14.5))
-$graphics.DrawLine($pen, (Convert-Point 4.6 14.5), (Convert-Point 9.5 15.5))
+$graphics.DrawBezier(
+    $pen,
+    (Convert-Point 20.5 11),
+    (Convert-Point 20 5.5),
+    (Convert-Point 14 1.5),
+    (Convert-Point 8 4.5)
+)
+$graphics.DrawBezier(
+    $pen,
+    (Convert-Point 8 4.5),
+    (Convert-Point 6 5.3),
+    (Convert-Point 4.7 6.5),
+    (Convert-Point 4 8.5)
+)
+$graphics.DrawLine($pen, (Convert-Point 4 8.5), (Convert-Point 4 3.5))
+$graphics.DrawLine($pen, (Convert-Point 4 8.5), (Convert-Point 9 8.5))
+$graphics.DrawBezier(
+    $pen,
+    (Convert-Point 3.5 13),
+    (Convert-Point 4 18.5),
+    (Convert-Point 10 22.5),
+    (Convert-Point 16 19.5)
+)
+$graphics.DrawBezier(
+    $pen,
+    (Convert-Point 16 19.5),
+    (Convert-Point 18 18.7),
+    (Convert-Point 19.3 17.5),
+    (Convert-Point 20 15.5)
+)
+$graphics.DrawLine($pen, (Convert-Point 20 15.5), (Convert-Point 20 20.5))
+$graphics.DrawLine($pen, (Convert-Point 20 15.5), (Convert-Point 15 15.5))
 $pen.Dispose()
 Save-Icon $bitmap $graphics "reload_from_click"
