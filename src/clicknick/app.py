@@ -261,9 +261,34 @@ class ClickNickApp:
         self.last_regenerated_var.set(self._format_workspace_time(info.last_regenerated_at))
         self.last_backup_var.set(self._format_workspace_time(info.last_backup_at))
 
+    def _populate_autocomplete_options_menu(self, menu: tk.Menu) -> None:
+        """Add the compact checkable preferences to the Autocomplete menu."""
+        menu.add_checkbutton(
+            label="Sort A→Z",
+            variable=self.settings.sort_by_nickname_var,
+            command=self._on_sort_option_changed,
+        )
+        menu.add_checkbutton(
+            label="Show Tooltips",
+            variable=self.settings.show_info_tooltip_var,
+        )
+        menu.add_checkbutton(
+            label="Exclude SC/SD Addresses",
+            variable=self.settings.exclude_sc_sd_var,
+        )
+
     def _create_options_section(self, parent):
         """Create the compact, frequently used autocomplete controls."""
-        options_frame = ttk.LabelFrame(parent, text="Autocomplete", padding=10)
+        options_frame = ttk.LabelFrame(parent, padding=10)
+        options_header = ttk.Frame(options_frame)
+        ttk.Label(options_header, text="Autocomplete").pack(side=tk.LEFT)
+        options_button = ttk.Menubutton(options_header, text="Options")
+        options_menu = tk.Menu(options_button, tearoff=0)
+        self._populate_autocomplete_options_menu(options_menu)
+        options_button.configure(menu=options_menu)
+        options_button.pack(side=tk.LEFT, padx=(8, 0))
+        options_frame.configure(labelwidget=options_header)
+        self.autocomplete_options_menu = options_menu
 
         match_frame = ttk.Frame(options_frame)
         for column, label in enumerate(_MATCH_LABELS):
@@ -872,26 +897,7 @@ class ClickNickApp:
         )
 
     def _create_advanced_contents(self, parent) -> None:
-        """Create global preferences and Workspace details in Advanced."""
-        preferences = ttk.LabelFrame(parent, text="Autocomplete Preferences", padding=8)
-        ttk.Checkbutton(
-            preferences,
-            text="Sort A→Z",
-            variable=self.settings.sort_by_nickname_var,
-            command=self._on_sort_option_changed,
-        ).pack(anchor=tk.W)
-        ttk.Checkbutton(
-            preferences,
-            text="Show Tooltips",
-            variable=self.settings.show_info_tooltip_var,
-        ).pack(anchor=tk.W)
-        ttk.Checkbutton(
-            preferences,
-            text="Exclude SC/SD Addresses",
-            variable=self.settings.exclude_sc_sd_var,
-        ).pack(anchor=tk.W)
-        preferences.pack(fill=tk.X, pady=(0, 10))
-
+        """Create Workspace details and mirror actions in Advanced."""
         mirror = ttk.LabelFrame(parent, text="Workspace / Mirror", padding=8)
         self._details_value(mirror, "Status", self.mirror_status_var)
         self._details_value(mirror, "Mirror path", self.mirror_path_var)

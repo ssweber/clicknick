@@ -2,7 +2,7 @@
 
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -33,6 +33,35 @@ def test_match_mode_slider_preserves_filter_modes(index: int, mode: str) -> None
 
     app.match_mode_index_var.set.assert_called_once_with(float(index))
     app.settings.search_var.set.assert_called_once_with(mode)
+
+
+def test_autocomplete_options_menu_uses_existing_setting_variables() -> None:
+    app = ClickNickApp.__new__(ClickNickApp)
+    app.settings = SimpleNamespace(
+        sort_by_nickname_var=object(),
+        show_info_tooltip_var=object(),
+        exclude_sc_sd_var=object(),
+    )
+    app._on_sort_option_changed = MagicMock()
+    menu = MagicMock()
+
+    app._populate_autocomplete_options_menu(menu)
+
+    assert menu.add_checkbutton.call_args_list == [
+        call(
+            label="Sort A→Z",
+            variable=app.settings.sort_by_nickname_var,
+            command=app._on_sort_option_changed,
+        ),
+        call(
+            label="Show Tooltips",
+            variable=app.settings.show_info_tooltip_var,
+        ),
+        call(
+            label="Exclude SC/SD Addresses",
+            variable=app.settings.exclude_sc_sd_var,
+        ),
+    ]
 
 
 def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> None:
