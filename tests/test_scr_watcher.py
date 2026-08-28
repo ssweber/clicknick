@@ -30,3 +30,21 @@ def test_click_save_clears_synced_tags_and_staged_rungs(tmp_path) -> None:
     assert watcher.synced_pending == 0
     assert watcher.staged_rungs == 0
     assert sync_updates == [7, 0]
+
+
+def test_click_save_reports_cleared_rungs_without_pending_tags(tmp_path) -> None:
+    sync_updates: list[int] = []
+    watcher = ScrWatcher(
+        tmp_path,
+        lambda: None,
+        on_sync_status_changed=sync_updates.append,
+    )
+    watcher.record_rung_stage(2)
+    watcher._active = True
+    watcher._tk_root = _Root()
+    (tmp_path / "Scr1.tmp").write_text("saved", encoding="utf-8")
+
+    watcher._check()
+
+    assert watcher.staged_rungs == 0
+    assert sync_updates == [0]

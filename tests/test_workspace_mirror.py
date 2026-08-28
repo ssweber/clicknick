@@ -17,6 +17,7 @@ from clicknick.services.workspace_mirror import (
     get_mirror_status,
     get_workspace_directory_info,
     load_project_workspace_config,
+    read_plc_name,
     record_successful_sync,
     remember_project_sidecar,
     save_project_workspace_config,
@@ -41,7 +42,7 @@ def test_project_sidecar_uses_project_name_and_relative_mirror(tmp_path: Path) -
     project.write_text("click", encoding="utf-8")
     mirror = tmp_path / "Example Project Workspace"
     synced = dt.datetime(2026, 8, 28, 12, 30, tzinfo=dt.UTC)
-    config = ProjectWorkspaceConfig(project, mirror, synced)
+    config = ProjectWorkspaceConfig(project, mirror, synced, plc_name="Line 1")
 
     sidecar = save_project_workspace_config(config)
     loaded = load_project_workspace_config(sidecar)
@@ -50,7 +51,18 @@ def test_project_sidecar_uses_project_name_and_relative_mirror(tmp_path: Path) -
     assert "generated ClickNick workspace -> mirror" in sidecar.read_text(encoding="utf-8")
     assert "Sync never deletes files" in sidecar.read_text(encoding="utf-8")
     assert 'mirror_path = "Example Project Workspace"' in sidecar.read_text(encoding="utf-8")
-    assert loaded == ProjectWorkspaceConfig(project.resolve(), mirror.resolve(), synced)
+    assert 'plc_name = "Line 1"' in sidecar.read_text(encoding="utf-8")
+    assert loaded == ProjectWorkspaceConfig(
+        project.resolve(), mirror.resolve(), synced, plc_name="Line 1"
+    )
+
+
+def test_read_plc_name_from_click_project_ini(tmp_path: Path) -> None:
+    project_ini = tmp_path / "Project.ini"
+    project_ini.write_text("[Other]\nvalue=1\n[PLCName]\nPLCName=IMHERE\n", encoding="utf-8")
+
+    assert read_plc_name(project_ini) == "IMHERE"
+    assert read_plc_name(tmp_path / "missing.ini") is None
 
 
 def test_locator_finds_matching_project_without_duplicating_config(tmp_path: Path) -> None:
@@ -67,6 +79,28 @@ def test_locator_finds_matching_project_without_duplicating_config(tmp_path: Pat
         ProjectWorkspaceConfig(project.resolve(), (tmp_path / "Machine Workspace").resolve())
     ]
     assert find_project_configs("Other.ckp", locator) == []
+
+
+def test_plc_name_disambiguates_same_named_projects(tmp_path: Path) -> None:
+    locator = tmp_path / "project-sidecars.json"
+    configs = []
+    for folder, plc_name in (("one", "Mixer"), ("two", "Filler")):
+        project = tmp_path / folder / "Machine.ckp"
+        project.parent.mkdir()
+        project.write_text("click", encoding="utf-8")
+        config = ProjectWorkspaceConfig(
+            project,
+            project.parent / "Machine Workspace",
+            plc_name=plc_name,
+        )
+        configs.append(config)
+        remember_project_sidecar(save_project_workspace_config(config), locator)
+
+    matches = find_project_configs("Machine.ckp", locator, plc_name="filler")
+
+    assert len(matches) == 1
+    assert matches[0].project_file == configs[1].project_file.resolve()
+    assert matches[0].plc_name == "Filler"
 
 
 def test_sync_overwrites_only_owned_paths_and_never_deletes(tmp_path: Path) -> None:
@@ -175,6 +209,7 @@ def test_directory_info_reports_generation_and_backup_times(tmp_path: Path) -> N
 def test_app_loads_only_unambiguous_project_pairing(monkeypatch, tmp_path: Path) -> None:
     app = ClickNickApp.__new__(ClickNickApp)
     app.connected_click_filename = "Example.ckp"
+    app.connected_click_hwnd = None
     app._workspace_config = object()
     app._workspace_mirror_error = "old error"
     config = ProjectWorkspaceConfig(tmp_path / "Example.ckp", tmp_path / "Example Workspace")
@@ -183,7 +218,7 @@ def test_app_loads_only_unambiguous_project_pairing(monkeypatch, tmp_path: Path)
 
     app._load_workspace_pairing()
 
-    find_configs.assert_called_once_with("Example.ckp")
+    find_configs.assert_called_once_with("Example.ckp", plc_name=None)
     assert app._workspace_config == config
     assert app._workspace_mirror_error is None
 

@@ -25,6 +25,15 @@ windll.shcore.SetProcessDpiAwareness(1)
 # Dev mode flag - enables in-progress features
 _DEV_MODE = False
 
+_MATCH_BREADTH_LABELS = ("None", "Prefix", "Contains", "Fuzzy")
+_MATCH_MODE_BY_LABEL = {
+    "None": "none",
+    "Prefix": "prefix",
+    "Contains": "contains",
+    "Fuzzy": "containsplus",
+}
+_MATCH_LABEL_BY_MODE = {mode: label for label, mode in _MATCH_MODE_BY_LABEL.items()}
+
 
 def get_version():
     """Get version from package metadata."""
@@ -44,9 +53,23 @@ class ClickNickApp:
         self.csv_path_var = tk.StringVar()
         self.status_var = tk.StringVar(value="Not connected")
         self.selected_instance_var = tk.StringVar()  # Add this line
+        self.match_breadth_var = tk.StringVar(
+            value=_MATCH_LABEL_BY_MODE.get(self.settings.search_mode, "Contains")
+        )
+        self.workspace_status_var = tk.StringVar(value="Unavailable")
+        self.mirror_status_var = tk.StringVar(value="Not configured")
+        self.mirror_detail_var = tk.StringVar(value="")
+        self.mirror_path_var = tk.StringVar(value="Not configured")
+        self.generated_dir_var = tk.StringVar(value="Not available")
+        self.source_project_var = tk.StringVar(value="Not located")
+        self.plc_name_var = tk.StringVar(value="Not available")
+        self.last_regenerated_var = tk.StringVar(value="Not available")
+        self.last_backup_var = tk.StringVar(value="Not available")
         self.click_instances = []  # Will store ClickInstance objects
         self.using_database = False  # Flag to track if database is being used
         self._odbc_warning_shown = False
+        self._workspace_refresh_after_id = None
+        self._advanced_window = None
 
     def _setup_styles(self):
         """Configure ttk styles for the application."""
@@ -147,72 +170,126 @@ class ClickNickApp:
             # Regenerate abbreviation tags after sorting
             self.nickname_manager._generate_abbreviation_tags()
 
+    def _on_match_breadth_selected(self, _event=None) -> None:
+        """Map the compact selector onto the existing filter strategies."""
+        mode = _MATCH_MODE_BY_LABEL.get(self.match_breadth_var.get(), "contains")
+        self.settings.search_var.set(mode)
+
+    def _get_workspace_status(self):
+        """Return reusable status for the current CLICK workspace."""
+        from .services.workspace_service import get_workspace_status
+
+        session = self._session
+        return get_workspace_status(
+            session.analysis if session else None,
+            staged_rungs=session.staged_rungs if session else 0,
+        )
+
+    def _workspace_source_dir(self) -> Path | None:
+        analysis = self._session.analysis if self._session else None
+        return analysis.project_dir if analysis and analysis.is_available else None
+
+    def _current_plc_name(self) -> str | None:
+        """Return CLICK's configured PLC name from its active temp workspace."""
+        if not getattr(self, "connected_click_hwnd", None):
+            return None
+        from .live.session import click_temp_dir
+        from .services.workspace_mirror import read_plc_name
+
+        return read_plc_name(click_temp_dir(self.connected_click_hwnd) / "Project.ini")
+
+    @staticmethod
+    def _format_workspace_time(value) -> str:
+        return value.astimezone().strftime("%x %X") if value is not None else "Not available"
+
+    def _poll_workspace_ui(self) -> None:
+        self._workspace_refresh_after_id = None
+        self._refresh_workspace_ui()
+
+    def _get_workspace_mirror_status(self):
+        """Return reusable pairing status for the future Workspace details panel."""
+        from .services.workspace_mirror import get_mirror_status
+
+        return get_mirror_status(
+            self._workspace_config,
+            self._workspace_source_dir(),
+            error=self._workspace_mirror_error,
+        )
+
+    def _get_workspace_directory_info(self):
+        """Return paths and timestamps for the future Workspace details panel."""
+        from .services.workspace_mirror import get_workspace_directory_info
+
+        return get_workspace_directory_info(
+            self._workspace_config,
+            self._workspace_source_dir(),
+        )
+
+    def _refresh_workspace_ui(self) -> None:
+        """Refresh status/details variables without rebuilding any widgets."""
+        if not hasattr(self, "workspace_status_var"):
+            return
+
+        from .services.workspace_service import WorkspaceState
+
+        workspace = self._get_workspace_status()
+        self.workspace_status_var.set(workspace.label)
+        if hasattr(self, "workspace_status_label"):
+            if workspace.state is WorkspaceState.FAILED:
+                style = "Error.TLabel"
+            elif workspace.state is WorkspaceState.CLEAN:
+                style = "Connected.TLabel"
+            else:
+                style = "Status.TLabel"
+            self.workspace_status_label.configure(style=style)
+
+        if workspace.state is WorkspaceState.PREPARING:
+            if self._workspace_refresh_after_id is None:
+                self._workspace_refresh_after_id = self.root.after(500, self._poll_workspace_ui)
+        elif self._workspace_refresh_after_id is not None:
+            try:
+                self.root.after_cancel(self._workspace_refresh_after_id)
+            except tk.TclError:
+                pass
+            self._workspace_refresh_after_id = None
+
+        mirror = self._get_workspace_mirror_status()
+        self.mirror_status_var.set(mirror.label)
+        self.mirror_detail_var.set(mirror.detail or "")
+        self.mirror_path_var.set(str(mirror.path) if mirror.path else "Not configured")
+
+        info = self._get_workspace_directory_info()
+        self.plc_name_var.set(self._current_plc_name() or "Not available")
+        self.generated_dir_var.set(
+            str(info.generated_dir) if info.generated_dir else "Not available"
+        )
+        self.source_project_var.set(
+            str(info.source_project) if info.source_project else "Not located"
+        )
+        self.last_regenerated_var.set(self._format_workspace_time(info.last_regenerated_at))
+        self.last_backup_var.set(self._format_workspace_time(info.last_backup_at))
+
     def _create_options_section(self, parent):
-        """Create the options section."""
-        options_frame = ttk.LabelFrame(parent, text="Autocomplete Options", padding=10)
+        """Create the compact, frequently used autocomplete controls."""
+        options_frame = ttk.LabelFrame(parent, text="Autocomplete", padding=10)
 
-        # Search mode widgets
-        filter_frame = ttk.Frame(options_frame)
-        filter_label = ttk.Label(filter_frame, text="Filter Mode:")
-        none_radio = ttk.Radiobutton(
-            filter_frame,
-            text="None",
-            variable=self.settings.search_var,
-            value="none",
+        breadth_frame = ttk.Frame(options_frame)
+        ttk.Label(breadth_frame, text="Match breadth:").pack(side=tk.LEFT, padx=(0, 8))
+        self.match_breadth_selector = ttk.Combobox(
+            breadth_frame,
+            textvariable=self.match_breadth_var,
+            values=_MATCH_BREADTH_LABELS,
+            state="readonly",
+            width=12,
         )
-        prefix_radio = ttk.Radiobutton(
-            filter_frame,
-            text="Prefix Only",
-            variable=self.settings.search_var,
-            value="prefix",
-        )
-        contains_radio = ttk.Radiobutton(
-            filter_frame,
-            text="Contains",
-            variable=self.settings.search_var,
-            value="contains",
-        )
-        contains_plus_radio = ttk.Radiobutton(
-            filter_frame,
-            text="Abbreviations",
-            variable=self.settings.search_var,
-            value="containsplus",
-        )
-
-        # Layout filter widgets
-        filter_label.pack(side=tk.LEFT, padx=(0, 8))
-        none_radio.pack(side=tk.LEFT, padx=(0, 8))
-        prefix_radio.pack(side=tk.LEFT, padx=(0, 8))
-        contains_radio.pack(side=tk.LEFT, padx=(0, 8))
-        contains_plus_radio.pack(side=tk.LEFT)
-        filter_frame.pack(fill=tk.X, pady=(0, 8))
-
-        # Checkbox row (Sort, Tooltips, SC/SD)
-        checkbox_frame = ttk.Frame(options_frame)  # New frame to hold checkboxes in one row
-        checkbox_frame.pack(fill=tk.X, pady=(0, 6))
-
-        # Sort A-Z checkbox
-        sort_check = ttk.Checkbutton(
-            checkbox_frame,
-            text="Sort A→Z",
-            variable=self.settings.sort_by_nickname_var,
-            command=self._on_sort_option_changed,
-        )
-        sort_check.pack(side=tk.LEFT, padx=(0, 8))
-
-        # Tooltip checkbox
-        tooltip_check = ttk.Checkbutton(
-            checkbox_frame,
-            text="Show Tooltips",
-            variable=self.settings.show_info_tooltip_var,
-        )
-        tooltip_check.pack(side=tk.LEFT, padx=(0, 8))
-
-        # SC/SD exclusion checkbox
-        sc_sd_check = ttk.Checkbutton(
-            checkbox_frame, text="Exclude SC/SD Addresses", variable=self.settings.exclude_sc_sd_var
-        )
-        sc_sd_check.pack(side=tk.LEFT)
+        self.match_breadth_selector.bind("<<ComboboxSelected>>", self._on_match_breadth_selected)
+        self.match_breadth_selector.pack(side=tk.LEFT)
+        ttk.Label(
+            breadth_frame,
+            text="None  -  Prefix  -  Contains  -  Fuzzy",
+            style="Status.TLabel",
+        ).pack(side=tk.LEFT, padx=(12, 0))
+        breadth_frame.pack(fill=tk.X, pady=(0, 8))
 
         # Exclude nicknames containing entry
         exclude_frame_entry = ttk.Frame(options_frame)
@@ -243,7 +320,7 @@ class ClickNickApp:
 
         exclude_label.pack(side=tk.LEFT, padx=(0, 8))
         exclude_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        exclude_frame_entry.pack(fill=tk.X, pady=(0, 6))
+        exclude_frame_entry.pack(fill=tk.X)
 
         # Pack the main frame
         options_frame.pack(fill=tk.X, pady=(0, 12))
@@ -278,152 +355,9 @@ class ClickNickApp:
         if self._session is None:
             return
         self._session.start_analysis(self.root)
-
-    def _get_workspace_status(self):
-        """Return reusable status for the current CLICK workspace."""
-        from .services.workspace_service import get_workspace_status
-
-        session = self._session
-        return get_workspace_status(
-            session.analysis if session else None,
-            staged_rungs=session.staged_rungs if session else 0,
-        )
-
-    def _workspace_source_dir(self) -> Path | None:
-        analysis = self._session.analysis if self._session else None
-        return analysis.project_dir if analysis and analysis.is_available else None
-
-    def _sync_workspace_mirror(self) -> None:
-        """Synchronize ClickNick-owned workspace files in one direction."""
-        config = self._workspace_config
-        if config is None:
-            messagebox.showinfo(
-                "Sync Workspace Mirror",
-                "Set up a Workspace Mirror first.",
-                parent=self.root,
-            )
-            return
-        source = self._workspace_source_dir()
-        if source is None:
-            messagebox.showerror(
-                "Sync Workspace Mirror",
-                "The generated workspace is not ready.",
-                parent=self.root,
-            )
-            return
-
-        from .services.workspace_mirror import (
-            record_successful_sync,
-            sync_workspace_to_mirror,
-        )
-
-        try:
-            result = sync_workspace_to_mirror(source, config.mirror_path)
-            self._workspace_config = record_successful_sync(config, result)
-        except (OSError, ValueError) as exc:
-            self._workspace_mirror_error = str(exc)
-            messagebox.showerror("Sync Workspace Mirror", str(exc), parent=self.root)
-            self._update_status(f"Workspace mirror sync failed: {exc}", "error")
-            return
-
-        self._workspace_mirror_error = None
-        self._update_status(
-            f"Workspace mirror synced ({result.copied_files} files): {result.mirror_path}",
-            "connected",
-        )
-
-    def _setup_workspace_mirror(self) -> None:
-        """Pair the connected project with a durable one-way mirror directory."""
-        filename = self.connected_click_filename
-        if self._session is None or not filename:
-            self._update_status("Connect to a CLICK project first", "error")
-            return
-
-        project_value = filedialog.askopenfilename(
-            title=f"Locate the source CLICK project ({filename})",
-            initialfile=filename,
-            filetypes=[("CLICK project", "*.ckp"), ("All files", "*.*")],
-            parent=self.root,
-        )
-        if not project_value:
-            return
-        project_file = Path(project_value)
-        if project_file.name.casefold() != filename.casefold():
-            messagebox.showerror(
-                "Setup Workspace Mirror",
-                f"Select the connected project named {filename}.",
-                parent=self.root,
-            )
-            return
-
-        mirror_value = filedialog.askdirectory(
-            title=f"Select or create {project_file.stem} Workspace",
-            initialdir=project_file.parent,
-            mustexist=False,
-            parent=self.root,
-        )
-        if not mirror_value:
-            return
-        mirror_path = Path(mirror_value)
-        try:
-            mirror_is_nonempty = mirror_path.exists() and any(mirror_path.iterdir())
-        except OSError as exc:
-            messagebox.showerror("Setup Workspace Mirror", str(exc), parent=self.root)
-            self._update_status(f"Workspace mirror setup failed: {exc}", "error")
-            return
-        if mirror_is_nonempty:
-            confirmed = messagebox.askokcancel(
-                "Use Existing Workspace Folder?",
-                "ClickNick will update generated files under src/plc and csv, plus "
-                "its generation scripts and data. It will not delete unrelated files "
-                "or replace existing tests, documentation, or editor settings.",
-                parent=self.root,
-            )
-            if not confirmed:
-                return
-
-        from .services.workspace_mirror import (
-            ProjectWorkspaceConfig,
-            remember_project_sidecar,
-            save_project_workspace_config,
-            validate_mirror_destination,
-        )
-
-        config = ProjectWorkspaceConfig(project_file=project_file, mirror_path=mirror_path)
-        try:
-            source = self._workspace_source_dir()
-            if source is not None:
-                validate_mirror_destination(source, mirror_path)
-            sidecar = save_project_workspace_config(config)
-            remember_project_sidecar(sidecar)
-        except (OSError, ValueError) as exc:
-            messagebox.showerror("Setup Workspace Mirror", str(exc), parent=self.root)
-            self._update_status(f"Workspace mirror setup failed: {exc}", "error")
-            return
-
-        self._workspace_config = config
-        self._workspace_mirror_error = None
-        if source is not None:
-            self._sync_workspace_mirror()
-        else:
-            self._update_status(f"Workspace mirror paired: {mirror_path}", "connected")
-
-    def _open_workspace_folder(self) -> None:
-        """Open the paired mirror, or the active generated workspace as fallback."""
-        path = (
-            self._workspace_config.mirror_path
-            if self._workspace_config is not None
-            else self._workspace_source_dir()
-        )
-        if path is None or not path.is_dir():
-            self._update_status("Workspace folder is not available", "error")
-            return
-        try:
-            import os
-
-            os.startfile(path)  # noqa: S606 - explicit user action on Windows
-        except OSError as exc:
-            messagebox.showerror("Open Workspace Folder", str(exc), parent=self.root)
+        self._refresh_workspace_ui()
+        if self._workspace_refresh_after_id is None:
+            self._workspace_refresh_after_id = self.root.after(250, self._poll_workspace_ui)
 
     def _workspace_rung_apply(self) -> None:
         """Run the consolidated reviewed proposal flow for workspace rungs."""
@@ -450,10 +384,12 @@ class ClickNickApp:
             if self._session is not None:
                 self._session.record_rung_stage(0)
             self._update_status("Workspace reloaded from CLICK", "connected")
+            self._refresh_workspace_ui()
             return
         message = error or "Workspace could not be reloaded from CLICK."
         messagebox.showerror("Reload from CLICK", message, parent=self.root)
         self._update_status(f"Workspace reload failed: {message}", "error")
+        self._refresh_workspace_ui()
 
     def _workspace_reload_from_click(self) -> None:
         """Explicitly replace active workspace source from the saved CLICK project."""
@@ -485,6 +421,7 @@ class ClickNickApp:
                 self._workspace_reload_finished(success, error)
 
         session.reload_workspace_from_click(self.root, _finished)
+        self._refresh_workspace_ui()
 
     def _apply_active_filter(self, candidates: list[str], search_text: str) -> list[str]:
         mode = self.settings.search_mode
@@ -548,10 +485,6 @@ class ClickNickApp:
             session_name=f"clicknick-{session.filename}-{session.hwnd}",
         )
 
-    def _create_about_dialog(self):
-        """Create and show the About dialog."""
-        AboutDialog(self.root, get_version())
-
     def _show_odbc_warning(self):
         """Show a warning dialog about missing ODBC drivers."""
         OdbcWarningDialog(self.root)
@@ -599,23 +532,6 @@ class ClickNickApp:
 
             traceback.print_exc()
             self._update_status(f"Error opening editor: {e}", "error")
-
-    def _live_open_address_editor(self, initial_filter: str = "changed") -> None:
-        """Open or focus the Address Editor filtered to *initial_filter*.
-
-        Callback for ``clicknick-cli tag apply``. Reuses an already-open editor
-        (they all share one store) rather than stacking new windows on repeat
-        applies. Runs on the Tk main thread (the live server marshals it there).
-        """
-        store = self._get_store()
-        if store is not None:
-            from .views.address_editor.window import AddressEditorWindow
-
-            for win in store._windows:
-                if isinstance(win, AddressEditorWindow) and win.winfo_exists():
-                    win.apply_row_filter(initial_filter)
-                    return
-        self._open_address_editor(initial_filter=initial_filter)
 
     def _open_dataview_editor(self):
         """Open the Dataview Editor window, or focus if already open.
@@ -684,6 +600,359 @@ class ClickNickApp:
 
             traceback.print_exc()
             self._update_status(f"Error opening dataview editor: {e}", "error")
+
+    def _analyze_program(self) -> None:
+        """Run program validation and display report."""
+        analysis = self._session.analysis if self._session else None
+        if analysis is None or not analysis.is_available:
+            from .services.analysis_service import AnalysisStatus
+
+            status = analysis.status if analysis else None
+            if status is AnalysisStatus.FAILED:
+                messagebox.showerror(
+                    "Analysis Failed",
+                    f"{analysis.error}\n\nCheck Program needs the project converted to pyrung.",
+                    parent=self.root,
+                )
+            elif status is AnalysisStatus.BUILDING:
+                messagebox.showinfo(
+                    "Analysis In Progress",
+                    "The program is still being converted for analysis.\n\nTry again in a moment.",
+                    parent=self.root,
+                )
+            else:
+                messagebox.showinfo(
+                    "Analysis Not Available",
+                    "Program analysis requires a connected Click project.\n\n"
+                    "Analysis builds automatically when connected to a project "
+                    "with ladder files.",
+                    parent=self.root,
+                )
+            return
+
+        try:
+            report = analysis.run_validation()
+        except Exception as exc:
+            messagebox.showerror(
+                "Analysis Error",
+                f"Validation failed:\n{exc}",
+                parent=self.root,
+            )
+            return
+
+        from .services.program_check import group_validation_findings
+
+        # The GUI and clicknick-cli use the same finding grouping and pyrung
+        # presentation model; only their renderers differ.
+        grouped = group_validation_findings(report)
+
+        from .views.analysis_report_window import (
+            AnalysisReportData,
+            AnalysisReportWindow,
+        )
+
+        AnalysisReportWindow(self.root, AnalysisReportData(grouped_findings=grouped))
+
+    def _create_action_section(self, parent) -> None:
+        """Create the primary Edit, Test, and Workspace action groups."""
+        actions = ttk.Frame(parent)
+        for column in range(3):
+            actions.columnconfigure(column, weight=1, uniform="main-actions")
+
+        edit = ttk.LabelFrame(actions, text="Edit", padding=10)
+        ttk.Button(edit, text="Address Editor", command=self._open_address_editor).pack(
+            fill=tk.X, pady=(0, 8)
+        )
+        ttk.Button(edit, text="Data View", command=self._open_dataview_editor).pack(fill=tk.X)
+
+        test = ttk.LabelFrame(actions, text="Test", padding=10)
+        ttk.Button(test, text="Check Program", command=self._analyze_program).pack(
+            fill=tk.X, pady=(0, 8)
+        )
+        ttk.Button(test, text="Console", command=self._open_console).pack(fill=tk.X)
+
+        workspace = ttk.LabelFrame(actions, padding=10)
+        workspace_heading = ttk.Frame(workspace)
+        ttk.Label(workspace_heading, text="Workspace -").pack(side=tk.LEFT)
+        self.workspace_status_label = ttk.Label(
+            workspace_heading,
+            textvariable=self.workspace_status_var,
+            style="Status.TLabel",
+        )
+        self.workspace_status_label.pack(side=tk.LEFT, padx=(3, 0))
+        workspace.configure(labelwidget=workspace_heading)
+        ttk.Button(workspace, text="Rung Apply", command=self._workspace_rung_apply).pack(
+            fill=tk.X, pady=(0, 8)
+        )
+        ttk.Button(
+            workspace,
+            text="Reload from CLICK",
+            command=self._workspace_reload_from_click,
+        ).pack(fill=tk.X)
+
+        edit.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        test.grid(row=0, column=1, sticky="nsew", padx=5)
+        workspace.grid(row=0, column=2, sticky="nsew", padx=(5, 0))
+        actions.pack(fill=tk.BOTH, expand=True)
+
+    def _details_value(self, parent, label: str, variable: tk.StringVar) -> None:
+        ttk.Label(parent, text=label).pack(anchor=tk.W, pady=(4, 0))
+        ttk.Label(
+            parent,
+            textvariable=variable,
+            style="Status.TLabel",
+            wraplength=260,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, fill=tk.X)
+
+    def _sync_workspace_mirror(self) -> None:
+        """Synchronize ClickNick-owned workspace files in one direction."""
+        config = self._workspace_config
+        if config is None:
+            messagebox.showinfo(
+                "Sync Workspace Mirror",
+                "Set up a Workspace Mirror first.",
+                parent=self.root,
+            )
+            return
+        source = self._workspace_source_dir()
+        if source is None:
+            messagebox.showerror(
+                "Sync Workspace Mirror",
+                "The generated workspace is not ready.",
+                parent=self.root,
+            )
+            return
+
+        from .services.workspace_mirror import (
+            record_successful_sync,
+            sync_workspace_to_mirror,
+        )
+
+        try:
+            result = sync_workspace_to_mirror(source, config.mirror_path)
+            self._workspace_config = record_successful_sync(config, result)
+        except (OSError, ValueError) as exc:
+            self._workspace_mirror_error = str(exc)
+            messagebox.showerror("Sync Workspace Mirror", str(exc), parent=self.root)
+            self._update_status(f"Workspace mirror sync failed: {exc}", "error")
+            self._refresh_workspace_ui()
+            return
+
+        self._workspace_mirror_error = None
+        self._update_status(
+            f"Workspace mirror synced ({result.copied_files} files): {result.mirror_path}",
+            "connected",
+        )
+        self._refresh_workspace_ui()
+
+    def _setup_workspace_mirror(self) -> None:
+        """Pair the connected project with a durable one-way mirror directory."""
+        filename = self.connected_click_filename
+        if self._session is None or not filename:
+            self._update_status("Connect to a CLICK project first", "error")
+            return
+
+        project_value = filedialog.askopenfilename(
+            title=f"Locate the source CLICK project ({filename})",
+            initialfile=filename,
+            filetypes=[("CLICK project", "*.ckp"), ("All files", "*.*")],
+            parent=self.root,
+        )
+        if not project_value:
+            return
+        project_file = Path(project_value)
+        if project_file.name.casefold() != filename.casefold():
+            messagebox.showerror(
+                "Setup Workspace Mirror",
+                f"Select the connected project named {filename}.",
+                parent=self.root,
+            )
+            return
+
+        plc_name = self._current_plc_name()
+        workspace_name = plc_name or project_file.stem
+        mirror_value = filedialog.askdirectory(
+            title=f"Select or create {workspace_name} Workspace",
+            initialdir=project_file.parent,
+            mustexist=False,
+            parent=self.root,
+        )
+        if not mirror_value:
+            return
+        mirror_path = Path(mirror_value)
+        try:
+            mirror_is_nonempty = mirror_path.exists() and any(mirror_path.iterdir())
+        except OSError as exc:
+            messagebox.showerror("Setup Workspace Mirror", str(exc), parent=self.root)
+            self._update_status(f"Workspace mirror setup failed: {exc}", "error")
+            return
+        if mirror_is_nonempty:
+            confirmed = messagebox.askokcancel(
+                "Use Existing Workspace Folder?",
+                "ClickNick will update generated files under src/plc and csv, plus "
+                "its generation scripts and data. It will not delete unrelated files "
+                "or replace existing tests, documentation, or editor settings.",
+                parent=self.root,
+            )
+            if not confirmed:
+                return
+
+        from .services.workspace_mirror import (
+            ProjectWorkspaceConfig,
+            remember_project_sidecar,
+            save_project_workspace_config,
+            validate_mirror_destination,
+        )
+
+        config = ProjectWorkspaceConfig(
+            project_file=project_file,
+            mirror_path=mirror_path,
+            plc_name=plc_name,
+        )
+        try:
+            source = self._workspace_source_dir()
+            if source is not None:
+                validate_mirror_destination(source, mirror_path)
+            sidecar = save_project_workspace_config(config)
+            remember_project_sidecar(sidecar)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Setup Workspace Mirror", str(exc), parent=self.root)
+            self._update_status(f"Workspace mirror setup failed: {exc}", "error")
+            return
+
+        self._workspace_config = config
+        self._workspace_mirror_error = None
+        if source is not None:
+            self._sync_workspace_mirror()
+        else:
+            self._update_status(f"Workspace mirror paired: {mirror_path}", "connected")
+            self._refresh_workspace_ui()
+
+    def _open_workspace_folder(self) -> None:
+        """Open the paired mirror, or the active generated workspace as fallback."""
+        path = (
+            self._workspace_config.mirror_path
+            if self._workspace_config is not None
+            else self._workspace_source_dir()
+        )
+        if path is None or not path.is_dir():
+            self._update_status("Workspace folder is not available", "error")
+            return
+        try:
+            import os
+
+            os.startfile(path)  # noqa: S606 - explicit user action on Windows
+        except OSError as exc:
+            messagebox.showerror("Open Workspace Folder", str(exc), parent=self.root)
+
+    def _create_advanced_contents(self, parent) -> None:
+        """Create global preferences and Workspace details in Advanced."""
+        preferences = ttk.LabelFrame(parent, text="Autocomplete Preferences", padding=8)
+        ttk.Checkbutton(
+            preferences,
+            text="Sort A→Z",
+            variable=self.settings.sort_by_nickname_var,
+            command=self._on_sort_option_changed,
+        ).pack(anchor=tk.W)
+        ttk.Checkbutton(
+            preferences,
+            text="Show Tooltips",
+            variable=self.settings.show_info_tooltip_var,
+        ).pack(anchor=tk.W)
+        ttk.Checkbutton(
+            preferences,
+            text="Exclude SC/SD Addresses",
+            variable=self.settings.exclude_sc_sd_var,
+        ).pack(anchor=tk.W)
+        preferences.pack(fill=tk.X, pady=(0, 10))
+
+        mirror = ttk.LabelFrame(parent, text="Workspace / Mirror", padding=8)
+        self._details_value(mirror, "Status", self.mirror_status_var)
+        self._details_value(mirror, "Mirror path", self.mirror_path_var)
+        self.mirror_detail_label = ttk.Label(
+            mirror,
+            textvariable=self.mirror_detail_var,
+            style="Error.TLabel",
+            wraplength=260,
+            justify=tk.LEFT,
+        )
+        self.mirror_detail_label.pack(anchor=tk.W, fill=tk.X)
+        ttk.Button(mirror, text="Setup Mirror...", command=self._setup_workspace_mirror).pack(
+            anchor=tk.W, pady=(8, 4)
+        )
+        ttk.Button(
+            mirror,
+            text="Open Workspace Folder",
+            command=self._open_workspace_folder,
+        ).pack(anchor=tk.W)
+        mirror.pack(fill=tk.X, pady=(0, 10))
+
+        directories = ttk.LabelFrame(parent, text="Directory Information", padding=8)
+        self._details_value(directories, "PLC name", self.plc_name_var)
+        self._details_value(directories, "Generated workspace", self.generated_dir_var)
+        self._details_value(directories, "Source CLICK project", self.source_project_var)
+        self._details_value(directories, "Last regenerated", self.last_regenerated_var)
+        self._details_value(directories, "Last backup", self.last_backup_var)
+        directories.pack(fill=tk.X, pady=(0, 10))
+
+        tools = ttk.LabelFrame(parent, text="Tools", padding=8)
+        ttk.Button(tools, text="Sync Now", command=self._sync_workspace_mirror).pack(
+            side=tk.LEFT, padx=(0, 6)
+        )
+        ttk.Button(
+            tools,
+            text="Open in File Explorer",
+            command=self._open_workspace_folder,
+        ).pack(side=tk.LEFT)
+        tools.pack(fill=tk.X)
+
+    def _close_advanced_window(self) -> None:
+        window = self._advanced_window
+        self._advanced_window = None
+        if window is not None:
+            window.destroy()
+
+    def _open_advanced_window(self) -> None:
+        """Open or focus the global Advanced settings/details window."""
+        if self._advanced_window is not None:
+            try:
+                self._advanced_window.lift()
+                self._advanced_window.focus_force()
+                return
+            except tk.TclError:
+                self._advanced_window = None
+
+        window = tk.Toplevel(self.root)
+        window.title("ClickNick Advanced")
+        window.transient(self.root)
+        window.protocol("WM_DELETE_WINDOW", self._close_advanced_window)
+        contents = ttk.Frame(window, padding=12)
+        self._create_advanced_contents(contents)
+        contents.pack(fill=tk.BOTH, expand=True)
+        self._advanced_window = window
+        self._refresh_workspace_ui()
+
+    def _create_about_dialog(self):
+        """Create and show the About dialog."""
+        AboutDialog(self.root, get_version())
+
+    def _live_open_address_editor(self, initial_filter: str = "changed") -> None:
+        """Open or focus the Address Editor filtered to *initial_filter*.
+
+        Callback for ``clicknick-cli tag apply``. Reuses an already-open editor
+        (they all share one store) rather than stacking new windows on repeat
+        applies. Runs on the Tk main thread (the live server marshals it there).
+        """
+        store = self._get_store()
+        if store is not None:
+            from .views.address_editor.window import AddressEditorWindow
+
+            for win in store._windows:
+                if isinstance(win, AddressEditorWindow) and win.winfo_exists():
+                    win.apply_row_filter(initial_filter)
+                    return
+        self._open_address_editor(initial_filter=initial_filter)
 
     def _verify_mdb_and_cdv(self):
         """Verify MDB addresses and CDV entries for validity.
@@ -975,58 +1244,6 @@ class ClickNickApp:
             "connected",
         )
 
-    def _analyze_program(self) -> None:
-        """Run program validation and display report."""
-        analysis = self._session.analysis if self._session else None
-        if analysis is None or not analysis.is_available:
-            from .services.analysis_service import AnalysisStatus
-
-            status = analysis.status if analysis else None
-            if status is AnalysisStatus.FAILED:
-                messagebox.showerror(
-                    "Analysis Failed",
-                    f"{analysis.error}\n\nCheck Program needs the project converted to pyrung.",
-                    parent=self.root,
-                )
-            elif status is AnalysisStatus.BUILDING:
-                messagebox.showinfo(
-                    "Analysis In Progress",
-                    "The program is still being converted for analysis.\n\nTry again in a moment.",
-                    parent=self.root,
-                )
-            else:
-                messagebox.showinfo(
-                    "Analysis Not Available",
-                    "Program analysis requires a connected Click project.\n\n"
-                    "Analysis builds automatically when connected to a project "
-                    "with ladder files.",
-                    parent=self.root,
-                )
-            return
-
-        try:
-            report = analysis.run_validation()
-        except Exception as exc:
-            messagebox.showerror(
-                "Analysis Error",
-                f"Validation failed:\n{exc}",
-                parent=self.root,
-            )
-            return
-
-        from .services.program_check import group_validation_findings
-
-        # The GUI and clicknick-cli use the same finding grouping and pyrung
-        # presentation model; only their renderers differ.
-        grouped = group_validation_findings(report)
-
-        from .views.analysis_report_window import (
-            AnalysisReportData,
-            AnalysisReportWindow,
-        )
-
-        AnalysisReportWindow(self.root, AnalysisReportData(grouped_findings=grouped))
-
     def _load_ladder_csv(self):
         """Load a single ladder CSV file to the Click clipboard."""
         csv_file = filedialog.askopenfilename(
@@ -1166,8 +1383,8 @@ class ClickNickApp:
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Address Editor...", command=self._open_address_editor)
         tools_menu.add_command(label="Dataview Editor...", command=self._open_dataview_editor)
-        tools_menu.add_command(label="Console...", command=self._open_console)
         tools_menu.add_command(label="Check Program", command=self._analyze_program)
+        tools_menu.add_command(label="Console...", command=self._open_console)
         if _DEV_MODE:
             tools_menu.add_separator()
             tools_menu.add_command(label="Verify MDB & CDV...", command=self._verify_mdb_and_cdv)
@@ -1217,18 +1434,25 @@ class ClickNickApp:
 
     def _create_widgets(self):
         """Create all UI widgets."""
-        # Add menu bar first
         self._create_menu_bar()
 
-        # Main frame to contain everything with consistent padding
-        main_frame = ttk.Frame(self.root, padding="15")  # Reduce from 20 to 15
+        main_frame = ttk.Frame(self.root, padding="15")
+        primary = ttk.Frame(main_frame)
+        primary.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Create all widgets
-        self._create_click_instances_section(main_frame)
-        self._create_options_section(main_frame)
+        self._create_click_instances_section(primary)
+        self._create_options_section(primary)
+        self._create_action_section(primary)
+        advanced_row = ttk.Frame(primary)
+        ttk.Button(
+            advanced_row,
+            text="Advanced...",
+            command=self._open_advanced_window,
+        ).pack(side=tk.RIGHT)
+        advanced_row.pack(fill=tk.X, pady=(10, 0))
 
-        # Pack the main frame
         main_frame.pack(fill=tk.BOTH, expand=True)
+        self._refresh_workspace_ui()
 
     def _live_session_dir(self):
         """Directory the live server advertises its port file in.
@@ -1245,6 +1469,11 @@ class ClickNickApp:
             if click_dir.is_dir():
                 return click_dir
         return fallback_dir()
+
+    def _record_staged_rungs(self, count: int) -> None:
+        if self._session is not None:
+            self._session.record_rung_stage(count)
+        self._refresh_workspace_ui()
 
     def __init__(self):
         # Create main window
@@ -1320,9 +1549,7 @@ class ClickNickApp:
             get_mdb_path=self._live_mdb_path,
             get_synced_pending=lambda: self._session.synced_pending if self._session else 0,
             get_staged_rungs=lambda: self._session.staged_rungs if self._session else 0,
-            record_staged_rungs=lambda count: (
-                self._session.record_rung_stage(count) if self._session else None
-            ),
+            record_staged_rungs=self._record_staged_rungs,
             get_pyrung_live_available=lambda: bool(
                 self._session
                 and self._session.console
@@ -1370,29 +1597,12 @@ class ClickNickApp:
         self._workspace_mirror_error = None
         filename = self.connected_click_filename
         if not filename:
+            self._refresh_workspace_ui()
             return
-        matches = find_project_configs(filename)
+        matches = find_project_configs(filename, plc_name=self._current_plc_name())
         if len(matches) == 1:
             self._workspace_config = matches[0]
-
-    def _get_workspace_mirror_status(self):
-        """Return reusable pairing status for the future Workspace details panel."""
-        from .services.workspace_mirror import get_mirror_status
-
-        return get_mirror_status(
-            self._workspace_config,
-            self._workspace_source_dir(),
-            error=self._workspace_mirror_error,
-        )
-
-    def _get_workspace_directory_info(self):
-        """Return paths and timestamps for the future Workspace details panel."""
-        from .services.workspace_mirror import get_workspace_directory_info
-
-        return get_workspace_directory_info(
-            self._workspace_config,
-            self._workspace_source_dir(),
-        )
+        self._refresh_workspace_ui()
 
     def _update_window_title(self):
         """Update window title to reflect current connection and data source."""
@@ -1422,6 +1632,7 @@ class ClickNickApp:
 
     def _on_sync_status_changed(self, pending: int) -> None:
         self._update_window_title()
+        self._refresh_workspace_ui()
         store = self._get_store()
         if store is not None:
             for window in store._windows:
@@ -1443,6 +1654,7 @@ class ClickNickApp:
         self.using_database = False
         self._workspace_config = None
         self._workspace_mirror_error = None
+        self._refresh_workspace_ui()
 
     def refresh_click_instances(self):
         """Refresh the list of running Click.exe instances."""

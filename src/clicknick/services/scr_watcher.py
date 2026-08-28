@@ -95,9 +95,9 @@ class ScrWatcher:
                 self._on_changed()
                 if self._synced_pending > 0:
                     self._synced_pending = 0
-                    if self._on_sync_status_changed:
-                        self._on_sync_status_changed(0)
                 self._staged_rungs = 0
+                if self._on_sync_status_changed:
+                    self._on_sync_status_changed(self._synced_pending)
         except Exception:
             pass
         self._schedule()

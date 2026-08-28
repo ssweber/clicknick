@@ -9,6 +9,8 @@ import os
 import shutil
 import tempfile
 import tomllib
+from configparser import ConfigParser
+from configparser import Error as ConfigParserError
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
@@ -49,6 +51,7 @@ class ProjectWorkspaceConfig:
     project_file: Path
     mirror_path: Path
     last_synced_at: dt.datetime | None = None
+    plc_name: str | None = None
 
     @property
     def sidecar_path(self) -> Path:
@@ -112,6 +115,8 @@ def save_project_workspace_config(config: ProjectWorkspaceConfig) -> Path:
         "[workspace]",
         f"mirror_path = {json.dumps(mirror_value)}",
     ]
+    if config.plc_name:
+        lines.append(f"plc_name = {json.dumps(config.plc_name)}")
     if config.last_synced_at is not None:
         lines.append(f"last_synced_at = {json.dumps(config.last_synced_at.isoformat())}")
     lines.append("")
@@ -151,11 +156,29 @@ def load_project_workspace_config(sidecar: Path) -> ProjectWorkspaceConfig:
         except (TypeError, ValueError) as exc:
             raise ValueError(f"invalid last_synced_at in sidecar: {sidecar}") from exc
 
+    raw_plc_name = workspace.get("plc_name")
+    if raw_plc_name is not None and not isinstance(raw_plc_name, str):
+        raise ValueError(f"invalid plc_name in sidecar: {sidecar}")
+    plc_name = raw_plc_name.strip() if raw_plc_name else None
+
     return ProjectWorkspaceConfig(
         project_file=_normalized(project_file),
         mirror_path=_normalized(mirror_path),
         last_synced_at=last_synced_at,
+        plc_name=plc_name,
     )
+
+
+def read_plc_name(project_ini: Path) -> str | None:
+    """Read CLICK's configured PLC name from a temporary ``Project.ini``."""
+    parser = ConfigParser(interpolation=None)
+    try:
+        with Path(project_ini).open(encoding="utf-8-sig") as stream:
+            parser.read_file(stream)
+        value = parser.get("PLCName", "PLCName", fallback="").strip()
+    except (ConfigParserError, OSError, UnicodeError):
+        return None
+    return value or None
 
 
 def default_locator_path() -> Path:
@@ -191,7 +214,10 @@ def remember_project_sidecar(sidecar: Path, locator_path: Path | None = None) ->
 
 
 def find_project_configs(
-    project_filename: str, locator_path: Path | None = None
+    project_filename: str,
+    locator_path: Path | None = None,
+    *,
+    plc_name: str | None = None,
 ) -> list[ProjectWorkspaceConfig]:
     """Return known valid sidecars matching a connected CLICK filename."""
     locator_path = _normalized(locator_path or default_locator_path())
@@ -208,6 +234,14 @@ def find_project_configs(
             and config.project_file.name.casefold() == project_filename.casefold()
         ):
             matches.append(config)
+    if len(matches) > 1 and plc_name:
+        plc_matches = [
+            config
+            for config in matches
+            if config.plc_name and config.plc_name.casefold() == plc_name.casefold()
+        ]
+        if plc_matches:
+            return plc_matches
     return matches
 
 
