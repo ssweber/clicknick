@@ -91,17 +91,81 @@ _PRESERVE = {".venv", "__pycache__", "backup", "pyproject.toml", "tests", "uv.lo
 _EXPORT_IGNORE = shutil.ignore_patterns(".venv", "__pycache__", "*.pyc")
 
 
-def _clean_generated(persist_dir: Path) -> None:
+def _clean_generated(persist_dir: Path, *, preserve_source: bool = False) -> None:
     """Remove generated files while preserving session-local workspace files."""
     import shutil
 
     for child in persist_dir.iterdir():
-        if child.name in _PRESERVE:
+        if child.name in _PRESERVE or (preserve_source and child.name == "src"):
             continue
         if child.is_dir():
             shutil.rmtree(child, ignore_errors=True)
         else:
             child.unlink(missing_ok=True)
+
+
+def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
+    """Publish a complete staged generation without risking workspace edits."""
+    from .project_workspace import (
+        _replace_tree,
+        backup_modified_plc_source,
+        plc_source_dir,
+        record_generated_plc_source,
+    )
+
+    staged_source = plc_source_dir(staged_dir)
+    if not staged_source.is_dir():
+        raise ValueError(f"staged generated source directory not found: {staged_source}")
+
+    persist_dir.mkdir(parents=True, exist_ok=True)
+    backup_modified_plc_source(persist_dir)
+
+    # Keep active source in place until all other generated files are ready.
+    # _replace_tree then publishes src/plc atomically and restores it if the
+    # filesystem refuses the final rename.
+    _clean_generated(persist_dir, preserve_source=True)
+    for child in staged_dir.iterdir():
+        if child.name == "src":
+            continue
+        destination = persist_dir / child.name
+        if child.is_dir():
+            shutil.copytree(child, destination, dirs_exist_ok=True)
+        else:
+            shutil.copy2(child, destination)
+
+    _replace_tree(staged_source, plc_source_dir(persist_dir))
+    record_generated_plc_source(persist_dir)
+
+
+def _regenerate_persisted_project(
+    scr_folder: Path, db_path: Path | None, persist_dir: Path
+) -> Path:
+    """Generate beside the workspace, then publish only a complete project."""
+    from pyrung.click import ladder_to_pyrung_project
+
+    from ..ladder.program import program_save
+
+    persist_dir.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix=f".{persist_dir.name}-regeneration-", dir=persist_dir.parent
+    ) as stage_root:
+        staged_dir = Path(stage_root) / "project"
+        staged_dir.mkdir()
+        csv_persist = staged_dir / "csv"
+        csv_persist.mkdir()
+        program_save(scr_folder, csv_persist, index=True)
+        persist_nickname_csv = None
+        if db_path is not None:
+            persist_nickname_csv = _write_nicknames_csv(csv_persist, db_path)
+
+        ladder_to_pyrung_project(
+            csv_persist,
+            nickname_csv=persist_nickname_csv,
+            output_dir=staged_dir,
+            index=True,
+        )
+        _publish_generated_project(staged_dir, persist_dir)
+    return persist_dir
 
 
 def _build_graph(
@@ -130,25 +194,7 @@ def _build_graph(
 
         project_dir = None
         if persist_dir is not None:
-            from pyrung.click import ladder_to_pyrung_project
-
-            persist_dir.mkdir(parents=True, exist_ok=True)
-            _clean_generated(persist_dir)
-
-            csv_persist = persist_dir / "csv"
-            csv_persist.mkdir(exist_ok=True)
-            program_save(scr_folder, csv_persist, index=True)
-            persist_nickname_csv = None
-            if db_path is not None:
-                persist_nickname_csv = _write_nicknames_csv(csv_persist, db_path)
-
-            ladder_to_pyrung_project(
-                csv_persist,
-                nickname_csv=persist_nickname_csv,
-                output_dir=persist_dir,
-                index=True,
-            )
-            project_dir = persist_dir
+            project_dir = _regenerate_persisted_project(scr_folder, db_path, persist_dir)
 
     namespace: dict[str, object] = {}
     exec(compile(code, "<analysis>", "exec"), namespace)  # noqa: S102

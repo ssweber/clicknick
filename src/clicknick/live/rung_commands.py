@@ -832,21 +832,13 @@ def _run_export(project_dir: Path) -> Path:
 
 
 def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
-    from ..services.project_workspace import backup_plc_source
-
     project_dir = _get_project_dir(ctx)
-    backup_dir, file_count = backup_plc_source(project_dir)
     pending_dir = _run_export(project_dir)
     proposal_status, staged_rungs = _open_proposal(ctx, parts)
     ctx.staged_rungs = staged_rungs
     if ctx.record_staged_rungs is not None:
         ctx.record_staged_rungs(staged_rungs)
-    return (
-        f"OK: backed up {file_count} source file{'s' if file_count != 1 else ''} "
-        f"to {backup_dir}\n"
-        f"OK: wrote ladder CSVs to {pending_dir}\n"
-        f"{proposal_status}"
-    )
+    return f"OK: wrote ladder CSVs to {pending_dir}\n{proposal_status}"
 
 
 _SUBCOMMANDS = {

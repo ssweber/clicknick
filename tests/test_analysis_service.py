@@ -18,6 +18,12 @@ from clicknick.services.analysis_service import (
     AnalysisStatus,
     _build_tag_addr_key_map,
     _clean_generated,
+    _publish_generated_project,
+    _regenerate_persisted_project,
+)
+from clicknick.services.project_workspace import (
+    backup_plc_source,
+    generated_source_state_path,
 )
 
 
@@ -391,3 +397,66 @@ def test_clean_generated_preserves_entire_tests_directory(tmp_path):
     assert (test_cache / "cached.pyc").is_file()
     assert (backup_source / "main.py").read_text(encoding="utf-8") == "proposed logic\n"
     assert not (tmp_path / "src").exists()
+
+
+def _staged_project(root, source_text: str):
+    source = root / "src" / "plc"
+    source.mkdir(parents=True)
+    (source / "main.py").write_text(source_text, encoding="utf-8")
+    (root / "project_to_csv.py").write_text("# generated\n", encoding="utf-8")
+    return root
+
+
+def test_dirty_source_is_snapshotted_before_click_regeneration(tmp_path):
+    persist = tmp_path / "pyrung_project"
+    first = _staged_project(tmp_path / "first", "generated one\n")
+    _publish_generated_project(first, persist)
+    (persist / "src" / "plc" / "main.py").write_text("unfinished work\n", encoding="utf-8")
+
+    second = _staged_project(tmp_path / "second", "generated two\n")
+    _publish_generated_project(second, persist)
+
+    assert (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8") == ("generated two\n")
+    assert (persist / "backup" / "src" / "plc" / "main.py").read_text(
+        encoding="utf-8"
+    ) == "unfinished work\n"
+
+
+def test_clean_regeneration_does_not_replace_existing_recovery_snapshot(tmp_path):
+    persist = tmp_path / "pyrung_project"
+    first = _staged_project(tmp_path / "first", "generated one\n")
+    _publish_generated_project(first, persist)
+    backup_plc_source(persist)
+
+    second = _staged_project(tmp_path / "second", "generated two\n")
+    _publish_generated_project(second, persist)
+
+    assert (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8") == ("generated two\n")
+    assert (persist / "backup" / "src" / "plc" / "main.py").read_text(
+        encoding="utf-8"
+    ) == "generated one\n"
+    assert generated_source_state_path(persist).is_file()
+
+
+def test_failed_regeneration_keeps_dirty_source_in_place(tmp_path, monkeypatch):
+    persist = tmp_path / "pyrung_project"
+    initial = _staged_project(tmp_path / "initial", "generated\n")
+    _publish_generated_project(initial, persist)
+    active = persist / "src" / "plc" / "main.py"
+    active.write_text("unfinished work\n", encoding="utf-8")
+
+    def fake_program_save(_scr_folder, csv_dir, *, index):
+        assert index is True
+        (csv_dir / "main.csv").write_text("ladder\n", encoding="utf-8")
+
+    def fail_generation(*_args, **_kwargs):
+        raise RuntimeError("conversion failed")
+
+    monkeypatch.setattr("clicknick.ladder.program.program_save", fake_program_save)
+    monkeypatch.setattr("pyrung.click.ladder_to_pyrung_project", fail_generation)
+
+    with pytest.raises(RuntimeError, match="conversion failed"):
+        _regenerate_persisted_project(tmp_path, None, persist)
+
+    assert active.read_text(encoding="utf-8") == "unfinished work\n"
+    assert not (persist / "backup" / "src" / "plc").exists()

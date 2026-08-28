@@ -52,12 +52,13 @@ def test_restore_requires_an_existing_backup(tmp_path: Path):
         dispatch(_context(tmp_path), "restore")
 
 
-def test_rung_apply_backs_up_before_export(tmp_path: Path, monkeypatch):
+def test_rung_apply_does_not_replace_regeneration_recovery_snapshot(tmp_path: Path, monkeypatch):
     source = _write_source(tmp_path, "proposal\n")
+    backup = tmp_path / "backup" / "src" / "plc"
+    backup.mkdir(parents=True)
+    (backup / "main.py").write_text("recovery snapshot\n", encoding="utf-8")
 
     def _export(project_dir: Path) -> Path:
-        backup = project_dir / "backup" / "src" / "plc" / "main.py"
-        assert backup.read_text(encoding="utf-8") == "proposal\n"
         (source / "main.py").write_text("export touched source\n", encoding="utf-8")
         return project_dir / "csv_output"
 
@@ -69,16 +70,16 @@ def test_rung_apply_backs_up_before_export(tmp_path: Path, monkeypatch):
     ctx.record_staged_rungs = staged.append
     result = dispatch(ctx, "rung apply main")
 
-    assert "backed up 1 source file" in result
+    assert "backed up" not in result
     assert "wrote ladder CSVs" in result
     assert "opened" in result
     assert staged == [1]
     assert (tmp_path / "backup" / "src" / "plc" / "main.py").read_text(
         encoding="utf-8"
-    ) == "proposal\n"
+    ) == "recovery snapshot\n"
 
 
-def test_failed_rung_apply_still_leaves_the_source_backup(tmp_path: Path, monkeypatch):
+def test_failed_rung_apply_does_not_create_a_misleading_snapshot(tmp_path: Path, monkeypatch):
     _write_source(tmp_path, "proposal\n")
 
     def _fail_export(_project_dir: Path) -> Path:
@@ -89,9 +90,7 @@ def test_failed_rung_apply_still_leaves_the_source_backup(tmp_path: Path, monkey
     with pytest.raises(ValueError, match="export failed"):
         dispatch(_context(tmp_path), "rung apply main")
 
-    assert (tmp_path / "backup" / "src" / "plc" / "main.py").read_text(
-        encoding="utf-8"
-    ) == "proposal\n"
+    assert not (tmp_path / "backup").exists()
 
 
 def test_rung_preview_command_was_folded_into_apply(tmp_path: Path):
