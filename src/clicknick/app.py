@@ -683,7 +683,7 @@ class ClickNickApp:
             parent,
             textvariable=variable,
             style="Status.TLabel",
-            wraplength=260,
+            wraplength=440,
             justify=tk.LEFT,
         ).pack(anchor=tk.W, fill=tk.X)
 
@@ -856,7 +856,7 @@ class ClickNickApp:
             mirror,
             textvariable=self.mirror_detail_var,
             style="Error.TLabel",
-            wraplength=260,
+            wraplength=440,
             justify=tk.LEFT,
         )
         self.mirror_detail_label.pack(anchor=tk.W, fill=tk.X)
@@ -908,6 +908,7 @@ class ClickNickApp:
         window = tk.Toplevel(self.root)
         window.title("ClickNick Advanced")
         window.transient(self.root)
+        window.minsize(520, 0)
         window.protocol("WM_DELETE_WINDOW", self._close_advanced_window)
         contents = ttk.Frame(window, padding=12)
         self._create_advanced_contents(contents)
