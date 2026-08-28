@@ -205,6 +205,14 @@ class LiveServer:
             pyrung_live_available=pyrung_live_available,
         )
 
+    def dispatch_now(self, command: str) -> str:
+        """Run a command immediately from the Tk thread.
+
+        Main-window actions use this to share the exact reviewed workflows
+        exposed by the live CLI without making a socket round trip.
+        """
+        return dispatch(self._build_context(), command)
+
     def _drain(self) -> None:
         """Execute queued commands on the Tk thread, then reschedule."""
         try:

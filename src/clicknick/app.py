@@ -279,6 +279,77 @@ class ClickNickApp:
             return
         self._session.start_analysis(self.root)
 
+    def _get_workspace_status(self):
+        """Return reusable status for the current CLICK workspace."""
+        from .services.workspace_service import get_workspace_status
+
+        session = self._session
+        return get_workspace_status(
+            session.analysis if session else None,
+            staged_rungs=session.staged_rungs if session else 0,
+        )
+
+    def _workspace_rung_apply(self) -> None:
+        """Run the consolidated reviewed proposal flow for workspace rungs."""
+        if self._session is None or self._live_server is None:
+            self._update_status("Connect to a CLICK project first", "error")
+            return
+
+        try:
+            self._live_server.dispatch_now("rung apply")
+        except Exception as exc:
+            messagebox.showerror("Rung Apply", str(exc), parent=self.root)
+            self._update_status(f"Rung Apply failed: {exc}", "error")
+            return
+
+        status = self._get_workspace_status()
+        if status.changed_rungs:
+            self._update_status(f"Rung Apply: reviewing {status.label}", "connected")
+        else:
+            self._update_status("Workspace clean; no changed rungs to apply", "connected")
+
+    def _workspace_reload_finished(self, success: bool, error: str | None) -> None:
+        """Report completion of an explicit CLICK-to-workspace reload."""
+        if success:
+            if self._session is not None:
+                self._session.record_rung_stage(0)
+            self._update_status("Workspace reloaded from CLICK", "connected")
+            return
+        message = error or "Workspace could not be reloaded from CLICK."
+        messagebox.showerror("Reload from CLICK", message, parent=self.root)
+        self._update_status(f"Workspace reload failed: {message}", "error")
+
+    def _workspace_reload_from_click(self) -> None:
+        """Explicitly replace active workspace source from the saved CLICK project."""
+        session = self._session
+        if session is None:
+            self._update_status("Connect to a CLICK project first", "error")
+            return
+
+        from .services.workspace_service import WorkspaceState
+
+        if self._get_workspace_status().state is WorkspaceState.PREPARING:
+            self._update_status("Workspace regeneration is already in progress", "error")
+            return
+
+        confirmed = messagebox.askokcancel(
+            "Reload from CLICK",
+            "Reload the workspace from the saved CLICK project?\n\n"
+            "This replaces the active generated source. Modified workspace source "
+            "will be preserved in the recovery snapshot.",
+            parent=self.root,
+        )
+        if not confirmed:
+            return
+
+        self._update_status("Reloading workspace from CLICK...", "connected")
+
+        def _finished(success: bool, error: str | None) -> None:
+            if self._session is session:
+                self._workspace_reload_finished(success, error)
+
+        session.reload_workspace_from_click(self.root, _finished)
+
     def _apply_active_filter(self, candidates: list[str], search_text: str) -> list[str]:
         mode = self.settings.search_mode
         strategy = self.filter_strategies.get(mode, self.filter_strategies["contains"])
@@ -715,41 +786,41 @@ class ClickNickApp:
         )
 
     def _export_pyrung_project(self):
-        """Copy the connected project's ready pyrung workspace."""
+        """Copy the connected project's ready workspace."""
         from .services.analysis_service import AnalysisStatus
 
         analysis = self._session.analysis if self._session else None
         if analysis is None:
             messagebox.showinfo(
-                "Export pyrung Project",
-                "Connect to a Click project before exporting its pyrung project.",
+                "Export Workspace",
+                "Connect to a CLICK project before exporting its workspace.",
                 parent=self.root,
             )
             return
         if analysis.status is AnalysisStatus.BUILDING:
             messagebox.showinfo(
-                "Export pyrung Project",
-                "The pyrung project is still being built. Try again in a moment.",
+                "Export Workspace",
+                "The workspace is still being prepared. Try again in a moment.",
                 parent=self.root,
             )
             return
         if analysis.status is AnalysisStatus.FAILED:
             messagebox.showerror(
-                "Export pyrung Project",
-                analysis.error or "The pyrung project could not be built.",
+                "Export Workspace",
+                analysis.error or "The workspace could not be built.",
                 parent=self.root,
             )
             return
         if not analysis.is_available or analysis.project_dir is None:
             messagebox.showinfo(
-                "Export pyrung Project",
+                "Export Workspace",
                 "Save the project in Click Software, then try again.",
                 parent=self.root,
             )
             return
 
         output = filedialog.askdirectory(
-            title="Export pyrung Project — choose where to save pyrung_project",
+            title="Export Workspace — choose a parent folder",
             parent=self.root,
             mustexist=False,
         )
@@ -764,7 +835,7 @@ class ClickNickApp:
             return
 
         self._update_status(
-            f"Exported pyrung project ({file_count} files) to {destination}",
+            f"Exported workspace ({file_count} files) to {destination}",
             "connected",
         )
 
@@ -966,6 +1037,17 @@ class ClickNickApp:
             tools_menu.add_command(label="Verify MDB & CDV...", command=self._verify_mdb_and_cdv)
             tools_menu.add_command(label="Clean MDB...", command=self._clean_mdb)
 
+        # Workspace menu. Main-screen placement arrives in the focused UI
+        # refresh; these commands own the stable behavior in the meantime.
+        workspace_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Workspace", menu=workspace_menu)
+        workspace_menu.add_command(label="Rung Apply", command=self._workspace_rung_apply)
+        workspace_menu.add_command(
+            label="Reload from CLICK...", command=self._workspace_reload_from_click
+        )
+        workspace_menu.add_separator()
+        workspace_menu.add_command(label="Export Workspace...", command=self._export_pyrung_project)
+
         # Ladder menu
         ladder_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Ladder", menu=ladder_menu)
@@ -976,9 +1058,6 @@ class ClickNickApp:
         ladder_menu.add_separator()
         ladder_menu.add_command(label="Save Clipboard to CSV...", command=self._save_clipboard_csv)
         ladder_menu.add_command(label="Export from Click...", command=self._export_from_click)
-        ladder_menu.add_command(
-            label="Export pyrung Project...", command=self._export_pyrung_project
-        )
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -1111,7 +1190,6 @@ class ClickNickApp:
             self._live_server.start()
         except Exception as exc:  # noqa: BLE001 - never block app startup
             print(f"Live server failed to start: {exc}")
-            self._live_server = None
 
         # Initialize overlay early (before UI creation)
         self.overlay = None

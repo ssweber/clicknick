@@ -70,69 +70,98 @@ class ConnectionSession:
         if self.scr_watcher is not None:
             self.scr_watcher.record_rung_stage(count)
 
+    def _start_analysis_thread(
+        self,
+        scr_folder: Path,
+        db_path: Path,
+        *,
+        root: tk.Tk | None = None,
+        on_complete: Callable[[bool, str | None], None] | None = None,
+    ) -> None:
+        """Build analysis and optionally report completion on the Tk thread."""
+        store = self.store
+        analysis = self.analysis
+        assert analysis is not None
+
+        def _rebuild() -> None:
+            error: str | None = None
+            try:
+                persist = scr_folder / "pyrung_project"
+                analysis.build(scr_folder, db_path, store.base_state, persist_dir=persist)
+            except Exception as exc:
+                error = f"{type(exc).__name__}: {exc}"
+                traceback.print_exc()
+            if on_complete is not None:
+                if root is None:
+                    on_complete(error is None, error)
+                else:
+                    root.after(0, lambda: on_complete(error is None, error))
+
+        threading.Thread(target=_rebuild, daemon=True).start()
+
     def _on_scr_changed(self, scr_folder: Path, db_path: str) -> None:
         """Rebuild analysis when Scr*.tmp files change."""
         if self.analysis is None:
             return
-        store = self.store
-        analysis = self.analysis
+        self._start_analysis_thread(scr_folder, Path(db_path))
 
-        def _rebuild() -> None:
-            try:
-                persist = scr_folder / "pyrung_project"
-                analysis.build(scr_folder, Path(db_path), store.base_state, persist_dir=persist)
-            except Exception:
-                traceback.print_exc()
+    def _analysis_paths(self) -> tuple[Path, Path] | None:
+        """Resolve the saved CLICK inputs needed to regenerate the workspace."""
+        from .services.analysis_service import AnalysisService
+        from .utils.mdb_shared import find_click_database
 
-        threading.Thread(target=_rebuild, daemon=True).start()
+        if self.analysis is None:
+            self.analysis = AnalysisService()
+
+        db_value = find_click_database(click_hwnd=self.hwnd)
+        if not db_value:
+            self.analysis.mark_failed(
+                "No Click project database found. Connect to a project in Click Software."
+            )
+            return None
+
+        db_path = Path(db_value)
+        scr_folder = db_path.parent
+        if not list(scr_folder.glob("Scr*.tmp")):
+            self.analysis.mark_failed(
+                "No saved ladder files (Scr*.tmp) in the project folder. "
+                "Save the project in Click Software first."
+            )
+            return None
+        return scr_folder, db_path
+
+    def reload_workspace_from_click(
+        self,
+        root: tk.Tk,
+        on_complete: Callable[[bool, str | None], None] | None = None,
+    ) -> bool:
+        """Explicitly regenerate the workspace from the saved CLICK project."""
+        paths = self._analysis_paths()
+        if paths is None:
+            if on_complete is not None:
+                error = self.analysis.error if self.analysis is not None else None
+                root.after(0, lambda: on_complete(False, error))
+            return False
+        self._start_analysis_thread(*paths, root=root, on_complete=on_complete)
+        return True
 
     # -- Analysis and ScrWatcher -------------------------------------------
 
     def start_analysis(self, root: tk.Tk) -> None:
         """Build program analysis in background and start ScrWatcher."""
-        from .services.analysis_service import AnalysisService
         from .services.scr_watcher import ScrWatcher
-        from .utils.mdb_shared import find_click_database
 
-        # Created before the pre-flight checks so a bail-out has somewhere to
-        # record *why* -- otherwise views wait on analysis that never starts.
-        if self.analysis is None:
-            self.analysis = AnalysisService()
-        analysis = self.analysis
-
-        db_path = find_click_database(click_hwnd=self.hwnd)
-        if not db_path:
-            analysis.mark_failed(
-                "No Click project database found. Connect to a project in Click Software."
-            )
+        paths = self._analysis_paths()
+        if paths is None:
             return
-        scr_folder = Path(db_path).parent
-
-        if not list(scr_folder.glob("Scr*.tmp")):
-            analysis.mark_failed(
-                "No saved ladder files (Scr*.tmp) in the project folder. "
-                "Save the project in Click Software first."
-            )
-            return
-
-        store = self.store
-
-        def _build() -> None:
-            try:
-                persist = scr_folder / "pyrung_project"
-                analysis.build(scr_folder, Path(db_path), store.base_state, persist_dir=persist)
-            except Exception:
-                # build() has already recorded the reason on the service, which
-                # is what the UI reads; this is only for a dev console.
-                traceback.print_exc()
-
-        threading.Thread(target=_build, daemon=True).start()
+        scr_folder, db_path = paths
+        self._start_analysis_thread(scr_folder, db_path)
 
         if self.scr_watcher is not None:
             self.scr_watcher.stop()
         self.scr_watcher = ScrWatcher(
             scr_folder,
-            lambda: self._on_scr_changed(scr_folder, db_path),
+            lambda: self._on_scr_changed(scr_folder, str(db_path)),
             on_sync_status_changed=self._on_sync_status_changed,
         )
         self.scr_watcher.start(root)
