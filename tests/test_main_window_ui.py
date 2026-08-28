@@ -16,21 +16,22 @@ from clicknick.services.workspace_service import WorkspaceState, WorkspaceStatus
 
 
 @pytest.mark.parametrize(
-    ("label", "mode"),
+    ("index", "mode"),
     [
-        ("None", "none"),
-        ("Prefix", "prefix"),
-        ("Contains", "contains"),
-        ("Fuzzy", "containsplus"),
+        (0, "none"),
+        (1, "prefix"),
+        (2, "contains"),
+        (3, "containsplus"),
     ],
 )
-def test_match_breadth_selector_preserves_filter_modes(label: str, mode: str) -> None:
+def test_match_mode_slider_preserves_filter_modes(index: int, mode: str) -> None:
     app = ClickNickApp.__new__(ClickNickApp)
-    app.match_breadth_var = MagicMock(get=MagicMock(return_value=label))
+    app.match_mode_index_var = MagicMock()
     app.settings = SimpleNamespace(search_var=MagicMock())
 
-    app._on_match_breadth_selected()
+    app._on_match_mode_changed(str(index))
 
+    app.match_mode_index_var.set.assert_called_once_with(float(index))
     app.settings.search_var.set.assert_called_once_with(mode)
 
 
@@ -49,7 +50,7 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
     )
     for name in variable_names:
         setattr(app, name, MagicMock())
-    app.workspace_status_label = MagicMock()
+    app.workspace_group = MagicMock()
     app._workspace_refresh_after_id = None
     app._get_workspace_status = MagicMock(
         return_value=WorkspaceStatus(WorkspaceState.CLEAN, "Clean")
@@ -73,7 +74,7 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
     app._refresh_workspace_ui()
 
     app.workspace_status_var.set.assert_called_once_with("Clean")
-    app.workspace_status_label.configure.assert_called_once_with(style="Connected.TLabel")
+    app.workspace_group.configure.assert_called_once_with(text="Workspace - Clean")
     app.mirror_status_var.set.assert_called_once_with("Paired")
     app.mirror_path_var.set.assert_called_once_with(str(mirror))
     app.plc_name_var.set.assert_called_once_with("IMHERE")

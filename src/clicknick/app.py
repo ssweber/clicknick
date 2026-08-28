@@ -25,14 +25,8 @@ windll.shcore.SetProcessDpiAwareness(1)
 # Dev mode flag - enables in-progress features
 _DEV_MODE = False
 
-_MATCH_BREADTH_LABELS = ("None", "Prefix", "Contains", "Fuzzy")
-_MATCH_MODE_BY_LABEL = {
-    "None": "none",
-    "Prefix": "prefix",
-    "Contains": "contains",
-    "Fuzzy": "containsplus",
-}
-_MATCH_LABEL_BY_MODE = {mode: label for label, mode in _MATCH_MODE_BY_LABEL.items()}
+_MATCH_MODES = ("none", "prefix", "contains", "containsplus")
+_MATCH_LABELS = ("None", "Prefix", "Contains", "Fuzzy")
 
 
 def get_version():
@@ -53,9 +47,11 @@ class ClickNickApp:
         self.csv_path_var = tk.StringVar()
         self.status_var = tk.StringVar(value="Not connected")
         self.selected_instance_var = tk.StringVar()  # Add this line
-        self.match_breadth_var = tk.StringVar(
-            value=_MATCH_LABEL_BY_MODE.get(self.settings.search_mode, "Contains")
-        )
+        try:
+            match_index = _MATCH_MODES.index(self.settings.search_mode)
+        except ValueError:
+            match_index = 2
+        self.match_mode_index_var = tk.DoubleVar(value=float(match_index))
         self.workspace_status_var = tk.StringVar(value="Unavailable")
         self.mirror_status_var = tk.StringVar(value="Not configured")
         self.mirror_detail_var = tk.StringVar(value="")
@@ -170,10 +166,11 @@ class ClickNickApp:
             # Regenerate abbreviation tags after sorting
             self.nickname_manager._generate_abbreviation_tags()
 
-    def _on_match_breadth_selected(self, _event=None) -> None:
-        """Map the compact selector onto the existing filter strategies."""
-        mode = _MATCH_MODE_BY_LABEL.get(self.match_breadth_var.get(), "contains")
-        self.settings.search_var.set(mode)
+    def _on_match_mode_changed(self, value) -> None:
+        """Map the four-stop slider onto the existing filter strategies."""
+        index = max(0, min(len(_MATCH_MODES) - 1, round(float(value))))
+        self.match_mode_index_var.set(float(index))
+        self.settings.search_var.set(_MATCH_MODES[index])
 
     def _get_workspace_status(self):
         """Return reusable status for the current CLICK workspace."""
@@ -234,14 +231,8 @@ class ClickNickApp:
 
         workspace = self._get_workspace_status()
         self.workspace_status_var.set(workspace.label)
-        if hasattr(self, "workspace_status_label"):
-            if workspace.state is WorkspaceState.FAILED:
-                style = "Error.TLabel"
-            elif workspace.state is WorkspaceState.CLEAN:
-                style = "Connected.TLabel"
-            else:
-                style = "Status.TLabel"
-            self.workspace_status_label.configure(style=style)
+        if hasattr(self, "workspace_group"):
+            self.workspace_group.configure(text=f"Workspace - {workspace.label}")
 
         if workspace.state is WorkspaceState.PREPARING:
             if self._workspace_refresh_after_id is None:
@@ -273,23 +264,22 @@ class ClickNickApp:
         """Create the compact, frequently used autocomplete controls."""
         options_frame = ttk.LabelFrame(parent, text="Autocomplete", padding=10)
 
-        breadth_frame = ttk.Frame(options_frame)
-        ttk.Label(breadth_frame, text="Match breadth:").pack(side=tk.LEFT, padx=(0, 8))
-        self.match_breadth_selector = ttk.Combobox(
-            breadth_frame,
-            textvariable=self.match_breadth_var,
-            values=_MATCH_BREADTH_LABELS,
-            state="readonly",
-            width=12,
+        match_frame = ttk.Frame(options_frame)
+        for column, label in enumerate(_MATCH_LABELS):
+            match_frame.columnconfigure(column, weight=1, uniform="match-mode")
+            ttk.Label(match_frame, text=label, anchor=tk.CENTER).grid(
+                row=0, column=column, sticky="ew"
+            )
+        self.match_mode_scale = ttk.Scale(
+            match_frame,
+            from_=0,
+            to=len(_MATCH_MODES) - 1,
+            orient=tk.HORIZONTAL,
+            variable=self.match_mode_index_var,
+            command=self._on_match_mode_changed,
         )
-        self.match_breadth_selector.bind("<<ComboboxSelected>>", self._on_match_breadth_selected)
-        self.match_breadth_selector.pack(side=tk.LEFT)
-        ttk.Label(
-            breadth_frame,
-            text="None  -  Prefix  -  Contains  -  Fuzzy",
-            style="Status.TLabel",
-        ).pack(side=tk.LEFT, padx=(12, 0))
-        breadth_frame.pack(fill=tk.X, pady=(0, 8))
+        self.match_mode_scale.grid(row=1, column=0, columnspan=4, sticky="ew")
+        match_frame.pack(fill=tk.X, pady=(0, 8))
 
         # Exclude nicknames containing entry
         exclude_frame_entry = ttk.Frame(options_frame)
@@ -671,16 +661,8 @@ class ClickNickApp:
         )
         ttk.Button(test, text="Console", command=self._open_console).pack(fill=tk.X)
 
-        workspace = ttk.LabelFrame(actions, padding=10)
-        workspace_heading = ttk.Frame(workspace)
-        ttk.Label(workspace_heading, text="Workspace -").pack(side=tk.LEFT)
-        self.workspace_status_label = ttk.Label(
-            workspace_heading,
-            textvariable=self.workspace_status_var,
-            style="Status.TLabel",
-        )
-        self.workspace_status_label.pack(side=tk.LEFT, padx=(3, 0))
-        workspace.configure(labelwidget=workspace_heading)
+        workspace = ttk.LabelFrame(actions, text="Workspace - Unavailable", padding=10)
+        self.workspace_group = workspace
         ttk.Button(workspace, text="Rung Apply", command=self._workspace_rung_apply).pack(
             fill=tk.X, pady=(0, 8)
         )
