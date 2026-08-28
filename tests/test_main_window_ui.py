@@ -64,10 +64,33 @@ def test_autocomplete_options_menu_uses_existing_setting_variables() -> None:
     ]
 
 
+def test_workspace_options_menu_exposes_mirror_and_folder_actions() -> None:
+    app = ClickNickApp.__new__(ClickNickApp)
+    app._setup_workspace_mirror = MagicMock()
+    app._sync_workspace_mirror = MagicMock()
+    app._open_generated_workspace = MagicMock()
+    app._open_mirror_folder = MagicMock()
+    menu = MagicMock()
+
+    app._populate_workspace_options_menu(menu)
+
+    assert menu.mock_calls == [
+        call.add_command(label="Setup Mirror...", command=app._setup_workspace_mirror),
+        call.add_command(label="Sync Now", command=app._sync_workspace_mirror),
+        call.add_separator(),
+        call.add_command(
+            label="Open Generated Workspace",
+            command=app._open_generated_workspace,
+        ),
+        call.add_command(label="Open Mirror Folder", command=app._open_mirror_folder),
+    ]
+
+
 def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> None:
     app = ClickNickApp.__new__(ClickNickApp)
     variable_names = (
         "workspace_status_var",
+        "workspace_group_title_var",
         "mirror_status_var",
         "mirror_detail_var",
         "mirror_path_var",
@@ -79,7 +102,6 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
     )
     for name in variable_names:
         setattr(app, name, MagicMock())
-    app.workspace_group = MagicMock()
     app._workspace_refresh_after_id = None
     app._get_workspace_status = MagicMock(
         return_value=WorkspaceStatus(WorkspaceState.CLEAN, "Clean")
@@ -103,7 +125,7 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
     app._refresh_workspace_ui()
 
     app.workspace_status_var.set.assert_called_once_with("Clean")
-    app.workspace_group.configure.assert_called_once_with(text="Workspace - Clean")
+    app.workspace_group_title_var.set.assert_called_once_with("Workspace - Clean")
     app.mirror_status_var.set.assert_called_once_with("Paired")
     app.mirror_path_var.set.assert_called_once_with(str(mirror))
     app.plc_name_var.set.assert_called_once_with("IMHERE")

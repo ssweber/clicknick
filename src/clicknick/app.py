@@ -54,6 +54,7 @@ class ClickNickApp:
             match_index = 2
         self.match_mode_index_var = tk.DoubleVar(value=float(match_index))
         self.workspace_status_var = tk.StringVar(value="Unavailable")
+        self.workspace_group_title_var = tk.StringVar(value="Workspace - Unavailable")
         self.mirror_status_var = tk.StringVar(value="Not configured")
         self.mirror_detail_var = tk.StringVar(value="")
         self.mirror_path_var = tk.StringVar(value="Not configured")
@@ -232,8 +233,7 @@ class ClickNickApp:
 
         workspace = self._get_workspace_status()
         self.workspace_status_var.set(workspace.label)
-        if hasattr(self, "workspace_group"):
-            self.workspace_group.configure(text=f"Workspace - {workspace.label}")
+        self.workspace_group_title_var.set(f"Workspace - {workspace.label}")
 
         if workspace.state is WorkspaceState.PREPARING:
             if self._workspace_refresh_after_id is None:
@@ -669,76 +669,6 @@ class ClickNickApp:
 
         AnalysisReportWindow(self.root, AnalysisReportData(grouped_findings=grouped))
 
-    def _create_action_section(self, parent) -> None:
-        """Create the primary Edit, Test, and Workspace action groups."""
-        actions = ttk.Frame(parent)
-        for column in range(3):
-            actions.columnconfigure(column, weight=1, uniform="main-actions")
-
-        edit = ttk.LabelFrame(actions, text="Edit", padding=10)
-        ttk.Button(
-            edit,
-            text="Address Editor",
-            image=self._action_icons.get("address_editor"),
-            compound=tk.LEFT,
-            command=self._open_address_editor,
-        ).pack(fill=tk.X, pady=(0, 8))
-        ttk.Button(
-            edit,
-            text="Data View",
-            image=self._action_icons.get("data_view"),
-            compound=tk.LEFT,
-            command=self._open_dataview_editor,
-        ).pack(fill=tk.X)
-
-        test = ttk.LabelFrame(actions, text="Test", padding=10)
-        ttk.Button(
-            test,
-            text="Check Program",
-            image=self._action_icons.get("check_program"),
-            compound=tk.LEFT,
-            command=self._analyze_program,
-        ).pack(fill=tk.X, pady=(0, 8))
-        ttk.Button(
-            test,
-            text="Console",
-            image=self._action_icons.get("console"),
-            compound=tk.LEFT,
-            command=self._open_console,
-        ).pack(fill=tk.X)
-
-        workspace = ttk.LabelFrame(actions, text="Workspace - Unavailable", padding=10)
-        self.workspace_group = workspace
-        ttk.Button(
-            workspace,
-            text="Rung Apply",
-            image=self._action_icons.get("rung_apply"),
-            compound=tk.LEFT,
-            command=self._workspace_rung_apply,
-        ).pack(fill=tk.X, pady=(0, 8))
-        ttk.Button(
-            workspace,
-            text="Reload from CLICK",
-            image=self._action_icons.get("reload_from_click"),
-            compound=tk.LEFT,
-            command=self._workspace_reload_from_click,
-        ).pack(fill=tk.X)
-
-        edit.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
-        test.grid(row=0, column=1, sticky="nsew", padx=5)
-        workspace.grid(row=0, column=2, sticky="nsew", padx=(5, 0))
-        actions.pack(fill=tk.BOTH, expand=True)
-
-    def _details_value(self, parent, label: str, variable: tk.StringVar) -> None:
-        ttk.Label(parent, text=label).pack(anchor=tk.W, pady=(4, 0))
-        ttk.Label(
-            parent,
-            textvariable=variable,
-            style="Status.TLabel",
-            wraplength=440,
-            justify=tk.LEFT,
-        ).pack(anchor=tk.W, fill=tk.X)
-
     def _sync_workspace_mirror(self) -> None:
         """Synchronize ClickNick-owned workspace files in one direction."""
         config = self._workspace_config
@@ -896,8 +826,97 @@ class ClickNickApp:
             unavailable="Workspace mirror is not configured",
         )
 
+    def _populate_workspace_options_menu(self, menu: tk.Menu) -> None:
+        """Add mirror and folder commands to the Workspace options menu."""
+        menu.add_command(label="Setup Mirror...", command=self._setup_workspace_mirror)
+        menu.add_command(label="Sync Now", command=self._sync_workspace_mirror)
+        menu.add_separator()
+        menu.add_command(
+            label="Open Generated Workspace",
+            command=self._open_generated_workspace,
+        )
+        menu.add_command(label="Open Mirror Folder", command=self._open_mirror_folder)
+
+    def _create_action_section(self, parent) -> None:
+        """Create the primary Edit, Test, and Workspace action groups."""
+        actions = ttk.Frame(parent)
+        for column in range(3):
+            actions.columnconfigure(column, weight=1, uniform="main-actions")
+
+        edit = ttk.LabelFrame(actions, text="Edit", padding=10)
+        ttk.Button(
+            edit,
+            text="Address Editor",
+            image=self._action_icons.get("address_editor"),
+            compound=tk.LEFT,
+            command=self._open_address_editor,
+        ).pack(fill=tk.X, pady=(0, 8))
+        ttk.Button(
+            edit,
+            text="Data View",
+            image=self._action_icons.get("data_view"),
+            compound=tk.LEFT,
+            command=self._open_dataview_editor,
+        ).pack(fill=tk.X)
+
+        test = ttk.LabelFrame(actions, text="Test", padding=10)
+        ttk.Button(
+            test,
+            text="Check Program",
+            image=self._action_icons.get("check_program"),
+            compound=tk.LEFT,
+            command=self._analyze_program,
+        ).pack(fill=tk.X, pady=(0, 8))
+        ttk.Button(
+            test,
+            text="Console",
+            image=self._action_icons.get("console"),
+            compound=tk.LEFT,
+            command=self._open_console,
+        ).pack(fill=tk.X)
+
+        workspace = ttk.LabelFrame(actions, padding=10)
+        workspace_header = ttk.Frame(workspace)
+        ttk.Label(workspace_header, textvariable=self.workspace_group_title_var).pack(side=tk.LEFT)
+        workspace_options_button = ttk.Menubutton(workspace_header, text="Options")
+        workspace_options_menu = tk.Menu(workspace_options_button, tearoff=0)
+        self._populate_workspace_options_menu(workspace_options_menu)
+        workspace_options_button.configure(menu=workspace_options_menu)
+        workspace_options_button.pack(side=tk.LEFT, padx=(8, 0))
+        workspace.configure(labelwidget=workspace_header)
+        self.workspace_options_menu = workspace_options_menu
+        ttk.Button(
+            workspace,
+            text="Rung Apply",
+            image=self._action_icons.get("rung_apply"),
+            compound=tk.LEFT,
+            command=self._workspace_rung_apply,
+        ).pack(fill=tk.X, pady=(0, 8))
+        ttk.Button(
+            workspace,
+            text="Reload from CLICK",
+            image=self._action_icons.get("reload_from_click"),
+            compound=tk.LEFT,
+            command=self._workspace_reload_from_click,
+        ).pack(fill=tk.X)
+
+        edit.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        test.grid(row=0, column=1, sticky="nsew", padx=5)
+        workspace.grid(row=0, column=2, sticky="nsew", padx=(5, 0))
+        actions.pack(fill=tk.BOTH, expand=True)
+
+    def _details_value(self, parent, label: str, variable: tk.StringVar) -> None:
+        ttk.Label(parent, text=label).pack(anchor=tk.W, pady=(4, 0))
+        ttk.Label(
+            parent,
+            textvariable=variable,
+            style="Status.TLabel",
+            wraplength=440,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, fill=tk.X)
+
     def _create_advanced_contents(self, parent) -> None:
-        """Create Workspace details and mirror actions in Advanced."""
+        """Create Workspace and directory details in Advanced."""
         mirror = ttk.LabelFrame(parent, text="Workspace / Mirror", padding=8)
         self._details_value(mirror, "Status", self.mirror_status_var)
         self._details_value(mirror, "Mirror path", self.mirror_path_var)
@@ -909,22 +928,6 @@ class ClickNickApp:
             justify=tk.LEFT,
         )
         self.mirror_detail_label.pack(anchor=tk.W, fill=tk.X)
-        ttk.Button(mirror, text="Setup Mirror...", command=self._setup_workspace_mirror).pack(
-            anchor=tk.W, pady=(8, 4)
-        )
-        ttk.Button(mirror, text="Sync Now", command=self._sync_workspace_mirror).pack(
-            anchor=tk.W, pady=(0, 4)
-        )
-        ttk.Button(
-            mirror,
-            text="Open Generated Workspace",
-            command=self._open_generated_workspace,
-        ).pack(anchor=tk.W, pady=(0, 4))
-        ttk.Button(
-            mirror,
-            text="Open Mirror Folder",
-            command=self._open_mirror_folder,
-        ).pack(anchor=tk.W)
         mirror.pack(fill=tk.X, pady=(0, 10))
 
         directories = ttk.LabelFrame(parent, text="Directory Information", padding=8)
