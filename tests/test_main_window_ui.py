@@ -62,6 +62,7 @@ def test_autocomplete_options_menu_uses_existing_setting_variables() -> None:
 
 def test_workspace_options_menu_exposes_active_folder_and_setup() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
+    app._workspace_config = None
     app._open_workspace = MagicMock()
     app._open_mirror_setup_window = MagicMock()
     menu = MagicMock()
@@ -69,13 +70,40 @@ def test_workspace_options_menu_exposes_active_folder_and_setup() -> None:
     app._populate_workspace_options_menu(menu)
 
     assert menu.mock_calls == [
-        call.add_command(label="Open Workspace", command=app._open_workspace),
+        call.add_command(
+            label="Open Workspace",
+            command=app._open_workspace,
+            state="disabled",
+        ),
         call.add_separator(),
         call.add_command(
             label="View/Setup Workspace...",
             command=app._open_mirror_setup_window,
         ),
     ]
+
+
+def test_open_workspace_menu_items_follow_durable_configuration() -> None:
+    app = ClickNickApp.__new__(ClickNickApp)
+    app.workspace_options_menu = MagicMock()
+    app._workspace_options_open_index = 0
+    app.workspace_menu = MagicMock()
+    app._workspace_menu_open_index = 3
+    app._workspace_config = None
+
+    app._refresh_workspace_menu_states()
+
+    app.workspace_options_menu.entryconfigure.assert_called_once_with(0, state="disabled")
+    app.workspace_menu.entryconfigure.assert_called_once_with(3, state="disabled")
+
+    app.workspace_options_menu.reset_mock()
+    app.workspace_menu.reset_mock()
+    app._workspace_config = object()
+
+    app._refresh_workspace_menu_states()
+
+    app.workspace_options_menu.entryconfigure.assert_called_once_with(0, state="normal")
+    app.workspace_menu.entryconfigure.assert_called_once_with(3, state="normal")
 
 
 def test_main_window_is_revealed_once_at_its_settled_requested_size() -> None:
@@ -121,7 +149,7 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
         "mirror_setup_status_var",
         "plc_name_var",
         "generated_dir_var",
-        "source_project_var",
+        "workspace_config_path_var",
         "last_regenerated_var",
         "last_backup_var",
     )
@@ -140,7 +168,7 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
     app._get_workspace_directory_info = MagicMock(
         return_value=WorkspaceDirectoryInfo(
             generated_dir=tmp_path / "pyrung_project",
-            source_project=project,
+            config_path=project,
             mirror_dir=mirror,
             last_regenerated_at=None,
             last_backup_at=None,
@@ -157,4 +185,4 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
     app.mirror_path_var.set.assert_called_once_with(str(mirror))
     app.mirror_setup_status_var.set.assert_called_once_with("✓ Configured")
     app.plc_name_var.set.assert_called_once_with("IMHERE")
-    app.source_project_var.set.assert_called_once_with(str(project))
+    app.workspace_config_path_var.set.assert_called_once_with(str(project))

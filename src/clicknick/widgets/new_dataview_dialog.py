@@ -1,13 +1,15 @@
 """Dialog for creating a new dataview with name validation."""
 
-import re
 import tkinter as tk
 from tkinter import ttk
 
-# Validation constants
-MAX_NAME_LENGTH = 24
-# Only alphanumeric, underscores, dashes, and spaces allowed
-VALID_CHAR_PATTERN = re.compile(r"^[a-zA-Z0-9_\- ]*$")
+from ..models.name_validation import (
+    CLICK_NAME_PATTERN,
+    MAX_CLICK_NAME_LENGTH,
+    validate_click_name,
+)
+
+MAX_NAME_LENGTH = MAX_CLICK_NAME_LENGTH
 
 
 class NewDataviewDialog(tk.Toplevel):
@@ -36,7 +38,7 @@ class NewDataviewDialog(tk.Toplevel):
             return False
 
         # Check for special characters
-        if not VALID_CHAR_PATTERN.match(new_value):
+        if not CLICK_NAME_PATTERN.fullmatch(new_value):
             return False
 
         self._update_char_count(len(new_value))
@@ -46,7 +48,8 @@ class NewDataviewDialog(tk.Toplevel):
         """Handle OK button click."""
         name = self.name_var.get().strip()
 
-        if not name:
+        is_valid, _ = validate_click_name(name)
+        if not is_valid:
             self.name_entry.focus_set()
             return
 
