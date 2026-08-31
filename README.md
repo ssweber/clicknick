@@ -1,199 +1,234 @@
 # ClickNick
 
-![clicknick_logo](https://github.com/user-attachments/assets/2cb7f411-3174-478c-a6c9-409aaa788376)
+![ClickNick logo](https://github.com/user-attachments/assets/2cb7f411-3174-478c-a6c9-409aaa788376)
 
-*Tag-Based Programming for Automation Direct CLICK PLCs.*
+**Tools to make AutomationDirect CLICK PLC ladder easier to write, test, troubleshoot, and maintain.**
 
-**ClickNick** lets you program using nicknames instead of raw memory addresses. It provides autocomplete that appears over CLICK instruction dialogs, plus standalone editors that sync with your project.
+ClickNick works alongside [CLICK Programming Software](https://www.automationdirect.com/clickplcs/free-software/free-click-software). Start with better nickname and address tools, then use program checks, an offline test bench, persistent workspaces, and optional AI-assisted ladder programming as you need them.
 
-| | Standard CLICK | ClickNick |
-|---|---|---|
-| **Ladder Logic Editor** | Type addresses `C123` | ✅ **Autocomplete** nicknames |
-| **Address Editing** | One-by-one in app | ✅ **Bulk edit**, multi-window, search/replace |
-| **Tag View** | Flat list | ✅ **Color named blocks** + **tree outline** (hierarchy & arrays) |
-| **DataView** | Input raw addresses, limited reordering | ✅ **Autocomplete**, add entire grouped structures and blocks, drag and drop reordering |
-| **Ladder Portability** | Copy/paste within app | ✅ **Export** to CSV, **convert** to Python, paste between projects |
-| **Price** | Free (bundled) | Free (open source) |
-| **Best For** | Simple projects | Complex projects, productivity |
+> [!IMPORTANT]
+> ClickNick never edits your `.ckp` project file directly. You review proposed changes, and nothing becomes part of the project until you save it in CLICK Programming Software. Close CLICK without saving to discard changes made through ClickNick.
 
-ClickNick works with your existing `.ckp` projects—just open your project in CLICK Software and connect. It's entirely local with no internet calls or telemetry; changes are temporary until you save in CLICK.
+ClickNick is a free, open-source Windows application. It runs locally, with no telemetry or required cloud service.
 
-### Why ClickNick?
+## Install
 
-CLICK PLCs were my first PLC experience, but remembering addresses became painful. Other platforms autocomplete—why not CLICK? ClickNick adds the modern tools I wish I'd had.
+ClickNick supports Windows 10 and 11 and CLICK Programming Software v2.60-v3.90.
 
-## Features at a Glance
+### 1. Install uv
 
-- **[✨ Nickname Autocomplete](#autocomplete)** – Type `Valve5` instead of `C123`, with smart filters and hover tooltips
-- **[🛠️ Modern Address Editor](#address-editor)** – Bulk edit with search/replace, color-coded blocks, multi-window support
-- **[📑 Tag Browser](#tag-browser)** – Tree view with automatic hierarchy and array grouping
-- **[📊 Dataview Editor](#dataview-editor)** – Tabbed interface, nickname lookup, unlimited reordering
-- **[🔌 Connectivity](#connectivity)** – CSV import and live ODBC database support
-- **[📐 Ladder Tools](#ladder-tools)** – Export ladder logic to CSV, convert to Python, paste between projects
+Open PowerShell and run:
 
-**Beta** – Review Address & Dataview changes before saving in CLICK. [Feedback welcome](https://github.com/ssweber/clicknick/issues).
-
----
-
-## Prerequisites
-
-- **OS:** Windows 10 or 11
-- **CLICK Software:** v2.60–v3.90 ([download here](https://www.automationdirect.com/clickplcs/free-software/free-click-software))
-- **ODBC Drivers:** Microsoft Access Database Engine ([install link](https://github.com/ssweber/clicknick/issues/17)) – *only needed for live DB sync; CSV import works without drivers*
-- **Python:** 3.11+ (only if using pip; uv manages Python automatically)
-
-## Quick Start
-
-### Option 1: uv (recommended)
-```bash
-uvx clicknick@latest              # Try it without installing
-uv tool install clicknick         # Install for offline use, upgrade with `uv tool upgrade clicknick`
-clicknick                         # Run (WinKey+R `Run` or command line)
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
-New to uv? See [installation instructions](https://github.com/astral-sh/uv#installation).  
 
-### Option 2: pip
-```bash
+Already have uv? Skip this step. Other installation methods are available in the [uv documentation](https://docs.astral.sh/uv/getting-started/installation/).
+
+### 2. Install and run ClickNick
+
+```powershell
+uv tool install clicknick
+clicknick
+```
+
+To upgrade later, run `uv tool upgrade clicknick`. To try the latest release without installing it, run `uvx clicknick@latest`.
+
+Then open your CLICK project as usual. ClickNick detects the open project and connects to it.
+
+### Microsoft Access driver
+
+Full project-aware features - including live nickname sync, Check Program, Console, workspaces, testing, and pyrung analysis - require the **64-bit Microsoft Access ODBC driver** so ClickNick can read CLICK's open project database. See the [Access driver installation notes](https://github.com/ssweber/clicknick/issues/17).
+
+If the driver is missing, ClickNick explains what is unavailable and continues in a reduced CSV mode. Nickname autocomplete and the lighter Address Editor and Data View workflows can still be used with nickname data loaded from CSV.
+
+<details>
+<summary>Install with pip instead</summary>
+
+Python 3.11 or newer is required.
+
+```powershell
 pip install clicknick
 python -m clicknick
 ```
 
----
+</details>
 
-## Detailed Features
+![ClickNick main window connected to a CLICK project](https://github.com/user-attachments/assets/de4148a2-cbc5-4b11-95e5-f884c59d70e0)
 
-### <a name="autocomplete"></a>✨ Nickname Autocomplete
+## Make everyday CLICK programming easier
 
-**How it works:** An autocomplete dropdown appears over CLICK instruction dialogs. Start typing a nickname and select from the filtered list—the address is inserted automatically.
+- **Nickname autocomplete** appears directly in CLICK instruction dialogs, so you can find `Valve5` instead of remembering `C123`.
+- **Address Editor** supports bulk nickname, comment, block, and annotation work with validation, search/replace, undo/redo, fill down, and structure cloning.
+- **Tag Browser** organizes nicknames into a navigable hierarchy and recognizes related arrays.
+- **Data View tools** add nickname lookup, grouped insertion, and drag-and-drop reordering.
+- **Project navigation filters** show tag relationships such as inputs, outputs, upstream, downstream, and isolated tags.
 
-- Skip the addresses – Select Valve5 instead of typing C123  
-- Flexible filters – Prefix, partial match/contains, or abbreviation (e.g., Motor Speed ↔ Mtr_Spd)  
-- Hover tooltips – View address comments at a glance  
-- Exclusion filters – Hide system or internal addresses (e.g., SC/SD, `__private__`)  
+ClickNick started by fixing a few editor annoyances - especially the need to remember addresses. You do not need Git, Python experience, an LLM, or a new programming environment to benefit from it. Start with autocomplete, open the Address Editor when it helps, and run Check Program when you want another set of eyes.
 
-![ClickNick autocomplete demo](https://github.com/user-attachments/assets/3a1cdff9-c425-46b7-8b90-4a357d43b6d3)  
+## Check the program before running the machine
 
----
+ClickNick automatically generates a readable, executable [pyrung](https://pyrung.com/) version of the saved ladder in the open CLICK project. This powers two built-in testing tools:
 
-### <a name="address-editor"></a>🛠️ Modern Address Editor
+### Check Program
 
-- Multi-window – Edit different address sections simultaneously
-- Bulk editing – Edit before saving, copy/paste multiple cells, live duplicate detection and validation
-- Fill Down – Select rows to auto-increment nicknames (e.g., `Alm1` → `Alm2`, `Alm3`...)
-- Clone Structure – Replicate a pattern of nicknames (e.g., `Alm1_ID`, `Alm1_Val` → `Alm2_ID`, `Alm2_Val`...)
-- Filter anchors: Use `^pattern` to match start, `pattern$` to match end, `^pattern$` for exact match
-- Shortcuts: Ctrl+F (Find) / Ctrl+R (Replace)
-    - Scope: Case-sensitive. Searches **Nickname** and **Comment** columns only. Supports `Find in Selection`.
-    - **Regex Tips:**
-        - `^` start of line, `$` end of line
-        - `.*` match anything, `\d` digit, `\w` letter/number
-        - `( )` captures a group to use as `\1`, `\2` in the **replacement box**
-    - **Resources:** Visit [regex101.com](https://regex101.com) for real-time testing.
-- Custom blocks – Drag to create color-coded groups for organization and quick navigation  
+**Check Program** catches common ladder mistakes and questionable patterns without running the machine. Findings include the relevant ladder source, severity, and a suggested fix.
+
+![ClickNick Check Program report](https://github.com/user-attachments/assets/38cb2f44-482a-4e60-9f56-4da95074a971)
+
+### Console
+
+The **Console** is an offline CLICK test bench. It lets you:
+
+- Run and inspect the program scan by scan.
+- Force inputs and set up machine conditions without changing the live PLC.
+- Work from saved PLC and tag data while troubleshooting.
+- Ask why something happened - or why it did not.
+- Ask how to reach a state, including routes that must pass through or avoid particular conditions.
+
+![ClickNick Console demonstrating simplified, why, and how queries](https://github.com/user-attachments/assets/1727f54b-7f5d-4181-923e-4fbf7628d2a6)
+
+Save the project in CLICK before opening Check Program or Console so ClickNick can read the latest ladder files.
+
+## Keep engineering work with the machine
+
+The generated pyrung project begins as a temporary workspace. That is convenient for quick checks and experiments. When you want tests, notes, and other engineering work to accumulate with the machine, create or select a persistent workspace from ClickNick.
+
+In a persistent workspace, you can:
+
+- Read the ladder as ordinary, structured Python source with PLC scan semantics.
+- Add automated tests alongside the ladder program.
+- Keep notes, test fixtures, source history, and other project-specific files.
+- Use normal software tools such as diffs, Git, editors, and coding agents.
+- Edit generated ladder source and use **Preview Changes** to review the proposed CLICK rungs.
+- Copy approved rung changes into CLICK through the guided paste workflow.
+- Use **Reload from CLICK** to discard workspace changes and return to the saved CLICK program.
+
+![ClickNick Preview Changes showing a proposed ladder rung edit](https://github.com/user-attachments/assets/78fc0d24-22d9-4f8d-8fa9-6b6e1507b891)
+
+ClickNick preserves a recovery snapshot before regeneration replaces generated source. Files outside ClickNick's generated areas - such as your tests, notes, and editor configuration - remain yours.
+
+## Optional AI-assisted ladder programming
+
+Because the workspace is readable source, you can point an LLM or coding agent at the same ladder program you can inspect yourself. It can explain logic, review the program, improve comments, write tests, or propose changes.
+
+The approval boundary stays the same:
+
+1. The agent edits the workspace, not the `.ckp` file.
+2. ClickNick converts proposed source changes back into ordinary CLICK ladder.
+3. **Preview Changes** shows the rung differences.
+4. You choose what to copy into CLICK.
+5. CLICK Programming Software remains the final authority, and the project changes only when you save it there.
+
+CLICK is inexpensive, approachable, and easy to troubleshoot. That simplicity is a feature. ClickNick adds better tools around the existing workflow without trying to turn CLICK into something else.
+
+**CLICK stays CLICK. ClickNick gives you better tools around it.**
+
+## How pyrung fits in
+
+[pyrung](https://pyrung.com/) is a textual ladder representation that executes with PLC scan semantics. Converting the open CLICK program gives it access to normal software tooling - automated tests, diffs, source history, editors, and coding agents - along with PLC-specific analysis such as static validation, causal tracing, reachability, and `why` / `how` queries.
+
+The workflow is reversible: workspace changes can be converted back into ordinary CLICK ladder for review and paste in CLICK Programming Software.
+
+## Feature details
+
+### Nickname autocomplete
+
+An autocomplete dropdown appears over CLICK instruction dialogs. Start typing a nickname and select from the filtered list; ClickNick inserts the address into CLICK.
+
+- Choose prefix, partial/contains, or fuzzy abbreviation matching.
+- Hover over a nickname to see its address comment.
+- Hide system or internal addresses such as SC/SD and `__private__` tags.
+- Keep autocomplete synchronized with Address Editor changes.
+
+![ClickNick autocomplete demo](https://github.com/user-attachments/assets/3a1cdff9-c425-46b7-8b90-4a357d43b6d3)
+
+### Address Editor
+
+- Edit different address sections in multiple windows.
+- Copy and paste multiple cells, then review changes before syncing them to CLICK.
+- Detect duplicate nicknames and invalid values as you work.
+- Fill a nickname pattern down a selection, such as `Alm1` to `Alm2`, `Alm3`, and so on.
+- Clone related structures, such as `Alm1_ID` and `Alm1_Val` into the corresponding `Alm2` tags.
+- Create color-coded blocks for organization and navigation.
+- Undo or redo an entire bulk operation as one edit.
+
+Search with <kbd>Ctrl</kbd>+<kbd>F</kbd> and replace with <kbd>Ctrl</kbd>+<kbd>R</kbd>. Searches cover nickname and comment fields and can be limited to the current selection. The editor also accepts regular expressions, including `^` and `$` anchors and capture groups such as `\1` in replacements.
 
 ![Address Editor demo](https://github.com/user-attachments/assets/ee7b1914-2f18-483a-ace1-84c2aa8eea98)
 
-> [!NOTE]  
-> Nicknames edited in the Address Editor appear immediately in autocomplete.  
-> Existing ladder logic refreshes after editing via the built-in Address Picker (Ctrl+T) or reopening the project.  
-> See issue https://github.com/ssweber/clicknick/issues/36
+> [!NOTE]
+> Nicknames edited in the Address Editor appear immediately in autocomplete. Existing ladder logic refreshes after using CLICK's Address Picker (<kbd>Ctrl</kbd>+<kbd>T</kbd>) or reopening the project. See [issue #36](https://github.com/ssweber/clicknick/issues/36) for details.
 
----
+### Tag Browser
 
-### <a name="tag-browser"></a>📑 Tag Browser
+The Tag Browser turns a flat nickname list into an outline. Single underscores create hierarchy, so `SupplyTank_Pump_Status` becomes:
 
-- Navigate large projects – See all your nicknames in an organized tree view  
-- Spot patterns – Arrays and related items grouped automatically  
-
-**Hierarchy:** Single underscores create levels. `SupplyTank_Pump_Status` becomes:
-```
+```text
 SupplyTank
-    └── Pump
-        └── Status
+└── Pump
+    └── Status
 ```
 
-**Arrays:** Trailing numbers auto-group. `Alm1_id`, `Alm1_value`, `Alm2_id`, `Alm2_value` becomes:
+Trailing numbers are recognized as arrays. Tags such as `Alm1_id`, `Alm1_value`, `Alm2_id`, and `Alm2_value` are grouped beneath `Alm[1-2]`. Double-click an item to edit it.
+
+![Tag Browser screenshot](https://github.com/user-attachments/assets/07928355-180e-4b00-b0bb-07ad2bdbe831)
+
+### Data View Editor
+
+- Load the `.cdv` files from an open CLICK project into tabs.
+- Add addresses by nickname instead of raw address.
+- Drag, cut, paste, and reorder entries freely.
+- Insert a nickname, related structure, or whole block from the Tag Browser.
+
+## Block tags
+
+The Address Editor provides controls to create and manage visual blocks. Power users can also place block tags directly in the Comment field:
+
+```text
+<BlockName>                 Start a range
+</BlockName>                End a range
+<BlockName />               Tag one address
+<BlockName bg="#color">     Start a range with a background color
 ```
-Alm[1-2]
-1
-  ├── id
-  └── value
-2
-  ├── id
-  └── value
-```
 
-- One-click access – Double-click any item to edit.
+Colors may use hex values or these names: Red, Pink, Purple, Deep Purple, Indigo, Blue, Light Blue, Cyan, Teal, Green, Light Green, Lime, Yellow, Amber, Orange, Deep Orange, Brown, and Blue Grey.
 
-![Outline dock screenshot](https://github.com/user-attachments/assets/07928355-180e-4b00-b0bb-07ad2bdbe831)
+For example, use `<Alm Bits bg="Red">` at the start of a range and `</Alm Bits>` at the end.
 
----
+## Under the hood
 
-### <a name="dataview-editor"></a>📊 Dataview Editor
+ClickNick works with the temporary files that CLICK Programming Software creates when a project is open.
 
-- Loads all DataViews (.cdv files) from your CLICK project in tab-interface  
-- Add addresses by typing nicknames instead of raw addresses  
-- Drag-and-drop, cut/paste reordering  
-- Double-click nicknames or entire structures from the Outline/Blocks panel to insert  
+### Address data
 
----
+- CLICK extracts a temporary Access database named `SC_.mdb` containing address information such as nicknames, comments, and initial values.
+- With the Access ODBC driver installed, ClickNick reads and writes that temporary database for live synchronization.
+- Without the driver, ClickNick can load nickname data from CLICK's generated `Address.csv` snapshot or a CSV exported through CLICK's **File > Export** command.
+- Changes synchronized through ODBC affect CLICK's temporary working data. They become permanent only when you save in CLICK Programming Software.
 
-### <a name="connectivity"></a>🔌 Connectivity
+### Ladder data
 
-- **CSV nickname import** – No drivers needed. Import from any spreadsheet
-- **Live ODBC database connection** – Direct, real-time access to CLICK project database
+- CLICK stores the open program's ladder in temporary files beside the project database.
+- ClickNick decodes the saved ladder and generates a local pyrung project for testing and analysis.
+- Workspace edits are converted into reviewable rung differences. Copying them back uses CLICK's ordinary ladder workflow rather than modifying the `.ckp` file.
 
----
+### Data View files
 
-### <a name="ladder-tools"></a>📐 Ladder Tools
+- CLICK stores Data View configurations as UTF-16 `.cdv` files in the temporary project folder.
+- ClickNick reads and writes those working files.
+- A new Data View created in ClickNick must be imported into CLICK manually.
 
-Access these from the **Ladder** menu:
+### Tag Browser
 
-- **Export from Click** – Decode your connected Click project's ladder logic into readable CSV files (powered by [laddercodec](https://github.com/ssweber/laddercodec))
-- **Convert to pyrung** – Generate a [pyrung](https://github.com/ssweber/pyrung) Python project from an exported ladder folder, for unit testing and simulation
-- **Guided Paste** – Load an exported ladder project and walk through importing it into Click, file by file
+The Tag Browser is generated dynamically by parsing nicknames. It does not store or modify project data itself.
 
----
+## Project links
 
-<details>
-<summary><strong>Block Tag Specification</strong> (Advanced)</summary>
+- [Report a bug or request a feature](https://github.com/ssweber/clicknick/issues)
+- [Ask a question or share an idea](https://github.com/ssweber/clicknick/discussions)
+- [View the source](https://github.com/ssweber/clicknick)
+- [Read the changelog](CHANGELOG.md)
+- [Read the license](LICENSE)
 
-> **Note:** The Address Editor provides buttons to create and manage blocks. This section documents the underlying format for power users.
-
-Add tags in the Comment field to create visual blocks:
-
-**Syntax:**
-- `<BlockName>` - Opening tag for a range
-- `</BlockName>` - Closing tag for a range
-- `<BlockName />` - Self-closing tag for a singular point
-- `<BlockName bg="#color">` - Adds background color
-
-**Colors:** Use HEX codes or keywords: Red, Pink, Purple, Deep Purple, Indigo, Blue, Light Blue, Cyan, Teal, Green, Light Green, Lime, Yellow, Amber, Orange, Deep Orange, Brown, Blue Grey
-
-Example: `<Alm Bits bg="Red">` ... `</Alm Bits>`
-
-</details>
-
-<details>
-<summary><strong>Under the Hood</strong> (How ClickNick accesses your data)</summary>
-
-ClickNick never modifies your `.ckp` project file directly. Instead, it works with the temporary files that CLICK Programming Software creates when you open a project:
-
-**Address Data (MDB or CSV):**
-- When you open a `.ckp` project, CLICK extracts a temporary Access database (`SC_.mdb`) containing all address information (nicknames, comments, initial values)
-- With ODBC drivers: ClickNick connects directly to this database for live read/write access
-- Without ODBC drivers: ClickNick reads the auto-generated `Address.csv` (a snapshot from when the project was opened—doesn't reflect changes made during the session). Alternatively, import a CSV exported from CLICK (File → Export)
-- Changes via ODBC are written back to CLICK's scratchpad—they only become permanent when you save in CLICK Software
-
-**DataView Files (CDV):**
-- DataView configurations are stored as `.cdv` files (UTF-16 encoded CSV) in the project's temporary folder
-- The Dataview Editor reads and writes these files directly
-- New DataViews created in ClickNick must be imported manually in CLICK Software
-
-**Tag Browser (Outline):**
-- The tree view is generated dynamically by parsing nicknames—it doesn't store or modify any data
-- Hierarchy is built by splitting nicknames at underscores; arrays are detected from trailing numbers
-
-**Safety:** Close CLICK without saving to discard all changes made through ClickNick. Your original `.ckp` file remains untouched until you explicitly save.
-
-</details>
+ClickNick is beta software. Review Address Editor, Data View, and ladder changes before saving them in CLICK.
