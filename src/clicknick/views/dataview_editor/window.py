@@ -1139,7 +1139,7 @@ class DataviewEditorWindow(tk.Toplevel):
 
         # Content
         popup_text = (
-            "Dataview Editor (Beta)\n\n"
+            "Dataview Editor\n\n"
             "This tool edits .cdv files in CLICK's temporary project folder.\n"
             "Changes are temporary until you save in CLICK Software.\n\n"
             "Note: New Dataviews created here must be imported manually in CLICK.\n"

@@ -1384,7 +1384,7 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Content
         popup_text = (
-            "Address Editor (Beta)\n\n"
+            "Address Editor\n\n"
             "This tool edits address information in CLICK's temporary database.\n"
             "Changes are temporary until you save in CLICK Software.\n\n"
             "Tip: Close CLICK without saving to undo all changes."
