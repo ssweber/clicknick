@@ -132,6 +132,35 @@ def test_connection_session_builds_into_configured_workspace(tmp_path, monkeypat
         db_path,
         store.base_state,
         persist_dir=workspace.resolve(),
+        workspace_kind="persistent",
+    )
+
+
+def test_connection_session_labels_click_folder_as_temporary(tmp_path, monkeypatch) -> None:
+    scr_folder = tmp_path / "click-temp"
+    db_path = scr_folder / "SC_.mdb"
+    store = SimpleNamespace(base_state={1: object()})
+    session = ConnectionSession(1, 2, "Example.ckp", store)
+    session.analysis = MagicMock()
+
+    class _InlineThread:
+        def __init__(self, *, target, daemon):
+            self.target = target
+            self.daemon = daemon
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr("clicknick.connection_session.threading.Thread", _InlineThread)
+
+    session._start_analysis_thread(scr_folder, db_path)
+
+    session.analysis.build.assert_called_once_with(
+        scr_folder,
+        db_path,
+        store.base_state,
+        persist_dir=scr_folder / "pyrung_project",
+        workspace_kind="temporary",
     )
 
 

@@ -29,6 +29,7 @@
 
 ### Fixed
 
+- Configured persistent workspaces now receive matching generated lifecycle guidance, while temporary workspaces retain their closing warning and surrounding user documentation remains unchanged.
 - Tag changes applied before opening the Address Editor now display their current nicknames instead of stale blank cached rows.
 - Rung preview now compares canonical Click ladder rungs, so inserting a rung selects only the new logic for Guided Paste and shows displaced existing rungs as neutral renumbering instead of removal and re-addition.
 - Rung preview now renders complete multiline rung source, including conditions whose `# R` marker appears on the closing line.

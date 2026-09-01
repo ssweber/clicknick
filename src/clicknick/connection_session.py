@@ -84,12 +84,19 @@ class ConnectionSession:
         store = self.store
         analysis = self.analysis
         assert analysis is not None
+        persistent_workspace = self.workspace_dir is not None
         persist = self.workspace_dir or (scr_folder / "pyrung_project")
 
         def _rebuild() -> None:
             error: str | None = None
             try:
-                analysis.build(scr_folder, db_path, store.base_state, persist_dir=persist)
+                analysis.build(
+                    scr_folder,
+                    db_path,
+                    store.base_state,
+                    persist_dir=persist,
+                    workspace_kind="persistent" if persistent_workspace else "temporary",
+                )
             except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"
                 traceback.print_exc()

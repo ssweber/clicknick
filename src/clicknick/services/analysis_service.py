@@ -14,12 +14,14 @@ import traceback
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from pyrung.core.analysis.pdg import ProgramGraph
     from pyrung.core.program import Program
     from pyrung.core.validation.report import ValidationReport
+
+WorkspaceKind = Literal["temporary", "persistent"]
 
 
 class AnalysisStatus(enum.Enum):
@@ -89,6 +91,7 @@ def _build_tag_addr_key_map(
 
 _GENERATED_DIR_NAMES = {"src", "csv", "csv_output"}
 _GENERATED_FILE_NAMES = {"nicknames.csv", "project_to_csv.py", "run.py"}
+_WORKSPACE_GUIDANCE_FILES = {"AGENTS.md", "README.md"}
 _EXPORT_IGNORE = shutil.ignore_patterns(".venv", "__pycache__", "*.pyc")
 
 
@@ -120,6 +123,23 @@ def _copy_missing(source: Path, destination: Path) -> None:
         shutil.copy2(source, destination)
 
 
+def _refresh_workspace_guidance(source: Path, destination: Path) -> None:
+    """Refresh only pyrung-marked or exact legacy lifecycle prose."""
+    from pyrung.click import refresh_workspace_lifecycle_guidance
+
+    existing = destination.read_text(encoding="utf-8")
+    generated = source.read_text(encoding="utf-8")
+    refreshed = refresh_workspace_lifecycle_guidance(existing, generated)
+    if refreshed == existing:
+        return
+    staging = destination.with_suffix(f"{destination.suffix}.clicknick-guidance")
+    try:
+        staging.write_text(refreshed, encoding="utf-8")
+        staging.replace(destination)
+    finally:
+        staging.unlink(missing_ok=True)
+
+
 def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
     """Publish a complete staged generation without risking workspace edits."""
     from .project_workspace import (
@@ -148,6 +168,8 @@ def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
             shutil.copytree(child, destination, dirs_exist_ok=True)
         elif child.name in _GENERATED_FILE_NAMES:
             shutil.copy2(child, destination)
+        elif child.name in _WORKSPACE_GUIDANCE_FILES and destination.is_file():
+            _refresh_workspace_guidance(child, destination)
         else:
             _copy_missing(child, destination)
 
@@ -156,7 +178,11 @@ def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
 
 
 def _regenerate_persisted_project(
-    scr_folder: Path, db_path: Path | None, persist_dir: Path
+    scr_folder: Path,
+    db_path: Path | None,
+    persist_dir: Path,
+    *,
+    workspace_kind: WorkspaceKind = "temporary",
 ) -> Path:
     """Generate beside the workspace, then publish only a complete project."""
     from pyrung.click import ladder_to_pyrung_project
@@ -181,13 +207,18 @@ def _regenerate_persisted_project(
             nickname_csv=persist_nickname_csv,
             output_dir=staged_dir,
             index=True,
+            workspace_kind=workspace_kind,
         )
         _publish_generated_project(staged_dir, persist_dir)
     return persist_dir
 
 
 def _build_graph(
-    scr_folder: Path, db_path: Path | None, persist_dir: Path | None = None
+    scr_folder: Path,
+    db_path: Path | None,
+    persist_dir: Path | None = None,
+    *,
+    workspace_kind: WorkspaceKind = "temporary",
 ) -> tuple[ProgramGraph, Program, Path | None]:
     """Run the full pipeline: Scr*.tmp -> CSV -> pyrung code -> exec -> graph.
 
@@ -212,7 +243,12 @@ def _build_graph(
 
         project_dir = None
         if persist_dir is not None:
-            project_dir = _regenerate_persisted_project(scr_folder, db_path, persist_dir)
+            project_dir = _regenerate_persisted_project(
+                scr_folder,
+                db_path,
+                persist_dir,
+                workspace_kind=workspace_kind,
+            )
 
     namespace: dict[str, object] = {}
     exec(compile(code, "<analysis>", "exec"), namespace)  # noqa: S102
@@ -359,11 +395,13 @@ class AnalysisService:
         db_path: Path | None,
         base_state: Mapping[int, object],
         persist_dir: Path | None = None,
+        workspace_kind: WorkspaceKind = "temporary",
     ) -> None:
         """Run the analysis pipeline and cache the result.
 
         Called from a background thread; stores results for main-thread access.
         When *persist_dir* is given, the pyrung project is also written to disk.
+        *workspace_kind* selects matching lifecycle guidance in generated docs.
 
         On failure the status becomes FAILED and the reason is recorded before
         the exception is re-raised — a caller that swallows it still leaves the
@@ -379,7 +417,12 @@ class AnalysisService:
         self._error = None
         self._error_detail = None
         try:
-            graph, program, project_dir = _build_graph(scr_folder, db_path, persist_dir)
+            graph, program, project_dir = _build_graph(
+                scr_folder,
+                db_path,
+                persist_dir,
+                workspace_kind=workspace_kind,
+            )
             tag_to_key, key_to_tag = _build_tag_addr_key_map(base_state)
         except Exception as exc:
             if self._epoch == epoch:
