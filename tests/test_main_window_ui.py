@@ -63,6 +63,7 @@ def test_autocomplete_options_menu_uses_existing_setting_variables() -> None:
 def test_workspace_options_menu_exposes_active_folder_and_setup() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
     app._workspace_config = None
+    app._workspace_display_dir = MagicMock(return_value=None)
     app._open_workspace = MagicMock()
     app._open_mirror_setup_window = MagicMock()
     menu = MagicMock()
@@ -71,7 +72,7 @@ def test_workspace_options_menu_exposes_active_folder_and_setup() -> None:
 
     assert menu.mock_calls == [
         call.add_command(
-            label="Open Workspace",
+            label="Open Temporary Workspace",
             command=app._open_workspace,
             state="disabled",
         ),
@@ -83,18 +84,36 @@ def test_workspace_options_menu_exposes_active_folder_and_setup() -> None:
     ]
 
 
-def test_open_workspace_menu_items_follow_durable_configuration() -> None:
+def test_open_workspace_menu_items_follow_active_directory(tmp_path) -> None:
     app = ClickNickApp.__new__(ClickNickApp)
     app.workspace_options_menu = MagicMock()
     app._workspace_options_open_index = 0
     app.workspace_menu = MagicMock()
     app._workspace_menu_open_index = 3
     app._workspace_config = None
+    app._workspace_display_dir = MagicMock(return_value=None)
 
     app._refresh_workspace_menu_states()
 
-    app.workspace_options_menu.entryconfigure.assert_called_once_with(0, state="disabled")
-    app.workspace_menu.entryconfigure.assert_called_once_with(3, state="disabled")
+    app.workspace_options_menu.entryconfigure.assert_called_once_with(
+        0, label="Open Temporary Workspace", state="disabled"
+    )
+    app.workspace_menu.entryconfigure.assert_called_once_with(
+        3, label="Open Temporary Workspace", state="disabled"
+    )
+
+    app.workspace_options_menu.reset_mock()
+    app.workspace_menu.reset_mock()
+    app._workspace_display_dir.return_value = tmp_path
+
+    app._refresh_workspace_menu_states()
+
+    app.workspace_options_menu.entryconfigure.assert_called_once_with(
+        0, label="Open Temporary Workspace", state="normal"
+    )
+    app.workspace_menu.entryconfigure.assert_called_once_with(
+        3, label="Open Temporary Workspace", state="normal"
+    )
 
     app.workspace_options_menu.reset_mock()
     app.workspace_menu.reset_mock()
@@ -102,8 +121,12 @@ def test_open_workspace_menu_items_follow_durable_configuration() -> None:
 
     app._refresh_workspace_menu_states()
 
-    app.workspace_options_menu.entryconfigure.assert_called_once_with(0, state="normal")
-    app.workspace_menu.entryconfigure.assert_called_once_with(3, state="normal")
+    app.workspace_options_menu.entryconfigure.assert_called_once_with(
+        0, label="Open Workspace", state="normal"
+    )
+    app.workspace_menu.entryconfigure.assert_called_once_with(
+        3, label="Open Workspace", state="normal"
+    )
 
 
 def test_main_window_is_revealed_once_at_its_settled_requested_size() -> None:

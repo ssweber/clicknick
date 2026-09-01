@@ -230,9 +230,18 @@ class ClickNickApp:
             self._workspace_source_dir(),
         )
 
+    def _open_workspace_menu_options(self) -> tuple[str, str]:
+        """Return the label and state for opening the active workspace."""
+        label = (
+            "Open Workspace" if self._workspace_config is not None else "Open Temporary Workspace"
+        )
+        workspace_dir = self._workspace_display_dir()
+        state = tk.NORMAL if workspace_dir is not None and workspace_dir.is_dir() else tk.DISABLED
+        return label, state
+
     def _refresh_workspace_menu_states(self) -> None:
-        """Enable durable-workspace actions only after setup is complete."""
-        state = tk.NORMAL if self._workspace_config is not None else tk.DISABLED
+        """Follow the active temporary or durable workspace directory."""
+        label, state = self._open_workspace_menu_options()
         for menu_name, index_name in (
             ("workspace_options_menu", "_workspace_options_open_index"),
             ("workspace_menu", "_workspace_menu_open_index"),
@@ -242,7 +251,7 @@ class ClickNickApp:
             if menu is None or index is None:
                 continue
             try:
-                menu.entryconfigure(index, state=state)
+                menu.entryconfigure(index, label=label, state=state)
             except tk.TclError:
                 pass
 
@@ -1086,10 +1095,11 @@ class ClickNickApp:
     def _populate_workspace_options_menu(self, menu: tk.Menu) -> None:
         """Add active-directory commands to the Workspace options menu."""
         self._workspace_options_open_index = 0
+        label, state = self._open_workspace_menu_options()
         menu.add_command(
-            label="Open Workspace",
+            label=label,
             command=self._open_workspace,
-            state=tk.NORMAL if self._workspace_config is not None else tk.DISABLED,
+            state=state,
         )
         menu.add_separator()
         menu.add_command(
@@ -1596,10 +1606,11 @@ class ClickNickApp:
         workspace_menu.add_separator()
         self.workspace_menu = workspace_menu
         self._workspace_menu_open_index = 3
+        open_workspace_label, open_workspace_state = self._open_workspace_menu_options()
         workspace_menu.add_command(
-            label="Open Workspace",
+            label=open_workspace_label,
             command=self._open_workspace,
-            state=tk.NORMAL if self._workspace_config is not None else tk.DISABLED,
+            state=open_workspace_state,
         )
         workspace_menu.add_command(label="Export Workspace...", command=self._export_pyrung_project)
         workspace_menu.add_separator()

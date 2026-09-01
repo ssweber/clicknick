@@ -38,7 +38,7 @@
 ### Changed
 
 - The import dialog's **Init Val** and **Retentive** columns are now a single **First Scan** column: the two are imported together, so importing a retentive setting can no longer silently shadow an initial value the program relies on.
-- The main window now groups its primary actions around editing, testing, and workspace management, with dedicated action icons and menu-based workspace and autocomplete settings.
+- The main window now groups its primary actions around editing, testing, and workspace management, with dedicated action icons, menu-based settings, and an Open Temporary Workspace action before durable setup.
 
 ## v0.19.3 — 2026-04-21
 
