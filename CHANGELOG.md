@@ -12,55 +12,33 @@
 
 ### Features
 
-- **Agent-facing Check Program** — `clicknick-cli check` runs the same lint-style pyrung analysis as Tools → Check Program against the editable `src/plc` proposal, while export failures remain the responsibility of `rung apply`.
-- **Unified rung apply workflow** — `clicknick-cli rung apply` now stages the export and opens its review-and-paste window directly, while CLI status composes staged tags, synced tags, and staged rung differences into the next engineer actions.
-- **Source recovery commands** — `clicknick-cli rung apply` now snapshots `src/plc/` before export, while `clicknick-cli backup` and `restore` provide explicit recovery around generated-project refreshes.
-- **Console Stop button** — while a command runs, Send becomes Stop, which cancels a long-running `how` without restarting the simulation, so forces and scan position survive; needs a pyrung new enough to provide the `stop` verb.
-- **Console copy and edit conveniences** — a Copy button beside the status bar copies the output (or just the selected text) to the clipboard, and the command entry has a right-click Cut/Copy/Paste/Select All menu.
-- **Copy the Check Program report** — a "Copy Report" button puts the whole report on the clipboard as plain text, summary line first, ready to paste into an email or issue.
-- **Check Program** — a new Tools > "Check Program..." window reports pyrung's static validation findings as compiler-style diagnostics with a source frame, severity-coloured caret, and fix hint, driven by the validation registry so new rules appear automatically.
+- **Persistent PLC workspaces** — create or select a durable workspace named for the PLC, keep tests, notes, and tooling across generated-program refreshes, preview edited ladder source before copying it back to CLICK, and safely reload from CLICK with a recovery snapshot of replaced source.
+- **Check Program** — run pyrung's static ladder checks from Tools > Check Program or against the editable workspace with `clicknick-cli check`, inspect compiler-style diagnostics with source context and fix hints, and copy the complete report for sharing.
+- **Interactive pyrung Console** — simulate the saved CLICK program with slot-aware autocomplete, live `how()` progress, CSV snapshot seeding, and automatic reloads when workspace source changes; long-running commands can be stopped without losing forces or scan position, and output can be copied directly.
+- **Reviewed ladder changes** — `clicknick-cli rung apply` stages workspace edits and opens Preview Changes with semantic rung diffs, per-group Copy to CLICK actions, and repeatable whole-program copying through Guided Paste.
+- **Agent CLI (`clicknick-cli`)** — inspect project status and work with tags and rungs through `info`, `tag`, and `rung` commands, apply `tags.py` edits as one staged Address Editor change, find unused addresses from one or more hints, and recover generated source with explicit backup and restore commands.
 - **Program analysis filters** — the Address Editor filter box accepts `input:`, `output:`, `pivot:`, `isolated:`, `upstream:Tag`, and `downstream:Tag` prefixes, which compose with existing text filters.
-- **Interactive pyrung Console** — a new Console window runs simulations against the open project, with slot-aware autocomplete, live streaming of `how()` progress, and a button to open the `pyrung_project` directory.
-- **Simulation Server** — a Start/Stop toggle launches the pyrung simulation backend in the background, seedable from a CSV snapshot, and hot-reloads when project `.py` files change instead of needing a manual restart.
-- **Rung preview** — the `rung apply` review window shows coloured unified diffs of pending rung changes with per-group "Copy to Click" export and a repeatable Copy All button for a whole program.
-- **Agent CLI (`clicknick-cli`)** — the IPC CLI grew into an agent-facing interface with `tag`, `rung`, `info`, and `help` commands; `tag apply` pushes `tags.py` edits into the Address Editor as one batched staged edit, and `unused` returns the next free address(es) in a bank from one or more address hints.
 - **Right-click annotation editor** — comment-field annotations (flags, choices, min/max, unit of measure, physical/link) can be edited in a structured dialog with hover tooltips instead of hand-typed bracket syntax.
 - **Add Block dialog** gained an Advanced section for `:block`, `:named_array`, and `:udt` structured block kinds, with live preview and row-count display.
 
 ### Fixed
 
-- Configured persistent workspaces now receive matching generated lifecycle guidance, while temporary workspaces retain their closing warning and surrounding user documentation remains unchanged.
-- Tag changes applied before opening the Address Editor now display their current nicknames instead of stale blank cached rows.
-- Rung preview now compares canonical Click ladder rungs, so inserting a rung selects only the new logic for Guided Paste and shows displaced existing rungs as neutral renumbering instead of removal and re-addition.
-- Rung preview now renders complete multiline rung source, including conditions whose `# R` marker appears on the closing line.
-- Copying rungs from the preview now provisions every referenced address in the Click project first, including block-copy range endpoints that were not otherwise materialized.
-- Copy buttons are plain text instead of a 📋 emoji, which rendered in colour from a different font and clashed with the surrounding monochrome controls (Console, Check Program, Rung preview, Guided paste).
-- Opening the Console just after a save no longer reports a half-written project as an error — "No run.py found in ...pyrung_project", "No module named 'subroutines'", and anything else of that shape. A rebuild empties the generated project folder and rewrites it in place while the previous analysis still advertises it, so the Console now refuses to launch during a build at all, and treats a launch that lost a race with one as a wait-and-relaunch rather than a failure. Genuine launch failures are still reported, with a Retry.
-- Opening the Console before the program has finished converting no longer leaves it stuck on "Building program analysis..." forever — it shows how long it has been waiting, gives up after two minutes, and offers a Retry button.
-- A pyrung conversion that fails now says so. The failure used to be printed to a console that does not exist in a windowed app, leaving every feature that depends on it silently inert; the reason is now recorded and shown — as a dialog when you open the Console or Check Program, and inline with the traceback in the Console itself.
-- Check Program no longer claims analysis "requires a connected Click project" when the real cause was a conversion failure or a build still in progress; each case now reports itself.
-- Rung preview's buttons — Copy All, Copy to Click, Next, and Close — are visible again; the whole row was pushed off the bottom of the window, making the copy-to-Click workflow unreachable without resizing first. Check Program's buttons and the Console status bar were hidden by the same layout fault: a text pane asking for more height than the window has, starving the rows packed after it.
-- The Console no longer hangs in the busy state when the simulation backend dies mid-command; the input is released and the failure is reported.
-- Console autocomplete now reads pyrung's published command grammar (`pyrung.dap.grammar`) instead of parsing its help text, so it completes multi-target `how A, B` (with or without a space after the comma), offers tag names inside `avoid`/`via` clauses — which never worked before — and suggests the `avoid` and `via` keywords themselves once a target is typed. Older pyrung versions without that module fall back to the previous help-text parsing.
-- Importing a nickname CSV no longer fails outright with `cannot assign to field 'nickname'`.
-- Unchecking a block in the import dialog now actually excludes it — previously a tagged block sitting between untagged rows was imported anyway, under the wrong block's merge options.
-- Rows no longer show as **Changed** with no visible edit, and are no longer rewritten to the database on save, when a value is written back unchanged (re-typing the same text, or importing a CSV that already matches the project).
-- Editing a value back to its original now clears the row's **Changed** marker instead of leaving it flagged.
-- A blank initial value and `0` now count as the same default on numeric addresses, so importing a Click CSV export no longer marks every numeric address changed; TXT still treats `0` as real content.
-- A CSV that reuses a block name no longer has one block's import options clobber another's.
-- Nickname changes made externally in Click now reliably reach the Address Editor and Overlay — a locked or failed MDB read no longer drops the change permanently, and editing only a comment no longer freezes the old nickname back over later refreshes.
-- Console autocomplete now completes `~`-prefixed tags, respects your Filter Mode setting rather than always matching case-insensitively, and no longer scrolls the input, misplaces the cursor, or floods the dropdown on a bare space.
-- Opening the Console on a project with no saved `Scr*.tmp` files now tells you to save in Click Software first instead of opening a Console that cannot find the program.
-- Running several ClickNick instances at once no longer makes them fight over a single shared simulation session.
-- Stop now actually stops the simulator when it is paused at a breakpoint instead of restarting it.
-- Rung preview raises and focuses itself on open, attributes changes made just before a rung marker to the correct rung, and can copy subroutines again.
-- Rebuilding the analysis project no longer wipes its virtual environment and lockfile or leaves stale files behind.
-- Reconnecting or switching projects no longer leaks background watchers, Modbus connections, or orphaned simulator processes.
+- Persistent workspaces now receive matching generated lifecycle guidance, while temporary workspaces keep their closing warning and user-authored documentation remains untouched.
+- Nicknames stay synchronized across CLICK, autocomplete, and the Address Editor when edits arrive before the editor opens, after unrelated comment changes, or following a locked or failed project-database read.
+- Preview Changes now compares canonical CLICK rungs, renders complete multiline source, attributes edits to the correct rung, treats displaced rungs as neutral renumbering, and copies subroutines correctly.
+- Copy to CLICK now provisions every referenced address, including otherwise-unmaterialized block-copy endpoints, and the preview reliably opens focused with all Guided Paste controls visible.
+- Check Program and Console now distinguish projects that are still converting, failed conversion, missing saved ladder files, and genuine launch failures, with useful progress, error details, timeouts, and retry actions instead of hanging or reporting a misleading connection error.
+- Console autocomplete now follows pyrung's published command grammar, completes multi-target `how` and `avoid`/`via` clauses, handles `~`-prefixed tags, respects the selected Filter Mode, and keeps the input cursor and dropdown stable.
+- Console sessions now recover when the simulation backend exits mid-command, remain independent across concurrent ClickNick instances, and stop correctly while paused at a breakpoint.
+- Nickname CSV imports no longer crash, now exclude unchecked blocks, keep options separate for repeated block names, and treat blank numeric initial values like CLICK's default `0` without changing TXT semantics.
+- Address rows no longer remain marked **Changed** after an unchanged value is written or an edit is returned to its original value, avoiding unnecessary database writes on save.
+- Analysis-project rebuilds preserve the workspace virtual environment and lockfile without leaving stale generated files behind, and reconnecting or switching projects cleans up watchers, Modbus connections, and simulator processes.
+- Copy controls and status bars remain visible at their default window sizes and use consistent plain-text labels across Console, Check Program, Preview Changes, and Guided Paste.
 
 ### Changed
 
 - The import dialog's **Init Val** and **Retentive** columns are now a single **First Scan** column: the two are imported together, so importing a retentive setting can no longer silently shadow an initial value the program relies on.
-- Address Editor and Data View Editor first-time workflow tips no longer label the established tools as beta.
+- The main window now groups its primary actions around editing, testing, and workspace management, with dedicated action icons and menu-based workspace and autocomplete settings.
 
 ## v0.19.3 — 2026-04-21
 
