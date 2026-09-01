@@ -6,6 +6,7 @@ Manages CDV file discovery and the single dataview editor window.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,7 +21,7 @@ from pyclickplc.addresses import (
 from ..views.dataview_editor.cdv_file import get_dataview_folder, list_cdv_files
 
 if TYPE_CHECKING:
-    from .data.address_store import AddressStore
+    from .address_store import AddressStore
 
 
 class SharedDataviewData:
@@ -38,6 +39,7 @@ class SharedDataviewData:
         project_path: Path | None = None,
         address_store: AddressStore | None = None,
         dataview_folder: Path | None = None,
+        filter_func: Callable[[list[str], str], list[str]] | None = None,
     ):
         """Initialize the shared dataview data.
 
@@ -45,10 +47,12 @@ class SharedDataviewData:
             project_path: Path to the CLICK project folder
             address_store: AddressStore for nickname lookups
             dataview_folder: Explicit DataView folder override (e.g., CSV directory)
+            filter_func: Active filter strategy callback (candidates, search_text) -> filtered
         """
         self._project_path = project_path
         self._store: AddressStore | None = None
         self._dataview_folder: Path | None = dataview_folder
+        self.filter_func = filter_func
 
         # Single window tracking (only one dataview editor at a time)
         self._window = None
@@ -168,7 +172,6 @@ class SharedDataviewData:
         if self._window is None:
             return True
 
-        # Check for unsaved changes
         if prompt_save and hasattr(self._window, "has_unsaved_changes"):
             if self._window.has_unsaved_changes():
                 from tkinter import messagebox
@@ -184,9 +187,11 @@ class SharedDataviewData:
                     if hasattr(self._window, "save_all"):
                         self._window.save_all()
 
-        # Close window
         try:
-            self._window.destroy()
+            if hasattr(self._window, "close_without_prompt"):
+                self._window.close_without_prompt()
+            else:
+                self._window.destroy()
         except Exception:
             pass
 
@@ -197,7 +202,10 @@ class SharedDataviewData:
         """Force close the window without saving."""
         if self._window is not None:
             try:
-                self._window.destroy()
+                if hasattr(self._window, "close_without_prompt"):
+                    self._window.close_without_prompt()
+                else:
+                    self._window.destroy()
             except Exception:
                 pass
             self._window = None

@@ -140,6 +140,33 @@ class TestFileMonitorCheckModified:
 
         callback.assert_called_once()
 
+    def test_check_modified_retries_when_callback_does_not_consume_change(self, tmp_path):
+        """_check_modified keeps pending mtime when callback returns False."""
+        test_file = tmp_path / "test.mdb"
+        test_file.write_text("initial")
+
+        callback = MagicMock(side_effect=[False, None])
+        monitor = FileMonitor(str(test_file), callback)
+        initial_mtime = monitor._last_mtime
+
+        mock_root = MagicMock()
+        mock_root.after.return_value = "after_id"
+        monitor.start(mock_root)
+
+        time.sleep(0.01)
+        test_file.write_text("modified content")
+        modified_mtime = os.path.getmtime(test_file)
+
+        monitor._check_modified()
+
+        assert callback.call_count == 1
+        assert monitor._last_mtime == initial_mtime
+
+        monitor._check_modified()
+
+        assert callback.call_count == 2
+        assert monitor._last_mtime == modified_mtime
+
     def test_check_modified_no_callback_if_unchanged(self, tmp_path):
         """_check_modified doesn't call callback if file unchanged."""
         test_file = tmp_path / "test.mdb"

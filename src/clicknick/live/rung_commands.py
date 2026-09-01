@@ -1,0 +1,855 @@
+"""Rung commands for live editing.
+
+Program listing, preview, and reverse-path (pyrung -> ladder) operations.
+Reads from the active project workspace published by AnalysisService.
+"""
+
+from __future__ import annotations
+
+import ast
+import difflib
+import json
+import re
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .dispatch import DispatchContext
+
+from ..services.project_workspace import plc_source_dir, project_environment
+
+_SUBROUTINE_NAME_RE = re.compile(r'@subroutine\("([^"]+)"\)')
+_COMMENT_SUMMARY_LIMIT = 88
+
+
+def _get_csv_stem(project_dir: Path, stem: str) -> str:
+    """Map a Python file stem to the subroutine display name used in CSV filenames."""
+    if stem == "main":
+        return "main"
+    path = plc_source_dir(project_dir) / "subroutines" / f"{stem}.py"
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError:
+        return stem
+    m = _SUBROUTINE_NAME_RE.search(source)
+    return m.group(1) if m else stem
+
+
+def _get_project_dir(ctx: DispatchContext) -> Path:
+    """Get the active project workspace, or raise."""
+    analysis = ctx.analysis
+    if analysis is None or not analysis.is_available:
+        raise ValueError("analysis not available (no Click project connected or build pending)")
+    project_dir = analysis.project_dir
+    if project_dir is None or not project_dir.is_dir():
+        raise ValueError("pyrung project not persisted to disk yet")
+    return project_dir
+
+
+def _resolve_file(project_dir: Path, file_stem: str) -> Path:
+    """Resolve a file stem (e.g. 'main', 'startup') to a .py path in the project."""
+    if file_stem == "main":
+        path = plc_source_dir(project_dir) / "main.py"
+    else:
+        path = plc_source_dir(project_dir) / "subroutines" / f"{file_stem}.py"
+    if not path.is_file():
+        raise ValueError(f"file not found: {path}")
+    return path
+
+
+def _all_file_stems(project_dir: Path) -> list[str]:
+    """Return all file stems: main + sorted subroutines."""
+    stems = ["main"]
+    sub_dir = plc_source_dir(project_dir) / "subroutines"
+    if sub_dir.is_dir():
+        stems.extend(p.stem for p in sorted(sub_dir.glob("*.py")) if p.stem != "__init__")
+    return stems
+
+
+def _get_before_files(project_dir: Path) -> dict[str, str]:
+    """Generate the 'before' state by round-tripping ladder CSVs through pyrung."""
+    from pyrung.click import ladder_to_pyrung_project
+
+    csv_dir = project_dir / "csv"
+    if not csv_dir.is_dir():
+        raise ValueError("workspace ladder CSV is missing; reload the workspace from CLICK")
+
+    nickname_csv = csv_dir / "nicknames.csv" if (csv_dir / "nicknames.csv").exists() else None
+    return ladder_to_pyrung_project(csv_dir, nickname_csv=nickname_csv, index=True)
+
+
+def _parse_rung_selection(selection: str) -> list[int]:
+    """Parse rung selection: r3, r1..5, r3,r7 -> list of 1-based rung numbers."""
+    parts = selection.upper().replace("R", "").split(",")
+    rungs: list[int] = []
+    for part in parts:
+        part = part.strip()
+        if ".." in part:
+            lo, hi = part.split("..", 1)
+            rungs.extend(range(int(lo), int(hi) + 1))
+        else:
+            rungs.append(int(part))
+    return rungs
+
+
+def _comment_summary(value: str) -> str:
+    """Return the first meaningful line of a CLICK comment."""
+    for raw_line in value.splitlines():
+        line = raw_line.strip().strip("#").strip()
+        if not line or not line.strip("=-_* "):
+            continue
+        line = " ".join(line.split())
+        if len(line) <= _COMMENT_SUMMARY_LIMIT:
+            return line
+        return line[: _COMMENT_SUMMARY_LIMIT - 3].rstrip() + "..."
+    return ""
+
+
+def _preceding_comment_summaries(
+    source: str,
+    markers: list[tuple[int, int]],
+) -> dict[int, str]:
+    """Map rung marker lines to same-level ``comment(...)`` summaries.
+
+    Pyrung emits CLICK comment rows immediately before the rung or section they
+    introduce. ``# Rn`` remains the rung identity; these summaries are only
+    labels for ``rung list`` output.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return {}
+
+    comments: list[tuple[int, int, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Expr) or not isinstance(node.value, ast.Call):
+            continue
+        call = node.value
+        if not isinstance(call.func, ast.Name) or call.func.id != "comment" or not call.args:
+            continue
+        value = call.args[0]
+        if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
+            continue
+        summary = _comment_summary(value.value)
+        if summary:
+            comments.append((node.lineno, node.col_offset, summary))
+
+    result: dict[int, str] = {}
+    previous_marker_line = 0
+    for marker_line, marker_indent in markers:
+        candidates = [
+            (line, summary)
+            for line, indent, summary in comments
+            if previous_marker_line < line < marker_line and indent == marker_indent
+        ]
+        if candidates:
+            result[marker_line] = max(candidates, key=lambda item: item[0])[1]
+        previous_marker_line = marker_line
+    return result
+
+
+def _extract_rungs(source: str) -> list[tuple[int, int, int, str]]:
+    """Extract rung boundaries from pyrung source.
+
+    Returns list of (rung_number, start_line, end_line, first_comment).
+    Detects ``# RN`` markers on ``with rung():`` lines.
+    """
+    lines = source.splitlines()
+    rung_marker = re.compile(r"#\s*R(\d+)\s*$")
+    markers: list[tuple[int, int, int, str]] = []
+
+    for i, line in enumerate(lines):
+        m = rung_marker.search(line)
+        if m:
+            rung_num = int(m.group(1))
+            comment = ""
+            if i + 1 < len(lines):
+                next_line = lines[i + 1].strip()
+                if next_line.startswith("#"):
+                    comment = next_line.lstrip("# ")
+                elif next_line.startswith('"""') or next_line.startswith("'"):
+                    comment = next_line.strip("\"' ")
+            indent = len(line) - len(line.lstrip())
+            markers.append((rung_num, i, indent, comment))
+
+    preceding = _preceding_comment_summaries(
+        source,
+        [(line_index + 1, indent) for _, line_index, indent, _ in markers],
+    )
+    rungs = [
+        (rung_num, line_index, 0, preceding.get(line_index + 1, fallback))
+        for rung_num, line_index, _, fallback in markers
+    ]
+
+    for idx in range(len(rungs) - 1):
+        num, start, _, comment = rungs[idx]
+        rungs[idx] = (num, start, rungs[idx + 1][1], comment)
+    if rungs:
+        num, start, _, comment = rungs[-1]
+        rungs[-1] = (num, start, len(lines), comment)
+
+    return rungs
+
+
+def _cmd_list(ctx: DispatchContext, parts: list[str]) -> str:
+    file_stem = parts[0] if parts else None
+    project_dir = _get_project_dir(ctx)
+
+    if file_stem is None:
+        return "files: " + ", ".join(_all_file_stems(project_dir))
+
+    path = _resolve_file(project_dir, file_stem)
+    source = path.read_text(encoding="utf-8")
+    rungs = _extract_rungs(source)
+
+    if not rungs:
+        return f"{file_stem}: no rungs found"
+
+    lines = []
+    for rung_num, start, end, comment in rungs:
+        row_count = end - start
+        desc = f"  R{rung_num}: {row_count} lines"
+        if comment:
+            desc += f"  # {comment}"
+        lines.append(desc)
+    return f"{file_stem}: {len(rungs)} rungs\n" + "\n".join(lines)
+
+
+_HUNK_RE = re.compile(r"^@@ -(\d+)")
+
+
+def _annotate_hunk_headers(diff_lines: list[str], before_lines: list[str]) -> list[str]:
+    """Add rung markers to @@ hunk headers, like git's function-context display."""
+    rung_marker = re.compile(r"#\s*R(\d+)\s*$")
+    result: list[str] = []
+    for line in diff_lines:
+        m = _HUNK_RE.match(line)
+        if m:
+            start = int(m.group(1)) - 1
+            for i in range(min(start, len(before_lines) - 1), -1, -1):
+                rm = rung_marker.search(before_lines[i])
+                if rm:
+                    rung_tag = f"  # R{rm.group(1)}"
+                    line = line.rstrip() + rung_tag + "\n"
+                    break
+        result.append(line)
+    return result
+
+
+def _extract_changed_rungs(diff_lines: list[str]) -> list[int]:
+    """Scan a unified diff for ``# RN`` rung markers in changed hunks.
+
+    Looks both backward (current_rung) and forward to associate changes
+    with the nearest rung marker — handles comments placed before a rung.
+    """
+    rung_re = re.compile(r"#\s*R(\d+)\s*$")
+    found: set[int] = set()
+    current_rung: int | None = None
+    unassigned: list[int] = []
+
+    for i, line in enumerate(diff_lines):
+        if line.startswith("@@"):
+            m = rung_re.search(line)
+            current_rung = int(m.group(1)) if m else None
+            continue
+        m = rung_re.search(line)
+        if m:
+            rung_num = int(m.group(1))
+            if unassigned:
+                found.add(rung_num)
+                unassigned.clear()
+            current_rung = rung_num
+        if line.startswith(("+", "-")) and not line.startswith(("+++", "---")):
+            if current_rung is not None:
+                found.add(current_rung)
+            else:
+                unassigned.append(i)
+
+    if unassigned and current_rung is not None:
+        found.add(current_rung)
+
+    return sorted(found)
+
+
+def _is_named_call(node: ast.AST, name: str) -> bool:
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == name
+
+
+def _statement_rung_number(
+    statement: ast.stmt,
+    lines: list[str],
+    rung_marker: re.Pattern[str],
+) -> int | None:
+    """Read a rung marker anywhere in a possibly multiline statement."""
+    end_line = statement.end_lineno or statement.lineno
+    for line in lines[statement.lineno - 1 : end_line]:
+        marker = rung_marker.search(line)
+        if marker:
+            return int(marker.group(1))
+    return None
+
+
+def _semantic_rungs(source: str) -> list[tuple[int, str]]:
+    """Return ``(display_number, fingerprint)`` pairs in source order.
+
+    Fingerprints use the rung AST and its immediately preceding ``comment()``
+    calls. Source locations and ``# Rn`` markers are excluded, so inserting a
+    rung does not make every following rung look changed merely because its
+    generated display number moved.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+
+    lines = source.splitlines()
+    rung_marker = re.compile(r"#\s*R(\d+)\s*$")
+    result: list[tuple[int, str]] = []
+
+    def _visit_body(body: list[ast.stmt]) -> None:
+        pending_comments: list[ast.Expr] = []
+        for statement in body:
+            if isinstance(statement, ast.Expr) and _is_named_call(statement.value, "comment"):
+                pending_comments.append(statement)
+                continue
+
+            is_rung = isinstance(statement, ast.With) and any(
+                _is_named_call(item.context_expr, "rung") for item in statement.items
+            )
+            if is_rung:
+                rung_number = _statement_rung_number(statement, lines, rung_marker)
+                if rung_number is not None:
+                    nodes: list[ast.AST] = [*pending_comments, statement]
+                    fingerprint = "\n".join(
+                        ast.dump(node, include_attributes=False) for node in nodes
+                    )
+                    result.append((rung_number, fingerprint))
+                pending_comments.clear()
+                continue
+
+            pending_comments.clear()
+            for field_name in ("body", "orelse", "finalbody"):
+                child_body = getattr(statement, field_name, None)
+                if isinstance(child_body, list):
+                    _visit_body(child_body)
+
+    _visit_body(tree.body)
+    return result
+
+
+def _changed_after_rungs(before: str, after: str) -> list[int]:
+    """Return only semantically inserted or replaced rung numbers from *after*."""
+    before_rungs = _semantic_rungs(before)
+    after_rungs = _semantic_rungs(after)
+    if not before_rungs or not after_rungs:
+        return []
+
+    matcher = difflib.SequenceMatcher(
+        a=[fingerprint for _, fingerprint in before_rungs],
+        b=[fingerprint for _, fingerprint in after_rungs],
+        autojunk=False,
+    )
+    changed: list[int] = []
+    for tag, _i1, _i2, j1, j2 in matcher.get_opcodes():
+        if tag in {"insert", "replace"}:
+            changed.extend(number for number, _ in after_rungs[j1:j2])
+    return changed
+
+
+@dataclass
+class _SourceChunk:
+    """One numbered pyrung block, including its comment and continuations."""
+
+    number: int
+    marker_line: int
+    start_line: int
+    end_line: int
+    comment: str = ""
+
+
+def _rung_context_kind(node: ast.AST) -> str | None:
+    if _is_named_call(node, "rung"):
+        return "primary"
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "continued"
+        and _is_named_call(node.func.value, "rung")
+    ):
+        return "continued"
+    return None
+
+
+def _source_chunks(source: str) -> list[_SourceChunk]:
+    """Parse generated pyrung into display chunks without treating Rn as identity."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+
+    lines = source.splitlines()
+    rung_marker = re.compile(r"#\s*R(\d+)\s*$")
+    chunks: list[_SourceChunk] = []
+
+    def _visit_body(body: list[ast.stmt]) -> None:
+        pending_comments: list[ast.Expr] = []
+        active: _SourceChunk | None = None
+        for statement in body:
+            if isinstance(statement, ast.Expr) and _is_named_call(statement.value, "comment"):
+                pending_comments.append(statement)
+                active = None
+                continue
+
+            kind = None
+            if isinstance(statement, ast.With):
+                kinds = [_rung_context_kind(item.context_expr) for item in statement.items]
+                kind = next((value for value in kinds if value is not None), None)
+
+            if kind == "primary":
+                rung_number = _statement_rung_number(statement, lines, rung_marker)
+                if rung_number is not None:
+                    comment = ""
+                    if pending_comments:
+                        call = pending_comments[-1].value
+                        if (
+                            isinstance(call, ast.Call)
+                            and call.args
+                            and isinstance(call.args[0], ast.Constant)
+                            and isinstance(call.args[0].value, str)
+                        ):
+                            comment = _comment_summary(call.args[0].value)
+                    active = _SourceChunk(
+                        number=rung_number,
+                        marker_line=statement.lineno,
+                        start_line=(
+                            pending_comments[0].lineno if pending_comments else statement.lineno
+                        ),
+                        end_line=statement.end_lineno or statement.lineno,
+                        comment=comment,
+                    )
+                    chunks.append(active)
+                else:
+                    active = None
+                pending_comments.clear()
+                continue
+
+            if kind == "continued" and active is not None:
+                active.end_line = max(active.end_line, statement.end_lineno or statement.lineno)
+                pending_comments.clear()
+                continue
+
+            pending_comments.clear()
+            active = None
+            for field_name in ("body", "orelse", "finalbody"):
+                child_body = getattr(statement, field_name, None)
+                if isinstance(child_body, list):
+                    _visit_body(child_body)
+
+    _visit_body(tree.body)
+    return chunks
+
+
+def _csv_path(directory: Path, csv_stem: str) -> Path:
+    if csv_stem == "main":
+        return directory / "main.csv"
+    return directory / "subroutines" / f"{csv_stem}.csv"
+
+
+def _canonical_rung_fingerprint(rung: object) -> tuple[tuple[str, ...], ...]:
+    """Serialize a decoded rung into laddercodec's canonical CSV form."""
+    from laddercodec.csv.writer import decoded_rung_to_rows
+
+    return tuple(tuple(row) for row in decoded_rung_to_rows(rung))
+
+
+def _read_source_manifest(project_dir: Path, csv_stem: str) -> dict[int, list[int]]:
+    """Return output-rung -> Python source lines from the exporter manifest."""
+    path = project_dir / "csv_output" / "rung_sources.json"
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {}
+
+    entries = (
+        manifest.get("main", [])
+        if csv_stem == "main"
+        else manifest.get("subroutines", {}).get(csv_stem, [])
+    )
+    result: dict[int, list[int]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("rung"), int):
+            continue
+        source_lines = [
+            source.get("source_line")
+            for source in entry.get("sources", [])
+            if isinstance(source, dict) and isinstance(source.get("source_line"), int)
+        ]
+        result[entry["rung"]] = source_lines
+    return result
+
+
+def _chunks_by_output_rung(
+    source: str,
+    *,
+    manifest_lines: dict[int, list[int]] | None = None,
+) -> dict[int, tuple[_SourceChunk, ...]]:
+    chunks = _source_chunks(source)
+    by_marker = {chunk.number: chunk for chunk in chunks}
+    result: dict[int, tuple[_SourceChunk, ...]] = {}
+    if manifest_lines:
+        for rung_number, source_lines in manifest_lines.items():
+            matched: list[_SourceChunk] = []
+            for source_line in source_lines:
+                chunk = next(
+                    (
+                        candidate
+                        for candidate in chunks
+                        if candidate.marker_line <= source_line <= candidate.end_line
+                    ),
+                    None,
+                )
+                if chunk is not None and chunk not in matched:
+                    matched.append(chunk)
+            if matched:
+                result[rung_number] = tuple(matched)
+    for rung_number, chunk in by_marker.items():
+        result.setdefault(rung_number, (chunk,))
+    return result
+
+
+def _render_source_chunks(
+    source: str,
+    rung_numbers: range,
+    chunks_by_rung: dict[int, tuple[_SourceChunk, ...]],
+    *,
+    prefix: str,
+    rung_labels: dict[int, str],
+) -> list[str]:
+    lines = source.splitlines()
+    result: list[str] = []
+    emitted: set[tuple[int, int]] = set()
+    for rung_number in rung_numbers:
+        chunks = chunks_by_rung.get(rung_number, ())
+        if not chunks:
+            label = rung_labels.get(rung_number, "")
+            suffix = f"  # {label}" if label else ""
+            result.append(f"{prefix}R{rung_number}{suffix}\n")
+            continue
+        for chunk in chunks:
+            identity = (chunk.start_line, chunk.end_line)
+            if identity in emitted:
+                continue
+            emitted.add(identity)
+            for line in lines[chunk.start_line - 1 : chunk.end_line]:
+                result.append(f"{prefix}{line}\n")
+    return result
+
+
+def _canonical_diff(
+    project_dir: Path,
+    *,
+    stem: str,
+    csv_stem: str,
+    before: str,
+    after: str,
+    selected_after: set[int] | None = None,
+) -> tuple[list[str], list[int]] | None:
+    """Align real Click rungs, then render the corresponding pyrung chunks."""
+    from laddercodec import read_csv
+
+    before_path = _csv_path(project_dir / "csv", csv_stem)
+    after_path = _csv_path(project_dir / "csv_output", csv_stem)
+    if not before_path.is_file() or not after_path.is_file():
+        return None
+    try:
+        before_rungs = read_csv(before_path)
+        after_rungs = read_csv(after_path)
+    except (OSError, ValueError):
+        return None
+
+    before_keys = [_canonical_rung_fingerprint(rung) for rung in before_rungs]
+    after_keys = [_canonical_rung_fingerprint(rung) for rung in after_rungs]
+    matcher = difflib.SequenceMatcher(a=before_keys, b=after_keys, autojunk=False)
+
+    before_chunks = _chunks_by_output_rung(before)
+    after_chunks = _chunks_by_output_rung(
+        after,
+        manifest_lines=_read_source_manifest(project_dir, csv_stem),
+    )
+    before_labels = {
+        index: _comment_summary(rung.comment or "")
+        for index, rung in enumerate(before_rungs, start=1)
+    }
+    after_labels = {
+        index: _comment_summary(rung.comment or "")
+        for index, rung in enumerate(after_rungs, start=1)
+    }
+
+    body: list[str] = []
+    changed_after: list[int] = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        after_numbers = set(range(j1 + 1, j2 + 1))
+        if selected_after is not None and not after_numbers.intersection(selected_after):
+            continue
+
+        if tag == "equal":
+            for before_index, after_index in zip(
+                range(i1 + 1, i2 + 1), range(j1 + 1, j2 + 1), strict=True
+            ):
+                if before_index == after_index:
+                    continue
+                label = after_labels.get(after_index, "")
+                suffix = f"  # {label}" if label else ""
+                body.append(f"~ R{before_index} -> R{after_index}{suffix}\n")
+            continue
+
+        before_range = range(i1 + 1, i2 + 1)
+        after_range = range(j1 + 1, j2 + 1)
+        if tag in {"delete", "replace"}:
+            body.extend(
+                _render_source_chunks(
+                    before,
+                    before_range,
+                    before_chunks,
+                    prefix="-",
+                    rung_labels=before_labels,
+                )
+            )
+        if tag in {"insert", "replace"}:
+            body.extend(
+                _render_source_chunks(
+                    after,
+                    after_range,
+                    after_chunks,
+                    prefix="+",
+                    rung_labels=after_labels,
+                )
+            )
+            changed_after.extend(after_range)
+
+    if not body:
+        return [], []
+    return [
+        f"--- a/{stem}.py\n",
+        f"+++ b/{stem}.py\n",
+        "@@ ladder rungs @@\n",
+        *body,
+    ], changed_after
+
+
+def _filter_diff_by_rungs(diff_lines: list[str], rung_nums: set[int]) -> list[str]:
+    """Filter unified diff to only show hunks touching the selected rungs."""
+    result: list[str] = []
+    in_header = True
+    include_hunk = False
+
+    for line in diff_lines:
+        if line.startswith("---") or line.startswith("+++"):
+            result.append(line)
+            continue
+        if line.startswith("@@"):
+            in_header = False
+            include_hunk = False
+            result.append(line)
+            continue
+        if not in_header:
+            rung_match = re.search(r"#\s*R(\d+)\s*$", line)
+            if rung_match and int(rung_match.group(1)) in rung_nums:
+                include_hunk = True
+            if include_hunk:
+                result.append(line)
+
+    return (
+        result
+        if any(ln.startswith(("+", "-")) and not ln.startswith(("---", "+++")) for ln in result)
+        else []
+    )
+
+
+def _diff_one_file(
+    project_dir: Path,
+    before_files: dict[str, str],
+    stem: str,
+    *,
+    selected_after: set[int] | None = None,
+) -> tuple[list[str], list[int]]:
+    """Compute unified diff and changed rungs for a single file stem.
+
+    Returns (diff_lines, changed_rungs).  diff_lines is empty when unchanged.
+    """
+    path = _resolve_file(project_dir, stem)
+    after = path.read_text(encoding="utf-8")
+
+    relative_key = f"src/plc/subroutines/{stem}.py" if stem != "main" else "src/plc/main.py"
+    before = before_files.get(relative_key, "")
+    if not before:
+        return [], []
+
+    csv_stem = _get_csv_stem(project_dir, stem)
+    canonical = _canonical_diff(
+        project_dir,
+        stem=stem,
+        csv_stem=csv_stem,
+        before=before,
+        after=after,
+        selected_after=selected_after,
+    )
+    if canonical is not None:
+        return canonical
+
+    before_lines = before.splitlines(keepends=True)
+    after_lines = after.splitlines(keepends=True)
+
+    diff_lines = list(
+        difflib.unified_diff(
+            before_lines, after_lines, fromfile=f"a/{stem}.py", tofile=f"b/{stem}.py"
+        )
+    )
+    diff_lines = _annotate_hunk_headers(diff_lines, before_lines)
+    changed_rungs = _changed_after_rungs(before, after) if diff_lines else []
+    if selected_after is not None:
+        diff_lines = _filter_diff_by_rungs(diff_lines, selected_after)
+        changed_rungs = [number for number in changed_rungs if number in selected_after]
+    return diff_lines, changed_rungs
+
+
+def _preview_all(
+    ctx: DispatchContext, project_dir: Path, before_files: dict[str, str]
+) -> tuple[str, int]:
+    """Scan all files; open preview windows for changed ones."""
+    changed: list[str] = []
+    staged_rungs = 0
+    for stem in _all_file_stems(project_dir):
+        diff_lines, rungs = _diff_one_file(project_dir, before_files, stem)
+        if not rungs:
+            continue
+        staged_rungs += len(rungs)
+        changed.append(f"  {stem}: {', '.join(f'R{r}' for r in rungs)}")
+        if ctx.show_preview is not None:
+            pending_dir = project_dir / "csv_output"
+            csv_stem = _get_csv_stem(project_dir, stem)
+            ctx.show_preview(
+                stem,
+                None,
+                "".join(diff_lines),
+                rungs,
+                pending_dir if pending_dir.is_dir() else None,
+                csv_stem,
+            )
+    if not changed:
+        return "(no changes)", 0
+    return "changed files:\n" + "\n".join(changed), staged_rungs
+
+
+def _open_proposal(ctx: DispatchContext, parts: list[str]) -> tuple[str, int]:
+    file_stem = None
+    selection = None
+
+    i = 0
+    while i < len(parts):
+        if parts[i] == "--select" and i + 1 < len(parts):
+            selection = parts[i + 1]
+            i += 2
+        elif file_stem is None:
+            file_stem = parts[i]
+            i += 1
+        else:
+            raise ValueError(f"unexpected argument: {parts[i]}")
+
+    project_dir = _get_project_dir(ctx)
+    before_files = _get_before_files(project_dir)
+
+    if file_stem is None and selection is None:
+        return _preview_all(ctx, project_dir, before_files)
+
+    label = file_stem or "main"
+    selected_rungs = set(_parse_rung_selection(selection)) if selection else None
+    diff_lines, changed_rungs = _diff_one_file(
+        project_dir,
+        before_files,
+        label,
+        selected_after=selected_rungs,
+    )
+
+    if not diff_lines:
+        return "(no changes)", 0
+
+    if selection:
+        rung_nums_list = _parse_rung_selection(selection)
+        diff_text = "".join(diff_lines)
+    else:
+        rung_nums_list = changed_rungs if changed_rungs else None
+        diff_text = "".join(diff_lines)
+
+    if ctx.show_preview is not None:
+        pending_dir = project_dir / "csv_output"
+        csv_stem = _get_csv_stem(project_dir, label)
+        ctx.show_preview(
+            label,
+            selection,
+            diff_text,
+            rung_nums_list,
+            pending_dir if pending_dir.is_dir() else None,
+            csv_stem,
+        )
+        n = len(rung_nums_list) if rung_nums_list else "all"
+        return f"OK: paste window opened for {label} ({n} rungs)", len(rung_nums_list or [])
+
+    return diff_text, len(rung_nums_list or [])
+
+
+def _run_export(project_dir: Path) -> Path:
+    """Run ``project_to_csv.py`` to regenerate ``csv_output/``; return that dir.
+
+    Used by ``rung apply`` to produce the proposed ladder and nickname CSVs.
+    Raises on failure.
+    """
+    import subprocess
+
+    script = project_dir / "project_to_csv.py"
+    if not script.is_file():
+        raise ValueError("project_to_csv.py not found in project directory")
+
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=str(project_dir),
+        env=project_environment(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if result.returncode != 0:
+        raise ValueError(
+            result.stderr.strip() or f"project_to_csv.py exited with code {result.returncode}"
+        )
+    return project_dir / "csv_output"
+
+
+def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
+    project_dir = _get_project_dir(ctx)
+    pending_dir = _run_export(project_dir)
+    proposal_status, staged_rungs = _open_proposal(ctx, parts)
+    ctx.staged_rungs = staged_rungs
+    if ctx.record_staged_rungs is not None:
+        ctx.record_staged_rungs(staged_rungs)
+    return f"OK: wrote ladder CSVs to {pending_dir}\n{proposal_status}"
+
+
+_SUBCOMMANDS = {
+    "list": _cmd_list,
+    "apply": _cmd_apply,
+}
+
+
+def dispatch_rung(ctx: DispatchContext, parts: list[str]) -> str:
+    """Route ``rung <subcommand> ...`` to the right handler."""
+    if not parts:
+        raise ValueError(f"usage: rung <subcommand> ...  (subcommands: {', '.join(_SUBCOMMANDS)})")
+
+    sub = parts[0].lower()
+    handler = _SUBCOMMANDS.get(sub)
+    if handler is None:
+        raise ValueError(f"unknown rung subcommand {sub!r} (expected: {', '.join(_SUBCOMMANDS)})")
+    return handler(ctx, parts[1:])

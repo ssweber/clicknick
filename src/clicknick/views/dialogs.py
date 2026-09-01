@@ -2,6 +2,8 @@ import platform
 import sys
 import tkinter as tk
 from datetime import datetime
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from pathlib import Path
 from tkinter import filedialog, ttk
 
@@ -17,6 +19,30 @@ def open_url(url):
         webbrowser.open(url)
     except Exception as e:
         print(f"Could not open browser: {e}")
+
+
+def _installed_version(package: str) -> str:
+    """Return one installed package version for support diagnostics."""
+    try:
+        return package_version(package)
+    except PackageNotFoundError:
+        return "Not installed"
+
+
+def _build_system_info(app_version: str, access_drivers: list[str]) -> str:
+    """Build the diagnostic text shown and copied by About ClickNick."""
+    odbc_info = ", ".join(access_drivers) if access_drivers else "Not installed"
+    return (
+        f"ClickNick: {app_version}\n"
+        f"pyrung: {_installed_version('pyrung')}\n"
+        f"Python: {sys.version.split()[0]}\n"
+        f"Windows: {platform.system()} {platform.release()}\n"
+        f"Architecture: {platform.machine()}\n"
+        f"Tkinter: {tk.TkVersion}\n"
+        f"MS Access ODBC: {odbc_info}\n"
+        f"Python full: {sys.version}\n"
+        f"Platform details: {platform.platform()}"
+    )
 
 
 class AboutDialog:
@@ -42,17 +68,19 @@ class AboutDialog:
         # App info
         ttk.Label(main_frame, text="ClickNick", font=("Arial", 18, "bold")).pack(pady=(0, 5))
         ttk.Label(main_frame, text=f"Version {app_version}", font=("Arial", 12)).pack()
-        ttk.Label(
-            main_frame,
-            text="Tag-Based Programming for Automation Direct CLICK PLCs",
-            font=("Arial", 10),
-        ).pack(pady=(0, 15))
+        ttk.Label(main_frame, text="Better tools for AutomationDirect CLICK PLCs").pack(
+            pady=(0, 15)
+        )
 
         # Description
         desc_text = (
-            "Program using nicknames instead of raw memory addresses.\n\n"
-            "It provides autocomplete that appears over CLICK instruction dialogs, plus\n"
-            "standalone editors that sync with your project."
+            "Write, check, test, troubleshoot, and maintain CLICK ladder\n"
+            "without replacing CLICK Programming Software.\n\n"
+            "Nickname autocomplete and project-aware editing\n"
+            "Static program checks and offline simulation\n"
+            "Persistent workspaces with reviewed ladder changes\n\n"
+            "CLICK stays CLICK: proposed changes are reviewed and only become\n"
+            "part of the project when you save them in CLICK."
         )
         ttk.Label(main_frame, text=desc_text, justify=tk.CENTER).pack(pady=(0, 15))
 
@@ -75,23 +103,8 @@ class AboutDialog:
         scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=info_text.yview)
         info_text.configure(yscrollcommand=scrollbar.set)
 
-        # Get ODBC driver information
         access_drivers = get_available_access_drivers()
-        if access_drivers:
-            odbc_info = f"MS Access ODBC: {', '.join(access_drivers)}"
-        else:
-            odbc_info = "MS Access ODBC: Not installed ⚠️"
-
-        # Populate the text widget with system information
-        system_info_display = (
-            f"Python: {sys.version.split()[0]}\n"
-            f"Platform: {platform.system()} {platform.release()}\n"
-            f"Tkinter: {tk.TkVersion}\n"
-            f"Architecture: {platform.machine()}\n"
-            f"{odbc_info}\n"
-            f"Python Full: {sys.version}\n"
-            f"Platform Details: {platform.platform()}"
-        )
+        system_info_display = _build_system_info(app_version, access_drivers)
 
         info_text.insert(tk.END, system_info_display)
         info_text.config(state=tk.DISABLED)  # Make it read-only
@@ -107,38 +120,14 @@ class AboutDialog:
         def copy_system_info():
             """Copy version and system information to clipboard."""
             try:
-                # Get ODBC driver information
-                access_drivers = self.nickname_manager.get_available_access_drivers()
-                if access_drivers:
-                    odbc_info = f"MS Access ODBC Drivers: {', '.join(access_drivers)}"
-                else:
-                    odbc_info = "MS Access ODBC Drivers: None installed"
-
-                system_info = (
-                    f"ClickNick Version: {app_version}\n"
-                    f"Python: {sys.version.split()[0]}\n"
-                    f"Platform: {platform.system()} {platform.release()}\n"
-                    f"Tkinter: {tk.TkVersion}\n"
-                    f"Architecture: {platform.machine()}\n"
-                    f"{odbc_info}\n"
-                    f"Python Full Version: {sys.version}\n"
-                    f"Platform Details: {platform.platform()}"
-                )
-
-                # Set clipboard
-                WIN32.set_clipboard(system_info)
-
-                # Visual feedback - temporarily change button text
-                copy_btn.config(text="✓ Copied!")
-                self.window.after(2000, lambda: copy_btn.config(text="📋 Copy System Info"))
-
-            except Exception as e:
-                print(f"Error copying system info: {e}")
-                # Fallback to tkinter clipboard if pywin32 fails
+                WIN32.set_clipboard(system_info_display)
+            except Exception:
                 self.window.clipboard_clear()
-                self.window.clipboard_append(system_info)
+                self.window.clipboard_append(system_info_display)
+            copy_btn.config(text="Copied")
+            self.window.after(2000, lambda: copy_btn.config(text="Copy System Info"))
 
-        copy_btn = ttk.Button(main_frame, text="📋 Copy System Info", command=copy_system_info)
+        copy_btn = ttk.Button(main_frame, text="Copy System Info", command=copy_system_info)
         copy_btn.pack(pady=(0, 15))
 
         # Links
@@ -146,14 +135,14 @@ class AboutDialog:
 
         github_btn = ttk.Button(
             links_frame,
-            text="🔗 GitHub Repository",
+            text="GitHub Repository",
             command=lambda: open_url("https://github.com/ssweber/clicknick"),
         )
         github_btn.pack(fill=tk.X, pady=2)
 
         issues_btn = ttk.Button(
             links_frame,
-            text="🐛 Report Issues",
+            text="Report an Issue",
             command=lambda: open_url("https://github.com/ssweber/clicknick/issues"),
         )
         issues_btn.pack(fill=tk.X, pady=2)
@@ -162,7 +151,7 @@ class AboutDialog:
         if not access_drivers:
             odbc_help_btn = ttk.Button(
                 links_frame,
-                text="🔧 Install ODBC Drivers",
+                text="Install ODBC Driver",
                 command=lambda: open_url("https://github.com/ssweber/clicknick/issues/17"),
             )
             odbc_help_btn.pack(fill=tk.X, pady=2)

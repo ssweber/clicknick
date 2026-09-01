@@ -63,6 +63,9 @@ class AddressRow:
     # Track if row was loaded with invalid data
     loaded_with_error: bool = field(default=False, compare=False)
 
+    # Fields explicitly changed by the user (empty → row is not a user override)
+    dirty_fields: frozenset[str] = field(default=frozenset(), compare=False)
+
     @property
     def addr_key(self) -> int:
         """Get the AddrKey for this row."""
@@ -74,7 +77,7 @@ class AddressRow:
         return format_address_display(self.memory_type, self.address)
 
     @property
-    def is_default_initial_value(self) -> str:
+    def is_default_initial_value(self) -> bool:
         """Return True if the initial value is the default for its data type."""
         return (
             self.initial_value == ""
@@ -197,3 +200,17 @@ class AddressRow:
     def needs_full_delete(self, is_dirty: bool) -> bool:
         """True if should DELETE the entire row from database."""
         return is_dirty and not self.has_content and not self.used
+
+
+def initial_values_differ(a: AddressRow, b: AddressRow) -> bool:
+    """Compare two rows' initial values, treating "" and "0" as the same default.
+
+    A defaulted numeric is written as "0" by Click's CSV export but held as "" by a
+    store skeleton or baseline row. Comparing the strings raw would report every
+    defaulted numeric address as changed on import. is_default_initial_value knows
+    which spellings count as default for the row's data type ("0" is a real value
+    for TXT, so only "" is default there).
+    """
+    if a.is_default_initial_value and b.is_default_initial_value:
+        return False
+    return a.initial_value != b.initial_value

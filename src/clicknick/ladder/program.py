@@ -314,7 +314,7 @@ def encode_csv(csv_path: Path, *, best_effort: bool = False) -> bytes:
 def decode_to_csv(data: bytes, path: Path) -> None:
     """Decode clipboard/program bytes and write canonical CSV."""
     rungs = _decode_to_rungs(data)
-    write_csv(path, rungs)
+    write_csv(path, rungs, index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +346,9 @@ def _dedupe_filename_stem(stem: str, used_stems: set[str]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def program_save(scr_folder: Path, output: Path | None = None) -> SaveResult:
+def program_save(
+    scr_folder: Path, output: Path | None = None, *, index: bool = False
+) -> SaveResult:
     """Decode all Scr*.tmp files into a CSV bundle.
 
     Writes main.csv for prog_idx 1 and subroutines/{name}.csv for prog_idx 2+.
@@ -389,7 +391,7 @@ def program_save(scr_folder: Path, output: Path | None = None) -> SaveResult:
         raise ValueError("No main program (prog_idx=1) found")
 
     main_csv = dest / "main.csv"
-    write_csv(main_csv, main_progs[0].rungs)
+    write_csv(main_csv, main_progs[0].rungs, index=index)
 
     subroutine_csvs: list[Path] = []
     if sub_progs:
@@ -399,7 +401,7 @@ def program_save(scr_folder: Path, output: Path | None = None) -> SaveResult:
         for prog in sub_progs:
             stem = _dedupe_filename_stem(_slugify(prog.name), used_stems)
             csv_path = sub_dir / f"{stem}.csv"
-            write_csv(csv_path, prog.rungs)
+            write_csv(csv_path, prog.rungs, index=index)
             subroutine_csvs.append(csv_path)
 
     total_rungs = sum(len(p.rungs) for p in raw_programs)
@@ -412,19 +414,13 @@ def program_save(scr_folder: Path, output: Path | None = None) -> SaveResult:
     )
 
 
-def prepare_csv_load(
-    csv_path: Path,
+def prepare_rungs_load(
+    rungs: list[Rung],
     *,
     mdb_path: Path | None = None,
-    best_effort: bool = False,
     show_nicknames: bool = False,
 ) -> PrepareResult:
-    """Encode a CSV file and provision MDB addresses.
-
-    Does NOT copy to clipboard — the caller handles that so it can choose
-    the owner HWND (GUI passes its tracked Click window, CLI auto-detects).
-    """
-    rungs = read_csv(csv_path, strict=not best_effort)
+    """Encode parsed rungs and provision every referenced MDB address."""
     payload = (
         encode(rungs, show_nicknames=show_nicknames)
         if len(rungs) > 1
@@ -444,6 +440,26 @@ def prepare_csv_load(
         addresses_inserted=addresses_inserted,
         mdb_path=resolved_mdb_path,
         mdb_error=mdb_error,
+    )
+
+
+def prepare_csv_load(
+    csv_path: Path,
+    *,
+    mdb_path: Path | None = None,
+    best_effort: bool = False,
+    show_nicknames: bool = False,
+) -> PrepareResult:
+    """Encode a CSV file and provision MDB addresses.
+
+    Does NOT copy to clipboard — the caller handles that so it can choose
+    the owner HWND (GUI passes its tracked Click window, CLI auto-detects).
+    """
+    rungs = read_csv(csv_path, strict=not best_effort)
+    return prepare_rungs_load(
+        rungs,
+        mdb_path=mdb_path,
+        show_nicknames=show_nicknames,
     )
 
 

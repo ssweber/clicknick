@@ -7,6 +7,7 @@ Each tab displays all memory types in a unified view.
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -62,6 +63,9 @@ class AddressEditorWindow(tk.Toplevel):
             parts.append(f"Modified: {total_modified}")
         if total_errors > 0:
             parts.append(f"Errors: {total_errors}")
+        if self._synced_pending > 0:
+            noun = "tag" if self._synced_pending == 1 else "tags"
+            parts.append(f"{self._synced_pending} {noun} synced - Save in CLICK")
 
         self.status_var.set(" | ".join(parts))
 
@@ -433,6 +437,9 @@ class AddressEditorWindow(tk.Toplevel):
         try:
             count = self._store.save_all_changes()
 
+            if self._on_synced is not None:
+                self._on_synced(count)
+
             self.status_var.set(f"{action_verb.capitalize()} {count} changes")
             messagebox.showinfo(
                 save_label, f"Successfully {action_verb} {count} changes.", parent=self
@@ -553,9 +560,9 @@ class AddressEditorWindow(tk.Toplevel):
         try:
             # Apply merge via ImportService within edit_session
             # edit_session handles validation and notification automatically
-            with self._store.edit_session("Import from CSV"):
+            with self._store.edit_session("Import from CSV") as session:
                 updated_count = ImportService.merge_blocks(
-                    self._store, selected_blocks, import_options_per_block
+                    self._store, session, selected_blocks, import_options_per_block
                 )
 
             # edit_session exited - validation and notification happened automatically
@@ -652,7 +659,9 @@ class AddressEditorWindow(tk.Toplevel):
             return False, f"Block name '{name}' already exists.\nBlock names must be unique."
 
         # Show the Add Block dialog with validation
-        dialog = AddBlockDialog(self, validate_name=validate_block_name)
+        dialog = AddBlockDialog(
+            self, validate_name=validate_block_name, row_count=len(selected_rows)
+        )
         self.wait_window(dialog)
 
         if dialog.result is None:
@@ -961,6 +970,7 @@ class AddressEditorWindow(tk.Toplevel):
                 on_validate_affected=self._store.validate_affected_rows,
                 is_duplicate_fn=self._store.is_duplicate_nickname,
                 section_boundaries=unified_view.section_boundaries,
+                analysis_service=self._analysis_service,
             )
 
             # Add to notebook
@@ -1151,16 +1161,7 @@ class AddressEditorWindow(tk.Toplevel):
                 if self._has_unsaved_changes():
                     return  # Save failed, don't close
 
-        # Close outline window if open
-        if self._nav_window is not None:
-            self._nav_window.destroy()
-            self._nav_window = None
-
-        # Unregister from shared data
-        self._store.remove_observer(self._on_address_store_changed)
-        self._store.unregister_window(self)
-
-        self.destroy()
+        self.close_without_prompt()
 
     def _update_save_ui_labels(self) -> None:
         """Update Save/Sync labels in UI based on data source type."""
@@ -1383,7 +1384,7 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Content
         popup_text = (
-            "Address Editor (Beta)\n\n"
+            "Address Editor\n\n"
             "This tool edits address information in CLICK's temporary database.\n"
             "Changes are temporary until you save in CLICK Software.\n\n"
             "Tip: Close CLICK without saving to undo all changes."
@@ -1426,6 +1427,8 @@ class AddressEditorWindow(tk.Toplevel):
         parent: tk.Widget,
         address_store: AddressStore,
         click_filename: str = "",
+        analysis_service: object | None = None,
+        on_synced: Callable[[int], None] | None = None,
     ):
         """Initialize the Address Editor window.
 
@@ -1433,11 +1436,16 @@ class AddressEditorWindow(tk.Toplevel):
             parent: Parent widget (main app window)
             address_store: AddressStore instance for data management
             click_filename: The connected Click project filename (e.g., "MyProject.ckp")
+            analysis_service: Optional AnalysisService for program-analysis filter prefixes.
+            on_synced: Called with change count after a successful sync to MDB.
         """
         super().__init__(parent)
 
         self._store = address_store
         self.click_filename = click_filename
+        self._analysis_service = analysis_service
+        self._on_synced = on_synced
+        self._synced_pending: int = 0
         self.title(self._get_window_title())
         self.geometry("1025x700")
 
@@ -1474,4 +1482,48 @@ class AddressEditorWindow(tk.Toplevel):
         self.bind("<Control-Y>", lambda e: self._on_redo())
 
         # Open Tag Browser by default
-        self.after(100, self._toggle_nav)
+        self._init_after_id = self.after(100, self._toggle_nav)
+
+    def close_without_prompt(self) -> None:
+        """Clean up resources and destroy window without save prompts."""
+        if self._init_after_id is not None:
+            self.after_cancel(self._init_after_id)
+            self._init_after_id = None
+
+        if self._nav_window is not None:
+            self._nav_window.destroy()
+            self._nav_window = None
+
+        self._store.remove_observer(self._on_address_store_changed)
+        self._store.unregister_window(self)
+
+        self.destroy()
+
+    def _raise_and_focus(self) -> None:
+        """Surface the mapped editor and give it keyboard focus."""
+        self.deiconify()
+        self.lift()
+        self.focus_force()
+
+    def apply_row_filter(self, row_filter: str) -> None:
+        """Switch the current tab to a row filter (e.g. 'changed') and surface it.
+
+        Used by ``clicknick-cli tag apply`` to drop the engineer straight onto
+        the rows it just changed. Clears any text filter so nothing is hidden,
+        then raises the window.
+        """
+        panel = self._get_current_panel()
+        if panel is None:
+            return
+        panel.filter_enabled_var.set(False)
+        panel.filter_var.set("")
+        panel.row_filter_var.set(row_filter)
+        panel._apply_filters()
+
+        # A newly-created Toplevel may not be mapped until Tk returns idle;
+        # Windows can ignore activation requests made before then.
+        self.after_idle(self._raise_and_focus)
+
+    def _update_sync_indicator(self, pending: int) -> None:
+        self._synced_pending = pending
+        self._update_status()

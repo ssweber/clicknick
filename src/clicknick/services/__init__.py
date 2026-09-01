@@ -16,6 +16,7 @@ should be made within a SharedAddressData.edit_session() context which
 handles validation and notification automatically.
 """
 
+from .annotation_service import AnnotationService
 from .block_service import BlockService
 
 # from .dependency_service import RowDependencyService
@@ -24,6 +25,7 @@ from .nickname_index_service import NicknameIndexService
 from .row_service import RowService
 
 __all__ = [
+    "AnnotationService",
     "NicknameIndexService",
     "RowService",
     "BlockService",

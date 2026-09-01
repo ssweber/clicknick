@@ -444,7 +444,7 @@ def main() -> None:
     save.add_argument(
         "file",
         metavar="FILE",
-        help="Output path: .bin for binary, .csv for decoded CSV, no extension for both",
+        help="Output path: .bin for binary, .csv for decoded CSV, anything else saves both FILE.bin and FILE.csv",
     )
 
     args = parser.parse_args()
@@ -584,8 +584,11 @@ def main() -> None:
                 sys.exit(1)
             print(f"Saved {file_path}")
         else:
-            bin_path = file_path.with_suffix(".bin")
-            csv_path = file_path.with_suffix(".csv")
+            # Append rather than with_suffix(): a dotted stem like
+            # "AckAlarm.clipboard" must become "AckAlarm.clipboard.bin",
+            # not have ".clipboard" replaced.
+            bin_path = file_path.parent / (file_path.name + ".bin")
+            csv_path = file_path.parent / (file_path.name + ".csv")
             bin_path.write_bytes(data)
             print(f"Saved {bin_path} ({len(data):,} bytes)")
             try:

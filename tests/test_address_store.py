@@ -2,10 +2,12 @@
 
 import pytest
 from pyclickplc.addresses import get_addr_key
+from pyclickplc.banks import DataType
 
 from clicknick.data.address_store import AddressStore
 from clicknick.data.undo_frame import MAX_UNDO_DEPTH
 from clicknick.models.address_row import AddressRow
+from clicknick.views.address_editor.view_builder import build_unified_view
 
 
 class MockDataSource:
@@ -63,6 +65,15 @@ def store_with_data():
     return s
 
 
+def test_loaded_row_count_tracks_source_rows(store, store_with_data):
+    assert store.loaded_row_count == 0
+    assert store_with_data.loaded_row_count == 2
+
+    store_with_data._data_source._initial_rows = {}
+    assert store_with_data._on_database_update() is True
+    assert store_with_data.loaded_row_count == 0
+
+
 class TestEditSession:
     """Tests for edit_session context manager."""
 
@@ -109,6 +120,40 @@ class TestEditSession:
         # All three edits in one undo frame
         assert len(store.undo_stack) == 1
         assert len(store.user_overrides) == 3
+
+    def test_separate_sessions_accumulate_fields_on_same_row(self, store):
+        """Editing different fields of one row across SEPARATE sessions must
+        preserve earlier edits.
+
+        Regression: visible_state rows carry an empty dirty_fields, so freezing
+        a later session against visible_state dropped the prior session's dirty
+        markers and _merge_base_with_override reverted those fields. (Reachable
+        in the UI: edit a nickname in the grid, then edit that row's comment via
+        the right-click annotation dialog.)
+        """
+        addr_key = get_addr_key("X", 1)
+
+        with store.edit_session("Set nickname") as session:
+            session.set_field(addr_key, "nickname", "Motor_Run")
+        with store.edit_session("Set comment") as session:
+            session.set_field(addr_key, "comment", "Main motor")
+
+        row = store.visible_state[addr_key]
+        assert row.nickname == "Motor_Run"
+        assert row.comment == "Main motor"
+        assert store.is_field_dirty(addr_key, "nickname")
+        assert store.is_field_dirty(addr_key, "comment")
+
+        # Reverse order behaves the same.
+        addr_key_2 = get_addr_key("X", 2)
+        with store.edit_session("Set comment") as session:
+            session.set_field(addr_key_2, "comment", "Switch")
+        with store.edit_session("Set nickname") as session:
+            session.set_field(addr_key_2, "nickname", "Pump")
+
+        row2 = store.visible_state[addr_key_2]
+        assert row2.nickname == "Pump"
+        assert row2.comment == "Switch"
 
     def test_nested_edit_session_raises(self, store):
         """Nested edit sessions should raise RuntimeError."""
@@ -252,6 +297,146 @@ class TestDirtyState:
         assert len(dirty) == 2
 
 
+class TestNoOpEdits:
+    """Writing a row's existing value back must not mark it changed.
+
+    A builder marks a field set whenever it is assigned, even if assigned its
+    current value. Since is_dirty() is presence-based, a no-op write used to leave
+    an override behind: the row reported as changed, showed under the "Changed"
+    filter and was written on save, while every cell compared equal to base so no
+    highlight appeared. Dirty fields are recomputed against base_state to prevent it.
+    """
+
+    def test_writing_the_same_value_does_not_dirty_the_row(self, store_with_data):
+        addr_key = get_addr_key("X", 1)
+
+        # Write back exactly what the row already holds (e.g. importing a CSV
+        # whose values already match the project)
+        with store_with_data.edit_session("No-op") as session:
+            session.set_field(addr_key, "nickname", "Input1")
+            session.set_field(addr_key, "comment", "Button")
+
+        assert store_with_data.is_dirty(addr_key) is False
+        assert store_with_data.has_unsaved_changes() is False
+
+    def test_no_op_write_agrees_with_per_field_dirty(self, store_with_data):
+        """The row-level and cell-level dirty checks must not disagree."""
+        addr_key = get_addr_key("X", 1)
+
+        with store_with_data.edit_session("No-op") as session:
+            session.set_field(addr_key, "nickname", "Input1")
+
+        # Cells show no diff, so the row must not claim to be changed
+        assert not any(
+            store_with_data.is_field_dirty(addr_key, field)
+            for field in ("nickname", "comment", "initial_value", "retentive")
+        )
+        assert store_with_data.is_dirty(addr_key) is False
+
+    def test_editing_back_to_the_original_value_clears_dirty(self, store_with_data):
+        addr_key = get_addr_key("X", 1)
+
+        with store_with_data.edit_session("Change") as session:
+            session.set_field(addr_key, "nickname", "Changed")
+        assert store_with_data.is_dirty(addr_key) is True
+
+        with store_with_data.edit_session("Change back") as session:
+            session.set_field(addr_key, "nickname", "Input1")
+
+        assert store_with_data.is_dirty(addr_key) is False
+        assert store_with_data.get_visible_row(addr_key).nickname == "Input1"
+
+    def test_no_op_field_does_not_dirty_alongside_a_real_change(self, store_with_data):
+        """A no-op on one field must not make that field look changed."""
+        addr_key = get_addr_key("X", 1)
+
+        with store_with_data.edit_session("Mixed") as session:
+            session.set_field(addr_key, "nickname", "Input1")  # no-op
+            session.set_field(addr_key, "comment", "Changed")  # real
+
+        assert store_with_data.is_dirty(addr_key) is True
+        assert store_with_data.is_field_dirty(addr_key, "nickname") is False
+        assert store_with_data.is_field_dirty(addr_key, "comment") is True
+
+    def test_a_real_change_still_dirties_the_row(self, store_with_data):
+        addr_key = get_addr_key("X", 1)
+
+        with store_with_data.edit_session("Change") as session:
+            session.set_field(addr_key, "nickname", "Changed")
+
+        assert store_with_data.is_dirty(addr_key) is True
+        assert store_with_data.is_field_dirty(addr_key, "nickname") is True
+
+    def test_undo_after_edit_back_restores_the_change(self, store_with_data):
+        """Dropping the override must not break the undo stack."""
+        addr_key = get_addr_key("X", 1)
+
+        with store_with_data.edit_session("Change") as session:
+            session.set_field(addr_key, "nickname", "Changed")
+        with store_with_data.edit_session("Change back") as session:
+            session.set_field(addr_key, "nickname", "Input1")
+
+        store_with_data.undo()
+
+        assert store_with_data.get_visible_row(addr_key).nickname == "Changed"
+        assert store_with_data.is_dirty(addr_key) is True
+
+
+class TestBlankVsZeroInitialValue:
+    """ "" and "0" are the same default for a numeric address.
+
+    Click's CSV export writes "0" for every defaulted numeric while a store skeleton
+    or baseline row holds "". Comparing the strings raw would report every defaulted
+    numeric as changed on import, and rewrite it to the database on save.
+    """
+
+    def store_with(self, memory_type, data_type, initial_value):
+        addr_key = get_addr_key(memory_type, 1)
+        rows = {
+            addr_key: AddressRow(
+                memory_type=memory_type,
+                address=1,
+                data_type=data_type,
+                nickname="N",
+                initial_value=initial_value,
+            )
+        }
+        s = AddressStore(MockDataSource(rows))
+        s.load_initial_data()
+        return s, addr_key
+
+    @pytest.mark.parametrize(("base_value", "new_value"), [("", "0"), ("0", "")])
+    def test_numeric_blank_and_zero_are_not_a_change(self, base_value, new_value):
+        store, addr_key = self.store_with("DS", DataType.INT, base_value)
+
+        with store.edit_session("Edit") as session:
+            session.set_field(addr_key, "initial_value", new_value)
+
+        assert store.is_dirty(addr_key) is False
+        assert store.is_field_dirty(addr_key, "initial_value") is False
+
+    @pytest.mark.parametrize(("base_value", "new_value"), [("", "5"), ("5", ""), ("0", "5")])
+    def test_numeric_real_value_changes_are_still_dirty(self, base_value, new_value):
+        store, addr_key = self.store_with("DS", DataType.INT, base_value)
+
+        with store.edit_session("Edit") as session:
+            session.set_field(addr_key, "initial_value", new_value)
+
+        assert store.is_dirty(addr_key) is True
+        assert store.is_field_dirty(addr_key, "initial_value") is True
+
+    @pytest.mark.parametrize(("base_value", "new_value"), [("", "0"), ("0", "")])
+    def test_txt_treats_zero_as_a_real_value(self, base_value, new_value):
+        """For TXT only "" is default, so "0" is genuine content."""
+        store, addr_key = self.store_with("TXT", DataType.TXT, base_value)
+
+        with store.edit_session("Edit") as session:
+            session.set_field(addr_key, "initial_value", new_value)
+
+        assert store.is_dirty(addr_key) is True
+        assert store.is_field_dirty(addr_key, "initial_value") is True
+
+
 class TestBaseOverlayMerge:
     """Tests for base/overlay visible state computation."""
 
@@ -331,6 +516,18 @@ class TestObservers:
 
         assert len(notifications) == 1
         assert addr_key in notifications[0]
+
+    def test_edit_refreshes_cached_unified_view_before_notification(self, store):
+        """A newly opened editor must see edits made before it registered."""
+        addr_key = get_addr_key("C", 10)
+        view = build_unified_view(store.visible_state, store.all_nicknames)
+        store.set_unified_view(view)
+
+        with store.edit_session("AI: tag apply") as session:
+            session.set_field(addr_key, "nickname", "Idle")
+
+        row_idx = next(i for i, row in enumerate(view.rows) if row.addr_key == addr_key)
+        assert view.rows[row_idx].nickname == "Idle"
 
     def test_observer_notified_on_undo(self, store):
         """Observer should be notified on undo."""
@@ -580,6 +777,32 @@ class TestExternalDatabaseUpdate:
         assert len(notifications) == 1
         assert addr_key in notifications[0]
 
+    def test_external_nickname_update_visible_when_user_only_edited_comment(self, store_with_data):
+        """External nickname change must propagate even when user has a comment override."""
+        from clicknick.models.address_row import AddressRow
+
+        addr_key = get_addr_key("X", 1)
+
+        # User edits only the comment
+        with store_with_data.edit_session("Edit") as session:
+            session.set_field(addr_key, "comment", "UserComment")
+
+        assert store_with_data.visible_state[addr_key].nickname == "Input1"
+
+        # CLICK writes a new nickname to the MDB
+        store_with_data._data_source._initial_rows[addr_key] = AddressRow(
+            memory_type="X",
+            address=1,
+            nickname="RenamedInput",
+            comment="Button",
+        )
+        store_with_data._on_database_update()
+
+        # Nickname should reflect the DB change (user didn't edit it)
+        assert store_with_data.visible_state[addr_key].nickname == "RenamedInput"
+        # Comment should still be the user's override
+        assert store_with_data.visible_state[addr_key].comment == "UserComment"
+
     def test_external_update_no_notification_when_no_change(self, store_with_data):
         """External update with no actual changes should not notify."""
         notifications = []
@@ -623,3 +846,59 @@ class TestExternalDatabaseUpdate:
         # Should be notified
         assert len(notifications) == 1
         assert addr_key in notifications[0]
+
+    def test_external_update_resets_rows_deleted_from_database(self, store_with_data):
+        """External row deletion should reset base/visible state and notify consumers."""
+        addr_key = get_addr_key("X", 1)
+        notifications = []
+
+        def observer(sender, affected_keys):
+            notifications.append(affected_keys)
+
+        store_with_data.add_observer(observer)
+
+        del store_with_data._data_source._initial_rows[addr_key]
+        result = store_with_data._on_database_update()
+
+        assert result is True
+        assert store_with_data.base_state[addr_key].nickname == ""
+        assert store_with_data.base_state[addr_key].comment == ""
+        assert store_with_data.visible_state[addr_key].nickname == ""
+        assert store_with_data.visible_state[addr_key].comment == ""
+        assert "Input1" not in store_with_data.all_nicknames.values()
+        assert len(notifications) == 1
+        assert addr_key in notifications[0]
+
+    def test_external_update_preserves_override_when_database_row_deleted(self, store_with_data):
+        """External row deletion updates base while preserving local user edits."""
+        addr_key = get_addr_key("X", 1)
+        notifications = []
+
+        def observer(sender, affected_keys):
+            notifications.append(affected_keys)
+
+        store_with_data.add_observer(observer)
+
+        with store_with_data.edit_session("Edit") as session:
+            session.set_field(addr_key, "comment", "UserComment")
+
+        notifications.clear()
+        del store_with_data._data_source._initial_rows[addr_key]
+
+        result = store_with_data._on_database_update()
+
+        assert result is True
+        assert store_with_data.base_state[addr_key].comment == ""
+        assert store_with_data.visible_state[addr_key].comment == "UserComment"
+        assert len(notifications) == 1
+        assert addr_key in notifications[0]
+
+    def test_external_update_returns_false_when_database_load_fails(self, store_with_data):
+        """A failed reload should tell FileMonitor to retry the same mtime."""
+
+        def fail_load():
+            raise RuntimeError("database locked")
+
+        store_with_data._data_source.load_all_addresses = fail_load
+
+        assert store_with_data._on_database_update() is False

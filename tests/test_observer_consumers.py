@@ -64,6 +64,31 @@ def test_nickname_manager_invalidates_cache_when_external_update_adds_new_row() 
     assert manager.get_address_for_nickname("Input3") == "X003"
 
 
+def test_nickname_manager_invalidates_cache_when_external_update_deletes_row() -> None:
+    addr_key = get_addr_key("X", 1)
+    store = _make_store(
+        {
+            addr_key: AddressRow(
+                memory_type="X",
+                address=1,
+                nickname="Input1",
+                comment="Existing input",
+            )
+        }
+    )
+    manager = NicknameManager()
+    manager.set_shared_data(store)
+
+    # Prime the cache before the external MDB-style deletion arrives.
+    assert manager.get_filtered_nicknames(["X"]) == ["Input1"]
+
+    del store._data_source._initial_rows[addr_key]
+    store._on_database_update()
+
+    assert manager.get_filtered_nicknames(["X"]) == []
+    assert manager.get_address_for_nickname("Input1") is None
+
+
 def test_shared_dataview_refreshes_when_address_store_changes() -> None:
     addr_key = get_addr_key("X", 1)
     store = _make_store(

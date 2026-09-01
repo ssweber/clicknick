@@ -624,6 +624,7 @@ class NicknameCombobox(ttk.Combobox):
 
         # Extract values before passing kwargs to parent
         self.values_list = kwargs.pop("values", [])
+        self._skip_address_check = kwargs.pop("skip_address_check", False)
 
         # Initialize parent with valid ttk.Combobox options only
         super().__init__(parent, **kwargs)
@@ -695,6 +696,8 @@ class NicknameCombobox(ttk.Combobox):
         Returns:
             bool: True if the input is a valid address or numeric value, False otherwise
         """
+        if self._skip_address_check:
+            return False
         return is_possible_address_or_literal(search_text, strict=strict)
 
     def finalize_entry(self):

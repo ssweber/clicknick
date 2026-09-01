@@ -1,9 +1,9 @@
-# CLAUDE.md
+# ClickNick Agent Guidance
 
 **IMPORTANT: DON'T USE `cd` before commands. The working directory is already set to the project root.**
 **IMPORTANT: Always use `make` commands, not direct `uv run` commands.**
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to coding agents working in this repository.
 
 ## Project Overview
 

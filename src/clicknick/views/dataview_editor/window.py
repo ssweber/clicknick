@@ -644,24 +644,7 @@ class DataviewEditorWindow(tk.Toplevel):
             if result:  # Yes - save
                 self.save_all()
 
-        # Close navigation window if open
-        if self._nav_window is not None:
-            self._nav_window.destroy()
-            self._nav_window = None
-
-        # Detach Modbus service and clean up on a daemon thread to avoid
-        # deadlocking the Tcl interpreter (service callbacks use self.after).
-        service = self._modbus
-        self._modbus = None
-        self._clear_live_values_all_panels()
-        if service is not None:
-            self._run_background(self._disconnect_modbus_service, service)
-
-        # Unregister from shared data
-        self.shared_data.unregister_window(self)
-
-        # Destroy window
-        self.destroy()
+        self.close_without_prompt()
 
     def _refresh_navigation(self) -> None:
         """Refresh the navigation window with current data."""
@@ -967,25 +950,17 @@ class DataviewEditorWindow(tk.Toplevel):
         if not address_shared:
             return []
 
+        candidates = sorted(
+            row.nickname for row in address_shared.all_rows.values() if row.nickname
+        )
+
+        if self.shared_data.filter_func is not None:
+            return self.shared_data.filter_func(candidates, search_text)
+
         search_upper = search_text.strip().upper()
-
-        # Build list of matching nicknames
-        matches = []
-        for row in address_shared.all_rows.values():
-            nickname = row.nickname
-            if not nickname:
-                continue
-
-            # Match against nickname (contains search)
-            if search_upper:
-                if search_upper in nickname.upper():
-                    matches.append(nickname)
-            else:
-                matches.append(nickname)
-
-        # Sort and return
-        matches.sort()
-        return matches
+        if not search_upper:
+            return candidates
+        return [n for n in candidates if search_upper in n.upper()]
 
     def _on_nickname_selected(self, nickname: str) -> None:
         """Handle nickname selection from combobox.
@@ -1147,7 +1122,7 @@ class DataviewEditorWindow(tk.Toplevel):
         self.notebook.bind("<Button-3>", self._on_tab_right_click)
 
         # Initial sash position (sidebar width)
-        self.after(100, lambda: self.paned.sashpos(0, 180))
+        self._sash_after_id = self.after(100, lambda: self.paned.sashpos(0, 180))
 
     @staticmethod
     def _get_dataview_editor_popup_flag() -> Path:
@@ -1164,7 +1139,7 @@ class DataviewEditorWindow(tk.Toplevel):
 
         # Content
         popup_text = (
-            "Dataview Editor (Beta)\n\n"
+            "Dataview Editor\n\n"
             "This tool edits .cdv files in CLICK's temporary project folder.\n"
             "Changes are temporary until you save in CLICK Software.\n\n"
             "Note: New Dataviews created here must be imported manually in CLICK.\n"
@@ -1232,9 +1207,30 @@ class DataviewEditorWindow(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
         # Open Tag Browser by default
-        self.after(100, self._toggle_nav)
+        self._init_after_id = self.after(100, self._toggle_nav)
 
         self._update_modbus_controls()
+
+    def close_without_prompt(self) -> None:
+        """Clean up resources and destroy window without save prompts."""
+        for after_id in (self._sash_after_id, self._init_after_id):
+            if after_id is not None:
+                self.after_cancel(after_id)
+        self._sash_after_id = None
+        self._init_after_id = None
+
+        if self._nav_window is not None:
+            self._nav_window.destroy()
+            self._nav_window = None
+
+        service = self._modbus
+        self._modbus = None
+        self._clear_live_values_all_panels()
+        if service is not None:
+            self._run_background(self._disconnect_modbus_service, service)
+
+        self.shared_data.unregister_window(self)
+        self.destroy()
 
     def refresh_nicknames_from_shared(self) -> None:
         """Called by SharedDataviewData when SharedAddressData changes.

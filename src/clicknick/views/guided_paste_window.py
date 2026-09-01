@@ -125,7 +125,7 @@ class GuidedPasteWindow(tk.Toplevel):
         if self._copied:
             self._action_btn.configure(state="normal", text="Next \u2192")
         else:
-            label = "Import" if self._is_nickname_step(self._current_idx) else "\U0001f4cb Copy"
+            label = "Import" if self._is_nickname_step(self._current_idx) else "Copy"
             self._action_btn.configure(state="normal", text=label)
 
     # ------------------------------------------------------------------
@@ -366,7 +366,7 @@ class GuidedPasteWindow(tk.Toplevel):
         )
 
         self._action_btn = ttk.Button(
-            btn_frame, text="\U0001f4cb Copy", command=self._on_action, width=10, state="disabled"
+            btn_frame, text="Copy", command=self._on_action, width=10, state="disabled"
         )
         self._action_btn.pack(side=tk.RIGHT, padx=(5, 0))
 

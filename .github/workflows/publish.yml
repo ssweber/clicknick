@@ -17,10 +17,10 @@ jobs:
           fetch-depth: 0
 
       - name: Install uv (official Astral action)
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          version: "0.9.25"
-          enable-cache: true
+          version: "0.11.29"
+          enable-cache: auto
           python-version: "3.12"
 
       - name: Set up Python

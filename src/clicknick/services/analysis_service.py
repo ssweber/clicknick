@@ -1,0 +1,529 @@
+"""Static program analysis via pyrung's dependency graph.
+
+Pure Python, no tkinter.  Builds a ProgramGraph from the connected
+Click project's Scr*.tmp files and exposes tag-role and dependency
+queries that return addr_key sets for address editor filtering.
+"""
+
+from __future__ import annotations
+
+import enum
+import shutil
+import tempfile
+import traceback
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from pyrung.core.analysis.pdg import ProgramGraph
+    from pyrung.core.program import Program
+    from pyrung.core.validation.report import ValidationReport
+
+WorkspaceKind = Literal["temporary", "persistent"]
+
+
+class AnalysisStatus(enum.Enum):
+    """Lifecycle of the pyrung conversion.
+
+    Views poll this instead of only ``is_available``, which cannot tell
+    "still building" apart from "failed and never coming".
+    """
+
+    IDLE = "idle"
+    BUILDING = "building"
+    READY = "ready"
+    FAILED = "failed"
+
+
+@dataclass
+class AnalysisResult:
+    """Cached analysis output."""
+
+    graph: ProgramGraph
+    program: Program
+    tag_to_addr_key: dict[str, int] = field(default_factory=dict)
+    addr_key_to_tag: dict[int, str] = field(default_factory=dict)
+    role_cache: dict[str, set[int]] = field(default_factory=dict)
+    project_dir: Path | None = None
+
+
+def _write_nicknames_csv(csv_dir: Path, db_path: Path) -> Path | None:
+    """Export nicknames from MDB to csv_dir/nicknames.csv."""
+    nick_dest = csv_dir / "nicknames.csv"
+    try:
+        from ..data.data_source import CsvDataSource
+        from ..utils.mdb_operations import MdbConnection, load_all_addresses
+
+        with MdbConnection(str(db_path)) as conn:
+            all_rows = load_all_addresses(conn)
+        CsvDataSource(str(nick_dest)).save_changes(list(all_rows.values()))
+        return nick_dest
+    except Exception:
+        return None
+
+
+def _build_tag_addr_key_map(
+    base_state: Mapping[int, object],
+) -> tuple[dict[str, int], dict[int, str]]:
+    """Build bidirectional tag_name <-> addr_key maps from base-layer rows.
+
+    pyrung tags are named by raw Click nicknames.  Addresses with no
+    nickname become tags named after the display_address (e.g. "X001").
+    """
+    tag_to_key: dict[str, int] = {}
+    key_to_tag: dict[int, str] = {}
+
+    for addr_key, row in base_state.items():
+        nickname = getattr(row, "nickname", "")
+        display = getattr(row, "display_address", "")
+        tag = nickname.strip() if nickname else ""
+        if tag:
+            tag_to_key[tag] = addr_key
+            key_to_tag[addr_key] = tag
+        elif display:
+            tag_to_key[display] = addr_key
+            key_to_tag[addr_key] = display
+
+    return tag_to_key, key_to_tag
+
+
+_GENERATED_DIR_NAMES = {"src", "csv", "csv_output"}
+_GENERATED_FILE_NAMES = {"nicknames.csv", "project_to_csv.py", "run.py"}
+_WORKSPACE_GUIDANCE_FILES = {"AGENTS.md", "README.md"}
+_EXPORT_IGNORE = shutil.ignore_patterns(".venv", "__pycache__", "*.pyc")
+
+
+def _clean_generated(persist_dir: Path, *, preserve_source: bool = False) -> None:
+    """Remove only ClickNick-owned outputs from an active workspace."""
+    for child in persist_dir.iterdir():
+        managed = child.name in _GENERATED_DIR_NAMES or child.name in _GENERATED_FILE_NAMES
+        if not managed or (preserve_source and child.name == "src"):
+            continue
+        if child.is_dir():
+            shutil.rmtree(child, ignore_errors=True)
+        else:
+            child.unlink(missing_ok=True)
+
+
+def _copy_missing(source: Path, destination: Path) -> None:
+    """Seed generated support files without replacing workspace-owned files."""
+    if source.is_dir():
+        for child in source.rglob("*"):
+            relative = child.relative_to(source)
+            target = destination / relative
+            if child.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+            elif not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(child, target)
+    elif not destination.exists():
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+
+def _refresh_workspace_guidance(source: Path, destination: Path) -> None:
+    """Refresh only pyrung-marked or exact legacy lifecycle prose."""
+    from pyrung.click import refresh_workspace_lifecycle_guidance
+
+    existing = destination.read_text(encoding="utf-8")
+    generated = source.read_text(encoding="utf-8")
+    refreshed = refresh_workspace_lifecycle_guidance(existing, generated)
+    if refreshed == existing:
+        return
+    staging = destination.with_suffix(f"{destination.suffix}.clicknick-guidance")
+    try:
+        staging.write_text(refreshed, encoding="utf-8")
+        staging.replace(destination)
+    finally:
+        staging.unlink(missing_ok=True)
+
+
+def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
+    """Publish a complete staged generation without risking workspace edits."""
+    from .project_workspace import (
+        _replace_tree,
+        backup_modified_plc_source,
+        plc_source_dir,
+        record_generated_plc_source,
+    )
+
+    staged_source = plc_source_dir(staged_dir)
+    if not staged_source.is_dir():
+        raise ValueError(f"staged generated source directory not found: {staged_source}")
+
+    persist_dir.mkdir(parents=True, exist_ok=True)
+    backup_modified_plc_source(persist_dir)
+
+    # Keep active source in place until all other generated files are ready.
+    # _replace_tree then publishes src/plc atomically and restores it if the
+    # filesystem refuses the final rename.
+    _clean_generated(persist_dir, preserve_source=True)
+    for child in staged_dir.iterdir():
+        if child.name == "src":
+            continue
+        destination = persist_dir / child.name
+        if child.name in _GENERATED_DIR_NAMES:
+            shutil.copytree(child, destination, dirs_exist_ok=True)
+        elif child.name in _GENERATED_FILE_NAMES:
+            shutil.copy2(child, destination)
+        elif child.name in _WORKSPACE_GUIDANCE_FILES and destination.is_file():
+            _refresh_workspace_guidance(child, destination)
+        else:
+            _copy_missing(child, destination)
+
+    _replace_tree(staged_source, plc_source_dir(persist_dir))
+    record_generated_plc_source(persist_dir)
+
+
+def _regenerate_persisted_project(
+    scr_folder: Path,
+    db_path: Path | None,
+    persist_dir: Path,
+    *,
+    workspace_kind: WorkspaceKind = "temporary",
+) -> Path:
+    """Generate beside the workspace, then publish only a complete project."""
+    from pyrung.click import ladder_to_pyrung_project
+
+    from ..ladder.program import program_save
+
+    persist_dir.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix=f".{persist_dir.name}-regeneration-", dir=persist_dir.parent
+    ) as stage_root:
+        staged_dir = Path(stage_root) / "project"
+        staged_dir.mkdir()
+        csv_persist = staged_dir / "csv"
+        csv_persist.mkdir()
+        program_save(scr_folder, csv_persist, index=True)
+        persist_nickname_csv = None
+        if db_path is not None:
+            persist_nickname_csv = _write_nicknames_csv(csv_persist, db_path)
+
+        ladder_to_pyrung_project(
+            csv_persist,
+            nickname_csv=persist_nickname_csv,
+            output_dir=staged_dir,
+            index=True,
+            workspace_kind=workspace_kind,
+        )
+        _publish_generated_project(staged_dir, persist_dir)
+    return persist_dir
+
+
+def _build_graph(
+    scr_folder: Path,
+    db_path: Path | None,
+    persist_dir: Path | None = None,
+    *,
+    workspace_kind: WorkspaceKind = "temporary",
+) -> tuple[ProgramGraph, Program, Path | None]:
+    """Run the full pipeline: Scr*.tmp -> CSV -> pyrung code -> exec -> graph.
+
+    When *persist_dir* is provided, also writes the full pyrung project
+    (src/plc/) to disk for consumption by DAP and
+    rung apply commands.
+    """
+    from pyrung.click import ladder_to_pyrung
+    from pyrung.core.analysis import build_program_graph
+
+    from ..ladder.program import program_save
+
+    with tempfile.TemporaryDirectory(prefix="clicknick_analysis_") as tmp:
+        csv_dir = Path(tmp)
+        program_save(scr_folder, csv_dir, index=True)
+
+        nickname_csv = None
+        if db_path is not None:
+            nickname_csv = _write_nicknames_csv(csv_dir, db_path)
+
+        code = ladder_to_pyrung(csv_dir, nickname_csv=nickname_csv)
+
+        project_dir = None
+        if persist_dir is not None:
+            project_dir = _regenerate_persisted_project(
+                scr_folder,
+                db_path,
+                persist_dir,
+                workspace_kind=workspace_kind,
+            )
+
+    namespace: dict[str, object] = {}
+    exec(compile(code, "<analysis>", "exec"), namespace)  # noqa: S102
+    program = namespace["logic"]
+
+    from pyrung.core.program import Program
+
+    if not isinstance(program, Program):
+        msg = f"Expected Program, got {type(program).__name__}"
+        raise TypeError(msg)
+
+    return build_program_graph(program), program, project_dir
+
+
+class AnalysisService:
+    """Owns the program analysis lifecycle and exposes query methods."""
+
+    def __init__(self) -> None:
+        self._result: AnalysisResult | None = None
+        # Written from the build thread, read from the UI thread. Plain
+        # attribute assignment is atomic enough; there is no read-modify-write.
+        self._status = AnalysisStatus.IDLE
+        self._error: str | None = None
+        self._error_detail: str | None = None
+        self._generation = 0
+        self._epoch = 0
+
+    @property
+    def is_available(self) -> bool:
+        return self._result is not None
+
+    @property
+    def status(self) -> AnalysisStatus:
+        return self._status
+
+    @property
+    def generation(self) -> int:
+        """Bumped when a build starts, i.e. when the project folder is rewritten.
+
+        Consumers that read the generated project off disk capture this before
+        they start and compare afterwards: a change means the files moved under
+        them and whatever they saw was a half-written project, not a real error.
+        """
+        return self._generation
+
+    @property
+    def error(self) -> str | None:
+        """One-line reason the conversion failed, or None."""
+        return self._error
+
+    @property
+    def error_detail(self) -> str | None:
+        """Full traceback for a failed conversion, or None."""
+        return self._error_detail
+
+    def mark_failed(self, reason: str, detail: str | None = None) -> None:
+        """Record a failure the build thread never got to raise.
+
+        Used for pre-flight bail-outs (no project database, no saved ladder
+        files) so views can say *why* instead of waiting forever.
+        """
+        self._epoch += 1
+        self._status = AnalysisStatus.FAILED
+        self._error = reason
+        self._error_detail = detail
+
+    @property
+    def tag_to_addr_key(self) -> dict[str, int]:
+        """Tag name → addr_key map (empty if analysis not built)."""
+        if self._result is None:
+            return {}
+        return self._result.tag_to_addr_key
+
+    @property
+    def addr_key_to_tag(self) -> dict[int, str]:
+        """addr_key → tag name map (empty if analysis not built)."""
+        if self._result is None:
+            return {}
+        return self._result.addr_key_to_tag
+
+    @property
+    def project_dir(self) -> Path | None:
+        """Path to the persisted pyrung_project/ directory (None if not built)."""
+        if self._result is None:
+            return None
+        return self._result.project_dir
+
+    def export_project(self, destination: Path) -> int:
+        """Copy the ready generated project to a new or empty directory.
+
+        The copy is staged beside *destination* and published only if no
+        analysis rebuild started while files were being copied. Disposable
+        virtual environments and Python caches are omitted.
+        """
+        if self._status is not AnalysisStatus.READY or self._result is None:
+            raise RuntimeError("pyrung project is not ready to export")
+        if self._result.project_dir is None:
+            raise RuntimeError("pyrung project was not persisted to disk")
+
+        source = self._result.project_dir.resolve()
+        destination = destination.resolve()
+        if not source.is_dir():
+            raise RuntimeError(f"pyrung project folder does not exist: {source}")
+        if destination == source or source in destination.parents or destination in source.parents:
+            raise ValueError("export destination must be separate from the active project folder")
+        if destination.exists():
+            if not destination.is_dir():
+                raise ValueError(f"export destination is not a directory: {destination}")
+            if any(destination.iterdir()):
+                raise FileExistsError(
+                    f"export folder already exists and must be empty: {destination}"
+                )
+        if not destination.parent.is_dir():
+            raise FileNotFoundError(
+                f"export destination parent does not exist: {destination.parent}"
+            )
+
+        generation = self._generation
+        with tempfile.TemporaryDirectory(
+            prefix=f".{destination.name}-export-", dir=destination.parent
+        ) as stage_root:
+            staged = Path(stage_root) / "project"
+            shutil.copytree(source, staged, ignore=_EXPORT_IGNORE)
+
+            if (
+                self._generation != generation
+                or self._status is not AnalysisStatus.READY
+                or self._result.project_dir is None
+                or self._result.project_dir.resolve() != source
+            ):
+                raise RuntimeError(
+                    "Click project changed during export; try again after conversion finishes"
+                )
+
+            file_count = sum(path.is_file() for path in staged.rglob("*"))
+            if destination.exists():
+                destination.rmdir()
+            staged.replace(destination)
+        return file_count
+
+    def build(
+        self,
+        scr_folder: Path,
+        db_path: Path | None,
+        base_state: Mapping[int, object],
+        persist_dir: Path | None = None,
+        workspace_kind: WorkspaceKind = "temporary",
+    ) -> None:
+        """Run the analysis pipeline and cache the result.
+
+        Called from a background thread; stores results for main-thread access.
+        When *persist_dir* is given, the pyrung project is also written to disk.
+        *workspace_kind* selects matching lifecycle guidance in generated docs.
+
+        On failure the status becomes FAILED and the reason is recorded before
+        the exception is re-raised — a caller that swallows it still leaves the
+        UI able to explain itself. Any previous good result is kept, so a failed
+        *rebuild* does not take working analysis away from open windows.
+        """
+        # Bumped first: _build_graph empties the project folder before writing
+        # it, so from this moment anything reading that folder sees rubble.
+        self._generation += 1
+        self._epoch += 1
+        epoch = self._epoch
+        self._status = AnalysisStatus.BUILDING
+        self._error = None
+        self._error_detail = None
+        try:
+            graph, program, project_dir = _build_graph(
+                scr_folder,
+                db_path,
+                persist_dir,
+                workspace_kind=workspace_kind,
+            )
+            tag_to_key, key_to_tag = _build_tag_addr_key_map(base_state)
+        except Exception as exc:
+            if self._epoch == epoch:
+                self._status = AnalysisStatus.FAILED
+                self._error = f"{type(exc).__name__}: {exc}"
+                self._error_detail = traceback.format_exc()
+            raise
+        if self._epoch != epoch:
+            return
+        self._result = AnalysisResult(
+            graph=graph,
+            program=program,
+            tag_to_addr_key=tag_to_key,
+            addr_key_to_tag=key_to_tag,
+            project_dir=project_dir,
+        )
+        self._status = AnalysisStatus.READY
+
+    def rebuild_mapping(self, base_state: Mapping[int, object]) -> None:
+        """Refresh the tag<->addr_key mapping after a base_state change."""
+        if self._result is None:
+            return
+        tag_to_key, key_to_tag = _build_tag_addr_key_map(base_state)
+        self._result.tag_to_addr_key = tag_to_key
+        self._result.addr_key_to_tag = key_to_tag
+        self._result.role_cache.clear()
+
+    def invalidate(self) -> None:
+        self._epoch += 1
+        self._result = None
+        self._status = AnalysisStatus.IDLE
+        self._error = None
+        self._error_detail = None
+
+    def known_tag_names(self) -> frozenset[str]:
+        """Tag names present in both the graph and the addr_key map."""
+        if self._result is None:
+            return frozenset()
+        graph_tags = frozenset(self._result.graph.tag_roles)
+        mapped_tags = frozenset(self._result.tag_to_addr_key)
+        return graph_tags & mapped_tags
+
+    def get_role_keys(self, role: str) -> set[int]:
+        """Return addr_keys for tags with the given role.
+
+        role is one of: "input", "output" (TERMINAL), "pivot", "isolated".
+        """
+        if self._result is None:
+            return set()
+
+        cached = self._result.role_cache.get(role)
+        if cached is not None:
+            return cached
+
+        from pyrung.core.analysis.pdg import TagRole
+
+        role_map = {
+            "input": TagRole.INPUT,
+            "output": TagRole.TERMINAL,
+            "pivot": TagRole.PIVOT,
+            "isolated": TagRole.ISOLATED,
+        }
+        target_role = role_map.get(role)
+        if target_role is None:
+            return set()
+
+        keys: set[int] = set()
+        for tag_name, tag_role in self._result.graph.tag_roles.items():
+            if tag_role is target_role:
+                addr_key = self._result.tag_to_addr_key.get(tag_name)
+                if addr_key is not None:
+                    keys.add(addr_key)
+
+        self._result.role_cache[role] = keys
+        return keys
+
+    def get_upstream_keys(self, tag_name: str) -> set[int]:
+        """Return addr_keys for all tags transitively upstream of tag_name."""
+        if self._result is None:
+            return set()
+        upstream_tags = self._result.graph.upstream_slice(tag_name)
+        return {
+            self._result.tag_to_addr_key[t]
+            for t in upstream_tags
+            if t in self._result.tag_to_addr_key
+        }
+
+    def get_downstream_keys(self, tag_name: str) -> set[int]:
+        """Return addr_keys for all tags transitively downstream of tag_name."""
+        if self._result is None:
+            return set()
+        downstream_tags = self._result.graph.downstream_slice(tag_name)
+        return {
+            self._result.tag_to_addr_key[t]
+            for t in downstream_tags
+            if t in self._result.tag_to_addr_key
+        }
+
+    def run_validation(self) -> ValidationReport | None:
+        if self._result is None:
+            return None
+        from pyrung.core.validation import validate
+
+        return validate(self._result.program)

@@ -1,4 +1,4 @@
-from clicknick.utils.filters import ContainsFilter
+from clicknick.utils.filters import ContainsFilter, parse_analysis_prefix
 
 
 class TestContainsFilter:
@@ -30,3 +30,57 @@ class TestContainsFilter:
         # Check the grouping
         assert set(result[:4]) == word_boundary_expected
         assert set(result[4:]) == buried_expected
+
+
+class TestParseAnalysisPrefix:
+    def test_no_prefix(self):
+        assert parse_analysis_prefix("^Alm") == (None, None, "^Alm")
+
+    def test_plain_text(self):
+        assert parse_analysis_prefix("motor") == (None, None, "motor")
+
+    def test_empty(self):
+        assert parse_analysis_prefix("") == (None, None, "")
+
+    def test_input_prefix_alone(self):
+        assert parse_analysis_prefix("input:") == ("input", None, "")
+
+    def test_output_prefix_alone(self):
+        assert parse_analysis_prefix("output:") == ("output", None, "")
+
+    def test_pivot_prefix_alone(self):
+        assert parse_analysis_prefix("pivot:") == ("pivot", None, "")
+
+    def test_isolated_prefix_alone(self):
+        assert parse_analysis_prefix("isolated:") == ("isolated", None, "")
+
+    def test_role_prefix_with_text(self):
+        assert parse_analysis_prefix("input: pump") == ("input", None, "pump")
+
+    def test_role_prefix_with_anchor(self):
+        assert parse_analysis_prefix("input: ^Alm") == ("input", None, "^Alm")
+
+    def test_upstream_with_tag(self):
+        assert parse_analysis_prefix("upstream:MotorOut") == ("upstream", "MotorOut", "")
+
+    def test_downstream_with_tag(self):
+        assert parse_analysis_prefix("downstream:PumpRun") == ("downstream", "PumpRun", "")
+
+    def test_upstream_with_tag_and_text(self):
+        assert parse_analysis_prefix("upstream:MotorOut ^Alm") == ("upstream", "MotorOut", "^Alm")
+
+    def test_downstream_with_tag_and_text(self):
+        assert parse_analysis_prefix("downstream:X001 pump") == ("downstream", "X001", "pump")
+
+    def test_upstream_no_arg(self):
+        assert parse_analysis_prefix("upstream:") == ("upstream", None, "")
+
+    def test_case_insensitive_prefix(self):
+        assert parse_analysis_prefix("INPUT: motor") == ("input", None, "motor")
+        assert parse_analysis_prefix("Upstream:Tag") == ("upstream", "Tag", "")
+
+    def test_leading_whitespace(self):
+        assert parse_analysis_prefix("  input:") == ("input", None, "")
+
+    def test_not_a_prefix(self):
+        assert parse_analysis_prefix("inputting") == (None, None, "inputting")

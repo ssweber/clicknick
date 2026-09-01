@@ -7,7 +7,6 @@ Core block tag model operations (parsing, range computation) are in models/block
 from __future__ import annotations
 
 import re
-from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from pyclickplc.blocks import (
@@ -27,7 +26,6 @@ from pyclickplc.blocks import (
 if TYPE_CHECKING:
     from pyclickplc.blocks import BlockTag
 
-    from ..data.address_store import AddressStore
     from ..models.address_row import AddressRow
 
 
@@ -113,56 +111,6 @@ class BlockService:
     Provides editor-level coordination for block tags. Core parsing and
     range computation is delegated to models/blocktag.py.
     """
-
-    @staticmethod
-    def update_colors(
-        store: AddressStore,
-        affected_keys: set[int] | None = None,
-    ) -> set[int]:
-        """Update block_color on visible rows after comment changes.
-
-        When comments change, re-scan blocks and update precomputed colors
-        on ALL rows in affected block ranges. This may affect more rows
-        than just those with comment changes.
-
-        Args:
-            store: The AddressStore instance
-            affected_keys: Optional set of addr_keys with comment changes.
-                          If None, updates all rows (used on initial load).
-
-        Returns:
-            Set of ALL addr_keys affected (may be larger due to block ranges)
-        """
-        # Get unified view (all rows in order)
-        view = store.get_unified_view()
-        if not view:
-            return affected_keys or set()
-
-        # Compute all block ranges from current comments
-        ranges = compute_all_block_ranges(view.rows)
-
-        # Build row_idx -> color map (inner blocks override outer)
-        color_map: dict[int, str | None] = {}
-        for r in ranges:
-            if r.bg_color:
-                for row_idx in range(r.start_idx, r.end_idx + 1):
-                    color_map[row_idx] = r.bg_color
-
-        # Update block_color on visible rows
-        all_affected = set()
-        for row_idx, row in enumerate(view.rows):
-            new_color = color_map.get(row_idx)
-            if row.block_color != new_color:
-                updated = replace(row, block_color=new_color)
-                store.visible_state[row.addr_key] = updated
-                if row.addr_key in store.user_overrides:
-                    store.user_overrides[row.addr_key] = updated
-                all_affected.add(row.addr_key)
-
-        if affected_keys:
-            all_affected.update(affected_keys)
-
-        return all_affected
 
     @staticmethod
     def auto_update_matching_block_tag(

@@ -18,31 +18,38 @@ if TYPE_CHECKING:
 
 
 class BlockGroup:
-    """Represents a group of addresses with the same block tag."""
+    """Represents a group of addresses with the same block tag.
 
-    def __init__(self, name: str, start_idx: int, end_idx: int, rows: list[AddressRow]):
+    Membership is an explicit list of indices rather than a span, because the
+    "Untagged" group is not contiguous - tagged blocks sit between its rows.
+    """
+
+    def __init__(self, name: str, indices: list[int], rows: list[AddressRow]):
         """Initialize block group.
 
         Args:
             name: Block name (or "Untagged" for addresses without blocks)
-            start_idx: Starting index in rows list
-            end_idx: Ending index in rows list (inclusive)
+            indices: Indices into rows that belong to this group
             rows: List of all AddressRow objects (reference to full list)
         """
         self.name = name
-        self.start_idx = start_idx
-        self.end_idx = end_idx
+        self.indices = indices
         self._all_rows = rows  # Reference to full list
 
     @property
+    def start_idx(self) -> int:
+        """Index of the first row in this group (used for display ordering)."""
+        return min(self.indices) if self.indices else 0
+
+    @property
     def rows(self) -> list[AddressRow]:
-        """Get the rows in this block range."""
-        return self._all_rows[self.start_idx : self.end_idx + 1]
+        """Get the rows in this block."""
+        return [self._all_rows[i] for i in self.indices]
 
     @property
     def count(self) -> int:
         """Get count of addresses in this block."""
-        return self.end_idx - self.start_idx + 1
+        return len(self.indices)
 
     def __repr__(self) -> str:
         return f"BlockGroup({self.name}, {self.count} addresses)"
@@ -65,34 +72,27 @@ def detect_blocks_in_csv(rows: list[AddressRow]) -> list[BlockGroup]:
 
     # Convert BlockRange objects to BlockGroup objects
     for block_range in block_ranges:
-        # Mark these indices as covered
-        for i in range(block_range.start_idx, block_range.end_idx + 1):
-            covered_indices.add(i)
+        block_indices = list(range(block_range.start_idx, block_range.end_idx + 1))
+        covered_indices.update(block_indices)
 
         blocks.append(
             BlockGroup(
                 name=block_range.name,
-                start_idx=block_range.start_idx,
-                end_idx=block_range.end_idx,
+                indices=block_indices,
                 rows=rows,
             )
         )
 
     # Find untagged addresses (not in any block range)
-    untagged_indices = []
-    for i, _row in enumerate(rows):
-        if i not in covered_indices:
-            untagged_indices.append(i)
+    untagged_indices = [i for i in range(len(rows)) if i not in covered_indices]
 
-    # Group consecutive untagged indices into ranges
+    # All untagged addresses form one group. They need not be contiguous, so the
+    # group holds their exact indices and never covers a tagged block in between.
     if untagged_indices:
-        # For simplicity, treat all untagged as one group
-        # (Could be enhanced to split into multiple ranges if desired)
         blocks.append(
             BlockGroup(
                 name="Untagged",
-                start_idx=min(untagged_indices),
-                end_idx=max(untagged_indices),
+                indices=untagged_indices,
                 rows=rows,
             )
         )
@@ -105,14 +105,13 @@ COL_BLOCK_NAME = 0
 COL_COUNT = 1
 COL_NICKNAME = 2
 COL_COMMENT = 3
-COL_INIT_VAL = 4
-COL_RETENTIVE = 5
+COL_FIRST_SCAN = 4
 
 # Dropdown options
 NICKNAME_OPTIONS = ["Overwrite", "Merge", "Skip"]
 COMMENT_OPTIONS = ["Overwrite", "Append", "Block Tag", "Skip"]
-INIT_VAL_OPTIONS = ["Overwrite", "Merge", "Skip"]
-RETENTIVE_OPTIONS = ["Overwrite", "Merge", "Skip"]
+# Initial value and retentive are imported together - see ImportService._apply_first_scan
+FIRST_SCAN_OPTIONS = ["Overwrite", "Merge", "Skip"]
 
 
 class ImportCsvDialog(tk.Toplevel):
@@ -132,8 +131,7 @@ class ImportCsvDialog(tk.Toplevel):
                     str(block.count),
                     "Overwrite",  # Default for Nickname
                     "Overwrite",  # Default for Comment
-                    "Merge",  # Default for Init Val
-                    "Merge",  # Default for Retentive
+                    "Merge",  # Default for First Scan
                 ]
             )
 
@@ -158,17 +156,10 @@ class ImportCsvDialog(tk.Toplevel):
             set_value="Overwrite",
         )
 
-        # Init Val column
+        # First Scan column (initial value + retentive, imported as a pair)
         self.sheet.dropdown(
-            num2alpha(COL_INIT_VAL),
-            values=INIT_VAL_OPTIONS,
-            set_value="Merge",
-        )
-
-        # Retentive column
-        self.sheet.dropdown(
-            num2alpha(COL_RETENTIVE),
-            values=RETENTIVE_OPTIONS,
+            num2alpha(COL_FIRST_SCAN),
+            values=FIRST_SCAN_OPTIONS,
             set_value="Merge",
         )
 
@@ -259,12 +250,12 @@ class ImportCsvDialog(tk.Toplevel):
             block = self.all_blocks[row_idx]
             selected_blocks.append(block)
 
+            # Keyed by block identity, not name - a CSV may reuse a block name
             # Retrieve merge options using the +1 offset
-            import_options_per_block[block.name] = {
+            import_options_per_block[id(block)] = {
                 "nickname": row_data[COL_NICKNAME + 1],
                 "comment": row_data[COL_COMMENT + 1],
-                "init_val": row_data[COL_INIT_VAL + 1],
-                "retentive": row_data[COL_RETENTIVE + 1],
+                "first_scan": row_data[COL_FIRST_SCAN + 1],
             }
 
         if not selected_blocks:
@@ -326,8 +317,7 @@ class ImportCsvDialog(tk.Toplevel):
                 "Count",
                 "Nickname",
                 "Comment",
-                "Init Val",
-                "Retentive",
+                "First Scan",
             ],
             height=400,
             width=850,
@@ -340,15 +330,13 @@ class ImportCsvDialog(tk.Toplevel):
         self.sheet.column_width(column=COL_COUNT, width=60)
         self.sheet.column_width(column=COL_NICKNAME, width=100)
         self.sheet.column_width(column=COL_COMMENT, width=120)
-        self.sheet.column_width(column=COL_INIT_VAL, width=100)
-        self.sheet.column_width(column=COL_RETENTIVE, width=100)
+        self.sheet.column_width(column=COL_FIRST_SCAN, width=100)
 
         # Placeholder row
         self.sheet.set_sheet_data(
             [
                 [
                     "(Load a CSV file to see blocks)",
-                    "",
                     "",
                     "",
                     "",
@@ -360,10 +348,13 @@ class ImportCsvDialog(tk.Toplevel):
         # Column options help text (below table)
         help_text = (
             "Column Options:\n"
-            "  Nickname:  Overwrite = Replace existing | Merge = Only if empty\n"
-            "  Comment:   Overwrite | Append | Block Tag = Update tag only\n"
-            "  Init Val:  Overwrite | Merge = Only if empty\n"
-            "  Retentive: Overwrite/Merge = Import | Skip = Don't import"
+            "  Nickname:   Overwrite = Replace existing | Merge = Only if empty\n"
+            "  Comment:    Overwrite | Append | Block Tag = Update tag only\n"
+            "  First Scan: Initial Value + Retentive, imported together.\n"
+            "              Retentive addresses power up with their retained value, so an\n"
+            "              initial value only applies when Retentive is off - importing one\n"
+            "              without the other silently changes first-scan behavior.\n"
+            "              Overwrite = Take both from CSV | Merge = Only if both are default"
         )
         help_label = ttk.Label(
             main_frame, text=help_text, foreground="gray", font=("TkDefaultFont", 8)
