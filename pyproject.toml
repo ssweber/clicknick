@@ -38,8 +38,8 @@ classifiers = [
 
 dependencies = [
     "laddercodec>=0.2.1",
-    "pyclickplc>=0.3.3",
-    "pyrung>=0.12.0",
+    "pyclickplc>=0.3.4",
+    "pyrung>=0.13.0",
     "pywin32 >= 311",
     "pyodbc >= 5.3.0",
     "tksheet == 7.5.19",
@@ -52,6 +52,9 @@ dev = [
     "pytest>=8.3.5",
     "ruff>=0.16.0",
     "ssort==0.16.0",
+]
+docs = [
+    "zensical==0.0.57",
 ]
 
 [project.scripts]

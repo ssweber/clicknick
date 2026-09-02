@@ -4,7 +4,9 @@
 
 .DEFAULT_GOAL := default
 
-.PHONY: default install lint test upgrade build action-icons clean
+.PHONY: default install lint test docs-serve docs-build docs-check upgrade build action-icons clean
+
+DOCS_ADDR ?= localhost:8000
 
 default: install lint test
 
@@ -16,6 +18,15 @@ lint:
 
 test:
 	uv run pytest --quiet --tb=short
+
+docs-serve:
+	uv run --group docs zensical serve --dev-addr $(DOCS_ADDR)
+
+docs-build:
+	uv run --group docs zensical build --clean --strict
+	uv run --group docs python .github/scripts/check_public_site.py site
+
+docs-check: docs-build
 
 upgrade:
 	uv lock --upgrade

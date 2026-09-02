@@ -604,16 +604,16 @@ class TestSystemNicknameValidation:
             ("SD", "_Fixed_Scan_Time(ms)"),
         ),
     )
-    def test_user_entered_sc_sd_system_nickname_is_invalid(self, store, memory_type, nickname):
-        """SC/SD system-style nicknames should not be accepted as user edits."""
+    def test_user_entered_sc_sd_system_nickname_is_valid(self, store, memory_type, nickname):
+        """SC/SD system-style nicknames should be accepted as edits."""
         addr_key = get_addr_key(memory_type, 1)
         with store.edit_session("Set SC/SD system nickname") as session:
             session.set_field(addr_key, "nickname", nickname)
 
         row = store.visible_state[addr_key]
-        assert row.nickname_valid is False
-        assert row.nickname_error != ""
-        assert row.is_valid is False
+        assert row.nickname_valid is True
+        assert row.nickname_error == ""
+        assert row.is_valid is True
 
     @pytest.mark.parametrize(
         ("memory_type", "base_nickname", "edited_nickname"),
@@ -622,10 +622,10 @@ class TestSystemNicknameValidation:
             ("SD", "_Fixed_Scan_Time(ms)", "_Scan_Time(ms)"),
         ),
     )
-    def test_loaded_sc_sd_system_then_edited_is_invalid(
+    def test_loaded_sc_sd_system_then_edited_is_valid(
         self, memory_type, base_nickname, edited_nickname
     ):
-        """Loaded SC/SD system nickname is valid, but edited variant should fail."""
+        """Edited SC/SD system nicknames retain their system-bank context."""
         addr_key = get_addr_key(memory_type, 1)
         data_source = MockDataSource(
             {
@@ -643,9 +643,9 @@ class TestSystemNicknameValidation:
             session.set_field(addr_key, "nickname", edited_nickname)
 
         row = store.visible_state[addr_key]
-        assert row.nickname_valid is False
-        assert row.nickname_error != ""
-        assert row.is_valid is False
+        assert row.nickname_valid is True
+        assert row.nickname_error == ""
+        assert row.is_valid is True
 
     def test_loaded_x_io_nickname_stays_valid(self):
         """Loaded X _IO nickname should be allowed as PLC-generated."""
@@ -701,8 +701,8 @@ class TestSystemNicknameValidation:
         assert "Cannot start with _" in row.nickname_error
         assert row.is_valid is False
 
-    def test_user_edit_clears_loaded_error_mask_for_nickname(self):
-        """Editing nickname should stop masking old loaded validation errors."""
+    def test_user_edit_clears_loaded_error_mask_for_valid_system_nickname(self):
+        """A valid SC edit should no longer need the loaded-error mask."""
         addr_key = get_addr_key("SC", 1)
         data_source = MockDataSource(
             {
@@ -725,8 +725,8 @@ class TestSystemNicknameValidation:
 
         edited_row = store.visible_state[addr_key]
         assert edited_row.loaded_with_error is False
-        assert edited_row.nickname_valid is False
-        assert "Cannot start with _" in edited_row.nickname_error
+        assert edited_row.nickname_valid is True
+        assert edited_row.nickname_error == ""
 
 
 class TestExternalDatabaseUpdate:

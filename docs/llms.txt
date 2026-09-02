@@ -1,0 +1,24 @@
+# ClickNick
+
+> Better tools for writing, checking, testing, troubleshooting, and maintaining AutomationDirect CLICK ladder without replacing CLICK Programming Software.
+
+ClickNick is a free, local Windows application. It adds nickname autocomplete, program checks, an offline test bench, readable project workspaces, and reviewed ladder changes around CLICK Programming Software.
+
+## Documentation
+
+- [Overview](./)
+- [Install](install/)
+- [Getting started](getting-started/)
+- [Product tour: nickname autocomplete](tour/autocomplete/)
+- [Product tour: program checks](tour/checks/)
+- [Product tour: offline Console](tour/offline-console/)
+- [Product tour: readable history](tour/readable-history/)
+- [Product tour: engineering workspace](tour/engineering-workspace/)
+- [Product tour: AI in a workspace you can check](tour/ai-in-the-workspace/)
+- [Help](help/)
+
+## Project-file boundary
+
+ClickNick never directly edits a `.ckp` file. Ladder changes return through Preview Changes and CLICK's normal ladder workflow, and saving in CLICK Programming Software remains the final authority.
+
+Source: https://github.com/ssweber/clicknick

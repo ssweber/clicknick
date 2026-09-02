@@ -10,6 +10,18 @@
 
 ## Unreleased
 
+## v0.21.0 — 2026-09-02
+
+### Features
+
+- **System nickname repair** — when analysis encounters documented CLICK SC/SD system-name problems, ClickNick offers a reviewable AddressStore repair in the GUI and through `clicknick-cli tag repair-system-nicknames`, then retries analysis after Sync.
+
+### Fixed
+
+- SC and SD system nicknames accept CLICK's leading-underscore naming convention while other protected address-name validation remains enforced.
+
+## v0.20.0 — 2026-09-02
+
 ### Features
 
 - **Persistent PLC workspaces** — create or select a durable workspace named for the PLC, keep tests, notes, and tooling across generated-program refreshes, preview edited ladder source before copying it back to CLICK, and safely reload from CLICK with a recovery snapshot of replaced source.

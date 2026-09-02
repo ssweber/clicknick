@@ -266,6 +266,12 @@ class ClickNickApp:
         self.workspace_status_var.set(workspace.label)
         self.workspace_group_title_var.set(f"Workspace - {workspace.label}")
         self.project_name_var.set(self.connected_click_filename or "Not connected")
+        repair_button = getattr(self, "repair_system_nicknames_button", None)
+        if repair_button is not None:
+            session = getattr(self, "_session", None)
+            analysis = session.analysis if session else None
+            has_repairs = bool(analysis and analysis.system_nickname_repairs)
+            repair_button.configure(state=tk.NORMAL if has_repairs else tk.DISABLED)
 
         if workspace.state is WorkspaceState.PREPARING:
             if self._workspace_refresh_after_id is None:
@@ -548,6 +554,9 @@ class ClickNickApp:
     def _on_editor_synced(self, count: int) -> None:
         if self._session is not None:
             self._session.record_sync(count)
+            analysis = self._session.analysis
+            if analysis is not None and analysis.system_nickname_repairs:
+                self._start_analysis_build()
 
     def _open_address_editor(self, initial_filter: str | None = None):
         """Open the Address Editor window.
@@ -588,6 +597,28 @@ class ClickNickApp:
 
             traceback.print_exc()
             self._update_status(f"Error opening editor: {e}", "error")
+
+    def _repair_system_nicknames(self) -> None:
+        """Stage documented system nickname fixes for review and Sync."""
+
+        store = self._get_store()
+        if store is None:
+            self._update_status("No address data loaded", "error")
+            return
+
+        from .services.system_nickname_service import stage_system_nickname_repairs
+
+        repairs = stage_system_nickname_repairs(store)
+        if not repairs:
+            self._update_status("No documented system nickname repairs needed", "connected")
+            self._refresh_workspace_ui()
+            return
+
+        self._open_address_editor("changed")
+        self._update_status(
+            f"Staged {len(repairs)} system nickname repair(s); review Changed, then Sync",
+            "connected",
+        )
 
     def _open_dataview_editor(self):
         """Open the Dataview Editor window, or focus if already open.
@@ -1180,6 +1211,13 @@ class ClickNickApp:
             compound=tk.LEFT,
             command=self._workspace_rung_apply,
         ).pack(fill=tk.X, pady=(0, 8))
+        self.repair_system_nicknames_button = ttk.Button(
+            workspace,
+            text="Repair System Nicknames",
+            command=self._repair_system_nicknames,
+            state=tk.DISABLED,
+        )
+        self.repair_system_nicknames_button.pack(fill=tk.X, pady=(0, 8))
         ttk.Button(
             workspace,
             text="Reload from CLICK",
