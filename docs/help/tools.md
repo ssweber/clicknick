@@ -70,6 +70,6 @@ Runs the generated program offline, on your computer. Save the project in CLICK 
 - `why` traces what is holding a tag on, off, or blocked.
 - `how` searches for a way to reach a state, including routes that must pass through or avoid a condition. Experimental: it can take a minute and sometimes stops without a path.
 
-The Console takes the same commands as pyrung's debug console. Type `help` for the list, or read the [command reference](https://ssweber.github.io/pyrung/guides/dap-vscode/#debug-console) in the pyrung docs.
+The Console takes the same commands as pyrung's debug console. Type `help` for the list, or read the [command reference](https://pyrung.com/pyrung/guides/dap-vscode/#debug-console) in the pyrung docs.
 
 ![ClickNick Console showing simplified, why, and how queries](https://github.com/user-attachments/assets/1727f54b-7f5d-4181-923e-4fbf7628d2a6)
