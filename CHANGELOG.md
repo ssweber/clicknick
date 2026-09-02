@@ -10,6 +10,8 @@
 
 ## Unreleased
 
+## v0.21.0 — 2026-09-02
+
 ### Features
 
 - **System nickname repair** — when analysis encounters documented CLICK SC/SD system-name problems, ClickNick offers a reviewable AddressStore repair in the GUI and through `clicknick-cli tag repair-system-nicknames`, then retries analysis after Sync.

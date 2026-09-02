@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 900" role="img" aria-labelledby="title desc">
+  <title id="title">What an agent works with in a ClickNick workspace</title>
+  <desc id="desc">Four steps. The agent reads the workspace files, works in pyrung's offline model with no connection to the PLC, proposes changes as files in the workspace, and the engineer accepts them through Preview Changes and Guided Paste before saving in CLICK. ClickNick never edits the .ckp.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#496276"/>
+    </marker>
+    <style>
+      .canvas { fill: #f8fafc; stroke: #d7e0e7; stroke-width: 2; }
+      .heading { fill: #172a3a; font: 700 26px system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .subheading { fill: #496276; font: 17px system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .title { fill: #172a3a; font: 700 21px system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .body { fill: #294354; font: 18px system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .mono { fill: #193548; font: 17px ui-monospace, SFMono-Regular, Consolas, monospace; }
+      .small { fill: #496276; font: 16px system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .evidence { fill: #eaf4ff; stroke: #4d87b8; stroke-width: 2; }
+      .workbench { fill: #edf8ef; stroke: #5b9566; stroke-width: 2; }
+      .proposal { fill: #fff6df; stroke: #b58a32; stroke-width: 2; }
+      .gate { fill: #ffffff; stroke: #385a73; stroke-width: 3; }
+      .connector { fill: none; stroke: #496276; stroke-width: 2.5; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect class="canvas" x="10" y="10" width="620" height="880" rx="24"/>
+  <text class="heading" x="40" y="58">What the agent works with</text>
+  <text class="subheading" x="40" y="88">The same workspace you have. Nothing it runs touches the PLC.</text>
+
+  <rect class="evidence" x="40" y="120" width="560" height="150" rx="16"/>
+  <text class="title" x="64" y="156">1. Reads the workspace</text>
+  <text class="mono" x="64" y="192">src/plc/</text>
+  <text class="body" x="230" y="192">the ladder as text</text>
+  <text class="mono" x="64" y="222">tests/ · notes/</text>
+  <text class="body" x="230" y="222">what you know about the machine</text>
+  <text class="small" x="64" y="252">The ladder text refreshes on every CLICK save.</text>
+
+  <path class="connector" d="M 320 272 L 320 300"/>
+
+  <rect class="workbench" x="40" y="306" width="560" height="150" rx="16"/>
+  <text class="title" x="64" y="342">2. Works in the offline model</text>
+  <text class="mono" x="64" y="378">why · how · step · force</text>
+  <text class="mono" x="64" y="408">pytest · check</text>
+  <text class="small" x="64" y="438">pyrung's model of the scan. No connection to the PLC.</text>
+
+  <path class="connector" d="M 320 458 L 320 486"/>
+
+  <rect class="proposal" x="40" y="492" width="560" height="150" rx="16"/>
+  <text class="title" x="64" y="528">3. Proposes files</text>
+  <text class="body" x="64" y="564">Edits to the ladder text, new tests, comments.</text>
+  <text class="body" x="64" y="594">All of it sits in the workspace for you to read.</text>
+  <text class="small" x="64" y="624">Preview Changes shows the rung diff.</text>
+
+  <path class="connector" d="M 320 644 L 320 672"/>
+
+  <rect class="gate" x="40" y="678" width="560" height="150" rx="16"/>
+  <text class="title" x="64" y="714">4. You accept</text>
+  <text class="body" x="64" y="750">Select the rungs you want.</text>
+  <text class="body" x="64" y="780">Guided Paste puts them into CLICK.</text>
+  <text class="small" x="64" y="810">Nothing changes until you save in CLICK.</text>
+
+  <text class="title" x="40" y="866">ClickNick never edits the .ckp.</text>
+</svg>
