@@ -198,6 +198,8 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
         )
     )
     app._current_plc_name = MagicMock(return_value="IMHERE")
+    app.repair_system_nicknames_button = MagicMock()
+    app._session = SimpleNamespace(analysis=SimpleNamespace(system_nickname_repairs=(object(),)))
 
     app._refresh_workspace_ui()
 
@@ -209,3 +211,4 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
     app.mirror_setup_status_var.set.assert_called_once_with("✓ Configured")
     app.plc_name_var.set.assert_called_once_with("IMHERE")
     app.workspace_config_path_var.set.assert_called_once_with(str(project))
+    app.repair_system_nicknames_button.configure.assert_called_once_with(state="normal")

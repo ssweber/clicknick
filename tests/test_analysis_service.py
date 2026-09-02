@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from unittest.mock import MagicMock
 
 import pytest
+from pyrung.click import SystemNicknameRepair, SystemNicknameRepairRequired
 
 from clicknick.services.analysis_service import (
     AnalysisResult,
@@ -233,6 +234,26 @@ class TestAnalysisStatus:
         assert svc.error == "ValueError: bad rung"
         assert "bad rung" in (svc.error_detail or "")
         assert not svc.is_available
+
+    def test_build_failure_exposes_structured_system_nickname_repairs(self, monkeypatch, tmp_path):
+        svc = AnalysisService()
+        repair = SystemNicknameRepair(
+            memory_type="SD",
+            address=132,
+            current="_Port1_AL_Denied_Count",
+            replacement="_Port1_AL_Denied_No1_Cnt",
+        )
+
+        def _needs_repair(*_args, **_kwargs):
+            raise SystemNicknameRepairRequired((repair,))
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _needs_repair)
+        with pytest.raises(SystemNicknameRepairRequired):
+            svc.build(tmp_path, None, {})
+
+        assert svc.status is AnalysisStatus.FAILED
+        assert svc.system_nickname_repairs == (repair,)
+        assert "CLICK system nicknames need repair" in (svc.error or "")
 
     def test_build_success_is_ready(self, monkeypatch, tmp_path):
         svc = AnalysisService()

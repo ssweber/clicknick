@@ -299,6 +299,7 @@ analysis:
 
 tags:
   tag show <tag>
+  tag repair-system-nicknames         -> stage documented vendor corrections
   tag set-flag <tag> <flag>
   tag clear-flag <tag> <flag>
   tag set-choices <tag> <Label:val> ...

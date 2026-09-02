@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+from pyrung.click import SystemNicknameRepair, SystemNicknameRepairRequired
+
 if TYPE_CHECKING:
     from pyrung.core.analysis.pdg import ProgramGraph
     from pyrung.core.program import Program
@@ -273,6 +275,7 @@ class AnalysisService:
         self._status = AnalysisStatus.IDLE
         self._error: str | None = None
         self._error_detail: str | None = None
+        self._system_nickname_repairs: tuple[SystemNicknameRepair, ...] = ()
         self._generation = 0
         self._epoch = 0
 
@@ -304,6 +307,12 @@ class AnalysisService:
         """Full traceback for a failed conversion, or None."""
         return self._error_detail
 
+    @property
+    def system_nickname_repairs(self) -> tuple[SystemNicknameRepair, ...]:
+        """Structured vendor corrections when the current failure is repairable."""
+
+        return self._system_nickname_repairs
+
     def mark_failed(self, reason: str, detail: str | None = None) -> None:
         """Record a failure the build thread never got to raise.
 
@@ -314,6 +323,7 @@ class AnalysisService:
         self._status = AnalysisStatus.FAILED
         self._error = reason
         self._error_detail = detail
+        self._system_nickname_repairs = ()
 
     @property
     def tag_to_addr_key(self) -> dict[str, int]:
@@ -416,6 +426,7 @@ class AnalysisService:
         self._status = AnalysisStatus.BUILDING
         self._error = None
         self._error_detail = None
+        self._system_nickname_repairs = ()
         try:
             graph, program, project_dir = _build_graph(
                 scr_folder,
@@ -429,6 +440,8 @@ class AnalysisService:
                 self._status = AnalysisStatus.FAILED
                 self._error = f"{type(exc).__name__}: {exc}"
                 self._error_detail = traceback.format_exc()
+                if isinstance(exc, SystemNicknameRepairRequired):
+                    self._system_nickname_repairs = exc.repairs
             raise
         if self._epoch != epoch:
             return
@@ -456,6 +469,7 @@ class AnalysisService:
         self._status = AnalysisStatus.IDLE
         self._error = None
         self._error_detail = None
+        self._system_nickname_repairs = ()
 
     def known_tag_names(self) -> frozenset[str]:
         """Tag names present in both the graph and the addr_key map."""

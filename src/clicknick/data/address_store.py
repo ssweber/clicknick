@@ -212,9 +212,10 @@ class AddressStore:
                 if is_loaded_base_nickname and row.nickname.startswith("_IO"):
                     system_bank = "X"
             else:
-                # SC/SD system-style names are allowed only when unchanged from load.
-                if is_loaded_base_nickname:
-                    system_bank = row.memory_type
+                # SC/SD are PLC-owned system banks. Their documented names may
+                # start with underscores or contain system punctuation whether
+                # loaded from CLICK or repaired by the user.
+                system_bank = row.memory_type
 
         nickname_valid, nickname_error = validate_nickname(
             row.nickname,

@@ -16,11 +16,17 @@ from clicknick.services.workspace_service import (
 )
 
 
-def _analysis(status, project_dir: Path | None = None, error: str | None = None):
+def _analysis(
+    status,
+    project_dir: Path | None = None,
+    error: str | None = None,
+    system_nickname_repairs=(),
+):
     return SimpleNamespace(
         status=status,
         project_dir=project_dir,
         error=error,
+        system_nickname_repairs=system_nickname_repairs,
         is_available=status is AnalysisStatus.READY,
     )
 
@@ -44,6 +50,15 @@ def test_workspace_status_covers_unavailable_preparing_and_failure() -> None:
     assert failed.state is WorkspaceState.FAILED
     assert failed.label == "Build failed"
     assert failed.detail == "conversion broke"
+
+    repairable = get_workspace_status(
+        _analysis(
+            AnalysisStatus.FAILED,
+            error="system nickname mismatch",
+            system_nickname_repairs=(object(),),
+        )
+    )
+    assert repairable.label == "System names need repair"
 
 
 def test_workspace_status_reports_clean_modified_and_changed_rungs(tmp_path: Path) -> None:

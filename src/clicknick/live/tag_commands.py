@@ -13,6 +13,7 @@ from pyrung.click.tag_map import TagMeta, format_tag_meta
 
 from ..models.address_row import initial_values_differ
 from ..services.annotation_service import AnnotationService
+from ..services.system_nickname_service import stage_system_nickname_repairs
 from .dispatch import _resolve_identifier
 
 if TYPE_CHECKING:
@@ -89,6 +90,26 @@ def _cmd_show(ctx: DispatchContext, parts: list[str]) -> str:
     lines.append(f"retentive: {row.retentive}")
     if dirty:
         lines.append("status: UNSAVED")
+    return "\n".join(lines)
+
+
+def _cmd_repair_system_nicknames(ctx: DispatchContext, parts: list[str]) -> str:
+    """Stage known vendor system-nickname repairs through the AddressStore."""
+    if parts:
+        raise ValueError("usage: tag repair-system-nicknames")
+
+    assert ctx.store is not None
+    repairs = stage_system_nickname_repairs(ctx.store)
+    if not repairs:
+        return "system nickname repair: no known corrections needed"
+
+    if ctx.show_address_editor is not None:
+        ctx.show_address_editor("changed")
+
+    lines = [f"OK: {len(repairs)} system nickname repairs staged"]
+    for repair in repairs:
+        lines.append(f"{repair.display_address}: {repair.current!r} -> {repair.replacement!r}")
+    lines.append("Review in Address Editor -> Changed, then Sync to save")
     return "\n".join(lines)
 
 
@@ -406,6 +427,7 @@ def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
 
 _SUBCOMMANDS = {
     "show": _cmd_show,
+    "repair-system-nicknames": _cmd_repair_system_nicknames,
     "apply": _cmd_apply,
     "set-flag": _cmd_set_flag,
     "clear-flag": _cmd_clear_flag,

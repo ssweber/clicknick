@@ -42,9 +42,10 @@ def get_workspace_status(
     if analysis.status is AnalysisStatus.BUILDING:
         return WorkspaceStatus(WorkspaceState.PREPARING, "Preparing")
     if analysis.status is AnalysisStatus.FAILED:
+        repairs = getattr(analysis, "system_nickname_repairs", ())
         return WorkspaceStatus(
             WorkspaceState.FAILED,
-            "Build failed",
+            "System names need repair" if repairs else "Build failed",
             detail=analysis.error,
         )
 
