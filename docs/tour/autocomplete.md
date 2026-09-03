@@ -12,8 +12,8 @@ Match by prefix when your naming is predictable, by any part of the name when yo
 
 When the nickname list itself needs work, ClickNick has more: bulk editing, an outline view of your tags, and Data Views built by name.
 
-**[More ways ClickNick fixes the CLICK editor →](../editing.md)**
+[More ways ClickNick fixes the CLICK editor →](../editing.md)
 
 ---
 
-[Next: Check your ladder before the machine does →](checks.md)
+**[Next: Check your ladder before the machine does →](checks.md)**
