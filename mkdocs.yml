@@ -23,9 +23,8 @@ nav:
       - Readable History: tour/readable-history.md
       - Keep the Engineering Work: tour/engineering-workspace.md
       - AI in the Workspace: tour/ai-in-the-workspace.md
-  - Help:
-      - help/index.md
-      - Tools: help/tools.md
+  - Editing Tools: editing.md
+  - Help: help/index.md
 
 markdown_extensions:
   - admonition
