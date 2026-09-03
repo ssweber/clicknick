@@ -6,6 +6,22 @@ from tkinter import ttk
 from ..detection.window_mapping import DATA_TYPES
 from .prefix_autocomplete import PrefixAutocomplete
 
+_DECIMAL_LITERAL = re.compile(r"^[+-]?\d+\.\d*$")
+
+
+def dots_to_underscores(text: str) -> str:
+    """Apply the dot-means-underscore rule to whole text (pasted or committed).
+
+    ``x.Temperature`` becomes ``x_Temperature``. Numeric literals such as ``1.5``
+    and quoted string literals such as ``'a.b`` are returned unchanged.
+    """
+    if not text or "." not in text:
+        return text
+    stripped = text.lstrip()
+    if stripped.startswith("'") or _DECIMAL_LITERAL.match(stripped):
+        return text
+    return text.replace(".", "_")
+
 
 # Utility functions (no tkinter dependencies, easily testable)
 def normalize_nickname(nickname: str) -> str:
@@ -13,7 +29,7 @@ def normalize_nickname(nickname: str) -> str:
 
     Converts:
     - 'address_type[Numeral]' -> 'address_typeNumeral' (e.g., x[1] -> x1, CT[5] -> CT5)
-    - 'address_type.Nickname' -> 'Nickname' (e.g., x.Temperature -> Temperature)
+    - dots to underscores (e.g., x.Temperature -> x_Temperature), except in literals
 
     Args:
         nickname: The nickname to normalize
@@ -24,19 +40,47 @@ def normalize_nickname(nickname: str) -> str:
     if not nickname:
         return nickname
 
-    # Pattern 1: address_type[Numeral] -> address_typeNumeral
+    # address_type[Numeral] -> address_typeNumeral
     bracket_match = re.match(r"^([a-zA-Z]+)\[(\d+)\]$", nickname)
     if bracket_match:
         prefix, digits = bracket_match.groups()
         return prefix + digits
 
-    # Pattern 2: address_type.Nickname -> Nickname
-    dot_match = re.match(r"^([a-zA-Z]+)\.(.+)$", nickname)
-    if dot_match:
-        _, name = dot_match.groups()
-        return name
+    return dots_to_underscores(nickname)
 
-    return nickname
+
+_NUMERIC_LITERAL_START = re.compile(r"^[+-]?\d*$")
+
+
+def dot_keystroke_replacement(current_text: str, cursor_index: int) -> str | None:
+    """Decide what a typed period should insert at the given cursor position.
+
+    Nicknames use underscores where an engineer thinks in struct-style dots, so
+    typing ``Alm1.id`` should reach ``Alm1_id``. Numeric literals such as ``1.5``
+    and quoted string literals such as ``'abc.def`` keep their period.
+
+    Args:
+        current_text: The full entry text (before the period is inserted)
+        cursor_index: The insertion cursor index within current_text
+
+    Returns:
+        "_" when the period should be converted to an underscore, or None when
+        the period should be inserted as-is.
+    """
+    before = current_text[:cursor_index].lstrip()
+
+    if before.startswith("'"):
+        return None
+
+    # Empty, or the start of a numeric literal ("", "1", "-12")
+    if _NUMERIC_LITERAL_START.match(before):
+        return None
+
+    # Already a decimal literal ("12.", "1.5")
+    if _DECIMAL_LITERAL.match(before):
+        return None
+
+    return "_"
 
 
 def is_possible_address_or_literal(search_text: str, strict: bool = False) -> bool:
@@ -517,6 +561,7 @@ class ComboboxEventHandler:
         self.combobox = combobox
         self.dropdown_manager = dropdown_manager
         self.autocomplete = autocomplete
+        self._period_converted = False
 
     def _handle_data_provider_update(self, event):
         """Handle data provider updates and dropdown visibility."""
@@ -577,6 +622,30 @@ class ComboboxEventHandler:
             self._trigger_navigation_callback()
             return "break"
 
+    def _on_period_key(self, event):
+        """Insert an underscore for a typed period unless a literal is being typed."""
+        current_text = self.combobox.get()
+        if self.combobox.selection_present():
+            cursor_index = self.combobox.index("sel.first")
+        else:
+            cursor_index = self.combobox.index(tk.INSERT)
+
+        replacement = dot_keystroke_replacement(current_text, cursor_index)
+        if replacement is None:
+            # A period that stays a period must not inherit a stale flag from a
+            # converted keystroke whose KeyRelease never arrived (focus change).
+            self._period_converted = False
+            return None
+
+        # Match normal typing: replace any selection, then insert at the cursor
+        if self.combobox.selection_present():
+            self.combobox.delete("sel.first", "sel.last")
+        self.combobox.insert(tk.INSERT, replacement)
+
+        # The matching KeyRelease finishes the keystroke (autocomplete + refilter)
+        self._period_converted = True
+        return "break"
+
     def _on_tab(self, event):
         """Handle tab key to input current text before withdrawing."""
 
@@ -584,6 +653,28 @@ class ComboboxEventHandler:
 
         if not shift_tab:
             self.combobox.finalize_entry()
+
+    def _convert_dots_in_entry(self) -> bool:
+        """Rewrite dots in the entry as underscores (same rule as typing).
+
+        Handles text that arrived without a period keystroke, such as Ctrl+V.
+        Replacement is one-to-one so cursor and selection indices are kept.
+        Returns True when the entry text changed.
+        """
+        text = self.combobox.get()
+        converted = dots_to_underscores(text)
+        if converted == text:
+            return False
+        cursor = self.combobox.index(tk.INSERT)
+        selection = None
+        if self.combobox.selection_present():
+            selection = (self.combobox.index("sel.first"), self.combobox.index("sel.last"))
+        self.combobox.delete(0, tk.END)
+        self.combobox.insert(0, converted)
+        self.combobox.icursor(cursor)
+        if selection:
+            self.combobox.select_range(*selection)
+        return True
 
     def _handle_keyrelease(self, event):
         """Handle key release events for navigation and selection."""
@@ -598,7 +689,16 @@ class ComboboxEventHandler:
             self.combobox.master.withdraw()
             return
 
-        self.autocomplete.handle_keyrelease(event)
+        if self._convert_dots_in_entry():
+            # Pasted text carried dots; refilter on the converted text.
+            self.autocomplete.autocomplete()
+        elif event.keysym == "period" and self._period_converted:
+            # The KeyPress inserted "_" instead of "."; finish the keystroke the
+            # same way a typed underscore would be finished.
+            self._period_converted = False
+            self.autocomplete.autocomplete()
+        else:
+            self.autocomplete.handle_keyrelease(event)
         self._handle_data_provider_update(event)
 
     def _on_selection(self, event):
@@ -611,6 +711,7 @@ class ComboboxEventHandler:
         self.combobox.bind("<KeyPress-Down>", self._on_down_key)
         self.combobox.bind("<KeyPress-Up>", self._on_up_key)
         self.combobox.bind("<KeyPress-Tab>", self._on_tab)
+        self.combobox.bind("<KeyPress-period>", self._on_period_key)
         self.combobox.bind("<KeyRelease>", self._handle_keyrelease)
         self.combobox.bind("<<ComboboxSelected>>", self._on_selection)
 

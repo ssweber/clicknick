@@ -1,6 +1,8 @@
 """Tests for nickname_combobox utility functions."""
 
 from clicknick.widgets.nickname_combobox import (
+    dot_keystroke_replacement,
+    dots_to_underscores,
     is_possible_address_or_literal,
     normalize_nickname,
 )
@@ -34,21 +36,16 @@ class TestNormalizeNickname:
         assert normalize_nickname("CTD[10]") == "CTD10"
         assert normalize_nickname("TXT[1]") == "TXT1"
 
-    def test_pattern_dot_single_letter_prefix(self):
-        """Pattern: address_type.Nickname -> Nickname (single letter prefix)."""
-        assert normalize_nickname("x.Temperature") == "Temperature"
-        assert normalize_nickname("x.MyName") == "MyName"
-        assert normalize_nickname("y.SomeValue") == "SomeValue"
-        assert normalize_nickname("C.flag") == "flag"
-        assert normalize_nickname("t.Timer1") == "Timer1"
+    def test_dotted_names_become_underscores(self):
+        """Dots follow the typing rule: x.Temperature -> x_Temperature."""
+        assert normalize_nickname("x.Temperature") == "x_Temperature"
+        assert normalize_nickname("Alm1.id") == "Alm1_id"
+        assert normalize_nickname("A.B.C") == "A_B_C"
 
-    def test_pattern_dot_multi_letter_prefix(self):
-        """Pattern: address_type.Nickname -> Nickname (multi-letter prefix)."""
-        assert normalize_nickname("CT.Counter1") == "Counter1"
-        assert normalize_nickname("DS.Register") == "Register"
-        assert normalize_nickname("DD.DoubleData") == "DoubleData"
-        assert normalize_nickname("CTD.CounterVal") == "CounterVal"
-        assert normalize_nickname("TXT.TextValue") == "TextValue"
+    def test_literals_keep_dots(self):
+        assert normalize_nickname("1.5") == "1.5"
+        assert normalize_nickname("-12.") == "-12."
+        assert normalize_nickname("'a.b") == "'a.b"
 
     def test_no_normalization_simple_names(self):
         """Simple names without prefix and brackets should remain unchanged."""
@@ -66,7 +63,7 @@ class TestNormalizeNickname:
         """Invalid patterns should not be normalized."""
         assert normalize_nickname("123[5]") == "123[5]"  # Numbers not letters
         assert normalize_nickname("[5]") == "[5]"  # No prefix
-        assert normalize_nickname("x.") == "x."  # No nickname after dot
+        assert normalize_nickname("x.") == "x_"
 
 
 class TestIsPossibleAddressOrLiteral:
@@ -249,3 +246,61 @@ class TestIsPossibleAddressOrLiteral:
             assert is_possible_address_or_literal(f"{prefix}1", strict=True) is True, (
                 f"{prefix}1 strict"
             )
+
+
+class TestDotKeystrokeReplacement:
+    """Tests for dot_keystroke_replacement function."""
+
+    def test_nickname_prefix_converts_to_underscore(self):
+        """A typed period after nickname text becomes an underscore."""
+        assert dot_keystroke_replacement("Alm1", 4) == "_"
+        assert dot_keystroke_replacement("Alm1_val", 8) == "_"
+        assert dot_keystroke_replacement("x", 1) == "_"
+
+    def test_empty_text_keeps_period(self):
+        """Nothing typed yet: the period may start a numeric literal."""
+        assert dot_keystroke_replacement("", 0) is None
+
+    def test_numeric_literal_keeps_period(self):
+        """Digits (optionally signed) before the cursor are a numeric literal."""
+        assert dot_keystroke_replacement("1", 1) is None
+        assert dot_keystroke_replacement("-12", 3) is None
+        assert dot_keystroke_replacement("+7", 2) is None
+
+    def test_existing_decimal_keeps_period(self):
+        """A literal that already has a decimal point keeps its period."""
+        assert dot_keystroke_replacement("12.", 3) is None
+        assert dot_keystroke_replacement("1.5", 3) is None
+
+    def test_string_literal_keeps_period(self):
+        """Single-quoted string literals keep the period."""
+        assert dot_keystroke_replacement("'abc", 4) is None
+        assert dot_keystroke_replacement("'", 1) is None
+
+    def test_cursor_position_is_respected(self):
+        """Only the text before the cursor decides the replacement."""
+        # Cursor at the start of nickname text: nothing typed before it yet
+        assert dot_keystroke_replacement("Alm1", 0) is None
+        # Cursor mid-word: still nickname text before the cursor
+        assert dot_keystroke_replacement("Alm1id", 4) == "_"
+        # Cursor after the digits of a literal, ignoring trailing text
+        assert dot_keystroke_replacement("12abc", 2) is None
+
+    def test_leading_whitespace_is_ignored(self):
+        """Leading whitespace does not change the decision."""
+        assert dot_keystroke_replacement("  12", 4) is None
+        assert dot_keystroke_replacement("  Alm1", 6) == "_"
+
+
+class TestDotsToUnderscores:
+    def test_converts_names(self):
+        assert dots_to_underscores("x.Temperature") == "x_Temperature"
+        assert dots_to_underscores("Tank.Pump.Status") == "Tank_Pump_Status"
+
+    def test_keeps_literals_and_plain_text(self):
+        assert dots_to_underscores("") == ""
+        assert dots_to_underscores("NoDots") == "NoDots"
+        assert dots_to_underscores("1.5") == "1.5"
+        assert dots_to_underscores("+3.") == "+3."
+        assert dots_to_underscores("'quoted.text") == "'quoted.text"
+        assert dots_to_underscores("  2.0") == "  2.0"
