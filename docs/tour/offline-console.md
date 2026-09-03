@@ -16,4 +16,4 @@ This is a model of the program, not the PLC. It doesn't know about wiring, senso
 
 ---
 
-[Next: Still saving `Machine_FINAL_FINAL.ckp`? →](readable-history.md)
+**[Next: Still saving `Machine_FINAL_FINAL.ckp`? →](readable-history.md)**

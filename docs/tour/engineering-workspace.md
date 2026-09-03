@@ -14,4 +14,4 @@ The workspace carries the CLICK PLC name, so reopening that project reconnects t
 
 ---
 
-[Next: AI in the workspace →](ai-in-the-workspace.md)
+**[Next: AI in the workspace →](ai-in-the-workspace.md)**
