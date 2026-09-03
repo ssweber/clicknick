@@ -10,6 +10,10 @@
 
 ## Unreleased
 
+### Features
+
+- Dots in nickname autocomplete mean underscores: typing or pasting `Alm1.id` reaches `Alm1_id`, and `x.Temperature` commits as `x_Temperature`. Numeric literals such as `1.5` and quoted string literals keep their period.
+
 ## v0.21.0 — 2026-09-02
 
 ### Features
