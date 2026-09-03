@@ -12,16 +12,14 @@ Open an instruction dialog in CLICK and start typing a nickname. Pick a result a
 
 ## 2. Check the saved ladder
 
-Click **Check Program**. Findings are grouped by severity, with the ladder source they point at and a hint where there is one. Save in CLICK first — ClickNick reads the saved ladder files, not unsaved edits.
+Click **Check Program**. Findings are grouped by severity, with the rung they point at and a hint where there is one. It reads the last save, so save in CLICK after editing.
 
 ## 3. Run it offline
 
 Open **Console** to run the saved program without a PLC. Force inputs, step scans, inspect tags, ask `why` a tag is on or off. Nothing here touches the controller.
 
-## 4. Decide whether the workspace should persist
+## 4. Decide whether to keep a workspace
 
-By default ClickNick generates a temporary workspace, which is enough for checks and Console sessions. If you want tests, notes, and readable history to stay with this machine, choose or create a persistent workspace from the Workspace controls. ClickNick remembers which workspace belongs to which project.
-
-Nothing becomes part of the `.ckp` until you save in CLICK Programming Software. [Where ClickNick writes.](help/index.md#where-clicknick-writes)
+By default ClickNick uses a temporary workspace, which is enough for checks and Console sessions. If you want tests, notes, and readable history to stay with this machine, choose or create a persistent workspace from the Workspace controls. ClickNick remembers which workspace belongs to which project.
 
 [Start the tour](tour/autocomplete.md) · [Help](help/index.md)

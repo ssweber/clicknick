@@ -29,18 +29,18 @@ To upgrade an installed copy later:
 uv tool upgrade clicknick
 ```
 
-## Install the Access driver for project-aware tools
+## Install the Access driver
 
-Live nickname synchronization, Check Program, Console, workspaces, and pyrung analysis require the **64-bit Microsoft Access ODBC driver**. The driver lets ClickNick read the temporary Access database that CLICK creates for an open project.
+Check Program, Console, workspaces, and live nickname sync need the **64-bit Microsoft Access ODBC driver**. It lets ClickNick read the temporary database that CLICK creates for an open project.
 
 See the [Access driver installation notes](https://github.com/ssweber/clicknick/issues/17) if ClickNick reports that the driver is missing.
 
-Without the driver, ClickNick continues in a reduced CSV mode. You can still load nickname data from CSV and use autocomplete plus lighter Address Editor and Data View workflows. Project conversion, checks, simulation, and live database synchronization will be unavailable.
+Without the driver, ClickNick runs in CSV mode: load nicknames from a CSV export and use autocomplete, plus lighter versions of the Address Editor and Data View builder. Check Program, Console, and workspaces are unavailable.
 
 ## Start ClickNick
 
 1. Open a `.ckp` project in CLICK Programming Software.
-2. Save it so the temporary ladder files reflect the version you want to inspect.
+2. Save it. ClickNick reads what CLICK last saved.
 3. Run `clicknick`.
 4. Confirm that ClickNick shows the open project as connected.
 

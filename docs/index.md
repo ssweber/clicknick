@@ -1,6 +1,6 @@
 # Better tools for AutomationDirect CLICK PLCs
 
-Nickname autocomplete, program checks, an offline test bench, and a readable text copy of every save — around CLICK Programming Software, not instead of it.
+Nickname autocomplete, program checks, an offline test bench, and a readable text copy of every save.
 
 **CLICK stays CLICK. ClickNick gives you better tools around it.**
 

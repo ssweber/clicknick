@@ -8,9 +8,11 @@ Still typing `C123` because you can't remember which nickname is where?
 
 ClickNick adds nickname autocomplete to CLICK's instruction dialogs. Start typing the tag you mean, pick a result, and ClickNick inserts the address.
 
-Matching fits the project: prefix for predictable naming standards, contains when you remember only part of a name, abbreviation for names like `Motor_Speed`. System addresses and private tags can be kept out of the list. Hover a result to see its comment.
+Match by prefix when your naming is predictable, by any part of the name when you remember only a piece of it, or by abbreviation for names like `Motor_Speed`. System addresses and private tags can be kept out of the list. Hover a result to see its comment.
 
-When the nickname list itself needs work, the Address Editor changes many names and comments at once, and the Tag Browser turns underscore-separated names and numbered families into a hierarchy. Autocomplete is the part you benefit from in the first minute.
+When the nickname list itself needs work, ClickNick has more: bulk editing, an outline view of your tags, and Data Views built by name.
+
+**[More ways ClickNick fixes the CLICK editor →](../editing.md)**
 
 ---
 
