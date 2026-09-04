@@ -2,7 +2,7 @@
 
 **Tour 1 of 6**
 
-Still typing `C123` because you can't remember which nickname is where?
+You type `C123` because CLICK's instruction dialogs don't take nicknames.
 
 ![ClickNick nickname autocomplete](https://github.com/user-attachments/assets/3a1cdff9-c425-46b7-8b90-4a357d43b6d3)
 

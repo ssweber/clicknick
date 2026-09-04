@@ -10,6 +10,8 @@ Nickname autocomplete. Automated program checks. Offline testing. Readable proje
 
 CLICK stays CLICK. ClickNick gives you better tools around it.
 
+Documentation and tour: https://pyrung.com/clicknick/
+
 > [!IMPORTANT]
 > ClickNick never edits your `.ckp` project file directly. You review proposed changes, and nothing becomes part of the project until you save it in CLICK Programming Software. Close CLICK without saving to discard changes made through ClickNick.
 
@@ -42,7 +44,7 @@ Then open your CLICK project as usual. ClickNick detects the open project and co
 
 ### Microsoft Access driver
 
-Full project-aware features - including live nickname sync, Check Program, Console, workspaces, testing, and pyrung analysis - require the **64-bit Microsoft Access ODBC driver** so ClickNick can read CLICK's open project database. See the [Access driver installation notes](https://github.com/ssweber/clicknick/issues/17).
+Full project-aware features - including live nickname sync, Check Program, Console, workspaces, testing, and pyrung analysis - require the **64-bit Microsoft Access ODBC driver** so ClickNick can read CLICK's open project database. See [Install the Access driver](https://pyrung.com/clicknick/install/#install-the-access-driver).
 
 If the driver is missing, ClickNick explains what is unavailable and continues in a reduced CSV mode. Nickname autocomplete and the lighter Address Editor and Data View workflows can still be used with nickname data loaded from CSV.
 
@@ -116,9 +118,7 @@ ClickNick preserves a recovery snapshot before regeneration replaces generated s
 
 ## How pyrung fits in
 
-[pyrung](https://pyrung.com/) is a textual ladder representation that executes with PLC scan semantics. Converting the open CLICK program gives it access to normal software tooling - automated tests, diffs, source history, editors, and coding agents - along with PLC-specific analysis such as static validation, causal tracing, reachability, and `why` / `how` queries.
-
-The workflow is reversible: workspace changes can be converted back into ordinary CLICK ladder for review and paste in CLICK Programming Software.
+ClickNick is built on [pyrung](https://pyrung.com/pyrung/), the engine that runs your ladder as Python. That's what makes Check Program, the Console, and `why` / `how` possible, and it's what lets you run pytest, a diff, or a coding agent against the workspace. Edits go back the other way: Preview Changes shows the rung diff, Guided Paste puts the rungs on the clipboard, you paste and save in CLICK. [How it fits.](https://pyrung.com/overview/)
 
 ## Feature details
 
