@@ -1,0 +1,16 @@
+name: Feature request
+description: Something ClickNick should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you're trying to do in CLICK
+      description: The task, not the feature. What are you doing in CLICK Programming Software and where does it get slow or error-prone?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you'd want ClickNick to do
+      description: Optional.

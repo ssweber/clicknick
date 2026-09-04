@@ -1,0 +1,37 @@
+name: Bug report
+description: ClickNick did something wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: steps
+    attributes:
+      label: What you did
+      description: The steps, starting from opening the project in CLICK.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Paste any error text. A screenshot helps.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+  - type: textarea
+    id: sysinfo
+    attributes:
+      label: System info
+      description: In ClickNick, Help > About ClickNick > Copy System Info, then paste here.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: click
+    attributes:
+      label: CLICK Programming Software version
+      placeholder: v3.90
+    validations:
+      required: true
