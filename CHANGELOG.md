@@ -10,15 +10,17 @@
 
 ## Unreleased
 
-## v0.21.1 — 2026-09-04
-
-### Features
-
-- Dots in nickname autocomplete mean underscores: typing or pasting `Alm1.id` reaches `Alm1_id`, and `x.Temperature` commits as `x_Temperature`. Numeric literals such as `1.5` and quoted string literals keep their period.
+## v0.22.1 — 2026-09-04
 
 ### Changed
 
 - README, docs site, and package metadata point at pyrung.com/clicknick; CONTRIBUTING and issue templates added.
+
+## v0.22.0 — 2026-09-03
+
+### Features
+
+- Dots in nickname autocomplete mean underscores: typing or pasting `Alm1.id` reaches `Alm1_id`, and `x.Temperature` commits as `x_Temperature`. Numeric literals such as `1.5` and quoted string literals keep their period.
 
 ## v0.21.0 — 2026-09-02
 
