@@ -18,8 +18,8 @@ Click **Check Program**. Findings are grouped by severity, with the rung they po
 
 Open **Console** to run the saved program without a PLC. Force inputs, step scans, inspect tags, ask `why` a tag is on or off. Nothing here touches the controller.
 
-## 4. Decide whether to keep a workspace
+## 4. Pick a workspace folder
 
-By default ClickNick uses a temporary workspace, which is enough for checks and Console sessions. If you want tests, notes, and readable history to stay with this machine, choose or create a persistent workspace from the Workspace controls. ClickNick remembers which workspace belongs to which project.
+A workspace is a folder that links up with your open project. ClickNick fills it with your ladder (as Python) after every save. Anything you add, tests, notes, fixtures, stays. Until you pick a folder, ClickNick uses a temporary one, which is enough for checks and the Console. Pick a real folder from the Workspace controls when you want the work to stay with the machine. ClickNick remembers which folder goes with which project.
 
 [Start the tour](tour/autocomplete.md) · [Help](help/index.md)

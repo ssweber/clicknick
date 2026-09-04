@@ -2,7 +2,7 @@
 
 **Tour 2 of 6**
 
-**Program checks? For CLICK? Yep.**
+CLICK's syntax check tells you what won't compile. It doesn't tell you about the comparison that's always false, the coil two rungs both write, or the bit that gets latched and never reset. Check Program does.
 
 ![ClickNick Check Program report](https://github.com/user-attachments/assets/38cb2f44-482a-4e60-9f56-4da95074a971)
 

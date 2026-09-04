@@ -13,11 +13,11 @@ The product tour explains why the tools are useful. This page is the starting po
 
 Both read the saved ladder files, not unsaved edits, so save in CLICK first. Check Program reports findings with the rung source, a severity, and a fix hint where there is one. The Console runs the program offline and takes the same commands as pyrung's debug console. Type `help` for the list, or read the [command reference](https://pyrung.com/pyrung/guides/dap-vscode/#debug-console) in the pyrung docs.
 
-## Workspaces and reviewed changes
+## Workspaces
 
-A temporary workspace is enough for a quick check. A persistent workspace keeps readable source, tests, notes, fixtures, and history with a particular PLC project. It carries a small `.clicknick.toml` file with the CLICK PLC name, which is how ClickNick reconnects the same workspace when that project is opened again.
+A workspace is a folder that links up with your open project. Until you pick one, ClickNick uses a temporary folder. Pick a real one from the Workspace controls to keep the work with the machine; a small `.clicknick.toml` inside it carries the CLICK PLC name, which is how ClickNick reconnects the same folder when that project is opened again.
 
-ClickNick refreshes `src/plc/` (ladder as text), `csv/` (the CLICK snapshot it was built from), nickname data, and its generation scripts on every CLICK save. Files you add are left alone. If you edited `src/plc/` and a CLICK save is about to replace it, ClickNick copies it to `backup/src/plc/` first; `clicknick-cli restore` puts it back.
+On every CLICK save, ClickNick refreshes `src/plc/` (your ladder as Python), `csv/` (the CLICK snapshot it was built from), nickname data, and its generation scripts. Files you add are left alone. If you edited `src/plc/` and a CLICK save is about to replace it, ClickNick copies it to `backup/src/plc/` first; `clicknick-cli restore` puts it back.
 
 Edits to the ladder text go back into CLICK through **Preview Changes** and **Guided Paste**. **Reload from CLICK** throws those edits away and restores the saved CLICK version, taking the same backup first.
 

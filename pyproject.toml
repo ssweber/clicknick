@@ -2,8 +2,8 @@
 
 [project.urls]
 Repository = "https://github.com/ssweber/clicknick"
-# Homepage = "https://..."
-# Documentation = "https://..."
+Homepage = "https://pyrung.com/clicknick/"
+Documentation = "https://pyrung.com/clicknick/"
 
 [project]
 name = "clicknick"

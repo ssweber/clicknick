@@ -33,7 +33,11 @@ uv tool upgrade clicknick
 
 Check Program, Console, workspaces, and live nickname sync need the **64-bit Microsoft Access ODBC driver**. It lets ClickNick read the temporary database that CLICK creates for an open project.
 
-See the [Access driver installation notes](https://github.com/ssweber/clicknick/issues/17) if ClickNick reports that the driver is missing.
+1. Download the [Microsoft Access Database Engine 2016 Redistributable](https://www.microsoft.com/en-us/download/details.aspx?id=54920) and pick the 64-bit installer.
+2. If you have 32-bit Office installed, Microsoft's installer refuses the 64-bit driver. Use the [archive.org copy of AccessDatabaseEngine_X64.exe](https://web.archive.org/web/20231220092102if_/https://download.microsoft.com/download/2/4/3/24375141-E08D-4803-AB0E-10F2E3A07AAA/AccessDatabaseEngine_X64.exe) instead; it installs alongside 32-bit Office.
+3. Run the installer as Administrator, then restart ClickNick.
+
+Check **Help > About ClickNick**: it says `MS Access ODBC: Microsoft Access Driver (*.mdb, *.accdb)` when the driver is found. If it still says not installed, restart Windows. Still stuck? Click **Copy System Info** on that same screen and paste it into a [new issue](https://github.com/ssweber/clicknick/issues).
 
 Without the driver, ClickNick runs in CSV mode: load nicknames from a CSV export and use autocomplete, plus lighter versions of the Address Editor and Data View builder. Check Program, Console, and workspaces are unavailable.
 
