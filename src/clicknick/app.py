@@ -688,8 +688,8 @@ class ClickNickApp:
             traceback.print_exc()
             self._update_status(f"Error opening dataview editor: {e}", "error")
 
-    def _analyze_program(self) -> None:
-        """Run program validation and display report."""
+    def _run_program_checks(self):
+        """Validate the current connection for an initial report or an in-window rerun."""
         analysis = self._session.analysis if self._session else None
         if analysis is None or not analysis.is_available:
             from .services.analysis_service import AnalysisStatus
@@ -733,12 +733,20 @@ class ClickNickApp:
         # presentation model; only their renderers differ.
         grouped = group_validation_findings(report)
 
-        from .views.analysis_report_window import (
-            AnalysisReportData,
-            AnalysisReportWindow,
+        from .views.analysis_report_window import AnalysisReportData
+
+        return AnalysisReportData(
+            grouped_findings=grouped,
+            project_name=self.connected_click_filename or "",
         )
 
-        AnalysisReportWindow(self.root, AnalysisReportData(grouped_findings=grouped))
+    def _analyze_program(self) -> None:
+        """Run program validation and display a report that can be refreshed in place."""
+        from .views.analysis_report_window import AnalysisReportWindow
+
+        data = self._run_program_checks()
+        if data is not None:
+            AnalysisReportWindow(self.root, data, rerun=self._run_program_checks)
 
     def _ensure_plc_name_for_workspace(self) -> str | None:
         """Prompt for a missing PLC name only when durable setup is requested."""

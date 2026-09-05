@@ -15,9 +15,12 @@ the caret aligns exactly under the offending token in the code above it.
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from typing import TYPE_CHECKING
+
+from ..services.program_check_preferences import ProgramCheckPreferences
 
 if TYPE_CHECKING:
     from pyrung.core.validation import FindingDisplay
@@ -36,9 +39,10 @@ _MUTED = "#888888"
 
 # Plain text, not a clipboard emoji: the emoji renders in colour from a
 # different font and sits oddly among ttk's monochrome controls.
-_COPY_LABEL = "Copy Report"
+_COPY_LABEL = "Copy Full Report"
 _COPIED_LABEL = "Copied"
 _COPY_FLASH_MS = 1200
+_PASSED_SECTION = "__passed__"
 
 
 @dataclass
@@ -46,6 +50,7 @@ class AnalysisReportData:
     """View model for the analysis report: rule code -> its FindingDisplays."""
 
     grouped_findings: dict[str, list[FindingDisplay]] = field(default_factory=dict)
+    project_name: str = ""
 
 
 def _rule_rows(grouped: dict[str, list[FindingDisplay]]) -> list[tuple[str, str, str]]:
@@ -53,15 +58,21 @@ def _rule_rows(grouped: dict[str, list[FindingDisplay]]) -> list[tuple[str, str,
 
     Registry rules come first in canonical (severity-desc) order; any finding
     whose code the installed pyrung doesn't know is appended — never dropped —
-    with the raw code as its title and warning styling.
+    with the raw code as its title. Future severities use warning styling.
     """
     from pyrung.core.validation import ordered_rules
 
     specs = ordered_rules()
     known = {s.code for s in specs}
     rows = [(s.code, s.title, s.severity) for s in specs]
-    rows += [(code, code, "warning") for code in sorted(grouped) if code not in known]
-    return rows
+    rows += [
+        (code, code, grouped[code][0].severity if grouped[code] else "warning")
+        for code in sorted(grouped)
+        if code not in known
+    ]
+    return [
+        (code, title, sev if sev in _SEVERITY_STYLE else "warning") for code, title, sev in rows
+    ]
 
 
 class AnalysisReportWindow:
@@ -116,6 +127,47 @@ class AnalysisReportWindow:
             foreground=_MUTED,
         ).pack(side=tk.RIGHT)
         self._summary_line = f"{', '.join(chips)} - {len(passing)}/{checked} checks passed"
+
+    def _focus_section(self, code: str) -> None:
+        self._active_section = code
+        header, _body, _expanded = self._sections[code]
+        self._text.tag_remove("focused_header", "1.0", tk.END)
+        start, end = self._text.tag_ranges(header)
+        self._text.tag_add("focused_header", start, end)
+        self._text.mark_set(tk.INSERT, start)
+
+    def _move_section(self, direction: int) -> str:
+        codes = list(self._sections)
+        if codes:
+            index = codes.index(self._active_section) if self._active_section in codes else -1
+            self._focus_section(codes[max(0, min(index + direction, len(codes) - 1))])
+            self._text.see(tk.INSERT)
+        return "break"
+
+    def _toggle_section(self, code: str, expanded: bool | None = None) -> str:
+        header, body, current = self._sections[code]
+        expanded = not current if expanded is None else expanded
+        start = self._text.tag_ranges(header)[0]
+        self._text.config(state=tk.NORMAL)
+        self._text.delete(start, f"{start}+1c")
+        self._text.insert(start, "v" if expanded else ">", header)
+        self._text.config(state=tk.DISABLED)
+        self._text.tag_configure(body, elide=not expanded)
+        self._sections[code] = (header, body, expanded)
+        self._focus_section(code)
+        self._text.focus_set()
+        saved = self._preferences.set_expanded(code, expanded)
+        self._preference_status.configure(
+            text=""
+            if saved
+            else "Could not save view preferences; remembered for this window only."
+        )
+        return "break"
+
+    def _toggle_active(self, expanded: bool | None = None) -> str:
+        if self._active_section in self._sections:
+            self._toggle_section(self._active_section, expanded)
+        return "break"
 
     def _build_text(self, parent: ttk.Frame) -> tk.Text:
         frame = ttk.Frame(parent)
@@ -186,7 +238,29 @@ class AnalysisReportWindow:
         )
         text.tag_configure("pass", foreground=_PASS_COLOR, lmargin1=16, lmargin2=30)
         text.tag_configure("pass_muted", foreground=_MUTED, lmargin1=16, lmargin2=30)
+        text.tag_configure("focused_header", background="#E8EEF7")
+        text.bind("<Up>", lambda _e: self._move_section(-1))
+        text.bind("<Down>", lambda _e: self._move_section(1))
+        text.bind("<Left>", lambda _e: self._toggle_active(False))
+        text.bind("<Right>", lambda _e: self._toggle_active(True))
+        text.bind("<Return>", lambda _e: self._toggle_active())
+        text.bind("<space>", lambda _e: self._toggle_active())
         return text
+
+    def _insert_section_header(
+        self, text: tk.Text, code: str, label: str, style: str, *, default: bool = True
+    ) -> str:
+        index = len(self._sections)
+        header, body = f"header_{index}", f"body_{index}"
+        expanded = self._preferences.is_expanded(code, default=default)
+        self._sections[code] = (header, body, expanded)
+        marker = "v" if expanded else ">"
+        text.insert(tk.END, f"{marker}  {label}\n", (style, header))
+        text.tag_configure(body, elide=not expanded)
+        text.tag_bind(header, "<Button-1>", lambda _e: self._toggle_section(code))
+        text.tag_bind(header, "<Enter>", lambda _e: text.configure(cursor="hand2"))
+        text.tag_bind(header, "<Leave>", lambda _e: text.configure(cursor="arrow"))
+        return body
 
     @staticmethod
     def _ensure_rule_tag(text: tk.Text, rule_tag: str, severity: str) -> None:
@@ -232,18 +306,27 @@ class AnalysisReportWindow:
             _color, glyph = _SEVERITY_STYLE.get(sev, _SEVERITY_STYLE["warning"])
             rule_tag = f"rule_{sev}"
             self._ensure_rule_tag(text, rule_tag, sev)
-            text.insert(tk.END, f"{glyph}  {title}  · {len(displays)}\n", rule_tag)
+            body = self._insert_section_header(
+                text, code, f"{glyph}  {title}  · {len(displays)}", rule_tag
+            )
+            start = text.index("end-1c")
 
             for index, d in enumerate(displays):
                 if index:
                     text.insert(tk.END, "\n")  # separate consecutive findings
                 self._insert_body(text, d, sev)
+            text.tag_add(body, start, "end-1c")
 
         if passing:
-            text.insert(tk.END, f"\nPASSED ({len(passing)})\n", "section")
+            text.insert(tk.END, "\n")
+            body = self._insert_section_header(
+                text, _PASSED_SECTION, f"PASSED ({len(passing)})", "section", default=False
+            )
+            start = text.index("end-1c")
             for _code, title, _sev in passing:
                 text.insert(tk.END, _PASS_GLYPH + " ", "pass")
                 text.insert(tk.END, title + "\n", "pass_muted")
+            text.tag_add(body, start, "end-1c")
 
     def _restore_copy_button(self) -> None:
         self._copy_flash_after_id = None
@@ -253,7 +336,7 @@ class AnalysisReportWindow:
             pass
 
     def _copy_report(self) -> None:
-        """Copy the report as plain text: summary line, then the rendered body."""
+        """Copy all findings, including bodies hidden by the Text's elide tags."""
         body = self._text.get("1.0", "end-1c").strip()
         report = f"Check Program - {self._summary_line}\n"
         if body:
@@ -269,26 +352,101 @@ class AnalysisReportWindow:
         self._copy_btn.configure(text=_COPIED_LABEL)
         self._copy_flash_after_id = self.window.after(_COPY_FLASH_MS, self._restore_copy_button)
 
-    def __init__(self, parent: tk.Tk | tk.Toplevel, data: AnalysisReportData) -> None:
+    def _show_data(self, data: AnalysisReportData) -> None:
+        self._grouped = data.grouped_findings
+        rows = _rule_rows(self._grouped)
+        failing = [(c, t, s) for c, t, s in rows if self._grouped.get(c)]
+        passing = [(c, t, s) for c, t, s in rows if not self._grouped.get(c)]
+        total_findings = sum(self._count(c) for c, _, _ in failing)
+        for child in self._summary.winfo_children():
+            child.destroy()
+        self._build_summary(self._summary, failing, passing, total_findings)
+        self._source.configure(
+            text=f"{data.project_name} - last saved ladder"
+            if data.project_name
+            else "Last saved ladder"
+        )
+        self._text.config(state=tk.NORMAL, cursor="arrow")
+        self._text.delete("1.0", tk.END)
+        for header, body, _expanded in self._sections.values():
+            self._text.tag_delete(header, body)
+        self._sections.clear()
+        self._render(self._text, failing, passing, self._grouped)
+        self._text.config(state=tk.DISABLED)
+        self._active_section = None
+        if self._sections:
+            self._focus_section(next(iter(self._sections)))
+        self._text.yview_moveto(0)
+
+    def _finish_run_checks(self) -> None:
+        self._run_after_id = None
+        try:
+            data = self._rerun() if self._rerun is not None else None
+            if data is not None:
+                self._show_data(data)
+            else:
+                self._source.configure(text="Checks were not refreshed; showing previous results.")
+        except Exception as exc:
+            self._source.configure(text="Checks failed; showing previous results.")
+            messagebox.showerror("Analysis Error", f"Validation failed:\n{exc}", parent=self.window)
+        finally:
+            if self.window.winfo_exists():
+                self._run_btn.configure(state=tk.NORMAL, text="Run Checks")
+
+    def _run_checks(self) -> None:
+        self._run_btn.configure(state=tk.DISABLED, text="Running checks...")
+        self._run_after_id = self.window.after(1, self._finish_run_checks)
+
+    def _on_destroy(self, event: tk.Event) -> None:
+        if event.widget is self.window:
+            for after_id in (self._copy_flash_after_id, self._run_after_id):
+                if after_id is not None:
+                    self.window.after_cancel(after_id)
+
+    def __init__(
+        self,
+        parent: tk.Tk | tk.Toplevel,
+        data: AnalysisReportData,
+        *,
+        rerun: Callable[[], AnalysisReportData | None] | None = None,
+        preferences: ProgramCheckPreferences | None = None,
+    ) -> None:
         self.window = tk.Toplevel(parent)
         self.window.title("Check Program")
         self.window.geometry("950x560")
         self.window.minsize(640, 360)
         self.window.transient(parent)
         self.window.bind("<Escape>", lambda _e: self.window.destroy())
+        self.window.bind("<Destroy>", self._on_destroy)
 
+        self._preferences = preferences if preferences is not None else ProgramCheckPreferences()
+        self._rerun = rerun
+        self._run_after_id: str | None = None
+        self._sections: dict[str, tuple[str, str, bool]] = {}
+        self._active_section: str | None = None
         self._grouped = data.grouped_findings
         self._summary_line = ""
         self._copy_flash_after_id: str | None = None
-        rows = _rule_rows(data.grouped_findings)
-        failing = [(c, t, s) for c, t, s in rows if data.grouped_findings.get(c)]
-        passing = [(c, t, s) for c, t, s in rows if not data.grouped_findings.get(c)]
-        total_findings = sum(len(data.grouped_findings.get(c, [])) for c, _, _ in failing)
 
         main = ttk.Frame(self.window, padding=(12, 10))
         main.pack(fill=tk.BOTH, expand=True)
 
-        self._build_summary(main, failing, passing, total_findings)
+        toolbar = ttk.Frame(main)
+        toolbar.pack(fill=tk.X, pady=(0, 8))
+        self._run_btn = ttk.Button(toolbar, text="Run Checks", command=self._run_checks)
+        self._run_btn.pack(side=tk.LEFT, padx=(0, 12))
+        if rerun is None:
+            self._run_btn.configure(state=tk.DISABLED)
+        self._source = ttk.Label(toolbar, foreground=_MUTED)
+        self._source.pack(side=tk.LEFT)
+        self._summary = ttk.Frame(main)
+        self._summary.pack(fill=tk.X)
+        ttk.Label(
+            main,
+            text="Click a check to expand or collapse it. Your choices are remembered.",
+            foreground=_MUTED,
+            wraplength=600,
+        ).pack(anchor=tk.W, pady=(0, 6))
 
         # Packed against the bottom *before* the report body: the Text asks for
         # more height than the window has, and pack starves whatever comes last.
@@ -297,7 +455,8 @@ class AnalysisReportWindow:
         self._copy_btn = ttk.Button(buttons, text=_COPY_LABEL, command=self._copy_report)
         self._copy_btn.pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(buttons, text="Close", command=self.window.destroy).pack(side=tk.LEFT)
+        self._preference_status = ttk.Label(main, foreground=_MUTED)
+        self._preference_status.pack(side=tk.BOTTOM, anchor=tk.W)
 
         self._text = self._build_text(main)
-        self._render(self._text, failing, passing, data.grouped_findings)
-        self._text.config(state=tk.DISABLED)
+        self._show_data(data)
