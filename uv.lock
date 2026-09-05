@@ -50,7 +50,7 @@ requires-dist = [
     { name = "laddercodec", specifier = ">=0.2.1" },
     { name = "pyclickplc", specifier = ">=0.3.4" },
     { name = "pyodbc", specifier = ">=5.3.0" },
-    { name = "pyrung", specifier = ">=0.13.0" },
+    { name = "pyrung", specifier = ">=0.14.0" },
     { name = "pywin32", specifier = ">=311" },
     { name = "tksheet", specifier = "==7.5.19" },
 ]
@@ -349,16 +349,16 @@ wheels = [
 
 [[package]]
 name = "pyrung"
-version = "0.13.0"
+version = "0.14.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "executing" },
     { name = "pyclickplc" },
     { name = "pyrsistent" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ee/1f/a0f777a82eed8674e61a380416bda0a96681f121d5162274837019d94e19/pyrung-0.13.0.tar.gz", hash = "sha256:19ac9f73fa9edb337eb29d81eb53cfdd13e6cd07a9248e7b0e2e3f2a79683c85", size = 4029958, upload-time = "2026-09-02T18:49:02.452Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/74/04/e541a144436be35a77469fbe3a726745954330f0e6809d0ef6a04ee26c35/pyrung-0.14.0.tar.gz", hash = "sha256:708d0f81659cdf95cc89961bc53a0116834a5ce778c8a1f89f9080e6dc898510", size = 4035928, upload-time = "2026-09-04T19:43:47.088Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/dc/dd/c46d93603827465d61a00be28a2146bc0bebc83686be8e9a11e3f9fb01ed/pyrung-0.13.0-py3-none-any.whl", hash = "sha256:7eee515182d79fe6a892132efb6db33e3f3a494985b9e9cc4f7ebf0c755bb46f", size = 1552787, upload-time = "2026-09-02T18:49:00.771Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/7b/8b22cc71314fec1dc5afd5df7777c535e98d91700260a93455e129947857/pyrung-0.14.0-py3-none-any.whl", hash = "sha256:03b5cb2ff2eb5c8567d4922eaddcbd7a21c932b09d6c959232de09cb2e995c72", size = 1554078, upload-time = "2026-09-04T19:43:45.416Z" },
 ]
 
 [[package]]

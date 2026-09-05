@@ -19,15 +19,6 @@ PREFERRED_ACCESS_DRIVERS = [
     "Microsoft Access Driver",
 ]
 
-# CSV-only mode flag - when True, has_access_driver() returns False
-_CSV_ONLY_MODE = False
-
-
-def set_csv_only_mode(enabled: bool) -> None:
-    """Enable or disable CSV-only mode (for testing fallback without ODBC)."""
-    global _CSV_ONLY_MODE
-    _CSV_ONLY_MODE = enabled
-
 
 def get_available_access_drivers() -> list[str]:
     """Get list of available Microsoft Access ODBC drivers.
@@ -44,8 +35,6 @@ def get_available_access_drivers() -> list[str]:
 
 def has_access_driver() -> bool:
     """Check if any Microsoft Access ODBC driver is available."""
-    if _CSV_ONLY_MODE:
-        return False
     return len(get_available_access_drivers()) > 0
 
 

@@ -16,15 +16,12 @@ from .utils.filters import (  # preserve lru_cache
     NoneFilter,
     PrefixFilter,
 )
-from .utils.mdb_shared import find_fallback_csv, set_csv_only_mode
+from .utils.mdb_shared import find_fallback_csv
 from .views.dialogs import AboutDialog, CsvFallbackDialog, OdbcWarningDialog
 from .views.overlay import Overlay
 
 # Set DPI awareness for better UI rendering
 windll.shcore.SetProcessDpiAwareness(1)
-
-# Dev mode flag - enables in-progress features
-_DEV_MODE = False
 
 _MATCH_MODES = ("none", "prefix", "contains", "containsplus")
 _MATCH_LABELS = ("None", "Prefix", "Contains", "Fuzzy")
@@ -266,12 +263,16 @@ class ClickNickApp:
         self.workspace_status_var.set(workspace.label)
         self.workspace_group_title_var.set(f"Workspace - {workspace.label}")
         self.project_name_var.set(self.connected_click_filename or "Not connected")
-        repair_button = getattr(self, "repair_system_nicknames_button", None)
-        if repair_button is not None:
+        repairs_menu = getattr(self, "repairs_menu", None)
+        repair_index = getattr(self, "_repairs_system_nicknames_index", None)
+        if repairs_menu is not None and repair_index is not None:
             session = getattr(self, "_session", None)
             analysis = session.analysis if session else None
             has_repairs = bool(analysis and analysis.system_nickname_repairs)
-            repair_button.configure(state=tk.NORMAL if has_repairs else tk.DISABLED)
+            repairs_menu.entryconfigure(
+                repair_index,
+                state=tk.NORMAL if has_repairs else tk.DISABLED,
+            )
 
         if workspace.state is WorkspaceState.PREPARING:
             if self._workspace_refresh_after_id is None:
@@ -1219,13 +1220,6 @@ class ClickNickApp:
             compound=tk.LEFT,
             command=self._workspace_rung_apply,
         ).pack(fill=tk.X, pady=(0, 8))
-        self.repair_system_nicknames_button = ttk.Button(
-            workspace,
-            text="Repair System Nicknames",
-            command=self._repair_system_nicknames,
-            state=tk.DISABLED,
-        )
-        self.repair_system_nicknames_button.pack(fill=tk.X, pady=(0, 8))
         ttk.Button(
             workspace,
             text="Reload from CLICK",
@@ -1318,10 +1312,7 @@ class ClickNickApp:
         self._open_address_editor(initial_filter=initial_filter)
 
     def _verify_mdb_and_cdv(self):
-        """Verify MDB addresses and CDV entries for validity.
-
-        Only available in dev mode. See utils/verification.py for full check list.
-        """
+        """Verify MDB addresses and CDV entries for validity."""
         if not self.connected_click_pid:
             self._update_status("Connect to a ClickPLC window first", "error")
             return
@@ -1376,8 +1367,8 @@ class ClickNickApp:
     def _clean_mdb(self):
         """Clean MDB database by removing empty, unused rows.
 
-        Only available in dev mode. Loads rows directly from MDB (no placeholders)
-        and deletes any rows where needs_full_delete is True (no content, not used).
+        Loads rows directly from MDB (no placeholders) and deletes any rows where
+        needs_full_delete is True (no content, not used).
         """
         if not self.connected_click_pid:
             self._update_status("Connect to a ClickPLC window first", "error")
@@ -1636,10 +1627,19 @@ class ClickNickApp:
         tools_menu.add_command(label="Dataview Editor...", command=self._open_dataview_editor)
         tools_menu.add_command(label="Check Program", command=self._analyze_program)
         tools_menu.add_command(label="Console...", command=self._open_console)
-        if _DEV_MODE:
-            tools_menu.add_separator()
-            tools_menu.add_command(label="Verify MDB & CDV...", command=self._verify_mdb_and_cdv)
-            tools_menu.add_command(label="Clean MDB...", command=self._clean_mdb)
+        tools_menu.add_separator()
+        repairs_menu = tk.Menu(tools_menu, tearoff=0)
+        tools_menu.add_cascade(label="Repairs", menu=repairs_menu)
+        repairs_menu.add_command(
+            label="System Nicknames",
+            command=self._repair_system_nicknames,
+            state=tk.DISABLED,
+        )
+        self.repairs_menu = repairs_menu
+        self._repairs_system_nicknames_index = 0
+        repairs_menu.add_separator()
+        repairs_menu.add_command(label="Verify MDB & CDV...", command=self._verify_mdb_and_cdv)
+        repairs_menu.add_command(label="Clean MDB...", command=self._clean_mdb)
 
         # Workspace menu. Main-screen placement arrives in the focused UI
         # refresh; these commands own the stable behavior in the meantime.
@@ -2410,25 +2410,6 @@ class ClickNickApp:
 
 def main() -> None:
     """Entry point for the application."""
-    app = ClickNickApp()
-    app.run()
-
-
-def main_dev() -> None:
-    """Entry point for development mode with in-progress features enabled.
-
-    Args (via sys.argv):
-        -csvonly: Force CSV-only mode (pretend ODBC drivers are unavailable)
-    """
-    import sys
-
-    global _DEV_MODE
-    _DEV_MODE = True
-
-    if "-csvonly" in sys.argv:
-        set_csv_only_mode(True)
-        print("CSV-only mode enabled (ODBC drivers will appear unavailable)")
-
     app = ClickNickApp()
     app.run()
 

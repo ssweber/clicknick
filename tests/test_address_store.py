@@ -569,6 +569,25 @@ class TestObservers:
 class TestSystemNicknameValidation:
     """Regression tests for system nickname validation behavior."""
 
+    def test_loaded_ordinary_x_nickname_is_not_marked_as_an_error(self):
+        addr_key = get_addr_key("X", 1)
+        data_source = MockDataSource(
+            {
+                addr_key: AddressRow(
+                    memory_type="X",
+                    address=1,
+                    nickname="StartButton",
+                )
+            }
+        )
+        store = AddressStore(data_source)
+
+        store.load_initial_data()
+
+        row = store.visible_state[addr_key]
+        assert row.loaded_with_error is False
+        assert row.nickname_valid is True
+
     @pytest.mark.parametrize(
         ("memory_type", "nickname"),
         (

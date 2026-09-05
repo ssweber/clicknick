@@ -135,11 +135,16 @@ def verify_mdb_addresses(shared_data: SharedAddressData) -> list[str]:
 
         # 3. Validate nickname and initial value
         is_system_type = row.memory_type in SYSTEM_NICKNAME_TYPES
+        system_bank = row.memory_type if is_system_type else None
+        if row.memory_type == "X" and not row.nickname.startswith("_IO"):
+            # X is a mixed bank: CLICK-generated system nicknames use _IO*,
+            # while ordinary X inputs retain the normal nickname rules.
+            system_bank = None
         nick_valid, nick_error = validate_nickname(
             row.nickname,
             all_nicknames,
             addr_key,
-            system_bank=row.memory_type if is_system_type else None,
+            system_bank=system_bank,
         )
         if not nick_valid:
             issues.append(f"MDB: {display} nickname invalid: {nick_error}")

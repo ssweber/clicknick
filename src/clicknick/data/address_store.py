@@ -178,11 +178,14 @@ class AddressStore:
         all_nicks = self.all_nicknames
         for addr_key, row in self.visible_state.items():
             if row.memory_type in SYSTEM_NICKNAME_TYPES and row.nickname:
+                system_bank = row.memory_type
+                if row.memory_type == "X" and not row.nickname.startswith("_IO"):
+                    system_bank = None
                 is_valid, _ = validate_nickname(
                     row.nickname,
                     all_nicks,
                     addr_key,
-                    system_bank=row.memory_type,
+                    system_bank=system_bank,
                 )
                 if not is_valid:
                     # Update both base and visible

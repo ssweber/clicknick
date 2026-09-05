@@ -10,6 +10,14 @@
 
 ## Unreleased
 
+### Changed
+
+- Maintenance actions now live together under Tools > Repairs, system nickname repair no longer occupies the main window while unavailable, and the obsolete `clicknick-dev` launcher has been removed.
+
+### Fixed
+
+- Verify MDB & CDV now accepts ordinary X-address nicknames while continuing to validate CLICK-generated `_IO` system names.
+
 ## v0.22.1 — 2026-09-04
 
 ### Changed
