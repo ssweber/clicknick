@@ -43,6 +43,14 @@ _COPY_LABEL = "Copy Full Report"
 _COPIED_LABEL = "Copied"
 _COPY_FLASH_MS = 1200
 _PASSED_SECTION = "__passed__"
+_NOT_RUN_SECTION = "__not_run__"
+_HELP_TEXT = (
+    "Check Program\n\n"
+    "Checks start with a core set focused on likely bugs. Additional checks "
+    "are available under Choose Checks, and your selection is remembered.\n\n"
+    "Collapsing a check hides its details; it still runs.\n\n"
+    "Checks read the last saved ladder. Save in CLICK before running them."
+)
 
 
 @dataclass
@@ -51,6 +59,7 @@ class AnalysisReportData:
 
     grouped_findings: dict[str, list[FindingDisplay]] = field(default_factory=dict)
     project_name: str = ""
+    checked_rules: frozenset[str] | None = None
 
 
 def _rule_rows(grouped: dict[str, list[FindingDisplay]]) -> list[tuple[str, str, str]]:
@@ -90,13 +99,25 @@ class AnalysisReportWindow:
         bar.pack(fill=tk.X, pady=(0, 8))
 
         if total_findings == 0:
+            count = len(passing)
+            self._summary_line = (
+                "All checks passed"
+                if self._checked_rules is None
+                else f"{count} selected checks passed"
+                if count
+                else "No checks selected"
+            )
             ttk.Label(
                 bar,
-                text=f"{_PASS_GLYPH}  All checks passed",
+                text=f"{_PASS_GLYPH}  {self._summary_line}" if count else self._summary_line,
                 font=("Segoe UI", 12, "bold"),
                 foreground=_PASS_COLOR,
             ).pack(side=tk.LEFT)
-            self._summary_line = "All checks passed"
+            if self._not_run:
+                ttk.Label(bar, text=f"{len(self._not_run)} checks not run", foreground=_MUTED).pack(
+                    side=tk.RIGHT
+                )
+                self._summary_line += f" - {len(self._not_run)} checks not run"
             return
 
         # One coloured chip per severity that actually occurs, most-severe first.
@@ -110,7 +131,7 @@ class AnalysisReportWindow:
             if not n:
                 continue
             color, glyph = _SEVERITY_STYLE[sev]
-            label = sev if n == 1 else sev + "s"
+            label = sev if n == 1 else "advisories" if sev == "advisory" else sev + "s"
             ttk.Label(
                 bar,
                 text=f"{glyph} {n} {label}",
@@ -122,11 +143,11 @@ class AnalysisReportWindow:
         checked = len(failing) + len(passing)
         ttk.Label(
             bar,
-            text=f"{len(passing)}/{checked} checks passed",
+            text=f"{len(passing)}/{checked} checks passed; {len(self._not_run)} not run",
             font=("Segoe UI", 9),
             foreground=_MUTED,
         ).pack(side=tk.RIGHT)
-        self._summary_line = f"{', '.join(chips)} - {len(passing)}/{checked} checks passed"
+        self._summary_line = f"{', '.join(chips)} - {len(passing)}/{checked} checks passed; {len(self._not_run)} not run"
 
     def _focus_section(self, code: str) -> None:
         self._active_section = code
@@ -354,9 +375,21 @@ class AnalysisReportWindow:
 
     def _show_data(self, data: AnalysisReportData) -> None:
         self._grouped = data.grouped_findings
+        self._checked_rules = data.checked_rules
         rows = _rule_rows(self._grouped)
         failing = [(c, t, s) for c, t, s in rows if self._grouped.get(c)]
-        passing = [(c, t, s) for c, t, s in rows if not self._grouped.get(c)]
+        passing = [
+            (c, t, s)
+            for c, t, s in rows
+            if not self._grouped.get(c) and (data.checked_rules is None or c in data.checked_rules)
+        ]
+        self._not_run = [
+            (c, t, s)
+            for c, t, s in rows
+            if not self._grouped.get(c)
+            and data.checked_rules is not None
+            and c not in data.checked_rules
+        ]
         total_findings = sum(self._count(c) for c, _, _ in failing)
         for child in self._summary.winfo_children():
             child.destroy()
@@ -372,6 +405,19 @@ class AnalysisReportWindow:
             self._text.tag_delete(header, body)
         self._sections.clear()
         self._render(self._text, failing, passing, self._grouped)
+        if self._not_run:
+            self._text.insert(tk.END, "\n")
+            body = self._insert_section_header(
+                self._text,
+                _NOT_RUN_SECTION,
+                f"NOT RUN ({len(self._not_run)})",
+                "section",
+                default=False,
+            )
+            start = self._text.index("end-1c")
+            for _code, title, _severity in self._not_run:
+                self._text.insert(tk.END, title + "\n", "pass_muted")
+            self._text.tag_add(body, start, "end-1c")
         self._text.config(state=tk.DISABLED)
         self._active_section = None
         if self._sections:
@@ -397,9 +443,27 @@ class AnalysisReportWindow:
         self._run_btn.configure(state=tk.DISABLED, text="Running checks...")
         self._run_after_id = self.window.after(1, self._finish_run_checks)
 
+    def _show_help(self, *, first_time: bool = False) -> None:
+        messagebox.showinfo(
+            "First-Time Tips" if first_time else "Check Program Help",
+            _HELP_TEXT,
+            parent=self.window,
+        )
+        try:
+            self._help_seen_path.parent.mkdir(parents=True, exist_ok=True)
+            self._help_seen_path.touch()
+        except OSError:
+            # A settings write failure must not prevent users from running checks.
+            pass
+
+    def _show_first_time_help(self) -> None:
+        self._help_after_id = None
+        if not self._help_seen_path.exists():
+            self._show_help(first_time=True)
+
     def _on_destroy(self, event: tk.Event) -> None:
         if event.widget is self.window:
-            for after_id in (self._copy_flash_after_id, self._run_after_id):
+            for after_id in (self._copy_flash_after_id, self._run_after_id, self._help_after_id):
                 if after_id is not None:
                     self.window.after_cancel(after_id)
 
@@ -410,6 +474,7 @@ class AnalysisReportWindow:
         *,
         rerun: Callable[[], AnalysisReportData | None] | None = None,
         preferences: ProgramCheckPreferences | None = None,
+        choose_checks: Callable[[tk.Toplevel, Callable[[], None]], None] | None = None,
     ) -> None:
         self.window = tk.Toplevel(parent)
         self.window.title("Check Program")
@@ -420,6 +485,8 @@ class AnalysisReportWindow:
         self.window.bind("<Destroy>", self._on_destroy)
 
         self._preferences = preferences if preferences is not None else ProgramCheckPreferences()
+        self._help_seen_path = self._preferences.path.with_name("check_program_popup_seen")
+        self._help_after_id: str | None = None
         self._rerun = rerun
         self._run_after_id: str | None = None
         self._sections: dict[str, tuple[str, str, bool]] = {}
@@ -433,10 +500,18 @@ class AnalysisReportWindow:
 
         toolbar = ttk.Frame(main)
         toolbar.pack(fill=tk.X, pady=(0, 8))
+        self._help_btn = ttk.Button(toolbar, text="Help", command=self._show_help)
+        self._help_btn.pack(side=tk.RIGHT)
         self._run_btn = ttk.Button(toolbar, text="Run Checks", command=self._run_checks)
         self._run_btn.pack(side=tk.LEFT, padx=(0, 12))
         if rerun is None:
             self._run_btn.configure(state=tk.DISABLED)
+        if choose_checks is not None:
+            ttk.Button(
+                toolbar,
+                text="Choose Checks...",
+                command=lambda: choose_checks(self.window, self._run_checks),
+            ).pack(side=tk.LEFT, padx=(0, 12))
         self._source = ttk.Label(toolbar, foreground=_MUTED)
         self._source.pack(side=tk.LEFT)
         self._summary = ttk.Frame(main)
@@ -460,3 +535,4 @@ class AnalysisReportWindow:
 
         self._text = self._build_text(main)
         self._show_data(data)
+        self._help_after_id = self.window.after_idle(self._show_first_time_help)

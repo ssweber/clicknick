@@ -86,6 +86,10 @@ class ConnectionSession:
         assert analysis is not None
         persistent_workspace = self.workspace_dir is not None
         persist = self.workspace_dir or (scr_folder / "pyrung_project")
+        from .services.program_check_selection import ProgramCheckSelection
+
+        selection = ProgramCheckSelection(self.workspace_dir)
+        analysis.check_selection = selection
 
         def _rebuild() -> None:
             error: str | None = None
@@ -97,6 +101,7 @@ class ConnectionSession:
                     persist_dir=persist,
                     workspace_kind="persistent" if persistent_workspace else "temporary",
                 )
+                selection.sync(persist)
             except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"
                 traceback.print_exc()

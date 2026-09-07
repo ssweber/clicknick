@@ -15,6 +15,35 @@ Both read the saved ladder files, not unsaved edits, so save in CLICK first. Che
 
 ## Workspaces
 
+### Check preferences
+
+**Choose Checks** controls which checks run. Without a workspace, **Save and Run**
+saves your app-wide defaults in `%LOCALAPPDATA%\ClickNick\check-defaults.toml`.
+All programs without a workspace use these preferences, starting with pyrung's
+core checks until you customize them.
+
+When you create or open a workspace without check settings, ClickNick copies your
+current preferences into `[tool.pyrung.check]` in its `pyproject.toml`. Existing
+workspace settings take precedence and survive regeneration. With a workspace
+open, **Save and Run** updates that file automatically; your app-wide defaults
+stay unchanged. The window shows where changes will be saved.
+
+```toml
+[tool.pyrung.check]
+extend-select = ["CMP"]
+ignore = ["CMP_STATIC_ON_LEFT"]
+```
+
+Omit `select` to inherit pyrung's core defaults, use `extend-select` to add checks,
+and `ignore` to exclude them. An explicit `select` replaces the core selection.
+Prefixes continue matching checks added in future pyrung versions. The GUI and
+`clicknick-cli check` use the same settings.
+
+Collapsing a result only hides its details; the check still runs. **Copy Full Report**
+includes collapsed details. **Help** reopens the first-time tips.
+
+### Workspace files
+
 A workspace is a folder that links up with your open project. Until you pick one, ClickNick uses a temporary folder. Pick a real one from the Workspace controls to keep the work with the machine; a small `.clicknick.toml` inside it carries the CLICK PLC name, which is how ClickNick reconnects the same folder when that project is opened again.
 
 On every CLICK save, ClickNick refreshes `src/plc/` (your ladder as Python), `csv/` (the CLICK snapshot it was built from), nickname data, and its generation scripts. Files you add are left alone. If you edited `src/plc/` and a CLICK save is about to replace it, ClickNick copies it to `backup/src/plc/` first; `clicknick-cli restore` puts it back.

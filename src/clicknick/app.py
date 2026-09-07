@@ -739,7 +739,23 @@ class ClickNickApp:
         return AnalysisReportData(
             grouped_findings=grouped,
             project_name=self.connected_click_filename or "",
+            checked_rules=report.checked_rules if report is not None else frozenset(),
         )
+
+    def _choose_program_checks(self, parent, on_saved) -> None:
+        from .views.check_selection_window import CheckSelectionWindow
+
+        analysis = self._session.analysis if self._session else None
+        selection = analysis.check_selection if analysis is not None else None
+        if selection is None:
+            messagebox.showinfo(
+                "Check Settings", "Connect to a project before choosing checks.", parent=parent
+            )
+            return
+        try:
+            CheckSelectionWindow(parent, selection, on_saved)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Check Settings", str(exc), parent=parent)
 
     def _analyze_program(self) -> None:
         """Run program validation and display a report that can be refreshed in place."""
@@ -747,7 +763,12 @@ class ClickNickApp:
 
         data = self._run_program_checks()
         if data is not None:
-            AnalysisReportWindow(self.root, data, rerun=self._run_program_checks)
+            AnalysisReportWindow(
+                self.root,
+                data,
+                rerun=self._run_program_checks,
+                choose_checks=self._choose_program_checks,
+            )
 
     def _ensure_plc_name_for_workspace(self) -> str | None:
         """Prompt for a missing PLC name only when durable setup is requested."""

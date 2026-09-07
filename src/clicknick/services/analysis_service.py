@@ -23,6 +23,8 @@ if TYPE_CHECKING:
     from pyrung.core.program import Program
     from pyrung.core.validation.report import ValidationReport
 
+    from .program_check_selection import ProgramCheckSelection
+
 WorkspaceKind = Literal["temporary", "persistent"]
 
 
@@ -269,6 +271,7 @@ class AnalysisService:
     """Owns the program analysis lifecycle and exposes query methods."""
 
     def __init__(self) -> None:
+        self.check_selection: ProgramCheckSelection | None = None
         self._result: AnalysisResult | None = None
         # Written from the build thread, read from the UI thread. Plain
         # attribute assignment is atomic enough; there is no read-modify-write.
@@ -538,6 +541,14 @@ class AnalysisService:
     def run_validation(self) -> ValidationReport | None:
         if self._result is None:
             return None
-        from pyrung.core.validation import validate
+        from pyrung.core.validation.config import CheckConfig, load_check_config
 
-        return validate(self._result.program)
+        if self.check_selection is not None:
+            config = self.check_selection.load()
+            if self.project_dir is not None:
+                self.check_selection.sync(self.project_dir)
+        else:
+            config = (
+                load_check_config(self.project_dir / "pyproject.toml") if self.project_dir else None
+            ) or CheckConfig()
+        return self._result.program.check(select=set(config.resolve()))

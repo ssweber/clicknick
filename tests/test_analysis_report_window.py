@@ -32,7 +32,10 @@ def _data(code="RUNG_CONTRADICTION", problem="Mode cannot satisfy both condition
 
 
 @pytest.fixture
-def report_window(tk_root, tmp_path):
+def report_window(tk_root, tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "clicknick.views.analysis_report_window.messagebox.showinfo", lambda *_a, **_kw: None
+    )
     windows = []
 
     def create(data=None, **kwargs):
@@ -55,6 +58,39 @@ def report_window(tk_root, tmp_path):
 def _is_hidden(window, code):
     _header, body, _expanded = window._sections[code]
     return window._text.tk.getboolean(window._text.tag_cget(body, "elide"))
+
+
+def test_first_time_help_is_remembered_and_help_button_reopens_it(report_window, monkeypatch):
+    messages = []
+    monkeypatch.setattr(
+        "clicknick.views.analysis_report_window.messagebox.showinfo",
+        lambda title, text, **kwargs: messages.append((title, text)),
+    )
+    window = report_window()
+    window.window.update_idletasks()
+    assert len(messages) == 1
+    assert messages[0][0] == "First-Time Tips"
+    assert "core set" in messages[0][1]
+    assert "Choose Checks" in messages[0][1]
+    assert "it still runs" in messages[0][1]
+    assert "Save in CLICK" in messages[0][1]
+    window.window.destroy()
+    reopened = report_window()
+    reopened.window.update_idletasks()
+    assert len(messages) == 1
+    reopened._help_btn.invoke()
+    assert len(messages) == 2
+    assert messages[1] == ("Check Program Help", messages[0][1])
+
+
+def test_help_settings_failure_does_not_prevent_report_display(report_window, tmp_path):
+    window = report_window()
+    blocked_parent = tmp_path / "not-a-directory"
+    blocked_parent.write_text("occupied", encoding="utf-8")
+    window._help_seen_path = blocked_parent / "popup_seen"
+    window.window.update_idletasks()
+    assert "Mode cannot satisfy both conditions." in window._text.get("1.0", "end")
+    window._help_btn.invoke()
 
 
 def test_folding_persists_and_copy_includes_hidden_findings(report_window):
@@ -136,3 +172,19 @@ def test_future_registry_rules_and_severities_render_and_remember(report_window,
     assert not _is_hidden(window, "UNKNOWN_RULE")
     window._show_data(_data("FUTURE_RULE"))
     assert _is_hidden(window, "FUTURE_RULE")
+
+
+def test_report_separates_passed_and_not_run_and_copies_both(report_window):
+    data = AnalysisReportData(checked_rules=frozenset({"RUNG_CONTRADICTION"}))
+    window = report_window(data)
+    assert "1 selected checks passed" in window._summary_line
+    assert "not run" in window._summary_line
+    assert _is_hidden(window, "__not_run__")
+    window._copy_report()
+    copied = window.window.clipboard_get()
+    assert "NOT RUN" in copied
+    assert "Comparison May Read Backwards" in copied
+    window._show_data(AnalysisReportData(checked_rules=frozenset()))
+    assert "No checks selected" in window._summary_line
+    assert "passed" not in window._summary_line
+    assert "__passed__" not in window._sections

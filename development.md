@@ -11,6 +11,66 @@ repo](https://github.com/ssweber/clicknick/fork) (having your own
 fork will make it easier to contribute) and
 [clone it](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository).
 
+## Working with local pyrung
+
+Keep the checkouts side by side (`clicknick` and `pyrung`). Run these commands
+from the **clicknick directory**, using Windows **cmd**:
+
+```bat
+make install
+make install-pyrung-dev
+set UV_NO_SYNC=1
+make lint test
+uv run --no-sync clicknick
+```
+
+`make install-pyrung-dev` installs `../pyrung` as an editable dependency in
+ClickNick's `.venv`, so source edits in that checkout are used directly. Restart
+ClickNick after changing Python code. Use the checkout launch command above;
+a separately installed `uv tool` launcher has its own environment.
+
+`--no-sync` keeps uv from replacing the local pyrung install with the released
+package from `uv.lock`. It does not install the local package by itself.
+`UV_NO_SYNC=1` also protects the `uv run` commands inside `make lint` and
+`make test`. In **PowerShell**, set it with:
+
+```powershell
+$env:UV_NO_SYNC = '1'
+```
+
+Both forms apply only to the current terminal session. cmd uses `set`, not
+`export`. While testing local pyrung, use `make lint test`; bare `make`,
+`make install`, and `make upgrade` include explicit dependency synchronization
+and can restore the released package even with `UV_NO_SYNC` set.
+
+### Missing validation.config module
+
+If you see `No module named pyrung.core.validation.config`, the environment
+likely contains released pyrung instead of the paired development checkout.
+Reinstall the local dependency, then restart ClickNick:
+
+```bat
+make install-pyrung-dev
+uv run --no-sync clicknick
+```
+
+The new Check Program selection workflow requires the matching pyrung changes.
+Before releasing ClickNick, publish that pyrung version and update ClickNick's
+minimum dependency and lockfile together.
+
+### Returning to released dependencies
+
+In cmd:
+
+```bat
+set UV_NO_SYNC=
+make install
+```
+
+In PowerShell, clear the variable with
+`Remove-Item Env:UV_NO_SYNC -ErrorAction SilentlyContinue`, then run `make install`.
+Use a ClickNick revision compatible with the released pyrung version.
+
 ## Basic Developer Workflows
 
 The `Makefile` simply offers shortcuts to `uv` commands for developer convenience.

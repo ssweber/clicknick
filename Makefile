@@ -13,6 +13,12 @@ default: install lint test
 install:
 	uv sync --locked --all-extras --dev
 
+# Work on ClickNick and pyrung together without changing release dependencies.
+# Set UV_NO_SYNC=1 for subsequent make lint/test and app runs in this environment.
+.PHONY: install-pyrung-dev
+install-pyrung-dev:
+	uv pip install --editable ../pyrung
+
 lint:
 	uv run python devtools/lint.py
 
