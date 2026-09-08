@@ -549,8 +549,11 @@ class ClickNickApp:
         )
 
     def _show_odbc_warning(self):
-        """Show a warning dialog about missing ODBC drivers."""
-        OdbcWarningDialog(self.root)
+        """Show a database warning unless CSV mode was explicitly selected."""
+        from .utils.mdb_shared import get_database_backend
+
+        if get_database_backend() != "none":
+            OdbcWarningDialog(self.root)
 
     def _on_editor_synced(self, count: int) -> None:
         if self._session is not None:
@@ -569,9 +572,9 @@ class ClickNickApp:
             initial_filter: If given (e.g. "changed"), the new window's first tab
                 is switched to that row filter once its data has loaded.
         """
-        # Check for ODBC drivers (MDB mode requires them)
+        # Check for a native or fallback database backend
         csv_path = self.csv_path_var.get()
-        if not csv_path and not self.nickname_manager.has_access_driver():
+        if not csv_path and not self.nickname_manager.has_database_backend():
             self._show_odbc_warning()
             return
 
@@ -1313,7 +1316,7 @@ class ClickNickApp:
 
     def _create_about_dialog(self):
         """Create and show the About dialog."""
-        AboutDialog(self.root, get_version())
+        AboutDialog(self.root, get_version(), db_path=self._live_mdb_path())
 
     def _live_open_address_editor(self, initial_filter: str = "changed") -> None:
         """Open or focus the Address Editor filtered to *initial_filter*.
@@ -1778,6 +1781,7 @@ class ClickNickApp:
         self.monitor_task_id = None
 
         # Connected Click.exe instance
+        self._connection_probe_token = None
         self.connected_click_pid = None
         self.connected_click_filename = None
         self.connected_click_hwnd = None
@@ -1953,14 +1957,15 @@ class ClickNickApp:
                     window._update_sync_indicator(pending)
 
     def _check_odbc_drivers_and_warn(self):
-        """Check for ODBC drivers and show warning if none available."""
-        if not self.nickname_manager.has_access_driver():
+        """Check database backend candidates and warn if none are available."""
+        if not self.nickname_manager.has_database_backend():
             self._show_odbc_warning()
             return False
         return True
 
     def _clear_connection_state(self) -> None:
         """Clear the currently connected Click window metadata."""
+        self._connection_probe_token = None
         self.connected_click_pid = None
         self.connected_click_filename = None
         self.connected_click_hwnd = None
@@ -2014,6 +2019,7 @@ class ClickNickApp:
 
     def load_csv(self):
         """Load nicknames from CSV file."""
+        self._connection_probe_token = None
         csv_path = self.csv_path_var.get()
         if not csv_path:
             self._update_status("⚠ No CSV file selected", "error")
@@ -2074,8 +2080,8 @@ class ClickNickApp:
             self._update_status("⚠ Not connected", "error")
             return False
 
-        # Check if ODBC drivers are available
-        if not self.nickname_manager.has_access_driver():
+        # Check whether a database backend can be attempted
+        if not self.nickname_manager.has_database_backend():
             self._update_status("⏹ Stopped - Use File → Load Nicknames... to Start", "status")
             if not self._odbc_warning_shown:
                 self._show_odbc_warning()
@@ -2097,9 +2103,84 @@ class ClickNickApp:
         self.start_monitoring()
         return True
 
+    def _connect_csv_fallback(self, filename, hwnd):
+        """Offer CSV loading after a failed connection or an explicit CSV selection."""
+        self._show_main_window()
+        fallback_csv = find_fallback_csv(hwnd)
+        if fallback_csv:
+            default_name = f"{filename.replace('.ckp', '')}_Address.csv"
+            dialog = CsvFallbackDialog(self.root, fallback_csv, default_name)
+            saved_path = dialog.show()
+            if saved_path:
+                self.csv_path_var.set(saved_path)
+                self.load_csv()
+                return
+        self._update_status("Stopped - Use File > Load Nicknames...", "error")
+        if not self._odbc_warning_shown:
+            self._show_odbc_warning()
+            self._odbc_warning_shown = True
+
+    def _load_instance_database(self, pid, filename, hwnd):
+        """Select a backend and load a private store before attaching it to Tk."""
+        import queue
+        import threading
+
+        from .connection_session import ConnectionSession
+        from .data.data_source import MdbDataSource
+
+        token = object()
+        self._connection_probe_token = token
+        results = queue.Queue()
+        self._update_status("Loading database...", "status")
+
+        def load():
+            try:
+                data_source = MdbDataSource(click_pid=pid, click_hwnd=hwnd)
+                store = AddressStore(data_source)
+                store.load_initial_data()
+                results.put((store, None))
+            except Exception as exc:
+                results.put((None, str(exc)))
+
+        threading.Thread(target=load, daemon=True).start()
+
+        def finish():
+            if self._connection_probe_token is not token:
+                return
+            try:
+                store, error = results.get_nowait()
+            except queue.Empty:
+                self.root.after(100, finish)
+                return
+            if error is not None:
+                self._show_main_window()
+                self._update_status("Database connection failed", "error")
+                self._odbc_warning_shown = True
+                messagebox.showerror("Database Connection", error, parent=self.root)
+                if self._connection_probe_token is token:
+                    self._connect_csv_fallback(filename, hwnd)
+                return
+
+            store.start_file_monitoring(self.root)
+            self._session = ConnectionSession(
+                pid,
+                hwnd,
+                filename,
+                store,
+                workspace_dir=self._configured_workspace_dir(),
+                on_sync_status_changed=self._on_sync_status_changed,
+            )
+            self.nickname_manager.set_shared_data(store)
+            self.load_from_database()
+            self._start_analysis_build()
+
+        self.root.after(100, finish)
+
     def connect_to_instance(self, pid, title, filename, hwnd):
         """Connect to a specific Click.exe instance."""
-        from .connection_session import ConnectionSession
+        from .utils.mdb_shared import get_database_backend
+
+        self._connection_probe_token = None
 
         # Close existing session (prompt to save)
         if self._session is not None:
@@ -2133,46 +2214,10 @@ class ClickNickApp:
         self.connected_click_hwnd = hwnd
         self._load_workspace_pairing()
 
-        # Check for ODBC drivers - if missing, try CSV fallback
-        if not self.nickname_manager.has_access_driver():
-            # Modal fallback/warning dialogs need a visible parent even during
-            # the otherwise-hidden startup connection pass.
-            self._show_main_window()
-            fallback_csv = find_fallback_csv(hwnd)
-            if fallback_csv:
-                default_name = f"{filename.replace('.ckp', '')}_Address.csv"
-                dialog = CsvFallbackDialog(self.root, fallback_csv, default_name)
-                saved_path = dialog.show()
-                if saved_path:
-                    self.csv_path_var.set(saved_path)
-                    self.load_csv()
-                    return
-            self._update_status("⏹ Stopped - Use File → Load Nicknames...", "error")
-            if not self._odbc_warning_shown:
-                self._show_odbc_warning()
-                self._odbc_warning_shown = True
+        if get_database_backend() == "none":
+            self._connect_csv_fallback(filename, hwnd)
             return
-
-        # Create session with MDB-backed store
-        from .data.data_source import MdbDataSource
-
-        data_source = MdbDataSource(click_pid=pid, click_hwnd=hwnd)
-        store = AddressStore(data_source)
-        store.load_initial_data()
-        store.start_file_monitoring(self.root)
-
-        self._session = ConnectionSession(
-            pid,
-            hwnd,
-            filename,
-            store,
-            workspace_dir=self._configured_workspace_dir(),
-            on_sync_status_changed=self._on_sync_status_changed,
-        )
-
-        self.nickname_manager.set_shared_data(store)
-        self.load_from_database()
-        self._start_analysis_build()
+        self._load_instance_database(pid, filename, hwnd)
 
     def _handle_popup_window(self, window_id, window_class, edit_control):
         """Handle the detected popup window by showing or updating the nickname popup."""
@@ -2273,7 +2318,7 @@ class ClickNickApp:
 
         from .connection_session import ConnectionSession
 
-        if self.nickname_manager.has_access_driver():
+        if self.nickname_manager.has_database_backend():
             from .data.data_source import MdbDataSource
 
             data_source = MdbDataSource(
@@ -2406,6 +2451,7 @@ class ClickNickApp:
 
     def on_closing(self):
         """Handle application shutdown."""
+        self._connection_probe_token = None
         if self.monitoring:
             self.stop_monitoring()
         if self.overlay is not None:
@@ -2429,8 +2475,27 @@ class ClickNickApp:
         self.root.mainloop()
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     """Entry point for the application."""
+    import argparse
+    import os
+
+    from .utils.mdb_shared import get_database_backend
+
+    parser = argparse.ArgumentParser(description="CLICK nickname and project tools")
+    parser.add_argument(
+        "--db-backend",
+        choices=("auto", "odbc", "jet", "none"),
+        help="Database backend: auto prefers ODBC; odbc or jet forces that backend. "
+        "none forces CSV mode. Defaults to CLICKNICK_DB_BACKEND or auto.",
+    )
+    args = parser.parse_args(argv)
+    if args.db_backend is not None:
+        os.environ["CLICKNICK_DB_BACKEND"] = args.db_backend
+    try:
+        get_database_backend()
+    except ValueError as exc:
+        parser.error(str(exc))
     app = ClickNickApp()
     app.run()
 

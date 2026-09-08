@@ -1,0 +1,851 @@
+{
+  "python_bits": 64,
+  "source": "C:\\Users\\ssweb\\Documents\\GitHub\\clicknick\\tests\\SC_.mdb",
+  "checks": {
+    "x64_python_to_x86_powershell_under_default_restricted": {
+      "powershell": "5.1.26100.9168",
+      "policy": "Restricted",
+      "bits": 32,
+      "language": "FullLanguage",
+      "dotnet": "4.0.30319.42000"
+    },
+    "all_original_address_rows_equal_existing_x64_pyodbc": 408,
+    "empty_and_single_row_json_shapes": true,
+    "insert_english_apostrophe_newlines_memo_bool_initial_value": {
+      "comment_characters": 9300,
+      "default_use": false
+    },
+    "empty_string_null_false_and_explicit_rollback": true,
+    "duplicate_key_error_rolls_back_entire_batch": {
+      "message": "The changes you requested to the table were not successful because they would create duplicate values in the index, primary key, or relationship.  Change the data in the field or fields that contain duplicate data, remove the index, or redefine the index to permit duplicate entries and try again.",
+      "details": [
+        {
+          "message": "The changes you requested to the table were not successful because they would create duplicate values in the index, primary key, or relationship.  Change the data in the field or fields that contain duplicate data, remove the index, or redefine the index to permit duplicate entries and try again.",
+          "native": -105121349,
+          "state": "3022"
+        }
+      ],
+      "type": "System.Data.OleDb.OleDbException"
+    },
+    "committed_write_survives_reopen": true,
+    "second_process_write_lock_reports_error": {
+      "error": {
+        "message": "Could not update; currently locked.",
+        "details": [
+          {
+            "message": "Could not update; currently locked.",
+            "native": -72156238,
+            "state": "3218"
+          }
+        ],
+        "type": "System.Data.OleDb.OleDbException"
+      },
+      "elapsed_seconds": 2.259
+    },
+    "cross_process_commit_visible": 0.002,
+    "delete_and_original_rows_restored": true,
+    "synthetic_blob_currency_datetime_double_roundtrip": {
+      "blob_bytes": 76800
+    },
+    "unmodified_clicknick_load_save_provision_delete_through_adapter": {
+      "db_path": "C:\\Users\\ssweb\\AppData\\Local\\Temp\\jet-powershell-research-0z5xz0qr\\probe file.mdb",
+      "requested_count": 1,
+      "inserted_count": 1,
+      "existing_count": 0,
+      "parsed_addresses": [
+        "C1999"
+      ]
+    },
+    "existing_access_storage_blobs_unchanged": 23,
+    "stdin_eof_rolls_back_uncommitted_write": true,
+    "execution_policy_matrix": {
+      "Restricted/file": {
+        "exit": 1,
+        "ran": false
+      },
+      "Restricted/inline": {
+        "exit": 0,
+        "ran": true
+      },
+      "AllSigned/file": {
+        "exit": 1,
+        "ran": false
+      },
+      "AllSigned/inline": {
+        "exit": 0,
+        "ran": true
+      },
+      "RemoteSigned/file": {
+        "exit": 0,
+        "ran": true
+      },
+      "RemoteSigned/inline": {
+        "exit": 0,
+        "ran": true
+      },
+      "simulated_constrained_language": {
+        "exit": 1,
+        "blocked": true
+      }
+    }
+  },
+  "copy": "C:\\Users\\ssweb\\AppData\\Local\\Temp\\jet-powershell-research-0z5xz0qr\\probe file.mdb",
+  "host": {
+    "powershell": "5.1.26100.9168",
+    "policy": "Restricted",
+    "bits": 32,
+    "language": "FullLanguage",
+    "dotnet": "4.0.30319.42000"
+  },
+  "startup_seconds": 3.864,
+  "provider": {
+    "version": "04.00.0000",
+    "provider": "Microsoft.Jet.OLEDB.4.0"
+  },
+  "loaded_modules": {
+    "paths": [
+      "C:\\WINDOWS\\Microsoft.Net\\assembly\\GAC_32\\System.Data\\v4.0_4.0.0.0__b77a5c561934e089\\System.Data.dll",
+      "C:\\Program Files (x86)\\Common Files\\System\\Ole DB\\oledb32.dll",
+      "C:\\Windows\\System32\\msjetoledb40.dll",
+      "C:\\Windows\\System32\\msjet40.dll"
+    ]
+  },
+  "schema": [
+    {
+      "DESCRIPTION": null,
+      "COLUMN_NAME": "Address",
+      "DATA_TYPE": 130,
+      "COLUMN_FLAGS": 234,
+      "ORDINAL_POSITION": 3,
+      "COLLATION_SCHEMA": null,
+      "CHARACTER_SET_CATALOG": null,
+      "CHARACTER_SET_SCHEMA": null,
+      "CHARACTER_MAXIMUM_LENGTH": 0,
+      "COLLATION_CATALOG": null,
+      "IS_NULLABLE": true,
+      "DATETIME_PRECISION": null,
+      "COLUMN_DEFAULT": null,
+      "DOMAIN_CATALOG": null,
+      "TABLE_CATALOG": null,
+      "NUMERIC_PRECISION": null,
+      "TYPE_GUID": null,
+      "DOMAIN_NAME": null,
+      "TABLE_SCHEMA": null,
+      "COLUMN_HASDEFAULT": false,
+      "CHARACTER_SET_NAME": null,
+      "COLUMN_GUID": null,
+      "NUMERIC_SCALE": null,
+      "CHARACTER_OCTET_LENGTH": 0,
+      "TABLE_NAME": "Address",
+      "COLUMN_PROPID": null,
+      "COLLATION_NAME": null,
+      "DOMAIN_SCHEMA": null
+    },
+    {
+      "DESCRIPTION": null,
+      "COLUMN_NAME": "AddrKey",
+      "DATA_TYPE": 3,
+      "COLUMN_FLAGS": 122,
+      "ORDINAL_POSITION": 1,
+      "COLLATION_SCHEMA": null,
+      "CHARACTER_SET_CATALOG": null,
+      "CHARACTER_SET_SCHEMA": null,
+      "CHARACTER_MAXIMUM_LENGTH": null,
+      "COLLATION_CATALOG": null,
+      "IS_NULLABLE": true,
+      "DATETIME_PRECISION": null,
+      "COLUMN_DEFAULT": null,
+      "DOMAIN_CATALOG": null,
+      "TABLE_CATALOG": null,
+      "NUMERIC_PRECISION": 10,
+      "TYPE_GUID": null,
+      "DOMAIN_NAME": null,
+      "TABLE_SCHEMA": null,
+      "COLUMN_HASDEFAULT": false,
+      "CHARACTER_SET_NAME": null,
+      "COLUMN_GUID": null,
+      "NUMERIC_SCALE": null,
+      "CHARACTER_OCTET_LENGTH": null,
+      "TABLE_NAME": "Address",
+      "COLUMN_PROPID": null,
+      "COLLATION_NAME": null,
+      "DOMAIN_SCHEMA": null
+    },
+    {
+      "DESCRIPTION": null,
+      "COLUMN_NAME": "Comment",
+      "DATA_TYPE": 130,
+      "COLUMN_FLAGS": 234,
+      "ORDINAL_POSITION": 9,
+      "COLLATION_SCHEMA": null,
+      "CHARACTER_SET_CATALOG": null,
+      "CHARACTER_SET_SCHEMA": null,
+      "CHARACTER_MAXIMUM_LENGTH": 0,
+      "COLLATION_CATALOG": null,
+      "IS_NULLABLE": true,
+      "DATETIME_PRECISION": null,
+      "COLUMN_DEFAULT": null,
+      "DOMAIN_CATALOG": null,
+      "TABLE_CATALOG": null,
+      "NUMERIC_PRECISION": null,
+      "TYPE_GUID": null,
+      "DOMAIN_NAME": null,
+      "TABLE_SCHEMA": null,
+      "COLUMN_HASDEFAULT": false,
+      "CHARACTER_SET_NAME": null,
+      "COLUMN_GUID": null,
+      "NUMERIC_SCALE": null,
+      "CHARACTER_OCTET_LENGTH": 0,
+      "TABLE_NAME": "Address",
+      "COLUMN_PROPID": null,
+      "COLLATION_NAME": null,
+      "DOMAIN_SCHEMA": null
+    },
+    {
+      "DESCRIPTION": null,
+      "COLUMN_NAME": "DataType",
+      "DATA_TYPE": 17,
+      "COLUMN_FLAGS": 122,
+      "ORDINAL_POSITION": 4,
+      "COLLATION_SCHEMA": null,
+      "CHARACTER_SET_CATALOG": null,
+      "CHARACTER_SET_SCHEMA": null,
+      "CHARACTER_MAXIMUM_LENGTH": null,
+      "COLLATION_CATALOG": null,
+      "IS_NULLABLE": true,
+      "DATETIME_PRECISION": null,
+      "COLUMN_DEFAULT": null,
+      "DOMAIN_CATALOG": null,
+      "TABLE_CATALOG": null,
+      "NUMERIC_PRECISION": 3,
+      "TYPE_GUID": null,
+      "DOMAIN_NAME": null,
+      "TABLE_SCHEMA": null,
+      "COLUMN_HASDEFAULT": false,
+      "CHARACTER_SET_NAME": null,
+      "COLUMN_GUID": null,
+      "NUMERIC_SCALE": null,
+      "CHARACTER_OCTET_LENGTH": null,
+      "TABLE_NAME": "Address",
+      "COLUMN_PROPID": null,
+      "COLLATION_NAME": null,
+      "DOMAIN_SCHEMA": null
+    },
+    {
+      "DESCRIPTION": null,
+      "COLUMN_NAME": "InitialValue",
+      "DATA_TYPE": 130,
+      "COLUMN_FLAGS": 234,
+      "ORDINAL_POSITION": 7,
+      "COLLATION_SCHEMA": null,
+      "CHARACTER_SET_CATALOG": null,
+      "CHARACTER_SET_SCHEMA": null,
+      "CHARACTER_MAXIMUM_LENGTH": 0,
+      "COLLATION_CATALOG": null,
+      "IS_NULLABLE": true,
+      "DATETIME_PRECISION": null,
+      "COLUMN_DEFAULT": null,
+      "DOMAIN_CATALOG": null,
+      "TABLE_CATALOG": null,
+      "NUMERIC_PRECISION": null,
+      "TYPE_GUID": null,
+      "DOMAIN_NAME": null,
+      "TABLE_SCHEMA": null,
+      "COLUMN_HASDEFAULT": false,
+      "CHARACTER_SET_NAME": null,
+      "COLUMN_GUID": null,
+      "NUMERIC_SCALE": null,
+      "CHARACTER_OCTET_LENGTH": 0,
+      "TABLE_NAME": "Address",
+      "COLUMN_PROPID": null,
+      "COLLATION_NAME": null,
+      "DOMAIN_SCHEMA": null
+    },
+    {
+      "DESCRIPTION": null,
+      "COLUMN_NAME": "MemoryType",
+      "DATA_TYPE": 130,
+      "COLUMN_FLAGS": 234,
+      "ORDINAL_POSITION": 2,
+      "COLLATION_SCHEMA": null,
+      "CHARACTER_SET_CATALOG": null,
+      "CHARACTER_SET_SCHEMA": null,
+      "CHARACTER_MAXIMUM_LENGTH": 0,
+      "COLLATION_CATALOG": null,
+      "IS_NULLABLE": true,
+      "DATETIME_PRECISION": null,
+      "COLUMN_DEFAULT": null,
+      "DOMAIN_CATALOG": null,
+      "TABLE_CATALOG": null,
+      "NUMERIC_PRECISION": null,
+      "TYPE_GUID": null,
+      "DOMAIN_NAME": null,
+      "TABLE_SCHEMA": null,
+      "COLUMN_HASDEFAULT": false,
+      "CHARACTER_SET_NAME": null,
+      "COLUMN_GUID": null,
+      "NUMERIC_SCALE": null,
+      "CHARACTER_OCTET_LENGTH": 0,
+      "TABLE_NAME": "Address",
+      "COLUMN_PROPID": null,
+      "COLLATION_NAME": null,
+      "DOMAIN_SCHEMA": null
+    },
+    {
+      "DESCRIPTION": null,
+      "COLUMN_NAME": "Nickname",
+      "DATA_TYPE": 130,
+      "COLUMN_FLAGS": 234,
+      "ORDINAL_POSITION": 5,
+      "COLLATION_SCHEMA": null,
+      "CHARACTER_SET_CATALOG": null,
+      "CHARACTER_SET_SCHEMA": null,
+      "CHARACTER_MAXIMUM_LENGTH": 0,
+      "COLLATION_CATALOG": null,
+      "IS_NULLABLE": true,
+      "DATETIME_PRECISION": null,
+      "COLUMN_DEFAULT": null,
+      "DOMAIN_CATALOG": null,
+      "TABLE_CATALOG": null,
+      "NUMERIC_PRECISION": null,
+      "TYPE_GUID": null,
+      "DOMAIN_NAME": null,
+      "TABLE_SCHEMA": null,
+      "COLUMN_HASDEFAULT": false,
+      "CHARACTER_SET_NAME": null,
+      "COLUMN_GUID": null,
+      "NUMERIC_SCALE": null,
+      "CHARACTER_OCTET_LENGTH": 0,
+      "TABLE_NAME": "Address",
+      "COLUMN_PROPID": null,
+      "COLLATION_NAME": null,
+      "DOMAIN_SCHEMA": null
+    },
+    {
+      "DESCRIPTION": null,
+      "COLUMN_NAME": "Retentive",
+      "DATA_TYPE": 11,
+      "COLUMN_FLAGS": 90,
+      "ORDINAL_POSITION": 8,
+      "COLLATION_SCHEMA": null,
+      "CHARACTER_SET_CATALOG": null,
+      "CHARACTER_SET_SCHEMA": null,
+      "CHARACTER_MAXIMUM_LENGTH": 2,
+      "COLLATION_CATALOG": null,
+      "IS_NULLABLE": false,
+      "DATETIME_PRECISION": null,
+      "COLUMN_DEFAULT": null,
+      "DOMAIN_CATALOG": null,
+      "TABLE_CATALOG": null,
+      "NUMERIC_PRECISION": null,
+      "TYPE_GUID": null,
+      "DOMAIN_NAME": null,
+      "TABLE_SCHEMA": null,
+      "COLUMN_HASDEFAULT": false,
+      "CHARACTER_SET_NAME": null,
+      "COLUMN_GUID": null,
+      "NUMERIC_SCALE": null,
+      "CHARACTER_OCTET_LENGTH": null,
+      "TABLE_NAME": "Address",
+      "COLUMN_PROPID": null,
+      "COLLATION_NAME": null,
+      "DOMAIN_SCHEMA": null
+    },
+    {
+      "DESCRIPTION": null,
+      "COLUMN_NAME": "Use",
+      "DATA_TYPE": 11,
+      "COLUMN_FLAGS": 90,
+      "ORDINAL_POSITION": 6,
+      "COLLATION_SCHEMA": null,
+      "CHARACTER_SET_CATALOG": null,
+      "CHARACTER_SET_SCHEMA": null,
+      "CHARACTER_MAXIMUM_LENGTH": 2,
+      "COLLATION_CATALOG": null,
+      "IS_NULLABLE": false,
+      "DATETIME_PRECISION": null,
+      "COLUMN_DEFAULT": null,
+      "DOMAIN_CATALOG": null,
+      "TABLE_CATALOG": null,
+      "NUMERIC_PRECISION": null,
+      "TYPE_GUID": null,
+      "DOMAIN_NAME": null,
+      "TABLE_SCHEMA": null,
+      "COLUMN_HASDEFAULT": false,
+      "CHARACTER_SET_NAME": null,
+      "COLUMN_GUID": null,
+      "NUMERIC_SCALE": null,
+      "CHARACTER_OCTET_LENGTH": null,
+      "TABLE_NAME": "Address",
+      "COLUMN_PROPID": null,
+      "COLLATION_NAME": null,
+      "DOMAIN_SCHEMA": null
+    },
+    {
+      "DESCRIPTION": null,
+      "COLUMN_NAME": "DateCreate",
+      "DATA_TYPE": 7,
+      "COLUMN_FLAGS": 122,
+      "ORDINAL_POSITION": 1,
+      "COLLATION_SCHEMA": null,
+      "CHARACTER_SET_CATALOG": null,
+      "CHARACTER_SET_SCHEMA": null,
+      "CHARACTER_MAXIMUM_LENGTH": null,
+      "COLLATION_CATALOG": null,
+      "IS_NULLABLE": true,
+      "DATETIME_PRECISION": 0,
+      "COLUMN_DEFAULT": null,
+      "DOMAIN_CATALOG": null,
+      "TABLE_CATALOG": null,
+      "NUMERIC_PRECISION": null,
+      "TYPE_GUID": null,
+      "DOMAIN_NAME": null,
+      "TABLE_SCHEMA": null,
+      "COLUMN_HASDEFAULT": false,
+      "CHARACTER_SET_NAME": null,
+      "COLUMN_GUID": null,
+      "NUMERIC_SCALE": null,
+      "CHARACTER_OCTET_LENGTH": null,
+      "TABLE_NAME": "MSysAccessStorage",
+      "COLUMN_PROPID": null,
+      "COLLATION_NAME": null,
+      "DOMAIN_SCHEMA": null
+    },
+    {
+      "DESCRIPTION": null,
+      "COLUMN_NAME": "DateUpdate",
+      "DATA_TYPE": 7,
+      "COLUMN_FLAGS": 122,
+      "ORDINAL_POSITION": 2,
+      "COLLATION_SCHEMA": null,
+      "CHARACTER_SET_CATALOG": null,
+      "CHARACTER_SET_SCHEMA": null,
+      "CHARACTER_MAXIMUM_LENGTH": null,
+      "COLLATION_CATALOG": null,
+      "IS_NULLABLE": true,
+      "DATETIME_PRECISION": 0,
+      "COLUMN_DEFAULT": null,
+      "DOMAIN_CATALOG": null,
+      "TABLE_CATALOG": null,
+      "NUMERIC_PRECISION": null,
+      "TYPE_GUID": null,
+      "DOMAIN_NAME": null,
+      "TABLE_SCHEMA": null,
+      "COLUMN_HASDEFAULT": false,
+      "CHARACTER_SET_NAME": null,
+      "COLUMN_GUID": null,
+      "NUMERIC_SCALE": null,
+      "CHARACTER_OCTET_LENGTH": null,
+      "TABLE_NAME": "MSysAccessStorage",
+      "COLUMN_PROPID": null,
+      "COLLATION_NAME": null,
+      "DOMAIN_SCHEMA": null
+    },
+    {
+      "DESCRIPTION": null,
+      "COLUMN_NAME": "Id",
+      "DATA_TYPE": 3,
+      "COLUMN_FLAGS": 90,
+      "ORDINAL_POSITION": 3,
+      "COLLATION_SCHEMA": null,
+      "CHARACTER_SET_CATALOG": null,
+      "CHARACTER_SET_SCHEMA": null,
+      "CHARACTER_MAXIMUM_LENGTH": null,
+      "COLLATION_CATALOG": null,
+      "IS_NULLABLE": false,
+      "DATETIME_PRECISION": null,
+      "COLUMN_DEFAULT": null,
+      "DOMAIN_CATALOG": null,
+      "TABLE_CATALOG": null,
+      "NUMERIC_PRECISION": 10,
+      "TYPE_GUID": null,
+      "DOMAIN_NAME": null,
+      "TABLE_SCHEMA": null,
+      "COLUMN_HASDEFAULT": false,
+      "CHARACTER_SET_NAME": null,
+      "COLUMN_GUID": null,
+      "NUMERIC_SCALE": null,
+      "CHARACTER_OCTET_LENGTH": null,
+      "TABLE_NAME": "MSysAccessStorage",
+      "COLUMN_PROPID": null,
+      "COLLATION_NAME": null,
+      "DOMAIN_SCHEMA": null
+    },
+    {
+      "DESCRIPTION": null,
+      "COLUMN_NAME": "Lv",
+      "DATA_TYPE": 128,
+      "COLUMN_FLAGS": 234,
+      "ORDINAL_POSITION": 4,
+      "COLLATION_SCHEMA": null,
+      "CHARACTER_SET_CATALOG": null,
+      "CHARACTER_SET_SCHEMA": null,
+      "CHARACTER_MAXIMUM_LENGTH": 0,
+      "COLLATION_CATALOG": null,
+      "IS_NULLABLE": true,
+      "DATETIME_PRECISION": null,
+      "COLUMN_DEFAULT": null,
+      "DOMAIN_CATALOG": null,
+      "TABLE_CATALOG": null,
+      "NUMERIC_PRECISION": null,
+      "TYPE_GUID": null,
+      "DOMAIN_NAME": null,
+      "TABLE_SCHEMA": null,
+      "COLUMN_HASDEFAULT": false,
+      "CHARACTER_SET_NAME": null,
+      "COLUMN_GUID": null,
+      "NUMERIC_SCALE": null,
+      "CHARACTER_OCTET_LENGTH": 0,
+      "TABLE_NAME": "MSysAccessStorage",
+      "COLUMN_PROPID": null,
+      "COLLATION_NAME": null,
+      "DOMAIN_SCHEMA": null
+    },
+    {
+      "DESCRIPTION": null,
+      "COLUMN_NAME": "Name",
+      "DATA_TYPE": 130,
+      "COLUMN_FLAGS": 106,
+      "ORDINAL_POSITION": 5,
+      "COLLATION_SCHEMA": null,
+      "CHARACTER_SET_CATALOG": null,
+      "CHARACTER_SET_SCHEMA": null,
+      "CHARACTER_MAXIMUM_LENGTH": 128,
+      "COLLATION_CATALOG": null,
+      "IS_NULLABLE": true,
+      "DATETIME_PRECISION": null,
+      "COLUMN_DEFAULT": null,
+      "DOMAIN_CATALOG": null,
+      "TABLE_CATALOG": null,
+      "NUMERIC_PRECISION": null,
+      "TYPE_GUID": null,
+      "DOMAIN_NAME": null,
+      "TABLE_SCHEMA": null,
+      "COLUMN_HASDEFAULT": false,
+      "CHARACTER_SET_NAME": null,
+      "COLUMN_GUID": null,
+      "NUMERIC_SCALE": null,
+      "CHARACTER_OCTET_LENGTH": 256,
+      "TABLE_NAME": "MSysAccessStorage",
+      "COLUMN_PROPID": null,
+      "COLLATION_NAME": null,
+      "DOMAIN_SCHEMA": null
+    },
+    {
+      "DESCRIPTION": null,
+      "COLUMN_NAME": "ParentId",
+      "DATA_TYPE": 3,
+      "COLUMN_FLAGS": 122,
+      "ORDINAL_POSITION": 6,
+      "COLLATION_SCHEMA": null,
+      "CHARACTER_SET_CATALOG": null,
+      "CHARACTER_SET_SCHEMA": null,
+      "CHARACTER_MAXIMUM_LENGTH": null,
+      "COLLATION_CATALOG": null,
+      "IS_NULLABLE": true,
+      "DATETIME_PRECISION": null,
+      "COLUMN_DEFAULT": null,
+      "DOMAIN_CATALOG": null,
+      "TABLE_CATALOG": null,
+      "NUMERIC_PRECISION": 10,
+      "TYPE_GUID": null,
+      "DOMAIN_NAME": null,
+      "TABLE_SCHEMA": null,
+      "COLUMN_HASDEFAULT": false,
+      "CHARACTER_SET_NAME": null,
+      "COLUMN_GUID": null,
+      "NUMERIC_SCALE": null,
+      "CHARACTER_OCTET_LENGTH": null,
+      "TABLE_NAME": "MSysAccessStorage",
+      "COLUMN_PROPID": null,
+      "COLLATION_NAME": null,
+      "DOMAIN_SCHEMA": null
+    },
+    {
+      "DESCRIPTION": null,
+      "COLUMN_NAME": "Type",
+      "DATA_TYPE": 3,
+      "COLUMN_FLAGS": 122,
+      "ORDINAL_POSITION": 7,
+      "COLLATION_SCHEMA": null,
+      "CHARACTER_SET_CATALOG": null,
+      "CHARACTER_SET_SCHEMA": null,
+      "CHARACTER_MAXIMUM_LENGTH": null,
+      "COLLATION_CATALOG": null,
+      "IS_NULLABLE": true,
+      "DATETIME_PRECISION": null,
+      "COLUMN_DEFAULT": null,
+      "DOMAIN_CATALOG": null,
+      "TABLE_CATALOG": null,
+      "NUMERIC_PRECISION": 10,
+      "TYPE_GUID": null,
+      "DOMAIN_NAME": null,
+      "TABLE_SCHEMA": null,
+      "COLUMN_HASDEFAULT": false,
+      "CHARACTER_SET_NAME": null,
+      "COLUMN_GUID": null,
+      "NUMERIC_SCALE": null,
+      "CHARACTER_OCTET_LENGTH": null,
+      "TABLE_NAME": "MSysAccessStorage",
+      "COLUMN_PROPID": null,
+      "COLLATION_NAME": null,
+      "DOMAIN_SCHEMA": null
+    }
+  ],
+  "tables": [
+    {
+      "TABLE_NAME": "Address",
+      "DESCRIPTION": null,
+      "TABLE_SCHEMA": null,
+      "TABLE_PROPID": null,
+      "TABLE_CATALOG": null,
+      "TABLE_GUID": null,
+      "DATE_MODIFIED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:32:44.2920000"
+      },
+      "DATE_CREATED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:32:44.2920000"
+      },
+      "TABLE_TYPE": "TABLE"
+    },
+    {
+      "TABLE_NAME": "MSysAccessStorage",
+      "DESCRIPTION": null,
+      "TABLE_SCHEMA": null,
+      "TABLE_PROPID": null,
+      "TABLE_CATALOG": null,
+      "TABLE_GUID": null,
+      "DATE_MODIFIED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:48:24.3070000"
+      },
+      "DATE_CREATED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:48:24.3070000"
+      },
+      "TABLE_TYPE": "ACCESS TABLE"
+    },
+    {
+      "TABLE_NAME": "MSysACEs",
+      "DESCRIPTION": null,
+      "TABLE_SCHEMA": null,
+      "TABLE_PROPID": null,
+      "TABLE_CATALOG": null,
+      "TABLE_GUID": null,
+      "DATE_MODIFIED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:32:44.2760000"
+      },
+      "DATE_CREATED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:32:44.2760000"
+      },
+      "TABLE_TYPE": "SYSTEM TABLE"
+    },
+    {
+      "TABLE_NAME": "MSysNavPaneGroupCategories",
+      "DESCRIPTION": null,
+      "TABLE_SCHEMA": null,
+      "TABLE_PROPID": null,
+      "TABLE_CATALOG": null,
+      "TABLE_GUID": null,
+      "DATE_MODIFIED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:48:24.3150000"
+      },
+      "DATE_CREATED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:48:24.3120000"
+      },
+      "TABLE_TYPE": "ACCESS TABLE"
+    },
+    {
+      "TABLE_NAME": "MSysNavPaneGroups",
+      "DESCRIPTION": null,
+      "TABLE_SCHEMA": null,
+      "TABLE_PROPID": null,
+      "TABLE_CATALOG": null,
+      "TABLE_GUID": null,
+      "DATE_MODIFIED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:48:24.3150000"
+      },
+      "DATE_CREATED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:48:24.3140000"
+      },
+      "TABLE_TYPE": "ACCESS TABLE"
+    },
+    {
+      "TABLE_NAME": "MSysNavPaneGroupToObjects",
+      "DESCRIPTION": null,
+      "TABLE_SCHEMA": null,
+      "TABLE_PROPID": null,
+      "TABLE_CATALOG": null,
+      "TABLE_GUID": null,
+      "DATE_MODIFIED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:48:24.3150000"
+      },
+      "DATE_CREATED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:48:24.3140000"
+      },
+      "TABLE_TYPE": "ACCESS TABLE"
+    },
+    {
+      "TABLE_NAME": "MSysNavPaneObjectIDs",
+      "DESCRIPTION": null,
+      "TABLE_SCHEMA": null,
+      "TABLE_PROPID": null,
+      "TABLE_CATALOG": null,
+      "TABLE_GUID": null,
+      "DATE_MODIFIED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:50:18.9350000"
+      },
+      "DATE_CREATED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:50:18.9350000"
+      },
+      "TABLE_TYPE": "ACCESS TABLE"
+    },
+    {
+      "TABLE_NAME": "MSysObjects",
+      "DESCRIPTION": null,
+      "TABLE_SCHEMA": null,
+      "TABLE_PROPID": null,
+      "TABLE_CATALOG": null,
+      "TABLE_GUID": null,
+      "DATE_MODIFIED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:32:44.2760000"
+      },
+      "DATE_CREATED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:32:44.2760000"
+      },
+      "TABLE_TYPE": "SYSTEM TABLE"
+    },
+    {
+      "TABLE_NAME": "MSysQueries",
+      "DESCRIPTION": null,
+      "TABLE_SCHEMA": null,
+      "TABLE_PROPID": null,
+      "TABLE_CATALOG": null,
+      "TABLE_GUID": null,
+      "DATE_MODIFIED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:32:44.2760000"
+      },
+      "DATE_CREATED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:32:44.2760000"
+      },
+      "TABLE_TYPE": "SYSTEM TABLE"
+    },
+    {
+      "TABLE_NAME": "MSysRelationships",
+      "DESCRIPTION": null,
+      "TABLE_SCHEMA": null,
+      "TABLE_PROPID": null,
+      "TABLE_CATALOG": null,
+      "TABLE_GUID": null,
+      "DATE_MODIFIED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:32:44.2760000"
+      },
+      "DATE_CREATED": {
+        "kind": "datetime",
+        "value": "2025-12-28T15:32:44.2760000"
+      },
+      "TABLE_TYPE": "SYSTEM TABLE"
+    }
+  ],
+  "read_seconds": 0.139,
+  "row_count": 408,
+  "address_columns": [
+    {
+      "name": "AddrKey",
+      "type": "System.Int32",
+      "provider_type": "DBTYPE_I4"
+    },
+    {
+      "name": "MemoryType",
+      "type": "System.String",
+      "provider_type": "DBTYPE_WLONGVARCHAR"
+    },
+    {
+      "name": "Address",
+      "type": "System.String",
+      "provider_type": "DBTYPE_WLONGVARCHAR"
+    },
+    {
+      "name": "Nickname",
+      "type": "System.String",
+      "provider_type": "DBTYPE_WLONGVARCHAR"
+    },
+    {
+      "name": "Comment",
+      "type": "System.String",
+      "provider_type": "DBTYPE_WLONGVARCHAR"
+    },
+    {
+      "name": "Use",
+      "type": "System.Boolean",
+      "provider_type": "DBTYPE_BOOL"
+    },
+    {
+      "name": "DataType",
+      "type": "System.Byte",
+      "provider_type": "DBTYPE_UI1"
+    },
+    {
+      "name": "InitialValue",
+      "type": "System.String",
+      "provider_type": "DBTYPE_WLONGVARCHAR"
+    },
+    {
+      "name": "Retentive",
+      "type": "System.Boolean",
+      "provider_type": "DBTYPE_BOOL"
+    }
+  ],
+  "policy_tests": {
+    "Restricted/file": {
+      "exit": 1,
+      "ran": false
+    },
+    "Restricted/inline": {
+      "exit": 0,
+      "ran": true
+    },
+    "AllSigned/file": {
+      "exit": 1,
+      "ran": false
+    },
+    "AllSigned/inline": {
+      "exit": 0,
+      "ran": true
+    },
+    "RemoteSigned/file": {
+      "exit": 0,
+      "ran": true
+    },
+    "RemoteSigned/inline": {
+      "exit": 0,
+      "ran": true
+    },
+    "simulated_constrained_language": {
+      "exit": 1,
+      "blocked": true
+    }
+  },
+  "source_unchanged": true,
+  "stderr": [
+    [],
+    []
+  ]
+}

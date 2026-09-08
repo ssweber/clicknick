@@ -6,7 +6,7 @@ from pyclickplc.blocks import strip_block_tag
 
 from ..models.nickname import Nickname
 from ..utils.filters import ContainsFilter, ContainsPlusFilter, NoneFilter, PrefixFilter
-from ..utils.mdb_shared import has_access_driver
+from ..utils.mdb_shared import has_access_driver, has_database_backend
 
 if TYPE_CHECKING:
     from .shared_data import SharedAddressData
@@ -200,3 +200,7 @@ class NicknameManager:
     def has_access_driver(self) -> bool:
         """Check if any Microsoft Access ODBC driver is available."""
         return has_access_driver()
+
+    def has_database_backend(self) -> bool:
+        """Check for native ODBC or the built-in Windows Jet fallback."""
+        return has_database_backend()

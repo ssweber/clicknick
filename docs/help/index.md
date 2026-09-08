@@ -54,14 +54,38 @@ Edits to the ladder text go back into CLICK through **Preview Changes** and **Gu
 
 ClickNick does not directly edit the `.ckp` file. It works through the files and workflows CLICK exposes while a project is open:
 
-- With the Access driver installed, nickname and comment tools read and write CLICK's temporary `SC_.mdb` working database. Those changes become part of the project only when you save in CLICK.
+- Nickname and comment tools read and write CLICK's temporary `SC_.mdb` working database. Those changes become part of the project only when you save in CLICK.
 - Data View tools read and write temporary `.cdv` files. A Data View created in ClickNick must be imported into CLICK manually.
 - Ladder text edits stay in the workspace until you review them rung by rung in Preview Changes and paste the ones you choose through CLICK's own ladder editor.
 - The Tag Browser is built from nickname data and stores nothing.
 
+## Database connection
+
+ClickNick uses an installed Access ODBC driver when available, or Windows' built-in Jet engine through 32-bit PowerShell. Selection is automatic.
+
+If connecting fails, open **Help > About ClickNick > Test Connection**. Choose the project's MDB file if prompted. The test checks read access and reports which connection worked. Use **Copy System Info** to include the result in a [support issue](https://github.com/ssweber/clicknick/issues).
+
+On managed computers, PowerShell restrictions may block Jet. Your administrator can check the reported error or provide a compatible Access ODBC driver.
+
+### Connection options
+
+For troubleshooting, close ClickNick and launch with a specific option:
+
+| Command | Behavior |
+| --- | --- |
+| `clicknick --db-backend auto` | Prefer Access ODBC, fall back to Jet (default). |
+| `clicknick --db-backend jet` | Use Jet even if Access ODBC is installed. |
+| `clicknick --db-backend odbc` | Use Access ODBC only. |
+| `clicknick --db-backend none` | Use CSV mode. |
+
+Forced `jet` and `odbc` modes report errors instead of switching connections. You can also set `CLICKNICK_DB_BACKEND` to one of these values; the command-line option takes precedence.
+
+### CSV mode
+
+Load a nickname CSV manually, or save a copy of CLICK's project CSV when offered. CSV mode supports autocomplete and CSV editing, but does not sync changes with CLICK's database. Check Program, Console, and workspaces require a database connection.
+
 ## Common setup questions
 
-- Check Program, Console, and workspaces need the 64-bit Access ODBC driver; see the [driver notes](https://github.com/ssweber/clicknick/issues/17).
 - Nicknames changed through the Address Editor appear in autocomplete immediately. Existing ladder logic may need CLICK's Address Picker or a reopened project to refresh; see [issue #36](https://github.com/ssweber/clicknick/issues/36).
 - ClickNick is beta software. Review Address Editor, Data View, and ladder changes before saving in CLICK.
 

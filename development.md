@@ -163,3 +163,9 @@ extensions:
 
 *This file was built with
 [simple-modern-uv](https://github.com/jlevy/simple-modern-uv).*
+
+## Jet database fallback
+
+See [Jet sidecar research](research/jet-sidecar/README.md) for validation results,
+standalone probes, and remaining platform checks. Production regression tests
+run with `make test`.

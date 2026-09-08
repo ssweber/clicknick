@@ -1,5 +1,7 @@
 import platform
+import queue
 import sys
+import threading
 import tkinter as tk
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError
@@ -8,7 +10,11 @@ from pathlib import Path
 from tkinter import filedialog, ttk
 
 from ..data.data_source import convert_mdb_csv_to_user_csv
-from ..utils.mdb_shared import get_available_access_drivers
+from ..utils.mdb_shared import (
+    get_available_access_drivers,
+    get_database_backend,
+    probe_database_connection,
+)
 from ..utils.win32_utils import WIN32
 
 
@@ -31,7 +37,7 @@ def _installed_version(package: str) -> str:
 
 def _build_system_info(app_version: str, access_drivers: list[str]) -> str:
     """Build the diagnostic text shown and copied by About ClickNick."""
-    odbc_info = ", ".join(access_drivers) if access_drivers else "Not installed"
+    odbc_info = ", ".join(access_drivers) if access_drivers else "Not installed (optional)"
     return (
         f"ClickNick: {app_version}\n"
         f"pyrung: {_installed_version('pyrung')}\n"
@@ -40,15 +46,17 @@ def _build_system_info(app_version: str, access_drivers: list[str]) -> str:
         f"Architecture: {platform.machine()}\n"
         f"Tkinter: {tk.TkVersion}\n"
         f"MS Access ODBC: {odbc_info}\n"
+        f"Database selection: {get_database_backend()}\n"
         f"Python full: {sys.version}\n"
         f"Platform details: {platform.platform()}"
     )
 
 
 class AboutDialog:
-    def __init__(self, parent, version):
+    def __init__(self, parent, version, db_path=None):
         self.parent = parent
         self.version = version
+        self.db_path = db_path
 
         self.create_window()
 
@@ -130,6 +138,51 @@ class AboutDialog:
         copy_btn = ttk.Button(main_frame, text="Copy System Info", command=copy_system_info)
         copy_btn.pack(pady=(0, 15))
 
+        connection_status = tk.StringVar(value="Test reads the address table without changing it.")
+
+        def test_connection():
+            if get_database_backend() == "none":
+                connection_status.set(probe_database_connection(None).message)
+                return
+            path = self.db_path or filedialog.askopenfilename(
+                parent=self.window,
+                title="Choose CLICK Database",
+                filetypes=[("Access database", "*.mdb")],
+            )
+            if not path:
+                return
+            test_btn.state(["disabled"])
+            connection_status.set("Testing connection...")
+            results = queue.Queue()
+            threading.Thread(
+                target=lambda: results.put(probe_database_connection(path)), daemon=True
+            ).start()
+
+            def finish():
+                nonlocal system_info_display
+                if not self.window.winfo_exists():
+                    return
+                try:
+                    result = results.get_nowait()
+                except queue.Empty:
+                    self.window.after(100, finish)
+                    return
+                test_btn.state(["!disabled"])
+                connection_status.set(result.message)
+                system_info_display = _build_system_info(app_version, access_drivers) + (
+                    "\nDatabase test: " + result.message
+                )
+                info_text.config(state=tk.NORMAL)
+                info_text.delete("1.0", tk.END)
+                info_text.insert(tk.END, system_info_display)
+                info_text.config(state=tk.DISABLED)
+
+            self.window.after(100, finish)
+
+        test_btn = ttk.Button(main_frame, text="Test Connection", command=test_connection)
+        test_btn.pack(pady=(0, 5))
+        ttk.Label(main_frame, textvariable=connection_status, wraplength=450).pack(pady=(0, 15))
+
         # Links
         links_frame = ttk.LabelFrame(main_frame, text="Links & Support", padding="10")
 
@@ -151,8 +204,8 @@ class AboutDialog:
         if not access_drivers:
             odbc_help_btn = ttk.Button(
                 links_frame,
-                text="Install ODBC Driver",
-                command=lambda: open_url("https://github.com/ssweber/clicknick/issues/17"),
+                text="Database Connection Help",
+                command=lambda: open_url("https://pyrung.com/clicknick/help/#database-connection"),
             )
             odbc_help_btn.pack(fill=tk.X, pady=2)
 
@@ -179,16 +232,17 @@ class OdbcWarningDialog:
 
     def create_window(self):
         self.window = tk.Toplevel(self.parent)
-        self.window.title("ODBC Drivers Not Found")
+        self.window.title(
+            "CSV Mode" if get_database_backend() == "none" else "Database Connection Unavailable"
+        )
         self.window.resizable(False, False)
         self.window.grab_set()
         self.window.transient(self.parent)
 
         message = (
-            "Microsoft Access ODBC drivers are not installed on this system.\n\n"
-            "Live nickname database functionality will be disabled. You can still use "
-            "CSV files for nickname loading.\n\n"
-            "For help installing the required drivers, please see our GitHub issue:"
+            "The selected database connection is unavailable.\n\n"
+            "You can load nicknames from a CSV file.\n\n"
+            "Use Help > About ClickNick > Test Connection for details."
         )
 
         # Center the window
@@ -200,23 +254,22 @@ class OdbcWarningDialog:
         # Warning icon and title
         title_frame = ttk.Frame(main_frame)
         ttk.Label(title_frame, text="⚠️", font=("Arial", 24)).pack(side=tk.LEFT)
-        ttk.Label(title_frame, text="ODBC Drivers Not Found", font=("Arial", 14, "bold")).pack(
-            side=tk.LEFT, padx=(10, 0)
-        )
+        ttk.Label(
+            title_frame,
+            text="CSV Mode"
+            if get_database_backend() == "none"
+            else "Database Connection Unavailable",
+            font=("Arial", 14, "bold"),
+        ).pack(side=tk.LEFT, padx=(10, 0))
         title_frame.pack(pady=(0, 15))
 
         # Message
         ttk.Label(main_frame, text=message, wraplength=450, justify=tk.LEFT).pack(pady=(0, 15))
 
-        # GitHub link button
-        github_issue_url = (
-            "https://github.com/ssweber/clicknick/issues/17"  # Update with actual issue number
-        )
-
         ttk.Button(
             main_frame,
-            text="🔗 View Installation Guide",
-            command=lambda: open_url(github_issue_url),
+            text="Connection Help",
+            command=lambda: open_url("https://pyrung.com/clicknick/help/#database-connection"),
         ).pack(pady=(0, 15))
 
         # Close button
@@ -227,7 +280,7 @@ class OdbcWarningDialog:
 
 
 class CsvFallbackDialog:
-    """Dialog shown when ODBC drivers are missing but Address.csv is available."""
+    """Offer a copy of Address.csv when using CSV mode."""
 
     def __init__(self, parent, source_csv_path: Path, default_filename: str = "Address.csv"):
         self.parent = parent
@@ -280,7 +333,9 @@ class CsvFallbackDialog:
 
     def create_window(self):
         self.window = tk.Toplevel(self.parent)
-        self.window.title("ODBC Drivers Not Found")
+        self.window.title(
+            "CSV Mode" if get_database_backend() == "none" else "Database Connection Unavailable"
+        )
         self.window.resizable(False, False)
         self.window.grab_set()
         self.window.transient(self.parent)
@@ -294,9 +349,13 @@ class CsvFallbackDialog:
         # Warning icon and title
         title_frame = ttk.Frame(main_frame)
         ttk.Label(title_frame, text="⚠️", font=("Arial", 24)).pack(side=tk.LEFT)
-        ttk.Label(title_frame, text="ODBC Drivers Not Found", font=("Arial", 14, "bold")).pack(
-            side=tk.LEFT, padx=(10, 0)
-        )
+        ttk.Label(
+            title_frame,
+            text="CSV Mode"
+            if get_database_backend() == "none"
+            else "Database Connection Unavailable",
+            font=("Arial", 14, "bold"),
+        ).pack(side=tk.LEFT, padx=(10, 0))
         title_frame.pack(pady=(0, 15))
 
         # Explanation
@@ -334,8 +393,8 @@ class CsvFallbackDialog:
 
         help_btn = ttk.Button(
             button_frame,
-            text="ODBC Help",
-            command=lambda: open_url("https://github.com/ssweber/clicknick/issues/17"),
+            text="Connection Help",
+            command=lambda: open_url("https://pyrung.com/clicknick/help/#database-connection"),
         )
         help_btn.pack(side=tk.LEFT)
 

@@ -22,4 +22,4 @@ Built on [pyrung](https://pyrung.com/pyrung/), the engine that runs your ladder 
 
 ## Get started
 
-Two steps: install `uv`, then `uv tool install clicknick`. Check Program, Console, and workspaces also need the 64-bit Microsoft Access ODBC driver, and the install page walks through that. [Install](install.md) · [Take the tour](tour/autocomplete.md)
+Two steps: install `uv`, then `uv tool install clicknick`. [Install](install.md) · [Take the tour](tour/autocomplete.md)
