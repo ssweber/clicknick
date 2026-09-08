@@ -68,6 +68,16 @@ def _write_nicknames_csv(csv_dir: Path, db_path: Path) -> Path | None:
         return None
 
 
+def _channel_inputs(scr_folder: Path) -> frozenset[str]:
+    """Read installed analog input assignments alongside the saved ladder."""
+    from pyclickplc.project import read_channel_parameters
+
+    try:
+        return read_channel_parameters(scr_folder / "Project.ini").inputs
+    except FileNotFoundError:
+        return frozenset()
+
+
 def _build_tag_addr_key_map(
     base_state: Mapping[int, object],
 ) -> tuple[dict[str, int], dict[int, str]]:
@@ -209,6 +219,7 @@ def _regenerate_persisted_project(
         ladder_to_pyrung_project(
             csv_persist,
             nickname_csv=persist_nickname_csv,
+            analog_inputs=_channel_inputs(scr_folder),
             output_dir=staged_dir,
             index=True,
             workspace_kind=workspace_kind,
@@ -243,7 +254,9 @@ def _build_graph(
         if db_path is not None:
             nickname_csv = _write_nicknames_csv(csv_dir, db_path)
 
-        code = ladder_to_pyrung(csv_dir, nickname_csv=nickname_csv)
+        code = ladder_to_pyrung(
+            csv_dir, nickname_csv=nickname_csv, analog_inputs=_channel_inputs(scr_folder)
+        )
 
         project_dir = None
         if persist_dir is not None:

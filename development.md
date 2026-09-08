@@ -13,7 +13,7 @@ fork will make it easier to contribute) and
 
 ## Working with local pyrung
 
-Keep the checkouts side by side (`clicknick` and `pyrung`). Run these commands
+Keep the checkouts side by side (`clicknick`, `pyrung`, and `pyclickplc`). Run these commands
 from the **clicknick directory**, using Windows **cmd**:
 
 ```bat
@@ -21,16 +21,17 @@ make install
 make install-pyrung-dev
 set UV_NO_SYNC=1
 make lint test
-uv run --no-sync clicknick
+uv run --no-sync python -u -m clicknick
 ```
 
-`make install-pyrung-dev` installs `../pyrung` as an editable dependency in
-ClickNick's `.venv`, so source edits in that checkout are used directly. Restart
-ClickNick after changing Python code. Use the checkout launch command above;
+`make install-pyrung-dev` installs `../pyclickplc` and `../pyrung` as editable dependencies in
+ClickNick's `.venv`, so source edits in both checkouts are used directly. Restart
+ClickNick after changing Python code. The Python module launch keeps stdout
+and stderr visible in the terminal. Use the checkout launch command above;
 a separately installed `uv tool` launcher has its own environment.
 
-`--no-sync` keeps uv from replacing the local pyrung install with the released
-package from `uv.lock`. It does not install the local package by itself.
+`--no-sync` keeps uv from replacing the local library installs with the released
+packages from `uv.lock`. It does not install the local package by itself.
 `UV_NO_SYNC=1` also protects the `uv run` commands inside `make lint` and
 `make test`. In **PowerShell**, set it with:
 
@@ -51,11 +52,12 @@ Reinstall the local dependency, then restart ClickNick:
 
 ```bat
 make install-pyrung-dev
-uv run --no-sync clicknick
+uv run --no-sync python -u -m clicknick
 ```
 
 The new Check Program selection workflow requires the matching pyrung changes.
-Before releasing ClickNick, publish that pyrung version and update ClickNick's
+Channel parameter import also requires the matching local pyclickplc checkout.
+Before releasing ClickNick, publish both library versions and update ClickNick's
 minimum dependency and lockfile together.
 
 ### Returning to released dependencies
