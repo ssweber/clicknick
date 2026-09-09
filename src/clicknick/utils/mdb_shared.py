@@ -187,7 +187,7 @@ def find_click_database(click_pid: int | None = None, click_hwnd: int | None = N
 
 
 def find_fallback_csv(click_hwnd: int | None = None) -> Path | None:
-    """Find Address.csv in the CLICK temp folder as fallback when ODBC unavailable.
+    """Find Address.csv in the CLICK temp folder when no database backend connects.
 
     The CLICK software generates Address.csv in the same folder as SC_.mdb
     when a project is loaded.

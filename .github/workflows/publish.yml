@@ -19,7 +19,8 @@ jobs:
       - name: Install uv (official Astral action)
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          version: "0.11.29"
+          # 0.12.x is needed for `uv export --format cyclonedx1.5` and `uv audit`.
+          version: "0.12.1"
           enable-cache: auto
           python-version: "3.12"
 
@@ -33,11 +34,21 @@ jobs:
       - name: Build package
         run: uv build
 
+      # SBOM, dependency table and release checks. Fails the release on a red check.
+      - name: Build trust report
+        run: uv run --no-sync python devtools/trust_report.py --out trust
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist-files
           path: dist/
+
+      - name: Upload trust report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trust-report
+          path: trust/
 
   # JOB 2: Publish on Linux (Required for pypa action)
   publish:
@@ -46,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write  # IMPORTANT: Mandatory for trusted publishing
-      contents: read
+      contents: write  # Attach the trust report and SBOM to the GitHub release
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -54,5 +65,19 @@ jobs:
           name: dist-files
           path: dist/
 
+      - name: Download trust report
+        uses: actions/download-artifact@v4
+        with:
+          name: trust-report
+          path: trust/
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+      # Immutable per-release copies. The docs workflow mirrors these to
+      # pyrung.com/clicknick/security/ on its next run.
+      - name: Attach trust report to the GitHub release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" trust/* --repo "${{ github.repository }}" --clobber

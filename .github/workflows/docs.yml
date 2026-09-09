@@ -41,6 +41,13 @@ jobs:
           sed -i -E "s#^(\s*- (stylesheets|javascripts)/[^?[:space:]]+)\$#\1?v=${GITHUB_SHA::8}#" mkdocs.yml
           grep -E '\?v=' mkdocs.yml
 
+      # Per-release trust reports and SBOMs are release assets; mirror them
+      # into the site so pyrung.com/clicknick/security/ has every version.
+      - name: Collect trust reports from releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run --no-sync python .github/scripts/collect_trust_reports.py
+
       - name: Build docs
         run: uv run --no-sync zensical build --clean --strict
 

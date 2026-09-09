@@ -27,12 +27,16 @@ wheels = [
 name = "clicknick"
 source = { editable = "." }
 dependencies = [
+    { name = "executing" },
     { name = "laddercodec" },
     { name = "pyclickplc" },
+    { name = "pymodbus" },
     { name = "pyodbc" },
+    { name = "pyrsistent" },
     { name = "pyrung" },
     { name = "pywin32" },
     { name = "tksheet" },
+    { name = "tomlkit" },
 ]
 
 [package.dev-dependencies]
@@ -47,12 +51,16 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "laddercodec", specifier = ">=0.2.1" },
-    { name = "pyclickplc", specifier = ">=0.3.4" },
-    { name = "pyodbc", specifier = ">=5.3.0" },
-    { name = "pyrung", specifier = ">=0.14.0" },
-    { name = "pywin32", specifier = ">=311" },
-    { name = "tksheet", specifier = "==7.5.19" },
+    { name = "executing", specifier = "==2.2.1" },
+    { name = "laddercodec", specifier = "==0.2.1" },
+    { name = "pyclickplc", specifier = "==0.4.0" },
+    { name = "pymodbus", specifier = "==3.12.1" },
+    { name = "pyodbc", specifier = "==5.3.0" },
+    { name = "pyrsistent", specifier = "==0.20.0" },
+    { name = "pyrung", specifier = "==0.15.0" },
+    { name = "pywin32", specifier = "==311" },
+    { name = "tksheet", specifier = "==7.6.0" },
+    { name = "tomlkit", specifier = "==0.15.1" },
 ]
 
 [package.metadata.requires-dev]
@@ -232,14 +240,14 @@ wheels = [
 
 [[package]]
 name = "pyclickplc"
-version = "0.3.4"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pymodbus" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d3/87/1c80d248361eab40c5c7ea5cdabb3afe06c85bdbbcfda9ad29d78cc463c2/pyclickplc-0.3.4.tar.gz", hash = "sha256:ffa34a92ff6a4961463b721dc4a39fdbb2cc76a82649dd1edda8a5ea4b95a817", size = 142748, upload-time = "2026-09-02T18:24:27.515Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/73/50/4fd10ac9f808018a82b1ebfa7741f4d819a8179aa768afb5b6b1a2296ee2/pyclickplc-0.4.0.tar.gz", hash = "sha256:de2ed16b575e0cb24bcbdf3e20736b49321b7bf71c6b89d6e30739661f242169", size = 151075, upload-time = "2026-09-09T17:38:20.027Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/57/33/16670ca9cc1338af208fcd82b5611ab78037112286e49847350c06506384/pyclickplc-0.3.4-py3-none-any.whl", hash = "sha256:e04c66509d71121ce006c9b0a9caaf1d6bf0b6ea7430c7d63e4a53d6f062ce88", size = 57683, upload-time = "2026-09-02T18:24:26.144Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/ea/e7e1f7f7596e9e9c289c80534d869696145419227fee9bf8821806bd86f9/pyclickplc-0.4.0-py3-none-any.whl", hash = "sha256:7cb9f65f893de66bcdd198c60c177d331329fcbffb859d15ed8bbe6908391f7c", size = 62067, upload-time = "2026-09-09T17:38:18.657Z" },
 ]
 
 [[package]]
@@ -349,16 +357,17 @@ wheels = [
 
 [[package]]
 name = "pyrung"
-version = "0.14.0"
+version = "0.15.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "executing" },
     { name = "pyclickplc" },
     { name = "pyrsistent" },
+    { name = "tomlkit" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/74/04/e541a144436be35a77469fbe3a726745954330f0e6809d0ef6a04ee26c35/pyrung-0.14.0.tar.gz", hash = "sha256:708d0f81659cdf95cc89961bc53a0116834a5ce778c8a1f89f9080e6dc898510", size = 4035928, upload-time = "2026-09-04T19:43:47.088Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/29/97/c1cb7bf343f4f3733f51c4f418567316b27b05ccf97580313c46447d962a/pyrung-0.15.0.tar.gz", hash = "sha256:2de814c6e89dc0bc30c371d9f4596e7cc61e8192b4a165888062fdde2ff7e573", size = 4056387, upload-time = "2026-09-09T17:58:29.262Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d9/7b/8b22cc71314fec1dc5afd5df7777c535e98d91700260a93455e129947857/pyrung-0.14.0-py3-none-any.whl", hash = "sha256:03b5cb2ff2eb5c8567d4922eaddcbd7a21c932b09d6c959232de09cb2e995c72", size = 1554078, upload-time = "2026-09-04T19:43:45.416Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/b0/62ae379b4295ba796ad20ddd9e747c5e910ae7440bb5d4231807370141b7/pyrung-0.15.0-py3-none-any.whl", hash = "sha256:bfe67838a82e769024ac7086b7e50a59f51fa6d84acaf0da7589cac35f3b7237", size = 1566810, upload-time = "2026-09-09T17:58:27.635Z" },
 ]
 
 [[package]]
@@ -490,11 +499,11 @@ wheels = [
 
 [[package]]
 name = "tksheet"
-version = "7.5.19"
+version = "7.6.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a9/8e/18d5ef90b778318e0be20ea6f5165dda08002085b94cdbf98542cc4c82eb/tksheet-7.5.19.tar.gz", hash = "sha256:df5294b08910f51a1d6055c5ce257a37824262ffec7527ff1562a5479a1ce0dd", size = 198998, upload-time = "2025-11-19T18:41:16.883Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a1/28/4e83480a2c1d41d25fbae2b613847ead6d9499a2d7eec0000bf17aed2f30/tksheet-7.6.0.tar.gz", hash = "sha256:42d0618b10184294a85489a474ae747097483dd9a47b4385ba12b1afa8648e1a", size = 199108, upload-time = "2026-03-11T17:49:25.335Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/51/50/8ac1d4a9a8e12b1ad8a9b92a810cc12d2e59ef4411df2d82bd6c7dee2f7d/tksheet-7.5.19-py3-none-any.whl", hash = "sha256:a1a92b65b01f75b0e079a53e660da251ec47c8369e655ba54ae0bee7173a2e99", size = 202582, upload-time = "2025-11-19T18:41:15.024Z" },
+    { url = "https://files.pythonhosted.org/packages/51/a2/406016281147857d919c95a9efb6926b8ada683d2fc4de8c1fabc9d5aefa/tksheet-7.6.0-py3-none-any.whl", hash = "sha256:c586d7d04f93bace45f97888b12ea97cbb48dea4f1c3b7931e89491fdf18f9bb", size = 202704, upload-time = "2026-03-11T17:49:22.644Z" },
 ]
 
 [[package]]
@@ -549,6 +558,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/12/64/da524626d3b9cc40c168a13da8335fe1c51be12c0a63685cc6db7308daae/tomli-2.4.1-cp314-cp314t-win_amd64.whl", hash = "sha256:2c1c351919aca02858f740c6d33adea0c5deea37f9ecca1cc1ef9e884a619d26", size = 121196, upload-time = "2026-03-25T20:22:01.169Z" },
     { url = "https://files.pythonhosted.org/packages/5a/cd/e80b62269fc78fc36c9af5a6b89c835baa8af28ff5ad28c7028d60860320/tomli-2.4.1-cp314-cp314t-win_arm64.whl", hash = "sha256:eab21f45c7f66c13f2a9e0e1535309cee140182a9cdae1e041d02e47291e8396", size = 100393, upload-time = "2026-03-25T20:22:02.137Z" },
     { url = "https://files.pythonhosted.org/packages/7b/61/cceae43728b7de99d9b847560c262873a1f6c98202171fd5ed62640b494b/tomli-2.4.1-py3-none-any.whl", hash = "sha256:0d85819802132122da43cb86656f8d1f8c6587d54ae7dcaf30e90533028b49fe", size = 14583, upload-time = "2026-03-25T20:22:03.012Z" },
+]
+
+[[package]]
+name = "tomlkit"
+version = "0.15.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/94/96/e07752635b98536177fa1f37671c8f3cdde2e724c6bcf6034b2cfb571565/tomlkit-0.15.1.tar.gz", hash = "sha256:e25bbf38843005246210a12982776f27f99cb9be67160e14434d0c0d21ee1e97", size = 180129, upload-time = "2026-07-17T01:48:04.562Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/13/bc/8c13eb66537dce1d2bd3a57132902f38d0e7f5bb46fa9f4daed9fe9d76ee/tomlkit-0.15.1-py3-none-any.whl", hash = "sha256:177a05aece5a8ca5266fd3c448abb47b8d352f09d477d3ca8332db4d89b24304", size = 49449, upload-time = "2026-07-17T01:48:05.728Z" },
 ]
 
 [[package]]

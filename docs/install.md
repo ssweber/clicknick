@@ -10,6 +10,9 @@ Open PowerShell and install `uv` if you do not already have it:
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
+On a managed machine, `winget install --id astral-sh.uv` installs the same thing without
+running a downloaded script.
+
 Then install and run ClickNick:
 
 ```powershell
@@ -28,6 +31,9 @@ To upgrade an installed copy later:
 ```powershell
 uv tool upgrade clicknick
 ```
+
+Need to clear this with IT first? Send them [Security](security/index.md): what ClickNick
+installs, what it talks to, and a per-release dependency report.
 
 ## Start ClickNick
 

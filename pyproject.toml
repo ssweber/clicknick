@@ -36,13 +36,23 @@ classifiers = [
 
 # ---- Main dependencies ----
 
+# ClickNick is an application: the whole runtime tree is pinned exactly so a fresh
+# install matches uv.lock and the release trust report. The transitive packages
+# (pymodbus, executing, pyrsistent, tomlkit) are listed here for that reason only. After
+# `make upgrade`, bump these to the new uv.lock versions; the trust report checks
+# that they match.
 dependencies = [
-    "laddercodec>=0.2.1",
-    "pyclickplc>=0.3.4",
-    "pyrung>=0.14.0",
-    "pywin32 >= 311",
-    "pyodbc >= 5.3.0",
-    "tksheet == 7.5.19",
+    "laddercodec==0.2.1",
+    "pyclickplc==0.4.0",
+    "pyrung==0.15.0",
+    "pywin32==311",
+    "pyodbc==5.3.0",
+    "tksheet==7.6.0",
+    # Transitive, pinned for reproducible installs:
+    "pymodbus==3.12.1",
+    "executing==2.2.1",
+    "pyrsistent==0.20.0",
+    "tomlkit==0.15.1",
 ]
 
 # ---- Dev dependencies ----
@@ -180,3 +190,8 @@ testpaths = [
 ]
 norecursedirs = []
 filterwarnings = []
+markers = [
+    "backend: cross-backend oracle tests needing a real Access ODBC driver and the Jet worker (make test-backend)",
+]
+# Oracle tests are opt-in; `make test-backend` overrides this with `-m backend`.
+addopts = ["-m", "not backend"]

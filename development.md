@@ -109,6 +109,14 @@ make lint
 # Run tests:
 make test
 
+# Cross-backend oracle tests (Access ODBC vs the built-in Jet worker on one MDB).
+# Needs an Access ODBC driver installed; not part of `make test` or CI:
+make test-backend
+
+# Build the wheel plus the release trust report and SBOM into dist/trust/
+# (needs network for uv audit; TRUST_ARGS=--skip-audit when offline):
+make trust-report
+
 # Delete all the build artifacts:
 make clean
 

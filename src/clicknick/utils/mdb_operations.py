@@ -56,7 +56,7 @@ class MdbConnection:
         """Establish database connection.
 
         Raises:
-            RuntimeError: If no Access drivers are available or connection fails
+            RuntimeError: If no database backend can connect
         """
         self._conn = create_access_connection(self.db_path)
 

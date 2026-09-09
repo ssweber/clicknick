@@ -7,7 +7,7 @@ This file provides guidance to coding agents working in this repository.
 
 ## Project Overview
 
-**ClickNick** is a Windows desktop application providing context-aware nickname autocomplete and editing tools for CLICK PLC Programming Software (v2.60–v3.90). It connects via ODBC to read/write nicknames from the project's Access database (SC_.mdb) or can import from CSV. Core components:
+**ClickNick** is a Windows desktop application providing context-aware nickname autocomplete and editing tools for CLICK PLC Programming Software (v2.60–v3.90). It connects via Access ODBC or the built-in Windows Jet fallback to read/write nicknames from the project's Access database (SC_.mdb) or can import from CSV. Core components:
 
 - **Overlay** – Positions a combobox over instruction dialog edit controls for nickname autocomplete
 - **Address Editor** – Unified tabbed tksheet-based editor with search/replace, block tagging, validation. Each tab displays ALL memory types in a single scrollable view
@@ -18,7 +18,7 @@ This file provides guidance to coding agents working in this repository.
 
 - **OS:** Windows 10 or 11
 - **CLICK Software:** v2.60–v3.90
-- **ODBC Drivers:** Microsoft Access Database Engine (for live DB connection; optional if using CSV)
+- **Database connection:** Automatic Access ODBC or built-in Windows Jet fallback; Windows x64 normally needs no separate Access driver.
 - **Python:** 3.11+ (only if using pip; uv manages Python automatically)
 
 ## Build & Development Commands
