@@ -94,3 +94,24 @@ def test_dispatch_check_lints_editable_project(tmp_path, monkeypatch) -> None:
     ctx = DispatchContext(store=_Store(), analysis=_Analysis(tmp_path))
 
     assert dispatch(ctx, "check").startswith(f"checked {tmp_path}")
+
+
+def test_dispatch_check_refreshes_app_defaults_before_running(tmp_path, monkeypatch):
+    from pyrung.core.validation.config import CheckConfig, load_check_config
+
+    from clicknick.services.program_check_selection import ProgramCheckSelection
+
+    selection = ProgramCheckSelection(appdata=tmp_path / "settings")
+    project = tmp_path / "generated"
+    selection.sync(project)
+    selection.save(CheckConfig(select=()))
+    analysis = _Analysis(project)
+    analysis.check_selection = selection
+
+    def run(project_dir):
+        assert load_check_config(project_dir / "pyproject.toml") == CheckConfig(select=())
+        return "current defaults"
+
+    monkeypatch.setattr("clicknick.services.program_check.run_project_check", run)
+    ctx = DispatchContext(store=_Store(), analysis=analysis)
+    assert dispatch(ctx, "check").startswith("current defaults")

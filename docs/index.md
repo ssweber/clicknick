@@ -4,7 +4,7 @@ Nickname autocomplete, program checks, an offline test bench, and your ladder (a
 
 **CLICK stays CLICK. ClickNick gives you better tools around it.**
 
-[Take the tour](tour/autocomplete.md) · [Install ClickNick](install.md)
+[Take the tour](tour/autocomplete.md){ .md-button .md-button--primary } [Install ClickNick](install.md){ .md-button }
 
 > **ClickNick never edits your `.ckp`.** Nothing becomes part of the project until you save in CLICK Programming Software. [Where ClickNick writes.](help/index.md#where-clicknick-writes)
 
@@ -22,4 +22,4 @@ Built on [pyrung](https://pyrung.com/pyrung/), the engine that runs your ladder 
 
 ## Get started
 
-Two steps: install `uv`, then `uv tool install clicknick`. Check Program, Console, and workspaces also need the 64-bit Microsoft Access ODBC driver, and the install page walks through that. [Install](install.md) · [Take the tour](tour/autocomplete.md)
+Two steps: install `uv`, then `uv tool install clicknick`. [Install](install.md) · [Take the tour](tour/autocomplete.md)

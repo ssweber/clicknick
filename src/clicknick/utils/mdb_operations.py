@@ -13,6 +13,7 @@ from pyclickplc.addresses import format_address_display, get_addr_key, parse_add
 from pyclickplc.banks import DEFAULT_RETENTIVE, MEMORY_TYPE_TO_DATA_TYPE, DataType
 
 from ..models.address_row import AddressRow
+from .jet_sidecar import JetConnection
 from .mdb_shared import create_access_connection, find_click_database
 
 if TYPE_CHECKING:
@@ -30,7 +31,7 @@ class MdbConnection:
             db_path: Full path to the SC_.mdb file
         """
         self.db_path = db_path
-        self._conn: pyodbc.Connection | None = None
+        self._conn: pyodbc.Connection | JetConnection | None = None
 
     @classmethod
     def from_click_window(cls, click_pid: int, click_hwnd: int) -> MdbConnection:
@@ -55,7 +56,7 @@ class MdbConnection:
         """Establish database connection.
 
         Raises:
-            RuntimeError: If no Access drivers are available or connection fails
+            RuntimeError: If no database backend can connect
         """
         self._conn = create_access_connection(self.db_path)
 
@@ -125,8 +126,6 @@ def load_all_addresses(conn: MdbConnection) -> dict[int, AddressRow]:
     if not conn._conn:
         raise RuntimeError("Not connected to database")
 
-    cursor = conn._conn.cursor()
-
     # Note: We don't need to select keys that match the defaults strictly,
     # but selecting them allows us to handle overrides correctly.
     query = """
@@ -134,11 +133,19 @@ def load_all_addresses(conn: MdbConnection) -> dict[int, AddressRow]:
         FROM address
         ORDER BY AddrKey
     """
-    cursor.execute(query)
+    if isinstance(conn._conn, JetConnection):
+        raw_rows = conn._conn.load_addresses()
+    else:
+        cursor = conn._conn.cursor()
+        try:
+            cursor.execute(query)
+            raw_rows = cursor.fetchall()
+        finally:
+            cursor.close()
 
     result: dict[int, AddressRow] = {}
 
-    for row in cursor.fetchall():
+    for row in raw_rows:
         (
             addr_key,
             memory_type,
@@ -177,7 +184,6 @@ def load_all_addresses(conn: MdbConnection) -> dict[int, AddressRow]:
             retentive=final_retentive,
         )
 
-    cursor.close()
     return result
 
 
@@ -254,6 +260,24 @@ def save_changes(conn: MdbConnection, rows: Sequence[AddressRow]) -> int:
             to_delete.append(row)
         else:
             to_upsert.append(row)
+
+    if isinstance(conn._conn, JetConnection):
+        return conn._conn.save_addresses(
+            [row.addr_key for row in to_delete],
+            [
+                [
+                    row.addr_key,
+                    row.memory_type,
+                    str(row.address),
+                    int(row.data_type),
+                    row.nickname,
+                    row.comment,
+                    row.initial_value,
+                    bool(row.retentive),
+                ]
+                for row in to_upsert
+            ],
+        )
 
     cursor = conn._conn.cursor()
     total_modified = 0

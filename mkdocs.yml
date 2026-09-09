@@ -25,6 +25,12 @@ nav:
       - AI in the Workspace: tour/ai-in-the-workspace.md
   - Editing Tools: editing.md
   - Help: help/index.md
+  - Security:
+      - security/index.md
+      - Release reports: security/reports.md
+
+extra_css:
+  - stylesheets/extra.css
 
 markdown_extensions:
   - admonition

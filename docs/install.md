@@ -10,6 +10,9 @@ Open PowerShell and install `uv` if you do not already have it:
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
+On a managed machine, `winget install --id astral-sh.uv` installs the same thing without
+running a downloaded script.
+
 Then install and run ClickNick:
 
 ```powershell
@@ -29,17 +32,8 @@ To upgrade an installed copy later:
 uv tool upgrade clicknick
 ```
 
-## Install the Access driver
-
-Check Program, Console, workspaces, and live nickname sync need the **64-bit Microsoft Access ODBC driver**. It lets ClickNick read the temporary database that CLICK creates for an open project.
-
-1. Download the [Microsoft Access Database Engine 2016 Redistributable](https://www.microsoft.com/en-us/download/details.aspx?id=54920) and pick the 64-bit installer.
-2. If you have 32-bit Office installed, Microsoft's installer refuses the 64-bit driver. Use the [archive.org copy of AccessDatabaseEngine_X64.exe](https://web.archive.org/web/20231220092102if_/https://download.microsoft.com/download/2/4/3/24375141-E08D-4803-AB0E-10F2E3A07AAA/AccessDatabaseEngine_X64.exe) instead; it installs alongside 32-bit Office.
-3. Run the installer as Administrator, then restart ClickNick.
-
-Check **Help > About ClickNick**: it says `MS Access ODBC: Microsoft Access Driver (*.mdb, *.accdb)` when the driver is found. If it still says not installed, restart Windows. Still stuck? Click **Copy System Info** on that same screen and paste it into a [new issue](https://github.com/ssweber/clicknick/issues).
-
-Without the driver, ClickNick runs in CSV mode: load nicknames from a CSV export and use autocomplete, plus lighter versions of the Address Editor and Data View builder. Check Program, Console, and workspaces are unavailable.
+Need to clear this with IT first? Send them [Security](security/index.md): what ClickNick
+installs, what it talks to, and a per-release dependency report.
 
 ## Start ClickNick
 
@@ -50,6 +44,18 @@ Without the driver, ClickNick runs in CSV mode: load nicknames from a CSV export
 
 Continue with [Getting started](getting-started.md).
 
+<span id="install-the-access-driver"></span>
+
+## Database connection
+
+ClickNick connects automatically. On Windows x64, a separate database driver normally isn't needed. The first connection can take a few seconds.
+
+If connecting fails, open **Help > About ClickNick > Test Connection** and see [connection help](help/index.md#database-connection).
+
+<span id="test-a-specific-database-backend"></span>
+
+For connection overrides or CSV mode, see [connection options](help/index.md#connection-options).
+
 ## Pip alternative
 
 Python 3.11 or newer is required:
@@ -58,5 +64,3 @@ Python 3.11 or newer is required:
 pip install clicknick
 python -m clicknick
 ```
-
-The `uv` installation is the recommended path because it manages ClickNick's Python environment separately from your other Python tools.

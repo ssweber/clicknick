@@ -1,0 +1,10 @@
+{
+  "payload_sizes": [
+    1024,
+    65536,
+    1048576,
+    4194304
+  ],
+  "all_passed": true,
+  "policy_override": false
+}

@@ -23,6 +23,8 @@ if TYPE_CHECKING:
     from pyrung.core.program import Program
     from pyrung.core.validation.report import ValidationReport
 
+    from .program_check_selection import ProgramCheckSelection
+
 WorkspaceKind = Literal["temporary", "persistent"]
 
 
@@ -64,6 +66,16 @@ def _write_nicknames_csv(csv_dir: Path, db_path: Path) -> Path | None:
         return nick_dest
     except Exception:
         return None
+
+
+def _channel_inputs(scr_folder: Path) -> frozenset[str]:
+    """Read installed analog input assignments alongside the saved ladder."""
+    from pyclickplc.project import read_channel_parameters
+
+    try:
+        return read_channel_parameters(scr_folder / "Project.ini").inputs
+    except FileNotFoundError:
+        return frozenset()
 
 
 def _build_tag_addr_key_map(
@@ -207,6 +219,7 @@ def _regenerate_persisted_project(
         ladder_to_pyrung_project(
             csv_persist,
             nickname_csv=persist_nickname_csv,
+            analog_inputs=_channel_inputs(scr_folder),
             output_dir=staged_dir,
             index=True,
             workspace_kind=workspace_kind,
@@ -241,7 +254,9 @@ def _build_graph(
         if db_path is not None:
             nickname_csv = _write_nicknames_csv(csv_dir, db_path)
 
-        code = ladder_to_pyrung(csv_dir, nickname_csv=nickname_csv)
+        code = ladder_to_pyrung(
+            csv_dir, nickname_csv=nickname_csv, analog_inputs=_channel_inputs(scr_folder)
+        )
 
         project_dir = None
         if persist_dir is not None:
@@ -269,6 +284,7 @@ class AnalysisService:
     """Owns the program analysis lifecycle and exposes query methods."""
 
     def __init__(self) -> None:
+        self.check_selection: ProgramCheckSelection | None = None
         self._result: AnalysisResult | None = None
         # Written from the build thread, read from the UI thread. Plain
         # attribute assignment is atomic enough; there is no read-modify-write.
@@ -538,6 +554,14 @@ class AnalysisService:
     def run_validation(self) -> ValidationReport | None:
         if self._result is None:
             return None
-        from pyrung.core.validation import validate
+        from pyrung.core.validation.config import CheckConfig, load_check_config
 
-        return validate(self._result.program)
+        if self.check_selection is not None:
+            config = self.check_selection.load()
+            if self.project_dir is not None:
+                self.check_selection.sync(self.project_dir)
+        else:
+            config = (
+                load_check_config(self.project_dir / "pyproject.toml") if self.project_dir else None
+            ) or CheckConfig()
+        return self._result.program.check(select=set(config.resolve()))

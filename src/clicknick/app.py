@@ -16,15 +16,12 @@ from .utils.filters import (  # preserve lru_cache
     NoneFilter,
     PrefixFilter,
 )
-from .utils.mdb_shared import find_fallback_csv, set_csv_only_mode
+from .utils.mdb_shared import find_fallback_csv
 from .views.dialogs import AboutDialog, CsvFallbackDialog, OdbcWarningDialog
 from .views.overlay import Overlay
 
 # Set DPI awareness for better UI rendering
 windll.shcore.SetProcessDpiAwareness(1)
-
-# Dev mode flag - enables in-progress features
-_DEV_MODE = False
 
 _MATCH_MODES = ("none", "prefix", "contains", "containsplus")
 _MATCH_LABELS = ("None", "Prefix", "Contains", "Fuzzy")
@@ -266,12 +263,16 @@ class ClickNickApp:
         self.workspace_status_var.set(workspace.label)
         self.workspace_group_title_var.set(f"Workspace - {workspace.label}")
         self.project_name_var.set(self.connected_click_filename or "Not connected")
-        repair_button = getattr(self, "repair_system_nicknames_button", None)
-        if repair_button is not None:
+        repairs_menu = getattr(self, "repairs_menu", None)
+        repair_index = getattr(self, "_repairs_system_nicknames_index", None)
+        if repairs_menu is not None and repair_index is not None:
             session = getattr(self, "_session", None)
             analysis = session.analysis if session else None
             has_repairs = bool(analysis and analysis.system_nickname_repairs)
-            repair_button.configure(state=tk.NORMAL if has_repairs else tk.DISABLED)
+            repairs_menu.entryconfigure(
+                repair_index,
+                state=tk.NORMAL if has_repairs else tk.DISABLED,
+            )
 
         if workspace.state is WorkspaceState.PREPARING:
             if self._workspace_refresh_after_id is None:
@@ -548,8 +549,11 @@ class ClickNickApp:
         )
 
     def _show_odbc_warning(self):
-        """Show a warning dialog about missing ODBC drivers."""
-        OdbcWarningDialog(self.root)
+        """Show a database warning unless CSV mode was explicitly selected."""
+        from .utils.mdb_shared import get_database_backend
+
+        if get_database_backend() != "none":
+            OdbcWarningDialog(self.root)
 
     def _on_editor_synced(self, count: int) -> None:
         if self._session is not None:
@@ -568,9 +572,9 @@ class ClickNickApp:
             initial_filter: If given (e.g. "changed"), the new window's first tab
                 is switched to that row filter once its data has loaded.
         """
-        # Check for ODBC drivers (MDB mode requires them)
+        # Check for a native or fallback database backend
         csv_path = self.csv_path_var.get()
-        if not csv_path and not self.nickname_manager.has_access_driver():
+        if not csv_path and not self.nickname_manager.has_database_backend():
             self._show_odbc_warning()
             return
 
@@ -688,8 +692,8 @@ class ClickNickApp:
             traceback.print_exc()
             self._update_status(f"Error opening dataview editor: {e}", "error")
 
-    def _analyze_program(self) -> None:
-        """Run program validation and display report."""
+    def _run_program_checks(self):
+        """Validate the current connection for an initial report or an in-window rerun."""
         analysis = self._session.analysis if self._session else None
         if analysis is None or not analysis.is_available:
             from .services.analysis_service import AnalysisStatus
@@ -733,12 +737,41 @@ class ClickNickApp:
         # presentation model; only their renderers differ.
         grouped = group_validation_findings(report)
 
-        from .views.analysis_report_window import (
-            AnalysisReportData,
-            AnalysisReportWindow,
+        from .views.analysis_report_window import AnalysisReportData
+
+        return AnalysisReportData(
+            grouped_findings=grouped,
+            project_name=self.connected_click_filename or "",
+            checked_rules=report.checked_rules if report is not None else frozenset(),
         )
 
-        AnalysisReportWindow(self.root, AnalysisReportData(grouped_findings=grouped))
+    def _choose_program_checks(self, parent, on_saved) -> None:
+        from .views.check_selection_window import CheckSelectionWindow
+
+        analysis = self._session.analysis if self._session else None
+        selection = analysis.check_selection if analysis is not None else None
+        if selection is None:
+            messagebox.showinfo(
+                "Check Settings", "Connect to a project before choosing checks.", parent=parent
+            )
+            return
+        try:
+            CheckSelectionWindow(parent, selection, on_saved)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Check Settings", str(exc), parent=parent)
+
+    def _analyze_program(self) -> None:
+        """Run program validation and display a report that can be refreshed in place."""
+        from .views.analysis_report_window import AnalysisReportWindow
+
+        data = self._run_program_checks()
+        if data is not None:
+            AnalysisReportWindow(
+                self.root,
+                data,
+                rerun=self._run_program_checks,
+                choose_checks=self._choose_program_checks,
+            )
 
     def _ensure_plc_name_for_workspace(self) -> str | None:
         """Prompt for a missing PLC name only when durable setup is requested."""
@@ -1211,13 +1244,6 @@ class ClickNickApp:
             compound=tk.LEFT,
             command=self._workspace_rung_apply,
         ).pack(fill=tk.X, pady=(0, 8))
-        self.repair_system_nicknames_button = ttk.Button(
-            workspace,
-            text="Repair System Nicknames",
-            command=self._repair_system_nicknames,
-            state=tk.DISABLED,
-        )
-        self.repair_system_nicknames_button.pack(fill=tk.X, pady=(0, 8))
         ttk.Button(
             workspace,
             text="Reload from CLICK",
@@ -1290,7 +1316,7 @@ class ClickNickApp:
 
     def _create_about_dialog(self):
         """Create and show the About dialog."""
-        AboutDialog(self.root, get_version())
+        AboutDialog(self.root, get_version(), db_path=self._live_mdb_path())
 
     def _live_open_address_editor(self, initial_filter: str = "changed") -> None:
         """Open or focus the Address Editor filtered to *initial_filter*.
@@ -1310,10 +1336,7 @@ class ClickNickApp:
         self._open_address_editor(initial_filter=initial_filter)
 
     def _verify_mdb_and_cdv(self):
-        """Verify MDB addresses and CDV entries for validity.
-
-        Only available in dev mode. See utils/verification.py for full check list.
-        """
+        """Verify MDB addresses and CDV entries for validity."""
         if not self.connected_click_pid:
             self._update_status("Connect to a ClickPLC window first", "error")
             return
@@ -1368,8 +1391,8 @@ class ClickNickApp:
     def _clean_mdb(self):
         """Clean MDB database by removing empty, unused rows.
 
-        Only available in dev mode. Loads rows directly from MDB (no placeholders)
-        and deletes any rows where needs_full_delete is True (no content, not used).
+        Loads rows directly from MDB (no placeholders) and deletes any rows where
+        needs_full_delete is True (no content, not used).
         """
         if not self.connected_click_pid:
             self._update_status("Connect to a ClickPLC window first", "error")
@@ -1628,10 +1651,19 @@ class ClickNickApp:
         tools_menu.add_command(label="Dataview Editor...", command=self._open_dataview_editor)
         tools_menu.add_command(label="Check Program", command=self._analyze_program)
         tools_menu.add_command(label="Console...", command=self._open_console)
-        if _DEV_MODE:
-            tools_menu.add_separator()
-            tools_menu.add_command(label="Verify MDB & CDV...", command=self._verify_mdb_and_cdv)
-            tools_menu.add_command(label="Clean MDB...", command=self._clean_mdb)
+        tools_menu.add_separator()
+        repairs_menu = tk.Menu(tools_menu, tearoff=0)
+        tools_menu.add_cascade(label="Repairs", menu=repairs_menu)
+        repairs_menu.add_command(
+            label="System Nicknames",
+            command=self._repair_system_nicknames,
+            state=tk.DISABLED,
+        )
+        self.repairs_menu = repairs_menu
+        self._repairs_system_nicknames_index = 0
+        repairs_menu.add_separator()
+        repairs_menu.add_command(label="Verify MDB & CDV...", command=self._verify_mdb_and_cdv)
+        repairs_menu.add_command(label="Clean MDB...", command=self._clean_mdb)
 
         # Workspace menu. Main-screen placement arrives in the focused UI
         # refresh; these commands own the stable behavior in the meantime.
@@ -1749,6 +1781,7 @@ class ClickNickApp:
         self.monitor_task_id = None
 
         # Connected Click.exe instance
+        self._connection_probe_token = None
         self.connected_click_pid = None
         self.connected_click_filename = None
         self.connected_click_hwnd = None
@@ -1924,14 +1957,15 @@ class ClickNickApp:
                     window._update_sync_indicator(pending)
 
     def _check_odbc_drivers_and_warn(self):
-        """Check for ODBC drivers and show warning if none available."""
-        if not self.nickname_manager.has_access_driver():
+        """Check database backend candidates and warn if none are available."""
+        if not self.nickname_manager.has_database_backend():
             self._show_odbc_warning()
             return False
         return True
 
     def _clear_connection_state(self) -> None:
         """Clear the currently connected Click window metadata."""
+        self._connection_probe_token = None
         self.connected_click_pid = None
         self.connected_click_filename = None
         self.connected_click_hwnd = None
@@ -1985,6 +2019,7 @@ class ClickNickApp:
 
     def load_csv(self):
         """Load nicknames from CSV file."""
+        self._connection_probe_token = None
         csv_path = self.csv_path_var.get()
         if not csv_path:
             self._update_status("⚠ No CSV file selected", "error")
@@ -2045,8 +2080,8 @@ class ClickNickApp:
             self._update_status("⚠ Not connected", "error")
             return False
 
-        # Check if ODBC drivers are available
-        if not self.nickname_manager.has_access_driver():
+        # Check whether a database backend can be attempted
+        if not self.nickname_manager.has_database_backend():
             self._update_status("⏹ Stopped - Use File → Load Nicknames... to Start", "status")
             if not self._odbc_warning_shown:
                 self._show_odbc_warning()
@@ -2068,9 +2103,84 @@ class ClickNickApp:
         self.start_monitoring()
         return True
 
+    def _connect_csv_fallback(self, filename, hwnd):
+        """Offer CSV loading after a failed connection or an explicit CSV selection."""
+        self._show_main_window()
+        fallback_csv = find_fallback_csv(hwnd)
+        if fallback_csv:
+            default_name = f"{filename.replace('.ckp', '')}_Address.csv"
+            dialog = CsvFallbackDialog(self.root, fallback_csv, default_name)
+            saved_path = dialog.show()
+            if saved_path:
+                self.csv_path_var.set(saved_path)
+                self.load_csv()
+                return
+        self._update_status("Stopped - Use File > Load Nicknames...", "error")
+        if not self._odbc_warning_shown:
+            self._show_odbc_warning()
+            self._odbc_warning_shown = True
+
+    def _load_instance_database(self, pid, filename, hwnd):
+        """Select a backend and load a private store before attaching it to Tk."""
+        import queue
+        import threading
+
+        from .connection_session import ConnectionSession
+        from .data.data_source import MdbDataSource
+
+        token = object()
+        self._connection_probe_token = token
+        results = queue.Queue()
+        self._update_status("Loading database...", "status")
+
+        def load():
+            try:
+                data_source = MdbDataSource(click_pid=pid, click_hwnd=hwnd)
+                store = AddressStore(data_source)
+                store.load_initial_data()
+                results.put((store, None))
+            except Exception as exc:
+                results.put((None, str(exc)))
+
+        threading.Thread(target=load, daemon=True).start()
+
+        def finish():
+            if self._connection_probe_token is not token:
+                return
+            try:
+                store, error = results.get_nowait()
+            except queue.Empty:
+                self.root.after(100, finish)
+                return
+            if error is not None:
+                self._show_main_window()
+                self._update_status("Database connection failed", "error")
+                self._odbc_warning_shown = True
+                messagebox.showerror("Database Connection", error, parent=self.root)
+                if self._connection_probe_token is token:
+                    self._connect_csv_fallback(filename, hwnd)
+                return
+
+            store.start_file_monitoring(self.root)
+            self._session = ConnectionSession(
+                pid,
+                hwnd,
+                filename,
+                store,
+                workspace_dir=self._configured_workspace_dir(),
+                on_sync_status_changed=self._on_sync_status_changed,
+            )
+            self.nickname_manager.set_shared_data(store)
+            self.load_from_database()
+            self._start_analysis_build()
+
+        self.root.after(100, finish)
+
     def connect_to_instance(self, pid, title, filename, hwnd):
         """Connect to a specific Click.exe instance."""
-        from .connection_session import ConnectionSession
+        from .utils.mdb_shared import get_database_backend
+
+        self._connection_probe_token = None
 
         # Close existing session (prompt to save)
         if self._session is not None:
@@ -2104,46 +2214,10 @@ class ClickNickApp:
         self.connected_click_hwnd = hwnd
         self._load_workspace_pairing()
 
-        # Check for ODBC drivers - if missing, try CSV fallback
-        if not self.nickname_manager.has_access_driver():
-            # Modal fallback/warning dialogs need a visible parent even during
-            # the otherwise-hidden startup connection pass.
-            self._show_main_window()
-            fallback_csv = find_fallback_csv(hwnd)
-            if fallback_csv:
-                default_name = f"{filename.replace('.ckp', '')}_Address.csv"
-                dialog = CsvFallbackDialog(self.root, fallback_csv, default_name)
-                saved_path = dialog.show()
-                if saved_path:
-                    self.csv_path_var.set(saved_path)
-                    self.load_csv()
-                    return
-            self._update_status("⏹ Stopped - Use File → Load Nicknames...", "error")
-            if not self._odbc_warning_shown:
-                self._show_odbc_warning()
-                self._odbc_warning_shown = True
+        if get_database_backend() == "none":
+            self._connect_csv_fallback(filename, hwnd)
             return
-
-        # Create session with MDB-backed store
-        from .data.data_source import MdbDataSource
-
-        data_source = MdbDataSource(click_pid=pid, click_hwnd=hwnd)
-        store = AddressStore(data_source)
-        store.load_initial_data()
-        store.start_file_monitoring(self.root)
-
-        self._session = ConnectionSession(
-            pid,
-            hwnd,
-            filename,
-            store,
-            workspace_dir=self._configured_workspace_dir(),
-            on_sync_status_changed=self._on_sync_status_changed,
-        )
-
-        self.nickname_manager.set_shared_data(store)
-        self.load_from_database()
-        self._start_analysis_build()
+        self._load_instance_database(pid, filename, hwnd)
 
     def _handle_popup_window(self, window_id, window_class, edit_control):
         """Handle the detected popup window by showing or updating the nickname popup."""
@@ -2244,7 +2318,7 @@ class ClickNickApp:
 
         from .connection_session import ConnectionSession
 
-        if self.nickname_manager.has_access_driver():
+        if self.nickname_manager.has_database_backend():
             from .data.data_source import MdbDataSource
 
             data_source = MdbDataSource(
@@ -2377,6 +2451,7 @@ class ClickNickApp:
 
     def on_closing(self):
         """Handle application shutdown."""
+        self._connection_probe_token = None
         if self.monitoring:
             self.stop_monitoring()
         if self.overlay is not None:
@@ -2400,27 +2475,27 @@ class ClickNickApp:
         self.root.mainloop()
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     """Entry point for the application."""
-    app = ClickNickApp()
-    app.run()
+    import argparse
+    import os
 
+    from .utils.mdb_shared import get_database_backend
 
-def main_dev() -> None:
-    """Entry point for development mode with in-progress features enabled.
-
-    Args (via sys.argv):
-        -csvonly: Force CSV-only mode (pretend ODBC drivers are unavailable)
-    """
-    import sys
-
-    global _DEV_MODE
-    _DEV_MODE = True
-
-    if "-csvonly" in sys.argv:
-        set_csv_only_mode(True)
-        print("CSV-only mode enabled (ODBC drivers will appear unavailable)")
-
+    parser = argparse.ArgumentParser(description="CLICK nickname and project tools")
+    parser.add_argument(
+        "--db-backend",
+        choices=("auto", "odbc", "jet", "none"),
+        help="Database backend: auto prefers ODBC; odbc or jet forces that backend. "
+        "none forces CSV mode. Defaults to CLICKNICK_DB_BACKEND or auto.",
+    )
+    args = parser.parse_args(argv)
+    if args.db_backend is not None:
+        os.environ["CLICKNICK_DB_BACKEND"] = args.db_backend
+    try:
+        get_database_backend()
+    except ValueError as exc:
+        parser.error(str(exc))
     app = ClickNickApp()
     app.run()
 

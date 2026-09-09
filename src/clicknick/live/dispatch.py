@@ -436,7 +436,11 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
         from ..services.program_check import run_project_check
         from .rung_commands import _get_project_dir
 
-        return run_project_check(_get_project_dir(ctx)) + _status_footer(ctx)
+        project_dir = _get_project_dir(ctx)
+        selection = getattr(ctx.analysis, "check_selection", None)
+        if selection is not None:
+            selection.sync(project_dir)
+        return run_project_check(project_dir) + _status_footer(ctx)
 
     if verb == "tag":
         from .tag_commands import dispatch_tag

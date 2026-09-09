@@ -184,3 +184,5 @@ cython_debug/
 
 # Repomapper
 .repomap*
+# Trust reports mirrored from GitHub releases at docs build time
+docs/security/clicknick-*

@@ -3,6 +3,8 @@ name: Docs
 on:
   push:
     branches: ["main"]
+  pull_request:
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
@@ -34,6 +36,18 @@ jobs:
       - name: Install docs dependencies only
         run: uv sync --locked --only-group docs
 
+      - name: Cache-bust extra assets
+        run: |
+          sed -i -E "s#^(\s*- (stylesheets|javascripts)/[^?[:space:]]+)\$#\1?v=${GITHUB_SHA::8}#" mkdocs.yml
+          grep -E '\?v=' mkdocs.yml
+
+      # Per-release trust reports and SBOMs are release assets; mirror them
+      # into the site so pyrung.com/clicknick/security/ has every version.
+      - name: Collect trust reports from releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run --no-sync python .github/scripts/collect_trust_reports.py
+
       - name: Build docs
         run: uv run --no-sync zensical build --clean --strict
 
@@ -44,11 +58,13 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v4
         with:
           path: site
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:

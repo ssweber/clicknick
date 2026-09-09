@@ -42,11 +42,7 @@ To upgrade later, run `uv tool upgrade clicknick`. To try the latest release wit
 
 Then open your CLICK project as usual. ClickNick detects the open project and connects to it.
 
-### Microsoft Access driver
-
-Full project-aware features - including live nickname sync, Check Program, Console, workspaces, testing, and pyrung analysis - require the **64-bit Microsoft Access ODBC driver** so ClickNick can read CLICK's open project database. See [Install the Access driver](https://pyrung.com/clicknick/install/#install-the-access-driver).
-
-If the driver is missing, ClickNick explains what is unavailable and continues in a reduced CSV mode. Nickname autocomplete and the lighter Address Editor and Data View workflows can still be used with nickname data loaded from CSV.
+On Windows x64, a separate database driver normally isn't needed. If connecting fails, see [connection help](https://pyrung.com/clicknick/help/#database-connection).
 
 <details>
 <summary>Install with pip instead</summary>

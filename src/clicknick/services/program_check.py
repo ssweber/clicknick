@@ -39,8 +39,13 @@ def format_validation_report(report: ValidationReport) -> str:
     from pyrung.core.validation import ordered_rules
 
     grouped = group_validation_findings(report)
+    checked = getattr(report, "checked_rules", None)
     if not grouped:
-        return "Check Program: all checks passed"
+        if checked is None:
+            return "Check Program: all checks passed"
+        if not checked:
+            return "Check Program: no checks selected"
+        return f"Check Program: {len(checked)} selected checks passed; {len(ordered_rules()) - len(checked)} not run"
 
     specs = ordered_rules()
     known = {spec.code for spec in specs}
@@ -55,12 +60,14 @@ def format_validation_report(report: ValidationReport) -> str:
         if count:
             by_severity[severity] = by_severity.get(severity, 0) + count
     summary = ", ".join(
-        f"{count} {severity if count == 1 else severity + 's'}"
+        f"{count} {severity if count == 1 else 'advisories' if severity == 'advisory' else severity + 's'}"
         for severity in ("error", "warning", "info", "advisory")
         if (count := by_severity.get(severity, 0))
     )
 
     lines = [f"Check Program: {summary}"]
+    if checked is not None:
+        lines.append(f"{len(checked)} checks run; {len(ordered_rules()) - len(checked)} not run")
     for code, title, severity in rows:
         displays = grouped.get(code, ())
         if not displays:
@@ -101,7 +108,10 @@ def _worker() -> None:
 
     if not isinstance(logic, Program):
         raise TypeError(f"Expected plc.main.logic to be Program, got {type(logic).__name__}")
-    print(format_validation_report(logic.validate()))
+    from pyrung.core.validation.config import CheckConfig, load_check_config
+
+    config = load_check_config(Path.cwd() / "pyproject.toml") or CheckConfig()
+    print(format_validation_report(logic.check(select=set(config.resolve()))))
 
 
 if __name__ == "__main__":

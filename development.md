@@ -11,6 +11,68 @@ repo](https://github.com/ssweber/clicknick/fork) (having your own
 fork will make it easier to contribute) and
 [clone it](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository).
 
+## Working with local pyrung
+
+Keep the checkouts side by side (`clicknick`, `pyrung`, and `pyclickplc`). Run these commands
+from the **clicknick directory**, using Windows **cmd**:
+
+```bat
+make install
+make install-pyrung-dev
+set UV_NO_SYNC=1
+make lint test
+uv run --no-sync python -u -m clicknick
+```
+
+`make install-pyrung-dev` installs `../pyclickplc` and `../pyrung` as editable dependencies in
+ClickNick's `.venv`, so source edits in both checkouts are used directly. Restart
+ClickNick after changing Python code. The Python module launch keeps stdout
+and stderr visible in the terminal. Use the checkout launch command above;
+a separately installed `uv tool` launcher has its own environment.
+
+`--no-sync` keeps uv from replacing the local library installs with the released
+packages from `uv.lock`. It does not install the local package by itself.
+`UV_NO_SYNC=1` also protects the `uv run` commands inside `make lint` and
+`make test`. In **PowerShell**, set it with:
+
+```powershell
+$env:UV_NO_SYNC = '1'
+```
+
+Both forms apply only to the current terminal session. cmd uses `set`, not
+`export`. While testing local pyrung, use `make lint test`; bare `make`,
+`make install`, and `make upgrade` include explicit dependency synchronization
+and can restore the released package even with `UV_NO_SYNC` set.
+
+### Missing validation.config module
+
+If you see `No module named pyrung.core.validation.config`, the environment
+likely contains released pyrung instead of the paired development checkout.
+Reinstall the local dependency, then restart ClickNick:
+
+```bat
+make install-pyrung-dev
+uv run --no-sync python -u -m clicknick
+```
+
+The new Check Program selection workflow requires the matching pyrung changes.
+Channel parameter import also requires the matching local pyclickplc checkout.
+Before releasing ClickNick, publish both library versions and update ClickNick's
+minimum dependency and lockfile together.
+
+### Returning to released dependencies
+
+In cmd:
+
+```bat
+set UV_NO_SYNC=
+make install
+```
+
+In PowerShell, clear the variable with
+`Remove-Item Env:UV_NO_SYNC -ErrorAction SilentlyContinue`, then run `make install`.
+Use a ClickNick revision compatible with the released pyrung version.
+
 ## Basic Developer Workflows
 
 The `Makefile` simply offers shortcuts to `uv` commands for developer convenience.
@@ -46,6 +108,14 @@ make lint
 
 # Run tests:
 make test
+
+# Cross-backend oracle tests (Access ODBC vs the built-in Jet worker on one MDB).
+# Needs an Access ODBC driver installed; not part of `make test` or CI:
+make test-backend
+
+# Build the wheel plus the release trust report and SBOM into dist/trust/
+# (needs network for uv audit; TRUST_ARGS=--skip-audit when offline):
+make trust-report
 
 # Delete all the build artifacts:
 make clean
@@ -101,3 +171,9 @@ extensions:
 
 *This file was built with
 [simple-modern-uv](https://github.com/jlevy/simple-modern-uv).*
+
+## Jet database fallback
+
+See [Jet sidecar research](research/jet-sidecar/README.md) for validation results,
+standalone probes, and remaining platform checks. Production regression tests
+run with `make test`.

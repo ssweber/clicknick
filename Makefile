@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := default
 
-.PHONY: default install lint test docs-serve docs-build docs-check upgrade build action-icons clean
+.PHONY: default install lint test test-backend docs-serve docs-build docs-check upgrade build trust-report action-icons clean
 
 DOCS_ADDR ?= localhost:8000
 
@@ -13,11 +13,21 @@ default: install lint test
 install:
 	uv sync --locked --all-extras --dev
 
+# Work on ClickNick and pyrung together without changing release dependencies.
+# Set UV_NO_SYNC=1 for subsequent make lint/test and app runs in this environment.
+.PHONY: install-pyrung-dev
+install-pyrung-dev:
+	uv pip install --editable ../pyclickplc --editable ../pyrung
+
 lint:
 	uv run python devtools/lint.py
 
 test:
 	uv run pytest --quiet --tb=short
+
+# Cross-backend oracle: Access ODBC vs the Jet worker on the same MDB. Not run in CI.
+test-backend:
+	uv run pytest --quiet --tb=short -m backend tests/test_backend_oracle.py
 
 docs-serve:
 	uv run --group docs zensical serve --dev-addr $(DOCS_ADDR)
@@ -34,6 +44,11 @@ upgrade:
 
 build:
 	uv build
+
+# Release trust report: SBOM + dependency table + release checks (dist/trust/).
+# Needs network for uv audit; add TRUST_ARGS=--skip-audit when offline.
+trust-report: build
+	uv run python devtools/trust_report.py $(TRUST_ARGS)
 
 action-icons:
 	powershell -NoProfile -ExecutionPolicy Bypass -File devtools/generate_action_icons.ps1
