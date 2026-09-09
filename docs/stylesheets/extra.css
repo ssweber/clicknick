@@ -1,3 +1,16 @@
+/* pyrung family palette. The same block lives in every site's stylesheet:
+   pyrung.com, ClickNick, pyrung, laddercodec, pyclickplc. Zensical's modern
+   theme ignores palette color names in mkdocs.yml, so the primary is set here. */
+
+:root,
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #17653a;
+  --md-primary-fg-color--light: #2f8a55;
+  --md-primary-fg-color--dark: #0f4a29;
+  --md-accent-fg-color: #1f8a4c;
+  --md-accent-fg-color--transparent: #1f8a4c1a;
+}
+
 /* Shared tokens for the tour blocks */
 
 :root {
