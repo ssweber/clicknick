@@ -42,4 +42,4 @@ Data Views are built by name. Load the `.cdv` files from the open project into t
 
 Address Editor and Data View changes live in CLICK's temporary files until you save in CLICK Programming Software. Review them before you do. [Where ClickNick writes.](help/index.md#where-clicknick-writes)
 
-[Back to the tour](tour/autocomplete.md) · [Help](help/index.md)
+[Back to the tour](tour/autocomplete.md){ .md-button .md-button--primary } [Help](help/index.md){ .md-button }

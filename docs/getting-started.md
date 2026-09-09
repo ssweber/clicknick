@@ -22,4 +22,4 @@ Open **Console** to run the saved program without a PLC. Force inputs, step scan
 
 A workspace is a folder that links up with your open project. ClickNick fills it with your ladder (as Python) after every save. Anything you add, tests, notes, fixtures, stays. Until you pick a folder, ClickNick uses a temporary one, which is enough for checks and the Console. Pick a real folder from the Workspace controls when you want the work to stay with the machine. ClickNick remembers which folder goes with which project.
 
-[Start the tour](tour/autocomplete.md) · [Help](help/index.md)
+[Start the tour](tour/autocomplete.md){ .md-button .md-button--primary } [Help](help/index.md){ .md-button }
