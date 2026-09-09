@@ -26,7 +26,7 @@ PATTERNS = ["clicknick-trust-report-*.html", "clicknick-sbom-*.cyclonedx.json"]
 HEADER = """\
 # Release reports
 
-Every release ships an immutable trust report and its CycloneDX SBOM. The same
+Every release ships a versioned trust report and its CycloneDX SBOM. The same
 files are attached to the matching [GitHub release](https://github.com/ssweber/clicknick/releases).
 See [Security](index.md) for what the report contains and how to verify it.
 

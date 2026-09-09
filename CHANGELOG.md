@@ -12,7 +12,7 @@
 
 ### Fixed
 
-- The trust report and dependency inventory are now attached before the GitHub release is published, making them available to download and on the security docs site.
+- Fixed the missing trust report and dependency inventory downloads from 0.23.0; publishing a GitHub release now uploads the reports and refreshes the security docs automatically.
 
 ## v0.23.0 - 2026-09-09
 
