@@ -7,7 +7,7 @@ AI is optional. If you use a coding agent, point it at the workspace, not the `.
 <div class="agent-flow" role="group" aria-labelledby="agent-flow-title">
   <p class="agent-flow__head"><strong id="agent-flow-title">What the agent works with</strong> The same workspace you have. Nothing it runs touches the PLC.</p>
   <ol class="agent-flow__steps">
-    <li class="agent-flow__step agent-flow__step--reads">
+    <li class="agent-flow__step">
       <strong>Reads the workspace</strong>
       <dl class="workspace__rows">
         <dt>src/plc/</dt><dd>the ladder as text</dd>
@@ -15,7 +15,7 @@ AI is optional. If you use a coding agent, point it at the workspace, not the `.
       </dl>
       <p>The ladder text refreshes on every CLICK save.</p>
     </li>
-    <li class="agent-flow__step agent-flow__step--model">
+    <li class="agent-flow__step">
       <strong>Works in the offline model</strong>
       <dl class="workspace__rows">
         <dt>why · how · step · force</dt><dd>trace, search, and step the scan</dd>
@@ -23,12 +23,12 @@ AI is optional. If you use a coding agent, point it at the workspace, not the `.
       </dl>
       <p>pyrung's model of the scan. No connection to the PLC.</p>
     </li>
-    <li class="agent-flow__step agent-flow__step--proposes">
+    <li class="agent-flow__step">
       <strong>Proposes files</strong>
       <span>Edits to the ladder text, new tests, comments. All of it sits in the workspace for you to read.</span>
       <p>Preview Changes shows the rung diff.</p>
     </li>
-    <li class="agent-flow__step agent-flow__step--accept">
+    <li class="agent-flow__step">
       <strong>You accept</strong>
       <span>Select the rungs you want. Copy to Click puts them on the clipboard; you paste them in CLICK.</span>
       <p>Nothing changes until you save in CLICK.</p>

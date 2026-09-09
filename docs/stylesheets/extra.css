@@ -14,10 +14,13 @@
 /* Shared tokens for the tour blocks */
 
 :root {
-  --cn-panel: #f8fafc;
-  --cn-border: #d7e0e7;
-  --cn-muted: #496276;
-  --cn-body: #294354;
+  --cn-panel: #f7f9f7;
+  --cn-border: #d9e3dc;
+  --cn-muted: #657069;
+  --cn-body: #344139;
+  --cn-green: #17653a;
+  --cn-green-soft: #eaf5ee;
+  --cn-green-line: #b8d8c3;
 }
 
 /* Workspace layout block (tour 5) */
@@ -25,8 +28,8 @@
 .md-typeset .workspace {
   margin: 1.4rem 0 1.5rem;
   padding: 1rem;
-  background: #f8fafc;
-  border: 1px solid #d7e0e7;
+  background: var(--cn-panel);
+  border: 1px solid var(--cn-border);
   border-radius: 0.6rem;
 }
 
@@ -44,7 +47,7 @@
 }
 
 .workspace__link {
-  color: #496276;
+  color: var(--cn-muted);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -65,13 +68,13 @@
 }
 
 .md-typeset .workspace__col--managed {
-  background: #eaf4ff;
-  border-color: #4d87b8;
+  background: #fff;
+  border-color: var(--cn-border);
 }
 
 .md-typeset .workspace__col--yours {
-  background: #edf8ef;
-  border-color: #5b9566;
+  background: var(--cn-green-soft);
+  border-color: var(--cn-green-line);
 }
 
 .md-typeset .workspace__title {
@@ -101,18 +104,18 @@
 }
 
 .md-typeset .workspace__rows dd {
-  color: #294354;
+  color: var(--cn-body);
 }
 
 .md-typeset .workspace__col p {
   margin: 0.7rem 0 0;
-  color: #496276;
+  color: var(--cn-muted);
   font-size: 0.7rem;
 }
 
 .md-typeset .workspace__foot {
   margin: 0.9rem 0 0;
-  color: #496276;
+  color: var(--cn-muted);
   font-size: 0.72rem;
 }
 
@@ -177,7 +180,6 @@
   padding: 0.8rem 1rem 0.8rem 3rem;
   background: #fff;
   border: 1px solid var(--cn-border);
-  border-left-width: 4px;
   border-radius: 0.55rem;
   counter-increment: agent-flow;
 }
@@ -195,14 +197,9 @@
   color: #fff;
   font-size: 0.72rem;
   font-weight: 700;
-  background: var(--cn-muted);
+  background: var(--cn-green);
   border-radius: 999px;
 }
-
-.md-typeset .agent-flow__step--reads { border-left-color: #4d87b8; }
-.md-typeset .agent-flow__step--model { border-left-color: #5b9566; }
-.md-typeset .agent-flow__step--proposes { border-left-color: #c9a227; }
-.md-typeset .agent-flow__step--accept { border-left-color: #294354; }
 
 .md-typeset ol.agent-flow__steps > li > strong {
   display: block;
