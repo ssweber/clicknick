@@ -109,7 +109,7 @@ If a script piped into PowerShell is against policy, install uv with
 `winget install --id astral-sh.uv`. If your policy prefers pip, install ClickNick into a
 virtual environment using Python 3.11 or newer. See [Install](../install.md).
 
-To install a specific ClickNick release: `uv tool install clicknick==0.23.0`.
+To install a specific ClickNick release: `uv tool install clicknick==0.23.1`.
 To update: `uv tool upgrade clicknick`.
 
 ClickNick pins its whole dependency tree to exact versions, so installing a given ClickNick
@@ -147,11 +147,11 @@ The report can be regenerated from the tagged source:
 ```powershell
 git clone https://github.com/ssweber/clicknick
 cd clicknick
-git checkout v0.23.0                                   # the release under review
+git checkout v0.23.1                                   # the release under review
 uv export --frozen --no-dev --format cyclonedx1.5      # the dependency list
 uv audit --frozen --no-dev --no-group docs             # the vulnerability check
 uv build
-certutil -hashfile dist\clicknick-0.23.0-py3-none-any.whl SHA256
+certutil -hashfile dist\clicknick-0.23.1-py3-none-any.whl SHA256
 uv run python devtools/trust_report.py                 # regenerate the report into dist\trust
 ```
 
