@@ -1,45 +1,25 @@
 name: Publish to PyPI
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Existing version tag with an unpublished draft release (for example v0.23.1)
-        required: true
-        type: string
-
-concurrency:
-  group: publish-${{ inputs.release_tag }}
-  cancel-in-progress: false
-
-permissions:
-  contents: read
-
-env:
-  RELEASE_TAG: ${{ inputs.release_tag }}
-  GH_REPO: ${{ github.repository }}
 
 jobs:
+  # JOB 1: Build on Windows (handles pywin32)
   build:
     name: Build distribution
     runs-on: windows-latest
     steps:
-      - name: Validate release tag
-        run: |
-          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') {
-            throw 'release_tag must be a stable version tag such as v0.23.1'
-          }
-
-
-      - name: Checkout release tag
+      - name: Checkout (official GitHub action)
         uses: actions/checkout@v6
         with:
-          ref: refs/tags/${{ inputs.release_tag }}
           fetch-depth: 0
 
-      - name: Install uv
+      - name: Install uv (official Astral action)
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
+          # 0.12.x is needed for `uv export --format cyclonedx1.5` and `uv audit`.
           version: "0.12.1"
           enable-cache: auto
           python-version: "3.12"
@@ -48,15 +28,17 @@ jobs:
         run: uv python install
 
       - name: Install dependencies
+        # This works now because we are on Windows
         run: uv sync --locked --all-extras --dev
 
       - name: Build package
         run: uv build
 
+      # SBOM, dependency table and release checks. Fails the release on a red check.
       - name: Build trust report
         run: uv run --no-sync python devtools/trust_report.py --out trust
 
-      - name: Upload distributions
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist-files
@@ -68,17 +50,16 @@ jobs:
           name: trust-report
           path: trust/
 
+  # JOB 2: Publish on Linux (Required for pypa action)
   publish:
-    name: Publish release
-    needs: build
+    name: Publish to PyPI
+    needs: build  # Waits for the build job to finish
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
-      contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
+      id-token: write  # IMPORTANT: Mandatory for trusted publishing
+      contents: write  # Attach the trust report and SBOM to the GitHub release
     steps:
-      - name: Download distributions
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           name: dist-files
@@ -90,26 +71,27 @@ jobs:
           name: trust-report
           path: trust/
 
-      # Published releases are immutable: attach every report while still a draft.
-      - name: Attach reports to draft release
-        run: |
-          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
-          gh release upload "$RELEASE_TAG" trust/* --clobber
-
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
-      - name: Publish GitHub release
-        run: gh release edit "$RELEASE_TAG" --draft=false
+      # Per-release reports. The docs workflow mirrors these to
+      # pyrung.com/clicknick/security/ on its next run.
+      - name: Attach trust report to the GitHub release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" trust/* --repo "${{ github.repository }}" --clobber
 
   docs:
     name: Refresh release reports on docs site
+    if: github.event_name == 'release'
     needs: publish
     runs-on: ubuntu-latest
     permissions:
       actions: write
     steps:
-      - name: Build docs with the newly attached reports
+      - name: Refresh docs after report upload
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: gh workflow run docs.yml --ref main
