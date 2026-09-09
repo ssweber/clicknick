@@ -46,6 +46,6 @@ The agent gets the same program, the same tests, and the same command-line check
 
 Everything it runs is the same offline model. It has no connection to the PLC, and its ladder changes come back the way yours do: Preview Changes, your selection, then Guided Paste through CLICK.
 
-[Install ClickNick](../install.md) · [Help](../help/index.md) · [GitHub](https://github.com/ssweber/clicknick)
+[Install ClickNick](../install.md){ .md-button .md-button--primary } [Help](../help/index.md){ .md-button } [GitHub](https://github.com/ssweber/clicknick){ .md-button }
 
 > **ClickNick never edits your `.ckp`.** Nothing becomes part of the project until you save in CLICK Programming Software. [Where ClickNick writes.](../help/index.md#where-clicknick-writes)
