@@ -177,3 +177,19 @@ extensions:
 See [Jet sidecar research](research/jet-sidecar/README.md) for validation results,
 standalone probes, and remaining platform checks. Production regression tests
 run with `make test`.
+
+## Publishing a release
+
+Run `make trust-report` locally before creating the version tag. Merge the release
+changes, tag that commit, and push the tag. Create a **draft** GitHub release with
+user-focused notes, then dispatch the publishing workflow:
+
+```powershell
+gh release create v0.23.1 --verify-tag --draft --title "ClickNick 0.23.1" --notes-file release-notes.md
+gh workflow run publish.yml --ref main -f release_tag=v0.23.1
+```
+
+The workflow builds the tagged source, checks its trust report, and attaches the
+report and SBOM to the draft. It then publishes to PyPI, publishes the GitHub
+release, and refreshes the documentation site. Do not publish the draft manually:
+GitHub makes published releases immutable, so reports cannot be attached afterward.

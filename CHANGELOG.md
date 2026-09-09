@@ -8,6 +8,12 @@
      Review and condense before release — entries accumulate during development and
      should be edited into shape before moving from Unreleased to a version heading. -->
 
+## v0.23.1 - 2026-09-09
+
+### Fixed
+
+- The trust report and dependency inventory are now attached before the GitHub release is published, making them available to download and on the security docs site.
+
 ## v0.23.0 - 2026-09-09
 
 ### Features
