@@ -48,7 +48,7 @@ A workspace is a folder that links up with your open project. Until you pick one
 
 On every CLICK save, ClickNick refreshes `src/plc/` (your ladder as Python), `csv/` (the CLICK snapshot it was built from), nickname data, and its generation scripts. Files you add are left alone. If you edited `src/plc/` and a CLICK save is about to replace it, ClickNick copies it to `backup/src/plc/` first; `clicknick-cli restore` puts it back.
 
-Edits to the ladder text go back into CLICK through **Preview Changes** and **Guided Paste**. **Reload from CLICK** throws those edits away and restores the saved CLICK version, taking the same backup first.
+Edits to the ladder text go back into CLICK through **Preview Changes**: review the rung diff, **Copy to Click** the rungs you want, and paste them in CLICK's ladder editor. (**Guided Paste**, under the Ladder menu, is different: it walks you through pasting a whole folder of ladder CSVs, such as a program exported from pyrung.) **Reload from CLICK** throws those edits away and restores the saved CLICK version, taking the same backup first.
 
 ## Where ClickNick writes { #where-clicknick-writes }
 

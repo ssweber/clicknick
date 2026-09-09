@@ -30,7 +30,7 @@ AI is optional. If you use a coding agent, point it at the workspace, not the `.
     </li>
     <li class="agent-flow__step agent-flow__step--accept">
       <strong>You accept</strong>
-      <span>Select the rungs you want. Guided Paste puts them into CLICK.</span>
+      <span>Select the rungs you want. Copy to Click puts them on the clipboard; you paste them in CLICK.</span>
       <p>Nothing changes until you save in CLICK.</p>
     </li>
   </ol>
@@ -44,7 +44,7 @@ The agent gets the same program, the same tests, and the same command-line check
 4. Review a proposed change and run the checks.
 5. Then, if it has earned it, propose ladder changes.
 
-Everything it runs is the same offline model. It has no connection to the PLC, and its ladder changes come back the way yours do: Preview Changes, your selection, then Guided Paste through CLICK.
+Everything it runs is the same offline model. It has no connection to the PLC, and its ladder changes come back the way yours do: Preview Changes, your selection, then a paste in CLICK.
 
 [Install ClickNick](../install.md){ .md-button .md-button--primary } [Help](../help/index.md){ .md-button } [GitHub](https://github.com/ssweber/clicknick){ .md-button }
 
