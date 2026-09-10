@@ -8,6 +8,15 @@
      Review and condense before release — entries accumulate during development and
      should be edited into shape before moving from Unreleased to a version heading. -->
 
+## v0.23.2 - 2026-09-10
+
+### Fixed
+
+- Updated pyrung to 0.15.1 so imported CLICK CSV expressions are validated and imported names and text remain data in generated Python.
+- Release trust reports use the security page as their source for behavioral disclosures.
+- Build dependencies are pinned and fresh checkouts use LF line endings to support reproducible wheels.
+- The security page distinguishes intentional workspace execution from imported project data and explains the PowerShell backend choice.
+
 ## v0.23.1 - 2026-09-09
 
 ### Fixed

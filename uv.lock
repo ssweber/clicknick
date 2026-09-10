@@ -11,6 +11,18 @@ laddercodec = { timestamp = "0001-01-01T00:00:00Z", span = "PT0S" }
 pyrung = { timestamp = "0001-01-01T00:00:00Z", span = "PT0S" }
 pyclickplc = { timestamp = "0001-01-01T00:00:00Z", span = "PT0S" }
 
+[manifest]
+build-constraints = [
+    { name = "dunamai", specifier = "==1.26.2" },
+    { name = "jinja2", specifier = "==3.1.6" },
+    { name = "markupsafe", specifier = "==3.0.3" },
+    { name = "packaging", specifier = "==26.3" },
+    { name = "pathspec", specifier = "==1.1.1" },
+    { name = "pluggy", specifier = "==1.6.0" },
+    { name = "tomlkit", specifier = "==0.15.1" },
+    { name = "trove-classifiers", specifier = "==2026.6.1.19" },
+]
+
 [[package]]
 name = "click"
 version = "8.4.2"
@@ -41,6 +53,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "markdown" },
     { name = "pytest" },
     { name = "ruff" },
     { name = "ssort" },
@@ -57,7 +70,7 @@ requires-dist = [
     { name = "pymodbus", specifier = "==3.12.1" },
     { name = "pyodbc", specifier = "==5.3.0" },
     { name = "pyrsistent", specifier = "==0.20.0" },
-    { name = "pyrung", specifier = "==0.15.0" },
+    { name = "pyrung", specifier = "==0.15.1" },
     { name = "pywin32", specifier = "==311" },
     { name = "tksheet", specifier = "==7.6.0" },
     { name = "tomlkit", specifier = "==0.15.1" },
@@ -65,6 +78,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "markdown", specifier = "==3.10.3" },
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "ruff", specifier = ">=0.16.0" },
     { name = "ssort", specifier = "==0.16.0" },
@@ -357,7 +371,7 @@ wheels = [
 
 [[package]]
 name = "pyrung"
-version = "0.15.0"
+version = "0.15.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "executing" },
@@ -365,9 +379,9 @@ dependencies = [
     { name = "pyrsistent" },
     { name = "tomlkit" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/29/97/c1cb7bf343f4f3733f51c4f418567316b27b05ccf97580313c46447d962a/pyrung-0.15.0.tar.gz", hash = "sha256:2de814c6e89dc0bc30c371d9f4596e7cc61e8192b4a165888062fdde2ff7e573", size = 4056387, upload-time = "2026-09-09T17:58:29.262Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ac/4e/2621e8e3fc918dfddbe19176bd641ea34c4072fbd507821d6d183ed7a9fd/pyrung-0.15.1.tar.gz", hash = "sha256:e4381e8559aaf8d01aa50218229b993657bb0440460280cb317edb050920b6ab", size = 4060339, upload-time = "2026-09-10T12:55:34.875Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/b0/62ae379b4295ba796ad20ddd9e747c5e910ae7440bb5d4231807370141b7/pyrung-0.15.0-py3-none-any.whl", hash = "sha256:bfe67838a82e769024ac7086b7e50a59f51fa6d84acaf0da7589cac35f3b7237", size = 1566810, upload-time = "2026-09-09T17:58:27.635Z" },
+    { url = "https://files.pythonhosted.org/packages/96/33/de702b5c472bb37eaf5fb8b742b84bf5b44897d50df0d3b4f693abe27155/pyrung-0.15.1-py3-none-any.whl", hash = "sha256:7bef4ed2d65a20cb8726360a92a846b963fb430d8f76ba2dcbfecc4f0e54f5dd", size = 1569184, upload-time = "2026-09-10T12:55:32.873Z" },
 ]
 
 [[package]]

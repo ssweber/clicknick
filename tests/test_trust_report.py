@@ -191,3 +191,103 @@ def test_unpinned_dependency_fails_pin_check():
     label = "Every runtime distribution is pinned exactly in pyproject.toml to its locked version"
     assert not results[label].passed
     assert "pywin32" in results[label].detail and "pyodbc" not in results[label].detail
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "No shared narrative",
+        "<!-- trust-report:start -->missing end",
+        "<!-- trust-report:end --><!-- trust-report:start -->reversed",
+        "<!-- trust-report:start --><!-- trust-report:end -->",
+        "<!-- trust-report:start --><!-- trust-report:start -->nested"
+        "<!-- trust-report:end --><!-- trust-report:end -->",
+    ],
+)
+def test_security_narrative_rejects_missing_or_malformed_sections(tmp_path, source):
+    page = tmp_path / "index.md"
+    page.write_text(source, encoding="utf-8")
+    with pytest.raises(ValueError, match="Security page"):
+        tr.render_security_narrative(page)
+
+
+def test_security_narrative_uses_current_checkout_and_only_marked_sections(tmp_path, monkeypatch):
+    page = tmp_path / "docs/security/index.md"
+    page.parent.mkdir(parents=True)
+    page.write_text(
+        "Excluded instructions\n<!-- trust-report:start -->\n"
+        "## Behavior\nOriginal wording.\n<!-- trust-report:end -->\n"
+        "Excluded version example\n<!-- trust-report:start -->\n"
+        "## Uninstall\nRemove the tool.\n<!-- trust-report:end -->",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(tr, "ROOT", tmp_path)
+    first = tr.render_security_narrative()
+    assert "Original wording." in first and "Remove the tool." in first
+    assert "Excluded" not in first
+    page.write_text(
+        page.read_text(encoding="utf-8").replace("Original", "Updated"), encoding="utf-8"
+    )
+    updated = tr.render_security_narrative()
+    assert "Updated wording." in updated and "Original wording." not in updated
+
+
+def test_security_narrative_renders_markdown_and_portable_links(tmp_path):
+    page = tmp_path / "index.md"
+    page.write_text(
+        textwrap.dedent("""\
+            <!-- trust-report:start -->
+            ## Behavior
+
+            **Review** `SC_.mdb` and preserve Unicode: →.
+
+            | Event | Cause |
+            |---|---|
+            | Python | Launch |
+
+            ```powershell
+            command <placeholder>
+            ```
+
+            [Reports](reports.md#release) [Install](../install.md)
+            [Index](index.md) [Root](../index.md)
+            [External](https://example.org/page.md) [Section](#runtime-behavior)
+            <!-- trust-report:end -->
+            """),
+        encoding="utf-8",
+    )
+    rendered = tr.render_security_narrative(page)
+    assert "<h3>Behavior</h3>" in rendered
+    assert "<strong>Review</strong>" in rendered and "<code>SC_.mdb</code>" in rendered
+    assert "→" in rendered
+    assert "<table>" in rendered and "<td>Launch</td>" in rendered
+    assert 'class="language-powershell"' in rendered
+    assert "command &lt;placeholder&gt;" in rendered
+    for link in (
+        "https://pyrung.com/clicknick/security/reports/#release",
+        "https://pyrung.com/clicknick/install/",
+        "https://pyrung.com/clicknick/security/",
+        "https://pyrung.com/clicknick/",
+        "https://example.org/page.md",
+        "https://pyrung.com/clicknick/security/#runtime-behavior",
+    ):
+        assert f'href="{link}"' in rendered
+
+
+def test_real_security_narrative_keeps_review_context_without_release_examples():
+    rendered = tr.render_security_narrative()
+    for heading in (
+        "Software characteristics",
+        "Runtime behavior",
+        "What endpoint monitoring will see",
+        "Installation and updates",
+        "Where things live on disk",
+        "Uninstall",
+        "Reporting a problem",
+    ):
+        assert f"<h3>{heading}</h3>" in rendered
+    assert "Connections are unauthenticated" in rendered
+    assert "not a formal security audit" in rendered
+    assert "git checkout" not in rendered
+    assert "uv tool install clicknick==" not in rendered
+    assert "<script" not in rendered and "<img" not in rendered and "<link" not in rendered

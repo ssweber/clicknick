@@ -44,7 +44,7 @@ classifiers = [
 dependencies = [
     "laddercodec==0.2.1",
     "pyclickplc==0.4.0",
-    "pyrung==0.15.0",
+    "pyrung==0.15.1",
     "pywin32==311",
     "pyodbc==5.3.0",
     "tksheet==7.6.0",
@@ -59,6 +59,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "markdown==3.10.3",  # Render the security page in release trust reports.
     "pytest>=8.3.5",
     "ruff>=0.16.0",
     "ssort==0.16.0",
@@ -81,7 +82,7 @@ clicknick = "clicknick:main"
 # https://github.com/ninoseki/uv-dynamic-versioning/
 
 [build-system]
-requires = ["hatchling", "uv-dynamic-versioning"]
+requires = ["hatchling==1.32.0", "uv-dynamic-versioning==0.14.1"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
@@ -100,6 +101,17 @@ bump = true
 packages = ["src/clicknick"]
 
 [tool.uv]
+# Build-only pins; uv build reads these without command-line flags.
+build-constraint-dependencies = [
+    "dunamai==1.26.2",
+    "jinja2==3.1.6",
+    "markupsafe==3.0.3",
+    "packaging==26.3",
+    "pathspec==1.1.1",
+    "pluggy==1.6.0",
+    "tomlkit==0.15.1",
+    "trove-classifiers==2026.6.1.19",
+]
 required-version = ">=0.11.29"
 exclude-newer = "7 days"
 exclude-newer-package = { pyclickplc = "0 days", laddercodec = "0 days", pyrung = "0 days" }

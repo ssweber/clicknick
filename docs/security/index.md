@@ -1,5 +1,9 @@
 # Security
 
+<!-- The report generator includes the marked sections from this checkout. -->
+<!-- Keep version-specific examples and report instructions outside these sections. -->
+<!-- trust-report:start -->
+
 ClickNick is a Windows desktop tool that reads and edits CLICK projects and adds nickname
 autocomplete to CLICK Programming Software.
 
@@ -52,8 +56,9 @@ workspaces are written to the folders the user chooses.
   step does not run files found in the project folder.
 - **Workspace Python.** Check Program, applying a proposal, and the offline console run
   the user's editable workspace (`src/plc`, `run.py`, `project_to_csv.py`) in a child Python
-  process. Treat a workspace received from outside like any other script folder: it runs
-  with the signed-in user's permissions.
+  process. The `tag apply` command executes workspace `tags.py` inside ClickNick to export
+  its nickname changes. These are intentional code execution features, with the signed-in
+  user's permissions. Treat a workspace received from outside like any other script folder.
 - **Documentation links.** Clicking a documentation link opens `github.com` or `pyrung.com`
   in the default browser.
 
@@ -81,10 +86,17 @@ The database worker's command line is:
 %SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand <base64>
 ```
 
-The payload is the shipped `clicknick/resources/jet_sidecar.ps1` script, unchanged,
-encoded as UTF-16LE and then Base64. Each release report includes the script's SHA256 for
-review. Endpoint tools may flag the encoded PowerShell command or executables under the
-user's profile; any exception depends on the controls in use.
+The payload is the text of the shipped `clicknick/resources/jet_sidecar.ps1` script,
+with line endings normalized to LF, encoded as UTF-16LE and then Base64. Each release
+report includes the shipped file's SHA256 for review. Project paths and values travel
+separately as JSON on standard input; they are not inserted into PowerShell source.
+
+The encoded invocation keeps the worker usable under Windows PowerShell's Restricted
+execution policy, which permits commands but blocks script files invoked with `-File`.
+It does not change execution policy or relax application-control rules. Endpoint tools
+may flag the invocation; any exception depends on the controls in use. To use Access ODBC
+without falling back to PowerShell, start `clicknick --db-backend odbc`. The
+`--db-backend none` option uses CSV mode without either database backend.
 
 ## Installation and updates
 
@@ -109,13 +121,14 @@ If a script piped into PowerShell is against policy, install uv with
 `winget install --id astral-sh.uv`. If your policy prefers pip, install ClickNick into a
 virtual environment using Python 3.11 or newer. See [Install](../install.md).
 
-To install a specific ClickNick release: `uv tool install clicknick==0.23.1`.
 To update: `uv tool upgrade clicknick`.
 
 ClickNick pins its whole dependency tree to exact versions, so installing a given ClickNick
 version installs exactly the dependency versions in that release's report. Dependency
 updates, including security fixes, arrive only through a new ClickNick release, and every
 release runs `uv audit` before it ships.
+
+<!-- trust-report:end -->
 
 ## The trust report
 
@@ -124,7 +137,10 @@ no scripts or external resources, and `clicknick-sbom-<version>.cyclonedx.json`,
 dependency inventory in [CycloneDX 1.5](https://cyclonedx.org/) format. Both are attached to
 the GitHub release and mirrored under [Release reports](reports.md).
 
-The report includes a detailed software checklist and four generated sections:
+The report includes the security narrative from this page in the tagged source, followed
+by four generated sections. Updating this page updates future reports automatically;
+published reports retain the wording from their release. The narrative describes intended
+behavior, while the checks provide the specific evidence listed below:
 
 1. **Release summary.** Version, Python requirement, distribution counts, known
    vulnerabilities from `uv audit`, non-PyPI dependency count, unresolved license count,
@@ -141,6 +157,8 @@ The report includes a detailed software checklist and four generated sections:
    runtime string literals, subprocess launch sites, and `exec` calls.
 
 ## Verify it yourself
+
+To install a specific ClickNick release: `uv tool install clicknick==0.23.1`.
 
 The report can be regenerated from the tagged source:
 
@@ -159,10 +177,16 @@ Compare the wheel hash with the
 [PyPI release page](https://pypi.org/project/clicknick/#files) and with the report.
 `uv tool dir` shows where the installed package's files live.
 
-Wheel builds are reproducible. The release is built on Windows with Git's default
-line-ending conversion, so a Windows checkout with default Git settings rebuilds the same
-bytes and the same SHA256. A Linux or macOS checkout gets LF line endings and a different
-hash.
+`uv build` reads the pinned build dependencies from `pyproject.toml`. Hatch uses stable
+archive timestamps by default; leave `SOURCE_DATE_EPOCH` unset to use that default.
+Git attributes select LF line endings for fresh checkouts. Compare the rebuilt wheel's
+SHA256 with the release report to verify that its bytes match.
+
+Use a clean checkout and the build recipe from the release tag being reviewed. Older tags
+retain their original build settings, including Windows line-ending conversion. Normalizing
+a new checkout does not change the bytes or hashes of those published packages.
+
+<!-- trust-report:start -->
 
 ## Where things live on disk
 
@@ -200,3 +224,5 @@ Report security issues through the repository's
 [private vulnerability reporting form](https://github.com/ssweber/clicknick/security/advisories/new).
 For other problems, [open an issue](https://github.com/ssweber/clicknick/issues).
 Include the release version and its trust report.
+
+<!-- trust-report:end -->
