@@ -12,12 +12,9 @@ For encoder/codec work, **work in the laddercodec repo** (`../laddercodec`).
 
 ## Dependency
 
-`laddercodec` is an editable local dep. Both repos must be sibling directories:
+`laddercodec` is pinned exactly in `pyproject.toml` and `uv.lock` for releases. Updating the sibling checkout does not update ClickNick's installed codec. After publishing a new laddercodec release, update the pin and lockfile together, sync the environment, and run the ClickNick checks before releasing.
 
-```toml
-[tool.uv.sources]
-laddercodec = { path = "../laddercodec", editable = true }
-```
+For temporary local codec development, an editable install can be used with `UV_NO_SYNC=1`; keep release metadata pinned to the published package.
 
 ## CLI usage
 

@@ -8,6 +8,12 @@
      Review and condense before release — entries accumulate during development and
      should be edited into shape before moving from Unreleased to a version heading. -->
 
+## v0.23.3 - 2026-09-10
+
+### Fixed
+
+- Updated laddercodec to 0.2.2 so program imports preserve branch wiring above later rail-connected rows and parse valid populated SCR special rows without recovery.
+
 ## v0.23.2 - 2026-09-10
 
 ### Fixed
