@@ -11,6 +11,18 @@ laddercodec = { timestamp = "0001-01-01T00:00:00Z", span = "PT0S" }
 pyrung = { timestamp = "0001-01-01T00:00:00Z", span = "PT0S" }
 pyclickplc = { timestamp = "0001-01-01T00:00:00Z", span = "PT0S" }
 
+[manifest]
+build-constraints = [
+    { name = "dunamai", specifier = "==1.26.2" },
+    { name = "jinja2", specifier = "==3.1.6" },
+    { name = "markupsafe", specifier = "==3.0.3" },
+    { name = "packaging", specifier = "==26.3" },
+    { name = "pathspec", specifier = "==1.1.1" },
+    { name = "pluggy", specifier = "==1.6.0" },
+    { name = "tomlkit", specifier = "==0.15.1" },
+    { name = "trove-classifiers", specifier = "==2026.6.1.19" },
+]
+
 [[package]]
 name = "click"
 version = "8.4.2"
@@ -41,6 +53,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "markdown" },
     { name = "pytest" },
     { name = "ruff" },
     { name = "ssort" },
@@ -65,6 +78,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "markdown", specifier = "==3.10.3" },
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "ruff", specifier = ">=0.16.0" },
     { name = "ssort", specifier = "==0.16.0" },

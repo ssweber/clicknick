@@ -1,0 +1,7 @@
+* text=auto eol=lf
+
+# Preserve packaged artwork and PLC/database fixtures byte for byte.
+*.png binary
+*.ico binary
+*.mdb binary
+*.ckp binary

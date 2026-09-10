@@ -10,9 +10,9 @@ Outputs (in ``--out``): ``clicknick-trust-report-<version>.html`` and
 Run with ``make trust-report``. Exits non-zero when any release check fails, so a
 release cannot ship with a red check.
 
-The "For IT / security review" section is handwritten and meant to stay stable
-across releases. Everything else is generated. Keep the security claims consistent
-with ``docs/security/index.md``.
+The "For IT / security review" narrative is rendered from the marked sections of
+``docs/security/index.md`` in this checkout. A release therefore captures the
+narrative from its tagged source, alongside the generated release evidence.
 """
 
 from __future__ import annotations
@@ -31,6 +31,10 @@ import tomllib
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urljoin, urlsplit, urlunsplit
+
+from markdown import Markdown
+from markdown.treeprocessors import Treeprocessor
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "clicknick"
@@ -59,93 +63,6 @@ PURPOSES = {
     "pyrsistent": "Immutable data structures (used by pyrung)",
     "tomlkit": "TOML editing that preserves formatting for check settings (used by pyrung)",
 }
-
-CHARACTERISTICS = [
-    "Runs as the signed-in user. No administrator rights are needed to install or run. "
-    "The default uv installation stays under the user's profile; exports and durable workspaces use user-chosen folders.",
-    "0 obfuscated or encrypted Python modules. Everything ClickNick ships is readable source.",
-    "0 packed or self-extracting executables.",
-    "0 compiled code or executables in ClickNick's own package (checked against the wheel "
-    "below). The install as a whole does place binaries in the user profile: a Python "
-    "interpreter, and the native files in the packages marked in the table. pywin32 ships "
-    "<code>Pythonwin.exe</code> and <code>pythonservice.exe</code>; ClickNick never runs them.",
-    "0 installed Windows services.",
-    "0 installed drivers.",
-    "0 scheduled tasks.",
-    "0 telemetry or analytics.",
-    "0 automatic update agent. Updates happen only when the user runs "
-    "<code>uv tool upgrade clicknick</code>.",
-    "0 unsolicited outbound network connections. The only outbound connection in the code is "
-    "Modbus TCP to the PLC address the user typed in.",
-    "0 embedded external network endpoints in runtime code.",
-    "All runtime dependencies are listed below, pinned to exact versions. The list is generated "
-    "from <code>uv.lock</code>, and a fresh install gets exactly these versions.",
-    "Source code for ClickNick and every dependency is publicly available. All are open "
-    "source; repository links are in the table.",
-]
-
-WHAT_IT_DOES = [
-    "<b>Reads and writes the CLICK project database</b> (the <code>SC_.mdb</code> file in "
-    "the temporary folder CLICK creates under "
-    "<code>%LOCALAPPDATA%\\Temp\\CLICK (...)\\</code> when it opens a project) through "
-    "Windows ODBC.",
-    "<b>Runs a PowerShell worker on machines without a 64-bit Access driver</b>, which is "
-    "most Windows x64 machines. ClickNick starts the 32-bit Windows PowerShell that ships "
-    "with Windows and uses the Jet engine already present in Windows. The exact "
-    "command line, launched from <code>python.exe</code>, is "
-    "<code>%SystemRoot%\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe -NoLogo "
-    "-NoProfile -NonInteractive -EncodedCommand &lt;base64&gt;</code>. The Base64 is the "
-    "UTF-16 encoding of the shipped file <code>clicknick/resources/jet_sidecar.ps1</code>, "
-    "unchanged; its SHA256 is in the release summary so it can be allowlisted. Expect "
-    "endpoint tooling that flags encoded PowerShell to alert on the first project opened.",
-    "<b>For autocomplete: reads and fills in text fields of the CLICK Programming Software "
-    "window.</b> It places the autocomplete box over the field and writes the memory address "
-    "of the chosen nickname back into it. It uses the standard Windows "
-    "API for this: enumerate windows, read a control's text (<code>WM_GETTEXT</code>), set "
-    "it (<code>WM_SETTEXT</code>), and send Enter, Tab or Escape to the CLICK dialog after "
-    "the user picks a nickname. It installs no keyboard hook, injects nothing into "
-    "<code>Click.exe</code>, and reads no other application's windows. Process name in "
-    "monitoring: <code>python.exe</code> (or <code>pythonw.exe</code>).",
-    "<b>Editor command listener, localhost only.</b> While ClickNick is running, and whether "
-    "or not the offline console is open, it holds one TCP port bound to "
-    "<code>localhost</code>, with the port number chosen by Windows. "
-    "<code>clicknick-cli</code> on the same machine connects to it to read or stage address "
-    "edits, check workspace code, and apply ladder proposals. The listener is "
-    "<code>python.exe</code>; the port number is written to a small file under "
-    "<code>%LOCALAPPDATA%</code>. Connections are unauthenticated: other local users and "
-    "processes that can reach the port can connect. Address edits arrive as staged, "
-    "undoable changes in the running window and reach the project only when the user saves.",
-    "<b>Offline console listener.</b> The console starts pyrung's debug adapter in a child "
-    "<code>python.exe</code>, which opens its own <code>localhost</code> port for the "
-    "<code>pyrung live</code> connection. It closes with the console.",
-    "<b>Connects to a CLICK PLC over Modbus TCP</b> (port 502 by default) only when the user "
-    "opens the Dataview editor and asks to go live, and only to the address the user typed "
-    "in. In that mode it reads values, and it writes values the user types in and clicks Write for.",
-    "<b>Generates and runs Python from the ladder project.</b> When a project is connected, "
-    "ClickNick translates the ladder into Python with its own generator and runs that code "
-    "in-process to build the model behind Check Program. The generator emits only names and "
-    "values taken from the ladder; it does not run files found in the project folder. The "
-    "user's editable workspace copy (<code>src/plc</code>, <code>run.py</code>, "
-    "<code>project_to_csv.py</code>) runs only when the user clicks Check Program, applies "
-    "a proposal, or starts the offline console, each in a child <code>python.exe</code> "
-    "with the same interpreter. Treat a workspace received from outside like any other "
-    "script folder: it runs with the signed-in user's permissions and can perform whatever "
-    "file or network operations its code requests.",
-    "<b>Opens documentation links</b> (github.com, pyrung.com) in the default browser when "
-    "the user clicks them.",
-    "<b>Writes small files into that same CLICK temp folder</b>: the live-session port "
-    "file, next to the project it belongs to. CLICK does not read these files.",
-    "<b>The <code>clicknick.exe</code> launcher</b> in <code>%USERPROFILE%\\.local\\bin</code> "
-    "is the standard entry-point stub that uv or pip generates at install time for any "
-    "Python command-line tool. It is unsigned, under 100 KB, and only starts "
-    "<code>python.exe</code> with ClickNick's entry point.",
-    "<b>Installation copies files.</b> Python wheels have no install-time scripts; "
-    "installing ClickNick unpacks files into a private virtual environment under "
-    "<code>%APPDATA%\\uv\\tools\\clicknick</code>. ClickNick writes nothing to the registry, "
-    "services, drivers or scheduled tasks, and keeps no settings file of its own. The uv "
-    "installer itself adds its own folder to the user's PATH, a write to "
-    "<code>HKCU\\Environment</code>.",
-]
 
 # Package names that would indicate an HTTP client or a telemetry SDK.
 HTTP_CLIENT_DISTS = {
@@ -822,6 +739,53 @@ def esc(value: object) -> str:
     return html.escape(str(value))
 
 
+class SecurityNarrativeLinks(Treeprocessor):
+    """Keep documentation links usable when the report is opened as a local file."""
+
+    def run(self, root):
+        for element in root.iter():
+            if element.tag in {"h2", "h3", "h4", "h5"}:
+                element.tag = f"h{int(element.tag[1]) + 1}"
+            if element.tag != "a":
+                continue
+            target = urlsplit(element.get("href", ""))
+            if target.scheme or target.netloc:
+                continue
+            path = target.path
+            if path.endswith(".md"):
+                path = (
+                    (path[:-8] or "./")
+                    if path.rsplit("/", 1)[-1] == "index.md"
+                    else path[:-3] + "/"
+                )
+            absolute = urljoin(
+                "https://pyrung.com/clicknick/security/",
+                urlunsplit(target._replace(path=path)),
+            )
+            element.set("href", absolute)
+
+
+def render_security_narrative(path: Path | None = None) -> str:
+    """Read the local source, never the live website or a previous release report."""
+    source = (path or ROOT / "docs/security/index.md").read_text(encoding="utf-8")
+    start = "<!-- trust-report:start -->"
+    end = "<!-- trust-report:end -->"
+    if not source.count(start) or source.count(start) != source.count(end):
+        raise ValueError("Security page must contain matching trust-report markers")
+    sections = []
+    parts = source.split(start)
+    if end in parts[0]:
+        raise ValueError("Security page has out-of-order trust-report markers")
+    for part in parts[1:]:
+        body, marker, remainder = part.partition(end)
+        if not marker or end in remainder or not body.strip():
+            raise ValueError("Security page has empty or out-of-order trust-report markers")
+        sections.append(body.strip())
+    renderer = Markdown(extensions=["tables", "fenced_code"])
+    renderer.treeprocessors.register(SecurityNarrativeLinks(renderer), "report_links", 0)
+    return renderer.convert("\n\n".join(sections))
+
+
 def render_checks(checks: list[Check]) -> str:
     items = []
     for c in checks:
@@ -914,17 +878,10 @@ format: <a href="https://pyrung.com/clicknick/security/">pyrung.com/clicknick/se
 {status}
 
 <h2>For IT / security review</h2>
-<p>ClickNick is a Windows desktop tool for the CLICK PLC programming software. It is written in Python, installed
-with <code>uv tool install clicknick</code> (or pip) from PyPI, and runs as the signed-in user with no elevation.
-ClickNick was written with security in mind: keep dependencies limited, prefer pure Python where practical, run
-without administrator rights, and make the software's behavior easy to inspect.</p>
-<h3>Software characteristics</h3>
-<ul>{"".join(f"<li>{c}</li>" for c in CHARACTERISTICS)}</ul>
-<h3>What ClickNick does</h3>
-<ul>{"".join(f"<li>{c}</li>" for c in WHAT_IT_DOES)}</ul>
-<p class="note">This section is handwritten and kept stable across releases. Everything below is generated by
-<code>devtools/trust_report.py</code> at release time from the lock file, the built wheel and the source tree,
-and the source checks are exactly that: release checks, not a formal security audit.</p>
+<p class="note">The narrative below comes from <code>docs/security/index.md</code> in this
+report's source checkout. It describes intended behavior; the generated checks below provide
+release-specific evidence, not a formal security audit.</p>
+{render_security_narrative()}
 
 <h2>Release summary</h2>
 <table class="kv">
@@ -974,10 +931,10 @@ nothing decoded.</p>
 <table><tr><th>Location</th><th>Call</th></tr>{exec_rows or "<tr><td colspan=2>none</td></tr>"}</table>
 
 <h2>Verify it yourself</h2>
-<p>From a checkout of the tagged release. Wheel builds are reproducible: the same source bytes give the same
-wheel, so a rebuild from the tag gives the SHA256 above and the one PyPI shows. The release is built on Windows
-with Git's default line-ending conversion, so use a Windows checkout with default Git settings; a Linux or macOS
-checkout produces LF line endings and therefore a different hash.</p>
+<p>Rebuild from a clean checkout of the tagged release using its own build recipe.
+Build dependencies are pinned in pyproject.toml; Hatch supplies stable timestamps when SOURCE_DATE_EPOCH is unset, and Git attributes select LF checkout line endings.
+Compare the rebuilt wheel's SHA256 with this report to verify that its bytes match.
+Older release tags retain their original settings.</p>
 <pre class="mono">git clone https://github.com/ssweber/clicknick
 cd clicknick
 git checkout {esc(checkout_ref)}
