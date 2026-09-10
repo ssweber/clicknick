@@ -93,10 +93,30 @@ class ConsoleWindow(tk.Toplevel):
     def _report_startup_failure(self, reason: str, detail: str | None = None) -> None:
         """Explain why the console cannot start, and offer a retry."""
         self._append_output(f"Cannot start simulation: {reason}\n", "error")
+        self._startup_error_detail = detail
+        self._details_btn.pack_forget()
         if detail:
-            self._append_output(detail.rstrip() + "\n", "progress")
+            self._details_btn.pack(side=tk.RIGHT, padx=(0, 4))
         self._status_var.set("Not available")
         self._show_retry()
+
+    def _show_startup_details(self) -> None:
+        if self._startup_error_detail:
+            self._append_output(self._startup_error_detail.rstrip() + "\n", "progress")
+        self._details_btn.pack_forget()
+
+    def _report_analysis_failure(self, analysis: AnalysisService) -> None:
+        guidance = (
+            "Open the generated workspace to inspect and edit the source. "
+            if analysis.project_dir is not None
+            else ""
+        )
+        self._report_startup_failure(
+            "pyrung could not build this CLICK program for simulation.\n"
+            f"{analysis.error or 'Program conversion failed.'}\n"
+            f"{guidance}Nickname editing is still available.",
+            analysis.error_detail,
+        )
 
     def _wait_for_analysis(self) -> None:
         """Show progress while the conversion runs, and schedule the next poll.
@@ -157,6 +177,8 @@ class ConsoleWindow(tk.Toplevel):
     def _hide_retry(self) -> None:
         if self._retry_btn.winfo_ismapped():
             self._retry_btn.pack_forget()
+        self._details_btn.pack_forget()
+        self._startup_error_detail = None
 
     def _start_dap(self) -> None:
         from ..services.analysis_service import AnalysisStatus
@@ -176,15 +198,13 @@ class ConsoleWindow(tk.Toplevel):
             self._wait_for_analysis()
             return
 
-        # A usable result wins even if a later rebuild failed -- stale analysis
-        # beats no console.
+        # A cached graph may still serve open editors, but simulation must use
+        # a successful conversion of the current CLICK program.
+        if analysis.status is AnalysisStatus.FAILED:
+            self._report_analysis_failure(analysis)
+            return
+
         if not analysis.is_available:
-            if analysis.status is AnalysisStatus.FAILED:
-                self._report_startup_failure(
-                    analysis.error or "converting the program to pyrung failed.",
-                    analysis.error_detail,
-                )
-                return
             self._wait_for_analysis()
             return
 
@@ -362,7 +382,7 @@ class ConsoleWindow(tk.Toplevel):
 
     def _open_project_folder(self) -> None:
         analysis = self._get_analysis()
-        if analysis is None or not analysis.is_available:
+        if analysis is None:
             return
         project_dir = analysis.project_dir
         if project_dir is not None and project_dir.is_dir():
@@ -474,6 +494,9 @@ class ConsoleWindow(tk.Toplevel):
         )
         self._copy_btn.pack(side=tk.RIGHT)
         bind_tooltip(self._copy_btn, "Copy output (or the current selection) to the clipboard")
+        self._details_btn = ttk.Button(
+            status_bar, text="Show details", command=self._show_startup_details
+        )
         ttk.Label(status_bar, textvariable=self._status_var, foreground="gray").pack(
             side=tk.LEFT, fill=tk.X, expand=True
         )
@@ -575,6 +598,7 @@ class ConsoleWindow(tk.Toplevel):
         self._analysis_after_id: str | None = None
         self._analysis_waited_ms: int = 0
         self._launch_generation: int = -1
+        self._startup_error_detail: str | None = None
         self._busy_tick: int = -1
         self._cancel_requested = False
         self._destroyed = False
@@ -603,10 +627,7 @@ class ConsoleWindow(tk.Toplevel):
         from ..services.analysis_service import AnalysisStatus
 
         if analysis is not None and analysis.status is AnalysisStatus.FAILED:
-            self._report_startup_failure(
-                analysis.error or "converting the program to pyrung failed.",
-                analysis.error_detail,
-            )
+            self._report_analysis_failure(analysis)
             return
 
         self._wait_for_analysis()

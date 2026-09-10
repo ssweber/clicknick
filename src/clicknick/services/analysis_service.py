@@ -11,7 +11,7 @@ import enum
 import shutil
 import tempfile
 import traceback
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -234,6 +234,7 @@ def _build_graph(
     persist_dir: Path | None = None,
     *,
     workspace_kind: WorkspaceKind = "temporary",
+    on_project_generated: Callable[[Path], None] | None = None,
 ) -> tuple[ProgramGraph, Program, Path | None]:
     """Run the full pipeline: Scr*.tmp -> CSV -> pyrung code -> exec -> graph.
 
@@ -258,14 +259,18 @@ def _build_graph(
             csv_dir, nickname_csv=nickname_csv, analog_inputs=_channel_inputs(scr_folder)
         )
 
-        project_dir = None
-        if persist_dir is not None:
-            project_dir = _regenerate_persisted_project(
-                scr_folder,
-                db_path,
-                persist_dir,
-                workspace_kind=workspace_kind,
-            )
+    # Generated source is useful for inspection and repair even when executing
+    # it cannot construct a Program. Publish it independently of analysis.
+    project_dir = None
+    if persist_dir is not None:
+        project_dir = _regenerate_persisted_project(
+            scr_folder,
+            db_path,
+            persist_dir,
+            workspace_kind=workspace_kind,
+        )
+        if on_project_generated is not None:
+            on_project_generated(project_dir)
 
     namespace: dict[str, object] = {}
     exec(compile(code, "<analysis>", "exec"), namespace)  # noqa: S102
@@ -277,7 +282,8 @@ def _build_graph(
         msg = f"Expected Program, got {type(program).__name__}"
         raise TypeError(msg)
 
-    return build_program_graph(program), program, project_dir
+    graph = build_program_graph(program)
+    return graph, program, project_dir
 
 
 class AnalysisService:
@@ -286,6 +292,7 @@ class AnalysisService:
     def __init__(self) -> None:
         self.check_selection: ProgramCheckSelection | None = None
         self._result: AnalysisResult | None = None
+        self._project_dir: Path | None = None
         # Written from the build thread, read from the UI thread. Plain
         # attribute assignment is atomic enough; there is no read-modify-write.
         self._status = AnalysisStatus.IDLE
@@ -357,7 +364,9 @@ class AnalysisService:
 
     @property
     def project_dir(self) -> Path | None:
-        """Path to the persisted pyrung_project/ directory (None if not built)."""
+        """Generated workspace, available even if program analysis failed."""
+        if self._project_dir is not None:
+            return self._project_dir
         if self._result is None:
             return None
         return self._result.project_dir
@@ -369,12 +378,12 @@ class AnalysisService:
         analysis rebuild started while files were being copied. Disposable
         virtual environments and Python caches are omitted.
         """
-        if self._status is not AnalysisStatus.READY or self._result is None:
+        if self._status is AnalysisStatus.BUILDING:
             raise RuntimeError("pyrung project is not ready to export")
-        if self._result.project_dir is None:
+        if self.project_dir is None:
             raise RuntimeError("pyrung project was not persisted to disk")
 
-        source = self._result.project_dir.resolve()
+        source = self.project_dir.resolve()
         destination = destination.resolve()
         if not source.is_dir():
             raise RuntimeError(f"pyrung project folder does not exist: {source}")
@@ -401,9 +410,9 @@ class AnalysisService:
 
             if (
                 self._generation != generation
-                or self._status is not AnalysisStatus.READY
-                or self._result.project_dir is None
-                or self._result.project_dir.resolve() != source
+                or self._status is AnalysisStatus.BUILDING
+                or self.project_dir is None
+                or self.project_dir.resolve() != source
             ):
                 raise RuntimeError(
                     "Click project changed during export; try again after conversion finishes"
@@ -434,8 +443,7 @@ class AnalysisService:
         UI able to explain itself. Any previous good result is kept, so a failed
         *rebuild* does not take working analysis away from open windows.
         """
-        # Bumped first: _build_graph empties the project folder before writing
-        # it, so from this moment anything reading that folder sees rubble.
+        # Readers use this generation to detect a rebuild racing their work.
         self._generation += 1
         self._epoch += 1
         epoch = self._epoch
@@ -443,12 +451,18 @@ class AnalysisService:
         self._error = None
         self._error_detail = None
         self._system_nickname_repairs = ()
+
+        def _project_generated(project_dir: Path) -> None:
+            if self._epoch == epoch:
+                self._project_dir = project_dir
+
         try:
             graph, program, project_dir = _build_graph(
                 scr_folder,
                 db_path,
                 persist_dir,
                 workspace_kind=workspace_kind,
+                on_project_generated=_project_generated,
             )
             tag_to_key, key_to_tag = _build_tag_addr_key_map(base_state)
         except Exception as exc:
@@ -461,6 +475,7 @@ class AnalysisService:
             raise
         if self._epoch != epoch:
             return
+        self._project_dir = project_dir
         self._result = AnalysisResult(
             graph=graph,
             program=program,
@@ -482,6 +497,7 @@ class AnalysisService:
     def invalidate(self) -> None:
         self._epoch += 1
         self._result = None
+        self._project_dir = None
         self._status = AnalysisStatus.IDLE
         self._error = None
         self._error_detail = None

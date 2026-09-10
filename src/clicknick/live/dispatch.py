@@ -219,16 +219,18 @@ def _project_status(ctx: DispatchContext) -> str | None:
     analysis = ctx.analysis
     if analysis is None:
         return None
+    status = getattr(getattr(analysis, "status", None), "value", None)
+    if status == "building":
+        return "pyrung project preparing"
+    if status == "failed":
+        if getattr(analysis, "project_dir", None) is not None:
+            return "workspace available | analysis failed"
+        return "pyrung project unavailable"
     if analysis.is_available:
         if ctx.pyrung_live_available:
             return "pyrung live available"
         return "project ready | open Console for pyrung live"
 
-    status = getattr(getattr(analysis, "status", None), "value", None)
-    if status == "building":
-        return "pyrung project preparing"
-    if status == "failed":
-        return "pyrung project unavailable"
     return None
 
 
@@ -356,7 +358,9 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
         workflow_status = _workflow_status(ctx)
         if workflow_status is not None:
             lines.append(f"workflow: {workflow_status}")
-        if ctx.analysis is not None and ctx.analysis.is_available:
+        if ctx.analysis is not None and (
+            ctx.analysis.is_available or getattr(ctx.analysis, "project_dir", None) is not None
+        ):
             pdir = ctx.analysis.project_dir
             lines.append(f"project: {pdir}" if pdir else "project: (not persisted)")
         project_status = _project_status(ctx)

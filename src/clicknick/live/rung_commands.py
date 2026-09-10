@@ -40,8 +40,10 @@ def _get_csv_stem(project_dir: Path, stem: str) -> str:
 def _get_project_dir(ctx: DispatchContext) -> Path:
     """Get the active project workspace, or raise."""
     analysis = ctx.analysis
-    if analysis is None or not analysis.is_available:
-        raise ValueError("analysis not available (no Click project connected or build pending)")
+    if analysis is None:
+        raise ValueError("workspace not available (no Click project connected)")
+    if getattr(getattr(analysis, "status", None), "value", None) == "building":
+        raise ValueError("workspace is being regenerated; try again when generation finishes")
     project_dir = analysis.project_dir
     if project_dir is None or not project_dir.is_dir():
         raise ValueError("pyrung project not persisted to disk yet")

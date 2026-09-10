@@ -104,3 +104,17 @@ def test_ping_reports_project_unavailable_after_analysis_failure() -> None:
     )
 
     assert dispatch(ctx, "ping").endswith("status: pyrung project unavailable")
+
+
+def test_failed_analysis_exposes_workspace_and_source_listing(tmp_path) -> None:
+    source = tmp_path / "src" / "plc"
+    source.mkdir(parents=True)
+    (source / "main.py").write_text("with rung():\n    time_drum(...).reset()\n", encoding="utf-8")
+    analysis = _Analysis(_Status.FAILED)
+    analysis.project_dir = tmp_path
+    ctx = DispatchContext(store=_Store(), analysis=analysis, project_saved=True)
+
+    result = dispatch(ctx, "ping")
+    assert f"project: {tmp_path}" in result
+    assert "workspace available | analysis failed" in result
+    assert "main" in dispatch(ctx, "rung list")

@@ -43,14 +43,15 @@ def get_workspace_status(
         return WorkspaceStatus(WorkspaceState.PREPARING, "Preparing")
     if analysis.status is AnalysisStatus.FAILED:
         repairs = getattr(analysis, "system_nickname_repairs", ())
+        label = "Analysis failed" if analysis.project_dir is not None else "Build failed"
         return WorkspaceStatus(
             WorkspaceState.FAILED,
-            "System names need repair" if repairs else "Build failed",
+            "System names need repair" if repairs else label,
             detail=analysis.error,
         )
 
     project_dir = analysis.project_dir
-    if not analysis.is_available or project_dir is None:
+    if project_dir is None:
         return WorkspaceStatus(WorkspaceState.UNAVAILABLE, "Unavailable")
 
     try:
