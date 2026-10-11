@@ -168,7 +168,8 @@ class ComboboxTCLManager:
             if {!$programmatic_flag} {
                 focus %W
             } else {
-                set cb [ttk::combobox::LBMaster %W]
+                # Listbox path is <combobox>.popdown.f.l (Tk 9 renamed ttk::combobox::LBMaster)
+                set cb [winfo parent [winfo parent [winfo parent %W]]]
                 focus $cb
                 set ttk::combobox::State(programmaticPost) 0
             }

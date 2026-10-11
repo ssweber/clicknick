@@ -13,6 +13,7 @@
 ### Fixed
 
 - Generated workspaces remain openable, editable, and exportable when program analysis fails, while the Console reports simulation startup failures with Retry and optional diagnostic details.
+- The nickname overlay's dropdown stays open when its arrow is clicked, and typing no longer raises a Tcl error, on newer Python and Tk 9 installs.
 
 ## v0.23.3 - 2026-09-10
 
