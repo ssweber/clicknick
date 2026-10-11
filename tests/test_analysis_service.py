@@ -309,6 +309,109 @@ class TestAnalysisStatus:
         assert svc.project_dir is None
 
 
+class TestBuildValidation:
+    @pytest.mark.parametrize(
+        ("code", "error_type", "message"),
+        [
+            (
+                'raise TypeError("reset() requires at least one condition")',
+                TypeError,
+                "requires at least one condition",
+            ),
+            ("with rung(:", SyntaxError, "invalid syntax"),
+            ("logic = object()", TypeError, "Expected Program"),
+        ],
+    )
+    def test_invalid_generated_code_remains_available_for_editing(
+        self, monkeypatch, tmp_path, code, error_type, message
+    ):
+        source = tmp_path / "src" / "plc" / "main.py"
+        source.parent.mkdir(parents=True)
+        source.write_text("# existing workspace edits\n", encoding="utf-8")
+        monkeypatch.setattr("clicknick.ladder.program.program_save", MagicMock())
+        monkeypatch.setattr("pyrung.click.ladder_to_pyrung", lambda *_a, **_k: code)
+
+        def generate(_csv_dir, *, output_dir, **_kwargs):
+            generated_source = output_dir / "src" / "plc" / "main.py"
+            generated_source.parent.mkdir(parents=True)
+            generated_source.write_text(code, encoding="utf-8")
+
+        monkeypatch.setattr("pyrung.click.ladder_to_pyrung_project", generate)
+        svc = AnalysisService()
+
+        with pytest.raises(error_type, match=message):
+            svc.build(tmp_path, None, {}, persist_dir=tmp_path)
+
+        assert svc.status is AnalysisStatus.FAILED
+        assert not svc.is_available
+        assert "Traceback" in svc.error_detail
+        assert svc.project_dir == tmp_path
+        assert source.read_text(encoding="utf-8") == code
+        assert (tmp_path / "backup" / "src" / "plc" / "main.py").read_text(
+            encoding="utf-8"
+        ) == "# existing workspace edits\n"
+
+        exported = tmp_path.parent / f"{tmp_path.name}-export"
+        svc.export_project(exported)
+        assert (exported / "src" / "plc" / "main.py").read_text(encoding="utf-8") == code
+
+        svc.invalidate()
+        assert svc.project_dir is None
+
+    def test_graph_failure_keeps_generated_project_available(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("clicknick.ladder.program.program_save", MagicMock())
+        monkeypatch.setattr(
+            "pyrung.click.ladder_to_pyrung",
+            lambda *_a, **_k: "from pyrung import Program\nwith Program() as logic:\n    pass\n",
+        )
+        monkeypatch.setattr(
+            "pyrung.core.analysis.build_program_graph",
+            MagicMock(side_effect=ValueError("unsupported instruction")),
+        )
+        project = tmp_path / "workspace"
+        regenerate = MagicMock(return_value=project)
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._regenerate_persisted_project", regenerate
+        )
+
+        svc = AnalysisService()
+        with pytest.raises(ValueError, match="unsupported instruction"):
+            svc.build(tmp_path, None, {}, persist_dir=project)
+
+        regenerate.assert_called_once()
+        assert svc.project_dir == project
+        assert not svc.is_available
+
+    def test_failed_codegen_does_not_expose_preexisting_folder(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("clicknick.ladder.program.program_save", MagicMock())
+        monkeypatch.setattr("pyrung.click.ladder_to_pyrung", MagicMock(return_value="logic = None"))
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._regenerate_persisted_project",
+            MagicMock(side_effect=ValueError("codegen failed")),
+        )
+        svc = AnalysisService()
+
+        with pytest.raises(ValueError, match="codegen failed"):
+            svc.build(tmp_path, None, {}, persist_dir=tmp_path)
+
+        assert svc.project_dir is None
+
+    def test_invalidated_build_cannot_publish_workspace_path(self, monkeypatch, tmp_path):
+        svc = AnalysisService()
+
+        def build_then_switch(*_args, on_project_generated, **_kwargs):
+            svc.invalidate()
+            on_project_generated(tmp_path)
+            raise ValueError("old project failed")
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", build_then_switch)
+        with pytest.raises(ValueError, match="old project failed"):
+            svc.build(tmp_path, None, {})
+
+        assert svc.status is AnalysisStatus.IDLE
+        assert svc.project_dir is None
+
+
 class TestGeneration:
     """Bumped whenever the generated project folder starts being rewritten."""
 

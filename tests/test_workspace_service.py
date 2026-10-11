@@ -76,6 +76,25 @@ def test_workspace_status_reports_clean_modified_and_changed_rungs(tmp_path: Pat
     assert changed.changed_rungs == 4
 
 
+def test_generated_workspace_opens_after_analysis_failure(tmp_path: Path) -> None:
+    project = _clean_workspace(tmp_path)
+    analysis = _analysis(AnalysisStatus.FAILED, project, error="reset needs a condition")
+    status = get_workspace_status(analysis)
+    assert status.label == "Analysis failed"
+    assert status.detail == "reset needs a condition"
+
+    app = ClickNickApp.__new__(ClickNickApp)
+    app._session = SimpleNamespace(analysis=analysis)
+    app._workspace_config = None
+    app._open_folder = MagicMock()
+
+    assert app._open_workspace_menu_options() == ("Open Temporary Workspace", "normal")
+    app._open_workspace()
+    app._open_folder.assert_called_once_with(
+        project, title="Open Workspace", unavailable="Workspace is not available"
+    )
+
+
 class _Root:
     def after(self, _delay: int, callback):
         callback()

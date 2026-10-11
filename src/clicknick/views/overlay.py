@@ -113,18 +113,22 @@ class Overlay(tk.Toplevel):
         self.combobox.set_item_navigation_callback(self._on_nickname_navigation)
         self.combobox.set_selection_callback(self._on_nickname_selected)
 
+    def _focus_within_overlay(self) -> bool:
+        """Check if focus is on the overlay, its combobox dropdown, or the tooltip.
+
+        Compares Tk path names rather than calling focus_get(): the dropdown listbox
+        is created by Tk, so tkinter has no widget for it and focus_get() raises
+        KeyError or returns None depending on the Python version.
+        """
+        focus_path = str(self.tk.call("focus"))
+        overlay_path = str(self)
+        return focus_path == overlay_path or focus_path.startswith(f"{overlay_path}.")
+
     def _on_focus_out(self, event):
         """Handle focus-out event to input current text and withdraw the popup."""
         try:
-            # Get the widget that now has focus
-            focused_widget = self.focus_get()
-
             # If focus moved to one of your widgets or the tooltip, don't withdraw
-            if focused_widget and (
-                focused_widget == self
-                or focused_widget.winfo_toplevel() == self.winfo_toplevel()
-                or focused_widget.winfo_toplevel() == self.tooltip
-            ):
+            if self._focus_within_overlay():
                 return
 
             # Input current text before withdrawing
@@ -140,9 +144,6 @@ class Overlay(tk.Toplevel):
                 1000, lambda: setattr(self, "_debounce_retrigger", False)
             )
 
-        except KeyError:
-            # This catches the 'popdown' KeyError that occurs when the combobox dropdown is involved
-            pass
         except Exception as e:
             print(f"Focus out error: {e}")
 

@@ -8,6 +8,14 @@
      Review and condense before release — entries accumulate during development and
      should be edited into shape before moving from Unreleased to a version heading. -->
 
+## v0.23.4 - 2026-10-11
+
+### Fixed
+
+- Generated workspaces remain openable, editable, and exportable when program analysis fails, while the Console reports simulation startup failures with Retry and optional diagnostic details.
+- The nickname overlay's dropdown stays open when its arrow is clicked, and typing no longer raises a Tcl error, on newer Python and Tk 9 installs.
+- Updated pyrung to 0.15.2 so the Console's PLC Data loads a CLICK data dump instead of failing with "no TagMap found in project", seeds plain nicknamed addresses, and rejects a file that is not a data dump; the Browse tooltip and help now say where the dump comes from.
+
 ## v0.23.3 - 2026-09-10
 
 ### Fixed

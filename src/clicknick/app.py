@@ -191,7 +191,7 @@ class ClickNickApp:
 
     def _workspace_source_dir(self) -> Path | None:
         analysis = self._session.analysis if self._session else None
-        return analysis.project_dir if analysis and analysis.is_available else None
+        return analysis.project_dir if analysis else None
 
     def _configured_workspace_dir(self) -> Path | None:
         config = self._workspace_config
@@ -1475,14 +1475,14 @@ class ClickNickApp:
                 parent=self.root,
             )
             return
-        if analysis.status is AnalysisStatus.FAILED:
+        if analysis.status is AnalysisStatus.FAILED and analysis.project_dir is None:
             messagebox.showerror(
                 "Export Workspace",
                 analysis.error or "The workspace could not be built.",
                 parent=self.root,
             )
             return
-        if not analysis.is_available or analysis.project_dir is None:
+        if analysis.project_dir is None:
             messagebox.showinfo(
                 "Export Workspace",
                 "Save the project in Click Software, then try again.",

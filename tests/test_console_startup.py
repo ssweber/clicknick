@@ -142,7 +142,64 @@ class TestConsoleStartup:
         assert not _waiting(win)
         assert _retry_visible(win)
         assert "pyrung conversion crashed" in _output(win)
-        assert "ValueError: boom" in _output(win)
+        assert "Nickname editing is still available" in _output(win)
+        assert "Traceback" not in _output(win)
+        assert win._details_btn.winfo_manager()
+
+        win._details_btn.invoke()
+        assert "Traceback...\nValueError: boom" in _output(win)
+        assert not win._details_btn.winfo_manager()
+
+    def test_failed_rebuild_does_not_launch_previous_program(self, console, tmp_path):
+        svc = _ready_service(tmp_path)
+        svc.mark_failed("TypeError: reset() requires at least one condition")
+
+        win = console(svc)
+        assert svc.is_available, "cached analysis should remain available to editors"
+        assert win._launch_generation == -1
+        assert not _waiting(win)
+        assert _retry_visible(win)
+        assert "reset() requires at least one condition" in _output(win)
+
+    def test_failed_conversion_during_poll_is_reported(self, console):
+        svc = AnalysisService()
+        svc._status = AnalysisStatus.BUILDING
+        win = console(svc)
+        win.after_cancel(win._analysis_after_id)
+        svc.mark_failed("bad rung", "Traceback details")
+
+        win._poll_analysis()
+
+        assert not _waiting(win)
+        assert _retry_visible(win)
+        assert "pyrung could not build this CLICK program for simulation" in _output(win)
+        assert "Traceback" not in _output(win)
+
+    def test_generated_folder_opens_after_analysis_failure(self, console, tmp_path, monkeypatch):
+        svc = AnalysisService()
+        svc._project_dir = tmp_path
+        svc.mark_failed("TypeError: reset() requires at least one condition")
+        open_folder = MagicMock()
+        monkeypatch.setattr("clicknick.views.console_window.os.startfile", open_folder)
+        win = console(svc)
+
+        win._open_project_folder()
+
+        open_folder.assert_called_once_with(tmp_path)
+        assert "Open the generated workspace" in _output(win)
+        assert win._launch_generation == -1
+
+    def test_successful_retry_clears_failure_details(self, console, tmp_path):
+        svc = _ready_service(tmp_path)
+        svc.mark_failed("bad rung", "Traceback details")
+        win = console(svc)
+        svc._status = AnalysisStatus.READY
+
+        win._retry_startup()
+
+        assert win._launch_generation == svc.generation
+        assert not win._details_btn.winfo_manager()
+        assert win._startup_error_detail is None
 
     def test_launch_failure_during_rebuild_waits(self, console, tmp_path):
         """A rebuild that starts *and finishes* mid-launch must not surface as an error.
