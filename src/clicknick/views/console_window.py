@@ -450,8 +450,12 @@ class ConsoleWindow(tk.Toplevel):
         self._plc_data_var = tk.StringVar()
         plc_entry = ttk.Entry(toolbar, textvariable=self._plc_data_var, state="readonly")
         plc_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
-        ttk.Button(toolbar, text="Browse...", width=8, command=self._browse_plc_data).pack(
-            side=tk.LEFT, padx=(0, 4)
+        browse_btn = ttk.Button(toolbar, text="Browse...", width=8, command=self._browse_plc_data)
+        browse_btn.pack(side=tk.LEFT, padx=(0, 4))
+        bind_tooltip(
+            browse_btn,
+            "Start from the PLC's live values: a CSV saved in CLICK with\n"
+            "PLC > Read Data from PLC > All > Save (not the nickname CSV)",
         )
         ttk.Button(toolbar, text="Help", width=6, command=self._show_help).pack(side=tk.LEFT)
 
