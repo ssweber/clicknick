@@ -54,12 +54,16 @@ uv tool install --editable .
 src/clicknick/
 ├── app.py                 # Main ClickNickApp class
 ├── config.py              # AppSettings with persistence
+├── data_session.py        # DataSession: current store + Dataview model + editor windows
+├── connection_session.py  # ClickConnection value + ConnectionSession (analysis, Scr watcher, console)
 ├── models/                # Data models and constants
 │   ├── address_row.py     # Frozen dataclass for address data
+│   ├── address_slots.py   # Every address slot in display order
 │   └── mutable_row_builder.py  # Builder for accumulating changes
-├── data/                  # Data storage and state management
-│   ├── address_store.py   # Core store: base/overlay/visible layers, undo/redo
-│   ├── edit_session_new.py  # Context manager for atomic edits
+├── data/                  # Data storage and state management (no tkinter)
+│   ├── address_store.py   # Core store: base/overlay/visible layers, undo/redo, _derive
+│   ├── edit_session.py    # Builder-backed session yielded by store.edit_session()
+│   ├── cdv_file.py        # DataView folder discovery and CDV verification
 │   └── undo_frame.py      # Undo/redo snapshot storage
 ├── services/              # Business logic (pure Python, no tkinter)
 ├── utils/                 # Utilities (filters, MDB, Win32)
@@ -84,6 +88,9 @@ The application maintains three distinct data layers to cleanly separate databas
 
 **Core Principles:**
 - **Immutable Rows:** `AddressRow` is a frozen dataclass; changes create new instances via `dataclasses.replace()`
+- **Inputs vs derived:** base rows and the user's overrides are the inputs. Visible rows, validation, dirty
+  fields, the nickname index and block colors are derived by one method, `AddressStore._derive()`, in one
+  fixed order, after every change (edit, undo, redo, discard, save, external reload)
 - **Targeted Refresh:** Reference equality (`is`) used for fast dirty detection
 - **Undo/Redo:** Tracks overlay layer only (user intent), preserves 50-level history
 - **External Updates:** Database refreshes update base layer while preserving user overrides
@@ -95,20 +102,28 @@ Edits flow through an edit session that accumulates changes atomically:
 1. **View** opens `AddressStore.edit_session(description)`
 2. **Service** accumulates changes via `session.set_field(addr_key, field, value)`
 3. Session uses `MutableRowBuilder` to accumulate changes per row
-4. **On exit:** Session freezes builders → updates overrides → pushes undo frame → notifies observers
-5. **All Views** receive changed `addr_keys` and refresh only those rows
+4. **On clean exit:** pushes undo frame → applies cascades → freezes builders into overrides → `_derive()` → notifies
+5. **On an exception:** nothing is committed (all-or-nothing); a failure inside the commit restores the inputs
+6. **All Views** receive changed `addr_keys` and refresh only those rows
 
-**The Rules:**
+**The Rules** (rules 2, 3 and 5 are enforced by `tests/test_store_boundaries.py`):
 1. **Models are Immutable:** `AddressRow` is `frozen=True`; all changes create new instances
-2. **AddressStore is the Gatekeeper:** Only `AddressStore` manages the three data layers
-3. **Services are Pure Logic:** Services **never** import `tkinter`
+2. **AddressStore is the Gatekeeper:** Only `AddressStore` writes its layers (`base_state`, `user_overrides`,
+   `visible_state`, `block_colors`, `row_order`)
+3. **Services and data are Pure Logic:** `services/` and `data/` **never** import `tkinter`
 4. **Views are Passive:** Views lookup rows via `store.visible_state[addr_key]` and listen for change notifications
+5. **Use the session you are given:** write through the session yielded by `edit_session()`; never touch
+   `store._current_session`
+6. **One home per fact:** the current data lives in `ClickNickApp._data` (a `DataSession`), the connected CLICK
+   window in `ClickNickApp._click` (an immutable `ClickConnection`). Consumers take getters, not copies
+7. **No compatibility shims:** when an API changes, update its callers; do not keep aliases or wrappers
 
 ### Observer Pattern
 
 All views register as observers with `AddressStore`:
 - `add_observer(callback)` - Subscribe to data changes
-- `callback(changed_keys: set[int])` - Receive notifications with affected `addr_key` sets
+- `callback(store, changed_keys: set[int] | None)` - Receive notifications with affected `addr_key` sets
+- The store replaces changed rows in the shared unified view before notifying; observer exceptions are logged
 - Views refresh only changed rows using targeted updates
 - Reference equality (`visible is base`) enables fast dirty detection
 
@@ -124,7 +139,11 @@ All views register as observers with `AddressStore`:
 Tests are in `tests/` and `src/` (pytest discovers both).
 
 **Core data tests:**
-- `test_address_store.py` - Store operations, undo/redo, base+overlay merging, cascades
+- `test_address_store.py` - Store operations, undo/redo, base+overlay merging, cascades, derived-state regressions
+- `test_store_oracle.py` - Random edit/undo/redo/discard/Sync/CLICK-write sequences; kept state must equal a
+  full rebuild from the same inputs
+- `test_store_boundaries.py` - Source-level rules: only the store writes its layers, no tkinter in data/services
+- `test_data_session.py` - Window lifecycle and save prompts when data is closed or replaced
 - `test_mutable_row_builder.py` - Builder pattern, freeze behavior, immutability
 - `test_address_model.py` - AddressRow validation, frozen dataclass behavior
 
@@ -132,7 +151,6 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - `test_block_service.py` - Block tag parsing, color assignment, range detection
 - `test_row_service.py` - Fill down, clone structure, edit session integration
 - `test_blocktag.py` - Tag parsing edge cases
-- `test_dependency_service.py` - T/TD sync, cascade operations
 
 **Other tests:**
 - Filter tests cover abbreviation matching edge cases
@@ -150,6 +168,7 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - Use `session.set_field(addr_key, field, value)` to accumulate changes
 - Multiple changes batched into single undo frame (e.g., fill-down 500 rows = 1 undo)
 - Cascades (T/TD|CT/CTD sync, block tag sync) happen automatically within the session
+- A body that raises commits nothing
 
 ### Dirty State Detection
 - Check via `store.is_dirty(addr_key)`, not `row.is_dirty` property
@@ -159,11 +178,19 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 ### Undo/Redo
 - Tracks user intent (overlay layer) only, not database state
 - Max 50 undo frames (configurable via `MAX_UNDO_DEPTH`)
-- Undo after save restores unsaved state (overrides preserved)
+- A successful Sync/Save, or a Discard, clears Undo/Redo (frames hold override snapshots, not old values);
+  a CLICK save does not
+- An unsaved field that the database now matches stops being an edit (`_rebase_override`)
 - Keyboard: Ctrl+Z (undo), Ctrl+Y (redo)
 
 ### Block Colors
 - Block colors are stored in `AddressStore.block_colors` dict, NOT in `AddressRow`
 - Access via `store.get_block_color(addr_key)` → returns color name or None
-- Colors are derived from comments (block tags) and recomputed automatically
+- Colors are derived from comments (block tags) by `compute_block_colors`, the one implementation
 - Kept separate to avoid row recreation on color changes and exclude from undo/redo
+- Duplicate block names: the first definition in address order is valid; later ones are flagged
+
+### Program Analysis
+- One build worker per connection; requests made while it runs collapse into one follow-up build
+- The generated code, persisted project and tag map all come from one nickname snapshot read from CLICK's
+  database, so tag names always match the code. ClickNick edits reach analysis on the next build after Sync

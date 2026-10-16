@@ -86,12 +86,11 @@ def test_fill_down_basic(store):
 
     # Fill down to targets (X2, X3, X4)
     target_keys = [get_addr_key("X", 2), get_addr_key("X", 3), get_addr_key("X", 4)]
-    with store.edit_session("Fill down"):
-        affected = RowService.fill_down(store, source_key, target_keys)
+    with store.edit_session("Fill down") as session:
+        affected = RowService.fill_down(session, store, source_key, target_keys)
 
     # Check affected keys
-    assert len(affected) == 4  # source + 3 targets
-    assert source_key in affected
+    assert len(affected) == 3  # the 3 targets
     for key in target_keys:
         assert key in affected
 
@@ -120,8 +119,8 @@ def test_fill_down_increment_initial_value(store):
 
     # Fill down with increment flag
     target_keys = [get_addr_key("X", 2), get_addr_key("X", 3)]
-    with store.edit_session("Fill down"):
-        RowService.fill_down(store, source_key, target_keys, increment_initial_value=True)
+    with store.edit_session("Fill down") as session:
+        RowService.fill_down(session, store, source_key, target_keys, increment_initial_value=True)
 
     # Check initial values were incremented
     assert store.visible_state[get_addr_key("X", 2)].initial_value == "2"
@@ -137,8 +136,8 @@ def test_fill_down_no_increment_when_mismatch(store):
         session.set_field(source_key, "initial_value", "5")  # Doesn't match the "1"
 
     target_keys = [get_addr_key("X", 2)]
-    with store.edit_session("Fill down"):
-        RowService.fill_down(store, source_key, target_keys, increment_initial_value=True)
+    with store.edit_session("Fill down") as session:
+        RowService.fill_down(session, store, source_key, target_keys, increment_initial_value=True)
 
     # Check initial value was just copied, not incremented
     assert store.visible_state[get_addr_key("X", 2)].initial_value == "5"
@@ -152,8 +151,8 @@ def test_fill_down_nickname_index_updated(store):
         session.set_field(source_key, "nickname", "Test1")
 
     target_keys = [get_addr_key("X", 2)]
-    with store.edit_session("Fill down"):
-        RowService.fill_down(store, source_key, target_keys)
+    with store.edit_session("Fill down") as session:
+        RowService.fill_down(session, store, source_key, target_keys)
 
     # Check reverse index has both nicknames
     assert store.is_duplicate_nickname("Test1", exclude_addr_key=999)
@@ -181,8 +180,10 @@ def test_clone_structure_basic(store):
         get_addr_key("X", 5),
         get_addr_key("X", 6),
     ]
-    with store.edit_session("Clone"):
-        affected = RowService.clone_structure(store, template_keys, dest_keys, clone_count=2)
+    with store.edit_session("Clone") as session:
+        affected = RowService.clone_structure(
+            session, store, template_keys, dest_keys, clone_count=2
+        )
 
     # Check affected keys
     assert len(affected) == 4
@@ -212,9 +213,9 @@ def test_clone_structure_with_increment_initial_value(store):
 
     template_keys = [template_key]
     dest_keys = [get_addr_key("X", 2), get_addr_key("X", 3)]  # 2 clones
-    with store.edit_session("Clone"):
+    with store.edit_session("Clone") as session:
         RowService.clone_structure(
-            store, template_keys, dest_keys, clone_count=2, increment_initial_value=True
+            session, store, template_keys, dest_keys, clone_count=2, increment_initial_value=True
         )
 
     # Check initial values incremented
@@ -235,8 +236,8 @@ def test_clone_structure_empty_template_row(store):
 
     template_keys = [template_key1, get_addr_key("X", 2)]
     dest_keys = [get_addr_key("X", 3), get_addr_key("X", 4)]  # 1 clone
-    with store.edit_session("Clone"):
-        RowService.clone_structure(store, template_keys, dest_keys, clone_count=1)
+    with store.edit_session("Clone") as session:
+        RowService.clone_structure(session, store, template_keys, dest_keys, clone_count=1)
 
     # Check first row cloned with incremented nickname
     assert store.visible_state[get_addr_key("X", 3)].nickname == "Sensor2"
@@ -254,8 +255,8 @@ def test_clone_structure_nickname_index_updated(store):
 
     template_keys = [template_key]
     dest_keys = [get_addr_key("X", 2), get_addr_key("X", 3)]
-    with store.edit_session("Clone"):
-        RowService.clone_structure(store, template_keys, dest_keys, clone_count=2)
+    with store.edit_session("Clone") as session:
+        RowService.clone_structure(session, store, template_keys, dest_keys, clone_count=2)
 
     # Check reverse index has all cloned nicknames
     assert store.is_duplicate_nickname("Clone2", exclude_addr_key=999)

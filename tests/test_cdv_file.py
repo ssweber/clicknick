@@ -1,12 +1,9 @@
-"""Tests for ClickNick CDV file helper wrappers."""
+"""Tests for DataView folder discovery and CDV verification."""
 
-from clicknick.models.dataview_row import DataType, create_empty_dataview
-from clicknick.views.dataview_editor.cdv_file import (
-    check_cdv_files,
-    get_dataview_folder,
-    list_cdv_files,
-    save_cdv,
-)
+from pyclickplc.banks import DataType
+from pyclickplc.dataview import DataViewFile
+
+from clicknick.data.cdv_file import check_cdv_files, get_dataview_folder, list_cdv_files
 
 
 class TestDataviewFolderDiscovery:
@@ -39,15 +36,15 @@ class TestDataviewFolderDiscovery:
         dataview_dir = project / "CLICK (00010A98)" / "DataView"
         dataview_dir.mkdir(parents=True)
 
-        rows_ok = create_empty_dataview()
-        rows_ok[0].address = "X001"
-        rows_ok[0].data_type = DataType.BIT
-        save_cdv(dataview_dir / "ok.cdv", rows_ok, has_new_values=False)
+        ok = DataViewFile()
+        ok.rows[0].address = "X001"
+        ok.rows[0].data_type = DataType.BIT
+        ok.save(dataview_dir / "ok.cdv")
 
-        rows_bad = create_empty_dataview()
-        rows_bad[0].address = "DS1"
-        rows_bad[0].data_type = DataType.BIT
-        save_cdv(dataview_dir / "bad.cdv", rows_bad, has_new_values=False)
+        bad = DataViewFile()
+        bad.rows[0].address = "DS1"
+        bad.rows[0].data_type = DataType.BIT
+        bad.save(dataview_dir / "bad.cdv")
 
         issues, checked = check_cdv_files(project)
         assert checked == 2

@@ -30,9 +30,7 @@ from ..utils.mdb_operations import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-from pyclickplc.nicknames import CSV_COLUMNS as CSV_COLUMNS
-from pyclickplc.nicknames import DATA_TYPE_CODE_TO_STR as DATA_TYPE_CODE_TO_STR
-from pyclickplc.nicknames import DATA_TYPE_STR_TO_CODE as DATA_TYPE_STR_TO_CODE
+from pyclickplc.nicknames import CSV_COLUMNS, DATA_TYPE_CODE_TO_STR, DATA_TYPE_STR_TO_CODE
 
 # Regex for parsing address strings like "X001", "C100", "DS1000", "TD5"
 ADDRESS_PATTERN = re.compile(r"^([A-Z]+)(\d+)$")
@@ -102,11 +100,6 @@ def read_mdb_csv(csv_path: str) -> dict[int, AddressRow]:
     return result
 
 
-def load_addresses_from_mdb_dump(csv_path: str) -> dict[int, AddressRow]:
-    """Backward-compatible alias for read_mdb_csv()."""
-    return read_mdb_csv(csv_path)
-
-
 class DataSource(ABC):
     """Abstract base class for address data sources.
 
@@ -118,6 +111,11 @@ class DataSource(ABC):
     @abstractmethod
     def file_path(self) -> str:
         """Return the path to the data file for monitoring."""
+
+    @property
+    @abstractmethod
+    def is_database(self) -> bool:
+        """Return True if this is CLICK's project database (vs an exported CSV)."""
 
     @abstractmethod
     def load_all_addresses(self) -> dict[int, AddressRow]:
@@ -168,6 +166,10 @@ class CsvDataSource(DataSource):
     def file_path(self) -> str:
         """Return the path to the CSV file."""
         return self._csv_path
+
+    @property
+    def is_database(self) -> bool:
+        return False
 
     @property
     def supports_used_field(self) -> bool:
@@ -377,6 +379,10 @@ class MdbDataSource(DataSource):
     def file_path(self) -> str:
         """Return the path to the MDB file."""
         return self._db_path
+
+    @property
+    def is_database(self) -> bool:
+        return True
 
     def load_all_addresses(self) -> dict[int, AddressRow]:
         """Load all addresses from the MDB database."""

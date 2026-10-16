@@ -1,44 +1,10 @@
-"""CDV file helpers for ClickNick DataView workflows."""
+"""DataView folder discovery and CDV verification for a CLICK project."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from pyclickplc.dataview import DataViewFile
-from pyclickplc.dataview import check_cdv_file as check_cdv_file
-from pyclickplc.dataview import read_cdv as read_cdv
-from pyclickplc.dataview import write_cdv as write_cdv
-
-
-def load_cdv(path: Path | str):
-    """Load wrapper returning legacy tuple shape for ClickNick internals."""
-    dataview = read_cdv(path)
-    return dataview.rows, dataview.has_new_values, dataview.header
-
-
-def save_cdv(
-    path: Path | str,
-    rows,
-    has_new_values: bool,
-    header: str | None = None,
-) -> None:
-    """Save wrapper accepting legacy args for ClickNick internals."""
-    dataview = DataViewFile(
-        rows=rows,
-        has_new_values=has_new_values,
-        header=header or f"{-1 if has_new_values else 0},0,0",
-    )
-    write_cdv(path, dataview)
-
-
-def export_cdv(
-    path: Path | str,
-    rows,
-    has_new_values: bool,
-    header: str | None = None,
-) -> None:
-    """Export a CDV file to a new location."""
-    save_cdv(path, rows, has_new_values, header)
+from pyclickplc.dataview import check_cdv_file
 
 
 def get_dataview_folder(project_path: Path | str) -> Path | None:

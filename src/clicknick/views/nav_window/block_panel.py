@@ -9,8 +9,9 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 
+from pyclickplc.blocks import compute_all_block_ranges
+
 from ...models.address_row import AddressRow
-from ...services.block_service import compute_all_block_ranges
 from ...widgets.colors import get_block_color_hex
 from .block_logic import BlockTreeNode, build_block_tree
 

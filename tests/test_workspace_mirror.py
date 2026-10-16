@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from clicknick.app import ClickNickApp
+from clicknick.connection_session import ClickConnection
 from clicknick.services.workspace_mirror import (
     ProjectWorkspaceConfig,
     find_project_configs,
@@ -199,7 +200,7 @@ def test_directory_info_reports_configuration_and_generation_times(tmp_path: Pat
 
 def test_app_loads_one_matching_plc_workspace(monkeypatch, tmp_path: Path) -> None:
     app = ClickNickApp.__new__(ClickNickApp)
-    app.connected_click_filename = "Machine-20260829.ckp"
+    app._click = ClickConnection("1", 2, "Machine-20260829.ckp")
     app._mirror_setup_window = None
     app._workspace_config = object()
     app._workspace_mirror_error = "old error"
@@ -364,7 +365,7 @@ def test_workspace_setup_prompts_for_and_writes_a_missing_plc_name(monkeypatch) 
     app = ClickNickApp.__new__(ClickNickApp)
     app.root = MagicMock()
     app._session = object()
-    app.connected_click_hwnd = 123
+    app._click = ClickConnection("1", 123, "Example.ckp")
     app._mirror_setup_window = None
     app._current_plc_name = MagicMock(return_value=None)
     app._update_status = MagicMock()

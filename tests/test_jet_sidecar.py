@@ -319,16 +319,18 @@ def test_none_connects_through_existing_csv_flow(monkeypatch):
     view = SimpleNamespace(
         root=Mock(),
         _session=None,
-        _csv_only_store=None,
-        _csv_only_dataview=None,
+        _data=None,
         monitoring=False,
         _clear_connection_state=Mock(),
         csv_path_var=Mock(),
         _load_workspace_pairing=Mock(),
-        nickname_manager=SimpleNamespace(has_database_backend=mdb_shared.has_database_backend),
+        nickname_manager=SimpleNamespace(
+            has_database_backend=mdb_shared.has_database_backend, set_store=Mock()
+        ),
         _show_main_window=Mock(),
         load_csv=Mock(),
     )
+    view._close_data = lambda **kw: app_module.ClickNickApp._close_data(view, **kw)
     view._connect_csv_fallback = lambda *args: app_module.ClickNickApp._connect_csv_fallback(
         view, *args
     )
@@ -363,6 +365,7 @@ def test_unloadable_odbc_loads_off_ui_thread_and_handles_result(jet_database, mo
 
     from clicknick import app as app_module
     from clicknick import connection_session
+    from clicknick.connection_session import ClickConnection
     from clicknick.data import data_source
 
     path, _worker = jet_database
@@ -372,6 +375,7 @@ def test_unloadable_odbc_loads_off_ui_thread_and_handles_result(jet_database, mo
     view = SimpleNamespace(
         root=SimpleNamespace(after=lambda _delay, callback: callbacks.append(callback)),
         _session=None,
+        _data=None,
         _update_status=Mock(),
         _show_main_window=Mock(),
         _connect_csv_fallback=Mock(),
@@ -381,6 +385,8 @@ def test_unloadable_odbc_loads_off_ui_thread_and_handles_result(jet_database, mo
         load_from_database=Mock(),
         _start_analysis_build=Mock(),
     )
+    view._open_data = lambda store: app_module.ClickNickApp._open_data(view, store)
+    view._get_store = lambda: app_module.ClickNickApp._get_store(view)
     monkeypatch.setattr(data_source, "find_click_database", lambda *_args: str(path))
     monkeypatch.setattr(
         mdb_shared, "get_available_access_drivers", lambda: ["Microsoft Access Driver (*.mdb)"]
@@ -420,10 +426,11 @@ def test_unloadable_odbc_loads_off_ui_thread_and_handles_result(jet_database, mo
         view._connection_probe_token = None
     callbacks.pop(0)()
     if outcome == "success":
-        store = session.call_args.args[3]
+        store = view._data.store
         assert store.loaded_row_count == 408
+        assert session.call_args.args == (ClickConnection(1, 2, "project.ckp"),)
         assert view._session is session.return_value
-        view.nickname_manager.set_shared_data.assert_called_once_with(store)
+        view.nickname_manager.set_store.assert_called_once_with(store)
         monitoring.assert_called_once_with(view.root)
         view._connect_csv_fallback.assert_not_called()
         error.assert_not_called()
@@ -446,11 +453,13 @@ def test_switch_closes_old_session_before_loading_new_database(monkeypatch):
 
     events = []
     previous = Mock()
-    previous.close.side_effect = lambda **_kwargs: events.append("close") or True
+    previous.close.side_effect = lambda: events.append("close session")
+    data = Mock()
+    data.close.side_effect = lambda *_args, **_kwargs: events.append("close data") or True
     view = SimpleNamespace(
+        root=Mock(),
         _session=previous,
-        _csv_only_store=None,
-        _csv_only_dataview=None,
+        _data=data,
         monitoring=False,
         nickname_manager=Mock(),
         _clear_connection_state=Mock(),
@@ -458,9 +467,11 @@ def test_switch_closes_old_session_before_loading_new_database(monkeypatch):
         _load_workspace_pairing=Mock(),
         _load_instance_database=lambda *_args: events.append("load"),
     )
+    view._close_data = lambda **kw: app_module.ClickNickApp._close_data(view, **kw)
     app_module.ClickNickApp.connect_to_instance(view, 1, "CLICK", "project.ckp", 2)
-    assert events == ["close", "load"]
+    assert events == ["close data", "close session", "load"]
     assert view._session is None
+    assert view._data is None
 
 
 def test_real_jet_full_sheet_insert_update_rollback_delete(jet_database):

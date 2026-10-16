@@ -14,7 +14,6 @@ from pyclickplc.addresses import get_addr_key, is_xd_yd_hidden_slot
 from pyclickplc.banks import BANKS, PAIRED_RETENTIVE_TYPES
 
 from ...models.address_row import AddressRow
-from ...services.block_service import compute_all_block_ranges
 
 if TYPE_CHECKING:
     pass
@@ -61,14 +60,10 @@ class UnifiedView:
     # Row index labels (e.g., "X001", "T1", "TD1")
     index_labels: list[str] = field(default_factory=list)
 
-    # Block colors computed from comments (row_idx -> color_name)
-    block_colors: dict[int, str] = field(default_factory=dict)
-
 
 def build_single_type_rows(
     all_rows: dict[int, AddressRow],
     mem_type: str,
-    all_nicknames: dict[int, str],
 ) -> list[AddressRow]:
     """Build row list by referencing skeleton rows.
 
@@ -79,7 +74,6 @@ def build_single_type_rows(
     Args:
         all_rows: Dict mapping AddrKey to skeleton AddressRow objects
         mem_type: Memory type (X, Y, C, etc.)
-        all_nicknames: Global dict of all nicknames (kept for API compatibility)
 
     Returns:
         List of AddressRow references from the skeleton
@@ -109,7 +103,6 @@ def build_single_type_rows(
 def build_interleaved_rows(
     all_rows: dict[int, AddressRow],
     types: list[str],
-    all_nicknames: dict[int, str],
 ) -> list[AddressRow]:
     """Build interleaved row list by referencing skeleton rows.
 
@@ -122,7 +115,6 @@ def build_interleaved_rows(
     Args:
         all_rows: Dict mapping AddrKey to skeleton AddressRow objects
         types: List of memory types to interleave (e.g., ["T", "TD"])
-        all_nicknames: Global dict of all nicknames (kept for API compatibility)
 
     Returns:
         List of interleaved AddressRow references from skeleton
@@ -152,41 +144,6 @@ def build_interleaved_rows(
                 rows.append(all_rows[addr_key])  # Reference, not copy
 
     return rows
-
-
-def compute_block_colors(rows: list[AddressRow]) -> dict[int, str]:
-    """Compute block background colors for each row index.
-
-    Parses block tags from row comments to determine which rows
-    should have colored row indices. Nested blocks override outer blocks.
-    Only colors rows matching the block's memory_type (for interleaved views).
-
-    Args:
-        rows: List of AddressRow to process
-
-    Returns:
-        Dict mapping row index to bg color string
-    """
-    # Get all block ranges using centralized function
-    ranges = compute_all_block_ranges(rows)
-
-    # Filter to only blocks with colors
-    colored_ranges = [r for r in ranges if r.bg_color]
-
-    # Build row_idx -> color map, with inner blocks overriding outer
-    # Sort by range size descending (larger ranges first)
-    # This ensures inner (smaller) blocks are processed last and override
-    colored_ranges.sort(key=lambda r: -(r.end_idx - r.start_idx))
-
-    row_colors: dict[int, str] = {}
-    for block in colored_ranges:
-        for idx in range(block.start_idx, block.end_idx + 1):
-            # Only color rows matching the block's memory_type (for interleaved views)
-            if block.memory_type and rows[idx].memory_type != block.memory_type:
-                continue
-            row_colors[idx] = block.bg_color  # type: ignore[assignment]
-
-    return row_colors
 
 
 def compute_index_labels(rows: list[AddressRow]) -> list[str]:
@@ -228,7 +185,6 @@ def find_paired_row(row: AddressRow, rows: list[AddressRow]) -> AddressRow | Non
 
 def build_unified_view(
     all_rows: dict[int, AddressRow],
-    all_nicknames: dict[int, str],
 ) -> UnifiedView:
     """Build a unified view containing ALL memory types.
 
@@ -237,7 +193,6 @@ def build_unified_view(
 
     Args:
         all_rows: Dict mapping AddrKey to AddressRow (preloaded data)
-        all_nicknames: Global dict of all nicknames for validation
 
     Returns:
         UnifiedView with all rows and section boundaries
@@ -252,20 +207,18 @@ def build_unified_view(
         if type_key in COMBINED_TYPES:
             # Build interleaved rows for combined types (T/TD, CT/CTD)
             combined = COMBINED_TYPES[type_key]
-            rows = build_interleaved_rows(all_rows, combined, all_nicknames)
+            rows = build_interleaved_rows(all_rows, combined)
         else:
             # Build single type rows
-            rows = build_single_type_rows(all_rows, type_key, all_nicknames)
+            rows = build_single_type_rows(all_rows, type_key)
 
         unified_rows.extend(rows)
 
-    # Compute block colors and index labels for the unified view
-    block_colors = compute_block_colors(unified_rows)
+    # Compute index labels for the unified view
     index_labels = compute_index_labels(unified_rows)
 
     return UnifiedView(
         rows=unified_rows,
         section_boundaries=section_boundaries,
         index_labels=index_labels,
-        block_colors=block_colors,
     )

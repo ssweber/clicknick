@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..data.address_store import AddressStore
-    from ..data.edit_session_new import EditSession
+    from ..data.edit_session import EditSession
     from ..models.address_row import AddressRow
 
 
@@ -166,42 +166,6 @@ class RowService:
 
     @staticmethod
     def fill_down(
-        store: AddressStore,
-        source_key: int,
-        target_keys: list[int],
-        increment_initial_value: bool = False,
-    ) -> set[int]:
-        """Fill down from source to target rows with incremented nicknames.
-
-        This is a convenience wrapper around clone_structure for the special case
-        where the template is a single row.
-
-        Must be called within an edit_session context.
-
-        Args:
-            store: The AddressStore instance
-            source_key: Source address key
-            target_keys: List of target address keys
-            increment_initial_value: If True and initial_value matches nickname number,
-                                      increment it along with nickname
-
-        Returns:
-            Set of affected addr_keys (source + all targets)
-        """
-        # Fill down is just clone_structure with a single-row template
-        affected = RowService.clone_structure(
-            store=store,
-            template_keys=[source_key],
-            destination_keys=target_keys,
-            clone_count=len(target_keys),
-            increment_initial_value=increment_initial_value,
-        )
-        # Include source key for backward compatibility
-        affected.add(source_key)
-        return affected
-
-    @staticmethod
-    def fill_down_with_session(
         session: EditSession,
         store: AddressStore,
         source_key: int,
@@ -221,7 +185,7 @@ class RowService:
         Returns:
             Set of affected addr_keys
         """
-        return RowService.clone_structure_with_session(
+        return RowService.clone_structure(
             session=session,
             store=store,
             template_keys=[source_key],
@@ -232,41 +196,6 @@ class RowService:
 
     @staticmethod
     def clone_structure(
-        store: AddressStore,
-        template_keys: list[int],
-        destination_keys: list[int],
-        clone_count: int,
-        increment_initial_value: bool = False,
-    ) -> set[int]:
-        """Clone a structure of rows with incremented nicknames.
-
-        Must be called within an edit_session context.
-
-        Args:
-            store: The AddressStore instance
-            template_keys: Source address keys (the template)
-            destination_keys: Destination address keys (must be clone_count * len(template_keys))
-            clone_count: Number of times to clone the template
-            increment_initial_value: If True and initial_value matches nickname number,
-                                      increment it along with nickname
-
-        Returns:
-            Set of affected addr_keys (all destination rows)
-        """
-        if store._current_session is None:
-            raise RuntimeError("clone_structure must be called within an edit_session")
-
-        return RowService.clone_structure_with_session(
-            session=store._current_session,
-            store=store,
-            template_keys=template_keys,
-            destination_keys=destination_keys,
-            clone_count=clone_count,
-            increment_initial_value=increment_initial_value,
-        )
-
-    @staticmethod
-    def clone_structure_with_session(
         session: EditSession,
         store: AddressStore,
         template_keys: list[int],

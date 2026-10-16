@@ -10,19 +10,24 @@ from __future__ import annotations
 import enum
 import shutil
 import tempfile
+import threading
 import traceback
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+from pyclickplc.addresses import format_address_display, get_addr_key
 from pyrung.click import SystemNicknameRepair, SystemNicknameRepairRequired
+
+from ..models.address_slots import iter_address_slots
 
 if TYPE_CHECKING:
     from pyrung.core.analysis.pdg import ProgramGraph
     from pyrung.core.program import Program
     from pyrung.core.validation.report import ValidationReport
 
+    from ..models.address_row import AddressRow
     from .program_check_selection import ProgramCheckSelection
 
 WorkspaceKind = Literal["temporary", "persistent"]
@@ -53,19 +58,25 @@ class AnalysisResult:
     project_dir: Path | None = None
 
 
-def _write_nicknames_csv(csv_dir: Path, db_path: Path) -> Path | None:
-    """Export nicknames from MDB to csv_dir/nicknames.csv."""
-    nick_dest = csv_dir / "nicknames.csv"
-    try:
-        from ..data.data_source import CsvDataSource
-        from ..utils.mdb_operations import MdbConnection, load_all_addresses
+def _read_nickname_rows(db_path: Path) -> dict[int, AddressRow]:
+    """Read the saved CLICK nicknames once per build.
 
-        with MdbConnection(str(db_path)) as conn:
-            all_rows = load_all_addresses(conn)
-        CsvDataSource(str(nick_dest)).save_changes(list(all_rows.values()))
-        return nick_dest
-    except Exception:
-        return None
+    The generated code, the persisted project and the tag map all come from
+    this one snapshot, so tag names always match the code that uses them.
+    """
+    from ..utils.mdb_operations import MdbConnection, load_all_addresses
+
+    with MdbConnection(str(db_path)) as conn:
+        return load_all_addresses(conn)
+
+
+def _write_nicknames_csv(csv_dir: Path, nickname_rows: Mapping[int, AddressRow]) -> Path:
+    """Write the nickname snapshot to csv_dir/nicknames.csv for pyrung."""
+    from ..data.data_source import CsvDataSource
+
+    nick_dest = csv_dir / "nicknames.csv"
+    CsvDataSource(str(nick_dest)).save_changes(list(nickname_rows.values()))
+    return nick_dest
 
 
 def _channel_inputs(scr_folder: Path) -> frozenset[str]:
@@ -79,26 +90,25 @@ def _channel_inputs(scr_folder: Path) -> frozenset[str]:
 
 
 def _build_tag_addr_key_map(
-    base_state: Mapping[int, object],
+    nickname_rows: Mapping[int, AddressRow],
 ) -> tuple[dict[str, int], dict[int, str]]:
-    """Build bidirectional tag_name <-> addr_key maps from base-layer rows.
+    """Build bidirectional tag_name <-> addr_key maps over every address.
 
-    pyrung tags are named by raw Click nicknames.  Addresses with no
-    nickname become tags named after the display_address (e.g. "X001").
+    pyrung names tags by the nicknames the code was generated from, so the map
+    takes the same snapshot. Addresses with no nickname are named by their
+    display address (e.g. "X001").
     """
     tag_to_key: dict[str, int] = {}
     key_to_tag: dict[int, str] = {}
 
-    for addr_key, row in base_state.items():
-        nickname = getattr(row, "nickname", "")
-        display = getattr(row, "display_address", "")
-        tag = nickname.strip() if nickname else ""
-        if tag:
-            tag_to_key[tag] = addr_key
-            key_to_tag[addr_key] = tag
-        elif display:
-            tag_to_key[display] = addr_key
-            key_to_tag[addr_key] = display
+    for memory_type, address in iter_address_slots():
+        addr_key = get_addr_key(memory_type, address)
+        row = nickname_rows.get(addr_key)
+        tag = (row.nickname.strip() if row is not None else "") or format_address_display(
+            memory_type, address
+        )
+        tag_to_key[tag] = addr_key
+        key_to_tag[addr_key] = tag
 
     return tag_to_key, key_to_tag
 
@@ -193,7 +203,7 @@ def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
 
 def _regenerate_persisted_project(
     scr_folder: Path,
-    db_path: Path | None,
+    nickname_rows: Mapping[int, AddressRow] | None,
     persist_dir: Path,
     *,
     workspace_kind: WorkspaceKind = "temporary",
@@ -213,8 +223,8 @@ def _regenerate_persisted_project(
         csv_persist.mkdir()
         program_save(scr_folder, csv_persist, index=True)
         persist_nickname_csv = None
-        if db_path is not None:
-            persist_nickname_csv = _write_nicknames_csv(csv_persist, db_path)
+        if nickname_rows is not None:
+            persist_nickname_csv = _write_nicknames_csv(csv_persist, nickname_rows)
 
         ladder_to_pyrung_project(
             csv_persist,
@@ -235,25 +245,30 @@ def _build_graph(
     *,
     workspace_kind: WorkspaceKind = "temporary",
     on_project_generated: Callable[[Path], None] | None = None,
-) -> tuple[ProgramGraph, Program, Path | None]:
+) -> tuple[ProgramGraph, Program, Path | None, dict[int, AddressRow]]:
     """Run the full pipeline: Scr*.tmp -> CSV -> pyrung code -> exec -> graph.
 
     When *persist_dir* is provided, also writes the full pyrung project
     (src/plc/) to disk for consumption by DAP and
     rung apply commands.
+
+    Returns the graph, program, persisted project folder, and the nickname
+    snapshot the code was generated from (empty without a database).
     """
     from pyrung.click import ladder_to_pyrung
     from pyrung.core.analysis import build_program_graph
 
     from ..ladder.program import program_save
 
+    nickname_rows = _read_nickname_rows(db_path) if db_path is not None else None
+
     with tempfile.TemporaryDirectory(prefix="clicknick_analysis_") as tmp:
         csv_dir = Path(tmp)
         program_save(scr_folder, csv_dir, index=True)
 
         nickname_csv = None
-        if db_path is not None:
-            nickname_csv = _write_nicknames_csv(csv_dir, db_path)
+        if nickname_rows is not None:
+            nickname_csv = _write_nicknames_csv(csv_dir, nickname_rows)
 
         code = ladder_to_pyrung(
             csv_dir, nickname_csv=nickname_csv, analog_inputs=_channel_inputs(scr_folder)
@@ -265,7 +280,7 @@ def _build_graph(
     if persist_dir is not None:
         project_dir = _regenerate_persisted_project(
             scr_folder,
-            db_path,
+            nickname_rows,
             persist_dir,
             workspace_kind=workspace_kind,
         )
@@ -283,7 +298,7 @@ def _build_graph(
         raise TypeError(msg)
 
     graph = build_program_graph(program)
-    return graph, program, project_dir
+    return graph, program, project_dir, nickname_rows or {}
 
 
 class AnalysisService:
@@ -299,6 +314,9 @@ class AnalysisService:
         self._error: str | None = None
         self._error_detail: str | None = None
         self._system_nickname_repairs: tuple[SystemNicknameRepair, ...] = ()
+        # Builds run on a worker thread while invalidate() runs on the Tk
+        # thread; the lock makes epoch bumps and publish-if-current atomic.
+        self._lock = threading.Lock()
         self._generation = 0
         self._epoch = 0
 
@@ -342,11 +360,12 @@ class AnalysisService:
         Used for pre-flight bail-outs (no project database, no saved ladder
         files) so views can say *why* instead of waiting forever.
         """
-        self._epoch += 1
-        self._status = AnalysisStatus.FAILED
-        self._error = reason
-        self._error_detail = detail
-        self._system_nickname_repairs = ()
+        with self._lock:
+            self._epoch += 1
+            self._status = AnalysisStatus.FAILED
+            self._error = reason
+            self._error_detail = detail
+            self._system_nickname_repairs = ()
 
     @property
     def tag_to_addr_key(self) -> dict[str, int]:
@@ -428,11 +447,13 @@ class AnalysisService:
         self,
         scr_folder: Path,
         db_path: Path | None,
-        base_state: Mapping[int, object],
         persist_dir: Path | None = None,
         workspace_kind: WorkspaceKind = "temporary",
-    ) -> None:
+    ) -> bool:
         """Run the analysis pipeline and cache the result.
+
+        Returns True if the result was published, False if an invalidate() or
+        newer build superseded it while it ran.
 
         Called from a background thread; stores results for main-thread access.
         When *persist_dir* is given, the pyrung project is also written to disk.
@@ -443,65 +464,62 @@ class AnalysisService:
         UI able to explain itself. Any previous good result is kept, so a failed
         *rebuild* does not take working analysis away from open windows.
         """
-        # Readers use this generation to detect a rebuild racing their work.
-        self._generation += 1
-        self._epoch += 1
-        epoch = self._epoch
-        self._status = AnalysisStatus.BUILDING
-        self._error = None
-        self._error_detail = None
-        self._system_nickname_repairs = ()
+        with self._lock:
+            # Readers use this generation to detect a rebuild racing their work.
+            self._generation += 1
+            self._epoch += 1
+            epoch = self._epoch
+            self._status = AnalysisStatus.BUILDING
+            self._error = None
+            self._error_detail = None
+            self._system_nickname_repairs = ()
 
         def _project_generated(project_dir: Path) -> None:
-            if self._epoch == epoch:
-                self._project_dir = project_dir
+            with self._lock:
+                if self._epoch == epoch:
+                    self._project_dir = project_dir
 
         try:
-            graph, program, project_dir = _build_graph(
+            graph, program, project_dir, nickname_rows = _build_graph(
                 scr_folder,
                 db_path,
                 persist_dir,
                 workspace_kind=workspace_kind,
                 on_project_generated=_project_generated,
             )
-            tag_to_key, key_to_tag = _build_tag_addr_key_map(base_state)
+            tag_to_key, key_to_tag = _build_tag_addr_key_map(nickname_rows)
         except Exception as exc:
-            if self._epoch == epoch:
-                self._status = AnalysisStatus.FAILED
-                self._error = f"{type(exc).__name__}: {exc}"
-                self._error_detail = traceback.format_exc()
-                if isinstance(exc, SystemNicknameRepairRequired):
-                    self._system_nickname_repairs = exc.repairs
+            with self._lock:
+                if self._epoch == epoch:
+                    self._status = AnalysisStatus.FAILED
+                    self._error = f"{type(exc).__name__}: {exc}"
+                    self._error_detail = traceback.format_exc()
+                    if isinstance(exc, SystemNicknameRepairRequired):
+                        self._system_nickname_repairs = exc.repairs
             raise
-        if self._epoch != epoch:
-            return
-        self._project_dir = project_dir
-        self._result = AnalysisResult(
-            graph=graph,
-            program=program,
-            tag_to_addr_key=tag_to_key,
-            addr_key_to_tag=key_to_tag,
-            project_dir=project_dir,
-        )
-        self._status = AnalysisStatus.READY
-
-    def rebuild_mapping(self, base_state: Mapping[int, object]) -> None:
-        """Refresh the tag<->addr_key mapping after a base_state change."""
-        if self._result is None:
-            return
-        tag_to_key, key_to_tag = _build_tag_addr_key_map(base_state)
-        self._result.tag_to_addr_key = tag_to_key
-        self._result.addr_key_to_tag = key_to_tag
-        self._result.role_cache.clear()
+        with self._lock:
+            if self._epoch != epoch:
+                return False
+            self._project_dir = project_dir
+            self._result = AnalysisResult(
+                graph=graph,
+                program=program,
+                tag_to_addr_key=tag_to_key,
+                addr_key_to_tag=key_to_tag,
+                project_dir=project_dir,
+            )
+            self._status = AnalysisStatus.READY
+        return True
 
     def invalidate(self) -> None:
-        self._epoch += 1
-        self._result = None
-        self._project_dir = None
-        self._status = AnalysisStatus.IDLE
-        self._error = None
-        self._error_detail = None
-        self._system_nickname_repairs = ()
+        with self._lock:
+            self._epoch += 1
+            self._result = None
+            self._project_dir = None
+            self._status = AnalysisStatus.IDLE
+            self._error = None
+            self._error_detail = None
+            self._system_nickname_repairs = ()
 
     def known_tag_names(self) -> frozenset[str]:
         """Tag names present in both the graph and the addr_key map."""

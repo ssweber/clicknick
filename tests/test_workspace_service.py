@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from clicknick.app import ClickNickApp
-from clicknick.connection_session import ConnectionSession
+from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.services.analysis_service import AnalysisStatus
 from clicknick.services.project_workspace import record_generated_plc_source
 from clicknick.services.workspace_service import (
@@ -109,7 +109,7 @@ def test_connection_session_reload_uses_saved_click_project(tmp_path, monkeypatc
         "clicknick.utils.mdb_shared.find_click_database", lambda **_kwargs: str(db_path)
     )
 
-    session = ConnectionSession(1, 2, "Example.ckp", SimpleNamespace(base_state={}))
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
     session._start_analysis_thread = MagicMock()
     callback = MagicMock()
     root = _Root()
@@ -130,7 +130,7 @@ def test_connection_session_reload_reports_unsaved_click_project(tmp_path, monke
         "clicknick.utils.mdb_shared.find_click_database", lambda **_kwargs: str(db_path)
     )
 
-    session = ConnectionSession(1, 2, "Example.ckp", SimpleNamespace(base_state={}))
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
     callback = MagicMock()
 
     assert session.reload_workspace_from_click(_Root(), callback) is False
@@ -145,8 +145,7 @@ def test_connection_session_builds_into_configured_workspace(tmp_path, monkeypat
     scr_folder = tmp_path / "click-temp"
     workspace = tmp_path / "durable" / "Example Workspace"
     db_path = scr_folder / "SC_.mdb"
-    store = SimpleNamespace(base_state={1: object()})
-    session = ConnectionSession(1, 2, "Example.ckp", store, workspace_dir=workspace)
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"), workspace_dir=workspace)
     session.analysis = MagicMock()
 
     class _InlineThread:
@@ -164,7 +163,6 @@ def test_connection_session_builds_into_configured_workspace(tmp_path, monkeypat
     session.analysis.build.assert_called_once_with(
         scr_folder,
         db_path,
-        store.base_state,
         persist_dir=workspace.resolve(),
         workspace_kind="persistent",
     )
@@ -173,8 +171,7 @@ def test_connection_session_builds_into_configured_workspace(tmp_path, monkeypat
 def test_connection_session_labels_click_folder_as_temporary(tmp_path, monkeypatch) -> None:
     scr_folder = tmp_path / "click-temp"
     db_path = scr_folder / "SC_.mdb"
-    store = SimpleNamespace(base_state={1: object()})
-    session = ConnectionSession(1, 2, "Example.ckp", store)
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
     session.analysis = MagicMock()
 
     class _InlineThread:
@@ -192,14 +189,13 @@ def test_connection_session_labels_click_folder_as_temporary(tmp_path, monkeypat
     session.analysis.build.assert_called_once_with(
         scr_folder,
         db_path,
-        store.base_state,
         persist_dir=scr_folder / "pyrung_project",
         workspace_kind="temporary",
     )
 
 
 def test_switching_workspace_closes_console_and_invalidates_analysis(tmp_path) -> None:
-    session = ConnectionSession(1, 2, "Example.ckp", SimpleNamespace(base_state={}))
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
     session.analysis = MagicMock()
     session._close_console = MagicMock()
     workspace = tmp_path / "Example Workspace"
@@ -260,3 +256,70 @@ def test_main_window_reload_ignores_completion_from_replaced_session(monkeypatch
     callback(True, None)
 
     app._workspace_reload_finished.assert_not_called()
+
+
+def test_analysis_builds_run_one_at_a_time_and_coalesce(tmp_path) -> None:
+    """Requests made during a build collapse into one follow-up of the latest inputs."""
+    import threading
+
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    first_started = threading.Event()
+    release_first = threading.Event()
+    calls = []
+
+    def build(scr_folder, db_path, **_kwargs):
+        calls.append(scr_folder)
+        if len(calls) == 1:
+            first_started.set()
+            assert release_first.wait(timeout=10)
+        return True
+
+    session.analysis = MagicMock()
+    session.analysis.build.side_effect = build
+    results = []
+    done = threading.Event()
+
+    def record(name):
+        def on_complete(ok, error):
+            results.append((name, ok, error))
+            if len(results) == 3:
+                done.set()
+
+        return on_complete
+
+    session._start_analysis_thread(tmp_path / "a", tmp_path / "db", on_complete=record("a"))
+    assert first_started.wait(timeout=10)
+    session._start_analysis_thread(tmp_path / "b", tmp_path / "db", on_complete=record("b"))
+    session._start_analysis_thread(tmp_path / "c", tmp_path / "db", on_complete=record("c"))
+    release_first.set()
+    assert done.wait(timeout=10)
+
+    assert calls == [tmp_path / "a", tmp_path / "c"]
+    assert sorted(results) == [("a", True, None), ("b", True, None), ("c", True, None)]
+
+
+def test_superseded_build_reports_failure_and_skips_selection_sync(tmp_path, monkeypatch) -> None:
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    session.analysis = MagicMock()
+    session.analysis.build.return_value = False
+    selection = MagicMock()
+    monkeypatch.setattr(
+        "clicknick.services.program_check_selection.ProgramCheckSelection",
+        lambda _workspace: selection,
+    )
+
+    class _InlineThread:
+        def __init__(self, *, target, daemon):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr("clicknick.connection_session.threading.Thread", _InlineThread)
+    callback = MagicMock()
+
+    session._start_analysis_thread(tmp_path, tmp_path / "db", on_complete=callback)
+
+    selection.sync.assert_not_called()
+    ok, error = callback.call_args.args
+    assert ok is False and "changed while converting" in error

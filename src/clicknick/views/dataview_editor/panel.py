@@ -16,15 +16,10 @@ from pyclickplc.addresses import normalize_address
 from pyclickplc.dataview import (
     MAX_DATAVIEW_ROWS,
     DataViewFile,
-    create_empty_dataview,
+    DataViewRecord,
     get_data_type_for_address,
 )
-from pyclickplc.dataview import (
-    DataViewRecord as DataViewRecord,
-)
 from tksheet import Sheet
-
-from .cdv_file import export_cdv, load_cdv, save_cdv
 
 # Column indices
 COL_ADDRESS = 0
@@ -140,6 +135,15 @@ class DataviewPanel(ttk.Frame):
                     canvas="row_index",
                 )
 
+    def _names_for(self, address: str) -> tuple[str, str]:
+        """Nickname and comment for an address, read live from the address data.
+
+        Never stored on the row, so the sheet cannot show a stale name.
+        """
+        if not address or self.nickname_lookup is None:
+            return "", ""
+        return self.nickname_lookup(address) or ("", "")
+
     def _populate_sheet(self) -> None:
         """Populate sheet with current row data."""
         self._suppress_notifications = True
@@ -148,11 +152,12 @@ class DataviewPanel(ttk.Frame):
             for i, row in enumerate(self.rows):
                 is_enabled = self._is_row_write_enabled(row)
                 checked = bool(self._write_checks[i]) if is_enabled else ""
+                nickname, comment = self._names_for(row.address)
                 data.append(
                     [
                         row.address,
-                        row.nickname,
-                        row.comment,
+                        nickname,
+                        comment,
                         self._new_value_display(row),
                         checked,
                         self._live_value_display(row),
@@ -175,9 +180,10 @@ class DataviewPanel(ttk.Frame):
         """Update display for a single row."""
         row = self.rows[row_idx]
 
+        nickname, comment = self._names_for(row.address)
         self.sheet.set_cell_data(row_idx, COL_ADDRESS, row.address)
-        self.sheet.set_cell_data(row_idx, COL_NICKNAME, row.nickname)
-        self.sheet.set_cell_data(row_idx, COL_COMMENT, row.comment)
+        self.sheet.set_cell_data(row_idx, COL_NICKNAME, nickname)
+        self.sheet.set_cell_data(row_idx, COL_COMMENT, comment)
         self.sheet.set_cell_data(row_idx, COL_NEW_VALUE, self._new_value_display(row))
         self.sheet.set_cell_data(row_idx, COL_LIVE, self._live_value_display(row))
         self._sync_write_checkbox(row_idx)
@@ -229,18 +235,6 @@ class DataviewPanel(ttk.Frame):
                 if new_address != row.address:
                     row.address = new_address
                     row.update_data_type()
-
-                    # Lookup nickname and comment
-                    if new_address and self.nickname_lookup:
-                        result = self.nickname_lookup(new_address)
-                        if result:
-                            row.nickname, row.comment = result
-                        else:
-                            row.nickname = ""
-                            row.comment = ""
-                    else:
-                        row.nickname = ""
-                        row.comment = ""
 
                     # Clear stale runtime state when writability/address changes.
                     if old_address != row.address:
@@ -404,10 +398,6 @@ class DataviewPanel(ttk.Frame):
             if address:
                 row.address = address.strip().upper()
                 row.update_data_type()
-                if self.nickname_lookup:
-                    result = self.nickname_lookup(row.address)
-                    if result:
-                        row.nickname, row.comment = result
 
             self.rows.insert(insert_idx, row)
             self._write_checks.insert(insert_idx, False)
@@ -583,17 +573,9 @@ class DataviewPanel(ttk.Frame):
             return
 
         try:
-            self.rows, self.has_new_values, self._header = load_cdv(self.file_path)
+            self._file = DataViewFile.load(self.file_path)
             self._write_checks = [False] * len(self.rows)
             self._live_values.clear()
-
-            # Populate nicknames and comments from lookup
-            if self.nickname_lookup:
-                for row in self.rows:
-                    if row.address:
-                        result = self.nickname_lookup(row.address)
-                        if result:
-                            row.nickname, row.comment = result
 
             self._populate_sheet()
             self._is_dirty = False
@@ -640,10 +622,9 @@ class DataviewPanel(ttk.Frame):
         self.nickname_lookup = nickname_lookup
         self.address_normalizer = address_normalizer
 
-        # Data model
-        self.rows: list[DataViewRecord] = create_empty_dataview()
-        self.has_new_values = False
-        self._header: str | None = None  # Original header from file
+        # Data model: the CDV file itself (rows, header, and the original bytes
+        # pyclickplc uses to write an unchanged file back byte-for-byte)
+        self._file = DataViewFile()
         self._is_dirty = False
         self._write_checks: list[bool] = [False] * len(self.rows)
         self._live_values: dict[str, PlcValue] = {}
@@ -682,12 +663,7 @@ class DataviewPanel(ttk.Frame):
             return False
 
         try:
-            # Check if any rows in the saveable range have new values
-            saveable_rows = self.rows[:MAX_DATAVIEW_ROWS]
-            self.has_new_values = any(
-                r.new_value is not None for r in saveable_rows if not r.is_empty
-            )
-            save_cdv(self.file_path, self.rows, self.has_new_values, self._header)
+            self._file.save(self.file_path)
             self._is_dirty = False
             self._update_status()
 
@@ -726,11 +702,8 @@ class DataviewPanel(ttk.Frame):
         restart monitoring, and does not clear modified state.
         """
         try:
-            # Match save semantics: header reflects whether any saveable row has
-            # a New Value.
-            saveable_rows = self.rows[:MAX_DATAVIEW_ROWS]
-            has_new_values = any(r.new_value is not None for r in saveable_rows if not r.is_empty)
-            export_cdv(path, self.rows, has_new_values, self._header)
+            # A separate file object, so this panel's file stays bound to its path.
+            DataViewFile(rows=self.rows, header=self._file.header).save(path)
             return True
         except Exception as e:
             self.status_label.config(text=f"Error exporting: {e}")
@@ -771,17 +744,9 @@ class DataviewPanel(ttk.Frame):
             return
 
         try:
-            self.rows, self.has_new_values, self._header = load_cdv(self.file_path)
+            self._file = DataViewFile.load(self.file_path)
             self._write_checks = [False] * len(self.rows)
             self._live_values.clear()
-
-            # Populate nicknames and comments from lookup
-            if self.nickname_lookup:
-                for row in self.rows:
-                    if row.address:
-                        result = self.nickname_lookup(row.address)
-                        if result:
-                            row.nickname, row.comment = result
 
             self._populate_sheet()
             self._is_dirty = False
@@ -874,12 +839,6 @@ class DataviewPanel(ttk.Frame):
             new_row = DataViewRecord(address=address)
             new_row.update_data_type()
 
-            # Lookup nickname and comment
-            if self.nickname_lookup:
-                result = self.nickname_lookup(address)
-                if result:
-                    new_row.nickname, new_row.comment = result
-
             # Insert into data model
             self.rows.insert(idx, new_row)
             self._write_checks.insert(idx, False)
@@ -921,12 +880,6 @@ class DataviewPanel(ttk.Frame):
         row = self.rows[idx]
         row.address = address
         row.update_data_type()
-
-        # Lookup nickname and comment
-        if self.nickname_lookup:
-            result = self.nickname_lookup(address)
-            if result:
-                row.nickname, row.comment = result
 
         # Update sheet
         self._update_row_display(idx)
@@ -1145,18 +1098,19 @@ class DataviewPanel(ttk.Frame):
             self.sheet.hide_columns(columns=columns, data_indexes=True)
 
     def refresh_nicknames(self) -> None:
-        """Refresh all nickname and comment lookups."""
-        if not self.nickname_lookup:
-            return
-
+        """Redraw nicknames and comments after the address data changed."""
         for i, row in enumerate(self.rows):
-            if row.address:
-                result = self.nickname_lookup(row.address)
-                if result:
-                    row.nickname, row.comment = result
-                else:
-                    row.nickname = ""
-                    row.comment = ""
-                self._update_row_display(i)
+            nickname, comment = self._names_for(row.address)
+            self.sheet.set_cell_data(i, COL_NICKNAME, nickname)
+            self.sheet.set_cell_data(i, COL_COMMENT, comment)
 
         self.sheet.set_refresh_timer()
+
+    @property
+    def rows(self) -> list[DataViewRecord]:
+        """Rows of the open CDV file."""
+        return self._file.rows
+
+    @rows.setter
+    def rows(self, rows: list[DataViewRecord]) -> None:
+        self._file.rows = rows

@@ -1,13 +1,13 @@
 """Tests for BlockService."""
 
 import pytest
-
-from clicknick.data.address_store import AddressStore
-from clicknick.services.block_service import (
+from pyclickplc.blocks import (
     compute_all_block_ranges,
     get_all_block_names,
     is_block_name_available,
 )
+
+from clicknick.data.address_store import AddressStore
 from clicknick.views.address_editor.view_builder import build_unified_view
 
 
@@ -33,7 +33,7 @@ def store():
     s.load_initial_data()
 
     # Build and cache unified view (needed for block color updates)
-    view = build_unified_view(s.visible_state, s.all_nicknames)
+    view = build_unified_view(s.visible_state)
     s.set_unified_view(view)
 
     return s

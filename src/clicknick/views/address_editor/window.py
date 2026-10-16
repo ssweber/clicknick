@@ -10,6 +10,7 @@ import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
 from tkinter import messagebox, ttk
+from typing import TYPE_CHECKING
 
 from pyclickplc.addresses import get_addr_key
 from pyclickplc.banks import DataType
@@ -21,7 +22,6 @@ from pyclickplc.blocks import (
     validate_block_span,
 )
 
-from ...data.address_store import AddressStore
 from ...data.data_source import CsvDataSource
 from ...services import ImportService, RowService
 from ...utils.rename_helpers import build_rename_pattern
@@ -35,6 +35,9 @@ from .jump_sidebar import COMBINED_TYPES, JumpSidebar
 from .panel import AddressPanel
 from .tab_state import TabState
 from .view_builder import build_unified_view
+
+if TYPE_CHECKING:
+    from ...data_session import DataSession
 
 
 class AddressEditorWindow(tk.Toplevel):
@@ -63,9 +66,10 @@ class AddressEditorWindow(tk.Toplevel):
             parts.append(f"Modified: {total_modified}")
         if total_errors > 0:
             parts.append(f"Errors: {total_errors}")
-        if self._synced_pending > 0:
-            noun = "tag" if self._synced_pending == 1 else "tags"
-            parts.append(f"{self._synced_pending} {noun} synced - Save in CLICK")
+        synced_pending = self._get_synced_pending()
+        if synced_pending > 0:
+            noun = "tag" if synced_pending == 1 else "tags"
+            parts.append(f"{synced_pending} {noun} synced - Save in CLICK")
 
         self.status_var.set(" | ".join(parts))
 
@@ -78,7 +82,7 @@ class AddressEditorWindow(tk.Toplevel):
     def _refresh_navigation(self) -> None:
         """Refresh the navigation dock with current data."""
         if self._nav_window is not None:
-            self._nav_window.refresh(self._store.all_rows)
+            self._nav_window.refresh(self._store.visible_state)
 
     # --- Tab Management Methods ---
 
@@ -293,9 +297,9 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Execute clone via service within edit_session
         # edit_session handles validation, notification, and display refresh automatically
-        with self._store.edit_session("Clone structure"):
-            RowService.clone_structure_with_session(
-                self._store._current_session,
+        with self._store.edit_session("Clone structure") as session:
+            RowService.clone_structure(
+                session,
                 self._store,
                 template_keys,
                 destination_keys,
@@ -346,9 +350,9 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Execute fill down via service within edit_session
         # edit_session handles validation, notification, and display refresh automatically
-        with self._store.edit_session("Fill down"):
-            RowService.fill_down_with_session(
-                self._store._current_session,
+        with self._store.edit_session("Fill down") as session:
+            RowService.fill_down(
+                session,
                 self._store,
                 first_row.addr_key,
                 target_keys,
@@ -401,12 +405,7 @@ class AddressEditorWindow(tk.Toplevel):
         Returns:
             True if using MDB, False otherwise
         """
-        # Check if data source has file_path ending in .mdb
-        try:
-            file_path = self._store._data_source.file_path
-            return file_path and file_path.lower().endswith(".mdb")
-        except Exception:
-            return False
+        return self._store.is_database
 
     def _get_save_label(self) -> str:
         """Get the appropriate label for save operation.
@@ -435,10 +434,11 @@ class AddressEditorWindow(tk.Toplevel):
             return
 
         try:
+            synced_keys = self._store.get_dirty_keys()
             count = self._store.save_all_changes()
 
             if self._on_synced is not None:
-                self._on_synced(count)
+                self._on_synced(synced_keys)
 
             self.status_var.set(f"{action_verb.capitalize()} {count} changes")
             messagebox.showinfo(
@@ -492,9 +492,6 @@ class AddressEditorWindow(tk.Toplevel):
             # The notification triggers _on_address_store_changed which refreshes panels
             self._store.discard_all_changes()
 
-            # Update local nicknames reference
-            self.all_nicknames = self._store.all_nicknames
-
             self._update_status()
             self.status_var.set("Changes discarded")
 
@@ -516,7 +513,7 @@ class AddressEditorWindow(tk.Toplevel):
             if export_mode == "all":
                 # Export all rows from shared data using CsvDataSource
                 csv_source = CsvDataSource(str(file_path))
-                count = csv_source.save_changes(list(self._store.all_rows.values()))
+                count = csv_source.save_changes(list(self._store.visible_state.values()))
                 messagebox.showinfo(
                     "Export Complete",
                     f"Successfully exported {count} rows to:\n{file_path}",
@@ -690,10 +687,9 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Modify comments within edit_session
         # edit_session automatically handles:
-        # - Interleaved pair sync (T1→TD1) via RowDependencyService
+        # - Interleaved pair sync (T1→TD1)
         # - Validation, block colors, observer notification
-        with self._store.edit_session("Add block tag"):
-            session = self._store._current_session
+        with self._store.edit_session("Add block tag") as session:
             if first_row_idx == last_row_idx:
                 # Single row - self-closing tag
                 tag = format_block_tag(block_name, "self-closing", color)
@@ -718,7 +714,7 @@ class AddressEditorWindow(tk.Toplevel):
         Removes the block tag from the selected row's comment.
         edit_session automatically handles:
         - Paired tag sync (removing closing tag when opening is removed)
-        - Interleaved pair sync (T1→TD1) via RowDependencyService
+        - Interleaved pair sync (T1→TD1)
         - Validation, block colors, observer notification
         """
         selected_display_rows = self._get_selected_row_indices()
@@ -742,9 +738,9 @@ class AddressEditorWindow(tk.Toplevel):
             return
 
         # Remove the tag - edit_session handles paired tag and interleaved sync
-        with self._store.edit_session("Remove block tag"):
+        with self._store.edit_session("Remove block tag") as session:
             new_comment = strip_block_tag(first_row.comment)
-            self._store._current_session.set_field(first_row.addr_key, "comment", new_comment)
+            session.set_field(first_row.addr_key, "comment", new_comment)
 
         self._update_add_block_button_state()
         self._update_status()
@@ -778,7 +774,8 @@ class AddressEditorWindow(tk.Toplevel):
         if len(leaves) == 1:
             memory_type, address = leaves[0]
             addr_key = get_addr_key(memory_type, address)
-            nickname = self.all_nicknames.get(addr_key, "")
+            row = self._store.visible_state.get(addr_key)
+            nickname = row.nickname if row else ""
             # If path matches the nickname exactly, just scroll (don't filter)
             if path == nickname:
                 panel.scroll_to_address(address, memory_type)
@@ -956,19 +953,13 @@ class AddressEditorWindow(tk.Toplevel):
             # Get or build unified view
             unified_view = self._store.get_unified_view()
             if unified_view is None:
-                unified_view = build_unified_view(
-                    self._store.visible_state,
-                    self.all_nicknames,
-                )
+                unified_view = build_unified_view(self._store.visible_state)
                 self._store.set_unified_view(unified_view)
-                self._store.set_rows("unified", unified_view.rows)
 
             # Create unified panel
             panel = AddressPanel(
                 self.notebook,
                 self._store,
-                on_validate_affected=self._store.validate_affected_rows,
-                is_duplicate_fn=self._store.is_duplicate_nickname,
                 section_boundaries=unified_view.section_boundaries,
                 analysis_service=self._analysis_service,
             )
@@ -1110,25 +1101,16 @@ class AddressEditorWindow(tk.Toplevel):
     def _on_address_store_changed(
         self, sender: object = None, affected_indices: set[int] | None = None
     ) -> None:
-        """Handle notification that shared data has changed.
+        """Handle notification that the store has changed.
 
-        With skeleton architecture, all panels share the same AddressRow objects.
-        When skeleton rows are updated in-place, we just refresh displays.
-        No need to rebuild views since row object identity never changes.
+        The store replaces changed rows in the unified view (which every panel
+        shares) before notifying, so panels only need to redraw.
 
         Args:
-            sender: The object that triggered the change (if any)
+            sender: The store that changed
             affected_indices: Set of addr_keys that changed. If None,
                              indicates a full refresh is needed.
         """
-        # Skip if this notification was triggered by our own change
-        if sender is self:
-            return
-
-        # Update local reference to nicknames
-        self.all_nicknames = self._store.all_nicknames
-
-        # Update all tab panels - skeleton rows are already updated in-place
         for _tab_id, (panel, _state) in self._tabs.items():
             if affected_indices is not None:
                 # Targeted refresh - only update specific rows (validation done by edit_session)
@@ -1352,10 +1334,7 @@ class AddressEditorWindow(tk.Toplevel):
             # Start file monitoring (uses master window for after() calls)
             self._store.start_file_monitoring(self.master)
 
-            # Get reference to shared nicknames
-            self.all_nicknames = self._store.all_nicknames
-
-            self.status_var.set(f"Connected - {len(self.all_nicknames)} nicknames loaded")
+            self.status_var.set(f"Connected - {len(self._store.all_nicknames)} nicknames loaded")
 
             # Update Save/Sync labels based on data source type
             self._update_save_ui_labels()
@@ -1425,27 +1404,30 @@ class AddressEditorWindow(tk.Toplevel):
     def __init__(
         self,
         parent: tk.Widget,
-        address_store: AddressStore,
+        session: DataSession,
         click_filename: str = "",
         analysis_service: object | None = None,
-        on_synced: Callable[[int], None] | None = None,
+        on_synced: Callable[[set[int]], None] | None = None,
+        get_synced_pending: Callable[[], int] = lambda: 0,
     ):
         """Initialize the Address Editor window.
 
         Args:
             parent: Parent widget (main app window)
-            address_store: AddressStore instance for data management
+            session: DataSession holding the AddressStore this window edits
             click_filename: The connected Click project filename (e.g., "MyProject.ckp")
             analysis_service: Optional AnalysisService for program-analysis filter prefixes.
-            on_synced: Called with change count after a successful sync to MDB.
+            on_synced: Called with the saved addr_keys after a successful save.
+            get_synced_pending: Count of tags synced to CLICK but not yet saved there.
         """
         super().__init__(parent)
 
-        self._store = address_store
+        self._session = session
+        self._store = session.store
         self.click_filename = click_filename
         self._analysis_service = analysis_service
         self._on_synced = on_synced
-        self._synced_pending: int = 0
+        self._get_synced_pending = get_synced_pending
         self.title(self._get_window_title())
         self.geometry("1025x700")
 
@@ -1462,8 +1444,8 @@ class AddressEditorWindow(tk.Toplevel):
         # Register as observer for shared data changes
         self._store.add_observer(self._on_address_store_changed)
 
-        # Register window for tracking (allows parent to close all windows)
-        self._store.register_window(self)
+        # Register with the session (it closes all windows when data is replaced)
+        session.register_editor(self)
 
         # Handle window close
         self.protocol("WM_DELETE_WINDOW", self._on_closing)
@@ -1495,7 +1477,7 @@ class AddressEditorWindow(tk.Toplevel):
             self._nav_window = None
 
         self._store.remove_observer(self._on_address_store_changed)
-        self._store.unregister_window(self)
+        self._session.unregister_editor(self)
 
         self.destroy()
 
@@ -1524,6 +1506,6 @@ class AddressEditorWindow(tk.Toplevel):
         # Windows can ignore activation requests made before then.
         self.after_idle(self._raise_and_focus)
 
-    def _update_sync_indicator(self, pending: int) -> None:
-        self._synced_pending = pending
+    def refresh_sync_status(self) -> None:
+        """Redraw the status bar after the synced-tags count changed."""
         self._update_status()

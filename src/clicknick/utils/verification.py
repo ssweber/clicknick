@@ -11,13 +11,13 @@ from typing import TYPE_CHECKING
 
 from pyclickplc.addresses import get_addr_key, is_xd_yd_hidden_slot, parse_addr_key
 from pyclickplc.banks import BANKS, NON_EDITABLE_TYPES, PAIRED_RETENTIVE_TYPES
-from pyclickplc.validation import SYSTEM_NICKNAME_TYPES
+from pyclickplc.validation import SYSTEM_NICKNAME_TYPES, validate_initial_value
 
-from ..models.validation import validate_initial_value, validate_nickname
-from ..views.dataview_editor.cdv_file import check_cdv_files
+from ..data.cdv_file import check_cdv_files
+from ..models.validation import nickname_duplicate_checker, validate_nickname
 
 if TYPE_CHECKING:
-    from ..data.shared_data import SharedAddressData
+    from ..data.address_store import AddressStore
     from ..models.address_row import AddressRow
 
 
@@ -86,7 +86,7 @@ def _check_retentive_pairs(all_rows: dict[int, AddressRow]) -> list[str]:
     return issues
 
 
-def verify_mdb_addresses(shared_data: SharedAddressData) -> list[str]:
+def verify_mdb_addresses(store: AddressStore) -> list[str]:
     """Verify all MDB addresses for validity.
 
     Checks:
@@ -98,16 +98,15 @@ def verify_mdb_addresses(shared_data: SharedAddressData) -> list[str]:
     - T/TD and CT/CTD pairs have matching retentive settings
 
     Args:
-        shared_data: The SharedAddressData containing all addresses
+        store: The AddressStore containing all addresses
 
     Returns:
         List of issue strings.
     """
     issues: list[str] = []
-    all_rows = shared_data.all_rows
+    all_rows = store.visible_state
 
-    # Build nickname dict for duplicate checking
-    all_nicknames = {k: v.nickname for k, v in all_rows.items() if v.nickname}
+    is_duplicate = nickname_duplicate_checker({k: v.nickname for k, v in all_rows.items()})
 
     for addr_key, row in all_rows.items():
         display = f"{row.memory_type}{row.address}"
@@ -142,8 +141,8 @@ def verify_mdb_addresses(shared_data: SharedAddressData) -> list[str]:
             system_bank = None
         nick_valid, nick_error = validate_nickname(
             row.nickname,
-            all_nicknames,
             addr_key,
+            is_duplicate,
             system_bank=system_bank,
         )
         if not nick_valid:
@@ -197,23 +196,23 @@ def verify_cdv_files(project_path: Path | str) -> tuple[list[str], int]:
 
 
 def run_verification(
-    shared_data: SharedAddressData,
+    store: AddressStore,
     project_path: Path | str,
 ) -> VerificationResult:
     """Run full verification of MDB addresses and CDV files.
 
     Args:
-        shared_data: The SharedAddressData containing all addresses
+        store: The AddressStore containing all addresses
         project_path: Path to the CLICK project folder
 
     Returns:
         VerificationResult with all findings
     """
     result = VerificationResult()
-    result.total_addresses = len(shared_data.all_rows)
+    result.total_addresses = len(store.visible_state)
 
     # Verify MDB addresses
-    result.mdb_issues = verify_mdb_addresses(shared_data)
+    result.mdb_issues = verify_mdb_addresses(store)
 
     # Verify CDV files
     result.cdv_issues, result.cdv_files_checked = verify_cdv_files(project_path)

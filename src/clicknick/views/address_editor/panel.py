@@ -6,7 +6,6 @@ Uses tksheet for high-performance table display with virtual rows.
 from __future__ import annotations
 
 import tkinter as tk
-from collections.abc import Callable
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
@@ -280,7 +279,7 @@ class AddressPanel(ttk.Frame):
             return
 
         # Use edit_session for proper change tracking, validation, and notification
-        with self._store.edit_session("Edit cells"):
+        with self._store.edit_session("Edit cells") as session:
             for (event_row, col), _old_value in table_cells.items():
                 data_idx = event_row
 
@@ -301,7 +300,7 @@ class AddressPanel(ttk.Frame):
                         continue
 
                     # Use session to set the field
-                    self._store._current_session.set_field(addr_key, "nickname", new_nickname)
+                    session.set_field(addr_key, "nickname", new_nickname)
 
                 elif col == self.COL_COMMENT:
                     new_comment = new_value if new_value else ""
@@ -311,7 +310,7 @@ class AddressPanel(ttk.Frame):
                         continue
 
                     # Use session to set the field
-                    self._store._current_session.set_field(addr_key, "comment", new_comment)
+                    session.set_field(addr_key, "comment", new_comment)
 
                 elif col == self.COL_INIT_VALUE:
                     # Skip if type doesn't allow editing initial value
@@ -339,7 +338,7 @@ class AddressPanel(ttk.Frame):
                         continue
 
                     # Use session to set the field
-                    self._store._current_session.set_field(addr_key, "initial_value", new_init)
+                    session.set_field(addr_key, "initial_value", new_init)
 
                 elif col == self.COL_RETENTIVE:
                     # Skip if type doesn't allow editing retentive
@@ -359,7 +358,7 @@ class AddressPanel(ttk.Frame):
                         continue
 
                     # Use session to set the field on the target row
-                    self._store._current_session.set_field(target_key, "retentive", new_retentive)
+                    session.set_field(target_key, "retentive", new_retentive)
 
         # edit_session exited - validation and notification happened automatically
 
@@ -391,14 +390,14 @@ class AddressPanel(ttk.Frame):
             return
 
         # Use edit_session to restore base values
-        with self._store.edit_session("Discard cell changes"):
+        with self._store.edit_session("Discard cell changes") as session:
             for data_idx, field_name in cells_to_discard:
                 row = self.rows[data_idx]
                 addr_key = row.addr_key
                 base_row = self._store.base_state.get(addr_key)
                 if base_row:
                     base_value = getattr(base_row, field_name)
-                    self._store._current_session.set_field(addr_key, field_name, base_value)
+                    session.set_field(addr_key, field_name, base_value)
 
     def _discard_row_changes(self) -> None:
         """Discard all changes for the currently selected row(s)."""
@@ -421,7 +420,7 @@ class AddressPanel(ttk.Frame):
             return
 
         # Use edit_session to restore base values
-        with self._store.edit_session("Discard row changes"):
+        with self._store.edit_session("Discard row changes") as session:
             for data_idx in rows_to_discard:
                 row = self.rows[data_idx]
                 addr_key = row.addr_key
@@ -429,7 +428,7 @@ class AddressPanel(ttk.Frame):
                 if base_row:
                     for field in ["nickname", "comment", "initial_value", "retentive"]:
                         base_value = getattr(base_row, field)
-                        self._store._current_session.set_field(addr_key, field, base_value)
+                        session.set_field(addr_key, field, base_value)
 
     def _on_edit_annotations(self) -> None:
         """Open annotation editor for the right-clicked comment cell."""
@@ -455,8 +454,8 @@ class AddressPanel(ttk.Frame):
         if new_comment == row.comment:
             return
 
-        with self._store.edit_session("Edit annotations"):
-            self._store._current_session.set_field(row.addr_key, "comment", new_comment)
+        with self._store.edit_session("Edit annotations") as session:
+            session.set_field(row.addr_key, "comment", new_comment)
 
     def _update_context_menu(
         self, region: str, clicked_row: int | None, clicked_col: int | None
@@ -700,8 +699,6 @@ class AddressPanel(ttk.Frame):
         self,
         parent: tk.Widget,
         store: AddressStore,
-        on_validate_affected: Callable[[str, str], set[int]] | None = None,
-        is_duplicate_fn: Callable[[str, int], bool] | None = None,
         section_boundaries: dict[str, int] | None = None,
         analysis_service: AnalysisService | None = None,
     ):
@@ -710,17 +707,12 @@ class AddressPanel(ttk.Frame):
         Args:
             parent: Parent widget
             store: AddressStore instance for data management
-            on_validate_affected: Callback to validate rows affected by nickname change (old, new).
-                Returns set of validated addr_keys. Used for O(1) targeted validation.
-            is_duplicate_fn: O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
             section_boundaries: Maps type_key to starting row index for navigation.
             analysis_service: Optional AnalysisService for program-analysis filter prefixes.
         """
         super().__init__(parent)
 
         self._store = store
-        self.on_validate_affected = on_validate_affected
-        self.is_duplicate_fn = is_duplicate_fn
         self.section_boundaries = section_boundaries or {}
         self._analysis = analysis_service
 
@@ -992,13 +984,8 @@ class AddressPanel(ttk.Frame):
         if not addr_keys:
             return
 
-        # Update the rows list from the store's visible_state
-        for i, row in enumerate(self.rows):
-            if row.addr_key in addr_keys:
-                # Get the updated row from the store
-                updated_row = self._store.visible_state.get(row.addr_key)
-                if updated_row:
-                    self.rows[i] = updated_row
+        # self.rows is the store's unified view list, which the store refreshes
+        # from visible_state before notifying observers.
 
         # Convert addr_keys to row indices in this panel
         row_indices = self._keys_to_indices(addr_keys)

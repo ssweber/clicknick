@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, call
 import pytest
 
 from clicknick.app import ClickNickApp
+from clicknick.connection_session import ClickConnection
 from clicknick.services.workspace_mirror import WorkspaceDirectoryInfo
 from clicknick.services.workspace_service import WorkspaceState, WorkspaceStatus
 
@@ -181,7 +182,7 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
     app._workspace_refresh_after_id = None
     app._workspace_config = object()
     app._workspace_mirror_error = None
-    app.connected_click_filename = "Example.ckp"
+    app._click = ClickConnection("1", 2, "Example.ckp")
     app._get_workspace_status = MagicMock(
         return_value=WorkspaceStatus(WorkspaceState.CLEAN, "Clean")
     )

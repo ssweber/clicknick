@@ -18,7 +18,7 @@ def test_click_save_clears_synced_tags_and_staged_rungs(tmp_path) -> None:
         lambda: changed.append(True),
         on_sync_status_changed=sync_updates.append,
     )
-    watcher.record_sync(7)
+    watcher.record_sync(range(7))
     watcher.record_rung_stage(31)
     watcher._active = True
     watcher._tk_root = _Root()
@@ -48,3 +48,15 @@ def test_click_save_reports_cleared_rungs_without_pending_tags(tmp_path) -> None
 
     assert watcher.staged_rungs == 0
     assert sync_updates == [0]
+
+
+def test_syncing_the_same_tags_twice_counts_them_once(tmp_path) -> None:
+    sync_updates: list[int] = []
+    watcher = ScrWatcher(tmp_path, lambda: None, on_sync_status_changed=sync_updates.append)
+
+    watcher.record_sync({1, 2})
+    watcher.record_sync({2, 3})
+    watcher.record_sync({3})
+
+    assert watcher.synced_pending == 3
+    assert sync_updates == [2, 3]

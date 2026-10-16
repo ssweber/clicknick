@@ -14,7 +14,7 @@ class ChildWindowInfo:
     edit_control: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class ClickInstance:
     """Information about a running Click.exe instance."""
 

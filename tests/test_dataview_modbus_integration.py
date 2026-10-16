@@ -11,7 +11,9 @@ from pyclickplc.dataview import DataViewFile, DataViewRecord
 
 from clicknick.views.dataview_editor.panel import (
     COL_ADDRESS,
+    COL_COMMENT,
     COL_NEW_VALUE,
+    COL_NICKNAME,
     DataviewPanel,
 )
 from clicknick.views.dataview_editor.window import ConnectionState, DataviewEditorWindow
@@ -212,7 +214,7 @@ class FakeModbusService:
 
 def _make_panel_stub(rows: list[DataViewRecord]) -> DataviewPanel:
     panel = DataviewPanel.__new__(DataviewPanel)
-    panel.rows = rows
+    panel._file = DataViewFile(rows=rows)
     panel.address_normalizer = normalize_address
     panel.nickname_lookup = None
     panel.on_modified = None
@@ -575,23 +577,38 @@ def test_export_writes_copy_without_rebinding_tab_path(monkeypatch, tmp_path):
 def test_panel_export_keeps_binding_and_dirty(monkeypatch, tmp_path):
     panel = _make_panel_stub([_row("X001", True)])
     panel.file_path = tmp_path / "bound.cdv"
-    panel._header = None
     panel._is_dirty = True
     panel.status_label = FakeWidget()
 
-    captured: dict[str, object] = {}
-
-    def _capture_export(path, rows, has_new_values, header):
-        captured["path"] = path
-        captured["rows"] = rows
-        captured["has_new_values"] = has_new_values
-        captured["header"] = header
-
-    monkeypatch.setattr("clicknick.views.dataview_editor.panel.export_cdv", _capture_export)
-
     export_path = tmp_path / "copy.cdv"
     assert panel.export(export_path) is True
-    assert captured["path"] == export_path
-    assert captured["has_new_values"] is True
+
+    exported = DataViewFile.load(export_path)
+    assert exported.has_new_values is True
+    assert exported.rows[0].address == "X001"
     assert panel.file_path == tmp_path / "bound.cdv"
     assert panel.is_dirty is True
+
+
+def test_panel_draws_names_from_live_lookup_not_the_record():
+    names = {"X001": ("Start", "Start button")}
+    panel = _make_panel_stub([_row("X001"), _row("X002")])
+    panel.nickname_lookup = names.get
+    panel.sheet.set_refresh_timer = lambda: None
+
+    panel._update_row_display(0)
+    assert panel.sheet.get_cell_data(0, COL_NICKNAME) == "Start"
+    assert panel.sheet.get_cell_data(0, COL_COMMENT) == "Start button"
+    assert panel.rows[0].nickname == ""  # nothing copied onto the record
+
+    names["X001"] = ("StartRenamed", "Renamed")
+    names["X002"] = ("Stop", "")
+    panel.refresh_nicknames()
+    assert panel.sheet.get_cell_data(0, COL_NICKNAME) == "StartRenamed"
+    assert panel.sheet.get_cell_data(0, COL_COMMENT) == "Renamed"
+    assert panel.sheet.get_cell_data(1, COL_NICKNAME) == "Stop"
+
+    del names["X001"]
+    panel.refresh_nicknames()
+    assert panel.sheet.get_cell_data(0, COL_NICKNAME) == ""
+    assert panel.sheet.get_cell_data(0, COL_COMMENT) == ""

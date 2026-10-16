@@ -1,7 +1,6 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 from pyclickplc.validation import COMMENT_MAX_LENGTH
-from pyclickplc.validation import validate_initial_value as validate_initial_value
 from pyclickplc.validation import validate_nickname as _pyclickplc_validate_nickname
 
 
@@ -54,11 +53,27 @@ def validate_comment(
     return True, ""
 
 
+def nickname_duplicate_checker(nicknames: Mapping[int, str]) -> Callable[[str, int], bool]:
+    """Build a case-insensitive duplicate check over an addr_key -> nickname mapping.
+
+    For callers without a nickname index (e.g. one-off verification). CLICK
+    treats nicknames as case-insensitive.
+    """
+    owners: dict[str, set[int]] = {}
+    for addr_key, nickname in nicknames.items():
+        if nickname:
+            owners.setdefault(nickname.lower(), set()).add(addr_key)
+
+    def is_duplicate(nickname: str, exclude_addr_key: int) -> bool:
+        return bool(owners.get(nickname.lower(), set()) - {exclude_addr_key})
+
+    return is_duplicate
+
+
 def validate_nickname(
     nickname: str,
-    all_nicknames: dict[int, str],
     current_addr_key: int,
-    is_duplicate_fn: Callable[[str, int], bool] | None = None,
+    is_duplicate: Callable[[str, int], bool],
     *,
     system_bank: str | None = None,
 ) -> tuple[bool, str]:
@@ -66,10 +81,9 @@ def validate_nickname(
 
     Args:
         nickname: The nickname to validate
-        all_nicknames: Dict of addr_key -> nickname for uniqueness check (legacy, used if is_duplicate_fn is None)
         current_addr_key: The addr_key of the row being validated (excluded from uniqueness)
-        is_duplicate_fn: Optional O(1) duplicate checker function(nickname, exclude_addr_key) -> bool.
-            If provided, uses this instead of O(n) scan of all_nicknames.
+        is_duplicate: Duplicate check function(nickname, exclude_addr_key) -> bool,
+            case-insensitive (CLICK treats nicknames as case-insensitive)
         system_bank: Optional system bank hint (e.g. "SC", "SD", "X") for
             pyclickplc's bank-specific system rules.
 
@@ -84,16 +98,7 @@ def validate_nickname(
     if nickname == "":
         return True, ""
 
-    # Check uniqueness (case-insensitive - CLICK treats nicknames as case-insensitive)
-    if is_duplicate_fn is not None:
-        # O(1) check via reverse index
-        if is_duplicate_fn(nickname, current_addr_key):
-            return False, "Duplicate"
-    else:
-        # Legacy O(n) fallback (case-insensitive)
-        nickname_lower = nickname.lower()
-        for addr_key, existing_nick in all_nicknames.items():
-            if addr_key != current_addr_key and existing_nick.lower() == nickname_lower:
-                return False, "Duplicate"
+    if is_duplicate(nickname, current_addr_key):
+        return False, "Duplicate"
 
     return True, ""

@@ -17,7 +17,6 @@ from pyclickplc import ConnectionState, ModbusService, ReconnectConfig
 from pyclickplc.addresses import get_addr_key
 from pyclickplc.banks import INTERLEAVED_PAIRS
 
-from ...data.shared_dataview import SharedDataviewData
 from ...widgets.custom_notebook import CustomNotebook
 from ...widgets.new_dataview_dialog import NewDataviewDialog
 from ...widgets.nickname_combobox import NicknameCombobox
@@ -25,7 +24,7 @@ from ..nav_window.window import NavWindow
 from .panel import DataviewPanel
 
 if TYPE_CHECKING:
-    pass
+    from ...data_session import DataSession
 
 
 PlcValue = bool | int | float | str
@@ -651,9 +650,9 @@ class DataviewEditorWindow(tk.Toplevel):
         if self._nav_window is None:
             return
 
-        address_shared = self.shared_data._store
+        address_shared = self.shared_data.address_store
         if address_shared:
-            self._nav_window.refresh(address_shared.all_rows)
+            self._nav_window.refresh(address_shared.visible_state)
 
     def _insert_addresses(self, addresses: list[tuple[str, int]]) -> None:
         """Insert addresses into the current dataview.
@@ -661,13 +660,13 @@ class DataviewEditorWindow(tk.Toplevel):
         Args:
             addresses: List of (memory_type, address) tuples to insert
         """
-        address_shared = self.shared_data._store
+        address_shared = self.shared_data.address_store
         if not address_shared:
             return
 
         for memory_type, address in addresses:
             addr_key = get_addr_key(memory_type, address)
-            row = address_shared.all_rows.get(addr_key)
+            row = address_shared.visible_state.get(addr_key)
             if row:
                 if not self.add_address_to_current(row.display_address):
                     # No more empty rows available
@@ -946,12 +945,12 @@ class DataviewEditorWindow(tk.Toplevel):
         Returns:
             List of matching nickname strings
         """
-        address_shared = self.shared_data._store
+        address_shared = self.shared_data.address_store
         if not address_shared:
             return []
 
         candidates = sorted(
-            row.nickname for row in address_shared.all_rows.values() if row.nickname
+            row.nickname for row in address_shared.visible_state.values() if row.nickname
         )
 
         if self.shared_data.filter_func is not None:
@@ -973,12 +972,12 @@ class DataviewEditorWindow(tk.Toplevel):
         if not nickname:
             return
 
-        address_shared = self.shared_data._store
+        address_shared = self.shared_data.address_store
         if not address_shared:
             return
 
         # Find the address for this nickname
-        for row in address_shared.all_rows.values():
+        for row in address_shared.visible_state.values():
             if row.nickname == nickname:
                 self.add_address_to_current(row.display_address)
                 self.nickname_combo.reset()
@@ -1152,22 +1151,33 @@ class DataviewEditorWindow(tk.Toplevel):
         flag_path.parent.mkdir(parents=True, exist_ok=True)
         flag_path.touch()
 
+    def _on_address_store_changed(self, sender=None, affected_keys=None) -> None:
+        """Observer callback: the AddressStore changed.
+
+        Auto-refreshes nicknames in all open panels when address data is modified.
+        """
+        self._refresh_nicknames()
+        self._refresh_navigation()
+
     def __init__(
         self,
         parent: tk.Widget,
-        shared_data: SharedDataviewData,
+        session: DataSession,
         title_suffix: str = "",
     ):
         """Initialize the Dataview Editor window.
 
         Args:
             parent: Parent widget (usually the main app window)
-            shared_data: SharedDataviewData for managing dataviews
+            session: DataSession providing the Dataview model and AddressStore
             title_suffix: Optional suffix for window title (e.g., project name)
         """
         super().__init__(parent)
 
-        self.shared_data = shared_data
+        if session.dataview is None:
+            raise ValueError("DataSession has no Dataview model")
+        self._session = session
+        self.shared_data = session.dataview
         self.title_suffix = title_suffix
 
         # Track open panels by file path
@@ -1194,8 +1204,9 @@ class DataviewEditorWindow(tk.Toplevel):
         self._create_menu()
         self._create_widgets()
 
-        # Register with shared data
-        shared_data.register_window(self)
+        # Register with the session and follow store changes for nickname refresh
+        session.register_dataview_window(self)
+        self.shared_data.address_store.add_observer(self._on_address_store_changed)
 
         # Refresh file list
         self._refresh_file_list()
@@ -1229,16 +1240,9 @@ class DataviewEditorWindow(tk.Toplevel):
         if service is not None:
             self._run_background(self._disconnect_modbus_service, service)
 
-        self.shared_data.unregister_window(self)
+        self.shared_data.address_store.remove_observer(self._on_address_store_changed)
+        self._session.unregister_dataview_window(self)
         self.destroy()
-
-    def refresh_nicknames_from_shared(self) -> None:
-        """Called by SharedDataviewData when SharedAddressData changes.
-
-        Auto-refreshes nicknames in all open panels when address data is modified.
-        """
-        self._refresh_nicknames()
-        self._refresh_navigation()
 
     def has_unsaved_changes(self) -> bool:
         """Check if any open dataviews have unsaved changes."""

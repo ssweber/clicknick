@@ -24,6 +24,9 @@ class _Store:
     loaded_row_count = 2
     user_overrides: dict[int, object] = {}
 
+    def get_dirty_keys(self) -> set[int]:
+        return set(self.user_overrides)
+
 
 def test_workflow_footer_composes_outgoing_changes_before_capability() -> None:
     store = _Store()

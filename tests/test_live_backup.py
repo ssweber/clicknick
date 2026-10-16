@@ -13,6 +13,9 @@ from clicknick.live.dispatch import DispatchContext, dispatch
 class _Store:
     user_overrides: dict[int, object] = {}
 
+    def get_dirty_keys(self) -> set[int]:
+        return set(self.user_overrides)
+
 
 class _Analysis:
     is_available = True

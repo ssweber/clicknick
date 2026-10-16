@@ -520,7 +520,7 @@ class TestObservers:
     def test_edit_refreshes_cached_unified_view_before_notification(self, store):
         """A newly opened editor must see edits made before it registered."""
         addr_key = get_addr_key("C", 10)
-        view = build_unified_view(store.visible_state, store.all_nicknames)
+        view = build_unified_view(store.visible_state)
         store.set_unified_view(view)
 
         with store.edit_session("AI: tag apply") as session:
@@ -921,3 +921,238 @@ class TestExternalDatabaseUpdate:
         store_with_data._data_source.load_all_addresses = fail_load
 
         assert store_with_data._on_database_update() is False
+
+
+class TestDerivedStateStaysConsistent:
+    """Derived state (validation, dirty, block colors) must match a fresh computation.
+
+    Regression tests for bugs A-C from the 2026-10 state review, plus the
+    Sync/Discard undo-history rules.
+    """
+
+    @pytest.fixture
+    def named_store(self):
+        """Store with two distinct C nicknames loaded from the database."""
+        rows = {
+            get_addr_key("C", 1): AddressRow(memory_type="C", address=1, nickname="Alpha"),
+            get_addr_key("C", 2): AddressRow(memory_type="C", address=2, nickname="Beta"),
+        }
+        s = AddressStore(MockDataSource(rows))
+        s.load_initial_data()
+        return s
+
+    @staticmethod
+    def _rename(store, addr_key, nickname):
+        with store.edit_session("Rename") as session:
+            session.set_field(addr_key, "nickname", nickname)
+
+    def test_duplicate_rename_flags_both_rows(self, named_store):
+        c1, c2 = get_addr_key("C", 1), get_addr_key("C", 2)
+
+        self._rename(named_store, c2, "Alpha")
+
+        assert not named_store.visible_state[c1].is_valid
+        assert not named_store.visible_state[c2].is_valid
+
+    def test_undo_duplicate_rename_clears_partner_error(self, named_store):
+        c1 = get_addr_key("C", 1)
+        self._rename(named_store, get_addr_key("C", 2), "Alpha")
+
+        named_store.undo()
+
+        assert named_store.visible_state[c1].is_valid
+        assert not named_store.has_errors()
+
+    def test_discard_duplicate_rename_clears_partner_error(self, named_store):
+        c1 = get_addr_key("C", 1)
+        self._rename(named_store, get_addr_key("C", 2), "Alpha")
+
+        named_store.discard_all_changes()
+
+        assert named_store.visible_state[c1].is_valid
+        assert not named_store.has_errors()
+
+    def test_undo_back_into_duplicate_flags_partner(self, named_store):
+        c1, c2 = get_addr_key("C", 1), get_addr_key("C", 2)
+        self._rename(named_store, c2, "Alpha")
+        self._rename(named_store, c2, "Gamma")
+        assert named_store.visible_state[c1].is_valid
+
+        named_store.undo()
+
+        assert not named_store.visible_state[c1].is_valid
+        assert not named_store.visible_state[c2].is_valid
+
+    def test_sync_clears_undo_and_redo(self, named_store):
+        c1, c2 = get_addr_key("C", 1), get_addr_key("C", 2)
+        self._rename(named_store, c1, "AlphaNew")
+        self._rename(named_store, c2, "BetaNew")
+        named_store.undo()
+        assert named_store.can_undo() and named_store.can_redo()
+
+        named_store.save_all_changes()
+
+        assert not named_store.can_undo()
+        assert not named_store.can_redo()
+        assert not named_store.undo()
+        assert not named_store.has_unsaved_changes()
+
+    def test_failed_sync_keeps_undo_history(self, named_store):
+        self._rename(named_store, get_addr_key("C", 1), "AlphaNew")
+
+        def fail_save(rows):
+            raise RuntimeError("database locked")
+
+        named_store._data_source.save_changes = fail_save
+        with pytest.raises(RuntimeError):
+            named_store.save_all_changes()
+
+        assert named_store.can_undo()
+        assert named_store.has_unsaved_changes()
+
+    def test_external_save_keeps_undo_history(self, named_store):
+        c1 = get_addr_key("C", 1)
+        self._rename(named_store, c1, "AlphaNew")
+
+        named_store._data_source._initial_rows[c1] = AddressRow(
+            memory_type="C", address=1, nickname="AlphaFromClick"
+        )
+        named_store._on_database_update()
+
+        assert named_store.can_undo()
+        assert named_store.visible_state[c1].nickname == "AlphaNew"
+        assert named_store.is_dirty(c1)
+
+    def test_undo_to_value_click_already_has_is_not_dirty(self, named_store):
+        c1 = get_addr_key("C", 1)
+        self._rename(named_store, c1, "First")
+        self._rename(named_store, c1, "Second")
+
+        # CLICK saves "First", then the user undoes back to "First".
+        named_store._data_source._initial_rows[c1] = AddressRow(
+            memory_type="C", address=1, nickname="First"
+        )
+        named_store._on_database_update()
+        named_store.undo()
+
+        assert named_store.visible_state[c1].nickname == "First"
+        assert not named_store.is_dirty(c1)
+        assert not named_store.has_unsaved_changes()
+
+    def test_external_write_of_typed_value_clears_dirty(self, named_store):
+        c1 = get_addr_key("C", 1)
+        self._rename(named_store, c1, "Typed")
+        assert named_store.is_dirty(c1)
+
+        # CLICK saves the same value the user typed.
+        named_store._data_source._initial_rows[c1] = AddressRow(
+            memory_type="C", address=1, nickname="Typed"
+        )
+        named_store._on_database_update()
+
+        assert not named_store.is_field_dirty(c1, "nickname")
+        assert not named_store.is_dirty(c1)
+        assert not named_store.has_unsaved_changes()
+        assert named_store.get_dirty_keys() == set()
+
+    def test_discard_clears_undo_and_redo(self, named_store):
+        c1 = get_addr_key("C", 1)
+        self._rename(named_store, c1, "First")
+        self._rename(named_store, c1, "Second")
+        named_store.undo()
+        assert named_store.can_undo() and named_store.can_redo()
+
+        named_store.discard_all_changes()
+
+        assert not named_store.can_undo()
+        assert not named_store.can_redo()
+        assert named_store.visible_state[c1].nickname == "Alpha"
+
+    def test_block_colors_after_edit_match_first_load(self):
+        """Interleaved T/TD blocks color only their own type, before and after edits."""
+        t1, t3 = get_addr_key("T", 1), get_addr_key("T", 3)
+        rows = {
+            t1: AddressRow(memory_type="T", address=1, comment="<Pumps bg='Red'>"),
+            t3: AddressRow(memory_type="T", address=3, comment="</Pumps>"),
+        }
+        s = AddressStore(MockDataSource(rows))
+        s.load_initial_data()
+        s.set_unified_view(build_unified_view(s.visible_state))
+        at_load = dict(s.block_colors)
+        assert at_load.get(t1) == "Red"
+        assert get_addr_key("TD", 1) not in at_load
+
+        with s.edit_session("Unrelated comment") as session:
+            session.set_field(get_addr_key("C", 1), "comment", "note")
+
+        assert s.block_colors == at_load
+
+    @staticmethod
+    def _fresh_comment_validity(store):
+        """Comment validity a freshly loaded store computes for the same content."""
+        rows = {
+            key: AddressRow(memory_type=row.memory_type, address=row.address, comment=row.comment)
+            for key, row in store.visible_state.items()
+            if row.comment
+        }
+        fresh = AddressStore(MockDataSource(rows))
+        fresh.load_initial_data()
+        return {key: fresh.visible_state[key].comment_valid for key in rows}
+
+    def test_duplicate_block_name_first_definition_wins(self):
+        c1, c3, c10 = get_addr_key("C", 1), get_addr_key("C", 3), get_addr_key("C", 10)
+        rows = {
+            c1: AddressRow(memory_type="C", address=1, comment="<Pumps>"),
+            c3: AddressRow(memory_type="C", address=3, comment="</Pumps>"),
+        }
+        s = AddressStore(MockDataSource(rows))
+        s.load_initial_data()
+        s.set_unified_view(build_unified_view(s.visible_state))
+
+        def comment_validity():
+            return {key: s.visible_state[key].comment_valid for key in (c1, c3, c10)}
+
+        with s.edit_session("Duplicate block") as session:
+            session.set_field(c10, "comment", "<Pumps />")
+
+        assert comment_validity() == {c1: True, c3: True, c10: False}
+        assert self._fresh_comment_validity(s) == {c1: True, c3: True, c10: False}
+
+        # Removing the first definition makes the later one the valid one.
+        with s.edit_session("Remove first block") as session:
+            session.set_field(c1, "comment", "")
+            session.set_field(c3, "comment", "")
+
+        assert s.visible_state[c10].comment_valid
+        assert not s.has_errors()
+
+        s.undo()
+        assert comment_validity() == {c1: True, c3: True, c10: False}
+
+        s.undo()
+        assert comment_validity() == {c1: True, c3: True, c10: True}
+        assert not s.has_errors()
+
+    def test_reload_after_sync_changes_nothing(self, named_store):
+        """The file monitor reloads after our own Sync; that must be a no-op."""
+        c1 = get_addr_key("C", 1)
+        source = named_store._data_source
+
+        def save_changes(rows):
+            for row in rows:
+                source._initial_rows[row.addr_key] = row
+            return len(rows)
+
+        source.save_changes = save_changes
+        self._rename(named_store, c1, "AlphaSaved")
+        named_store.save_all_changes()
+        before = dict(named_store.visible_state)
+        notified = []
+        named_store.add_observer(lambda _store, keys: notified.append(keys))
+
+        assert named_store._on_database_update()
+
+        assert notified == []
+        assert named_store.visible_state[c1].nickname == "AlphaSaved"
+        assert not named_store.has_unsaved_changes()
+        assert named_store.visible_state == before

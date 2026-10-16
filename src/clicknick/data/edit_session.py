@@ -44,7 +44,6 @@ class EditSession:
         self._store = store
         self._description = description
         self._pending: dict[int, MutableRowBuilder] = {}
-        self._nickname_old_values: dict[int, str] = {}
         self._comment_old_values: dict[int, str] = {}
 
     @property
@@ -56,11 +55,6 @@ class EditSession:
     def pending(self) -> dict[int, MutableRowBuilder]:
         """Get the pending builders dict (for AddressStore to access)."""
         return self._pending
-
-    @property
-    def nickname_old_values(self) -> dict[int, str]:
-        """Get dict of addr_key -> old_nickname for index updates."""
-        return self._nickname_old_values
 
     @property
     def comment_old_values(self) -> dict[int, str]:
@@ -83,19 +77,15 @@ class EditSession:
     def set_field(self, addr_key: int, field_name: str, value: str | bool) -> None:
         """Set a single field on a row.
 
-        Convenience method that handles old value tracking for nickname/comment.
+        Records the row's current comment before its first change (for block tag sync).
 
         Args:
             addr_key: The address key to edit.
             field_name: Field name ('nickname', 'comment', 'initial_value', 'retentive').
             value: The new value.
         """
-        # Track old values before first change (for index updates and tag sync)
-        if field_name == "nickname" and addr_key not in self._nickname_old_values:
-            current = self._store.get_visible_row(addr_key)
-            if current:
-                self._nickname_old_values[addr_key] = current.nickname
-        elif field_name == "comment" and addr_key not in self._comment_old_values:
+        # Track the old comment before the first change (for block tag sync)
+        if field_name == "comment" and addr_key not in self._comment_old_values:
             current = self._store.get_visible_row(addr_key)
             if current:
                 self._comment_old_values[addr_key] = current.comment

@@ -260,68 +260,6 @@ class TestFileMonitorCheckModified:
         callback.assert_not_called()
 
 
-class TestFileMonitorUpdateMtime:
-    """Tests for update_mtime() method."""
-
-    def test_update_mtime_refreshes_stored_time(self, tmp_path):
-        """update_mtime() captures current file mtime."""
-        test_file = tmp_path / "test.mdb"
-        test_file.write_text("initial")
-
-        callback = MagicMock()
-        monitor = FileMonitor(str(test_file), callback)
-
-        initial_mtime = monitor._last_mtime
-
-        # Modify file
-        time.sleep(0.01)
-        test_file.write_text("modified")
-
-        # Update mtime
-        monitor.update_mtime()
-
-        assert monitor._last_mtime > initial_mtime
-
-    def test_update_mtime_prevents_false_detection(self, tmp_path):
-        """update_mtime() after save prevents callback on next check."""
-        test_file = tmp_path / "test.mdb"
-        test_file.write_text("initial")
-
-        callback = MagicMock()
-        monitor = FileMonitor(str(test_file), callback)
-
-        mock_root = MagicMock()
-        mock_root.after.return_value = "after_id"
-        monitor.start(mock_root)
-
-        # Simulate: we write to file, then call update_mtime
-        time.sleep(0.01)
-        test_file.write_text("saved by us")
-        monitor.update_mtime()
-
-        # Now check - should not trigger callback since we updated mtime
-        monitor._check_modified()
-        callback.assert_not_called()
-
-    def test_update_mtime_handles_missing_file(self):
-        """update_mtime() handles missing file gracefully."""
-        callback = MagicMock()
-        monitor = FileMonitor("/nonexistent/file.mdb", callback)
-
-        # Should not raise
-        monitor.update_mtime()
-        assert monitor._last_mtime == 0.0
-
-    def test_update_mtime_handles_none_path(self):
-        """update_mtime() handles None path gracefully."""
-        callback = MagicMock()
-        monitor = FileMonitor(None, callback)
-
-        # Should not raise
-        monitor.update_mtime()
-        assert monitor._last_mtime == 0.0
-
-
 class TestFileMonitorIntegration:
     """Integration-style tests for FileMonitor."""
 

@@ -240,7 +240,7 @@ def _workflow_status(ctx: DispatchContext) -> str | None:
     steps: list[str] = []
     staged_tags = 0
     if ctx.store is not None:
-        staged_tags = len(ctx.store.user_overrides)
+        staged_tags = len(ctx.store.get_dirty_keys())
         if staged_tags > 0:
             noun = "tag" if staged_tags == 1 else "tags"
             facts.append(f"{staged_tags} {noun} staged")
@@ -346,7 +346,7 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
         lines = ["pong"]
         if ctx.store is not None:
             lines.append(f"store: {ctx.store.loaded_row_count} rows")
-            staged = len(ctx.store.user_overrides)
+            staged = len(ctx.store.get_dirty_keys())
             if staged:
                 lines.append(f"tags staged: {staged}")
         else:
@@ -371,7 +371,7 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
     if verb == "prompt-save":
         if ctx.store is None or not ctx.store.has_unsaved_changes():
             return "no pending changes"
-        count = len(ctx.store.user_overrides)
+        count = len(ctx.store.get_dirty_keys())
         if ctx.store.has_errors():
             raise ValueError(f"{count} unsaved change(s) have validation errors — fix errors first")
         if ctx.show_save_prompt is not None:

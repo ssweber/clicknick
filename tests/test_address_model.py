@@ -14,10 +14,7 @@ from pyclickplc.banks import (
     PAIRED_RETENTIVE_TYPES,
     DataType,
 )
-from pyclickplc.validation import COMMENT_MAX_LENGTH, FORBIDDEN_CHARS, NICKNAME_MAX_LENGTH
-
-from clicknick.models.address_row import AddressRow
-from clicknick.models.blocktag import (
+from pyclickplc.blocks import (
     BlockTag,
     extract_block_name,
     get_block_type,
@@ -25,9 +22,17 @@ from clicknick.models.blocktag import (
     parse_block_tag,
     strip_block_tag,
 )
-from clicknick.models.validation import (
-    validate_comment,
+from pyclickplc.validation import (
+    COMMENT_MAX_LENGTH,
+    FORBIDDEN_CHARS,
+    NICKNAME_MAX_LENGTH,
     validate_initial_value,
+)
+
+from clicknick.models.address_row import AddressRow
+from clicknick.models.validation import (
+    nickname_duplicate_checker,
+    validate_comment,
     validate_nickname,
 )
 
@@ -186,46 +191,46 @@ class TestValidateNickname:
 
     def test_empty_nickname_is_valid(self):
         """Empty nickname is valid (means unassigned)."""
-        is_valid, error = validate_nickname("", {}, 0)
+        is_valid, error = validate_nickname("", 0, nickname_duplicate_checker({}))
         assert is_valid is True
         assert error == ""
 
     def test_valid_simple_nickname(self):
         """Simple alphanumeric nicknames are valid."""
-        is_valid, error = validate_nickname("StartButton", {}, 0)
+        is_valid, error = validate_nickname("StartButton", 0, nickname_duplicate_checker({}))
         assert is_valid is True
         assert error == ""
 
     def test_valid_nickname_with_space(self):
         """Nicknames with spaces are valid."""
-        is_valid, error = validate_nickname("Start Button", {}, 0)
+        is_valid, error = validate_nickname("Start Button", 0, nickname_duplicate_checker({}))
         assert is_valid is True
         assert error == ""
 
     def test_valid_nickname_with_underscore(self):
         """Nicknames with underscores (not at start) are valid."""
-        is_valid, error = validate_nickname("Start_Button", {}, 0)
+        is_valid, error = validate_nickname("Start_Button", 0, nickname_duplicate_checker({}))
         assert is_valid is True
         assert error == ""
 
     def test_max_length_exactly_24(self):
         """Nickname of exactly 24 characters is valid."""
         nickname = "A" * NICKNAME_MAX_LENGTH
-        is_valid, error = validate_nickname(nickname, {}, 0)
+        is_valid, error = validate_nickname(nickname, 0, nickname_duplicate_checker({}))
         assert is_valid is True
         assert error == ""
 
     def test_too_long_25_chars(self):
         """Nickname of 25 characters is too long."""
         nickname = "A" * 25
-        is_valid, error = validate_nickname(nickname, {}, 0)
+        is_valid, error = validate_nickname(nickname, 0, nickname_duplicate_checker({}))
         assert is_valid is False
         assert "Too long" in error
         assert "25/24" in error
 
     def test_leading_underscore_invalid(self):
         """Nicknames starting with underscore are invalid."""
-        is_valid, error = validate_nickname("_StartButton", {}, 0)
+        is_valid, error = validate_nickname("_StartButton", 0, nickname_duplicate_checker({}))
         assert is_valid is False
         assert "Cannot start with _" in error
 
@@ -233,20 +238,20 @@ class TestValidateNickname:
         """Test all forbidden characters are detected."""
         for char in FORBIDDEN_CHARS:
             nickname = f"Test{char}Name"
-            is_valid, error = validate_nickname(nickname, {}, 0)
+            is_valid, error = validate_nickname(nickname, 0, nickname_duplicate_checker({}))
             assert is_valid is False, f"Character '{char}' should be forbidden"
             assert "Invalid:" in error
 
     def test_hyphen_forbidden(self):
         """Hyphen is explicitly forbidden."""
-        is_valid, error = validate_nickname("Start-Button", {}, 0)
+        is_valid, error = validate_nickname("Start-Button", 0, nickname_duplicate_checker({}))
         assert is_valid is False
         assert "Invalid:" in error
         assert "-" in error
 
     def test_period_forbidden(self):
         """Period is explicitly forbidden."""
-        is_valid, error = validate_nickname("Start.Button", {}, 0)
+        is_valid, error = validate_nickname("Start.Button", 0, nickname_duplicate_checker({}))
         assert is_valid is False
         assert "Invalid:" in error
         assert "." in error
@@ -258,7 +263,9 @@ class TestValidateNickname:
             0x0000002: "StopButton",
         }
         # Try to use "StartButton" at a different address
-        is_valid, error = validate_nickname("StartButton", all_nicknames, 0x0000003)
+        is_valid, error = validate_nickname(
+            "StartButton", 0x0000003, nickname_duplicate_checker(all_nicknames)
+        )
         assert is_valid is False
         assert "Duplicate" in error
 
@@ -268,14 +275,16 @@ class TestValidateNickname:
             0x0000001: "StartButton",
         }
         # Same nickname at same address should be valid
-        is_valid, error = validate_nickname("StartButton", all_nicknames, 0x0000001)
+        is_valid, error = validate_nickname(
+            "StartButton", 0x0000001, nickname_duplicate_checker(all_nicknames)
+        )
         assert is_valid is True
         assert error == ""
 
     def test_multiple_invalid_chars_shows_first_few(self):
         """Multiple invalid chars shows first 3 sorted."""
         nickname = "Test%$#Name"  # Has %, $, #
-        is_valid, error = validate_nickname(nickname, {}, 0)
+        is_valid, error = validate_nickname(nickname, 0, nickname_duplicate_checker({}))
         assert is_valid is False
         assert "Invalid:" in error
 

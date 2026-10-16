@@ -7,12 +7,14 @@ so these tests focus on the mapping and query layers using a mock graph.
 from __future__ import annotations
 
 import shutil
-from dataclasses import dataclass
 from unittest.mock import MagicMock
 
 import pytest
+from pyclickplc.addresses import get_addr_key
 from pyrung.click import SystemNicknameRepair, SystemNicknameRepairRequired
 
+from clicknick.models.address_row import AddressRow
+from clicknick.models.address_slots import iter_address_slots
 from clicknick.services.analysis_service import (
     AnalysisResult,
     AnalysisService,
@@ -28,37 +30,36 @@ from clicknick.services.project_workspace import (
 )
 
 
-@dataclass(frozen=True)
-class FakeRow:
-    nickname: str = ""
-    display_address: str = ""
-
-
 class TestBuildTagAddrKeyMap:
-    def test_maps_nicknames(self):
-        base = {
-            100: FakeRow(nickname="MotorOut", display_address="Y001"),
-            200: FakeRow(nickname="PumpRun", display_address="Y002"),
-        }
-        tag_to_key, key_to_tag = _build_tag_addr_key_map(base)
-        assert tag_to_key == {"MotorOut": 100, "PumpRun": 200}
-        assert key_to_tag == {100: "MotorOut", 200: "PumpRun"}
+    """The tag map comes from the same nickname snapshot as the generated code."""
 
-    def test_empty_nickname_falls_back_to_display_address(self):
-        base = {100: FakeRow(nickname="", display_address="X001")}
-        tag_to_key, key_to_tag = _build_tag_addr_key_map(base)
-        assert tag_to_key == {"X001": 100}
-        assert key_to_tag == {100: "X001"}
+    def test_maps_nicknames(self):
+        y1, y2 = get_addr_key("Y", 1), get_addr_key("Y", 2)
+        rows = {
+            y1: AddressRow(memory_type="Y", address=1, nickname="MotorOut"),
+            y2: AddressRow(memory_type="Y", address=2, nickname="PumpRun"),
+        }
+        tag_to_key, key_to_tag = _build_tag_addr_key_map(rows)
+        assert tag_to_key["MotorOut"] == y1
+        assert tag_to_key["PumpRun"] == y2
+        assert key_to_tag[y1] == "MotorOut"
+
+    def test_unnamed_addresses_fall_back_to_display_address(self):
+        tag_to_key, key_to_tag = _build_tag_addr_key_map({})
+        x1 = get_addr_key("X", 1)
+        assert tag_to_key["X001"] == x1
+        assert key_to_tag[x1] == "X001"
 
     def test_whitespace_nickname_treated_as_empty(self):
-        base = {100: FakeRow(nickname="  ", display_address="X001")}
-        tag_to_key, key_to_tag = _build_tag_addr_key_map(base)
-        assert tag_to_key == {"X001": 100}
+        x1 = get_addr_key("X", 1)
+        rows = {x1: AddressRow(memory_type="X", address=1, nickname="  ")}
+        tag_to_key, key_to_tag = _build_tag_addr_key_map(rows)
+        assert key_to_tag[x1] == "X001"
 
-    def test_empty_state(self):
+    def test_covers_every_address_slot(self):
         tag_to_key, key_to_tag = _build_tag_addr_key_map({})
-        assert tag_to_key == {}
-        assert key_to_tag == {}
+        assert len(key_to_tag) == sum(1 for _ in iter_address_slots())
+        assert len(tag_to_key) == len(key_to_tag)
 
 
 def _make_service_with_mock_graph(
@@ -191,17 +192,6 @@ class TestAnalysisServiceLifecycle:
         )
         assert svc.known_tag_names() == frozenset({"A", "B"})
 
-    def test_rebuild_mapping(self):
-        svc = _make_service_with_mock_graph(
-            tag_roles={"OldName": "input"},
-            tag_to_addr_key={"OldName": 100},
-        )
-        assert svc.get_role_keys("input") == {100}
-
-        svc.rebuild_mapping({100: FakeRow(nickname="NewName", display_address="X001")})
-        assert svc._result.tag_to_addr_key == {"NewName": 100}
-        assert svc._result.role_cache == {}
-
 
 class TestAnalysisStatus:
     """The status machine views poll to tell 'still building' from 'failed'."""
@@ -228,7 +218,7 @@ class TestAnalysisStatus:
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _boom)
         with pytest.raises(ValueError, match="bad rung"):
-            svc.build(tmp_path, None, {})
+            svc.build(tmp_path, None)
 
         assert svc.status is AnalysisStatus.FAILED
         assert svc.error == "ValueError: bad rung"
@@ -249,7 +239,7 @@ class TestAnalysisStatus:
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _needs_repair)
         with pytest.raises(SystemNicknameRepairRequired):
-            svc.build(tmp_path, None, {})
+            svc.build(tmp_path, None)
 
         assert svc.status is AnalysisStatus.FAILED
         assert svc.system_nickname_repairs == (repair,)
@@ -259,9 +249,9 @@ class TestAnalysisStatus:
         svc = AnalysisService()
         monkeypatch.setattr(
             "clicknick.services.analysis_service._build_graph",
-            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path),
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
         )
-        svc.build(tmp_path, None, {100: FakeRow(nickname="A", display_address="X001")})
+        svc.build(tmp_path, None)
         assert svc.status is AnalysisStatus.READY
         assert svc.error is None
         assert svc.is_available
@@ -271,9 +261,9 @@ class TestAnalysisStatus:
         svc = AnalysisService()
         monkeypatch.setattr(
             "clicknick.services.analysis_service._build_graph",
-            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path),
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
         )
-        svc.build(tmp_path, None, {100: FakeRow(nickname="A", display_address="X001")})
+        svc.build(tmp_path, None)
         assert svc.is_available
 
         def _boom(*_args, **_kwargs):
@@ -281,7 +271,7 @@ class TestAnalysisStatus:
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _boom)
         with pytest.raises(RuntimeError):
-            svc.build(tmp_path, None, {})
+            svc.build(tmp_path, None)
 
         assert svc.status is AnalysisStatus.FAILED
         assert svc.is_available, "previous good result was discarded"
@@ -298,11 +288,11 @@ class TestAnalysisStatus:
 
         def _build_then_switch(*_args, **_kwargs):
             svc.invalidate()
-            return MagicMock(), MagicMock(), tmp_path / "old-workspace"
+            return MagicMock(), MagicMock(), tmp_path / "old-workspace", {}
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _build_then_switch)
 
-        svc.build(tmp_path, None, {})
+        svc.build(tmp_path, None)
 
         assert svc.status is AnalysisStatus.IDLE
         assert not svc.is_available
@@ -340,7 +330,7 @@ class TestBuildValidation:
         svc = AnalysisService()
 
         with pytest.raises(error_type, match=message):
-            svc.build(tmp_path, None, {}, persist_dir=tmp_path)
+            svc.build(tmp_path, None, persist_dir=tmp_path)
 
         assert svc.status is AnalysisStatus.FAILED
         assert not svc.is_available
@@ -376,7 +366,7 @@ class TestBuildValidation:
 
         svc = AnalysisService()
         with pytest.raises(ValueError, match="unsupported instruction"):
-            svc.build(tmp_path, None, {}, persist_dir=project)
+            svc.build(tmp_path, None, persist_dir=project)
 
         regenerate.assert_called_once()
         assert svc.project_dir == project
@@ -392,7 +382,7 @@ class TestBuildValidation:
         svc = AnalysisService()
 
         with pytest.raises(ValueError, match="codegen failed"):
-            svc.build(tmp_path, None, {}, persist_dir=tmp_path)
+            svc.build(tmp_path, None, persist_dir=tmp_path)
 
         assert svc.project_dir is None
 
@@ -406,7 +396,7 @@ class TestBuildValidation:
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", build_then_switch)
         with pytest.raises(ValueError, match="old project failed"):
-            svc.build(tmp_path, None, {})
+            svc.build(tmp_path, None)
 
         assert svc.status is AnalysisStatus.IDLE
         assert svc.project_dir is None
@@ -422,11 +412,11 @@ class TestGeneration:
         svc = AnalysisService()
         monkeypatch.setattr(
             "clicknick.services.analysis_service._build_graph",
-            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path),
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
         )
-        svc.build(tmp_path, None, {})
+        svc.build(tmp_path, None)
         assert svc.generation == 1
-        svc.build(tmp_path, None, {})
+        svc.build(tmp_path, None)
         assert svc.generation == 2
 
     def test_bumps_even_when_the_build_fails(self, monkeypatch, tmp_path):
@@ -438,7 +428,7 @@ class TestGeneration:
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _boom)
         with pytest.raises(RuntimeError):
-            svc.build(tmp_path, None, {})
+            svc.build(tmp_path, None)
         assert svc.generation == 1
 
 

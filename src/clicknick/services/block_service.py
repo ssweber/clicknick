@@ -1,7 +1,7 @@
 """Block service for coordinating block tag operations and colors.
 
 This service provides editor-level coordination for block tags.
-Core block tag model operations (parsing, range computation) are in models/blocktag.py.
+Core block tag operations (parsing, range computation) come from pyclickplc.blocks.
 """
 
 from __future__ import annotations
@@ -10,17 +10,11 @@ import re
 from typing import TYPE_CHECKING
 
 from pyclickplc.blocks import (
-    BlockRange,
-    HasComment,
     compute_all_block_ranges,
-    find_block_range_indices,
     find_paired_tag_index,
     format_block_tag,
-    get_all_block_names,
-    is_block_name_available,
     parse_block_tag,
     strip_block_tag,
-    validate_block_span,
 )
 
 if TYPE_CHECKING:
@@ -29,18 +23,42 @@ if TYPE_CHECKING:
     from ..models.address_row import AddressRow
 
 
-# Re-export functions from blocktag for backwards compatibility
-__all__ = [
-    "BlockRange",
-    "BlockService",
-    "HasComment",
-    "compute_all_block_ranges",
-    "find_block_range_indices",
-    "find_paired_tag_index",
-    "get_all_block_names",
-    "is_block_name_available",
-    "validate_block_span",
-]
+__all__ = ["BlockService", "compute_block_colors"]
+
+
+def compute_block_colors(rows: list[AddressRow]) -> dict[int, str]:
+    """Compute block background colors for each row index.
+
+    Parses block tags from row comments to determine which rows
+    should have colored row indices. Nested blocks override outer blocks.
+    Only colors rows matching the block's memory_type (for interleaved views).
+
+    Args:
+        rows: List of AddressRow to process
+
+    Returns:
+        Dict mapping row index to bg color string
+    """
+    # Get all block ranges using centralized function
+    ranges = compute_all_block_ranges(rows)
+
+    # Filter to only blocks with colors
+    colored_ranges = [r for r in ranges if r.bg_color]
+
+    # Build row_idx -> color map, with inner blocks overriding outer
+    # Sort by range size descending (larger ranges first)
+    # This ensures inner (smaller) blocks are processed last and override
+    colored_ranges.sort(key=lambda r: -(r.end_idx - r.start_idx))
+
+    row_colors: dict[int, str] = {}
+    for block in colored_ranges:
+        for idx in range(block.start_idx, block.end_idx + 1):
+            # Only color rows matching the block's memory_type (for interleaved views)
+            if block.memory_type and rows[idx].memory_type != block.memory_type:
+                continue
+            row_colors[idx] = block.bg_color  # type: ignore[assignment]
+
+    return row_colors
 
 
 _DOTTED_NAME_WITH_FLAG_RE = re.compile(
@@ -109,7 +127,7 @@ class BlockService:
     """Coordinates block tag operations and precomputes block colors.
 
     Provides editor-level coordination for block tags. Core parsing and
-    range computation is delegated to models/blocktag.py.
+    range computation is delegated to pyclickplc.blocks.
     """
 
     @staticmethod

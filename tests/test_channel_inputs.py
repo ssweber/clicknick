@@ -32,7 +32,7 @@ def test_channel_inputs_reach_analysis_and_generated_workspace(tmp_path, monkeyp
         "[SystemConfig]\nItem1=192\n[CPUBuild]\nAD1=DF1,10,0\nDA1=DF5,10,0\n",
         encoding="utf-8",
     )
-    graph, _program, project = _build_graph(tmp_path, None, tmp_path / "workspace")
+    graph, _program, project, _nicknames = _build_graph(tmp_path, None, tmp_path / "workspace")
     assert graph.tags["DF1"].external
     assert not graph.tags["DF10"].external
     namespace = {}
