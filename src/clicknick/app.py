@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import tkinter as tk
 from ctypes import windll
 from dataclasses import replace
 from pathlib import Path
 from tkinter import PhotoImage, filedialog, font, messagebox, simpledialog, ttk
+from typing import TYPE_CHECKING, Any, Generic, TypeVar, overload
 
 from .config import AppSettings
 from .connection_session import ClickConnection
@@ -22,11 +25,48 @@ from .utils.mdb_shared import find_fallback_csv
 from .views.dialogs import AboutDialog, CsvFallbackDialog, OdbcWarningDialog
 from .views.overlay import Overlay
 
+if TYPE_CHECKING:
+    from typing import Self
+
+    from .connection_session import ConnectionSession
+    from .data_session import DataSession
+    from .services.workspace_mirror import ProjectWorkspaceConfig
+
 # Set DPI awareness for better UI rendering
 windll.shcore.SetProcessDpiAwareness(1)
 
 _MATCH_MODES = ("none", "prefix", "contains", "containsplus")
 _MATCH_LABELS = ("None", "Prefix", "Contains", "Fuzzy")
+
+
+_T = TypeVar("_T")
+
+
+class _ShownState(Generic[_T]):
+    """App attribute the main window displays: assigning it schedules one UI refresh.
+
+    The value lives in the instance ``__dict__`` under the same name; as a data
+    descriptor this still takes precedence on lookup.
+    """
+
+    @overload
+    def __get__(self, app: None, owner: Any = None) -> Self: ...
+    @overload
+    def __get__(self, app: object, owner: Any = None) -> _T: ...
+    def __get__(self, app, owner=None):
+        if app is None:
+            return self
+        try:
+            return app.__dict__[self._name]
+        except KeyError:
+            raise AttributeError(self._name) from None
+
+    def __set__(self, app, value: _T) -> None:
+        app.__dict__[self._name] = value
+        app._request_ui_refresh()
+
+    def __set_name__(self, owner, name: str) -> None:
+        self._name = name
 
 
 def get_version():
@@ -42,9 +82,186 @@ def get_version():
 class ClickNickApp:
     """Main application for the ClickNick App."""
 
+    # Everything the window title and Workspace details are computed from;
+    # changing any of these refreshes them (see _refresh_ui).
+    _click: _ShownState[ClickConnection | None] = _ShownState()
+    _data: _ShownState[DataSession | None] = _ShownState()
+    _session: _ShownState[ConnectionSession | None] = _ShownState()
+    _workspace_config: _ShownState[ProjectWorkspaceConfig | None] = _ShownState()
+    _workspace_matches: _ShownState[list[ProjectWorkspaceConfig]] = _ShownState()
+    _workspace_mirror_error: _ShownState[str | None] = _ShownState()
+
+    def _get_workspace_status(self):
+        """Return reusable status for the current CLICK workspace."""
+        from .services.workspace_service import get_workspace_status
+
+        session = self._session
+        return get_workspace_status(
+            session.analysis if session else None,
+            staged_rungs=session.staged_rungs if session else 0,
+        )
+
+    def _workspace_source_dir(self) -> Path | None:
+        analysis = self._session.analysis if self._session else None
+        return analysis.project_dir if analysis else None
+
+    def _configured_workspace_dir(self) -> Path | None:
+        config = self._workspace_config
+        return config.workspace_path if config is not None else None
+
+    def _workspace_display_dir(self) -> Path | None:
+        """Return the active path, or its configured target while rebuilding."""
+        return self._workspace_source_dir() or self._configured_workspace_dir()
+
+    def _current_plc_name(self) -> str | None:
+        """Return CLICK's configured PLC name from its active temp workspace."""
+        click = getattr(self, "_click", None)
+        if click is None:
+            return None
+        from .live.session import click_temp_dir
+        from .services.workspace_mirror import read_plc_name
+
+        return read_plc_name(click_temp_dir(click.hwnd) / "Project.ini")
+
+    @staticmethod
+    def _format_workspace_time(value) -> str:
+        return value.astimezone().strftime("%x %X") if value is not None else "Not available"
+
+    def _poll_workspace_ui(self) -> None:
+        self._workspace_refresh_after_id = None
+        self._refresh_ui()
+
+    def _get_workspace_directory_info(self):
+        """Return paths and timestamps for the future Workspace details panel."""
+        from .services.workspace_mirror import get_workspace_directory_info
+
+        return get_workspace_directory_info(
+            self._workspace_config,
+            self._workspace_source_dir(),
+        )
+
+    def _open_workspace_menu_options(self) -> tuple[str, str]:
+        """Return the label and state for opening the active workspace."""
+        label = (
+            "Open Workspace" if self._workspace_config is not None else "Open Temporary Workspace"
+        )
+        workspace_dir = self._workspace_display_dir()
+        state = tk.NORMAL if workspace_dir is not None and workspace_dir.is_dir() else tk.DISABLED
+        return label, state
+
+    def _refresh_workspace_menu_states(self) -> None:
+        """Follow the active temporary or durable workspace directory."""
+        label, state = self._open_workspace_menu_options()
+        for menu_name, index_name in (
+            ("workspace_options_menu", "_workspace_options_open_index"),
+            ("workspace_menu", "_workspace_menu_open_index"),
+        ):
+            menu = getattr(self, menu_name, None)
+            index = getattr(self, index_name, None)
+            if menu is None or index is None:
+                continue
+            try:
+                menu.entryconfigure(index, label=label, state=state)
+            except tk.TclError:
+                pass
+
+    def _window_title(self) -> str:
+        """Return the title for the current connection, data source and sync count."""
+        if self._click is None:
+            return "ClickNick"
+
+        if self.csv_path_var.get():
+            source = "CSV"
+        elif self.using_database:
+            source = "DB"
+        else:
+            source = ""
+        title = f"ClickNick - {self._click.filename}"
+        if source:
+            title += f" - {source}"
+
+        pending = self._session.synced_pending if self._session else 0
+        if pending > 0:
+            noun = "tag" if pending == 1 else "tags"
+            title += f" ({pending} {noun} synced - Save in CLICK)"
+        return title
+
+    def _refresh_ui(self) -> None:
+        """Bring the title and status/details variables up to date (no widget rebuilds)."""
+        self.root.title(self._window_title())
+        if not hasattr(self, "workspace_status_var"):
+            return
+
+        from .services.workspace_service import WorkspaceState
+
+        workspace = self._get_workspace_status()
+        self.workspace_status_var.set(workspace.label)
+        self.workspace_group_title_var.set(f"Workspace - {workspace.label}")
+        self.project_name_var.set(self._click.filename if self._click else "Not connected")
+        repairs_menu = getattr(self, "repairs_menu", None)
+        repair_index = getattr(self, "_repairs_system_nicknames_index", None)
+        if repairs_menu is not None and repair_index is not None:
+            session = getattr(self, "_session", None)
+            analysis = session.analysis if session else None
+            has_repairs = bool(analysis and analysis.system_nickname_repairs)
+            repairs_menu.entryconfigure(
+                repair_index,
+                state=tk.NORMAL if has_repairs else tk.DISABLED,
+            )
+
+        if workspace.state is WorkspaceState.PREPARING:
+            if self._workspace_refresh_after_id is None:
+                self._workspace_refresh_after_id = self.root.after(500, self._poll_workspace_ui)
+        elif self._workspace_refresh_after_id is not None:
+            try:
+                self.root.after_cancel(self._workspace_refresh_after_id)
+            except tk.TclError:
+                pass
+            self._workspace_refresh_after_id = None
+
+        active_dir = self._workspace_display_dir()
+        self.mirror_status_var.set("Durable" if self._workspace_config else "Temporary")
+        self.mirror_detail_var.set(self._workspace_mirror_error or "")
+        self.mirror_path_var.set(str(active_dir) if active_dir else "Not available")
+        if self._workspace_config:
+            setup_status = "✓ Configured"
+        elif len(getattr(self, "_workspace_matches", [])) > 1:
+            setup_status = "Choose workspace"
+        else:
+            setup_status = "Not configured"
+        self.mirror_setup_status_var.set(setup_status)
+
+        info = self._get_workspace_directory_info()
+        self.plc_name_var.set(self._current_plc_name() or "Not available")
+        self.generated_dir_var.set(
+            str(info.generated_dir) if info.generated_dir else "Not available"
+        )
+        self.workspace_config_path_var.set(
+            str(info.config_path) if info.config_path else "Not configured"
+        )
+        self.last_regenerated_var.set(self._format_workspace_time(info.last_regenerated_at))
+        self.last_backup_var.set(self._format_workspace_time(info.last_backup_at))
+        self._refresh_workspace_menu_states()
+
+    def _run_requested_ui_refresh(self) -> None:
+        self._ui_refresh_id = None
+        self._refresh_ui()
+
+    def _request_ui_refresh(self) -> None:
+        """Schedule one _refresh_ui for when Tk is idle; repeated requests coalesce.
+
+        Assigning any _ShownState attribute (or the CSV path) requests this, so
+        a code path that changes what the window shows needs no refresh call.
+        Other inputs (sync count, analysis progress, staged rungs) are
+        ConnectionSession events, and their handlers request it.
+        """
+        if self._ui_refresh_id is None:
+            self._ui_refresh_id = self.root.after_idle(self._run_requested_ui_refresh)
+
     def _setup_variables(self):
         """Initialize Tkinter variables."""
         self.csv_path_var = tk.StringVar()
+        self.csv_path_var.trace_add("write", lambda *_: self._request_ui_refresh())
         self.status_var = tk.StringVar(value="Not connected")
         self.selected_instance_var = tk.StringVar()  # Add this line
         try:
@@ -173,136 +390,6 @@ class ClickNickApp:
         self.match_mode_index_var.set(float(index))
         self.settings.search_var.set(_MATCH_MODES[index])
 
-    def _get_workspace_status(self):
-        """Return reusable status for the current CLICK workspace."""
-        from .services.workspace_service import get_workspace_status
-
-        session = self._session
-        return get_workspace_status(
-            session.analysis if session else None,
-            staged_rungs=session.staged_rungs if session else 0,
-        )
-
-    def _workspace_source_dir(self) -> Path | None:
-        analysis = self._session.analysis if self._session else None
-        return analysis.project_dir if analysis else None
-
-    def _configured_workspace_dir(self) -> Path | None:
-        config = self._workspace_config
-        return config.workspace_path if config is not None else None
-
-    def _workspace_display_dir(self) -> Path | None:
-        """Return the active path, or its configured target while rebuilding."""
-        return self._workspace_source_dir() or self._configured_workspace_dir()
-
-    def _current_plc_name(self) -> str | None:
-        """Return CLICK's configured PLC name from its active temp workspace."""
-        click = getattr(self, "_click", None)
-        if click is None:
-            return None
-        from .live.session import click_temp_dir
-        from .services.workspace_mirror import read_plc_name
-
-        return read_plc_name(click_temp_dir(click.hwnd) / "Project.ini")
-
-    @staticmethod
-    def _format_workspace_time(value) -> str:
-        return value.astimezone().strftime("%x %X") if value is not None else "Not available"
-
-    def _poll_workspace_ui(self) -> None:
-        self._workspace_refresh_after_id = None
-        self._refresh_workspace_ui()
-
-    def _get_workspace_directory_info(self):
-        """Return paths and timestamps for the future Workspace details panel."""
-        from .services.workspace_mirror import get_workspace_directory_info
-
-        return get_workspace_directory_info(
-            self._workspace_config,
-            self._workspace_source_dir(),
-        )
-
-    def _open_workspace_menu_options(self) -> tuple[str, str]:
-        """Return the label and state for opening the active workspace."""
-        label = (
-            "Open Workspace" if self._workspace_config is not None else "Open Temporary Workspace"
-        )
-        workspace_dir = self._workspace_display_dir()
-        state = tk.NORMAL if workspace_dir is not None and workspace_dir.is_dir() else tk.DISABLED
-        return label, state
-
-    def _refresh_workspace_menu_states(self) -> None:
-        """Follow the active temporary or durable workspace directory."""
-        label, state = self._open_workspace_menu_options()
-        for menu_name, index_name in (
-            ("workspace_options_menu", "_workspace_options_open_index"),
-            ("workspace_menu", "_workspace_menu_open_index"),
-        ):
-            menu = getattr(self, menu_name, None)
-            index = getattr(self, index_name, None)
-            if menu is None or index is None:
-                continue
-            try:
-                menu.entryconfigure(index, label=label, state=state)
-            except tk.TclError:
-                pass
-
-    def _refresh_workspace_ui(self) -> None:
-        """Refresh status/details variables without rebuilding any widgets."""
-        if not hasattr(self, "workspace_status_var"):
-            return
-
-        from .services.workspace_service import WorkspaceState
-
-        workspace = self._get_workspace_status()
-        self.workspace_status_var.set(workspace.label)
-        self.workspace_group_title_var.set(f"Workspace - {workspace.label}")
-        self.project_name_var.set(self._click.filename if self._click else "Not connected")
-        repairs_menu = getattr(self, "repairs_menu", None)
-        repair_index = getattr(self, "_repairs_system_nicknames_index", None)
-        if repairs_menu is not None and repair_index is not None:
-            session = getattr(self, "_session", None)
-            analysis = session.analysis if session else None
-            has_repairs = bool(analysis and analysis.system_nickname_repairs)
-            repairs_menu.entryconfigure(
-                repair_index,
-                state=tk.NORMAL if has_repairs else tk.DISABLED,
-            )
-
-        if workspace.state is WorkspaceState.PREPARING:
-            if self._workspace_refresh_after_id is None:
-                self._workspace_refresh_after_id = self.root.after(500, self._poll_workspace_ui)
-        elif self._workspace_refresh_after_id is not None:
-            try:
-                self.root.after_cancel(self._workspace_refresh_after_id)
-            except tk.TclError:
-                pass
-            self._workspace_refresh_after_id = None
-
-        active_dir = self._workspace_display_dir()
-        self.mirror_status_var.set("Durable" if self._workspace_config else "Temporary")
-        self.mirror_detail_var.set(self._workspace_mirror_error or "")
-        self.mirror_path_var.set(str(active_dir) if active_dir else "Not available")
-        if self._workspace_config:
-            setup_status = "✓ Configured"
-        elif len(getattr(self, "_workspace_matches", [])) > 1:
-            setup_status = "Choose workspace"
-        else:
-            setup_status = "Not configured"
-        self.mirror_setup_status_var.set(setup_status)
-
-        info = self._get_workspace_directory_info()
-        self.plc_name_var.set(self._current_plc_name() or "Not available")
-        self.generated_dir_var.set(
-            str(info.generated_dir) if info.generated_dir else "Not available"
-        )
-        self.workspace_config_path_var.set(
-            str(info.config_path) if info.config_path else "Not configured"
-        )
-        self.last_regenerated_var.set(self._format_workspace_time(info.last_regenerated_at))
-        self.last_backup_var.set(self._format_workspace_time(info.last_backup_at))
-        self._refresh_workspace_menu_states()
-
     def _populate_autocomplete_options_menu(self, menu: tk.Menu) -> None:
         """Add the compact checkable preferences to the Autocomplete menu."""
         menu.add_checkbutton(
@@ -411,7 +498,7 @@ class ClickNickApp:
         if self._session is None:
             return
         self._session.start_analysis(self.root)
-        self._refresh_workspace_ui()
+        self._request_ui_refresh()
         if self._workspace_refresh_after_id is None:
             self._workspace_refresh_after_id = self.root.after(250, self._poll_workspace_ui)
 
@@ -440,12 +527,12 @@ class ClickNickApp:
             if self._session is not None:
                 self._session.record_rung_stage(0)
             self._update_status("Workspace reloaded from CLICK", "connected")
-            self._refresh_workspace_ui()
+            self._request_ui_refresh()
             return
         message = error or "Workspace could not be reloaded from CLICK."
         messagebox.showerror("Reload from CLICK", message, parent=self.root)
         self._update_status(f"Workspace reload failed: {message}", "error")
-        self._refresh_workspace_ui()
+        self._request_ui_refresh()
 
     def _workspace_reload_from_click(self) -> None:
         """Explicitly replace active workspace source from the saved CLICK project."""
@@ -477,7 +564,7 @@ class ClickNickApp:
                 self._workspace_reload_finished(success, error)
 
         session.reload_workspace_from_click(self.root, _finished)
-        self._refresh_workspace_ui()
+        self._request_ui_refresh()
 
     def _apply_active_filter(self, candidates: list[str], search_text: str) -> list[str]:
         mode = self.settings.search_mode
@@ -610,7 +697,6 @@ class ClickNickApp:
         repairs = stage_system_nickname_repairs(store)
         if not repairs:
             self._update_status("No documented system nickname repairs needed", "connected")
-            self._refresh_workspace_ui()
             return
 
         self._open_address_editor("changed")
@@ -1136,7 +1222,7 @@ class ClickNickApp:
         self._create_mirror_setup_contents(contents)
         contents.pack(fill=tk.BOTH, expand=True)
         self._mirror_setup_window = window
-        self._refresh_workspace_ui()
+        self._request_ui_refresh()
 
     def _populate_workspace_options_menu(self, menu: tk.Menu) -> None:
         """Add active-directory commands to the Workspace options menu."""
@@ -1294,7 +1380,7 @@ class ClickNickApp:
         self._create_project_info_contents(contents)
         contents.pack(fill=tk.BOTH, expand=True)
         self._project_info_window = window
-        self._refresh_workspace_ui()
+        self._request_ui_refresh()
 
     def _create_about_dialog(self):
         """Create and show the About dialog."""
@@ -1712,7 +1798,7 @@ class ClickNickApp:
         self._create_action_section(primary)
 
         main_frame.pack(fill=tk.BOTH, expand=True)
-        self._refresh_workspace_ui()
+        self._request_ui_refresh()
 
     def _live_session_dir(self):
         """Directory the live server advertises its port file in.
@@ -1733,7 +1819,7 @@ class ClickNickApp:
     def _record_staged_rungs(self, count: int) -> None:
         if self._session is not None:
             self._session.record_rung_stage(count)
-        self._refresh_workspace_ui()
+        self._request_ui_refresh()
 
     def _reset_workspace_pairing(self) -> None:
         """Forget the durable workspace paired with the connected project."""
@@ -1769,9 +1855,12 @@ class ClickNickApp:
         self.monitoring = False
         self.monitor_task_id = None
 
+        # Pending idle refresh of the title and Workspace details (_request_ui_refresh)
+        self._ui_refresh_id = None
+
         # Connected Click.exe instance (one immutable value; replaced, never edited)
         self._connection_probe_token = None
-        self._click: ClickConnection | None = None
+        self._click = None
         self._reset_workspace_pairing()
 
         self.filter_strategies = {
@@ -1787,14 +1876,10 @@ class ClickNickApp:
 
         # Connection session: owns all resources scoped to a Click project
         # (store, analysis, ScrWatcher, console, dataview editor).
-        from .connection_session import ConnectionSession
-
-        self._session: ConnectionSession | None = None
+        self._session = None
 
         # The loaded address data (CSV or database) and the windows bound to it.
-        from .data_session import DataSession
-
-        self._data: DataSession | None = None
+        self._data = None
 
         # Live editing server: lets `clicknick-cli` push edits into this
         # running instance. Holds getters (not snapshots) so it always targets
@@ -1910,7 +1995,6 @@ class ClickNickApp:
         self._reset_workspace_pairing()
         plc_name = self._current_plc_name()
         if not plc_name:
-            self._refresh_workspace_ui()
             return
         matches = find_project_configs(plc_name)
         self._workspace_matches = matches
@@ -1932,37 +2016,9 @@ class ClickNickApp:
                 self._workspace_mirror_error = (
                     "Multiple workspaces are known for this PLC. Choose one in Workspace setup."
                 )
-        self._refresh_workspace_ui()
-
-    def _update_window_title(self):
-        """Update window title to reflect current connection and data source."""
-        if self._click is None:
-            self.root.title("ClickNick")
-            return
-
-        # Determine source type
-        if self.csv_path_var.get():
-            source = "CSV"
-        elif self.using_database:
-            source = "DB"
-        else:
-            source = ""
-
-        if source:
-            title = f"ClickNick - {self._click.filename} - {source}"
-        else:
-            title = f"ClickNick - {self._click.filename}"
-
-        pending = self._session.synced_pending if self._session else 0
-        if pending > 0:
-            noun = "tag" if pending == 1 else "tags"
-            title += f" ({pending} {noun} synced - Save in CLICK)"
-
-        self.root.title(title)
 
     def _on_sync_status_changed(self, _pending: int) -> None:
-        self._update_window_title()
-        self._refresh_workspace_ui()
+        self._request_ui_refresh()
         if self._data is not None:
             for window in self._data.editors:
                 if hasattr(window, "refresh_sync_status"):
@@ -1980,7 +2036,6 @@ class ClickNickApp:
         self._connection_probe_token = None
         self._click = None
         self._reset_workspace_pairing()
-        self._refresh_workspace_ui()
 
     def refresh_click_instances(self):
         """Refresh the list of running Click.exe instances."""
@@ -1998,7 +2053,6 @@ class ClickNickApp:
 
             if not click_instances:
                 self._clear_connection_state()
-                self._update_window_title()
                 self._update_status("⚠ No ClickPLC windows", "error")
                 self.start_button.state(["disabled"])  # Disable when no instances
                 return
@@ -2042,7 +2096,6 @@ class ClickNickApp:
                 return False
 
             self._update_status("✓ CSV loaded", "connected")
-            self._update_window_title()
             has_live_connection = self._click is not None and self.detector.check_window_exists(
                 self._click.pid
             )
@@ -2054,7 +2107,6 @@ class ClickNickApp:
                 if self._click is not None:
                     self._clear_connection_state()
                     self.selected_instance_var.set("")
-                    self._update_window_title()
             return True
         except Exception as e:
             print(f"Error loading CSV: {e}")
@@ -2090,7 +2142,6 @@ class ClickNickApp:
             return False
 
         self._update_status("✓ DB loaded", "connected")
-        self._update_window_title()
 
         self.start_monitoring()
         return True
@@ -2242,7 +2293,6 @@ class ClickNickApp:
 
         self._clear_connection_state()
         self.selected_instance_var.set("")
-        self._update_window_title()
 
         self.root.after(2000, self.refresh_click_instances)
 
@@ -2286,11 +2336,9 @@ class ClickNickApp:
         self._load_workspace_pairing()
 
         if csv_unloaded:
-            self._update_window_title()
             self.stop_monitoring(update_status=False)
             return False
 
-        self._update_window_title()
         if self.nickname_manager.has_database_backend():
             # Same off-thread load as connecting, with a token so a result for
             # a project that changed again is dropped.
@@ -2425,6 +2473,9 @@ class ClickNickApp:
         live_server = getattr(self, "_live_server", None)
         if live_server is not None:
             live_server.stop()
+        if self._ui_refresh_id is not None:
+            self.root.after_cancel(self._ui_refresh_id)
+            self._ui_refresh_id = None
         self.root.destroy()
 
     def run(self):

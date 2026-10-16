@@ -125,11 +125,10 @@ class TestEditSession:
         """Editing different fields of one row across SEPARATE sessions must
         preserve earlier edits.
 
-        Regression: visible_state rows carry an empty dirty_fields, so freezing
-        a later session against visible_state dropped the prior session's dirty
-        markers and _merge_base_with_override reverted those fields. (Reachable
-        in the UI: edit a nickname in the grid, then edit that row's comment via
-        the right-click annotation dialog.)
+        Regression: a later session was once frozen against visible_state rather
+        than the existing override, which dropped the prior session's fields and
+        reverted them. (Reachable in the UI: edit a nickname in the grid, then
+        edit that row's comment via the right-click annotation dialog.)
         """
         addr_key = get_addr_key("X", 1)
 

@@ -83,7 +83,8 @@ src/clicknick/
 The application maintains three distinct data layers to cleanly separate database truth from user edits:
 
 1. **Base Layer** (`base_state`) - Latest snapshot from the external database (source of truth)
-2. **Overlay Layer** (`user_overrides`) - Sparse dictionary of user modifications only
+2. **Overlay Layer** (`user_overrides`) - Sparse dictionary of unsaved edits: `addr_key` → read-only
+   `{field: value}` holding only the fields the user set (no row copies, no dirty markers)
 3. **Visible Layer** (`visible_state`) - Computed projection of base + overrides
 
 **Core Principles:**
@@ -91,7 +92,6 @@ The application maintains three distinct data layers to cleanly separate databas
 - **Inputs vs derived:** base rows and the user's overrides are the inputs. Visible rows, validation, dirty
   fields, the nickname index and block colors are derived by one method, `AddressStore._derive()`, in one
   fixed order, after every change (edit, undo, redo, discard, save, external reload)
-- **Targeted Refresh:** Reference equality (`is`) used for fast dirty detection
 - **Undo/Redo:** Tracks overlay layer only (user intent), preserves 50-level history
 - **External Updates:** Database refreshes update base layer while preserving user overrides
 
@@ -125,7 +125,6 @@ All views register as observers with `AddressStore`:
 - `callback(store, changed_keys: set[int] | None)` - Receive notifications with affected `addr_key` sets
 - The store replaces changed rows in the shared unified view before notifying; observer exceptions are logged
 - Views refresh only changed rows using targeted updates
-- Reference equality (`visible is base`) enables fast dirty detection
 
 ## Key Dependencies
 
@@ -144,7 +143,7 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   full rebuild from the same inputs
 - `test_store_boundaries.py` - Source-level rules: only the store writes its layers, no tkinter in data/services
 - `test_data_session.py` - Window lifecycle and save prompts when data is closed or replaced
-- `test_mutable_row_builder.py` - Builder pattern, freeze behavior, immutability
+- `test_mutable_row_builder.py` - Builder pattern, `changes()` output
 - `test_address_model.py` - AddressRow validation, frozen dataclass behavior
 
 **Service tests** (fully unit testable without tkinter):
@@ -171,16 +170,16 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - A body that raises commits nothing
 
 ### Dirty State Detection
-- Check via `store.is_dirty(addr_key)`, not `row.is_dirty` property
-- Fast reference equality: `visible_row is base_row` means clean
-- Per-field dirty: `store.is_field_dirty(addr_key, "nickname")`
+- Check via `store.is_dirty(addr_key)` / `store.is_field_dirty(addr_key, "nickname")`
+- `_derive` first drops override fields the base already holds, so a field is dirty exactly when it is in
+  its row's override; nothing stores a separate dirty marker
 
 ### Undo/Redo
 - Tracks user intent (overlay layer) only, not database state
 - Max 50 undo frames (configurable via `MAX_UNDO_DEPTH`)
 - A successful Sync/Save, or a Discard, clears Undo/Redo (frames hold override snapshots, not old values);
   a CLICK save does not
-- An unsaved field that the database now matches stops being an edit (`_rebase_override`)
+- An unsaved field that the database now matches stops being an edit (`_rebase_override`, run by `_derive`)
 - Keyboard: Ctrl+Z (undo), Ctrl+Y (redo)
 
 ### Block Colors
@@ -194,3 +193,9 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - One build worker per connection; requests made while it runs collapse into one follow-up build
 - The generated code, persisted project and tag map all come from one nickname snapshot read from CLICK's
   database, so tag names always match the code. ClickNick edits reach analysis on the next build after Sync
+
+### Main Window Refresh
+- The window title and Workspace details are recomputed by `ClickNickApp._refresh_ui()`; never call it by hand
+- Assigning `_click`, `_data`, `_session` or the workspace pairing fields (`_ShownState` attributes), or
+  setting the CSV path, schedules one coalesced idle refresh. `ConnectionSession` events (sync count,
+  analysis progress, staged rungs) call `_request_ui_refresh()`

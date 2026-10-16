@@ -15,7 +15,7 @@ class Nickname:
     comment: str = ""
     address_type: str = ""
     used: bool | None = None
-    abbr_tags: str = ""
+    abbr_tags: tuple[str, ...] = ()
 
     @property
     def is_default_retentive(self) -> bool:

@@ -221,7 +221,7 @@ class ContainsPlusFilter(FilterBase):
 
     def matches_abbreviation(self, item, needle_variants):
         """Check if item matches any needle variant"""
-        abbr_tags = getattr(item, "abbr_tags", [])
+        abbr_tags = getattr(item, "abbr_tags", ())
         if not abbr_tags:
             return False
 
@@ -232,8 +232,11 @@ class ContainsPlusFilter(FilterBase):
         return False
 
     @lru_cache(maxsize=12000)  # noqa: B019
-    def _generate_tags_cached(self, text):
-        """Internal cached method that returns a tuple"""
+    def generate_tags(self, text):
+        """Generate searchable tags for a nickname, sorted and unique.
+
+        Cached, so the result is a tuple shared between equal nicknames.
+        """
         words = self.split_into_words(text)
         tags = []
 
@@ -252,11 +255,7 @@ class ContainsPlusFilter(FilterBase):
         for word in words:
             tags.extend(self.get_abbreviated_word_list(word))
 
-        return tuple(sorted(set(tags)))  # Return tuple for hashability
-
-    def generate_tags(self, text):
-        """Generate searchable tags for a nickname - returns list for compatibility"""
-        return list(self._generate_tags_cached(text))
+        return tuple(sorted(set(tags)))
 
     def _filter_single_word(self, completion_list, word):
         """Filter using cascading approach for single word searches"""

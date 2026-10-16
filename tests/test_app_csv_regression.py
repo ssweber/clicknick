@@ -58,11 +58,10 @@ class FakeEditor:
 
 def _make_app_stub() -> ClickNickApp:
     app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
     app._session = None
     app._data = None
     app._update_status = MagicMock()
-    app._update_window_title = MagicMock()
-    app._refresh_workspace_ui = MagicMock()
     app.start_monitoring = MagicMock()
     app.stop_monitoring = MagicMock()
     app.root = MagicMock()

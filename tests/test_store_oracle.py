@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import replace
+from types import MappingProxyType
 
 import pytest
 from pyclickplc.addresses import get_addr_key
@@ -78,11 +79,15 @@ def _rebuild(store: AddressStore, source: Source) -> AddressStore:
     # of those still differ from the database is derived, here independently
     # of the store's own helpers.
     overrides = {}
-    for key, override in store.user_overrides.items():
+    for key, values in store.user_overrides.items():
         base = fresh.base_state[key]
-        dirty = frozenset(name for name in override.dirty_fields if _differs(override, base, name))
-        if dirty:
-            overrides[key] = replace(override, dirty_fields=dirty)
+        kept = {
+            name: value
+            for name, value in values.items()
+            if _differs(replace(base, **{name: value}), base, name)
+        }
+        if kept:
+            overrides[key] = MappingProxyType(kept)
     fresh.user_overrides = overrides
     fresh._recompute_visible(set(fresh.visible_state))
     fresh._rebuild_nickname_index()
@@ -92,6 +97,9 @@ def _rebuild(store: AddressStore, source: Source) -> AddressStore:
 
 def _assert_matches_rebuild(store: AddressStore, source: Source, step: str) -> None:
     fresh = _rebuild(store, source)
+
+    # Overrides hold values only, and only values the database does not already hold.
+    assert store.user_overrides == fresh.user_overrides, (step, "overrides")
 
     for key in KEYS:
         kept, expected = store.visible_state[key], fresh.visible_state[key]
@@ -145,14 +153,14 @@ def _random_edit(rng: random.Random, store: AddressStore) -> str:
 def _random_click_write(rng: random.Random, store: AddressStore, source: Source) -> str:
     pending = [
         (key, name)
-        for key, override in store.user_overrides.items()
-        for name in override.dirty_fields
+        for key, values in store.user_overrides.items()
+        for name in values
         if name in ("nickname", "comment")
     ]
     if pending and rng.random() < 0.5:
         # CLICK saves exactly what the user has pending (typed in both places).
         key, name = rng.choice(sorted(pending))
-        value = getattr(store.user_overrides[key], name)
+        value = store.user_overrides[key][name]
     else:
         key = rng.choice(KEYS)
         name = rng.choice(("nickname", "comment"))

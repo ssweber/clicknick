@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..models.address_row import AddressRow
+    from .address_store import RowOverride
 
 # Maximum number of undo frames to retain
 MAX_UNDO_DEPTH = 50
@@ -21,12 +21,12 @@ class UndoFrame:
     """Snapshot of user overrides before a change.
 
     Attributes:
-        overrides: Dict mapping addr_key to AddressRow state at that point.
-                   Only contains rows that had user modifications.
+        overrides: Dict mapping addr_key to that row's override (field -> value)
+                   at that point. Only contains rows that had unsaved edits.
         description: Human-readable description of the change (for menu display).
     """
 
-    overrides: dict[int, AddressRow] = field(default_factory=dict)
+    overrides: dict[int, RowOverride] = field(default_factory=dict)
     description: str = ""
 
     def __repr__(self) -> str:

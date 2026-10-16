@@ -148,7 +148,7 @@ def _copy_missing(source: Path, destination: Path) -> None:
 
 
 def _refresh_workspace_guidance(source: Path, destination: Path) -> None:
-    """Refresh only pyrung-marked or exact legacy lifecycle prose."""
+    """Refresh the pyrung-marked lifecycle section; everything outside it is the user's."""
     from pyrung.click import refresh_workspace_lifecycle_guidance
 
     existing = destination.read_text(encoding="utf-8")

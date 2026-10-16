@@ -2,7 +2,7 @@
 
 The store maintains three layers:
 - base_state: Latest snapshot from the database (the truth)
-- user_overrides: Sparse dict of user modifications (the intent)
+- user_overrides: Sparse dict of unsaved edits, field -> value (the intent)
 - visible_state: Computed projection of base + overrides (the view)
 
 Key behaviors:
@@ -14,9 +14,10 @@ Key behaviors:
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Mapping
 from contextlib import contextmanager
 from dataclasses import replace
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from pyclickplc.addresses import get_addr_key
@@ -44,19 +45,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# User-editable fields, i.e. the fields an override can be dirty in
-CONTENT_FIELDS = ("nickname", "comment", "initial_value", "retentive")
+# One row's unsaved edits: content field -> the value the user set. Read-only,
+# and once _derive has run it holds only fields that differ from base.
+RowOverride = Mapping[str, str | bool]
 
 
-def _field_differs(row: AddressRow, base_row: AddressRow, field: str) -> bool:
-    """Compare one content field between a row and its base.
+def _value_differs(base_row: AddressRow, field: str, value: str | bool) -> bool:
+    """Check whether setting one content field to *value* changes *base_row*.
 
     initial_value needs the default-aware comparison rather than raw inequality -
     see initial_values_differ.
     """
     if field == "initial_value":
-        return initial_values_differ(row, base_row)
-    return getattr(row, field) != getattr(base_row, field)
+        return initial_values_differ(replace(base_row, initial_value=value), base_row)
+    return getattr(base_row, field) != value
 
 
 class AddressStore:
@@ -91,7 +93,7 @@ class AddressStore:
 
         # The three layers
         self.base_state: dict[int, AddressRow] = {}
-        self.user_overrides: dict[int, AddressRow] = {}
+        self.user_overrides: dict[int, RowOverride] = {}
         self.visible_state: dict[int, AddressRow] = {}
         self.loaded_row_count = 0
 
@@ -314,61 +316,48 @@ class AddressStore:
         )
 
     def _merge_base_with_override(self, addr_key: int, base_row: AddressRow) -> AddressRow:
-        """Merge an updated base row with any local user override.
+        """Apply the user's override values on top of a base row.
 
-        Only overrides fields the user actually changed (tracked by dirty_fields).
-        Non-dirty fields stay at their new base values so external DB changes
-        are visible even while the user has other pending edits on the same row.
+        Fields the user did not set stay at their base values, so external DB
+        changes to them show even while the row has other pending edits.
         """
         override = self.user_overrides.get(addr_key)
-        if override is None:
+        if not override:
             return base_row
+        merged = replace(base_row, **override)
+        return replace(
+            merged,
+            loaded_with_error=base_row.loaded_with_error and merged.nickname == base_row.nickname,
+        )
 
-        dirty = override.dirty_fields
-        if not dirty:
-            # No fields differ from base, so the override contributes nothing.
-            return base_row
+    def _rebase_override(self, addr_key: int) -> None:
+        """Drop override fields whose value the current base row already holds.
 
-        changes: dict = {}
-        if "nickname" in dirty:
-            changes["nickname"] = override.nickname
-        if "comment" in dirty:
-            changes["comment"] = override.comment
-        if "initial_value" in dirty:
-            changes["initial_value"] = override.initial_value
-        if "retentive" in dirty:
-            changes["retentive"] = override.retentive
-
-        return replace(base_row, **changes)
-
-    def _rebase_override(self, addr_key: int) -> bool:
-        """Recheck an override's dirty fields against the current base row.
-
-        An override's dirty_fields are computed when its session freezes, but
-        base can move afterwards: CLICK may save the value the user typed, or
-        undo may restore a frame recorded before a save. Fields that now match
-        base are no longer edits; an override with none left is dropped. Only
-        fields already marked dirty are rechecked; the override's other fields
-        are stale copies and never become dirty here.
-
-        Returns:
-            True if the override changed or was dropped
+        A field base holds is not an edit: is_dirty() is presence-based, so it
+        would report the row as changed, list it under "Changed" and write it on
+        Sync while no cell differed. It gets there three ways: writing a row's
+        own value back (re-typing the same text, importing a CSV that already
+        matches the project), CLICK saving the value the user typed, and undo
+        restoring a frame recorded before a save. Once dropped, later base
+        changes to that field show through. An override with no fields left
+        is removed.
         """
         override = self.user_overrides.get(addr_key)
         base_row = self.base_state.get(addr_key)
         if override is None or base_row is None:
-            return False
+            return
 
-        dirty = frozenset(
-            field for field in override.dirty_fields if _field_differs(override, base_row, field)
-        )
-        if dirty == override.dirty_fields:
-            return False
-        if dirty:
-            self.user_overrides[addr_key] = replace(override, dirty_fields=dirty)
+        kept = {
+            field: value
+            for field, value in override.items()
+            if _value_differs(base_row, field, value)
+        }
+        if len(kept) == len(override):
+            return
+        if kept:
+            self.user_overrides[addr_key] = MappingProxyType(kept)
         else:
             del self.user_overrides[addr_key]
-        return True
 
     def _apply_external_base_row(
         self,
@@ -378,15 +367,14 @@ class AddressStore:
         """Apply one externally-loaded base row.
 
         Returns:
-            True if the row needs deriving (base or its override changed)
+            True if the base row changed (so the key needs deriving)
         """
         old_base = self.base_state.get(addr_key)
         if old_base is None:
             return False
 
         self.base_state[addr_key] = updated_base
-        rebased = self._rebase_override(addr_key)
-        return rebased or updated_base != old_base
+        return updated_base != old_base
 
     def _recompute_block_colors(self, affected: set[int]) -> set[int]:
         """Recompute block colors for the entire unified view.
@@ -424,22 +412,9 @@ class AddressStore:
     def _recompute_visible(self, affected_keys: set[int]) -> None:
         """Recompute visible_state for affected keys."""
         for addr_key in affected_keys:
-            if addr_key in self.user_overrides:
-                base = self.base_state.get(addr_key)
-                override = self.user_overrides[addr_key]
-                if base:
-                    merged = self._merge_base_with_override(addr_key, base)
-                    visible_nick = merged.nickname
-                    self.visible_state[addr_key] = replace(
-                        merged,
-                        loaded_with_error=base.loaded_with_error and visible_nick == base.nickname,
-                    )
-                else:
-                    self.visible_state[addr_key] = override
-            else:
-                # No user edits: visible = base
-                if addr_key in self.base_state:
-                    self.visible_state[addr_key] = self.base_state[addr_key]
+            base = self.base_state.get(addr_key)
+            if base is not None:
+                self.visible_state[addr_key] = self._merge_base_with_override(addr_key, base)
 
     def _update_nickname_index(self, nickname_changes: dict[int, str]) -> None:
         """Update nickname reverse index after changes."""
@@ -472,17 +447,22 @@ class AddressStore:
 
         Every path that changes the inputs (base_state, user_overrides) ends
         here, so derived state is computed one way, in one order:
-        1. visible = base merged with overrides
-        2. nickname diff (visible before vs after)
-        3. nickname index (duplicate checks read it, so it goes before validation)
-        4. validate changed keys, every row sharing an old or new nickname, and
+        1. dirty: drop override fields base now holds (_rebase_override), so a
+           field is dirty exactly when it is in its row's override
+        2. visible = base merged with overrides
+        3. nickname diff (visible before vs after)
+        4. nickname index (duplicate checks read it, so it goes before validation)
+        5. validate changed keys, every row sharing an old or new nickname, and
            every row defining a block whose name was added or removed
-        5. block colors, if any comment changed
-        6. notify observers
+        6. block colors, if any comment changed
+        7. notify observers
 
         Args:
             changed: addr_keys whose base row or override changed
         """
+        for key in changed:
+            self._rebase_override(key)
+
         old_rows = {key: self.visible_state.get(key) for key in changed}
         self._recompute_visible(changed)
 
@@ -688,16 +668,10 @@ class AddressStore:
                 _sync_interleaved_pair(row, new_comment)
 
     def _freeze_session(self, session: EditSession) -> set[int]:
-        """Freeze session builders into user_overrides.
+        """Freeze session builders' values into user_overrides.
 
-        Dirty fields are recomputed by comparing the frozen row against base_state
-        rather than trusting that a write happened. A builder marks a field set
-        whenever it is assigned, even if assigned its current value, so writing a
-        row's existing value back (re-typing the same text, importing a CSV that
-        already matches the project) would otherwise leave a no-op override behind:
-        is_dirty() is presence-based, so the row would report as changed, show up
-        under the "Changed" filter and get written on save, while every cell
-        compared equal to base and no highlight appeared.
+        Values the base row already holds are kept here and dropped by _derive
+        (see _rebase_override), the one place dirty is decided.
 
         Returns:
             Set of affected addr_keys
@@ -705,34 +679,13 @@ class AddressStore:
         affected = set()
 
         for addr_key, builder in session.pending.items():
-            if not builder.has_changes():
+            changes = builder.changes()
+            if not changes or addr_key not in self.base_state:
                 continue
-
-            # Freeze on top of any existing override so fields made dirty in a
-            # PRIOR session are preserved. visible_state rows carry an empty
-            # dirty_fields (they are recomputed from clean base + selective
-            # override), so freezing against them would drop earlier dirty
-            # markers and _merge_base_with_override would revert those fields.
-            base = self.user_overrides.get(addr_key) or self.visible_state.get(addr_key)
-            if not base:
-                continue
-
-            # Freeze builder into new immutable row
-            new_row = builder.freeze(base)
-
-            base_row = self.base_state.get(addr_key)
-            if base_row is not None:
-                dirty = frozenset(
-                    field for field in CONTENT_FIELDS if _field_differs(new_row, base_row, field)
-                )
-                if not dirty:
-                    # Row is back to base, so drop the override entirely.
-                    if self.user_overrides.pop(addr_key, None) is not None:
-                        affected.add(addr_key)
-                    continue
-                new_row = replace(new_row, dirty_fields=dirty)
-
-            self.user_overrides[addr_key] = new_row
+            # On top of any existing override, so fields set in an earlier
+            # session keep their values.
+            merged = {**self.user_overrides.get(addr_key, {}), **changes}
+            self.user_overrides[addr_key] = MappingProxyType(merged)
             affected.add(addr_key)
 
         return affected
@@ -849,10 +802,7 @@ class AddressStore:
         # Find all keys that changed
         affected_keys = set(old_overrides.keys()) | set(self.user_overrides.keys())
 
-        # The restored frame may predate an external reload.
-        for addr_key in list(self.user_overrides):
-            self._rebase_override(addr_key)
-
+        # The restored frame may predate an external reload; _derive rebases it.
         self._derive(affected_keys)
         return True
 
@@ -880,10 +830,7 @@ class AddressStore:
 
         affected_keys = set(old_overrides.keys()) | set(self.user_overrides.keys())
 
-        # The restored frame may predate an external reload.
-        for addr_key in list(self.user_overrides):
-            self._rebase_override(addr_key)
-
+        # The restored frame may predate an external reload; _derive rebases it.
         self._derive(affected_keys)
         return True
 
@@ -922,34 +869,24 @@ class AddressStore:
 
     # --- Dirty State Queries ---
 
-    def is_dirty(self, addr_key: int) -> bool:
-        """Check if a row has user modifications.
+    # _derive keeps every override field different from base, so presence in
+    # user_overrides is the dirty state.
 
-        Derived from the override's dirty_fields rather than its mere presence, so
-        a row can never report as changed while every one of its cells compares
-        equal to base (which is what is_field_dirty answers).
-        """
-        override = self.user_overrides.get(addr_key)
-        return override is not None and bool(override.dirty_fields)
+    def is_dirty(self, addr_key: int) -> bool:
+        """Check if a row has unsaved edits."""
+        return addr_key in self.user_overrides
 
     def is_field_dirty(self, addr_key: int, field: str) -> bool:
         """Check if a specific field differs from base."""
-        override = self.user_overrides.get(addr_key)
-        if override is None or field not in override.dirty_fields:
-            return False
-        visible = self.visible_state.get(addr_key)
-        base = self.base_state.get(addr_key)
-        if not visible or not base:
-            return False
-        return _field_differs(visible, base, field)
+        return field in self.user_overrides.get(addr_key, ())
 
     def get_dirty_keys(self) -> set[int]:
-        """Get all keys with user modifications."""
-        return {key for key, row in self.user_overrides.items() if row.dirty_fields}
+        """Get all keys with unsaved edits."""
+        return set(self.user_overrides)
 
     def has_unsaved_changes(self) -> bool:
         """Check if there are any unsaved changes."""
-        return any(row.dirty_fields for row in self.user_overrides.values())
+        return bool(self.user_overrides)
 
     def has_errors(self) -> bool:
         """Check if any visible rows have validation errors."""
@@ -1071,8 +1008,6 @@ class AddressStore:
         if self._data_source.is_read_only:
             raise RuntimeError("Data source is read-only")
 
-        # Rows to write are those that actually differ from base, not merely those
-        # carrying an override - see is_dirty()
         dirty_keys = self.get_dirty_keys()
         if not dirty_keys:
             return 0

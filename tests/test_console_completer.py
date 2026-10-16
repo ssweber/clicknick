@@ -9,116 +9,7 @@ from clicknick.services.console_completer import (
     ConsoleCompleter,
     SlotSpec,
     _find_token_at_cursor,
-    _parse_usage,
 )
-
-# ---------------------------------------------------------------------------
-# Usage string parsing
-# ---------------------------------------------------------------------------
-
-
-class TestParseUsage:
-    def test_no_args(self):
-        spec = _parse_usage("continue", "continue", "execution")
-        assert spec.verb == "continue"
-        assert spec.slots == ()
-        assert spec.group == "execution"
-
-    def test_single_tag(self):
-        spec = _parse_usage("unforce", "unforce <tag>", "data")
-        assert len(spec.slots) == 1
-        assert spec.slots[0].kind == "tag"
-        assert spec.slots[0].required is True
-
-    def test_tag_and_value(self):
-        spec = _parse_usage("force", "force <tag> <value>", "data")
-        assert len(spec.slots) == 2
-        assert spec.slots[0].kind == "tag"
-        assert spec.slots[1].kind == "freeform"
-        assert spec.slots[1].label == "value"
-
-    def test_multi_tag(self):
-        spec = _parse_usage("get", "get <tag> [tag2 ...]", "data")
-        assert len(spec.slots) == 2
-        assert spec.slots[0].kind == "tag"
-        assert spec.slots[0].required is True
-        assert spec.slots[1].kind == "tags"
-        assert spec.slots[1].required is False
-
-    def test_tag_with_suffix(self):
-        spec = _parse_usage("cause", "cause <tag>[@scan|:value]", "analysis")
-        assert spec.slots[0].kind == "tag"
-
-    def test_bare_choices(self):
-        spec = _parse_usage(
-            "prove", "prove always|never <expression> [--settled] [--paced]", "analysis"
-        )
-        assert spec.slots[0].kind == "choices"
-        assert spec.slots[0].choices == ("always", "never")
-
-    def test_angle_bracket_choices(self):
-        spec = _parse_usage("harness", "harness <install|remove|status>", "capture")
-        assert spec.slots[0].kind == "choices"
-        assert set(spec.slots[0].choices) == {"install", "remove", "status"}
-
-    def test_optional_choice(self):
-        spec = _parse_usage("bounds", "bounds [clear]", "data")
-        assert spec.slots[0].kind == "choices"
-        assert spec.slots[0].required is False
-        assert spec.slots[0].choices == ("clear",)
-
-    def test_optional_off(self):
-        spec = _parse_usage("autoreload", "autoreload [off]", "execution")
-        assert spec.slots[0].kind == "choices"
-        assert spec.slots[0].choices == ("off",)
-
-    def test_flags(self):
-        spec = _parse_usage(
-            "prove", "prove always|never <expression> [--settled] [--paced]", "analysis"
-        )
-        flags = [s for s in spec.slots if s.kind == "flag"]
-        assert len(flags) == 2
-        assert flags[0].choices == ("--settled",)
-        assert flags[1].choices == ("--paced",)
-
-    def test_optional_n(self):
-        spec = _parse_usage("step", "step [N]", "execution")
-        assert spec.slots[0].kind == "freeform"
-        assert spec.slots[0].required is False
-
-    def test_freeform_duration(self):
-        spec = _parse_usage("run", "run <N | duration>  (e.g. 10, 500ms, 2 s)", "execution")
-        assert len(spec.slots) == 1
-        assert spec.slots[0].kind == "freeform"
-
-    def test_expression_slot(self):
-        spec = _parse_usage("how", "how <expression> [avoid <expression>]", "analysis")
-        assert spec.slots[0].kind == "expression"
-
-    def test_prove_expression_after_choices(self):
-        spec = _parse_usage(
-            "prove", "prove always|never <expression> [--settled] [--paced]", "analysis"
-        )
-        assert spec.slots[1].kind == "expression"
-
-    def test_alternative_forms(self):
-        spec = _parse_usage("record", "record <action> | record stop", "capture")
-        assert spec.slots[0].kind == "freeform"
-
-    def test_optional_tag(self):
-        spec = _parse_usage("simplified", "simplified [tag]", "analysis")
-        assert spec.slots[0].kind == "tag"
-        assert spec.slots[0].required is False
-
-    def test_help(self):
-        spec = _parse_usage("help", "help", "")
-        assert spec.slots == ()
-
-    def test_note(self):
-        spec = _parse_usage("note", "note <text>", "data")
-        assert spec.slots[0].kind == "freeform"
-        assert spec.slots[0].label == "text"
-
 
 # ---------------------------------------------------------------------------
 # Token boundary detection
@@ -382,20 +273,10 @@ class TestComplete:
 
 
 # ---------------------------------------------------------------------------
-# Grammar loading (integration, requires pyrung)
+# Grammar loading (integration, against the pinned pyrung)
 # ---------------------------------------------------------------------------
 
 
-def _pyrung_available() -> bool:
-    try:
-        import pyrung.dap.console  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
-
-
-@pytest.mark.skipif(not _pyrung_available(), reason="pyrung not installed")
 class TestGrammarLoading:
     def test_load_populates_specs(self):
         c = ConsoleCompleter()
@@ -432,11 +313,8 @@ class TestGrammarLoading:
         assert all(s.kind == "expression" for s in spec.slots), spec.slots
 
     def test_how_grammar_carries_comma_and_keyword_metadata(self):
-        """We consume pyrung's published grammar, not our fallback usage parser.
-
-        The fallback cannot recover `keyword` (it is not in the usage prose), so its
-        presence proves the published-grammar path is the one being used.
-        """
+        """pyrung's published grammar carries what its usage prose cannot: the
+        comma separator and the `avoid` keyword."""
         c = ConsoleCompleter()
         c.load_grammar()
         slots = c._specs["how"].slots

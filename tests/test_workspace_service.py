@@ -84,6 +84,8 @@ def test_generated_workspace_opens_after_analysis_failure(tmp_path: Path) -> Non
     assert status.detail == "reset needs a condition"
 
     app = ClickNickApp.__new__(ClickNickApp)
+
+    app._request_ui_refresh = MagicMock()
     app._session = SimpleNamespace(analysis=analysis)
     app._workspace_config = None
     app._open_folder = MagicMock()
@@ -209,6 +211,7 @@ def test_switching_workspace_closes_console_and_invalidates_analysis(tmp_path) -
 
 def test_main_window_preview_changes_uses_consolidated_workflow() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
     app._update_status = MagicMock()
     app._live_server = SimpleNamespace(dispatch_now=MagicMock(return_value="opened"))
@@ -228,6 +231,7 @@ def test_main_window_preview_changes_uses_consolidated_workflow() -> None:
 
 def test_successful_main_window_reload_clears_changed_rung_count() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
     app._update_status = MagicMock()
     app._session = SimpleNamespace(record_rung_stage=MagicMock())
 
@@ -239,6 +243,7 @@ def test_successful_main_window_reload_clears_changed_rung_count() -> None:
 
 def test_main_window_reload_ignores_completion_from_replaced_session(monkeypatch) -> None:
     app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
     app._update_status = MagicMock()
     app._get_workspace_status = MagicMock(

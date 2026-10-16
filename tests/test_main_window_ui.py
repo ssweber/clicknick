@@ -23,6 +23,7 @@ from clicknick.services.workspace_service import WorkspaceState, WorkspaceStatus
 )
 def test_match_mode_slider_preserves_filter_modes(index: int, mode: str) -> None:
     app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
     app.match_mode_index_var = MagicMock()
     app.settings = SimpleNamespace(search_var=MagicMock())
 
@@ -34,6 +35,7 @@ def test_match_mode_slider_preserves_filter_modes(index: int, mode: str) -> None
 
 def test_autocomplete_options_menu_uses_existing_setting_variables() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
     app.settings = SimpleNamespace(
         sort_by_nickname_var=object(),
         show_info_tooltip_var=object(),
@@ -63,6 +65,7 @@ def test_autocomplete_options_menu_uses_existing_setting_variables() -> None:
 
 def test_workspace_options_menu_exposes_active_folder_and_setup() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
     app._workspace_config = None
     app._workspace_display_dir = MagicMock(return_value=None)
     app._open_workspace = MagicMock()
@@ -87,6 +90,7 @@ def test_workspace_options_menu_exposes_active_folder_and_setup() -> None:
 
 def test_open_workspace_menu_items_follow_active_directory(tmp_path) -> None:
     app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
     app.workspace_options_menu = MagicMock()
     app._workspace_options_open_index = 0
     app.workspace_menu = MagicMock()
@@ -132,6 +136,7 @@ def test_open_workspace_menu_items_follow_active_directory(tmp_path) -> None:
 
 def test_main_window_is_revealed_once_at_its_settled_requested_size() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
     app.root.winfo_reqwidth.return_value = 760
     app.root.winfo_reqheight.return_value = 450
@@ -148,6 +153,7 @@ def test_main_window_is_revealed_once_at_its_settled_requested_size() -> None:
 
 def test_run_finishes_initial_refresh_before_revealing_main_window() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
     app.refresh_click_instances = MagicMock()
     app._show_main_window = MagicMock()
@@ -161,8 +167,9 @@ def test_run_finishes_initial_refresh_before_revealing_main_window() -> None:
     assert lifecycle.mock_calls == [call.refresh(), call.show(), call.mainloop()]
 
 
-def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> None:
+def test_ui_refresh_sets_title_and_workspace_details(tmp_path: Path) -> None:
     app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
     variable_names = (
         "workspace_status_var",
         "workspace_group_title_var",
@@ -201,9 +208,18 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
     app._current_plc_name = MagicMock(return_value="IMHERE")
     app.repairs_menu = MagicMock()
     app._repairs_system_nicknames_index = 0
-    app._session = SimpleNamespace(analysis=SimpleNamespace(system_nickname_repairs=(object(),)))
+    app._session = SimpleNamespace(
+        analysis=SimpleNamespace(system_nickname_repairs=(object(),)), synced_pending=2
+    )
+    app._data = None
+    app.csv_path_var = MagicMock(get=MagicMock(return_value=""))
+    app.root = MagicMock()
 
-    app._refresh_workspace_ui()
+    app._refresh_ui()
+
+    app.root.title.assert_called_once_with(
+        "ClickNick - Example.ckp (2 tags synced - Save in CLICK)"
+    )
 
     app.workspace_status_var.set.assert_called_once_with("Clean")
     app.workspace_group_title_var.set.assert_called_once_with("Workspace - Clean")
@@ -214,3 +230,28 @@ def test_workspace_details_refresh_from_shared_status_models(tmp_path: Path) -> 
     app.plc_name_var.set.assert_called_once_with("IMHERE")
     app.workspace_config_path_var.set.assert_called_once_with(str(project))
     app.repairs_menu.entryconfigure.assert_called_once_with(0, state="normal")
+
+
+def test_changing_shown_state_schedules_one_idle_refresh() -> None:
+    app = ClickNickApp.__new__(ClickNickApp)
+    app.root = MagicMock()
+    app._ui_refresh_id = None
+    app._refresh_ui = MagicMock()
+
+    app._click = ClickConnection("1", 2, "Example.ckp")
+    app._data = None
+    app._session = None
+    app._workspace_config = None
+    app._workspace_matches = []
+    app._workspace_mirror_error = "missing"
+
+    app.root.after_idle.assert_called_once()
+    app._refresh_ui.assert_not_called()
+    app.root.after_idle.call_args.args[0]()
+    app._refresh_ui.assert_called_once_with()
+    assert app._ui_refresh_id is None
+    assert app._click == ClickConnection("1", 2, "Example.ckp")
+    assert app._workspace_mirror_error == "missing"
+
+    app._session = None
+    assert app.root.after_idle.call_count == 2

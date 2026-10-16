@@ -448,7 +448,7 @@ class TestContainsPlusFilter:
             assert len(tags) > 0
 
             # Should be sorted and unique
-            assert tags == sorted(set(tags))
+            assert list(tags) == sorted(set(tags))
 
             # All tags should be strings
             assert all(isinstance(tag, str) for tag in tags)
@@ -469,7 +469,7 @@ class TestContainsPlusFilter:
             assert hasattr(item, "nickname")
             assert hasattr(item, "abbr_tags")
             assert isinstance(item.nickname, str)
-            assert isinstance(item.abbr_tags, list)
+            assert isinstance(item.abbr_tags, tuple)
 
     def test_integration_abbreviation_pipeline(self, filter_obj):
         """Test the complete abbreviation pipeline integration"""

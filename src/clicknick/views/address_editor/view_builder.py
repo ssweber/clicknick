@@ -1,22 +1,19 @@
 """View building functions for Address Editor.
 
-Extracted from AddressPanel to enable shared view construction.
-These functions build TypeView data that can be shared across
-multiple panels and windows.
+build_unified_view orders the store's visible rows into the one UnifiedView
+every Address Editor panel displays. The store caches it (set_unified_view) and,
+because rows are immutable, swaps each changed row's new instance into it
+before notifying observers.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 from pyclickplc.addresses import get_addr_key, is_xd_yd_hidden_slot
 from pyclickplc.banks import BANKS, PAIRED_RETENTIVE_TYPES
 
 from ...models.address_row import AddressRow
-
-if TYPE_CHECKING:
-    pass
 
 # Memory types in display order (matches SIDEBAR_TYPES from jump_sidebar.py)
 UNIFIED_TYPE_ORDER = [
@@ -65,18 +62,14 @@ def build_single_type_rows(
     all_rows: dict[int, AddressRow],
     mem_type: str,
 ) -> list[AddressRow]:
-    """Build row list by referencing skeleton rows.
-
-    With skeleton architecture, all_rows contains the pre-created skeleton
-    AddressRow objects. We simply reference them directly, never creating
-    new row objects.
+    """List one memory type's rows in address order.
 
     Args:
-        all_rows: Dict mapping AddrKey to skeleton AddressRow objects
+        all_rows: Dict mapping AddrKey to AddressRow (the store's visible rows)
         mem_type: Memory type (X, Y, C, etc.)
 
     Returns:
-        List of AddressRow references from the skeleton
+        The rows from all_rows, in display order
     """
     bank = BANKS[mem_type]
     rows = []
@@ -95,7 +88,7 @@ def build_single_type_rows(
 
             addr_key = get_addr_key(mem_type, addr)
             if addr_key in all_rows:
-                rows.append(all_rows[addr_key])  # Reference, not copy
+                rows.append(all_rows[addr_key])
 
     return rows
 
@@ -104,20 +97,17 @@ def build_interleaved_rows(
     all_rows: dict[int, AddressRow],
     types: list[str],
 ) -> list[AddressRow]:
-    """Build interleaved row list by referencing skeleton rows.
-
-    With skeleton architecture, all_rows contains the pre-created skeleton
-    AddressRow objects. We simply reference them in interleaved order.
+    """List paired memory types' rows interleaved by address.
 
     For T+TD: T1, TD1, T2, TD2, ...
     For CT+CTD: CT1, CTD1, CT2, CTD2, ...
 
     Args:
-        all_rows: Dict mapping AddrKey to skeleton AddressRow objects
+        all_rows: Dict mapping AddrKey to AddressRow (the store's visible rows)
         types: List of memory types to interleave (e.g., ["T", "TD"])
 
     Returns:
-        List of interleaved AddressRow references from skeleton
+        The rows from all_rows, interleaved
     """
     # Find the common address range
     all_starts = []
@@ -141,7 +131,7 @@ def build_interleaved_rows(
         for mem_type in types:
             addr_key = get_addr_key(mem_type, addr)
             if addr_key in all_rows:
-                rows.append(all_rows[addr_key])  # Reference, not copy
+                rows.append(all_rows[addr_key])
 
     return rows
 
@@ -192,7 +182,7 @@ def build_unified_view(
     with T/TD and CT/CTD interleaved. Tracks section boundaries for navigation.
 
     Args:
-        all_rows: Dict mapping AddrKey to AddressRow (preloaded data)
+        all_rows: Dict mapping AddrKey to AddressRow (the store's visible rows)
 
     Returns:
         UnifiedView with all rows and section boundaries

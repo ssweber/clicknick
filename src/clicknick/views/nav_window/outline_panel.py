@@ -122,7 +122,9 @@ class OutlinePanel(ttk.Frame):
         if item is None:
             return
 
-        # Use stored metadata (or fall back to extraction for compatibility)
+        # Only array folders (_make_display_item) carry base_text, their text
+        # without the [range]. Leaves and collapsed chains such as "Tank_Pump"
+        # are built without it and rename their last segment.
         current_text = item.base_text if item.base_text else self._extract_current_text(item)
         is_array = item.is_array
 

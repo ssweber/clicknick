@@ -21,6 +21,7 @@
 - Program analysis and AI tag lookups use the same nicknames as the generated code, overlapping rebuilds no longer race, and switching CLICK projects no longer freezes the window while the new database loads.
 - The "tags synced" count counts each tag once and ignores CSV saves.
 - The Dataview editor shows nickname and comment changes immediately and writes unchanged CDV files back byte-for-byte.
+- The window title and Workspace details stay current after every connect, disconnect, CSV load, Sync and workspace change.
 
 ## v0.23.4 - 2026-10-11
 
