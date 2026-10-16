@@ -8,6 +8,20 @@
      Review and condense before release — entries accumulate during development and
      should be edited into shape before moving from Unreleased to a version heading. -->
 
+## Unreleased
+
+### Fixed
+
+- Undo, Discard, and edits that create or resolve a duplicate nickname or block name now update the error marks on every affected row, so Sync is no longer blocked by a stale "Duplicate".
+- Rows no longer show as unsaved after CLICK saves the value you typed, Sync and Discard clear the undo history, and changes CLICK writes right after a Sync are no longer missed.
+- An edit that fails partway, such as an AI tag apply, now changes nothing.
+- Sort by nickname stays in effect after edits and CLICK saves, and turning it off restores address order.
+- Loading a CSV over unsaved changes asks to save or discard first and closes editors still showing the old data.
+- Block colors match first load after edits, including interleaved T/TD blocks.
+- Program analysis and AI tag lookups use the same nicknames as the generated code, overlapping rebuilds no longer race, and switching CLICK projects no longer freezes the window while the new database loads.
+- The "tags synced" count counts each tag once and ignores CSV saves.
+- The Dataview editor shows nickname and comment changes immediately and writes unchanged CDV files back byte-for-byte.
+
 ## v0.23.4 - 2026-10-11
 
 ### Fixed
