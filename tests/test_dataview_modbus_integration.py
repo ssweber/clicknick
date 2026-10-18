@@ -68,7 +68,7 @@ class FakeSheet:
     def get_cell_data(self, row, col):
         return self.cells.get((row, col), "")
 
-    def set_cell_data(self, row, col, value):
+    def set_cell_data(self, row, col, value, **kwargs):
         self.cells[(row, col)] = value
 
     def set_sheet_data(self, data, **kwargs):
@@ -99,6 +99,9 @@ class FakeSheet:
         }
 
     def highlight_cells(self, **kwargs):
+        return None
+
+    def dehighlight_cells(self, **kwargs):
         return None
 
 
@@ -221,6 +224,8 @@ def _make_panel_stub(rows: list[DataViewRecord]) -> DataviewPanel:
     panel.on_addresses_changed = None
     panel._write_checks = [False] * len(rows)
     panel._live_values = {}
+    panel._forces = {}
+    panel.on_force = None
     panel._suppress_notifications = False
     panel._is_dirty = False
     panel.sheet = FakeSheet()
@@ -247,6 +252,8 @@ def _make_window_stub(
     window._modbus_host_var = FakeVar("127.0.0.1")
     window._modbus_port_var = FakeVar("502")
     window._modbus_toggle_var = FakeVar("Connect")
+    window._target_var = FakeVar("")
+    window._sim = None
     window._set_modbus_error_text = lambda text="": None
     window.write_checked_button = FakeWidget()
     window.write_all_button = FakeWidget()

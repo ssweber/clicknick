@@ -19,7 +19,7 @@ nav:
   - Product Tour:
       - Stop Memorizing Addresses: tour/autocomplete.md
       - Check Your Ladder: tour/checks.md
-      - Run Without the PLC: tour/offline-console.md
+      - Simulate Without the PLC: tour/offline-console.md
       - Readable History: tour/readable-history.md
       - Keep the Engineering Work: tour/engineering-workspace.md
       - AI in the Workspace: tour/ai-in-the-workspace.md

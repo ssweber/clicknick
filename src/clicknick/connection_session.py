@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
     from .services.analysis_service import AnalysisService
     from .services.scr_watcher import ScrWatcher
+    from .simulation_session import SimulationSession
 
 
 @dataclass(frozen=True)
@@ -51,9 +52,10 @@ class ConnectionSession:
     """Owns the resources whose lifetime is bounded by a CLICK project connection.
 
     Resources managed (in teardown order):
-    1. Console window (DAP subprocess)
-    2. ScrWatcher (file polling)
-    3. AnalysisService (stale graph)
+    1. Console and Simulator windows
+    2. SimulationSession (pyrung DAP subprocess, its Modbus server and client)
+    3. ScrWatcher (file polling)
+    4. AnalysisService (stale graph)
     """
 
     def __init__(
@@ -69,6 +71,8 @@ class ConnectionSession:
         self.analysis: AnalysisService | None = None
         self.scr_watcher: ScrWatcher | None = None
         self.console: Any | None = None
+        self.simulator: Any | None = None
+        self.simulation: SimulationSession | None = None
 
         self._on_sync_status_changed = on_sync_status_changed
 
@@ -161,22 +165,62 @@ class ConnectionSession:
             self._build_running = True
         threading.Thread(target=self._run_builds, daemon=True).start()
 
+    # -- Simulation --------------------------------------------------------
+
+    @property
+    def project_ini(self) -> Path:
+        """CLICK's Project.ini for the connected window (hardware and PLC name)."""
+        from .live.session import click_temp_dir
+
+        return click_temp_dir(self.click.hwnd) / "Project.ini"
+
+    def _simulation_key(self) -> str:
+        """The PLC name simulator settings are remembered under."""
+        from .services.workspace_mirror import read_plc_name
+
+        return read_plc_name(self.project_ini) or self.click.project_name
+
+    def ensure_simulation(
+        self, scheduler: tk.Misc, *, on_retry_analysis: Callable[[], None] | None = None
+    ) -> SimulationSession:
+        """Return the one simulation for this connection, creating it on first use."""
+        if self.simulation is None:
+            from .simulation_session import SimulationSession
+
+            self.simulation = SimulationSession(
+                scheduler=scheduler,
+                get_analysis=lambda: self.analysis,
+                get_project_ini=lambda: self.project_ini,
+                session_name=f"clicknick-{self.click.filename}-{self.click.hwnd}",
+                on_retry_analysis=on_retry_analysis,
+            )
+            self.simulation.set_state_location(self._simulation_key(), self.workspace_dir)
+        return self.simulation
+
     # -- Private helpers ---------------------------------------------------
 
-    def _close_console(self) -> None:
-        if self.console is not None:
-            try:
-                self.console._on_close()
-            except Exception:
-                pass
-            self.console = None
+    def _close_windows(self) -> None:
+        for name in ("console", "simulator"):
+            window = getattr(self, name)
+            if window is not None:
+                try:
+                    window._on_close()
+                except Exception:
+                    pass
+                setattr(self, name, None)
 
     def use_workspace(self, workspace_dir: Path) -> None:
-        """Move future analysis builds to one configured durable workspace."""
-        self._close_console()
+        """Move future analysis builds (and simulator settings) to a durable workspace.
+
+        A running simulation relaunches from the new workspace once its
+        analysis rebuild finishes.
+        """
         self.workspace_dir = workspace_dir.resolve()
         if self.analysis is not None:
             self.analysis.invalidate()
+        if self.simulation is not None:
+            self.simulation.set_state_location(self._simulation_key(), self.workspace_dir)
+            self.simulation.restart()
 
     def _on_scr_changed(self, scr_folder: Path, db_path: str) -> None:
         """Rebuild analysis when Scr*.tmp files change."""
@@ -255,6 +299,9 @@ class ConnectionSession:
     # -- Teardown ----------------------------------------------------------
 
     def close(self) -> None:
-        """Close the console and stop watching and analysing the project."""
-        self._close_console()
+        """Close the simulation windows and stop simulating, watching and analysing."""
+        self._close_windows()
+        if self.simulation is not None:
+            self.simulation.close()
+            self.simulation = None
         self._stop_watchers()

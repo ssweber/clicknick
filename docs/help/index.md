@@ -13,7 +13,9 @@ The product tour explains why the tools are useful. This page is the starting po
 
 Both read the saved ladder files, not unsaved edits, so save in CLICK first. Check Program reports findings with the rung source, a severity, and a fix hint where there is one. The Console runs the program offline and takes the same commands as pyrung's debug console. Type `help` for the list, or read the [command reference](https://pyrung.com/pyrung/guides/dap-vscode/#debug-console) in the pyrung docs.
 
-The Console starts from power-on defaults. To start from the controller's live values instead, save a data dump in CLICK with **PLC > Read Data from PLC > All > Save**, then pick that file with **Browse...** next to PLC Data. This is not the nickname CSV. The simulation reloads whenever the file changes.
+The Console starts from power-on defaults. To start from the controller's live values instead, save a data dump in CLICK with **PLC > Read Data from PLC > All > Save**, then pick that file with **Browse...** next to PLC Data (or **PLC Data...** in the Simulator, which also sets the switches and analog values from it). This is not the nickname CSV. The simulation reloads whenever the file changes.
+
+**Simulate** and the Console share one simulation. It keeps running after you close their windows, so a Data View or HMI can stay connected. Stop it with **Stop** on the Simulation line in the main window. If another program already uses Modbus port 502, the Simulator offers **Change port...**.
 
 ## Workspaces
 
@@ -60,6 +62,7 @@ ClickNick does not directly edit the `.ckp` file. It works through the files and
 - Data View tools read and write temporary `.cdv` files. A Data View created in ClickNick must be imported into CLICK manually.
 - Ladder text edits stay in the workspace until you review them rung by rung in Preview Changes and paste the ones you choose through CLICK's own ladder editor.
 - The Tag Browser is built from nickname data and stores nothing.
+- The Simulator remembers switch positions, analog values and forces in `%LOCALAPPDATA%\ClickNick\simulator\<PLC name>.toml`, or in `simulator.toml` inside the workspace once you set one up.
 
 ## Database connection
 

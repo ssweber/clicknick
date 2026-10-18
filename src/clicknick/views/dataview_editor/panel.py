@@ -21,6 +21,8 @@ from pyclickplc.dataview import (
 )
 from tksheet import Sheet
 
+from ..sim_palette import FORCED_BG
+
 # Column indices
 COL_ADDRESS = 0
 COL_NICKNAME = 1
@@ -28,8 +30,10 @@ COL_COMMENT = 2
 COL_NEW_VALUE = 3
 COL_WRITE = 4
 COL_LIVE = 5
+#: Shown only while the editor is attached to the simulator.
+COL_FORCE = 6
 
-NUM_COLUMNS = 6
+NUM_COLUMNS = 7
 
 PlcValue = bool | int | float | str
 
@@ -48,7 +52,8 @@ class DataviewPanel(ttk.Frame):
     """Panel for editing a single DataView's addresses.
 
     Displays rows with columns:
-    Address, Nickname, Comment, New Value, Write, Live.
+    Address, Nickname, Comment, New Value, Write, Live, and (attached to the
+    simulator) Force.
     Target is 100 rows, but supports overflow (rows 100+) with grey background.
     Overflow rows are excluded from saves.
     Supports row reordering, insert/delete, cut/copy/paste, and address autocomplete.
@@ -86,6 +91,23 @@ class DataviewPanel(ttk.Frame):
             return ""
         value = self._live_values.get(address)
         return DataViewFile.value_to_display(value, row.data_type)
+
+    def _force_display(self, row: DataViewRecord) -> str:
+        address = self._canonical_address(row.address)
+        if not address or address not in self._forces:
+            return ""
+        return DataViewFile.value_to_display(self._forces[address], row.data_type)
+
+    def _sync_force_cell(self, row_idx: int) -> None:
+        """Show a row's force and mark forced rows the way the Simulator does."""
+        row = self.rows[row_idx]
+        text = self._force_display(row)
+        self.sheet.set_cell_data(row_idx, COL_FORCE, text, redraw=False)
+        for column in (COL_ADDRESS, COL_FORCE):
+            if text:
+                self.sheet.highlight_cells(row=row_idx, column=column, bg=FORCED_BG, redraw=False)
+            elif row_idx < MAX_DATAVIEW_ROWS:
+                self.sheet.dehighlight_cells(row=row_idx, column=column, redraw=False)
 
     def _sync_write_checkbox(self, row_idx: int) -> None:
         """Refresh write checkbox cell for a row."""
@@ -161,12 +183,14 @@ class DataviewPanel(ttk.Frame):
                         self._new_value_display(row),
                         checked,
                         self._live_value_display(row),
+                        self._force_display(row),
                     ]
                 )
 
             self.sheet.set_sheet_data(data, reset_col_positions=False)
             for i in range(len(self.rows)):
                 self._sync_write_checkbox(i)
+                self._sync_force_cell(i)
 
             # Set row index labels (1 to N)
             self._refresh_row_indices()
@@ -187,6 +211,7 @@ class DataviewPanel(ttk.Frame):
         self.sheet.set_cell_data(row_idx, COL_NEW_VALUE, self._new_value_display(row))
         self.sheet.set_cell_data(row_idx, COL_LIVE, self._live_value_display(row))
         self._sync_write_checkbox(row_idx)
+        self._sync_force_cell(row_idx)
 
     def _update_status(self) -> None:
         """Update the status label."""
@@ -204,6 +229,24 @@ class DataviewPanel(ttk.Frame):
             self.status_label.config(
                 text=f"Addresses: {filled_count}/{MAX_DATAVIEW_ROWS}{dirty_text}"
             )
+
+    def _apply_force_edit(self, row_idx: int, text: str) -> None:
+        """Force (or, when cleared, release) the row's address through the simulator.
+
+        The cell then shows the simulator's forces again; a refused force never
+        appears, and the simulator reports why.
+        """
+        row = self.rows[row_idx]
+        address = self._canonical_address(row.address)
+        if address and self.on_force is not None:
+            if not text:
+                if address in self._forces:
+                    self.on_force(address, None)
+            else:
+                parsed = DataViewFile.try_parse_display(text, row.data_type)
+                if parsed.ok and parsed.value is not None:
+                    self.on_force(address, parsed.value)
+        self._sync_force_cell(row_idx)
 
     def _on_sheet_modified(self, event) -> None:
         """Handle sheet modification events."""
@@ -270,6 +313,9 @@ class DataviewPanel(ttk.Frame):
                     self.sheet.set_cell_data(row_idx, COL_NEW_VALUE, normalized)
                 if row.new_value != old_native:
                     data_changed = True
+
+            elif col == COL_FORCE:
+                self._apply_force_edit(row_idx, self._display_text(new_value))
 
             elif col == COL_WRITE:
                 if self._is_row_write_enabled(row):
@@ -483,6 +529,19 @@ class DataviewPanel(ttk.Frame):
                 return ""
             return normalized
 
+        if hasattr(event, "column") and event.column == COL_FORCE:
+            row_idx = getattr(event, "row", None)
+            if row_idx is None or row_idx >= len(self.rows):
+                return event.value
+            row = self.rows[row_idx]
+            display_text = self._display_text(event.value)
+            if not display_text:
+                return ""
+            parsed = DataViewFile.try_parse_display(display_text, row.data_type)
+            if not parsed.ok:
+                return self._force_display(row)
+            return DataViewFile.value_to_display(parsed.value, row.data_type)
+
         if hasattr(event, "column") and event.column == COL_NEW_VALUE:
             row_idx = getattr(event, "row", None)
             if row_idx is None or row_idx >= len(self.rows):
@@ -504,12 +563,23 @@ class DataviewPanel(ttk.Frame):
 
         return event.value
 
+    def _apply_column_visibility(self) -> None:
+        hidden: set[int] = set()
+        if not self._modbus_columns_visible:
+            hidden |= {COL_NEW_VALUE, COL_WRITE, COL_LIVE}
+        if not self._force_column_visible:
+            hidden.add(COL_FORCE)
+        shown = set(range(NUM_COLUMNS)) - hidden
+        self.sheet.show_columns(columns=iter(sorted(shown)))
+        if hidden:
+            self.sheet.hide_columns(columns=hidden, data_indexes=True)
+
     def _create_widgets(self) -> None:
         """Create all panel widgets."""
         # Table (tksheet)
         self.sheet = Sheet(
             self,
-            headers=["Address", "Nickname", "Comment", "New Value", "Write", "Live"],
+            headers=["Address", "Nickname", "Comment", "New Value", "Write", "Live", "Force"],
             show_row_index=True,
             height=400,
             width=700,
@@ -538,7 +608,7 @@ class DataviewPanel(ttk.Frame):
         )
 
         # Set column widths
-        self.sheet.set_column_widths([90, 170, 220, 120, 70, 120])
+        self.sheet.set_column_widths([90, 170, 220, 120, 70, 120, 90])
         self.sheet.row_index(40)  # Row index width (row numbers)
 
         # Read-only display columns.
@@ -557,6 +627,7 @@ class DataviewPanel(ttk.Frame):
 
         # Initialize with empty data
         self._populate_sheet()
+        self._apply_column_visibility()
 
         # Footer with status
         footer = ttk.Frame(self)
@@ -601,6 +672,7 @@ class DataviewPanel(ttk.Frame):
         nickname_lookup: Callable[[str], tuple[str, str] | None] | None = None,
         address_normalizer: Callable[[str], str | None] | None = None,
         name: str | None = None,
+        on_force: Callable[[str, PlcValue | None], None] | None = None,
     ):
         """Initialize the dataview panel.
 
@@ -612,6 +684,7 @@ class DataviewPanel(ttk.Frame):
             nickname_lookup: Callback to lookup (nickname, comment) for an address
             address_normalizer: Callback to normalize address to canonical form (e.g., "x1" -> "X001")
             name: Custom name for new unsaved dataviews (used instead of "Untitled")
+            on_force: Force an address to a value, or release it (None), in the simulator
         """
         super().__init__(parent)
 
@@ -621,6 +694,12 @@ class DataviewPanel(ttk.Frame):
         self._custom_name = name
         self.nickname_lookup = nickname_lookup
         self.address_normalizer = address_normalizer
+        self.on_force = on_force
+
+        # Simulator forces by CLICK address, and which optional columns show
+        self._forces: dict[str, PlcValue] = {}
+        self._modbus_columns_visible = True
+        self._force_column_visible = False
 
         # Data model: the CDV file itself (rows, header, and the original bytes
         # pyclickplc uses to write an unchanged file back byte-for-byte)
@@ -1091,11 +1170,25 @@ class DataviewPanel(ttk.Frame):
 
     def set_modbus_columns_visible(self, visible: bool) -> None:
         """Show or hide the Modbus-related columns (New Value, Write, Live)."""
-        columns = {COL_NEW_VALUE, COL_WRITE, COL_LIVE}
-        if visible:
-            self.sheet.show_columns(columns=columns)
-        else:
-            self.sheet.hide_columns(columns=columns, data_indexes=True)
+        self._modbus_columns_visible = visible
+        self._apply_column_visibility()
+
+    def set_force_column_visible(self, visible: bool) -> None:
+        """Show or hide the simulator's Force column (hidden against a real PLC)."""
+        if visible == self._force_column_visible:
+            return
+        self._force_column_visible = visible
+        self._apply_column_visibility()
+
+    def update_forces(self, forces: Mapping[str, PlcValue]) -> None:
+        """Show the simulator's current forces (empty when detached)."""
+        forces = dict(forces)
+        if forces == self._forces:
+            return
+        self._forces = forces
+        for row_idx in range(len(self.rows)):
+            self._sync_force_cell(row_idx)
+        self.sheet.set_refresh_timer()
 
     def refresh_nicknames(self) -> None:
         """Redraw nicknames and comments after the address data changed."""

@@ -1,8 +1,10 @@
 """Interactive pyrung simulation console.
 
-Singleton window accessible from Tools > Console. Auto-launches the pyrung
-DAP subprocess on open, pipes user commands to the pyrung LiveServer via
-``pyrung.dap.live.send_command()``, and terminates the DAP on close.
+Singleton window accessible from Tools > Console. It observes the connection's
+SimulationSession (which owns the pyrung DAP subprocess), shared with the
+Simulator window. Opening either turns the simulation on; closing them does
+not turn it off (the main window's Simulation toggle does). Commands go to the
+pyrung LiveServer via ``pyrung.dap.live.send_command()``.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, ttk
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ..services.console_completer import ConsoleCompleter
 from ..widgets.console_input import ConsoleInput
@@ -21,14 +23,10 @@ from ..widgets.tooltip import bind_tooltip
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ..data.address_store import AddressStore
     from ..services.analysis_service import AnalysisService
+    from ..simulation_session import SimEvent, SimulationSession
 
-_PLC_DATA_WATCH_MS = 2000
-_ANALYSIS_POLL_MS = 500
 _COPY_FLASH_MS = 1200
-#: Give a large program room to convert, but never poll forever.
-_ANALYSIS_TIMEOUT_MS = 120_000
 # Plain text, not a clipboard emoji: the emoji renders in colour from a
 # different font and sits oddly among ttk's monochrome controls.
 _COPY_LABEL = "Copy"
@@ -83,79 +81,61 @@ class ConsoleWindow(tk.Toplevel):
         self._flash_copy_button()
 
     # ------------------------------------------------------------------
-    # DAP lifecycle
+    # Simulation status (the SimulationSession owns the DAP)
     # ------------------------------------------------------------------
 
     def _show_retry(self) -> None:
-        if not self._retry_btn.winfo_ismapped():
+        if not self._retry_btn.winfo_manager():
             self._retry_btn.pack(side=tk.LEFT, padx=(4, 0))
 
-    def _report_startup_failure(self, reason: str, detail: str | None = None) -> None:
-        """Explain why the console cannot start, and offer a retry."""
-        self._append_output(f"Cannot start simulation: {reason}\n", "error")
-        self._startup_error_detail = detail
+    def _hide_retry(self) -> None:
+        if self._retry_btn.winfo_manager():
+            self._retry_btn.pack_forget()
         self._details_btn.pack_forget()
-        if detail:
-            self._details_btn.pack(side=tk.RIGHT, padx=(0, 4))
-        self._status_var.set("Not available")
-        self._show_retry()
 
     def _show_startup_details(self) -> None:
-        if self._startup_error_detail:
-            self._append_output(self._startup_error_detail.rstrip() + "\n", "progress")
+        detail = self._simulation.error_detail
+        if detail:
+            self._append_output(detail.rstrip() + "\n", "progress")
         self._details_btn.pack_forget()
+        self._details_shown_for = detail
 
-    def _report_analysis_failure(self, analysis: AnalysisService) -> None:
-        guidance = (
-            "Open the generated workspace to inspect and edit the source. "
-            if analysis.project_dir is not None
-            else ""
-        )
-        self._report_startup_failure(
-            "pyrung could not build this CLICK program for simulation.\n"
-            f"{analysis.error or 'Program conversion failed.'}\n"
-            f"{guidance}Nickname editing is still available.",
-            analysis.error_detail,
-        )
+    def _retry_startup(self) -> None:
+        """Rebuild the analysis (if we can) and launch the simulation again."""
+        self._details_shown_for = None
+        self._simulation.retry()
 
-    def _wait_for_analysis(self) -> None:
-        """Show progress while the conversion runs, and schedule the next poll.
+    def _refresh_status(self) -> None:
+        from ..simulation_session import SimStatus
 
-        Every waiting path routes through here, so the timeout is enforced in
-        one place no matter which check decided to wait.
-        """
-        if self._analysis_waited_ms >= _ANALYSIS_TIMEOUT_MS:
-            self._report_startup_failure(
-                f"timed out after {_ANALYSIS_TIMEOUT_MS // 1000}s waiting for "
-                "program analysis to finish."
-            )
+        sim = self._simulation
+        self._status_var.set(sim.status_text)
+        # The Simulator can load PLC data too; both show the session's file.
+        plc_data = sim.plc_data_path
+        self._plc_data_var.set(str(plc_data) if plc_data is not None else "")
+        if not sim.enabled:
+            # Turned off from the main window: the console stays, ready to start it again.
+            self._retry_btn.configure(text="Start", command=sim.turn_on)
+            self._show_retry()
+            self._details_btn.pack_forget()
+        elif sim.status is SimStatus.FAILED:
+            self._retry_btn.configure(text="Retry", command=self._retry_startup)
+            self._show_retry()
+            if sim.error_detail and self._details_shown_for != sim.error_detail:
+                if not self._details_btn.winfo_manager():
+                    self._details_btn.pack(side=tk.RIGHT, padx=(0, 4))
+            else:
+                self._details_btn.pack_forget()
+        else:
+            self._hide_retry()
+
+    def _on_simulation_event(self, event: SimEvent) -> None:
+        if self._destroyed:
             return
-        seconds = self._analysis_waited_ms // 1000
-        elapsed = f" ({seconds}s)" if seconds else ""
-        self._status_var.set(f"Building program analysis...{elapsed}")
-        self._analysis_waited_ms += _ANALYSIS_POLL_MS
-        self._analysis_after_id = self.after(_ANALYSIS_POLL_MS, self._poll_analysis)
-
-    def _on_dap_failed(self, exc: Exception) -> None:
-        from ..services.analysis_service import AnalysisStatus
-
-        analysis = self._get_analysis()
-        if analysis is not None and (
-            analysis.status is AnalysisStatus.BUILDING
-            or analysis.generation != self._launch_generation
-        ):
-            # The launch runs on a worker thread against files on disk, so a
-            # rebuild can rewrite the project underneath it -- yielding partial
-            # imports ("No module named 'subroutines'"), a missing run.py, or
-            # anything else half-written. The generation check catches the case
-            # where that rebuild also *finished* before we got here, so the
-            # status alone no longer looks suspicious. Wait and relaunch rather
-            # than reporting the rubble as a real failure.
-            self._wait_for_analysis()
-            return
-        self._append_output(f"Simulation backend failed to start: {exc}\n", "error")
-        self._status_var.set("Error")
-        self._show_retry()
+        if event.kind == "message":
+            self._append_output(event.text.rstrip("\n") + "\n", event.level)
+        if event.kind in ("status", "frame", "message"):
+            self._refresh_status()
 
     def _schedule_ui(self, callback: Callable[[], None]) -> None:
         if self._destroyed:
@@ -164,112 +144,6 @@ class ConsoleWindow(tk.Toplevel):
             self.after(0, callback)
         except tk.TclError:
             pass
-
-    def _on_dap_state_bg(self, state: Any, error: Exception | None) -> None:
-        label = state.value
-        if error:
-            label = f"{label}: {error}"
-        self._schedule_ui(lambda: self._status_var.set(label))
-
-    def _on_dap_scan_bg(self, scan_id: int | None) -> None:
-        self._schedule_ui(lambda: self._status_var.set(f"Running | Scan: {scan_id}"))
-
-    def _hide_retry(self) -> None:
-        if self._retry_btn.winfo_ismapped():
-            self._retry_btn.pack_forget()
-        self._details_btn.pack_forget()
-        self._startup_error_detail = None
-
-    def _start_dap(self) -> None:
-        from ..services.analysis_service import AnalysisStatus
-
-        analysis = self._get_analysis()
-        if analysis is None:
-            self._report_startup_failure(
-                "program analysis has not started. Connect to a Click project, "
-                "then save it in Click Software."
-            )
-            return
-
-        # A build rewrites the generated project in place, so while one is
-        # running the folder on disk is rubble regardless of what the previous
-        # result still advertises. Wait it out before touching any of it.
-        if analysis.status is AnalysisStatus.BUILDING:
-            self._wait_for_analysis()
-            return
-
-        # A cached graph may still serve open editors, but simulation must use
-        # a successful conversion of the current CLICK program.
-        if analysis.status is AnalysisStatus.FAILED:
-            self._report_analysis_failure(analysis)
-            return
-
-        if not analysis.is_available:
-            self._wait_for_analysis()
-            return
-
-        self._hide_retry()
-        project_dir = analysis.project_dir
-        if project_dir is None:
-            self._report_startup_failure(
-                "no pyrung project folder was generated. "
-                "Save the project in Click Software, then retry."
-            )
-            return
-
-        # A rebuild empties this folder before regenerating it, so while one is
-        # running the directory can exist with run.py not yet written.
-        if not (project_dir / "run.py").is_file():
-            self._report_startup_failure(
-                f"the generated project at {project_dir} has no run.py. "
-                "Save the project in Click Software, then retry."
-            )
-            return
-
-        self._status_var.set("Starting...")
-        snapshot_path = self._plc_data_path
-        # Remembered so a failure can tell "the project was rewritten under the
-        # launch" from "this project genuinely does not run".
-        self._launch_generation = analysis.generation
-
-        def _launch() -> None:
-            from ..services.dap_service import DapService
-
-            try:
-                dap = DapService(
-                    on_state=self._on_dap_state_bg,
-                    on_scan=self._on_dap_scan_bg,
-                )
-                dap.launch(
-                    project_dir,  # type: ignore[arg-type]
-                    snapshot_path=snapshot_path,
-                    session_name=self._session_name,
-                )
-                self._schedule_ui(lambda: self._on_dap_started(dap))
-            except Exception as exc:
-                self._schedule_ui(lambda e=exc: self._on_dap_failed(e))  # type: ignore[misc]
-
-        self._start_background(_launch, name="console-dap-launch")
-
-    def _retry_startup(self) -> None:
-        """Rebuild the analysis (if we can) and try to launch the DAP again."""
-        self._hide_retry()
-        self._analysis_waited_ms = 0
-        self._append_output("Retrying...\n", "progress")
-        if self._on_retry_analysis is not None:
-            try:
-                self._on_retry_analysis()
-            except Exception as exc:
-                self._append_output(f"Retry failed: {exc}\n", "error")
-        self._start_dap()
-
-    def _stop_dap(self) -> None:
-        if self._dap is not None:
-            try:
-                self._dap.terminate()
-            except Exception:
-                pass
-            self._dap = None
 
     def _send(
         self,
@@ -280,7 +154,7 @@ class ConsoleWindow(tk.Toplevel):
         try:
             from pyrung.dap.live import send_command
 
-            return send_command(self._session_name, command, on_progress=on_progress)
+            return send_command(self._simulation.session_name, command, on_progress=on_progress)
         except FileNotFoundError:
             return False, "Session not available (DAP may still be starting)"
         except (ConnectionRefusedError, OSError, EOFError) as exc:
@@ -388,16 +262,8 @@ class ConsoleWindow(tk.Toplevel):
         if project_dir is not None and project_dir.is_dir():
             os.startfile(project_dir)
 
-    def _stop_file_watcher(self) -> None:
-        if self._file_watch_after_id is not None:
-            try:
-                self.after_cancel(self._file_watch_after_id)
-            except Exception:
-                pass
-            self._file_watch_after_id = None
-
     # ------------------------------------------------------------------
-    # PLC data file browsing + watching
+    # PLC data file browsing (the simulation watches it for changes)
     # ------------------------------------------------------------------
 
     def _browse_plc_data(self) -> None:
@@ -408,21 +274,14 @@ class ConsoleWindow(tk.Toplevel):
         )
         if not path:
             return
-        self._plc_data_path = Path(path)
-        self._plc_data_var.set(path)
-        self._stop_file_watcher()
-        self._append_output(f"Loading PLC data: {path}\n", "output")
-        self._stop_dap()
-        self._start_dap()
+        self._simulation.set_plc_data_path(Path(path))
 
     # ------------------------------------------------------------------
     # Tag provider for autocomplete
     # ------------------------------------------------------------------
 
     def _provide_filtered_tags(self, search_text: str) -> list[str]:
-        tags: frozenset[str] | set[str] = frozenset()
-        if self._dap is not None:
-            tags = self._dap.known_tags
+        tags: frozenset[str] | set[str] = self._simulation.known_tags
         if not tags:
             analysis = self._get_analysis()
             if analysis is not None and analysis.is_available:
@@ -543,14 +402,7 @@ class ConsoleWindow(tk.Toplevel):
         if self._destroyed:
             return
         self._destroyed = True
-        self._stop_file_watcher()
-        if self._analysis_after_id is not None:
-            try:
-                self.after_cancel(self._analysis_after_id)
-            except Exception:
-                pass
-            self._analysis_after_id = None
-        self._stop_dap()
+        self._simulation.remove_listener(self._on_simulation_event)
         if self._on_destroy:
             self._on_destroy()
         self.destroy()
@@ -568,41 +420,25 @@ class ConsoleWindow(tk.Toplevel):
         self,
         parent: tk.Widget,
         *,
-        get_store: Callable[[], AddressStore | None],
+        simulation: SimulationSession,
         get_analysis: Callable[[], AnalysisService | None],
-        get_click_hwnd: Callable[[], int | None],
-        get_mdb_path: Callable[[], Path | None],
-        get_synced_pending: Callable[[], int],
         filter_func: Callable[[list[str], str], list[str]] | None = None,
         on_destroy: Callable[[], None] | None = None,
-        on_retry_analysis: Callable[[], None] | None = None,
         title_suffix: str = "",
-        session_name: str = "clicknick",
     ) -> None:
         super().__init__(parent)
-        self._get_store = get_store
+        self._simulation = simulation
         self._get_analysis = get_analysis
-        self._get_click_hwnd = get_click_hwnd
-        self._get_mdb_path = get_mdb_path
-        self._get_synced_pending = get_synced_pending
         self._filter_func = filter_func
         self._on_destroy = on_destroy
-        self._on_retry_analysis = on_retry_analysis
 
         self.title(f"Console — {title_suffix}" if title_suffix else "Console")
         self.geometry("750x500")
         self.minsize(500, 300)
 
-        self._session_name = session_name
-        self._dap: Any | None = None
-        self._plc_data_path: Path | None = None
-        self._plc_data_mtime: float = 0.0
-        self._file_watch_after_id: str | None = None
         self._copy_flash_after_id: str | None = None
-        self._analysis_after_id: str | None = None
-        self._analysis_waited_ms: int = 0
-        self._launch_generation: int = -1
-        self._startup_error_detail: str | None = None
+        # The failure whose details were already printed, so the button hides.
+        self._details_shown_for: str | None = None
         self._busy_tick: int = -1
         self._cancel_requested = False
         self._destroyed = False
@@ -610,60 +446,8 @@ class ConsoleWindow(tk.Toplevel):
 
         self._create_widgets()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
-        self._start_dap()
+        # The opener turns the simulation on after this, so its startup lands
+        # in the transcript. Closing the console leaves the simulation running.
+        simulation.add_listener(self._on_simulation_event)
+        self._refresh_status()
         self._load_grammar()
-
-    @property
-    def pyrung_live_available(self) -> bool:
-        """Whether this Console currently owns a running pyrung DAP session."""
-        return self._dap is not None
-
-    def _poll_analysis(self) -> None:
-        self._analysis_after_id = None
-        if self._destroyed:
-            return
-
-        analysis = self._get_analysis()
-        if analysis is not None and analysis.is_available:
-            self._start_dap()
-            return
-
-        from ..services.analysis_service import AnalysisStatus
-
-        if analysis is not None and analysis.status is AnalysisStatus.FAILED:
-            self._report_analysis_failure(analysis)
-            return
-
-        self._wait_for_analysis()
-
-    def _on_dap_started(self, dap: Any) -> None:
-        self._dap = dap
-        # Confirm success in the transcript. Without it a "Retrying..." or
-        # "Reloading..." line just trails off with no visible outcome.
-        self._append_output("OK - simulation ready.\n", "progress")
-        self._hide_retry()
-        self._status_var.set("Paused")
-        self._start_file_watcher()
-
-    def _start_file_watcher(self) -> None:
-        if self._plc_data_path is None:
-            return
-        try:
-            self._plc_data_mtime = os.path.getmtime(self._plc_data_path)
-        except OSError:
-            self._plc_data_mtime = 0.0
-        self._file_watch_after_id = self.after(_PLC_DATA_WATCH_MS, self._check_plc_data_changed)
-
-    def _check_plc_data_changed(self) -> None:
-        if self._destroyed or self._plc_data_path is None:
-            return
-        try:
-            current_mtime = os.path.getmtime(self._plc_data_path)
-            if current_mtime > self._plc_data_mtime:
-                self._plc_data_mtime = current_mtime
-                self._append_output("PLC data file changed. Reloading...\n", "output")
-                self._stop_dap()
-                self._start_dap()
-        except OSError:
-            pass
-        self._file_watch_after_id = self.after(_PLC_DATA_WATCH_MS, self._check_plc_data_changed)

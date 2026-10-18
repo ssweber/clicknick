@@ -196,17 +196,33 @@ def test_connection_session_labels_click_folder_as_temporary(tmp_path, monkeypat
     )
 
 
-def test_switching_workspace_closes_console_and_invalidates_analysis(tmp_path) -> None:
+def test_switching_workspace_moves_and_restarts_the_simulation(tmp_path, monkeypatch) -> None:
     session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
     session.analysis = MagicMock()
-    session._close_console = MagicMock()
+    session.simulation = MagicMock()
+    monkeypatch.setattr(session, "_simulation_key", lambda: "Line1")
     workspace = tmp_path / "Example Workspace"
 
     session.use_workspace(workspace)
 
-    session._close_console.assert_called_once_with()
     session.analysis.invalidate.assert_called_once_with()
+    session.simulation.set_state_location.assert_called_once_with("Line1", workspace.resolve())
+    session.simulation.restart.assert_called_once_with()
     assert session.workspace_dir == workspace.resolve()
+
+
+def test_closing_the_connection_closes_simulation_windows_first() -> None:
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    order: list[str] = []
+    session.console = MagicMock(_on_close=lambda: order.append("console"))
+    session.simulator = MagicMock(_on_close=lambda: order.append("simulator"))
+    simulation = MagicMock(close=lambda: order.append("simulation"))
+    session.simulation = simulation
+
+    session.close()
+
+    assert order == ["console", "simulator", "simulation"]
+    assert session.simulation is None
 
 
 def test_main_window_preview_changes_uses_consolidated_workflow() -> None:

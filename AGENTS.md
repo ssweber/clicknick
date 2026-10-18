@@ -55,7 +55,8 @@ src/clicknick/
 ├── app.py                 # Main ClickNickApp class
 ├── config.py              # AppSettings with persistence
 ├── data_session.py        # DataSession: current store + Dataview model + editor windows
-├── connection_session.py  # ClickConnection value + ConnectionSession (analysis, Scr watcher, console)
+├── connection_session.py  # ClickConnection value + ConnectionSession (analysis, Scr watcher, simulation)
+├── simulation_session.py  # SimulationSession: pyrung DAP + Modbus + simulator settings (no tkinter)
 ├── models/                # Data models and constants
 │   ├── address_row.py     # Frozen dataclass for address data
 │   ├── address_slots.py   # Every address slot in display order
@@ -193,6 +194,18 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - One build worker per connection; requests made while it runs collapse into one follow-up build
 - The generated code, persisted project and tag map all come from one nickname snapshot read from CLICK's
   database, so tag names always match the code. ClickNick edits reach analysis on the next build after Sync
+
+### Simulation
+- `ConnectionSession.simulation` (a `SimulationSession`) is the one home of the simulated PLC: the pyrung DAP
+  subprocess, its Modbus client, switch/analog/force settings and their persistence (`services/sim_state.py`)
+- It runs headless: `turn_on()` starts it (opening the Console or Simulator does this), and only `turn_off()` (the
+  main window's Simulation toggle) or connection teardown stops it. Closing windows never does. The on/off state is
+  not persisted: nothing launches a subprocess or listens on port 502 at app start
+- The Console, Simulator and Dataview editor only observe it (the Dataview attaches while it serves Modbus). Views
+  never own a `DapService`; while it is off they stay open and offer Start
+- Launched with `keepForcesOnRun`, so forces survive STOP -> RUN; switch/analog patches ride `set_mode("run")`
+- Values travel over Modbus; mode, speed, stepping and forces over DAP. Mode, speed and forces follow frames,
+  because the Console and agents can drive the same simulation (last command wins)
 
 ### Main Window Refresh
 - The window title and Workspace details are recomputed by `ClickNickApp._refresh_ui()`; never call it by hand

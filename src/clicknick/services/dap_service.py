@@ -12,11 +12,15 @@ import json
 import subprocess
 import sys
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
 from .project_workspace import project_environment
+
+
+class DapRequestError(RuntimeError):
+    """The adapter refused a request, or never answered it."""
 
 
 class SimState(enum.Enum):
@@ -59,7 +63,7 @@ class DapService:
     """Manages a pyrung DAP subprocess and provides a high-level API.
 
     All public methods are thread-safe.  Callbacks are invoked on the
-    background reader thread — callers must marshal to the UI thread
+    background reader thread -- callers must marshal to the UI thread
     themselves (typically via ``root.after(0, cb)``).
     """
 
@@ -70,11 +74,15 @@ class DapService:
         on_tags: Callable[[TagValues], None] | None = None,
         on_changes: Callable[[list[TagChange]], None] | None = None,
         on_scan: Callable[[int | None], None] | None = None,
+        on_frame: Callable[[], None] | None = None,
+        on_output: Callable[[str], None] | None = None,
     ) -> None:
         self._on_state = on_state
         self._on_tags = on_tags
         self._on_changes = on_changes
         self._on_scan = on_scan
+        self._on_frame = on_frame
+        self._on_output = on_output
 
         self._proc: subprocess.Popen[bytes] | None = None
         self._reader_thread: threading.Thread | None = None
@@ -91,6 +99,15 @@ class DapService:
         self._tag_groups: dict[str, list[str]] = {}
         self._tag_values: TagValues = {}
         self._scan_id: int | None = None
+
+        # Execution state reported by pyrungScanFrame (see the simulator contract).
+        self._mode: str = "stop"
+        self._running = False
+        self._speed: float | None = None
+        self._actual_speed: float | None = None
+        self._source: dict[str, str] = {}
+        self._forces: dict[str, PlcValue] = {}
+        self._pending_patches: dict[str, PlcValue] = {}
 
     @property
     def state(self) -> SimState:
@@ -121,6 +138,47 @@ class DapService:
     @property
     def tag_values(self) -> TagValues:
         return dict(self._tag_values)
+
+    @property
+    def mode(self) -> str:
+        """PLC mode from the latest frame: ``"run"`` or ``"stop"``."""
+        return self._mode
+
+    @property
+    def running(self) -> bool:
+        """True while the executor is continuously scanning."""
+        return self._running
+
+    @property
+    def speed(self) -> float | None:
+        """Pacing from the latest frame (0 = as fast as possible); None before one."""
+        return self._speed
+
+    @property
+    def actual_speed(self) -> float | None:
+        """How fast the simulation really ran, as a multiple of wall time."""
+        return self._actual_speed
+
+    @property
+    def source(self) -> dict[str, str]:
+        """Who caused the latest frame: ``{"origin": "live"|"dap"|..., "command": ...}``."""
+        return dict(self._source)
+
+    @property
+    def forces(self) -> dict[str, PlcValue]:
+        """Every active force from the latest frame, keyed as pyrung reports them."""
+        return dict(self._forces)
+
+    @property
+    def pending_patches(self) -> dict[str, PlcValue]:
+        """Writes waiting for the next scan, keyed as pyrung reports them."""
+        return dict(self._pending_patches)
+
+    @property
+    def stderr_text(self) -> str:
+        """Everything the adapter has written to stderr so far."""
+        with self._lock:
+            return "\n".join(self._stderr_lines)
 
     # ------------------------------------------------------------------
     # DAP wire protocol
@@ -206,6 +264,19 @@ class DapService:
         seq = self._send_request(command, arguments)
         return self._wait_response(seq, timeout)
 
+    def _request(
+        self, command: str, arguments: dict[str, Any] | None = None, timeout: float = 10.0
+    ) -> dict[str, Any]:
+        """Send a request and return its body, raising DapRequestError on failure."""
+        if self._proc is None:
+            raise DapRequestError(f"{command}: simulation is not running")
+        resp = self._send_and_wait(command, arguments, timeout)
+        if resp is None:
+            raise DapRequestError(f"{command}: no response from simulation")
+        if not resp.get("success"):
+            raise DapRequestError(resp.get("message") or f"{command} failed")
+        return resp.get("body") or {}
+
     def _handle_response(self, msg: dict[str, Any]) -> None:
         request_seq = msg.get("request_seq")
         if request_seq is not None:
@@ -226,7 +297,7 @@ class DapService:
         if tag_groups:
             self._tag_groups = tag_groups
 
-    def _coerce_tag_values(self, tag_values: dict[str, Any]) -> TagValues:
+    def _coerce_tag_values(self, tag_values: Mapping[str, Any]) -> TagValues:
         """Coerce string values to native types using cached tagTypes."""
         coerced: TagValues = {}
         for tag, value in tag_values.items():
@@ -237,12 +308,46 @@ class DapService:
                 coerced[tag] = value
         return coerced
 
+    def _cache_execution_state(self, body: dict[str, Any], trace: dict[str, Any]) -> None:
+        mode = body.get("mode")
+        if mode in ("run", "stop"):
+            self._mode = mode
+        running = body.get("running")
+        if running is not None:
+            self._running = bool(running)
+        speed = body.get("speed")
+        if isinstance(speed, int | float) and not isinstance(speed, bool):
+            self._speed = float(speed)
+        actual = body.get("actualSpeed")
+        self._actual_speed = (
+            float(actual)
+            if isinstance(actual, int | float) and not isinstance(actual, bool)
+            else None
+        )
+        source = body.get("source")
+        if isinstance(source, Mapping):
+            self._source = {
+                "origin": str(source.get("origin") or ""),
+                "command": str(source.get("command") or ""),
+            }
+        elif isinstance(source, str):
+            self._source = {"origin": source, "command": ""}
+        else:
+            self._source = {}
+        pending = body.get("pendingPatches")
+        if isinstance(pending, Mapping):
+            self._pending_patches = self._coerce_tag_values(pending)
+        forces = trace.get("forces")
+        if isinstance(forces, Mapping):
+            self._forces = self._coerce_tag_values(forces)
+
     def _handle_scan_frame(self, body: dict[str, Any]) -> None:
         trace = body.get("trace") or {}
         self._cache_tag_metadata(trace)
         # Cache the scan id before on_tags fires so a listener handling the
         # values can pair them with the correct scan.
         self._scan_id = body.get("scanId")
+        self._cache_execution_state(body, trace)
 
         tag_values = trace.get("tagValues")
         if tag_values is not None:
@@ -257,6 +362,9 @@ class DapService:
         changes = body.get("changes", [])
         if changes and self._on_changes:
             self._on_changes(changes)
+
+        if self._on_frame:
+            self._on_frame()
 
     def _extract_tag_data_from_trace(self, body: dict[str, Any]) -> None:
         trace = body.get("trace") or body
@@ -296,6 +404,11 @@ class DapService:
 
         elif event_name == "pyrungScanFrame":
             self._handle_scan_frame(body)
+
+        elif event_name == "output":
+            text = body.get("output")
+            if text and self._on_output:
+                self._on_output(str(text))
 
         elif event_name == "terminated":
             self._set_state(SimState.IDLE)
@@ -357,11 +470,19 @@ class DapService:
         *,
         snapshot_path: Path | None = None,
         session_name: str = "clicknick",
+        modbus: Mapping[str, Any] | None = None,
+        speed: float | None = None,
+        start_mode: str | None = None,
+        keep_forces_on_run: bool | None = None,
     ) -> None:
         """Start the DAP subprocess and launch the pyrung project.
 
         *project_dir* must contain a ``run.py`` generated by
-        ``ladder_to_pyrung_project()``.
+        ``ladder_to_pyrung_project()``. *modbus* (``{"host", "port",
+        "allowInputWrites"}``) starts a Modbus TCP server inside the session;
+        *speed* paces scanning against wall time (0 = unpaced); *start_mode*
+        is ``"stop"`` or ``"run"``; *keep_forces_on_run* keeps forces through
+        the STOP -> RUN transition instead of clearing them.
         """
         if self._proc is not None:
             self.terminate()
@@ -406,6 +527,14 @@ class DapService:
         }
         if snapshot_path is not None:
             launch_args["snapshotPath"] = str(snapshot_path)
+        if modbus is not None:
+            launch_args["modbus"] = dict(modbus)
+        if speed is not None:
+            launch_args["speed"] = float(speed)
+        if start_mode is not None:
+            launch_args["startMode"] = start_mode
+        if keep_forces_on_run is not None:
+            launch_args["keepForcesOnRun"] = keep_forces_on_run
         resp = self._send_and_wait("launch", launch_args, timeout=60.0)
         if resp is None or not resp.get("success"):
             error_msg = (resp or {}).get("message") or str(resp)
@@ -444,31 +573,61 @@ class DapService:
         """Advance one full scan cycle."""
         self._send_request("pyrungStepScan")
 
+    def set_mode(
+        self,
+        mode: str,
+        patches: Mapping[str, PlcValue] | None = None,
+        forces: Mapping[str, PlcValue] | None = None,
+    ) -> dict[str, Any]:
+        """Switch the PLC between ``"run"`` and ``"stop"``.
+
+        Entering RUN resets non-retentive memory without scanning, then
+        applies *forces* and *patches*, so the first scan sees them. The
+        executor stays paused; call :meth:`continue_` or :meth:`step_scan`.
+        """
+        arguments: dict[str, Any] = {"mode": mode}
+        if patches:
+            arguments["patches"] = dict(patches)
+        if forces:
+            arguments["forces"] = dict(forces)
+        return self._request("pyrungSetMode", arguments)
+
+    def set_speed(self, speed: float) -> dict[str, Any]:
+        """Pace scanning to *speed* x wall time (0 = as fast as possible)."""
+        return self._request("pyrungSetSpeed", {"speed": float(speed)})
+
+    def modbus_info(self) -> dict[str, Any]:
+        """Report the session's Modbus server.
+
+        ``{running, host, port, allowInputWrites, clients, error}``.
+        """
+        return self._request("pyrungModbusInfo", timeout=3.0)
+
     # ------------------------------------------------------------------
     # Force / patch
     # ------------------------------------------------------------------
 
-    def force(self, tag: str, value: PlcValue) -> dict[str, Any] | None:
-        """Force a tag to a fixed value."""
-        return self._send_and_wait("pyrungForce", {"tag": tag, "value": value})
+    def force(self, tag: str, value: PlcValue) -> dict[str, Any]:
+        """Force a tag (or CLICK address) to a fixed value."""
+        return self._request("pyrungForce", {"tag": tag, "value": value})
 
-    def patch(self, patches: dict[str, PlcValue]) -> dict[str, Any] | None:
-        """Apply one-scan patches to one or more tags.
+    def patch(self, patches: Mapping[str, PlcValue]) -> dict[str, Any]:
+        """Apply one-scan patches to one or more tags (or CLICK addresses).
 
-        Unlike :meth:`force`, a patch is not sticky — the next scan's logic
+        Unlike :meth:`force`, a patch is not sticky -- the next scan's logic
         may overwrite the value.
         """
         if not patches:
-            return None
-        return self._send_and_wait("pyrungPatch", {"patches": dict(patches)})
+            return {}
+        return self._request("pyrungPatch", {"patches": dict(patches)})
 
-    def unforce(self, tag: str) -> dict[str, Any] | None:
-        """Remove a force from a tag."""
-        return self._send_and_wait("pyrungUnforce", {"tag": tag})
+    def unforce(self, tag: str) -> dict[str, Any]:
+        """Remove a force from a tag (or CLICK address)."""
+        return self._request("pyrungUnforce", {"tag": tag})
 
-    def clear_forces(self) -> dict[str, Any] | None:
+    def clear_forces(self) -> dict[str, Any]:
         """Remove all active forces."""
-        return self._send_and_wait("pyrungClearForces")
+        return self._request("pyrungClearForces")
 
     def list_forces(self) -> dict[str, PlcValue]:
         """Return the current set of forced tags."""

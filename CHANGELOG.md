@@ -10,6 +10,14 @@
 
 ## Unreleased
 
+### Added
+
+- **Simulate** draws your CLICK hardware from System Configuration and runs the saved program behind it, with input switches, output LEDs, analog values, forces, a STOP / STEP / RUN switch with speed control, and a Modbus server on 127.0.0.1:502 that the Data View editor joins with a Force column.
+
+### Changed
+
+- The Console and the Simulator share one simulation that keeps running after their windows close until it is stopped from the main window, and setting up a workspace restarts it instead of closing the Console.
+
 ### Fixed
 
 - Undo, Discard, and edits that create or resolve a duplicate nickname or block name now update the error marks on every affected row, so Sync is no longer blocked by a stale "Duplicate".

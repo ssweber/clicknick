@@ -183,6 +183,8 @@ def test_ui_refresh_sets_title_and_workspace_details(tmp_path: Path) -> None:
         "workspace_config_path_var",
         "last_regenerated_var",
         "last_backup_var",
+        "simulation_status_var",
+        "simulation_action_var",
     )
     for name in variable_names:
         setattr(app, name, MagicMock())
@@ -209,7 +211,9 @@ def test_ui_refresh_sets_title_and_workspace_details(tmp_path: Path) -> None:
     app.repairs_menu = MagicMock()
     app._repairs_system_nicknames_index = 0
     app._session = SimpleNamespace(
-        analysis=SimpleNamespace(system_nickname_repairs=(object(),)), synced_pending=2
+        analysis=SimpleNamespace(system_nickname_repairs=(object(),)),
+        synced_pending=2,
+        simulation=None,
     )
     app._data = None
     app.csv_path_var = MagicMock(get=MagicMock(return_value=""))
@@ -228,6 +232,7 @@ def test_ui_refresh_sets_title_and_workspace_details(tmp_path: Path) -> None:
     app.mirror_path_var.set.assert_called_once_with(str(mirror))
     app.mirror_setup_status_var.set.assert_called_once_with("✓ Configured")
     app.plc_name_var.set.assert_called_once_with("IMHERE")
+    app.simulation_status_var.set.assert_called_once_with("Simulation: Off")
     app.workspace_config_path_var.set.assert_called_once_with(str(project))
     app.repairs_menu.entryconfigure.assert_called_once_with(0, state="normal")
 
@@ -255,3 +260,24 @@ def test_changing_shown_state_schedules_one_idle_refresh() -> None:
 
     app._session = None
     assert app.root.after_idle.call_count == 2
+
+
+def test_simulation_toggle_reports_and_switches_state() -> None:
+    app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
+    app._session = None
+    assert app._simulation_summary() == ("Simulation: Off", "Start")
+
+    simulation = SimpleNamespace(
+        enabled=True, summary_text="On (Modbus :502)", turn_off=MagicMock(), turn_on=MagicMock()
+    )
+    app._session = SimpleNamespace(simulation=simulation)
+    assert app._simulation_summary() == ("Simulation: On (Modbus :502)", "Stop")
+
+    app._toggle_simulation()
+    simulation.turn_off.assert_called_once_with()
+
+    simulation.enabled = False
+    app._simulation_for_window = MagicMock(return_value=simulation)
+    app._toggle_simulation()
+    simulation.turn_on.assert_called_once_with()

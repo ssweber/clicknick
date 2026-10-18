@@ -3,7 +3,7 @@
 1. AddressStore is the only writer of its state layers. Everything else edits
    through ``store.edit_session()`` and reads ``visible_state``.
 2. Nothing outside the store touches its private ``_current_session``.
-3. ``services/`` and ``data/`` are pure Python: no tkinter.
+3. ``services/``, ``data/`` and the simulation session are pure Python: no tkinter.
 """
 
 from __future__ import annotations
@@ -89,19 +89,24 @@ def test_only_the_store_uses_its_current_session() -> None:
     assert violations == [], "Use the session yielded by edit_session():\n" + "\n".join(violations)
 
 
+# Session objects views observe; they schedule through a Tk root but never import tkinter.
+PURE_MODULES = ("simulation_session.py",)
+
+
 def test_services_and_data_do_not_import_tkinter() -> None:
     violations = []
-    for package in ("services", "data"):
-        for path in sorted((SRC / package).rglob("*.py")):
-            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-                if isinstance(node, ast.Import):
-                    modules = [alias.name for alias in node.names]
-                elif isinstance(node, ast.ImportFrom) and node.module:
-                    modules = [node.module]
-                else:
-                    continue
-                if any(m == "tkinter" or m.startswith("tkinter.") for m in modules):
-                    violations.append(f"{_rel(path)}:{node.lineno}")
+    paths = [p for package in ("services", "data") for p in sorted((SRC / package).rglob("*.py"))]
+    paths += [SRC / name for name in PURE_MODULES]
+    for path in paths:
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                modules = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                modules = [node.module]
+            else:
+                continue
+            if any(m == "tkinter" or m.startswith("tkinter.") for m in modules):
+                violations.append(f"{_rel(path)}:{node.lineno}")
     assert violations == [], "Move UI calls into views/:\n" + "\n".join(violations)
 
 

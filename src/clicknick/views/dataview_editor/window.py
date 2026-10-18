@@ -25,9 +25,13 @@ from .panel import DataviewPanel
 
 if TYPE_CHECKING:
     from ...data_session import DataSession
+    from ...simulation_session import SimEvent, SimulationSession
 
 
 PlcValue = bool | int | float | str
+
+#: How often to check whether a simulation started or stopped.
+SIM_ATTACH_CHECK_MS = 1000
 
 
 class DataviewEditorWindow(tk.Toplevel):
@@ -39,14 +43,17 @@ class DataviewEditorWindow(tk.Toplevel):
     - Menu bar: File operations (New, Open, Save, Export)
     """
 
+    def _refresh_title(self) -> None:
+        title = "ClickNick Dataview Editor"
+        if self.title_suffix:
+            title += f" - {self.title_suffix}"
+        if self._sim is not None:
+            title += " - Simulator"
+        self.title(title)
+
     def _setup_window(self) -> None:
         """Configure window properties."""
-        base_title = "ClickNick Dataview Editor"
-        if self.title_suffix:
-            self.title(f"{base_title} - {self.title_suffix}")
-        else:
-            self.title(base_title)
-
+        self._refresh_title()
         self.geometry("800x600")
         self.minsize(800, 400)
 
@@ -122,6 +129,8 @@ class DataviewEditorWindow(tk.Toplevel):
             self._modbus_toggle_var.set("Disconnect")
         else:
             self._modbus_toggle_var.set("Connect")
+        attached = self._sim is not None
+        self._target_var.set("Simulator" if attached else "")
         self.write_checked_button.config(
             state=(tk.NORMAL if connected and not action_busy else tk.DISABLED)
         )
@@ -132,10 +141,10 @@ class DataviewEditorWindow(tk.Toplevel):
             state=(tk.DISABLED if connecting or action_busy else tk.NORMAL)
         )
         self.host_entry.config(
-            state=(tk.DISABLED if connected or connecting or action_busy else tk.NORMAL)
+            state=(tk.DISABLED if connected or connecting or action_busy or attached else tk.NORMAL)
         )
         self.port_entry.config(
-            state=(tk.DISABLED if connected or connecting or action_busy else tk.NORMAL)
+            state=(tk.DISABLED if connected or connecting or action_busy or attached else tk.NORMAL)
         )
 
         if hasattr(self, "connection_menu"):
@@ -285,9 +294,11 @@ class DataviewEditorWindow(tk.Toplevel):
         self._connection_state = ConnectionState.CONNECTING
         self._set_modbus_error_text("")
         self._update_modbus_controls()
+        # The simulator accepts writes to X inputs; a real CLICK does not.
+        allow_input_writes = self._sim is not None
 
         self._run_modbus_action(
-            lambda: service.connect(host, port, timeout=3),
+            lambda: service.connect(host, port, timeout=3, allow_input_writes=allow_input_writes),
             lambda _result, error: self._on_connect_modbus_complete(error),
         )
 
@@ -413,6 +424,27 @@ class DataviewEditorWindow(tk.Toplevel):
             return
         self._write_payload(panel.get_write_all_rows())
 
+    # ------------------------------------------------------------------
+    # Simulator attachment
+    # ------------------------------------------------------------------
+
+    def _sync_panel_simulation(self, panel: DataviewPanel) -> None:
+        sim = self._sim
+        panel.set_force_column_visible(sim is not None)
+        panel.update_forces(sim.forces if sim is not None else {})
+
+    def _show_force_error(self, text: str) -> None:
+        messagebox.showerror("Force", text, parent=self)
+
+    def _on_panel_force(self, address: str, value: PlcValue | None) -> None:
+        sim = self._sim
+        if sim is None:
+            return
+        if value is None:
+            sim.release_force(address)
+        else:
+            sim.force(address, value, on_error=self._show_force_error)
+
     def _open_dataview(self, file_path: Path) -> None:
         """Open a dataview file in a new tab.
 
@@ -437,7 +469,9 @@ class DataviewEditorWindow(tk.Toplevel):
             on_addresses_changed=self._on_panel_addresses_changed,
             nickname_lookup=self.shared_data.lookup_nickname,
             address_normalizer=self.shared_data.normalize_address,
+            on_force=self._on_panel_force,
         )
+        self._sync_panel_simulation(panel)
 
         # Sync Modbus column visibility before adding tab
         if not self._modbus_toolbar_var.get():
@@ -466,7 +500,9 @@ class DataviewEditorWindow(tk.Toplevel):
             nickname_lookup=self.shared_data.lookup_nickname,
             address_normalizer=self.shared_data.normalize_address,
             name=name,
+            on_force=self._on_panel_force,
         )
+        self._sync_panel_simulation(panel)
 
         # Sync Modbus column visibility before adding tab
         if not self._modbus_toolbar_var.get():
@@ -753,6 +789,13 @@ class DataviewEditorWindow(tk.Toplevel):
             self._nav_window._dock_to_parent()
             self._tag_browser_var.set(True)
 
+    def _on_sim_event(self, event: SimEvent) -> None:
+        if event.kind in ("frame", "desired"):
+            for panel in self._iter_open_panels():
+                self._sync_panel_simulation(panel)
+        elif event.kind in ("status", "modbus"):
+            self._check_simulation()
+
     def _toggle_modbus_toolbar(self) -> None:
         """Toggle Modbus toolbar and column visibility."""
         visible = self._modbus_toolbar_var.get()
@@ -773,6 +816,54 @@ class DataviewEditorWindow(tk.Toplevel):
         else:
             w = max(self.winfo_width() - 300, 800)
             self.geometry(f"{w}x{self.winfo_height()}")
+
+    def _attach_simulation(self, sim: SimulationSession) -> None:
+        """Use the running simulation as this editor's PLC."""
+        if self._is_modbus_connected() or self._modbus_busy:
+            self._disconnect_modbus()
+        self._sim = sim
+        sim.add_listener(self._on_sim_event)
+        self._modbus_host_var.set("127.0.0.1")
+        self._modbus_port_var.set(str(sim.modbus_info.get("port") or sim.modbus_port))
+        if not self._modbus_toolbar_var.get():
+            self._modbus_toolbar_var.set(True)
+            self._toggle_modbus_toolbar()
+        for panel in self._iter_open_panels():
+            self._sync_panel_simulation(panel)
+        self._refresh_title()
+        self._update_modbus_controls()
+        self._pending_sim_connect = True
+
+    def _detach_simulation(self) -> None:
+        sim = self._sim
+        self._sim = None
+        self._pending_sim_connect = False
+        if sim is not None:
+            sim.remove_listener(self._on_sim_event)
+        for panel in self._iter_open_panels():
+            self._sync_panel_simulation(panel)
+        if self._is_modbus_connected():
+            self._disconnect_modbus()
+        self._refresh_title()
+        self._update_modbus_controls()
+
+    def _check_simulation(self) -> None:
+        """Attach while a simulation serves Modbus; detach when it stops."""
+        sim = self._get_simulation() if self._get_simulation is not None else None
+        available = sim is not None and sim.modbus_available
+        if self._sim is not None and (not available or sim is not self._sim):
+            self._detach_simulation()
+        if available and self._sim is None and sim is not None:
+            self._attach_simulation(sim)
+        if self._pending_sim_connect and not self._modbus_busy:
+            self._pending_sim_connect = False
+            if not self._is_modbus_connected():
+                self._connect_modbus()
+
+    def _poll_simulation(self) -> None:
+        self._sim_after_id = None
+        self._check_simulation()
+        self._sim_after_id = self.after(SIM_ATTACH_CHECK_MS, self._poll_simulation)
 
     def _create_menu(self) -> None:
         """Create the menu bar."""
@@ -1088,6 +1179,9 @@ class DataviewEditorWindow(tk.Toplevel):
             self.modbus_toolbar, textvariable=self._modbus_port_var, width=6
         )
         self.port_entry.pack(side=tk.LEFT, padx=(3, 6))
+        ttk.Label(
+            self.modbus_toolbar, textvariable=self._target_var, font=("TkDefaultFont", 9, "bold")
+        ).pack(side=tk.LEFT, padx=(0, 6))
 
         self.modbus_connect_button = ttk.Button(
             self.modbus_toolbar,
@@ -1164,6 +1258,7 @@ class DataviewEditorWindow(tk.Toplevel):
         parent: tk.Widget,
         session: DataSession,
         title_suffix: str = "",
+        get_simulation: Callable[[], SimulationSession | None] | None = None,
     ):
         """Initialize the Dataview Editor window.
 
@@ -1171,6 +1266,8 @@ class DataviewEditorWindow(tk.Toplevel):
             parent: Parent widget (usually the main app window)
             session: DataSession providing the Dataview model and AddressStore
             title_suffix: Optional suffix for window title (e.g., project name)
+            get_simulation: The connection's simulation, if any. While it serves
+                Modbus the editor connects to it and shows a Force column.
         """
         super().__init__(parent)
 
@@ -1179,6 +1276,10 @@ class DataviewEditorWindow(tk.Toplevel):
         self._session = session
         self.shared_data = session.dataview
         self.title_suffix = title_suffix
+        self._get_simulation = get_simulation
+        self._sim: SimulationSession | None = None
+        self._pending_sim_connect = False
+        self._sim_after_id: str | None = None
 
         # Track open panels by file path
         self._open_panels: dict[Path | None, DataviewPanel] = {}
@@ -1198,6 +1299,7 @@ class DataviewEditorWindow(tk.Toplevel):
         self._modbus_port_var = tk.StringVar(value="502")
         self._modbus_toggle_var = tk.StringVar(value="Connect")
         self._modbus_toolbar_var = tk.BooleanVar(value=False)
+        self._target_var = tk.StringVar(value="")
 
         # Configure window
         self._setup_window()
@@ -1221,10 +1323,15 @@ class DataviewEditorWindow(tk.Toplevel):
         self._init_after_id = self.after(100, self._toggle_nav)
 
         self._update_modbus_controls()
+        self._poll_simulation()
 
     def close_without_prompt(self) -> None:
         """Clean up resources and destroy window without save prompts."""
-        for after_id in (self._sash_after_id, self._init_after_id):
+        sim = self._sim
+        self._sim = None
+        if sim is not None:
+            sim.remove_listener(self._on_sim_event)
+        for after_id in (self._sash_after_id, self._init_after_id, self._sim_after_id):
             if after_id is not None:
                 self.after_cancel(after_id)
         self._sash_after_id = None

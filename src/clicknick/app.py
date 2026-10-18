@@ -186,6 +186,14 @@ class ClickNickApp:
             title += f" ({pending} {noun} synced - Save in CLICK)"
         return title
 
+    def _simulation_summary(self) -> tuple[str, str]:
+        """Main-window status text and the toggle's label."""
+        session = self._session
+        simulation = session.simulation if session is not None else None
+        if simulation is None or not simulation.enabled:
+            return "Simulation: Off", "Start"
+        return f"Simulation: {simulation.summary_text}", "Stop"
+
     def _refresh_ui(self) -> None:
         """Bring the title and status/details variables up to date (no widget rebuilds)."""
         self.root.title(self._window_title())
@@ -233,6 +241,9 @@ class ClickNickApp:
 
         info = self._get_workspace_directory_info()
         self.plc_name_var.set(self._current_plc_name() or "Not available")
+        simulation_status, simulation_action = self._simulation_summary()
+        self.simulation_status_var.set(simulation_status)
+        self.simulation_action_var.set(simulation_action)
         self.generated_dir_var.set(
             str(info.generated_dir) if info.generated_dir else "Not available"
         )
@@ -282,6 +293,8 @@ class ClickNickApp:
         self.generated_dir_var = tk.StringVar(value="Not available")
         self.workspace_config_path_var = tk.StringVar(value="Not configured")
         self.plc_name_var = tk.StringVar(value="Not available")
+        self.simulation_status_var = tk.StringVar(value="Simulation: Off")
+        self.simulation_action_var = tk.StringVar(value="Start")
         self.last_regenerated_var = tk.StringVar(value="Not available")
         self.last_backup_var = tk.StringVar(value="Not available")
         self.click_instances = []  # Will store ClickInstance objects
@@ -571,20 +584,34 @@ class ClickNickApp:
         strategy = self.filter_strategies.get(mode, self.filter_strategies["contains"])
         return strategy.filter_matches(candidates, search_text)
 
-    def _open_console(self):
-        """Open the Console window, or focus if already open."""
-        if self._session is None:
-            self._update_status("Connect to a Click project first", "error")
-            return
+    def _focus_session_window(self, session: ConnectionSession, name: str) -> bool:
+        """Raise the session's open Console or Simulator window, if any."""
+        window = getattr(session, name)
+        if window is None:
+            return False
+        try:
+            window.lift()
+            window.focus_force()
+            return True
+        except tk.TclError:
+            setattr(session, name, None)
+            return False
 
+    def _on_simulation_event(self, event) -> None:
+        if event.kind in ("status", "modbus"):
+            self._request_ui_refresh()
+
+    def _simulation_for_window(self, title: str, purpose: str):
+        """Check the project can be simulated and return its SimulationSession.
+
+        Shared by the Console and the Simulator: the project must be saved,
+        and a conversion that already failed will not fix itself by opening
+        a window -- say so up front rather than showing an inert one.
+        """
         session = self._session
-        if session.console is not None:
-            try:
-                session.console.lift()
-                session.console.focus_force()
-                return
-            except tk.TclError:
-                session.console = None
+        if session is None:
+            self._update_status("Connect to a Click project first", "error")
+            return None
 
         mdb_path = self._live_mdb_path()
         if mdb_path is None or not list(mdb_path.parent.glob("Scr*.tmp")):
@@ -592,41 +619,140 @@ class ClickNickApp:
                 "Project not saved to disk. Please save in Click Software first.",
                 "error",
             )
-            return
+            return None
 
         analysis = session.analysis
         if analysis is None or not analysis.is_available:
             self._start_analysis_build()
             analysis = session.analysis
 
-        # A conversion that already failed will not fix itself by opening a
-        # console -- say so up front rather than showing an inert window.
         if analysis is not None and not analysis.is_available:
             from .services.analysis_service import AnalysisStatus
 
             if analysis.status is AnalysisStatus.FAILED:
                 messagebox.showerror(
-                    "Cannot Open Console",
-                    f"{analysis.error}\n\nThe Console needs the project converted to pyrung.",
+                    title,
+                    f"{analysis.error}\n\n{purpose} needs the project converted to pyrung.",
                     parent=self.root,
                 )
-                return
+                return None
+
+        simulation = session.ensure_simulation(
+            self.root, on_retry_analysis=self._start_analysis_build
+        )
+        simulation.add_listener(self._on_simulation_event)
+        return simulation
+
+    def _toggle_simulation(self) -> None:
+        """Main-window Simulation switch: the only control (besides teardown) that stops it."""
+        session = self._session
+        simulation = session.simulation if session is not None else None
+        if simulation is not None and simulation.enabled:
+            simulation.turn_off()
+            return
+        simulation = self._simulation_for_window("Cannot Simulate", "Simulation")
+        if simulation is not None:
+            simulation.turn_on()
+
+    def _open_console(self):
+        """Open the Console window, or focus if already open."""
+        session = self._session
+        if session is not None and self._focus_session_window(session, "console"):
+            return
+        simulation = self._simulation_for_window("Cannot Open Console", "The Console")
+        if session is None or simulation is None:
+            return
 
         from .views.console_window import ConsoleWindow
 
         session.console = ConsoleWindow(
             self.root,
-            get_store=self._get_store,
+            simulation=simulation,
             get_analysis=lambda: session.analysis,
-            get_click_hwnd=lambda: session.click.hwnd,
-            get_mdb_path=self._live_mdb_path,
-            get_synced_pending=lambda: session.synced_pending,
             filter_func=self._apply_active_filter,
             on_destroy=lambda: setattr(session, "console", None),
-            on_retry_analysis=self._start_analysis_build,
             title_suffix=session.click.filename,
-            session_name=f"clicknick-{session.click.filename}-{session.click.hwnd}",
         )
+        # After the window is listening, so its transcript shows the startup.
+        simulation.turn_on()
+
+    def _open_dataview_editor(self):
+        """Open the Dataview Editor window, or focus if already open.
+
+        The dataview editor allows creating and editing CLICK DataView files (.cdv).
+        Only one DataviewEditorWindow can be open at a time.
+        """
+        data = self._data
+        if data is None:
+            self._update_status("No data loaded", "error")
+            return
+
+        window = data.dataview_window
+        if window is not None:
+            try:
+                window.lift()
+                window.focus_force()
+                return
+            except tk.TclError:
+                data.unregister_dataview_window(window)
+
+        try:
+            from .data.shared_dataview import SharedDataviewData
+            from .utils.mdb_shared import get_project_path_from_hwnd
+            from .views.dataview_editor.window import DataviewEditorWindow
+
+            project_path = get_project_path_from_hwnd(self._click.hwnd if self._click else None)
+
+            csv_fallback_folder = None
+            if project_path is None:
+                csv_path = self.csv_path_var.get()
+                if csv_path:
+                    from pathlib import Path
+
+                    csv_fallback_folder = Path(csv_path).parent
+
+            if data.dataview is None:
+                data.dataview = SharedDataviewData(
+                    data.store,
+                    project_path=project_path,
+                    dataview_folder=csv_fallback_folder,
+                    filter_func=self._apply_active_filter,
+                )
+
+            DataviewEditorWindow(
+                self.root,
+                session=data,
+                title_suffix=self._click.filename if self._click else "",
+                get_simulation=lambda: self._session.simulation if self._session else None,
+            )
+
+        except Exception as e:
+            import traceback
+
+            traceback.print_exc()
+            self._update_status(f"Error opening dataview editor: {e}", "error")
+
+    def _open_simulator(self):
+        """Open the Simulator window, or focus if already open."""
+        session = self._session
+        if session is not None and self._focus_session_window(session, "simulator"):
+            return
+        simulation = self._simulation_for_window("Cannot Simulate", "Simulation")
+        if session is None or simulation is None:
+            return
+
+        from .views.simulator_window import SimulatorWindow
+
+        session.simulator = SimulatorWindow(
+            self.root,
+            simulation=simulation,
+            get_store=self._get_store,
+            open_dataview=self._open_dataview_editor,
+            open_console=self._open_console,
+            on_destroy=lambda: setattr(session, "simulator", None),
+            title_suffix=session.click.filename,
+        )
+        simulation.turn_on()
 
     def _show_odbc_warning(self):
         """Show a database warning unless CSV mode was explicitly selected."""
@@ -704,61 +830,6 @@ class ClickNickApp:
             f"Staged {len(repairs)} system nickname repair(s); review Changed, then Sync",
             "connected",
         )
-
-    def _open_dataview_editor(self):
-        """Open the Dataview Editor window, or focus if already open.
-
-        The dataview editor allows creating and editing CLICK DataView files (.cdv).
-        Only one DataviewEditorWindow can be open at a time.
-        """
-        data = self._data
-        if data is None:
-            self._update_status("No data loaded", "error")
-            return
-
-        window = data.dataview_window
-        if window is not None:
-            try:
-                window.lift()
-                window.focus_force()
-                return
-            except tk.TclError:
-                data.unregister_dataview_window(window)
-
-        try:
-            from .data.shared_dataview import SharedDataviewData
-            from .utils.mdb_shared import get_project_path_from_hwnd
-            from .views.dataview_editor.window import DataviewEditorWindow
-
-            project_path = get_project_path_from_hwnd(self._click.hwnd if self._click else None)
-
-            csv_fallback_folder = None
-            if project_path is None:
-                csv_path = self.csv_path_var.get()
-                if csv_path:
-                    from pathlib import Path
-
-                    csv_fallback_folder = Path(csv_path).parent
-
-            if data.dataview is None:
-                data.dataview = SharedDataviewData(
-                    data.store,
-                    project_path=project_path,
-                    dataview_folder=csv_fallback_folder,
-                    filter_func=self._apply_active_filter,
-                )
-
-            DataviewEditorWindow(
-                self.root,
-                session=data,
-                title_suffix=self._click.filename if self._click else "",
-            )
-
-        except Exception as e:
-            import traceback
-
-            traceback.print_exc()
-            self._update_status(f"Error opening dataview editor: {e}", "error")
 
     def _run_program_checks(self):
         """Validate the current connection for an initial report or an in-window rerun."""
@@ -1279,6 +1350,12 @@ class ClickNickApp:
             compound=tk.LEFT,
             command=self._analyze_program,
         ).pack(fill=tk.X, pady=(0, 8))
+        # The front door to simulation; the Console stays the power tool.
+        ttk.Button(
+            test,
+            text="Simulate",
+            command=self._open_simulator,
+        ).pack(fill=tk.X, pady=(0, 8))
         ttk.Button(
             test,
             text="Console",
@@ -1286,6 +1363,19 @@ class ClickNickApp:
             compound=tk.LEFT,
             command=self._open_console,
         ).pack(fill=tk.X)
+        # The simulation runs headless until stopped here (or the project closes);
+        # closing the Simulator or Console leaves it running.
+        simulation_row = ttk.Frame(test)
+        ttk.Label(
+            simulation_row, textvariable=self.simulation_status_var, style="Status.TLabel"
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(
+            simulation_row,
+            textvariable=self.simulation_action_var,
+            width=6,
+            command=self._toggle_simulation,
+        ).pack(side=tk.RIGHT)
+        simulation_row.pack(fill=tk.X, pady=(8, 0))
 
         workspace = ttk.LabelFrame(actions, padding=10)
         workspace_header = ttk.Frame(workspace)
@@ -1718,6 +1808,7 @@ class ClickNickApp:
         tools_menu.add_command(label="Address Editor...", command=self._open_address_editor)
         tools_menu.add_command(label="Dataview Editor...", command=self._open_dataview_editor)
         tools_menu.add_command(label="Check Program", command=self._analyze_program)
+        tools_menu.add_command(label="Simulate...", command=self._open_simulator)
         tools_menu.add_command(label="Console...", command=self._open_console)
         tools_menu.add_separator()
         repairs_menu = tk.Menu(tools_menu, tearoff=0)
@@ -1900,9 +1991,7 @@ class ClickNickApp:
             get_staged_rungs=lambda: self._session.staged_rungs if self._session else 0,
             record_staged_rungs=self._record_staged_rungs,
             get_pyrung_live_available=lambda: bool(
-                self._session
-                and self._session.console
-                and self._session.console.pyrung_live_available
+                self._session and self._session.simulation and self._session.simulation.is_ready
             ),
             open_editor=self._live_open_address_editor,
         )
@@ -2302,7 +2391,8 @@ class ClickNickApp:
         if click is None:
             return False
         has_open_windows = (self._data is not None and self._data.has_open_windows) or (
-            self._session is not None and self._session.console is not None
+            self._session is not None
+            and (self._session.console is not None or self._session.simulator is not None)
         )
         if has_open_windows:
             from tkinter import messagebox
