@@ -102,12 +102,11 @@ class AnnotationDialog(tk.Toplevel):
         on_delay: str | None = None
         off_delay: str | None = None
         profile: str | None = None
-        if physical:
-            if self._phys_mode.get() == "timing":
-                on_delay = self._on_delay_var.get().strip() or None
-                off_delay = self._off_delay_var.get().strip() or None
-            else:
-                profile = self._profile_var.get().strip() or None
+        if self._phys_mode.get() == "timing":
+            on_delay = self._on_delay_var.get().strip() or None
+            off_delay = self._off_delay_var.get().strip() or None
+        else:
+            profile = self._profile_var.get().strip() or None
 
         system = self._system_var.get().strip() or None
 
@@ -308,13 +307,6 @@ class AnnotationDialog(tk.Toplevel):
         self._resize_to_fit()
 
     def _on_physical_changed(self) -> None:
-        has_physical = bool(self._physical_var.get().strip())
-        state = "normal" if has_physical else "disabled"
-        self._on_delay_entry.configure(state=state)
-        self._off_delay_entry.configure(state=state)
-        for child in self._profile_frame.winfo_children():
-            if isinstance(child, ttk.Entry):
-                child.configure(state=state)
         self._update_preview()
 
     def _on_phys_mode_changed(self) -> None:
@@ -350,6 +342,8 @@ class AnnotationDialog(tk.Toplevel):
         _bind_tooltip(
             self._physical_entry,
             "Name of the physical device this feedback represents.\n"
+            "Optional: left empty, it is named after this tag. Give several\n"
+            "tags the same name to share one definition.\n"
             "Pair with on_delay/off_delay for simple delayed transitions "
             "(contactors, limit switches) or profile for custom response "
             "curves (thermocouples, encoders).",
@@ -419,9 +413,15 @@ class AnnotationDialog(tk.Toplevel):
         self._link_var = tk.StringVar()
         self._link_var.trace_add("write", lambda *_: self._update_preview())
         ttk.Entry(link_row, textvariable=self._link_var, width=20).pack(side=tk.LEFT, padx=(4, 4))
-        link_hint = ttk.Label(link_row, text="e.g. EnableField or State:RUNNING", foreground="gray")
+        link_hint = ttk.Label(
+            link_row, text="e.g. Motor_Run, Y001 or State:RUNNING", foreground="gray"
+        )
         link_hint.pack(side=tk.LEFT)
-        _bind_tooltip(link_hint, "Command field that drives this feedback signal")
+        _bind_tooltip(
+            link_hint,
+            "Tag or CLICK address that drives this feedback signal,\n"
+            "with an optional :value trigger",
+        )
 
         # ── Lock ──
         ttk.Separator(self._adv_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=4)

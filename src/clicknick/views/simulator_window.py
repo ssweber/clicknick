@@ -4,8 +4,13 @@ A passive view of the connection's SimulationSession. Inputs are switches
 (Momentary pushbuttons or Maintained toggles, chosen by right-click), outputs
 are LEDs, analog inputs take a value (and a slider when the tag has a range),
 and the CPU card carries the PWR/RUN/ERR LEDs and the STOP / STEP / RUN mode
-switch. Values come from the session's Modbus reads; forces, mode and speed
-from its DAP frames. Every action goes through the session.
+switch. Values come from the session's Modbus reads; forces, mode, speed and
+feedback links from its DAP frames. Every action goes through the session.
+
+An input driven by a feedback link shows a chip naming its driver instead of
+a switch (blue for the program's link, purple for a bench link); hovering the
+chip draws the wire to the driving terminal. Links are made, cut and saved to
+the project from the right-click menu; the Wiring menu lists them all.
 
 Cards are compact and flow into rows in rack order, so a full rack (CPU, two
 option slots, eight expansions and the unassigned strip) fits without
@@ -22,16 +27,19 @@ from typing import TYPE_CHECKING, Any
 
 from pyclickplc.addresses import get_addr_key, parse_address
 
+from ..services.link_annotation import comment_has_link, comment_with_link
+from ..services.sim_state import BenchLink
 from ..simulation_session import SPEEDS, SWITCH_LABELS, SimStatus, format_speed
 from ..widgets.tooltip import bind_tooltip
 from . import sim_palette as P
+from .sim_link_dialog import LinkDialog
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ..data.address_store import AddressStore
     from ..services.sim_hardware import Card, PanelLayout
-    from ..simulation_session import SimEvent, SimulationSession, SwitchPosition
+    from ..simulation_session import SimEvent, SimulationSession, SwitchPosition, WiredLink
 
 CARD_W = 184
 CARD_GAP = 12
@@ -248,6 +256,268 @@ class SimulatorWindow(tk.Toplevel):
             state=tk.NORMAL if address in sim.forces else tk.DISABLED,
         )
 
+    # ------------------------------------------------------------------
+    # Feedback links
+    # ------------------------------------------------------------------
+
+    def _saved_to_project(self, address: str, link: BenchLink) -> bool:
+        """True when the project's comment on *address* already declares this bench link."""
+        if link.enable is None:
+            return False
+        _nickname, comment = self._names(address)
+        enable_names = (self._names(link.enable)[0], link.enable)
+        return comment_has_link(comment, link, enable_names)
+
+    def _link_text(self, address: str) -> str:
+        """Tooltip for an input's link chip or cut mark."""
+        sim = self._simulation
+        link = sim.driving_link(address)
+        if link is None:
+            bench = sim.bench_links.get(address)
+            if bench is not None and bench.cut:
+                return (
+                    "The program's link is cut on the bench, as if the sensor failed; "
+                    "the switch drives this input. Right-click to restore it."
+                )
+            return ""
+        enable = link.enable or ""
+        nickname = self._names(enable)[0]
+        driver = f"{enable} {nickname}" if nickname else enable
+        when = f" = {link.trigger}" if link.trigger is not None else ""
+        kind = "Program link" if link.source == "project" else "Bench link"
+        text = f"{kind}: driven by {driver}{when} ({link.response})."
+        bench = sim.bench_links.get(address)
+        if link.source == "bench" and bench is not None and self._saved_to_project(address, bench):
+            text += "\nSaved to the project; the program takes it over after the next Sync."
+        return f"{text}\nRight-click for options."
+
+    def _enables(self) -> list[str]:
+        layout = self._simulation.layout
+        if layout is None:
+            return []
+        return [*layout.addresses("output"), *layout.addresses("input")]
+
+    def _open_link_dialog(self, address: str, *, analog: bool) -> None:
+        sim = self._simulation
+        current = sim.bench_links.get(address)
+        if current is None or current.cut:
+            wired = sim.driving_link(address) or sim.project_link(address)
+            if wired is not None and not wired.cut:
+                current = BenchLink(
+                    wired.enable, wired.trigger, wired.on_delay, wired.off_delay, wired.profile
+                )
+            else:
+                current = None
+        LinkDialog(
+            self,
+            feedback=address,
+            analog=analog,
+            current=current,
+            enables=self._enables(),
+            on_ok=lambda link: sim.link(address, link, on_error=self._show_action_error),
+        )
+
+    def _show_details(self) -> None:
+        detail = self._simulation.error_detail or ""
+        window = tk.Toplevel(self)
+        window.title("Simulation details")
+        text = tk.Text(window, wrap=tk.NONE, font=_FONT_MONO, width=100, height=24)
+        text.insert("1.0", detail)
+        text.configure(state="disabled")
+        text.pack(fill=tk.BOTH, expand=True)
+
+    def _change_port(self) -> None:
+        port = simpledialog.askinteger(
+            "Modbus Port",
+            "Serve the simulated PLC's Modbus on port:",
+            parent=self,
+            initialvalue=self._simulation.modbus_port,
+            minvalue=1,
+            maxvalue=65535,
+        )
+        if port is not None:
+            self._simulation.set_modbus_port(port)
+
+    def _refresh_banners(self) -> None:
+        sim = self._simulation
+        messages: list[tuple[str, list[tuple[str, Callable[[], None]]]]] = []
+        if not sim.enabled:
+            messages.append(
+                (
+                    "Simulation is off. Start it to run the program; your switches, "
+                    "values and forces are kept.",
+                    [("Start", sim.turn_on)],
+                )
+            )
+        elif sim.status is SimStatus.FAILED and sim.error:
+            actions = [("Retry", sim.retry)]
+            if sim.error_detail:
+                actions.append(("Show details", self._show_details))
+            messages.append((f"Cannot simulate: {sim.error}", actions))
+        info = sim.modbus_info
+        if sim.is_ready and info.get("error"):
+            messages.append(
+                (
+                    f"The Modbus server could not start on port {info.get('port')}: "
+                    f"{info['error']}. Switches and values still work; other "
+                    "Modbus clients cannot connect.",
+                    [("Change port...", self._change_port)],
+                )
+            )
+        restored = sim.restored_forces
+        if restored:
+            noun = "force" if restored == 1 else "forces"
+            messages.append(
+                (
+                    f"{restored} {noun} restored from last session.",
+                    [
+                        ("Release all", sim.release_all_forces),
+                        ("Keep", sim.dismiss_restored_forces),
+                    ],
+                )
+            )
+        restored_links = sim.restored_links
+        if restored_links:
+            noun = "bench link" if restored_links == 1 else "bench links"
+            messages.append(
+                (
+                    f"{restored_links} {noun} restored from last session.",
+                    [
+                        ("Discard all", sim.discard_bench_links),
+                        ("Keep", sim.dismiss_restored_links),
+                    ],
+                )
+            )
+        if sim.notice:
+            messages.append((sim.notice, [("Dismiss", sim.dismiss_notice)]))
+        if self._note:
+            messages.append((self._note, [("Dismiss", self._dismiss_note)]))
+        if self._last_error:
+            messages.append((self._last_error, [("Dismiss", self._dismiss_error)]))
+
+        key = tuple((text, tuple(label for label, _ in actions)) for text, actions in messages)
+        if key == self._banner_key:
+            return
+        self._banner_key = key
+        for child in self._banner.winfo_children():
+            child.destroy()
+        if not messages:
+            self._banner.pack_forget()
+            return
+        for text, actions in messages:
+            row = ttk.Frame(self._banner, style="SimBanner.TFrame", padding=(10, 4))
+            ttk.Label(
+                row, text=text, style="SimBanner.TLabel", wraplength=760, justify=tk.LEFT
+            ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+            for label, command in reversed(actions):
+                ttk.Button(row, text=label, command=command).pack(side=tk.RIGHT, padx=(6, 0))
+            row.pack(fill=tk.X, pady=(0, 1))
+        if not self._banner.winfo_manager():
+            self._banner.pack(fill=tk.X, after=self._toolbar)
+
+    def _save_link_to_project(self, address: str) -> None:
+        """Write the bench link on *address* into its comment, through an undoable edit."""
+        link = self._simulation.bench_links.get(address)
+        store = self._get_store()
+        if link is None or link.cut or link.enable is None or store is None:
+            return
+        addr_key = get_addr_key(*parse_address(address))
+        row = store.visible_state.get(addr_key)
+        if row is None or not row.nickname:
+            self._show_action_error(
+                f"Give {address} a nickname first: the program reads links only from named tags."
+            )
+            return
+        enable_name = self._names(link.enable)[0] or link.enable
+        try:
+            comment = comment_with_link(getattr(row, "comment", "") or "", link, enable_name)
+        except ValueError as exc:
+            self._show_action_error(f"Could not save the link on {address}: {exc}")
+            return
+        with store.edit_session(f"Save link on {address}") as session:
+            session.set_field(addr_key, "comment", comment)
+        self._note = (
+            f"Saved the link on {address} to the project. Sync to write it to CLICK; "
+            "after the next build the program declares it and the bench copy is dropped."
+        )
+        self._refresh_banners()
+
+    def _add_link_items(self, menu: tk.Menu, address: str, *, analog: bool) -> None:
+        sim = self._simulation
+        bench = sim.bench_links.get(address)
+        project = sim.project_link(address)
+        menu.add_separator()
+        if bench is not None and bench.cut:
+            menu.add_command(
+                label="Restore the program's link", command=lambda: sim.restore_link(address)
+            )
+            return
+        if bench is not None:
+            menu.add_command(
+                label="Edit bench link...",
+                command=lambda: self._open_link_dialog(address, analog=analog),
+            )
+            saved = self._saved_to_project(address, bench)
+            menu.add_command(
+                label="Saved to project" if saved else "Save link to project",
+                command=lambda: self._save_link_to_project(address),
+                state=tk.DISABLED if saved or self._get_store() is None else tk.NORMAL,
+            )
+            menu.add_command(
+                label="Disable bench link" if bench.enabled else "Enable bench link",
+                command=lambda: sim.set_link_enabled(address, not bench.enabled),
+            )
+            menu.add_command(
+                label="Remove bench link"
+                if project is None
+                else "Remove bench link (back to the program's)",
+                command=lambda: sim.restore_link(address),
+            )
+            return
+        if project is not None:
+            menu.add_command(
+                label="Change link on the bench...",
+                command=lambda: self._open_link_dialog(address, analog=analog),
+            )
+            menu.add_command(
+                label="Cut link (simulate a failure)",
+                command=lambda: sim.cut_link(address, on_error=self._show_action_error),
+            )
+            return
+        menu.add_command(
+            label="Link to the tag that drives it...",
+            command=lambda: self._open_link_dialog(address, analog=analog),
+        )
+
+    def _terminal_center(self, address: str) -> tuple[float, float] | None:
+        """Where the LED of the terminal at *address* is drawn, if it is on the panel."""
+        info = self._outputs.get(address) or self._inputs.get(address)
+        if info is None:
+            return None
+        x0, y0, x1, y1 = self._canvas.coords(info["led"])
+        return (x0 + x1) / 2, (y0 + y1) / 2
+
+    def _show_wire(self, address: str) -> None:
+        """Draw the wire from the driving terminal to *address* while the chip is hovered."""
+        c = self._canvas
+        c.delete("wire")
+        link = self._simulation.driving_link(address)
+        info = self._inputs.get(address)
+        if link is None or link.enable is None or info is None:
+            return
+        source = self._terminal_center(link.enable)
+        if source is None:
+            return
+        x0, y0, x1, y1 = c.bbox(info["pill"])
+        end = (x0, (y0 + y1) / 2)
+        color = P.LINK if link.source == "project" else P.LINK_BENCH
+        sx, sy = source
+        c.create_oval(sx - 8, sy - 8, sx + 8, sy + 8, outline=color, width=2, tags=("wire",))
+        c.create_line(
+            sx, sy, end[0] - 2, end[1], fill=color, width=2, arrow=tk.LAST, smooth=True,
+            dash=() if link.source == "project" else (5, 3), tags=("wire",),
+        )  # fmt: skip
+
     def _input_menu(self, event: tk.Event, address: str) -> None:
         sim = self._simulation
         menu = tk.Menu(self, tearoff=0)
@@ -262,6 +532,7 @@ class SimulatorWindow(tk.Toplevel):
         )  # fmt: skip
         menu.add_separator()
         self._add_force_items(menu, address, (True, False))
+        self._add_link_items(menu, address, analog=False)
         menu._mode_var = mode  # type: ignore[attr-defined]  # keep the variable alive
         menu.tk_popup(event.x_root, event.y_root)
 
@@ -305,11 +576,28 @@ class SimulatorWindow(tk.Toplevel):
         led = c.create_oval(
             x + 38, cy - 4, x + 46, cy + 4, fill=P.LED_OFF, outline=P.LED_RIM, tags=(tag,)
         )
-        self._draw_label(x + 52, cy, address, x + CARD_W - BADGE_W, tag)
+        # Shown instead of the switch while a feedback link drives this input.
+        pill = _round_rect(
+            c, x + 4, cy - 8, x + 36, cy + 8, 7, fill=P.LINK, outline="", state="hidden",
+            tags=(tag,),
+        )  # fmt: skip
+        pill_text = c.create_text(
+            x + 20, cy, text="", fill=P.LINK_TEXT, font=_FONT_SMALL, state="hidden", tags=(tag,)
+        )
+        cut = c.create_text(
+            x + CARD_W - 28, cy, text="\N{BLACK SCISSORS}", fill=P.LINK_CUT, font=_FONT,
+            state="hidden", tags=(tag,),
+        )  # fmt: skip
+        self._tooltip_item((pill, pill_text, cut), lambda a=address: self._link_text(a))
+        for item in (pill, pill_text):
+            c.tag_bind(item, "<Enter>", lambda _e, a=address: self._show_wire(a), add="+")
+            c.tag_bind(item, "<Leave>", lambda _e: c.delete("wire"), add="+")
+        self._draw_label(x + 52, cy, address, x + CARD_W - BADGE_W - 10, tag)
         badge = self._draw_badge(x + CARD_W - 11, cy, tag)
         self._inputs[address] = {
             "track": track, "knob": knob, "bezel": bezel, "cap": cap, "led": led,
-            "badge": badge, "pending": pending, "x": x, "cy": cy,
+            "badge": badge, "pending": pending, "pill": pill, "pill_text": pill_text,
+            "cut": cut, "x": x, "cy": cy,
         }  # fmt: skip
         c.tag_bind(switch, "<ButtonPress-1>", lambda _e, a=address: self._on_switch_press(a))
         c.tag_bind(switch, "<ButtonRelease-1>", lambda _e, a=address: self._on_switch_release(a))
@@ -342,7 +630,7 @@ class SimulatorWindow(tk.Toplevel):
         if value is not None:
             self._simulation.force(address, value, on_error=self._show_action_error)
 
-    def _analog_menu(self, event: tk.Event, address: str) -> None:
+    def _analog_menu(self, event: tk.Event, address: str, *, linkable: bool = False) -> None:
         menu = tk.Menu(self, tearoff=0)
         menu.add_command(label="Force value...", command=lambda: self._force_analog(address))
         menu.add_command(
@@ -350,6 +638,8 @@ class SimulatorWindow(tk.Toplevel):
             command=lambda: self._simulation.release_force(address),
             state=tk.NORMAL if address in self._simulation.forces else tk.DISABLED,
         )
+        if linkable:
+            self._add_link_items(menu, address, analog=True)
         menu.tk_popup(event.x_root, event.y_root)
 
     def _commit_analog(self, address: str) -> None:
@@ -389,8 +679,9 @@ class SimulatorWindow(tk.Toplevel):
             return
         tag = f"ai:{address}"
         self._row_target(
-            x, y, tag, lambda e, a=address: self._analog_menu(e, a), height=ANALOG_ROW_H
-        )
+            x, y, tag, lambda e, a=address: self._analog_menu(e, a, linkable=True),
+            height=ANALOG_ROW_H,
+        )  # fmt: skip
         self._draw_label(x + 10, y + 11, address, x + CARD_W - BADGE_W, tag)
         badge = self._draw_badge(x + CARD_W - 11, y + 11, tag)
         var = tk.StringVar()
@@ -405,6 +696,7 @@ class SimulatorWindow(tk.Toplevel):
         live = c.create_text(
             x + 84, y + 32, text="", anchor="w", fill=P.MUTED, font=_FONT_SMALL, tags=(tag,)
         )
+        self._tooltip_item((live,), lambda a=address: self._link_text(a))
         info: dict[str, Any] = {
             "var": var,
             "entry": entry,
@@ -601,15 +893,27 @@ class SimulatorWindow(tk.Toplevel):
         for item in badge:
             self._canvas.itemconfigure(item, state="normal" if forced else "hidden")
 
+    def _show_link_chip(self, info: dict[str, Any], link: WiredLink | None) -> None:
+        c = self._canvas
+        if link is None or link.enable is None:
+            c.itemconfigure(info["pill"], state="hidden")
+            c.itemconfigure(info["pill_text"], state="hidden")
+            return
+        color = P.LINK if link.source == "project" else P.LINK_BENCH
+        c.itemconfigure(info["pill"], fill=color, state="normal")
+        c.itemconfigure(info["pill_text"], text=link.enable, state="normal")
+
     def _refresh_inputs(self, values: dict, forces: dict, pending: dict) -> None:
         c = self._canvas
         sim = self._simulation
         for address, info in self._inputs.items():
             on = sim.switch_on(address)
             x, cy = info["x"], info["cy"]
+            link = sim.driving_link(address)
+            self._show_link_chip(info, link)
             momentary = sim.is_momentary(address)
-            toggle_state = "hidden" if momentary else "normal"
-            button_state = "normal" if momentary else "hidden"
+            toggle_state = "hidden" if momentary or link else "normal"
+            button_state = "normal" if momentary and not link else "hidden"
             c.itemconfigure(
                 info["track"], fill=P.SWITCH_ON if on else P.SWITCH_OFF, state=toggle_state
             )
@@ -625,7 +929,11 @@ class SimulatorWindow(tk.Toplevel):
             )
             c.itemconfigure(info["led"], fill=P.LED_ON if values.get(address) else P.LED_OFF)
             self._show_badge(info["badge"], address in forces)
-            c.itemconfigure(info["pending"], state="normal" if address in pending else "hidden")
+            waiting = address in pending or (link is not None and link.pending)
+            c.itemconfigure(info["pending"], state="normal" if waiting else "hidden")
+            bench = sim.bench_links.get(address)
+            cut = bench is not None and bench.cut and bench.enabled and sim.bench_wiring
+            c.itemconfigure(info["cut"], state="normal" if cut else "hidden")
 
     def _refresh_outputs(self, values: dict, forces: dict) -> None:
         c = self._canvas
@@ -645,6 +953,22 @@ class SimulatorWindow(tk.Toplevel):
         for address, info in self._analog_in.items():
             desired = self._simulation.analog_value(address)
             live = values.get(address)
+            link = self._simulation.driving_link(address)
+            entry_state = "disabled" if link else "normal"
+            if str(info["entry"].cget("state")) != entry_state:
+                info["entry"].configure(state=entry_state)
+                if "scale" in info:
+                    info["scale"].state(["disabled"] if link else ["!disabled"])
+            if link is not None:
+                color = P.LINK if link.source == "project" else P.LINK_BENCH
+                c.itemconfigure(
+                    info["live"], text=f"\N{LEFTWARDS ARROW} {link.enable}  {_value_text(live)}",
+                    fill=color,
+                )  # fmt: skip
+                info["var"].set(_value_text(live) if live is not None else "")
+                self._show_badge(info["badge"], address in forces)
+                continue
+            c.itemconfigure(info["live"], fill=P.MUTED)
             if info["entry"] is not focused:
                 shown = desired if desired is not None else live
                 info["var"].set(_value_text(shown) if shown is not None else "")
@@ -692,90 +1016,6 @@ class SimulatorWindow(tk.Toplevel):
                 }[position]
             c.itemconfigure(self._mode_caption, text=caption)
 
-    def _show_details(self) -> None:
-        detail = self._simulation.error_detail or ""
-        window = tk.Toplevel(self)
-        window.title("Simulation details")
-        text = tk.Text(window, wrap=tk.NONE, font=_FONT_MONO, width=100, height=24)
-        text.insert("1.0", detail)
-        text.configure(state="disabled")
-        text.pack(fill=tk.BOTH, expand=True)
-
-    def _change_port(self) -> None:
-        port = simpledialog.askinteger(
-            "Modbus Port",
-            "Serve the simulated PLC's Modbus on port:",
-            parent=self,
-            initialvalue=self._simulation.modbus_port,
-            minvalue=1,
-            maxvalue=65535,
-        )
-        if port is not None:
-            self._simulation.set_modbus_port(port)
-
-    def _refresh_banners(self) -> None:
-        sim = self._simulation
-        messages: list[tuple[str, list[tuple[str, Callable[[], None]]]]] = []
-        if not sim.enabled:
-            messages.append(
-                (
-                    "Simulation is off. Start it to run the program; your switches, "
-                    "values and forces are kept.",
-                    [("Start", sim.turn_on)],
-                )
-            )
-        elif sim.status is SimStatus.FAILED and sim.error:
-            actions = [("Retry", sim.retry)]
-            if sim.error_detail:
-                actions.append(("Show details", self._show_details))
-            messages.append((f"Cannot simulate: {sim.error}", actions))
-        info = sim.modbus_info
-        if sim.is_ready and info.get("error"):
-            messages.append(
-                (
-                    f"The Modbus server could not start on port {info.get('port')}: "
-                    f"{info['error']}. Switches and values still work; other "
-                    "Modbus clients cannot connect.",
-                    [("Change port...", self._change_port)],
-                )
-            )
-        restored = sim.restored_forces
-        if restored:
-            noun = "force" if restored == 1 else "forces"
-            messages.append(
-                (
-                    f"{restored} {noun} restored from last session.",
-                    [
-                        ("Release all", sim.release_all_forces),
-                        ("Keep", sim.dismiss_restored_forces),
-                    ],
-                )
-            )
-        if sim.notice:
-            messages.append((sim.notice, [("Dismiss", sim.dismiss_notice)]))
-        if self._last_error:
-            messages.append((self._last_error, [("Dismiss", self._dismiss_error)]))
-
-        key = tuple((text, tuple(label for label, _ in actions)) for text, actions in messages)
-        if key == self._banner_key:
-            return
-        self._banner_key = key
-        for child in self._banner.winfo_children():
-            child.destroy()
-        if not messages:
-            self._banner.pack_forget()
-            return
-        for text, actions in messages:
-            row = ttk.Frame(self._banner, style="SimBanner.TFrame", padding=(10, 4))
-            ttk.Label(
-                row, text=text, style="SimBanner.TLabel", wraplength=760, justify=tk.LEFT
-            ).pack(side=tk.LEFT, fill=tk.X, expand=True)
-            for label, command in reversed(actions):
-                ttk.Button(row, text=label, command=command).pack(side=tk.RIGHT, padx=(6, 0))
-            row.pack(fill=tk.X, pady=(0, 1))
-        if not self._banner.winfo_manager():
-            self._banner.pack(fill=tk.X, after=self._toolbar)
-
     # ------------------------------------------------------------------
     # Toolbar and banners
     # ------------------------------------------------------------------
@@ -807,6 +1047,11 @@ class SimulatorWindow(tk.Toplevel):
 
         count = len(sim.forces)
         self._forces_btn.configure(text=f"Forces ({count})" if count else "Forces")
+        bench = len(sim.bench_links)
+        wiring = f"Wiring ({bench} bench)" if bench else "Wiring"
+        if not sim.bench_wiring and bench:
+            wiring += " off"
+        self._wiring_btn.configure(text=wiring)
         self._refresh_banners()
 
     def _refresh_dynamic(self) -> None:
@@ -901,6 +1146,43 @@ class SimulatorWindow(tk.Toplevel):
             )
         menu.add_separator()
         menu.add_command(label="Release all", command=self._simulation.release_all_forces)
+
+    def _populate_wiring_menu(self) -> None:
+        menu = self._wiring_menu
+        menu.delete(0, tk.END)
+        sim = self._simulation
+        self._bench_var.set(sim.bench_wiring)
+        menu.add_checkbutton(
+            label="Apply bench links",
+            variable=self._bench_var,
+            command=lambda: sim.set_bench_wiring(self._bench_var.get()),
+        )
+        menu.add_separator()
+        links = sorted(sim.links, key=lambda link: (link.source != "project", link.feedback))
+        if not links:
+            menu.add_command(label="No links", state=tk.DISABLED)
+        self._link_vars = []
+        for link in links:
+            nickname = self._names(link.feedback)[0]
+            name = f"{link.feedback} {nickname}" if nickname else link.feedback
+            if link.cut:
+                label = f"{name}: program link cut"
+            else:
+                label = f"{name} \N{LEFTWARDS ARROW} {link.enable}   {link.response}"
+            if link.source == "project":
+                suffix = "" if link.active else "   (changed on the bench)"
+                menu.add_command(label=f"{label}   program{suffix}", state=tk.DISABLED)
+                continue
+            var = tk.BooleanVar(value=link.enabled)
+            self._link_vars.append(var)
+            menu.add_checkbutton(
+                label=f"{label}   bench",
+                variable=var,
+                command=lambda f=link.feedback, v=var: sim.set_link_enabled(f, v.get()),
+            )
+        if sim.bench_links:
+            menu.add_separator()
+            menu.add_command(label="Discard bench links", command=sim.discard_bench_links)
 
     def _on_any_release(self, _event: tk.Event | None) -> None:
         # The pointer can leave the switch before the button comes up.
@@ -1049,6 +1331,17 @@ class SimulatorWindow(tk.Toplevel):
         )
         self._forces_btn.configure(menu=self._forces_menu)
         self._forces_btn.pack(side=tk.RIGHT, padx=(0, 12))
+        self._wiring_btn = ttk.Menubutton(bar, text="Wiring")
+        self._wiring_menu = tk.Menu(
+            self._wiring_btn, tearoff=0, postcommand=self._populate_wiring_menu
+        )
+        self._wiring_btn.configure(menu=self._wiring_menu)
+        self._wiring_btn.pack(side=tk.RIGHT, padx=(0, 4))
+        bind_tooltip(
+            self._wiring_btn,
+            "Feedback links: which output drives which input, from the program\n"
+            "and from the bench. Right-click an input to link, cut or save one.",
+        )
         modbus = ttk.Label(bar, textvariable=self._modbus_var, foreground=P.MUTED)
         modbus.pack(side=tk.RIGHT, padx=(0, 12))
         bind_tooltip(
@@ -1139,6 +1432,9 @@ class SimulatorWindow(tk.Toplevel):
         self._blink = False
         self._speed_box_focused = False
         self._last_error: str | None = None
+        self._note: str | None = None
+        self._bench_var = tk.BooleanVar(value=True)
+        self._link_vars: list[tk.BooleanVar] = []
         self._banner_key: tuple = ()
         self._tick_after_id: str | None = None
         self._tooltip: tk.Toplevel | None = None
@@ -1164,6 +1460,10 @@ class SimulatorWindow(tk.Toplevel):
         simulation.refresh_layout()
         self._redraw()
         self._tick_after_id = self.after(TICK_MS, self._tick)
+
+    def _dismiss_note(self) -> None:
+        self._note = None
+        self._refresh_banners()
 
     def _dismiss_error(self) -> None:
         self._last_error = None

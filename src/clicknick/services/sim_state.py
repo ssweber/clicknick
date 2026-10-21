@@ -1,7 +1,7 @@
 """What the simulator remembers between sessions.
 
-Switch positions, Momentary/Maintained choices, analog values, forces and
-whether the RUN hint has been seen. Before a durable workspace is paired the
+Switch positions, Momentary/Maintained choices, analog values, forces, bench
+links and whether the RUN hint has been seen. Before a durable workspace is paired the
 file lives in ``%LOCALAPPDATA%\\ClickNick\\simulator\\<PLC name>.toml``; once one
 is paired it moves to ``<workspace>/simulator.toml`` so it travels with the
 engineering work.
@@ -28,6 +28,28 @@ _VERSION = 1
 
 
 @dataclass(frozen=True)
+class BenchLink:
+    """A session-only change to the feedback wiring on one input.
+
+    *enable* is the CLICK address that drives the feedback (with an optional
+    *trigger* value); ``None`` cuts the program's own link on that input.
+    The response is an on/off delay or a pyrung profile token
+    (``ramp:up=0.8|down=-0.05``). A disabled entry is kept but not applied.
+    """
+
+    enable: str | None
+    trigger: int | str | None = None
+    on_delay: str | None = None
+    off_delay: str | None = None
+    profile: str | None = None
+    enabled: bool = True
+
+    @property
+    def cut(self) -> bool:
+        return self.enable is None
+
+
+@dataclass(frozen=True)
 class SimulatorState:
     """The simulator's remembered settings. Keys are CLICK display addresses."""
 
@@ -35,6 +57,9 @@ class SimulatorState:
     momentary: frozenset[str] = frozenset()
     analog: Mapping[str, float] = field(default_factory=dict)
     forces: Mapping[str, PlcValue] = field(default_factory=dict)
+    #: Bench links by feedback address, and whether they are applied at all.
+    links: Mapping[str, BenchLink] = field(default_factory=dict)
+    bench_wiring: bool = True
     run_hint_seen: bool = False
     modbus_port: int = DEFAULT_MODBUS_PORT
     modules: tuple[str, ...] = ()
@@ -72,6 +97,35 @@ def _address(value: object) -> str | None:
     return normalize_address(value) if isinstance(value, str) else None
 
 
+def _text(value: object) -> str | None:
+    return value.strip() or None if isinstance(value, str) else None
+
+
+def _parse_link(value: object) -> BenchLink | None:
+    if not isinstance(value, Mapping):
+        return None
+    enabled = value.get("enabled", True) is not False
+    if value.get("cut") is True:
+        return BenchLink(None, enabled=enabled)
+    enable = _address(value.get("enable"))
+    if enable is None:
+        return None
+    trigger = value.get("trigger")
+    link = BenchLink(
+        enable,
+        trigger=trigger
+        if isinstance(trigger, int | str) and not isinstance(trigger, bool)
+        else None,
+        on_delay=_text(value.get("on_delay")),
+        off_delay=_text(value.get("off_delay")),
+        profile=_text(value.get("profile")),
+        enabled=enabled,
+    )
+    if link.on_delay is None and link.off_delay is None and link.profile is None:
+        return None
+    return link
+
+
 def _parse(data: Mapping[str, object]) -> SimulatorState:
     def table(name: str) -> Mapping[str, object]:
         value = data.get(name, {})
@@ -99,6 +153,11 @@ def _parse(data: Mapping[str, object]) -> SimulatorState:
         for key, value in table("forces").items()
         if isinstance(value, bool | int | float | str) and (address := _address(key))
     }
+    links = {
+        address: link
+        for key, value in table("links").items()
+        if (address := _address(key)) and (link := _parse_link(value))
+    }
     port = data.get("modbus_port", DEFAULT_MODBUS_PORT)
     if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
         port = DEFAULT_MODBUS_PORT
@@ -108,6 +167,8 @@ def _parse(data: Mapping[str, object]) -> SimulatorState:
         momentary=momentary,
         analog=analog,
         forces=forces,
+        links=links,
+        bench_wiring=data.get("bench_wiring") is not False,
         run_hint_seen=data.get("run_hint_seen") is True,
         modbus_port=port,
         modules=tuple(m for m in modules if isinstance(m, str))
@@ -155,6 +216,22 @@ def dump_state(state: SimulatorState) -> str:
         for key, value in _sorted_items(values):
             section[key] = value
         doc[name] = section
+    doc["bench_wiring"] = state.bench_wiring
+    links = tomlkit.table()
+    for address, link in _sorted_items(state.links):
+        assert isinstance(link, BenchLink)
+        entry = tomlkit.inline_table()
+        if link.cut:
+            entry["cut"] = True
+        else:
+            entry["enable"] = link.enable
+            for key in ("trigger", "on_delay", "off_delay", "profile"):
+                if (value := getattr(link, key)) is not None:
+                    entry[key] = value
+        if not link.enabled:
+            entry["enabled"] = False
+        links[address] = entry
+    doc["links"] = links
     return tomlkit.dumps(doc)
 
 
@@ -249,8 +326,8 @@ def restore_state(
 ) -> RestoreResult:
     """Keep only entries whose addresses the current hardware still provides.
 
-    Forces may target any CLICK address, so they are kept as long as the
-    address is valid. The module list is updated to *modules*.
+    Forces and bench links may target any CLICK address, so they are kept
+    as long as the address is valid. The module list is updated to *modules*.
     """
     input_set = set(inputs)
     analog_set = set(analog_inputs)
@@ -267,6 +344,8 @@ def restore_state(
     analog = {a: v for a, v in state.analog.items() if keep(a, analog_set)}
     forces = {a: v for a, v in state.forces.items() if normalize_address(a) == a}
     dropped.extend(a for a in state.forces if a not in forces)
+    links = {a: link for a, link in state.links.items() if normalize_address(a) == a}
+    dropped.extend(a for a in state.links if a not in links)
     hardware_changed = bool(state.modules) and tuple(state.modules) != tuple(modules)
     trimmed = replace(
         state,
@@ -274,6 +353,7 @@ def restore_state(
         momentary=momentary,
         analog=analog,
         forces=forces,
+        links=links,
         modules=tuple(modules),
     )
     return RestoreResult(trimmed, tuple(dict.fromkeys(dropped)), hardware_changed=hardware_changed)

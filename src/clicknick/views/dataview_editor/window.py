@@ -294,11 +294,9 @@ class DataviewEditorWindow(tk.Toplevel):
         self._connection_state = ConnectionState.CONNECTING
         self._set_modbus_error_text("")
         self._update_modbus_controls()
-        # The simulator accepts writes to X inputs; a real CLICK does not.
-        allow_input_writes = self._sim is not None
 
         self._run_modbus_action(
-            lambda: service.connect(host, port, timeout=3, allow_input_writes=allow_input_writes),
+            lambda: service.connect(host, port, timeout=3),
             lambda _result, error: self._on_connect_modbus_complete(error),
         )
 

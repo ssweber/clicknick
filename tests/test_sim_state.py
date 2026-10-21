@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from clicknick.services.sim_state import (
+    BenchLink,
     SimulatorState,
     adopt_snapshot,
     app_data_state_path,
@@ -20,6 +21,13 @@ def _state() -> SimulatorState:
         momentary=frozenset({"X002"}),
         analog={"DF1": 4.5},
         forces={"Y001": True, "DS10": 7, "TXT1": "A"},
+        links={
+            "X002": BenchLink("Y001", on_delay="2s", off_delay="500ms"),
+            "X003": BenchLink(None, enabled=False),
+            "DF1": BenchLink("Y002", profile="ramp:up=0.8|down=-0.05"),
+            "X004": BenchLink("DS1", trigger=2, on_delay="1s"),
+        },
+        bench_wiring=False,
         run_hint_seen=True,
         modbus_port=5020,
         modules=("cpu:C2-03CPU", "expansion1:C2-16DR"),
@@ -138,3 +146,20 @@ def test_snapshot_wins_for_maintained_inputs_and_analog_values():
     assert adopted.switches == {"X003": True, "X009": True}
     assert adopted.analog == {"DF1": 2.0}
     assert adopted.forces == state.forces
+
+
+def test_malformed_links_are_skipped(tmp_path):
+    path = tmp_path / "state.toml"
+    path.write_text(
+        "[links]\n"
+        "x2 = {enable = 'y1', on_delay = '2s'}\n"
+        "X003 = {enable = 'nowhere', on_delay = '2s'}\n"
+        "X004 = {enable = 'Y001'}\n"
+        "X005 = 'Y001'\n"
+        "X006 = {cut = true}\n",
+        encoding="utf-8",
+    )
+    assert load_state(path).links == {
+        "X002": BenchLink("Y001", on_delay="2s"),
+        "X006": BenchLink(None),
+    }

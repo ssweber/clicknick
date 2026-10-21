@@ -2,14 +2,16 @@
 
 Owned by ConnectionSession. Pure logic (no tkinter): it owns the pyrung DAP
 subprocess (launched with a Modbus server, real-time pacing and STOP mode),
-the Modbus client the Simulator window reads and writes through, the
-switch/analog/force settings the user chose, and their persistence. The
+the Modbus client the Simulator window reads values through, the
+switch/analog/force settings and bench links the user chose, and their
+persistence. The
 Console, the Simulator window and the Dataview editor observe it and call
 its methods; none of them owns the simulation.
 
-Two channels reach the simulated PLC: values (X switches, analog inputs,
-LEDs) travel over Modbus exactly as against real hardware; mode, speed,
-stepping and forces go over DAP.
+Two channels reach the simulated PLC: values are read over Modbus exactly
+as from real hardware; inputs (switches, analog values), mode, speed,
+stepping, forces and bench links go over DAP. X stays read-only over Modbus, as on a
+real CLICK.
 
 Everything public runs on the UI thread. Work that blocks runs on worker
 threads, and its results come back through ``scheduler.after(0, ...)``.
@@ -31,6 +33,7 @@ from pyclickplc.addresses import format_address_display, normalize_address, pars
 
 from .services.sim_hardware import PanelLayout, build_panel_layout, io_addresses
 from .services.sim_state import (
+    BenchLink,
     RestoreResult,
     SimulatorState,
     StateFile,
@@ -114,6 +117,41 @@ class SimEvent:
     level: MessageLevel = "output"
 
 
+LinkSource = Literal["project", "bench"]
+
+
+@dataclass(frozen=True)
+class WiredLink:
+    """One feedback link: the program's own (``project``) or a bench change.
+
+    Addresses are CLICK display addresses. A cut bench change has no enable.
+    ``active`` says whether the simulation runs it right now; a project link
+    stops being active while a bench change replaces or cuts it.
+    """
+
+    feedback: str
+    enable: str | None
+    source: LinkSource
+    trigger: int | str | None = None
+    on_delay: str | None = None
+    off_delay: str | None = None
+    profile: str | None = None
+    active: bool = False
+    pending: bool = False
+    enabled: bool = True
+
+    @property
+    def cut(self) -> bool:
+        return self.enable is None
+
+    @property
+    def response(self) -> str:
+        """``2s / 500ms`` or the profile token, for labels."""
+        if self.profile is not None:
+            return self.profile
+        return " / ".join(d for d in (self.on_delay or "0ms", self.off_delay) if d)
+
+
 class _SerialWorker:
     """Runs submitted jobs one at a time, in order, on one daemon thread."""
 
@@ -173,6 +211,22 @@ def _default_send_command(session_name: str, command: str) -> tuple[bool, str]:
     from pyrung.dap.live import send_command
 
     return send_command(session_name, command)
+
+
+def _send_link(dap: Any, feedback: str, link: BenchLink) -> None:
+    """Send one bench link to the simulation: a cut, or a link with its response."""
+    if link.cut:
+        dap.unlink(feedback)
+        return
+    assert link.enable is not None
+    dap.link(
+        feedback,
+        link.enable,
+        trigger=link.trigger,
+        on_delay=link.on_delay,
+        off_delay=link.off_delay,
+        profile=link.profile,
+    )
 
 
 def _mtime(path: Path | None) -> float | None:
@@ -262,6 +316,13 @@ class SimulationSession:
         self._desired_position: SwitchPosition = "stop"
         self._forces_baseline: dict[str, PlcValue] | None = None
         self._analog_queued: set[str] = set()
+        # Links as the simulation reports them (project + bench). Until the
+        # bench links have been re-applied after a launch, a listing only
+        # updates the display and never overwrites what the user chose.
+        self._link_rows: tuple[WiredLink, ...] | None = None
+        self._links_revision_seen: int | None = None
+        self._links_synced = False
+        self._restored_links = 0
 
         # Hardware
         self._layout: PanelLayout | None = None
@@ -511,6 +572,54 @@ class SimulationSession:
         return self._restored_forces if self._state.forces else 0
 
     @property
+    def restored_links(self) -> int:
+        """Bench links restored from the last session, until discarded or dismissed."""
+        return self._restored_links if self._state.links else 0
+
+    @property
+    def bench_links(self) -> dict[str, BenchLink]:
+        """The bench changes the user chose, by feedback address."""
+        return dict(self._state.links)
+
+    @property
+    def bench_wiring(self) -> bool:
+        """False while every bench change is set aside."""
+        return self._state.bench_wiring
+
+    @property
+    def links(self) -> tuple[WiredLink, ...]:
+        """Every link: as the simulation reports it, or the bench changes alone while it is off."""
+        if self._link_rows is not None:
+            return self._link_rows
+        return tuple(
+            WiredLink(
+                address,
+                link.enable,
+                "bench",
+                link.trigger,
+                link.on_delay,
+                link.off_delay,
+                link.profile,
+                enabled=link.enabled,
+            )  # fmt: skip
+            for address, link in self._state.links.items()
+        )
+
+    def driving_link(self, address: str) -> WiredLink | None:
+        """The link driving *address* right now, if any (a cut drives nothing)."""
+        for link in self.links:
+            if link.feedback == address and link.active and not link.cut:
+                return link
+        return None
+
+    def project_link(self, address: str) -> WiredLink | None:
+        """The program's own link on *address*, active or not."""
+        for link in self.links:
+            if link.feedback == address and link.source == "project":
+                return link
+        return None
+
+    @property
     def plc_data_path(self) -> Path | None:
         return self._plc_data_path
 
@@ -645,6 +754,9 @@ class SimulationSession:
         self._disconnect_modbus()
         self._modbus_info = {}
         self._pressed.clear()
+        self._link_rows = None
+        self._links_revision_seen = None
+        self._links_synced = False
         dap = self._dap
         self._dap = None
         if dap is not None:
@@ -767,13 +879,96 @@ class SimulationSession:
         patches.update(self._state.analog)
         return patches
 
-    def _reapply(self, dap: Any) -> None:
-        """Bring a fresh simulation back to the switches, values and forces the user chose."""
-        forces = dict(self._state.forces)
-        position = self._desired_position
-        patches = self._input_patches()
+    def _drop_failed_links(self, failed: list[tuple[str, str]]) -> None:
+        links = dict(self._state.links)
+        for address, _reason in failed:
+            links.pop(address, None)
+        self._update_state(links=links)
+        for address, reason in failed:
+            self._message(
+                f"Could not restore the bench link on {address}: {reason}. Dropped it.", "error"
+            )
+
+    def _wired(self, row: Mapping[str, Any]) -> WiredLink:
+        enable = row.get("enable")
+        return WiredLink(
+            feedback=self.to_address(str(row.get("feedback", ""))),
+            enable=None if row.get("cut") or enable is None else self.to_address(str(enable)),
+            source="project" if row.get("source") == "project" else "bench",
+            trigger=row.get("trigger"),
+            on_delay=row.get("onDelay"),
+            off_delay=row.get("offDelay"),
+            profile=row.get("profile"),
+            active=bool(row.get("active")),
+            pending=bool(row.get("pending")),
+            enabled=row.get("enabled", True) is not False,
+        )
+
+    def _on_links(self, token: int, body: Mapping[str, Any], *, sync: bool) -> None:
+        """Show the simulation's links; once synced, follow changes made elsewhere (the Console)."""
+        if token != self._token or self._dap is None:
+            return
+        rows = tuple(
+            self._wired(row) for row in body.get("links") or () if isinstance(row, Mapping)
+        )
+        self._link_rows = rows
+        if sync:
+            self._links_synced = True
+            revision = body.get("revision")
+            self._links_revision_seen = revision if isinstance(revision, int) else None
+        if self._links_synced:
+            adopted = {
+                row.feedback: BenchLink(
+                    row.enable, row.trigger, row.on_delay, row.off_delay, row.profile, row.enabled
+                )
+                for row in rows
+                if row.source == "bench"
+            }
+            bench = body.get("bench") is not False
+            if adopted != dict(self._state.links) or bench != self._state.bench_wiring:
+                self._update_state(links=adopted, bench_wiring=bench)
+                return
+        self._emit("desired")
+
+    # ------------------------------------------------------------------
+    # Bench links
+    # ------------------------------------------------------------------
+
+    def _fetch_links(self, dap: Any, token: int, *, sync: bool = False) -> None:
+        """Read the links back, after any actions already queued (call from any thread)."""
 
         def job() -> None:
+            try:
+                body = dict(dap.list_links())
+            except Exception:
+                return
+            self._post(lambda: self._on_links(token, body, sync=sync))
+
+        self._run_serial(job)
+
+    def _reapply(self, dap: Any) -> None:
+        """Bring a fresh simulation back to the switches, values, forces and links the user chose."""
+        forces = dict(self._state.forces)
+        links = dict(self._state.links)
+        bench_wiring = self._state.bench_wiring
+        position = self._desired_position
+        patches = self._input_patches()
+        token = self._token
+
+        def job() -> None:
+            failed_links: list[tuple[str, str]] = []
+            for address, link in links.items():
+                try:
+                    _send_link(dap, address, link)
+                    if not link.enabled:
+                        dap.set_links(enabled={address: False})
+                except Exception as exc:
+                    failed_links.append((address, str(exc)))
+            if failed_links:
+                self._post(lambda: self._drop_failed_links(failed_links))
+            if not bench_wiring:
+                dap.set_links(bench=False)
+            self._fetch_links(dap, token, sync=True)
             # Launched with keepForcesOnRun, so forces set in STOP survive into RUN.
             failed: list[str] = []
             for address, value in forces.items():
@@ -869,6 +1064,10 @@ class SimulationSession:
         if dap.speed is not None:
             self._speed = dap.speed
         self._adopt_forces({self.to_address(k): v for k, v in dap.forces.items()})
+        revision = dap.links_revision
+        if revision != self._links_revision_seen and self._links_synced:
+            self._links_revision_seen = revision
+            self._fetch_links(dap, token)
         self._emit("frame")
 
     # ------------------------------------------------------------------
@@ -945,11 +1144,7 @@ class SimulationSession:
         self.refresh_layout(force=True)
 
         snapshot_path = self._plc_data_path
-        modbus = {
-            "host": MODBUS_HOST,
-            "port": self._state.modbus_port,
-            "allowInputWrites": True,
-        }
+        modbus = {"host": MODBUS_HOST, "port": self._state.modbus_port}
         speed = self._speed
 
         def launch() -> None:
@@ -1066,7 +1261,7 @@ class SimulationSession:
 
         def job() -> None:
             try:
-                service.connect(MODBUS_HOST, port, timeout=2, allow_input_writes=True)
+                service.connect(MODBUS_HOST, port, timeout=2)
                 if addresses:
                     service.set_poll_addresses(addresses)
             except Exception as exc:
@@ -1112,22 +1307,11 @@ class SimulationSession:
             self._update_poll()
 
     def _write(self, values: dict[str, PlcValue], what: str) -> None:
-        """Write over Modbus like any client; fall back to a DAP patch without a server."""
+        """Patch inputs over DAP (X is read-only over Modbus, as on a real CLICK)."""
         dap = self._dap
         if dap is None:
             return  # applied when the simulation (re)starts or enters RUN
-        service = self._modbus if self.modbus_available else None
-
-        def job() -> None:
-            if service is None:
-                dap.patch(values)
-                return
-            results = service.write(list(values.items()))
-            errors = [r.get("error") for r in results if not r.get("ok")]
-            if errors:
-                raise OSError("; ".join(str(e) for e in errors))
-
-        self._submit(job, what)
+        self._submit(lambda: dap.patch(values), what)
 
     def set_modbus_port(self, port: int) -> None:
         """Move the simulation's Modbus server to *port* (relaunches)."""
@@ -1208,20 +1392,12 @@ class SimulationSession:
         if self._dap is None or address in self._analog_queued:
             return
         self._analog_queued.add(address)
-        service = self._modbus if self.modbus_available else None
         dap = self._dap
 
         def job() -> None:
             # Runs on the worker: read the newest value, not the one queued.
             self._analog_queued.discard(address)
-            latest = {address: self._state.analog.get(address, float(value))}
-            if service is None:
-                dap.patch(latest)
-                return
-            results = service.write(list(latest.items()))
-            errors = [r.get("error") for r in results if not r.get("ok")]
-            if errors:
-                raise OSError("; ".join(str(e) for e in errors))
+            dap.patch({address: self._state.analog.get(address, float(value))})
 
         self._submit(job, f"Writing {address}")
 
@@ -1272,6 +1448,92 @@ class SimulationSession:
 
     def dismiss_restored_forces(self) -> None:
         self._restored_forces = 0
+        self._emit("desired")
+
+    def _change_links(
+        self,
+        links: dict[str, BenchLink],
+        job: Callable[[Any], object],
+        what: str,
+        on_error: Callable[[str], None] | None = None,
+    ) -> None:
+        """Record the bench links the user chose, then send *job* to the simulation."""
+        previous = dict(self._state.links)
+        self._update_state(links=links)
+        dap = self._dap
+        if dap is None:
+            return  # applied when the simulation (re)starts
+
+        def undo(text: str) -> None:
+            self._update_state(links=previous)
+            if on_error is not None:
+                on_error(text)
+
+        self._submit(lambda: job(dap), what, undo)
+
+    def link(
+        self, feedback: str, link: BenchLink, *, on_error: Callable[[str], None] | None = None
+    ) -> None:
+        """Wire *feedback* on the bench (a cut when ``link.enable`` is None)."""
+        link = replace(link, enabled=True)
+        links = dict(self._state.links)
+        links[feedback] = link
+        verb = "Cutting the link on" if link.cut else "Linking"
+        self._change_links(
+            links, lambda dap: _send_link(dap, feedback, link), f"{verb} {feedback}", on_error
+        )
+
+    def cut_link(self, feedback: str, *, on_error: Callable[[str], None] | None = None) -> None:
+        """Cut the program's link on *feedback*, as if the sensor failed."""
+        self.link(feedback, BenchLink(None), on_error=on_error)
+
+    def restore_link(self, feedback: str) -> None:
+        """Drop the bench change on *feedback*: back to what the program declares."""
+        if feedback not in self._state.links:
+            return
+        links = dict(self._state.links)
+        links.pop(feedback)
+        self._change_links(
+            links, lambda dap: dap.restore_link(feedback), f"Restoring the link on {feedback}"
+        )
+
+    def set_link_enabled(self, feedback: str, enabled: bool) -> None:
+        """Set one bench change aside (or back) without forgetting it."""
+        link = self._state.links.get(feedback)
+        if link is None or link.enabled == enabled:
+            return
+        links = dict(self._state.links)
+        links[feedback] = replace(link, enabled=enabled)
+        self._change_links(
+            links,
+            lambda dap: dap.set_links(enabled={feedback: enabled}),
+            f"{'Enabling' if enabled else 'Disabling'} the bench link on {feedback}",
+        )
+
+    def set_bench_wiring(self, on: bool) -> None:
+        """Apply the bench changes, or set all of them aside."""
+        if on == self._state.bench_wiring:
+            return
+        self._update_state(bench_wiring=on)
+        dap = self._dap
+        if dap is not None:
+            self._submit(
+                lambda: dap.set_links(bench=on), f"Turning bench wiring {'on' if on else 'off'}"
+            )
+
+    def discard_bench_links(self) -> None:
+        """Drop every bench change."""
+        self._restored_links = 0
+        addresses = list(self._state.links)
+
+        def job(dap: Any) -> None:
+            for address in addresses:
+                dap.restore_link(address)
+
+        self._change_links({}, job, "Discarding bench links")
+
+    def dismiss_restored_links(self) -> None:
+        self._restored_links = 0
         self._emit("desired")
 
     def dismiss_notice(self) -> None:
@@ -1445,6 +1707,7 @@ class SimulationSession:
             self._state = loaded
             self._restore_pending = True
             self._restored_forces = len(loaded.forces)
+            self._restored_links = len(loaded.links)
             if self._layout is not None and self._layout_error is None and self._layout.has_cpu:
                 self._apply_restore(self._layout)
             self._emit("desired")

@@ -58,8 +58,8 @@ class AnnotationService:
             errors.append("Physical timing and profile are mutually exclusive.")
         if meta.system is not None and not has_timing and not has_profile:
             errors.append("'system' requires on_delay/off_delay or profile.")
-        if meta.link is not None and meta.physical is None:
-            errors.append("'link' requires 'physical' to be set.")
+        if meta.link is not None and meta.physical is None and not has_timing and not has_profile:
+            errors.append("'link' requires on_delay/off_delay, profile or 'physical'.")
 
         return errors
 

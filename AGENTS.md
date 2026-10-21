@@ -204,8 +204,14 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - The Console, Simulator and Dataview editor only observe it (the Dataview attaches while it serves Modbus). Views
   never own a `DapService`; while it is off they stay open and offer Start
 - Launched with `keepForcesOnRun`, so forces survive STOP -> RUN; switch/analog patches ride `set_mode("run")`
-- Values travel over Modbus; mode, speed, stepping and forces over DAP. Mode, speed and forces follow frames,
+- Values are read over Modbus; inputs (switch/analog patches), mode, speed, stepping and forces go over DAP.
+  X stays read-only over Modbus, as on a real CLICK. Mode, speed and forces follow frames,
   because the Console and agents can drive the same simulation (last command wins)
+- Bench links (session-only feedback wiring, `sim_state.BenchLink`, keyed by feedback address) are desired state
+  like forces: persisted, re-applied over DAP after a launch, and adopted from the simulation when a frame's
+  `linksRevision` changes (the Console can edit them too). "Save to project" writes the link into the feedback's
+  comment through the store (Simulator window, `services/link_annotation.py`); after Sync and a rebuild, pyrung
+  drops the bench copy because the program declares the same link
 
 ### Main Window Refresh
 - The window title and Workspace details are recomputed by `ClickNickApp._refresh_ui()`; never call it by hand

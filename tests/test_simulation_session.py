@@ -14,7 +14,7 @@ import pytest
 
 from clicknick.services.analysis_service import AnalysisResult, AnalysisService, AnalysisStatus
 from clicknick.services.sim_hardware import build_panel_layout
-from clicknick.services.sim_state import SimulatorState, load_state, save_state
+from clicknick.services.sim_state import BenchLink, SimulatorState, load_state, save_state
 from clicknick.simulation_session import (
     ANALYSIS_POLL_MS,
     ANALYSIS_TIMEOUT_MS,
@@ -79,6 +79,11 @@ class FakeDap:
         self.tag_hints: dict = {}
         self.stderr_text = ""
         self.info = {"running": True, "host": "127.0.0.1", "port": 502, "clients": 1, "error": None}
+        self.links_revision = 0
+        self.project: dict[str, str] = {}  # program links: feedback -> enable
+        self.bench: dict[str, dict] = {}
+        self.bench_on = True
+        self.refuse_links: dict[str, str] = {}
 
     def launch(self, project_dir, **kwargs):
         self.calls.append(("launch", project_dir, kwargs))
@@ -122,6 +127,59 @@ class FakeDap:
     def patch(self, patches):
         self.calls.append(("patch", dict(patches)))
 
+    # Bench links: a small model of pyrung's overlay, keyed by address.
+    def link(self, feedback, enable, **response):
+        self.calls.append(("link", feedback, enable, response))
+        if feedback in self.refuse_links:
+            raise RuntimeError(f"cannot link {feedback}: {self.refuse_links[feedback]}")
+        self.bench[feedback] = {"enable": enable, "enabled": True, **response}
+        self.links_revision += 1
+
+    def unlink(self, feedback):
+        self.calls.append(("unlink", feedback))
+        if feedback in self.project:
+            self.bench[feedback] = {"enable": None, "enabled": True}
+        elif self.bench.pop(feedback, None) is None:
+            raise RuntimeError(f"{feedback} has no link")
+        self.links_revision += 1
+
+    def restore_link(self, feedback):
+        self.calls.append(("restore_link", feedback))
+        self.bench.pop(feedback, None)
+        self.links_revision += 1
+
+    def set_links(self, *, bench=None, enabled=None):
+        self.calls.append(("set_links", bench, dict(enabled or {})))
+        if bench is not None:
+            self.bench_on = bench
+        for feedback, on in (enabled or {}).items():
+            self.bench[feedback]["enabled"] = on
+        self.links_revision += 1
+
+    def list_links(self):
+        rows = [
+            {"feedback": fb, "enable": en, "source": "project", "onDelay": "1s", "offDelay": None,
+             "profile": None, "trigger": None, "active": fb not in self.bench, "pending": False}
+            for fb, en in self.project.items()
+        ]  # fmt: skip
+        for fb, entry in self.bench.items():
+            rows.append(
+                {
+                    "feedback": fb,
+                    "enable": entry["enable"],
+                    "source": "bench",
+                    "cut": entry["enable"] is None,
+                    "trigger": entry.get("trigger"),
+                    "onDelay": entry.get("on_delay"),
+                    "offDelay": entry.get("off_delay"),
+                    "profile": entry.get("profile"),
+                    "enabled": entry["enabled"],
+                    "active": self.bench_on and entry["enabled"],
+                    "pending": False,
+                }
+            )
+        return {"bench": self.bench_on, "revision": self.links_revision, "links": rows}
+
     def frame(self, **changes) -> None:
         """Simulate a pyrungScanFrame arriving on the reader thread."""
         for name, value in changes.items():
@@ -134,7 +192,6 @@ class FakeModbus:
         self.kwargs = kwargs
         self.connected_with: dict | None = None
         self.polled: list[str] = []
-        self.writes: list[list] = []
         self.disconnected = False
 
     def connect(self, host, port, **kwargs):
@@ -145,10 +202,6 @@ class FakeModbus:
 
     def clear_poll_addresses(self):
         self.polled = []
-
-    def write(self, values):
-        self.writes.append(list(values))
-        return [{"address": a, "ok": True, "error": None} for a, _v in values]
 
     def disconnect(self):
         self.disconnected = True
@@ -311,7 +364,7 @@ def test_launch_starts_the_simulator_in_stop_with_a_modbus_server(ready):
     ready.open()
     _name, project_dir, kwargs = ready.dap.calls[0]
     assert project_dir == ready.analysis.project_dir
-    assert kwargs["modbus"] == {"host": "127.0.0.1", "port": 502, "allowInputWrites": True}
+    assert kwargs["modbus"] == {"host": "127.0.0.1", "port": 502}
     assert kwargs["speed"] == 1.0
     assert kwargs["start_mode"] == "stop"
     assert kwargs["keep_forces_on_run"] is True
@@ -466,8 +519,11 @@ def test_stop_to_run_applies_inputs_and_forces_before_scan_one(ready):
 
     ready.sim.set_switch_position("run")
 
-    # Forces persist through STOP -> RUN (keepForcesOnRun); inputs ride the transition.
+    # Forces persist through STOP -> RUN (keepForcesOnRun); inputs patched in STOP
+    # are dropped by the transition, so they ride it again.
     assert ready.dap.calls[1:] == [
+        ("patch", {"X001": True}),
+        ("patch", {"DF1": 2.5}),
         ("force", "Y001", True),
         ("set_mode", "run", {"X001": True, "DF1": 2.5}, None),
         ("continue",),
@@ -586,7 +642,7 @@ def test_release_all(ready):
 
 
 # ----------------------------------------------------------------------
-# Inputs over Modbus
+# Modbus (values) and inputs (DAP)
 # ----------------------------------------------------------------------
 
 
@@ -596,14 +652,9 @@ def _with_modbus(harness: Harness) -> FakeModbus:
     return harness.modbus[-1]
 
 
-def test_modbus_client_connects_with_input_writes_and_fast_poll(ready):
+def test_modbus_client_connects_with_fast_poll(ready):
     service = _with_modbus(ready)
-    assert service.connected_with == {
-        "host": "127.0.0.1",
-        "port": 502,
-        "timeout": 2,
-        "allow_input_writes": True,
-    }
+    assert service.connected_with == {"host": "127.0.0.1", "port": 502, "timeout": 2}
     assert service.kwargs["poll_interval_s"] == 0.1
     ready.sim.watch("panel", ["X001", "Y001"])
     assert service.polled == ["X001", "Y001"]
@@ -614,14 +665,16 @@ def test_modbus_text_excludes_our_own_connection(ready):
     assert ready.sim.modbus_text.endswith("0 clients")
 
 
-def test_switches_write_over_modbus(ready):
-    service = _with_modbus(ready)
+def test_switches_and_analog_are_patched_over_dap(ready):
+    _with_modbus(ready)
     ready.sim.toggle_switch("X001")
     ready.sim.set_momentary("X002", True)
     ready.sim.press_input("X002")
     assert ready.sim.switch_on("X002")
     ready.sim.release_input("X002")
-    assert service.writes == [[("X001", True)], [("X002", True)], [("X002", False)]]
+    ready.sim.set_analog("DF1", 2.5)
+    patches = [call[1] for call in ready.dap.calls if call[0] == "patch"]
+    assert patches == [{"X001": True}, {"X002": True}, {"X002": False}, {"DF1": 2.5}]
     assert not ready.sim.switch_on("X002")
 
 
@@ -757,3 +810,101 @@ def test_loading_plc_data_sets_switches_and_analog_values(ready, tmp_path):
     assert ready.sim.forces == {"Y001": True}, "forces stay"
     assert ready.sim.notice == "Loaded PLC data from dump.csv; switches set from snapshot."
     assert ready.dap.calls[0][2]["snapshot_path"] == data
+
+
+# ----------------------------------------------------------------------
+# Bench links
+# ----------------------------------------------------------------------
+
+AUX_LINK = BenchLink("Y001", on_delay="2s", off_delay="500ms")
+
+
+def _frame(harness: Harness) -> None:
+    harness.dap.frame()
+    harness.scheduler.run_ready()
+
+
+def test_link_is_sent_and_read_back(ready):
+    ready.open()
+    ready.sim.link("X002", AUX_LINK)
+    assert ready.dap.calls[-1] == (
+        "link", "X002", "Y001",
+        {"trigger": None, "on_delay": "2s", "off_delay": "500ms", "profile": None},
+    )  # fmt: skip
+    _frame(ready)
+    link = ready.sim.driving_link("X002")
+    assert link is not None
+    assert (link.source, link.enable, link.response) == ("bench", "Y001", "2s / 500ms")
+    assert ready.sim.bench_links == {"X002": AUX_LINK}
+
+
+def test_links_chosen_before_launch_are_applied_with_the_rest(ready):
+    ready.sim.link("X002", AUX_LINK)
+    ready.sim.cut_link("X003")
+    ready.sim.set_bench_wiring(False)
+    assert ready.sim.links[0].feedback == "X002"  # shown even while the simulation is off
+
+    ready.open()
+    calls = [call[0] for call in ready.dap.calls]
+    assert calls[:4] == ["launch", "link", "unlink", "set_links"]
+    assert ready.dap.bench_on is False
+
+
+def test_a_link_the_simulation_refuses_is_undone_and_reported(ready):
+    ready.open()
+    ready.dap.refuse_links["X001"] = "X001 is written by the program at Main:R3"
+    errors: list[str] = []
+    ready.sim.link("X001", AUX_LINK, on_error=errors.append)
+    ready.scheduler.run_ready()
+    assert "X001" not in ready.sim.bench_links
+    assert errors and "written by the program" in errors[0]
+
+
+def test_restore_failure_drops_the_link_with_a_message(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    harness = Harness(tmp_path, _ready_analysis(project))
+    harness.sim.cut_link("X003")  # the program no longer links X003
+    harness.open()
+    assert harness.sim.bench_links == {}
+    assert "Could not restore the bench link on X003" in harness.messages("error")
+
+
+def test_changes_made_from_the_console_are_adopted(ready):
+    ready.open()
+    ready.dap.project["X002"] = "Y001"
+    ready.dap.unlink("X002")  # someone typed `unlink X002` in the Console
+    _frame(ready)
+    assert ready.sim.bench_links == {"X002": BenchLink(None)}
+    project = ready.sim.project_link("X002")
+    assert project is not None and not project.active
+    assert ready.sim.driving_link("X002") is None
+
+
+def test_restore_and_disable(ready):
+    ready.open()
+    ready.sim.link("X002", AUX_LINK)
+    ready.sim.set_link_enabled("X002", False)
+    assert ready.dap.calls[-1] == ("set_links", None, {"X002": False})
+    _frame(ready)
+    assert ready.sim.driving_link("X002") is None
+    assert ready.sim.bench_links["X002"].enabled is False
+
+    ready.sim.restore_link("X002")
+    assert ready.dap.calls[-1] == ("restore_link", "X002")
+    assert ready.sim.bench_links == {}
+
+
+def test_bench_links_are_saved_and_restored(ready, tmp_path):
+    ready.sim.set_state_location("Line1", None)
+    ready.open()
+    ready.sim.link("X002", AUX_LINK)
+    ready.scheduler.fire(SAVE_DELAY_MS)
+    assert load_state(tmp_path / "app" / "Line1.toml").links == {"X002": AUX_LINK}
+
+    fresh = Harness(tmp_path, ready.analysis)
+    fresh.sim.set_state_location("Line1", None)
+    assert fresh.sim.restored_links == 1
+    fresh.sim.discard_bench_links()
+    assert fresh.sim.bench_links == {}
+    assert fresh.sim.restored_links == 0

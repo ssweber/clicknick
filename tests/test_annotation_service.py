@@ -154,6 +154,10 @@ class TestValidateMeta:
         errors = AnnotationService.validate_meta(meta)
         assert any("link" in e for e in errors)
 
+    def test_link_with_a_response_needs_no_physical_name(self) -> None:
+        meta = TagMeta(link="Y001", on_delay="2s")
+        assert AnnotationService.validate_meta(meta) == []
+
     def test_link_with_physical_valid(self) -> None:
         meta = TagMeta(link="EnableField", physical="Sensor", on_delay="50ms", off_delay="10ms")
         assert AnnotationService.validate_meta(meta) == []

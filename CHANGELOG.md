@@ -13,10 +13,12 @@
 ### Added
 
 - **Simulate** draws your CLICK hardware from System Configuration and runs the saved program behind it, with input switches, output LEDs, analog values, forces, a STOP / STEP / RUN switch with speed control, and a Modbus server on 127.0.0.1:502 that the Data View editor joins with a Force column.
+- Feedback links show on the Simulator: an input driven by an output (a contactor's aux contact, a limit switch, a ramping temperature) shows its driver instead of a switch, and from the right-click menu you can add or change a link for the session, cut one to simulate a failed sensor, or save it to the input's comment for the program; the Wiring menu lists every link and sets bench links aside, and bench links are remembered with the other simulator settings.
 
 ### Changed
 
 - The Console and the Simulator share one simulation that keeps running after their windows close until it is stopped from the main window, and setting up a workspace restarts it instead of closing the Console.
+- In the annotation editor, a link needs only an on/off delay or a profile; the physical name is optional and defaults to the tag's own, and `link=` takes a CLICK address such as `Y001`.
 
 ### Fixed
 
