@@ -40,5 +40,6 @@ PENDING = "#f59f00"
 #: Feedback links: the program's own, a bench change, a cut link, and text on a link chip.
 LINK = "#1971c2"
 LINK_BENCH = "#9c36b5"
+LINK_BENCH_BG = "#f3d9fa"
 LINK_CUT = "#c92a2a"
 LINK_TEXT = "#ffffff"

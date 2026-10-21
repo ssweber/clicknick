@@ -155,7 +155,7 @@ def test_mode_switch_clicks_and_step_controls(simulator, ready):
     win = simulator(ready)
     sx, sy, zone = win._mode_zone
     ready.dap.calls.clear()
-    win._on_mode_click(SimpleNamespace(x=sx + 2.5 * zone, y=sy + 10))
+    win._on_mode_click(SimpleNamespace(x=sx + 10, y=sy + 0.5 * zone))  # RUN, on top
     assert ("set_mode", "run", {}, None) in ready.dap.calls
     assert ("continue",) in ready.dap.calls
 
@@ -241,10 +241,12 @@ def test_simulator_stays_open_with_start_when_turned_off(simulator, ready):
     assert not any("Simulation is off" in text for text, _labels in win._banner_key)
 
 
-def test_simulator_shows_nicknames_with_full_text_on_hover(simulator, ready):
+def test_cards_widen_so_24_character_nicknames_show_in_full(simulator, ready):
+    from clicknick.views.simulator_window import CARD_W
+
     rows = {
         get_addr_key("X", 1): SimpleNamespace(nickname="Start_PB"),
-        get_addr_key("Y", 1): SimpleNamespace(nickname="Conveyor_Motor_Run_Output_Long"),
+        get_addr_key("Y", 1): SimpleNamespace(nickname="Conveyor_Infeed_Gate_Sol"),
     }
     store = SimpleNamespace(
         visible_state=rows, add_observer=lambda _cb: None, remove_observer=lambda _cb: None
@@ -256,8 +258,8 @@ def test_simulator_shows_nicknames_with_full_text_on_hover(simulator, ready):
         if win._canvas.type(item) == "text"
     ]
     assert "Start_PB" in texts
-    assert any(t.startswith("Conveyor") and t.endswith("\N{HORIZONTAL ELLIPSIS}") for t in texts)
-    assert "Conveyor_Motor_Run_Output_Long" not in texts
+    assert "Conveyor_Infeed_Gate_Sol" in texts
+    assert win._card_w > CARD_W
 
 
 # ----------------------------------------------------------------------
@@ -322,7 +324,8 @@ def test_a_linked_input_shows_its_driver_instead_of_a_switch(simulator, ready):
     bench, project, free = win._inputs["X002"], win._inputs["X003"], win._inputs["X001"]
     assert c.itemcget(bench["pill"], "state") == "normal"
     assert c.itemcget(bench["pill_text"], "text") == "Y001"
-    assert c.itemcget(bench["pill"], "fill") == P.LINK_BENCH
+    assert c.itemcget(bench["pill"], "fill") == P.LINK_BENCH_BG
+    assert c.itemcget(bench["pill"], "outline") == P.LINK_BENCH
     assert c.itemcget(bench["track"], "state") == "hidden"
     assert c.itemcget(project["pill"], "fill") == P.LINK
     assert c.itemcget(free["pill"], "state") == "hidden"
@@ -463,3 +466,31 @@ def test_link_dialog_builds_bench_links(tk_root):
     finally:
         if dialog.winfo_exists():
             dialog.destroy()
+
+
+def test_dragging_an_output_onto_an_input_opens_the_link_dialog(simulator, ready, monkeypatch):
+    win = simulator(ready)
+    opened: list = []
+    monkeypatch.setattr(
+        win, "_open_link_dialog", lambda address, **kw: opened.append((address, kw))
+    )
+    target = win._inputs["X002"]
+
+    win._start_link_drag("Y001")
+    win._on_link_drag(SimpleNamespace(x=target["x"] + 100, y=target["cy"]))
+    assert win._link_drag["target"] == "in:X002"
+    assert win._canvas.find_withtag("drag")
+
+    win._on_any_release(None)
+    assert opened == [("X002", {"analog": False, "enable": "Y001"})]
+    assert not win._canvas.find_withtag("drag")
+
+
+def test_a_drag_released_off_an_input_does_nothing(simulator, ready, monkeypatch):
+    win = simulator(ready)
+    opened: list = []
+    monkeypatch.setattr(win, "_open_link_dialog", lambda address, **kw: opened.append(address))
+    win._start_link_drag("Y001")
+    win._on_link_drag(SimpleNamespace(x=2, y=2))
+    win._on_any_release(None)
+    assert opened == []

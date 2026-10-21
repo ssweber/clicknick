@@ -237,7 +237,10 @@ Original plan:
 
 ### Open
 
-- Draw wires on hover/select only, or offer an "always show wiring" toggle?
+- Draw wires on hover/select only, or offer an "always show wiring" toggle? Built: hover only; a wire
+  between terminals on the same card runs through the gutter beside it.
+- Built 2026-10-21: drag from an output onto an input or analog input to open the link dialog with that
+  output filled in.
 
 ## To re-evaluate
 

@@ -49,7 +49,12 @@ HEADER_H = 36
 ROW_H = 24
 ANALOG_ROW_H = 46
 SECTION_H = 18
-CPU_PANEL_H = 100
+#: The faceplate band under every module's header: the CPU's LEDs and mode
+#: switch, an I/O summary on other modules. The same height on every card, so
+#: all modules' INPUTS sections line up.
+FACE_H = 58
+#: One position of the CPU's vertical mode switch.
+MODE_ZONE_H = 16
 BADGE_W = 20
 TICK_MS = 500
 
@@ -59,7 +64,8 @@ _FONT_SMALL = ("Segoe UI", 8)
 _FONT_MONO = ("Consolas", 9)
 _FONT_TITLE = ("Segoe UI", 10, "bold")
 
-_POSITIONS: tuple[SwitchPosition, ...] = ("stop", "step", "run")
+#: Top to bottom, as on the CPU: RUN up, STOP down.
+_POSITIONS: tuple[SwitchPosition, ...] = ("run", "step", "stop")
 _POSITION_COLORS = {"stop": P.MODE_STOP, "step": P.MODE_STEP, "run": P.MODE_RUN}
 
 
@@ -193,7 +199,7 @@ class SimulatorWindow(tk.Toplevel):
         """
         c = self._canvas
         c.create_rectangle(
-            x + 3, y, x + CARD_W - 3, y + height, fill=P.CARD_FACE, outline="", tags=(tag,)
+            x + 3, y, x + self._card_w - 3, y + height, fill=P.CARD_FACE, outline="", tags=(tag,)
         )
         c.tag_bind(tag, "<Button-3>", menu)
 
@@ -202,12 +208,12 @@ class SimulatorWindow(tk.Toplevel):
     ) -> None:
         c = self._canvas
         _round_rect(
-            c, x, y, x + CARD_W, y + height, 9,
+            c, x, y, x + self._card_w, y + height, 9,
             fill=P.CARD_FACE, outline=P.CARD_EDGE, width=2, dash=(4, 3) if dashed else (),
         )  # fmt: skip
-        _round_rect(c, x, y, x + CARD_W, y + HEADER_H, 9, fill=P.CARD_HEADER, outline="")
+        _round_rect(c, x, y, x + self._card_w, y + HEADER_H, 9, fill=P.CARD_HEADER, outline="")
         c.create_rectangle(
-            x, y + HEADER_H - 9, x + CARD_W, y + HEADER_H, fill=P.CARD_HEADER, width=0
+            x, y + HEADER_H - 9, x + self._card_w, y + HEADER_H, fill=P.CARD_HEADER, width=0
         )
         c.create_text(
             x + 10, y + 12, text=title, anchor="w", fill=P.CARD_HEADER_TEXT, font=_FONT_TITLE
@@ -219,7 +225,9 @@ class SimulatorWindow(tk.Toplevel):
     def _section(self, x: float, y: float, label: str) -> float:
         c = self._canvas
         c.create_text(x + 10, y + 9, text=label.upper(), anchor="w", fill=P.MUTED, font=_FONT_SMALL)
-        c.create_line(x + 10, y + SECTION_H - 2, x + CARD_W - 10, y + SECTION_H - 2, fill=P.DIVIDER)
+        c.create_line(
+            x + 10, y + SECTION_H - 2, x + self._card_w - 10, y + SECTION_H - 2, fill=P.DIVIDER
+        )
         return y + SECTION_H
 
     # ------------------------------------------------------------------
@@ -297,7 +305,7 @@ class SimulatorWindow(tk.Toplevel):
             return []
         return [*layout.addresses("output"), *layout.addresses("input")]
 
-    def _open_link_dialog(self, address: str, *, analog: bool) -> None:
+    def _open_link_dialog(self, address: str, *, analog: bool, enable: str | None = None) -> None:
         sim = self._simulation
         current = sim.bench_links.get(address)
         if current is None or current.cut:
@@ -315,7 +323,66 @@ class SimulatorWindow(tk.Toplevel):
             current=current,
             enables=self._enables(),
             on_ok=lambda link: sim.link(address, link, on_error=self._show_action_error),
+            enable=enable,
         )
+
+    def _terminal_center(self, address: str) -> tuple[float, float] | None:
+        """Where the LED of the terminal at *address* is drawn, if it is on the panel."""
+        info = self._outputs.get(address) or self._inputs.get(address)
+        if info is None:
+            return None
+        x0, y0, x1, y1 = self._canvas.coords(info["led"])
+        return (x0 + x1) / 2, (y0 + y1) / 2
+
+    # Drag an output onto an input (or analog input) to link them.
+
+    def _start_link_drag(self, address: str) -> None:
+        start = self._terminal_center(address)
+        if start is not None:
+            self._link_drag = {"source": address, "start": start, "target": None}
+
+    def _link_target_at(self, x: float, y: float, source: str) -> str | None:
+        """The ``in:`` / ``ai:`` row tag under canvas point (x, y), if it can be linked."""
+        c = self._canvas
+        for item in reversed(c.find_overlapping(x, y, x, y)):
+            for tag in c.gettags(item):
+                kind, _, address = tag.partition(":")
+                if kind in ("in", "ai") and address and address != source:
+                    return tag
+        return None
+
+    def _on_link_drag(self, event: tk.Event) -> None:
+        drag = self._link_drag
+        if drag is None:
+            return
+        c = self._canvas
+        c.configure(cursor="crosshair")
+        x, y = c.canvasx(event.x), c.canvasy(event.y)
+        c.delete("drag")
+        target = self._link_target_at(x, y, drag["source"])
+        drag["target"] = target
+        if target is not None:
+            x0, y0, x1, y1 = c.bbox(target)
+            _round_rect(
+                c, x0, y0 - 1, x1, y1 + 1, 6, fill="", outline=P.LINK_BENCH, width=2,
+                tags=("drag",),
+            )  # fmt: skip
+        sx, sy = drag["start"]
+        c.create_oval(sx - 8, sy - 8, sx + 8, sy + 8, outline=P.LINK_BENCH, width=2, tags=("drag",))
+        c.create_line(
+            sx, sy, x, y, fill=P.LINK_BENCH, width=2, dash=(5, 3), arrow=tk.LAST, tags=("drag",)
+        )
+
+    def _end_link_drag(self) -> None:
+        drag, self._link_drag = self._link_drag, None
+        if drag is None:
+            return
+        self._canvas.delete("drag")
+        self._canvas.configure(cursor="")
+        target = drag["target"]
+        if target is not None:
+            kind, _, address = target.partition(":")
+            self._open_link_dialog(address, analog=kind == "ai", enable=drag["source"])
 
     def _show_details(self) -> None:
         detail = self._simulation.error_detail or ""
@@ -489,13 +556,35 @@ class SimulatorWindow(tk.Toplevel):
             command=lambda: self._open_link_dialog(address, analog=analog),
         )
 
-    def _terminal_center(self, address: str) -> tuple[float, float] | None:
-        """Where the LED of the terminal at *address* is drawn, if it is on the panel."""
-        info = self._outputs.get(address) or self._inputs.get(address)
-        if info is None:
-            return None
-        x0, y0, x1, y1 = self._canvas.coords(info["led"])
-        return (x0 + x1) / 2, (y0 + y1) / 2
+    def _wire_points(
+        self,
+        source: dict[str, Any],
+        start: tuple[float, float],
+        target: dict[str, Any],
+        end: tuple[float, float],
+    ) -> list[float]:
+        """A wire that stays in the gaps between cards, clear of the other rows.
+
+        It leaves the source card through the gutter on its left. Within one
+        column it runs straight down that gutter into the chip. To another
+        column it climbs over the source card's top edge, crosses above the
+        cards, and comes down the gutter beside the target: entering its chip
+        from the left, or the end of its row from the right.
+        """
+        (sx, sy), (ex, ey) = start, end
+        tx = target["x"]
+        sg = source.get("x", tx) - 7
+        if source.get("x") == tx:
+            return [sx, sy, sg, sy, sg, ey, ex, ey]
+        over = source["top"] - 8
+        if tx < source["x"]:
+            tg = tx + self._card_w + 7
+            row_end = tx + self._card_w - 2
+            if abs(tg - sg) <= CARD_GAP:  # the next column over: one shared gutter
+                return [sx, sy, sg, sy, sg, ey, row_end, ey]
+            return [sx, sy, sg, sy, sg, over, tg, over, tg, ey, row_end, ey]
+        tg = tx - 7
+        return [sx, sy, sg, sy, sg, over, tg, over, tg, ey, ex, ey]
 
     def _show_wire(self, address: str) -> None:
         """Draw the wire from the driving terminal to *address* while the chip is hovered."""
@@ -509,12 +598,14 @@ class SimulatorWindow(tk.Toplevel):
         if source is None:
             return
         x0, y0, x1, y1 = c.bbox(info["pill"])
-        end = (x0, (y0 + y1) / 2)
+        ex, ey = x0 + 1, (y0 + y1) / 2
         color = P.LINK if link.source == "project" else P.LINK_BENCH
         sx, sy = source
+        source_info = self._outputs.get(link.enable) or self._inputs.get(link.enable) or {}
+        points = self._wire_points(source_info, (sx, sy), info, (ex, ey))
         c.create_oval(sx - 8, sy - 8, sx + 8, sy + 8, outline=color, width=2, tags=("wire",))
         c.create_line(
-            sx, sy, end[0] - 2, end[1], fill=color, width=2, arrow=tk.LAST, smooth=True,
+            *points, fill=color, width=2, arrow=tk.LAST, joinstyle=tk.ROUND,
             dash=() if link.source == "project" else (5, 3), tags=("wire",),
         )  # fmt: skip
 
@@ -577,27 +668,29 @@ class SimulatorWindow(tk.Toplevel):
             x + 38, cy - 4, x + 46, cy + 4, fill=P.LED_OFF, outline=P.LED_RIM, tags=(tag,)
         )
         # Shown instead of the switch while a feedback link drives this input.
+        # Solid for the program's link, dashed outline for a bench link.
         pill = _round_rect(
-            c, x + 4, cy - 8, x + 36, cy + 8, 7, fill=P.LINK, outline="", state="hidden",
+            c, x + 6, cy - 8, x + 36, cy + 8, 7, fill=P.LINK, outline="", state="hidden",
             tags=(tag,),
         )  # fmt: skip
         pill_text = c.create_text(
-            x + 20, cy, text="", fill=P.LINK_TEXT, font=_FONT_SMALL, state="hidden", tags=(tag,)
+            x + 21, cy, text="", fill=P.LINK_TEXT, font=_FONT_SMALL, state="hidden", tags=(tag,)
         )
-        cut = c.create_text(
-            x + CARD_W - 28, cy, text="\N{BLACK SCISSORS}", fill=P.LINK_CUT, font=_FONT,
-            state="hidden", tags=(tag,),
+        # Around the switch while the program's link is cut: the switch stands in for it.
+        cut = _round_rect(
+            c, x + 5, cy - 10, x + 35, cy + 10, 9, fill="", outline=P.LINK_CUT, width=2,
+            dash=(3, 2), state="hidden", tags=(tag,),
         )  # fmt: skip
         self._tooltip_item((pill, pill_text, cut), lambda a=address: self._link_text(a))
         for item in (pill, pill_text):
             c.tag_bind(item, "<Enter>", lambda _e, a=address: self._show_wire(a), add="+")
             c.tag_bind(item, "<Leave>", lambda _e: c.delete("wire"), add="+")
-        self._draw_label(x + 52, cy, address, x + CARD_W - BADGE_W - 10, tag)
-        badge = self._draw_badge(x + CARD_W - 11, cy, tag)
+        self._draw_label(x + 52, cy, address, x + self._card_w - BADGE_W, tag)
+        badge = self._draw_badge(x + self._card_w - 11, cy, tag)
         self._inputs[address] = {
             "track": track, "knob": knob, "bezel": bezel, "cap": cap, "led": led,
             "badge": badge, "pending": pending, "pill": pill, "pill_text": pill_text,
-            "cut": cut, "x": x, "cy": cy,
+            "cut": cut, "x": x, "cy": cy, "top": self._card_top,
         }  # fmt: skip
         c.tag_bind(switch, "<ButtonPress-1>", lambda _e, a=address: self._on_switch_press(a))
         c.tag_bind(switch, "<ButtonRelease-1>", lambda _e, a=address: self._on_switch_release(a))
@@ -615,9 +708,11 @@ class SimulatorWindow(tk.Toplevel):
         led = c.create_oval(
             x + 10, cy - 5, x + 20, cy + 5, fill=P.LED_OFF, outline=P.LED_RIM, tags=(tag,)
         )
-        self._draw_label(x + 26, cy, address, x + CARD_W - BADGE_W, tag)
-        badge = self._draw_badge(x + CARD_W - 11, cy, tag)
-        self._outputs[address] = {"led": led, "badge": badge}
+        self._draw_label(x + 26, cy, address, x + self._card_w - BADGE_W, tag)
+        badge = self._draw_badge(x + self._card_w - 11, cy, tag)
+        self._outputs[address] = {"led": led, "badge": badge, "x": x, "top": self._card_top}
+        self._tooltip_item((led,), lambda: "Drag onto an input to link it.")
+        c.tag_bind(tag, "<ButtonPress-1>", lambda _e, a=address: self._start_link_drag(a))
 
     def _force_analog(self, address: str) -> None:
         current = self._simulation.forces.get(address)
@@ -682,8 +777,8 @@ class SimulatorWindow(tk.Toplevel):
             x, y, tag, lambda e, a=address: self._analog_menu(e, a, linkable=True),
             height=ANALOG_ROW_H,
         )  # fmt: skip
-        self._draw_label(x + 10, y + 11, address, x + CARD_W - BADGE_W, tag)
-        badge = self._draw_badge(x + CARD_W - 11, y + 11, tag)
+        self._draw_label(x + 10, y + 11, address, x + self._card_w - BADGE_W, tag)
+        badge = self._draw_badge(x + self._card_w - 11, y + 11, tag)
         var = tk.StringVar()
         entry = ttk.Entry(c, textvariable=var, width=8, justify="right")
         entry.bind("<Return>", lambda _e, a=address: self._commit_analog(a))
@@ -709,10 +804,10 @@ class SimulatorWindow(tk.Toplevel):
         ranged = not hint.get("rangeDefault", True) and low is not None and high is not None
         if ranged and high > low:
             scale = ttk.Scale(
-                c, from_=low, to=high, orient=tk.HORIZONTAL, length=CARD_W - 96,
+                c, from_=low, to=high, orient=tk.HORIZONTAL, length=self._card_w - 96,
                 command=lambda value, a=address: self._on_slider(a, value),
             )  # fmt: skip
-            c.create_window(x + CARD_W - 8, y + 32, window=scale, anchor="e")
+            c.create_window(x + self._card_w - 8, y + 32, window=scale, anchor="e")
             self._widgets.append(scale)
             info["scale"] = scale
         self._analog_in[address] = info
@@ -729,12 +824,12 @@ class SimulatorWindow(tk.Toplevel):
             return
         tag = f"ao:{address}"
         self._row_target(x, y, tag, lambda e, a=address: self._analog_menu(e, a))
-        self._draw_label(x + 10, cy, address, x + CARD_W - 74, tag)
+        self._draw_label(x + 10, cy, address, x + self._card_w - 74, tag)
         value = c.create_text(
-            x + CARD_W - BADGE_W - 2, cy, text="", anchor="e", fill=P.TEXT, font=_FONT_BOLD,
+            x + self._card_w - BADGE_W - 2, cy, text="", anchor="e", fill=P.TEXT, font=_FONT_BOLD,
             tags=(tag,),
         )  # fmt: skip
-        badge = self._draw_badge(x + CARD_W - 11, cy, tag)
+        badge = self._draw_badge(x + self._card_w - 11, cy, tag)
         self._analog_out[address] = {"value": value, "badge": badge}
 
     # ------------------------------------------------------------------
@@ -742,8 +837,8 @@ class SimulatorWindow(tk.Toplevel):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _card_height(cpu: bool, inputs: int, outputs: int, ai: int, ao: int) -> float:
-        height = HEADER_H + 6 + (CPU_PANEL_H if cpu else 0)
+    def _card_height(inputs: int, outputs: int, ai: int, ao: int) -> float:
+        height = HEADER_H + FACE_H
         for count, row in ((inputs, ROW_H), (outputs, ROW_H), (ai, ANALOG_ROW_H), (ao, ROW_H)):
             if count:
                 height += SECTION_H + count * row
@@ -787,59 +882,92 @@ class SimulatorWindow(tk.Toplevel):
 
     def _module_height(self, card: Card) -> float:
         inputs, outputs, analog_in, analog_out = self._card_parts(card)
-        return self._card_height(
-            card.location == "cpu", len(inputs), len(outputs), len(analog_in), len(analog_out)
-        )
+        return self._card_height(len(inputs), len(outputs), len(analog_in), len(analog_out))
 
     def _on_mode_click(self, event: tk.Event) -> None:
-        sx, _sy, zone = self._mode_zone
-        index = int((self._canvas.canvasx(event.x) - sx) // zone)
+        _sx, sy, zone = self._mode_zone
+        index = int((self._canvas.canvasy(event.y) - sy) // zone)
         if 0 <= index < len(_POSITIONS):
             self._simulation.set_switch_position(_POSITIONS[index])
 
+    def _mode_text(self) -> str:
+        """What the CPU's mode switch is doing, for its tooltip."""
+        sim = self._simulation
+        if not sim.is_ready:
+            return sim.status_text
+        if not sim.run_hint_seen:
+            return "Flip to RUN to start the program, or STEP to scan one at a time."
+        return {
+            "stop": "STOP: the program is stopped and outputs are off.",
+            "step": "STEP: scans advance only when you step.",
+            "run": f"RUN: running at {sim.speed_text}.",
+        }[sim.switch_position]
+
     def _draw_cpu_panel(self, x: float, y: float) -> None:
+        """The CPU's faceplate: PWR/RUN/ERR LEDs, then the vertical RUN / STEP / STOP switch."""
         c = self._canvas
         for i, name in enumerate(("PWR", "RUN", "ERR")):
-            lx = x + 12 + i * 54
+            ly = y + 8 + i * MODE_ZONE_H
             self._cpu_leds[name] = c.create_oval(
-                lx, y + 4, lx + 10, y + 14, fill=P.LED_OFF, outline=P.LED_RIM
+                x + 12, ly, x + 22, ly + 10, fill=P.LED_OFF, outline=P.LED_RIM
             )
-            c.create_text(lx + 15, y + 9, text=name, anchor="w", fill=P.TEXT, font=_FONT_SMALL)
+            c.create_text(x + 27, ly + 5, text=name, anchor="w", fill=P.TEXT, font=_FONT_SMALL)
 
-        # The three-position mode switch: STOP | STEP | RUN.
-        sx, sy = x + 10, y + 24
-        zone = (CARD_W - 20) / 3
+        sx, sy, zone = x + 74, y + 5, MODE_ZONE_H
+        height = len(_POSITIONS) * zone
         self._mode_hint = _round_rect(
-            c, sx - 4, sy - 4, sx + 3 * zone + 4, sy + 30, 9, fill="", outline="", width=3
+            c, sx - 5, sy - 4, sx + 74, sy + height + 4, 8, fill="", outline="", width=3
         )
-        _round_rect(
-            c, sx, sy, sx + 3 * zone, sy + 26, 8, fill=P.SWITCH_OFF, outline="", tags=("mode",)
+        slot = _round_rect(
+            c, sx, sy, sx + 24, sy + height, 7, fill=P.SWITCH_OFF, outline="", tags=("mode",)
         )
         self._mode_knob = _round_rect(
-            c, sx + 2, sy + 2, sx + zone - 2, sy + 24, 7, fill=P.MODE_STOP, outline="",
+            c, sx + 2, sy + 2, sx + 22, sy + zone - 2, 6, fill=P.MODE_STOP, outline="",
             tags=("mode",),
         )  # fmt: skip
         self._mode_zone = (sx, sy, zone)
+        items = [slot, self._mode_knob]
         for i, position in enumerate(_POSITIONS):
             self._mode_labels[position] = c.create_text(
-                sx + (i + 0.5) * zone, sy + 13, text=SWITCH_LABELS[position], fill=P.TEXT,
-                font=_FONT_BOLD, tags=("mode",),
+                sx + 31, sy + (i + 0.5) * zone, text=SWITCH_LABELS[position], anchor="w",
+                fill=P.TEXT, font=_FONT_BOLD, tags=("mode",),
             )  # fmt: skip
+            items.append(self._mode_labels[position])
         c.tag_bind("mode", "<Button-1>", self._on_mode_click)
         c.tag_bind("mode", "<Enter>", lambda _e: c.configure(cursor="hand2"))
         c.tag_bind("mode", "<Leave>", lambda _e: c.configure(cursor=""))
-        self._mode_caption = c.create_text(
-            x + 10, y + 60, text="", anchor="nw", fill=P.MUTED, font=_FONT_SMALL, width=CARD_W - 20
-        )
+        self._tooltip_item(tuple(items), self._mode_text)
+
+    def _draw_face_summary(
+        self, x: float, y: float, inputs: int, outputs: int, ai: int, ao: int
+    ) -> None:
+        """A non-CPU module's faceplate: what it carries."""
+        parts = [
+            f"{count} {label}"
+            for count, label in (
+                (inputs, "inputs"),
+                (outputs, "outputs"),
+                (ai, "analog in"),
+                (ao, "analog out"),
+            )
+            if count
+        ]
+        self._canvas.create_text(
+            x + 10, y + 12, text=" \N{MIDDLE DOT} ".join(parts), anchor="w", fill=P.MUTED,
+            font=_FONT_SMALL,
+        )  # fmt: skip
 
     def _draw_card(self, x: float, y: float, card: Card) -> None:
         inputs, outputs, analog_in, analog_out = self._card_parts(card)
         self._draw_card_frame(x, y, self._module_height(card), card.title, card.model)
-        top = y + HEADER_H + 6
+        self._card_top = y
         if card.location == "cpu":
-            self._draw_cpu_panel(x, top)
-            top += CPU_PANEL_H
-        self._draw_rows(x, top, inputs, outputs, analog_in, analog_out)
+            self._draw_cpu_panel(x, y + HEADER_H)
+        else:
+            self._draw_face_summary(
+                x, y + HEADER_H, len(inputs), len(outputs), len(analog_in), len(analog_out)
+            )
+        self._draw_rows(x, y + HEADER_H + FACE_H, inputs, outputs, analog_in, analog_out)
 
     def _placeholder_text(self) -> str:
         text = (
@@ -857,16 +985,18 @@ class SimulatorWindow(tk.Toplevel):
         self._draw_card_frame(x, y, self._placeholder_height(), "No CPU", "System Configuration")
         self._canvas.create_text(
             x + 10, y + HEADER_H + 10, text=self._placeholder_text(), anchor="nw", fill=P.TEXT,
-            font=_FONT_SMALL, width=CARD_W - 20,
+            font=_FONT_SMALL, width=self._card_w - 20,
         )  # fmt: skip
 
     def _draw_unassigned(self, x: float, y: float, layout: PanelLayout) -> None:
         inputs, outputs = layout.unassigned_inputs, layout.unassigned_outputs
-        height = self._card_height(False, len(inputs), len(outputs), 0, 0)
+        height = self._card_height(len(inputs), len(outputs), 0, 0)
         self._draw_card_frame(
             x, y, height, "Unassigned I/O", "Used, not on any module", dashed=True
         )
-        self._draw_rows(x, y + HEADER_H + 6, inputs, outputs, (), ())
+        self._card_top = y
+        self._draw_face_summary(x, y + HEADER_H, len(inputs), len(outputs), 0, 0)
+        self._draw_rows(x, y + HEADER_H + FACE_H, inputs, outputs, (), ())
 
     def _draw_rail(self, x0: float, x1: float, y: float) -> None:
         """A DIN rail running behind a row of installed modules (visible in the gaps)."""
@@ -879,11 +1009,31 @@ class SimulatorWindow(tk.Toplevel):
         for item in reversed(items):
             c.tag_lower(item)
 
+    def _fit_card_width(self, layout: PanelLayout | None) -> float:
+        """A card width that shows every nickname on the panel in full.
+
+        CLICK nicknames run to 24 characters; cards widen only as far as the
+        longest one present needs, so short names keep the rack compact.
+        """
+        width = float(CARD_W)
+        if layout is None:
+            return width
+        # Where each kind of row starts its label, and what sits right of the nickname.
+        rows = (("input", 52, BADGE_W), ("output", 26, BADGE_W), ("analog_in", 10, BADGE_W),
+                ("analog_out", 10, 74))  # fmt: skip
+        for kind, start, right in rows:
+            for address in layout.addresses(kind):
+                nickname = self._names(address)[0]
+                if nickname:
+                    label = self._mono.measure(address) + 5 + self._font.measure(nickname)
+                    width = max(width, start + label + right + 4)
+        return float(width)
+
     def _per_row(self) -> int:
         width = self._canvas.winfo_width()
         if width <= 1:  # not laid out yet
             width = self._requested_width
-        return max(1, int((width - 2 * MARGIN + CARD_GAP) // (CARD_W + CARD_GAP)))
+        return max(1, int((width - 2 * MARGIN + CARD_GAP) // (self._card_w + CARD_GAP)))
 
     # ------------------------------------------------------------------
     # Live updates (no redraw)
@@ -899,9 +1049,15 @@ class SimulatorWindow(tk.Toplevel):
             c.itemconfigure(info["pill"], state="hidden")
             c.itemconfigure(info["pill_text"], state="hidden")
             return
-        color = P.LINK if link.source == "project" else P.LINK_BENCH
-        c.itemconfigure(info["pill"], fill=color, state="normal")
-        c.itemconfigure(info["pill_text"], text=link.enable, state="normal")
+        if link.source == "project":
+            c.itemconfigure(info["pill"], fill=P.LINK, outline="", dash=(), state="normal")
+            c.itemconfigure(info["pill_text"], text=link.enable, fill=P.LINK_TEXT, state="normal")
+        else:
+            c.itemconfigure(
+                info["pill"], fill=P.LINK_BENCH_BG, outline=P.LINK_BENCH, dash=(3, 2),
+                state="normal",
+            )  # fmt: skip
+            c.itemconfigure(info["pill_text"], text=link.enable, fill=P.LINK_BENCH, state="normal")
 
     def _refresh_inputs(self, values: dict, forces: dict, pending: dict) -> None:
         c = self._canvas
@@ -961,10 +1117,10 @@ class SimulatorWindow(tk.Toplevel):
                     info["scale"].state(["disabled"] if link else ["!disabled"])
             if link is not None:
                 color = P.LINK if link.source == "project" else P.LINK_BENCH
+                kind = (link.profile or "delay").partition(":")[0]
                 c.itemconfigure(
-                    info["live"], text=f"\N{LEFTWARDS ARROW} {link.enable}  {_value_text(live)}",
-                    fill=color,
-                )  # fmt: skip
+                    info["live"], text=f"\N{LEFTWARDS ARROW} {link.enable} {kind}", fill=color
+                )
                 info["var"].set(_value_text(live) if live is not None else "")
                 self._show_badge(info["badge"], address in forces)
                 continue
@@ -994,27 +1150,16 @@ class SimulatorWindow(tk.Toplevel):
         c.itemconfigure(self._cpu_leds["ERR"], fill=P.LED_ERR if failed else P.LED_OFF)
 
         sx, sy, zone = self._mode_zone
-        kx = sx + _POSITIONS.index(position) * zone
-        c.coords(self._mode_knob, *_rounded_points(kx + 2, sy + 2, kx + zone - 2, sy + 24, 7))
+        ky = sy + _POSITIONS.index(position) * zone
+        c.coords(self._mode_knob, *_rounded_points(sx + 2, ky + 2, sx + 22, ky + zone - 2, 6))
         c.itemconfigure(self._mode_knob, fill=_POSITION_COLORS[position] if ready else P.LED_OFF)
         for pos, label in self._mode_labels.items():
-            c.itemconfigure(label, fill="#ffffff" if pos == position else P.TEXT)
+            color = _POSITION_COLORS[pos] if ready and pos == position else P.MUTED
+            c.itemconfigure(label, fill=color)
 
         hint = ready and not sim.run_hint_seen
         if self._mode_hint is not None:
             c.itemconfigure(self._mode_hint, outline=P.HINT if hint and self._blink else "")
-        if self._mode_caption is not None:
-            if not ready:
-                caption = sim.status_text
-            elif hint:
-                caption = "Flip to RUN to start the program, or STEP to scan one at a time."
-            else:
-                caption = {
-                    "stop": "Stopped. Outputs are off.",
-                    "step": "Scans advance only when you step.",
-                    "run": f"Running at {sim.speed_text}.",
-                }[position]
-            c.itemconfigure(self._mode_caption, text=caption)
 
     # ------------------------------------------------------------------
     # Toolbar and banners
@@ -1027,7 +1172,11 @@ class SimulatorWindow(tk.Toplevel):
         scan = sim.scan_id
         # The mode itself is on the CPU switch; this line says who moved it,
         # or what the simulation is doing while it is not running.
-        self._status_var.set(sim.source_text if ready else sim.status_text)
+        if ready and not sim.run_hint_seen:
+            status = "Flip the CPU to RUN to start."
+        else:
+            status = sim.source_text if ready else sim.status_text
+        self._status_var.set(status)
         self._scan_var.set(f"Scan {scan}" if ready and scan is not None else "")
         self._modbus_var.set(sim.modbus_text)
 
@@ -1077,10 +1226,10 @@ class SimulatorWindow(tk.Toplevel):
         self._mode_labels.clear()
         self._mode_knob = None
         self._mode_hint = None
-        self._mode_caption = None
 
         # Everything to draw, in rack order: (height, draw(x, y), sits on the rail).
         layout = self._simulation.layout
+        self._card_w = self._fit_card_width(layout)
         pieces: list[tuple[float, Callable[[float, float], None], bool]] = []
         if layout is None or not layout.has_cpu:
             pieces.append((self._placeholder_height(), self._draw_placeholder, False))
@@ -1093,7 +1242,7 @@ class SimulatorWindow(tk.Toplevel):
                 n_in, n_out = len(layout.unassigned_inputs), len(layout.unassigned_outputs)
                 pieces.append(
                     (
-                        self._card_height(False, n_in, n_out, 0, 0),
+                        self._card_height(n_in, n_out, 0, 0),
                         lambda x, y: self._draw_unassigned(x, y, layout),
                         False,
                     )
@@ -1111,8 +1260,8 @@ class SimulatorWindow(tk.Toplevel):
             for _height, draw, on_rail in row:
                 draw(x, y)
                 if on_rail:
-                    rail.extend((x, x + CARD_W))
-                x += CARD_W + CARD_GAP
+                    rail.extend((x, x + self._card_w))
+                x += self._card_w + CARD_GAP
             if rail:
                 self._draw_rail(min(rail) - 6, max(rail) + 6, y + 70)
             widest = max(widest, x)
@@ -1190,6 +1339,7 @@ class SimulatorWindow(tk.Toplevel):
             held, self._held = self._held, None
             self._simulation.release_input(held)
         self._dragging = False
+        self._end_link_drag()
 
     def _on_speed_selected(self, _event: object = None) -> None:
         text = self._speed_var.get()
@@ -1361,6 +1511,7 @@ class SimulatorWindow(tk.Toplevel):
         ybar.pack(side=tk.RIGHT, fill=tk.Y)
         self._canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self._canvas.bind("<ButtonRelease-1>", self._on_any_release, add="+")
+        self._canvas.bind("<B1-Motion>", self._on_link_drag, add="+")
         self._canvas.bind("<Configure>", self._on_canvas_resized, add="+")
         self._canvas.bind(
             "<MouseWheel>", lambda e: self._canvas.yview_scroll(-1 * (e.delta // 120), "units")
@@ -1412,10 +1563,13 @@ class SimulatorWindow(tk.Toplevel):
 
         self.title(f"Simulator — {title_suffix}" if title_suffix else "Simulator")
         self._requested_width = 1180
+        self._card_w = float(CARD_W)
+        self._card_top = 0.0
         self.geometry(f"{self._requested_width}x720")
         self.minsize(480, 360)
 
         self._font = tkfont.Font(self, font=_FONT)
+        self._mono = tkfont.Font(self, font=_FONT_MONO)
         self._inputs: dict[str, dict[str, Any]] = {}
         self._outputs: dict[str, dict[str, Any]] = {}
         self._analog_in: dict[str, dict[str, Any]] = {}
@@ -1424,10 +1578,10 @@ class SimulatorWindow(tk.Toplevel):
         self._mode_labels: dict[str, int] = {}
         self._mode_knob: int | None = None
         self._mode_hint: int | None = None
-        self._mode_caption: int | None = None
         self._mode_zone: tuple[float, float, float] = (0, 0, 0)
         self._widgets: list[tk.Widget] = []
         self._held: str | None = None
+        self._link_drag: dict[str, Any] | None = None
         self._dragging = False
         self._blink = False
         self._speed_box_focused = False

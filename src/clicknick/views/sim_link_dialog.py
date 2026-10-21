@@ -78,7 +78,9 @@ class LinkDialog(tk.Toplevel):
         current: BenchLink | None,
         enables: Sequence[str],
         on_ok: Callable[[BenchLink], None],
+        enable: str | None = None,
     ) -> None:
+        """*enable* pre-fills the driver (an output dragged onto the input)."""
         super().__init__(parent)
         self.title(f"Link {feedback}")
         self.transient(parent.winfo_toplevel())
@@ -101,7 +103,7 @@ class LinkDialog(tk.Toplevel):
         if current is None:
             first, second = _DEFAULTS[kind]
 
-        self._enable_var = tk.StringVar(value=current.enable or "" if current else "")
+        self._enable_var = tk.StringVar(value=enable or (current.enable or "" if current else ""))
         trigger = current.trigger if current is not None else None
         self._trigger_var = tk.StringVar(value="" if trigger is None else str(trigger))
         self._kind_var = tk.StringVar(value=kind)
@@ -113,8 +115,10 @@ class LinkDialog(tk.Toplevel):
         body.columnconfigure(1, weight=1)
 
         ttk.Label(body, text="Driven by").grid(row=0, column=0, sticky="w", pady=2)
-        enable = ttk.Combobox(body, textvariable=self._enable_var, values=list(enables), width=14)
-        enable.grid(row=0, column=1, sticky="we", pady=2)
+        enable_box = ttk.Combobox(
+            body, textvariable=self._enable_var, values=list(enables), width=14
+        )
+        enable_box.grid(row=0, column=1, sticky="we", pady=2)
         ttk.Label(body, text="When it equals").grid(row=1, column=0, sticky="w", pady=2)
         ttk.Entry(body, textvariable=self._trigger_var, width=10).grid(
             row=1, column=1, sticky="w", pady=2
@@ -133,9 +137,8 @@ class LinkDialog(tk.Toplevel):
 
         self._first_label = ttk.Label(body)
         self._first_label.grid(row=3, column=0, sticky="w", pady=2)
-        ttk.Entry(body, textvariable=self._first_var, width=12).grid(
-            row=3, column=1, sticky="w", pady=2
-        )
+        first_entry = ttk.Entry(body, textvariable=self._first_var, width=12)
+        first_entry.grid(row=3, column=1, sticky="w", pady=2)
         self._second_label = ttk.Label(body)
         self._second_label.grid(row=4, column=0, sticky="w", pady=2)
         ttk.Entry(body, textvariable=self._second_var, width=12).grid(
@@ -156,7 +159,11 @@ class LinkDialog(tk.Toplevel):
         self.bind("<Escape>", lambda _e: self.destroy())
 
         self._on_kind_changed(reset=False)
-        enable.focus_set()
+        if enable:
+            first_entry.focus_set()
+            first_entry.select_range(0, tk.END)
+        else:
+            enable_box.focus_set()
         self.grab_set()
 
     def build(self) -> BenchLink:
