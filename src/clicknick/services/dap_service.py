@@ -10,13 +10,12 @@ from __future__ import annotations
 import enum
 import json
 import subprocess
-import sys
 import threading
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from .project_workspace import project_environment
+from .project_workspace import NO_WINDOW, headless_python, project_environment
 
 
 class DapRequestError(RuntimeError):
@@ -515,12 +514,13 @@ class DapService:
         self._set_state(SimState.LAUNCHING)
 
         self._proc = subprocess.Popen(
-            [sys.executable, "-m", "pyrung.dap"],
+            [headless_python(), "-m", "pyrung.dap"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             cwd=str(project_dir),
             env=project_environment(project_dir),
+            creationflags=NO_WINDOW,
         )
 
         self._stderr_lines.clear()

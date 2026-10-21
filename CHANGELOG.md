@@ -24,6 +24,7 @@
 
 ### Fixed
 
+- Check Program, Preview Changes and the simulation no longer leave Windows' busy cursor up for a few seconds when they start their background Python process.
 - Undo, Discard, and edits that create or resolve a duplicate nickname or block name now update the error marks on every affected row, so Sync is no longer blocked by a stale "Duplicate".
 - Rows no longer show as unsaved after CLICK saves the value you typed, Sync and Discard clear the undo history, and changes CLICK writes right after a Sync are no longer missed.
 - An edit that fails partway, such as an AI tag apply, now changes nothing.

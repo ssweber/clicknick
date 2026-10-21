@@ -535,7 +535,8 @@ def scan_sources(
             }:
                 target = first_argv_element(node, scopes.get(id(node), tree))
                 subprocess_targets.append((f"{loc}:{node.lineno}", target))
-                if target not in {"sys.executable", "str(powershell_path())"}:
+                # headless_python() is the same install's python.exe beside pythonw.exe.
+                if target not in {"sys.executable", "headless_python()", "str(powershell_path())"}:
                     bad_subprocess.append(f"{loc}:{node.lineno} -> {target}")
             if short in {"Listener", "bind"} and node.args:
                 addr = node.args[0]
@@ -610,7 +611,8 @@ def scan_sources(
             not bad_subprocess,
             "; ".join(bad_subprocess)
             if bad_subprocess
-            else f"{len(subprocess_targets)} launch sites, all sys.executable or powershell_path()",
+            else f"{len(subprocess_targets)} launch sites, all sys.executable, headless_python() "
+            "(its console twin) or powershell_path()",
         )
     )
     checks.append(

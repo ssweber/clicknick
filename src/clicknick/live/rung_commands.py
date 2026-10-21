@@ -10,7 +10,6 @@ import ast
 import difflib
 import json
 import re
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -18,7 +17,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .dispatch import DispatchContext
 
-from ..services.project_workspace import plc_source_dir, project_environment
+from ..services.project_workspace import (
+    NO_WINDOW,
+    headless_python,
+    plc_source_dir,
+    project_environment,
+)
 
 _SUBROUTINE_NAME_RE = re.compile(r'@subroutine\("([^"]+)"\)')
 _COMMENT_SUMMARY_LIMIT = 88
@@ -815,9 +819,10 @@ def _run_export(project_dir: Path) -> Path:
         raise ValueError("project_to_csv.py not found in project directory")
 
     result = subprocess.run(
-        [sys.executable, str(script)],
+        [headless_python(), str(script)],
         cwd=str(project_dir),
         env=project_environment(project_dir),
+        creationflags=NO_WINDOW,
         capture_output=True,
         text=True,
         timeout=60,

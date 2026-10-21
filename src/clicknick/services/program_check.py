@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import subprocess
-import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .project_workspace import project_environment
+from .project_workspace import NO_WINDOW, headless_python, project_environment
 
 if TYPE_CHECKING:
     from pyrung.core.validation import FindingDisplay, ValidationReport
@@ -87,9 +86,10 @@ def run_project_check(project_dir: Path) -> str:
         raise ValueError("src/plc/main.py not found in project directory")
 
     result = subprocess.run(
-        [sys.executable, "-m", "clicknick.services.program_check", "--worker"],
+        [headless_python(), "-m", "clicknick.services.program_check", "--worker"],
         cwd=str(project_dir),
         env=project_environment(project_dir),
+        creationflags=NO_WINDOW,
         capture_output=True,
         text=True,
         timeout=60,

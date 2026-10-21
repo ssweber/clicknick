@@ -6,6 +6,8 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 PLC_PACKAGE_PATH = Path("src") / "plc"
@@ -137,6 +139,27 @@ def restore_plc_source(project_dir: Path) -> tuple[Path, int]:
         raise ValueError("no source backup found; run 'clicknick-cli backup' first")
     destination = plc_source_dir(project_dir)
     return source, _replace_tree(source, destination)
+
+
+#: Creation flags for ClickNick's Python children: no console window.
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def headless_python() -> str:
+    """The interpreter for ClickNick's own Python children (the simulation, checks, exports).
+
+    Started from the ``clicknick`` GUI launcher, ``sys.executable`` is the venv's
+    pythonw.exe: a stub that starts the real interpreter as a second process, and
+    Windows shows its busy cursor for that GUI start until a window appears, which
+    never happens. The console python.exe, started with ``NO_WINDOW``, shows
+    neither a window nor the busy cursor.
+    """
+    exe = Path(sys.executable)
+    if exe.name.lower() == "pythonw.exe":
+        console = exe.with_name("python.exe")
+        if console.is_file():
+            return str(console)
+    return str(exe)
 
 
 def project_environment(project_dir: Path) -> dict[str, str]:

@@ -13,6 +13,7 @@ from clicknick.live.rung_commands import (
 )
 from clicknick.services.project_workspace import (
     backup_plc_source,
+    headless_python,
     project_environment,
     restore_plc_source,
 )
@@ -47,6 +48,20 @@ def test_project_environment_prepends_src_to_pythonpath(tmp_path: Path, monkeypa
     env = project_environment(tmp_path)
 
     assert env["PYTHONPATH"] == os.pathsep.join((str(tmp_path / "src"), "existing"))
+
+
+def test_children_use_the_console_interpreter_under_the_gui_launcher(tmp_path: Path, monkeypatch):
+    import sys
+
+    (tmp_path / "pythonw.exe").write_bytes(b"")
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "pythonw.exe"))
+    assert headless_python() == str(tmp_path / "pythonw.exe"), "no python.exe beside it"
+
+    (tmp_path / "python.exe").write_bytes(b"")
+    assert headless_python() == str(tmp_path / "python.exe")
+
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "python.exe"))
+    assert headless_python() == str(tmp_path / "python.exe")
 
 
 def test_backup_and_restore_replace_the_complete_plc_tree(tmp_path: Path):
