@@ -126,6 +126,11 @@ def address_sort_key(address: str) -> tuple[str, int]:
         return (address, 0)
 
 
+#: CLICK's generated module status bits (_IO1_Module_Error, _IO1_CH1_Burnout, ...) sit in
+#: X addresses but are not terminals, so they never count as used I/O.
+MODULE_STATUS_PREFIX = "_IO"
+
+
 def io_addresses(addr_keys: Iterable[int]) -> set[str]:
     """X and Y display addresses among *addr_keys*."""
     found: set[str] = set()

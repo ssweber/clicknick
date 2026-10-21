@@ -803,9 +803,15 @@ def test_layout_lists_unassigned_io_the_program_uses(ready):
     from pyclickplc.addresses import get_addr_key
 
     ready.analysis._result.tag_to_addr_key.update(
-        {"Aux": get_addr_key("X", 201), "Lamp": get_addr_key("Y", 1)}
+        {
+            "Aux": get_addr_key("X", 201),
+            "Lamp": get_addr_key("Y", 1),
+            "_IO1_Module_Error": get_addr_key("X", 101),  # module status, not a terminal
+        }
     )
-    ready.analysis._result.graph.tag_roles.update({"Aux": None, "Lamp": None})
+    ready.analysis._result.graph.tag_roles.update(
+        {"Aux": None, "Lamp": None, "_IO1_Module_Error": None}
+    )
     ready.open()
     ready.sim.refresh_layout(force=True)
     assert ready.sim.layout is not None

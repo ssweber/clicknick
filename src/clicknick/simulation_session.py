@@ -37,7 +37,12 @@ from pyclickplc.addresses import (
     parse_address,
 )
 
-from .services.sim_hardware import PanelLayout, build_panel_layout, io_addresses
+from .services.sim_hardware import (
+    MODULE_STATUS_PREFIX,
+    PanelLayout,
+    build_panel_layout,
+    io_addresses,
+)
 from .services.sim_state import (
     BenchLink,
     RestoreResult,
@@ -1723,7 +1728,9 @@ class SimulationSession:
             return set()
         tag_to_key = analysis.tag_to_addr_key
         return io_addresses(
-            tag_to_key[tag] for tag in analysis.known_tag_names() if tag in tag_to_key
+            tag_to_key[tag]
+            for tag in analysis.known_tag_names()
+            if tag in tag_to_key and not tag.startswith(MODULE_STATUS_PREFIX)
         )
 
     def _apply_restore(self, layout: PanelLayout) -> None:
