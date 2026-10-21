@@ -24,6 +24,7 @@ from .utils.filters import (  # preserve lru_cache
 from .utils.mdb_shared import find_fallback_csv
 from .views.dialogs import AboutDialog, CsvFallbackDialog, OdbcWarningDialog
 from .views.overlay import Overlay
+from .widgets.tooltip import bind_tooltip
 
 if TYPE_CHECKING:
     from typing import Self
@@ -187,12 +188,12 @@ class ClickNickApp:
         return title
 
     def _simulation_summary(self) -> tuple[str, str]:
-        """Main-window status text and the toggle's label."""
+        """The Test group's legend and its simulation button's label."""
         session = self._session
         simulation = session.simulation if session is not None else None
         if simulation is None or not simulation.enabled:
-            return "Simulation: Off", "Start"
-        return f"Simulation: {simulation.summary_text}", "Stop"
+            return "Test - Sim off", "Start"
+        return f"Test - Sim {simulation.summary_text}", "Stop"
 
     def _refresh_ui(self) -> None:
         """Bring the title and status/details variables up to date (no widget rebuilds)."""
@@ -241,8 +242,8 @@ class ClickNickApp:
 
         info = self._get_workspace_directory_info()
         self.plc_name_var.set(self._current_plc_name() or "Not available")
-        simulation_status, simulation_action = self._simulation_summary()
-        self.simulation_status_var.set(simulation_status)
+        test_title, simulation_action = self._simulation_summary()
+        self.test_group_title_var.set(test_title)
         self.simulation_action_var.set(simulation_action)
         self.generated_dir_var.set(
             str(info.generated_dir) if info.generated_dir else "Not available"
@@ -293,7 +294,7 @@ class ClickNickApp:
         self.generated_dir_var = tk.StringVar(value="Not available")
         self.workspace_config_path_var = tk.StringVar(value="Not configured")
         self.plc_name_var = tk.StringVar(value="Not available")
-        self.simulation_status_var = tk.StringVar(value="Simulation: Off")
+        self.test_group_title_var = tk.StringVar(value="Test - Sim off")
         self.simulation_action_var = tk.StringVar(value="Start")
         self.last_regenerated_var = tk.StringVar(value="Not available")
         self.last_backup_var = tk.StringVar(value="Not available")
@@ -604,7 +605,7 @@ class ClickNickApp:
     def _simulation_for_window(self, title: str, purpose: str):
         """Check the project can be simulated and return its SimulationSession.
 
-        For the Simulator and the Simulation switch: the project must be saved,
+        For the Simulator and the Test group's Start button: the project must be saved,
         and a conversion that already failed will not fix itself by opening
         a window -- say so up front rather than showing an inert one.
         """
@@ -644,7 +645,7 @@ class ClickNickApp:
         return simulation
 
     def _toggle_simulation(self) -> None:
-        """Main-window Simulation switch: the only control (besides teardown) that stops it."""
+        """The Test group's Start/Stop: the only control (besides teardown) that stops it."""
         session = self._session
         simulation = session.simulation if session is not None else None
         if simulation is not None and simulation.enabled:
@@ -1317,10 +1318,27 @@ class ClickNickApp:
         ).pack(fill=tk.X)
 
         test = ttk.LabelFrame(actions, padding=10)
+        # Like Workspace: the legend carries the state, with its control beside it.
+        # The simulation runs headless until stopped here (or the project closes);
+        # closing the Simulator leaves it running.
         test_header = ttk.Frame(test)
-        ttk.Label(test_header, text="Test").pack(side=tk.LEFT)
+        ttk.Label(test_header, textvariable=self.test_group_title_var).pack(side=tk.LEFT)
         test_header_spacer = ttk.Frame(test_header, width=1, height=1)
         test_header_spacer.pack(side=tk.LEFT)
+        # Flat, like Workspace's Options, so the legends stay the same height.
+        simulation_button = ttk.Button(
+            test_header,
+            textvariable=self.simulation_action_var,
+            style="Toolbutton",
+            cursor="hand2",
+            command=self._toggle_simulation,
+        )
+        simulation_button.pack(side=tk.LEFT, padx=(8, 0))
+        bind_tooltip(
+            simulation_button,
+            "Start or stop the simulated PLC. It keeps running after the\n"
+            "Simulator closes, so a Data View or HMI can stay connected.",
+        )
         test.configure(labelwidget=test_header)
         ttk.Button(
             test,
@@ -1337,19 +1355,6 @@ class ClickNickApp:
             compound=tk.LEFT,
             command=self._open_simulator,
         ).pack(fill=tk.X)
-        # The simulation runs headless until stopped here (or the project closes);
-        # closing the Simulator leaves it running.
-        simulation_row = ttk.Frame(test)
-        ttk.Label(
-            simulation_row, textvariable=self.simulation_status_var, style="Status.TLabel"
-        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Button(
-            simulation_row,
-            textvariable=self.simulation_action_var,
-            width=6,
-            command=self._toggle_simulation,
-        ).pack(side=tk.RIGHT)
-        simulation_row.pack(fill=tk.X, pady=(8, 0))
 
         workspace = ttk.LabelFrame(actions, padding=10)
         workspace_header = ttk.Frame(workspace)

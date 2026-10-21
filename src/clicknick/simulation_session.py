@@ -520,17 +520,17 @@ class SimulationSession:
 
     @property
     def summary_text(self) -> str:
-        """One word or so for the main window: ``"On (Modbus :502)"``, ``"Off"``..."""
+        """A word or two for the main window's Test legend: ``"on :502"``, ``"off"``..."""
         if not self._enabled:
-            return "Off"
+            return "off"
         if self._status is SimStatus.FAILED:
-            return "On (not running, see Simulator)"
+            return "failed"
         if not self.is_ready:
-            return "Starting..."
+            return "starting"
         if self.modbus_available:
             port = self._modbus_info.get("port") or self._state.modbus_port
-            return f"On (Modbus :{port})"
-        return "On"
+            return f"on :{port}"
+        return "on"
 
     @property
     def values(self) -> dict[str, PlcValue]:

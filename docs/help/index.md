@@ -17,7 +17,7 @@ Right-click a point on the Simulator to ask about it: **Why is it ON?** on any i
 
 The simulation starts from power-on defaults. To start from the controller's live values instead, save a data dump in CLICK with **PLC > Read Data from PLC > All > Save**, then pick that file with **PLC Data...** in the Simulator, which also sets the switches and analog values from it. This is not the nickname CSV. The simulation reloads whenever the file changes.
 
-The simulation keeps running after you close the Simulator, so a Data View or HMI can stay connected. Stop it with **Stop** on the Simulation line in the main window. If another program already uses Modbus port 502, the Simulator offers **Change port...**.
+The simulation keeps running after you close the Simulator, so a Data View or HMI can stay connected. Stop it with **Stop** beside the Test heading in the main window, which also shows whether it is running (**Test - Sim on :502**). If another program already uses Modbus port 502, the Simulator offers **Change port...**.
 
 ## Workspaces
 

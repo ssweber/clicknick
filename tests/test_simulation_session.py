@@ -436,12 +436,12 @@ def test_retry_rebuilds_and_launches(tmp_path):
 def test_nothing_starts_until_turned_on(ready):
     assert not ready.sim.enabled
     assert ready.daps == []
-    assert ready.sim.summary_text == "Off"
+    assert ready.sim.summary_text == "off"
 
 
 def test_turning_off_stops_the_simulation_and_turning_on_again_relaunches(ready):
     ready.open()
-    assert ready.sim.summary_text == "On (Modbus :502)"
+    assert ready.sim.summary_text == "on :502"
     ready.sim.turn_off()
     assert ("terminate",) in ready.dap.calls
     assert ready.sim.status is SimStatus.IDLE
