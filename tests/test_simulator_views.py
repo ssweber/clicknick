@@ -554,3 +554,93 @@ def test_a_drag_released_off_an_input_does_nothing(simulator, ready, monkeypatch
     win._on_link_drag(SimpleNamespace(x=2, y=2))
     win._on_any_release(None)
     assert opened == []
+
+
+# ----------------------------------------------------------------------
+# Questions in the console, echo, countdowns
+# ----------------------------------------------------------------------
+
+
+def _labels_of(menu) -> list[str]:
+    end = menu.index("end")
+    return [
+        menu.entrycget(i, "label")
+        for i in range(0 if end is None else end + 1)
+        if menu.type(i) not in ("separator", "tearoff")
+    ]
+
+
+def _popup_menu(win, monkeypatch, open_menu):
+    """The menu *open_menu* builds, captured instead of posted."""
+    shown = []
+    monkeypatch.setattr(tk.Menu, "tk_popup", lambda self, *_a: shown.append(self))
+    open_menu()
+    return shown[-1]
+
+
+def test_output_menu_asks_the_console_why(simulator, ready, monkeypatch):
+    win = simulator(ready)
+    event = SimpleNamespace(x_root=0, y_root=0)
+    menu = _popup_menu(win, monkeypatch, lambda: win._output_menu(event, "Y001"))
+    labels = _labels_of(menu)
+    assert labels[:3] == ["Why?", "Show simplified logic", "How (experimental)"]
+
+    win._toggle_console()  # hidden: asking shows it again
+    menu.invoke(0)
+    assert win._console_shown()
+    assert ">>> why Y001" in _output(win._console)
+    assert win._console_history[-1] == "why Y001"
+
+    # One command at a time: while it runs, the questions are greyed out.
+    menu = _popup_menu(win, monkeypatch, lambda: win._input_menu(event, "X001"))
+    assert str(menu.entrycget(0, "state")) == "disabled"
+
+
+def test_how_to_turn_off_negates_the_tag(simulator, ready, monkeypatch):
+    win = simulator(ready)
+    event = SimpleNamespace(x_root=0, y_root=0)
+    menu = _popup_menu(win, monkeypatch, lambda: win._output_menu(event, "Y001"))
+    how = menu.nametowidget(menu.entrycget(2, "menu"))
+    how.invoke(1)
+    assert ">>> how ~Y001" in _output(win._console)
+
+
+def test_panel_actions_echo_into_the_console(simulator, ready):
+    win = simulator(ready)
+    ready.sim.toggle_switch("X001")
+    assert "# patch X001 true" in _output(win._console)
+    ranges = win._console._output.tag_ranges("echo")
+    assert ranges, "echo lines are styled apart from command output"
+
+
+def test_link_chip_counts_down_while_the_delay_runs(simulator, ready):
+    from clicknick.services.sim_state import BenchLink
+
+    win = simulator(ready)
+    ready.sim.link("X002", BenchLink("Y001", on_delay="2s"))
+    _frame(ready)
+    win._refresh_dynamic()
+    info = win._inputs["X002"]
+    assert win._canvas.itemcget(info["pill_text"], "text") == "Y001"
+
+    ready.dap.frame(links_pending={"X002": 1240})
+    ready.scheduler.run_ready()
+    win._refresh_dynamic()
+    assert win._canvas.itemcget(info["pill_text"], "text") == "1.2s"
+    assert win._canvas.itemcget(info["pending"], "state") == "normal"
+
+
+def test_hovering_a_wiring_entry_draws_its_wire(simulator, ready):
+    from clicknick.services.sim_state import BenchLink
+
+    win = simulator(ready)
+    ready.sim.link("X002", BenchLink("Y001", on_delay="2s"))
+    _frame(ready)
+    win._populate_wiring_menu()
+    [index] = list(win._wiring_entries)
+    win._wiring_menu.activate(index)
+    win._on_wiring_select()
+    assert win._canvas.find_withtag("wire")
+    win._wiring_menu.activate("none")
+    win._on_wiring_select()
+    assert not win._canvas.find_withtag("wire")

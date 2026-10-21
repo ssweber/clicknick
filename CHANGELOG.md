@@ -13,6 +13,7 @@
 ### Added
 
 - **Simulate** draws your CLICK hardware from System Configuration and runs the saved program behind it, with input switches, output LEDs, analog values, forces, a STOP / STEP / RUN switch with speed control, and a Modbus server on 127.0.0.1:502 that the Data View editor joins with a Force column.
+- Right-click a Simulator point to ask **Why**, **Show simplified logic** or **How** in the Console; panel actions echo there as the matching console commands, a linked input's chip counts down while its delay runs, and hovering a link in the Wiring menu draws its wire.
 - Feedback links show on the Simulator: an input driven by an output (a contactor's aux contact, a limit switch, a ramping temperature) shows its driver instead of a switch, and by dragging an output onto an input, or from the right-click menu, you can add or change a link for the session, cut one to simulate a failed sensor, or save it to the input's comment for the program; the Wiring menu lists every link and sets bench links aside, and bench links are remembered with the other simulator settings.
 
 ### Changed

@@ -245,8 +245,10 @@ Original plan:
   onto an input to open the link dialog, the right-click menu, the Wiring menu (per-link enable, Bench wiring
   on/off, Discard bench links), adoption of Console edits, Save to project.
 - Different: no "pending Sync" badge. A saved bench link says so in its tooltip and the menu reads "Saved to project".
-- Not built: dwell progress on the chip (pyrung reports only `pending`), "Save all to project", click-to-select a
-  link, an "always show wiring" toggle (wires show on hover only).
+- Built later the same day: the chip counts down a running delay (pyrung frames carry `linksPending`, simulated ms
+  from `Harness.pending_ms()`), and hovering a Wiring menu entry draws its wire (`<<MenuSelect>>`).
+- Not built: "Save all to project" (one at a time is fine; `clicknick-cli tag set-physical` / `set-link` cover bulk
+  project edits), click-to-select (dropped for the Wiring menu hover), an "always show wiring" toggle.
 
 ## To re-evaluate
 
@@ -269,8 +271,10 @@ docks it back; the Simulator owns the transcript and command history, so both su
 door: the main window's separate Console button and Tools > Console are gone. PLC data is loaded from the
 Simulator's toolbar (the button names the loaded file), since it sets the start for the panel and the console alike.
 
-Still open: right-click **Why / How / Simplified** and echoing panel actions as commands. Both are cheaper now
-that the Console is a pane in the same window: they can type the command into it.
+Built 2026-10-21: right-click **Why** on any point, **Show simplified logic** and **How** to turn it ON / OFF
+(`how ~Tag`) on outputs; each runs in the Console pane under the running program's tag name. Panel actions echo there
+as green `#` lines with the matching command (switches, forces, mode, step, speed, links; not pushbuttons; analog
+values once settled), emitted by `SimulationSession` for what it actually sends.
 
 ### Rack layout (decided 2026-10-21)
 

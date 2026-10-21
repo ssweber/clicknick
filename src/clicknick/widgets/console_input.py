@@ -261,6 +261,10 @@ class ConsoleInput(ttk.Combobox):
     # Public API
     # ------------------------------------------------------------------
 
+    def remember(self, command: str) -> None:
+        """Add a command run from elsewhere to the history, so Up brings it back."""
+        self._push_history(command)
+
     def submit(self) -> None:
         """Programmatic submit (e.g. from Send button)."""
         text = self.get().strip()

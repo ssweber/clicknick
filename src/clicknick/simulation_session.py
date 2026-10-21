@@ -29,7 +29,13 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
-from pyclickplc.addresses import format_address_display, normalize_address, parse_addr_key
+from pyclickplc.addresses import (
+    format_address_display,
+    get_addr_key,
+    normalize_address,
+    parse_addr_key,
+    parse_address,
+)
 
 from .services.sim_hardware import PanelLayout, build_panel_layout, io_addresses
 from .services.sim_state import (
@@ -58,6 +64,8 @@ ANALYSIS_POLL_MS = 500
 #: Give a large program room to convert, but never poll forever.
 ANALYSIS_TIMEOUT_MS = 120_000
 WATCH_MS = 2000
+#: How long an analog value must hold still before its console echo shows.
+ECHO_SETTLE_MS = 500
 MODBUS_INFO_MS = 1000
 SAVE_DELAY_MS = 500
 MODBUS_POLL_S = 0.1
@@ -98,7 +106,7 @@ class SimStatus(enum.Enum):
     FAILED = "failed"
 
 
-EventKind = Literal["status", "frame", "values", "modbus", "desired", "layout", "message"]
+EventKind = Literal["status", "frame", "values", "modbus", "desired", "layout", "message", "echo"]
 MessageLevel = Literal["output", "progress", "error"]
 
 
@@ -109,7 +117,8 @@ class SimEvent:
     ``status``: lifecycle; ``frame``: mode/scan/forces/pending writes;
     ``values``: Modbus values; ``modbus``: server info; ``desired``: switch,
     analog or force settings; ``layout``: hardware; ``message``: a line for
-    the transcript (``text`` and ``level``).
+    the transcript (``text`` and ``level``); ``echo``: the console command
+    equivalent to something the user just did on the panel (``text``).
     """
 
     kind: EventKind
@@ -213,6 +222,15 @@ def _default_send_command(session_name: str, command: str) -> tuple[bool, str]:
     return send_command(session_name, command)
 
 
+def _command_value(value: PlcValue) -> str:
+    """*value* as the console types it: ``true``, ``false`` or a number."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, float):
+        return f"{value:g}"
+    return str(value)
+
+
 def _send_link(dap: Any, feedback: str, link: BenchLink) -> None:
     """Send one bench link to the simulation: a cut, or a link with its response."""
     if link.cut:
@@ -292,6 +310,9 @@ class SimulationSession:
 
         # PLC data snapshot the simulation starts from
         self._plc_data_path: Path | None = None
+        self._analog_echo_ids: dict[str, Any] = {}
+        # Simulated ms left on each linked input's running delay, by address.
+        self._links_pending: dict[str, int] = {}
         self._plc_data_mtime: float | None = None
 
         # Modbus
@@ -352,6 +373,30 @@ class SimulationSession:
     def _message(self, text: str, level: MessageLevel = "output") -> None:
         self._emit("message", text, level)
 
+    def _echo(self, command: str) -> None:
+        """Show the console command for what the user just did, when it reaches the PLC."""
+        if self._dap is not None:
+            self._emit("echo", command)
+
+    def _cancel(self, after_id: Any | None) -> None:
+        if after_id is not None:
+            try:
+                self._scheduler.after_cancel(after_id)
+            except Exception:
+                pass
+
+    def _echo_settled(self, address: str) -> None:
+        """Echo an analog value once it stops changing (a dragged slider sends many)."""
+        self._cancel(self._analog_echo_ids.pop(address, None))
+
+        def echo() -> None:
+            self._analog_echo_ids.pop(address, None)
+            value = self._state.analog.get(address)
+            if value is not None:
+                self._echo(f"patch {self.to_tag(address)} {_command_value(value)}")
+
+        self._analog_echo_ids[address] = self._scheduler.after(ECHO_SETTLE_MS, echo)
+
     def _post(self, callback: Callable[[], None]) -> None:
         """Run *callback* on the UI thread (callable from any thread)."""
         if self._closed:
@@ -360,13 +405,6 @@ class SimulationSession:
             self._scheduler.after(0, callback)
         except Exception:
             pass  # the UI is gone
-
-    def _cancel(self, after_id: Any | None) -> None:
-        if after_id is not None:
-            try:
-                self._scheduler.after_cancel(after_id)
-            except Exception:
-                pass
 
     def _report_action_error(self, text: str, on_error: Callable[[str], None] | None) -> None:
         self._message(text, "error")
@@ -623,6 +661,19 @@ class SimulationSession:
     def plc_data_path(self) -> Path | None:
         return self._plc_data_path
 
+    def to_tag(self, address: str) -> str:
+        """The running program's tag name for a CLICK *address* (the address if unnamed)."""
+        analysis = self._get_analysis()
+        normalized = normalize_address(address)
+        if analysis is None or normalized is None:
+            return address
+        tag = analysis.addr_key_to_tag.get(get_addr_key(*parse_address(normalized)))
+        return tag or normalized
+
+    def link_countdown(self, address: str) -> int | None:
+        """Simulated ms before the link driving *address* flips it, while its delay counts."""
+        return self._links_pending.get(address) if self._dap is not None else None
+
     def to_address(self, key: str) -> str:
         """CLICK address for a pyrung tag name or address (unmapped names pass through)."""
         address = normalize_address(key)
@@ -755,6 +806,7 @@ class SimulationSession:
         self._modbus_info = {}
         self._pressed.clear()
         self._link_rows = None
+        self._links_pending = {}
         self._links_revision_seen = None
         self._links_synced = False
         dap = self._dap
@@ -1064,6 +1116,7 @@ class SimulationSession:
         if dap.speed is not None:
             self._speed = dap.speed
         self._adopt_forces({self.to_address(k): v for k, v in dap.forces.items()})
+        self._links_pending = {self.to_address(k): ms for k, ms in dap.links_pending.items()}
         revision = dap.links_revision
         if revision != self._links_revision_seen and self._links_synced:
             self._links_revision_seen = revision
@@ -1364,6 +1417,7 @@ class SimulationSession:
             switches.pop(address, None)
         self._update_state(switches=switches)
         self._write({address: on}, f"Writing {address}")
+        self._echo(f"patch {self.to_tag(address)} {_command_value(on)}")
 
     def press_input(self, address: str) -> None:
         """Hold a Momentary switch down."""
@@ -1389,6 +1443,7 @@ class SimulationSession:
         analog = dict(self._state.analog)
         analog[address] = float(value)
         self._update_state(analog=analog)
+        self._echo_settled(address)
         if self._dap is None or address in self._analog_queued:
             return
         self._analog_queued.add(address)
@@ -1428,6 +1483,7 @@ class SimulationSession:
                 on_error(text)
 
         self._submit(lambda: dap.force(address, value), f"Forcing {address}", undo)
+        self._echo(f"force {self.to_tag(address)} {_command_value(value)}")
 
     def release_force(self, address: str) -> None:
         if address not in self._state.forces:
@@ -1438,13 +1494,17 @@ class SimulationSession:
         dap = self._dap
         if dap is not None:
             self._submit(lambda: dap.unforce(address), f"Releasing {address}")
+            self._echo(f"unforce {self.to_tag(address)}")
 
     def release_all_forces(self) -> None:
         self._restored_forces = 0
+        released = list(self._state.forces)
         self._update_state(forces={})
         dap = self._dap
         if dap is not None:
             self._submit(dap.clear_forces, "Releasing all forces")
+            for address in released:
+                self._echo(f"unforce {self.to_tag(address)}")
 
     def dismiss_restored_forces(self) -> None:
         self._restored_forces = 0
@@ -1471,6 +1531,25 @@ class SimulationSession:
 
         self._submit(lambda: job(dap), what, undo)
 
+    def _link_command(self, feedback: str, link: BenchLink) -> str:
+        """The console command that makes *link*: ``link X002 Y001 on_delay=2s``."""
+        from .services.link_annotation import link_text
+
+        fb = self.to_tag(feedback)
+        if link.cut:
+            return f"unlink {fb}"
+        assert link.enable is not None
+        keys = [
+            f"{key}={value}"
+            for key, value in (
+                ("on_delay", link.on_delay),
+                ("off_delay", link.off_delay),
+                ("profile", link.profile),
+            )
+            if value
+        ]
+        return " ".join(["link", fb, link_text(self.to_tag(link.enable), link), *keys])
+
     def link(
         self, feedback: str, link: BenchLink, *, on_error: Callable[[str], None] | None = None
     ) -> None:
@@ -1482,6 +1561,7 @@ class SimulationSession:
         self._change_links(
             links, lambda dap: _send_link(dap, feedback, link), f"{verb} {feedback}", on_error
         )
+        self._echo(self._link_command(feedback, link))
 
     def cut_link(self, feedback: str, *, on_error: Callable[[str], None] | None = None) -> None:
         """Cut the program's link on *feedback*, as if the sensor failed."""
@@ -1496,6 +1576,7 @@ class SimulationSession:
         self._change_links(
             links, lambda dap: dap.restore_link(feedback), f"Restoring the link on {feedback}"
         )
+        self._echo(f"restore {self.to_tag(feedback)}")
 
     def set_link_enabled(self, feedback: str, enabled: bool) -> None:
         """Set one bench change aside (or back) without forgetting it."""
@@ -1509,6 +1590,7 @@ class SimulationSession:
             lambda dap: dap.set_links(enabled={feedback: enabled}),
             f"{'Enabling' if enabled else 'Disabling'} the bench link on {feedback}",
         )
+        self._echo(f"links {'enable' if enabled else 'disable'} {self.to_tag(feedback)}")
 
     def set_bench_wiring(self, on: bool) -> None:
         """Apply the bench changes, or set all of them aside."""
@@ -1520,6 +1602,7 @@ class SimulationSession:
             self._submit(
                 lambda: dap.set_links(bench=on), f"Turning bench wiring {'on' if on else 'off'}"
             )
+            self._echo(f"links bench {'on' if on else 'off'}")
 
     def discard_bench_links(self) -> None:
         """Drop every bench change."""
@@ -1531,6 +1614,8 @@ class SimulationSession:
                 dap.restore_link(address)
 
         self._change_links({}, job, "Discarding bench links")
+        for address in addresses:
+            self._echo(f"restore {self.to_tag(address)}")
 
     def dismiss_restored_links(self) -> None:
         self._restored_links = 0
@@ -1572,6 +1657,7 @@ class SimulationSession:
         self._desired_position = position
         if position == "stop":
             self._submit(lambda: dap.set_mode("stop"), "Switching to STOP")
+            self._echo("mode stop")
             return
         if current == "stop":
             # Forces are already in place (keepForcesOnRun); the switch and
@@ -1584,10 +1670,15 @@ class SimulationSession:
                     dap.continue_()
 
             self._submit(enter_run, f"Switching to {SWITCH_LABELS[position]}")
+            self._echo("mode run")
+            if position == "run":
+                self._echo("continue")
         elif position == "run":
             self._submit(dap.continue_, "Switching to RUN")
+            self._echo("continue")
         else:
             self._submit(dap.pause, f"Switching to {SWITCH_LABELS['step']}")
+            self._echo("pause")
 
     def _send_live(self, command: str) -> None:
         ok, text = self._send_command(self._session_name, command)
@@ -1601,14 +1692,17 @@ class SimulationSession:
             return
         if count <= 1:
             self._submit(dap.step_scan, "Stepping")
+            self._echo("step")
         else:
             self._submit(lambda: self._send_live(f"step {count}"), f"Stepping {count} scans")
+            self._echo(f"step {count}")
 
     def run_for(self, duration: str) -> None:
         """Scan for *duration* of simulated time (``"500ms"``, ``"2 s"``) or N scans."""
         if self._dap is not None:
             text = duration.strip()
             self._submit(lambda: self._send_live(f"run {text}"), f"Running for {text}")
+            self._echo(f"run {text}")
 
     def set_speed(self, speed: float) -> None:
         """Run at *speed* x real time (0 = as fast as possible)."""
@@ -1616,6 +1710,7 @@ class SimulationSession:
         dap = self._dap
         if dap is not None:
             self._submit(lambda: dap.set_speed(speed), "Changing speed")
+            self._echo(f"speed {f'{speed:g}' if speed else 'max'}")
         self._emit("frame")
 
     # ------------------------------------------------------------------

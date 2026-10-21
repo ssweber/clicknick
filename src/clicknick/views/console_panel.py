@@ -97,6 +97,9 @@ class ConsolePanel(ttk.Frame):
             return
         if event.kind == "message":
             self._append_output(event.text.rstrip("\n") + "\n", event.level)
+        elif event.kind == "echo":
+            # What the user just did on the panel, as the command that does it.
+            self._append_output(f"# {event.text}\n", "echo")
 
     def _schedule_ui(self, callback: Callable[[], None]) -> None:
         if self._destroyed:
@@ -360,6 +363,7 @@ class ConsolePanel(ttk.Frame):
         self._output.tag_configure("error", foreground="#f44747")
         self._output.tag_configure("output", foreground="#d4d4d4")
         self._output.tag_configure("progress", foreground="#808080")
+        self._output.tag_configure("echo", foreground="#6a9955")
 
     def _load_grammar(self) -> None:
         def _load() -> None:
@@ -414,6 +418,14 @@ class ConsolePanel(ttk.Frame):
 
     def focus_input(self) -> None:
         self._console_input.focus_set()
+
+    def run(self, command: str) -> bool:
+        """Run *command* as if typed (it joins the history); False while one is running."""
+        if self.busy or self._destroyed:
+            return False
+        self._console_input.remember(command)
+        self._submit_command_text(command)
+        return True
 
     def close(self) -> None:
         """Stop following the simulation and destroy the panel."""

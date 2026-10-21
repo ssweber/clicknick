@@ -208,6 +208,9 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - Values are read over Modbus; inputs (switch/analog patches), mode, speed, stepping and forces go over DAP.
   X stays read-only over Modbus, as on a real CLICK. Mode, speed and forces follow frames,
   because the Console and agents can drive the same simulation (last command wins)
+- User actions emit an `echo` event with the equivalent console command (tag names via `to_tag()`), which the
+  console pane shows as a comment; only actions that reach a running simulation echo, and analog values echo once
+  they settle
 - Bench links (session-only feedback wiring, `sim_state.BenchLink`, keyed by feedback address) are desired state
   like forces: persisted, re-applied over DAP after a launch, and adopted from the simulation when a frame's
   `linksRevision` changes (the Console can edit them too). "Save to project" writes the link into the feedback's

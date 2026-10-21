@@ -80,6 +80,7 @@ class FakeDap:
         self.stderr_text = ""
         self.info = {"running": True, "host": "127.0.0.1", "port": 502, "clients": 1, "error": None}
         self.links_revision = 0
+        self.links_pending: dict[str, int] = {}
         self.project: dict[str, str] = {}  # program links: feedback -> enable
         self.bench: dict[str, dict] = {}
         self.bench_on = True
@@ -928,3 +929,95 @@ def test_bench_links_are_saved_and_restored(ready, tmp_path):
     fresh.sim.discard_bench_links()
     assert fresh.sim.bench_links == {}
     assert fresh.sim.restored_links == 0
+
+
+# ----------------------------------------------------------------------
+# Console echo, tag names and link countdowns
+# ----------------------------------------------------------------------
+
+
+def _name(ready, address: str, tag: str) -> None:
+    from pyclickplc.addresses import get_addr_key, parse_address
+
+    key = get_addr_key(*parse_address(address))
+    ready.analysis._result.addr_key_to_tag[key] = tag
+    ready.analysis._result.tag_to_addr_key[tag] = key
+
+
+def _echoes(ready) -> list[str]:
+    return [e.text for e in ready.events if e.kind == "echo"]
+
+
+def test_to_tag_uses_the_running_programs_names(ready):
+    _name(ready, "X001", "Start_PB")
+    assert ready.sim.to_tag("X001") == "Start_PB"
+    assert ready.sim.to_tag("x2") == "X002", "unnamed points go by their address"
+
+
+def test_panel_actions_echo_as_console_commands(ready):
+    ready.open()
+    _name(ready, "X001", "Start_PB")
+    _name(ready, "Y001", "Motor_Run")
+    ready.events.clear()
+
+    ready.sim.toggle_switch("X001")
+    ready.sim.force("Y001", False)
+    ready.sim.release_force("Y001")
+    ready.sim.set_switch_position("run")
+    ready.dap.frame(mode="run", running=True)
+    ready.scheduler.run_ready()
+    ready.sim.set_switch_position("step")
+    ready.sim.step(10)
+    ready.sim.run_for("500ms")
+    ready.sim.set_speed(0)
+    ready.sim.link("X002", BenchLink("Y001", on_delay="2s", off_delay="500ms"))
+    ready.sim.cut_link("X003")
+    ready.sim.restore_link("X003")
+    ready.sim.set_bench_wiring(False)
+
+    assert _echoes(ready) == [
+        "patch Start_PB true",
+        "force Motor_Run false",
+        "unforce Motor_Run",
+        "mode run",
+        "continue",
+        "pause",
+        "step 10",
+        "run 500ms",
+        "speed max",
+        "link X002 Motor_Run on_delay=2s off_delay=500ms",
+        "unlink X003",
+        "restore X003",
+        "links bench off",
+    ]
+
+
+def test_pushbuttons_do_not_echo_and_a_dragged_value_echoes_once_settled(ready):
+    from clicknick.simulation_session import ECHO_SETTLE_MS
+
+    ready.open()
+    ready.events.clear()
+    ready.sim.set_momentary("X002", True)
+    ready.sim.press_input("X002")
+    ready.sim.release_input("X002")
+    ready.sim.set_analog("DF1", 10.0)
+    ready.sim.set_analog("DF1", 42.5)
+    assert _echoes(ready) == []
+    ready.scheduler.fire(ECHO_SETTLE_MS)
+    assert _echoes(ready) == ["patch DF1 42.5"]
+
+
+def test_nothing_echoes_while_the_simulation_is_off(ready):
+    ready.sim.toggle_switch("X001")
+    assert _echoes(ready) == []
+
+
+def test_frames_carry_link_countdowns_by_address(ready):
+    ready.open()
+    _name(ready, "X002", "Motor_Aux")
+    ready.dap.frame(links_pending={"Motor_Aux": 1500})
+    ready.scheduler.run_ready()
+    assert ready.sim.link_countdown("X002") == 1500
+    ready.dap.frame(links_pending={})
+    ready.scheduler.run_ready()
+    assert ready.sim.link_countdown("X002") is None

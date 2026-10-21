@@ -109,6 +109,7 @@ class DapService:
         self._forces: dict[str, PlcValue] = {}
         self._pending_patches: dict[str, PlcValue] = {}
         self._links_revision = 0
+        self._links_pending: dict[str, int] = {}
 
     @property
     def state(self) -> SimState:
@@ -174,6 +175,11 @@ class DapService:
     def pending_patches(self) -> dict[str, PlcValue]:
         """Writes waiting for the next scan, keyed as pyrung reports them."""
         return dict(self._pending_patches)
+
+    @property
+    def links_pending(self) -> dict[str, int]:
+        """Simulated ms left on each linked feedback's running delay, keyed as pyrung reports."""
+        return dict(self._links_pending)
 
     @property
     def links_revision(self) -> int:
@@ -349,6 +355,13 @@ class DapService:
         revision = body.get("linksRevision")
         if isinstance(revision, int) and not isinstance(revision, bool):
             self._links_revision = revision
+        pending_links = body.get("linksPending")
+        if isinstance(pending_links, Mapping):
+            self._links_pending = {
+                str(tag): int(ms)
+                for tag, ms in pending_links.items()
+                if isinstance(ms, int | float) and not isinstance(ms, bool)
+            }
 
     def _handle_scan_frame(self, body: dict[str, Any]) -> None:
         trace = body.get("trace") or {}

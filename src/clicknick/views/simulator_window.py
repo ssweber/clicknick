@@ -111,6 +111,12 @@ class _Piece(NamedTuple):
     gap: float = CARD_GAP
 
 
+def _countdown_text(ms: int) -> str:
+    """Time left on a link's delay, short enough for its chip: ``1.2s``, ``12s``."""
+    seconds = ms / 1000
+    return f"{seconds:.1f}s" if seconds < 10 else f"{seconds:.0f}s"
+
+
 def _value_text(value: object) -> str:
     if isinstance(value, bool):
         return "ON" if value else "OFF"
@@ -642,9 +648,65 @@ class SimulatorWindow(tk.Toplevel):
             dash=() if link.source == "project" else (5, 3), tags=("wire",),
         )  # fmt: skip
 
+    def _console_shown(self) -> bool:
+        """The console is in its pane (not hidden, not popped out)."""
+        panes = {str(pane) for pane in self._paned.panes()}
+        return self._console_window is None and str(self._console) in panes
+
+    def _restore_console_height(self) -> None:
+        total = self._paned.winfo_height()
+        if total > 1 and self._console_shown():
+            self._paned.sashpos(0, max(MIN_RACK_H, total - self._console_h))
+
+    def _show_console(self) -> None:
+        window = self._console_window
+        if window is not None:
+            window.deiconify()
+            window.lift()
+        elif not self._console_shown():
+            self._paned.add(self._console, weight=0)
+            self.after_idle(self._restore_console_height)
+        self._console.focus_input()
+
+    def _run_in_console(self, command: str) -> None:
+        """Type *command* into the console pane and run it, showing the pane first."""
+        self._show_console()
+        if not self._console.run(command):
+            self._show_action_error(
+                "The console is still running a command. Wait for it, or press Stop."
+            )
+
+    def _add_analysis_items(self, menu: tk.Menu, address: str, *, output: bool = False) -> None:
+        """Questions about *address*, answered in the console pane."""
+        sim = self._simulation
+        tag = sim.to_tag(address)
+        state = tk.NORMAL if sim.is_ready and not self._console.busy else tk.DISABLED
+        value = sim.values.get(address)
+        if isinstance(value, bool):
+            why = f"Why is it {'ON' if value else 'OFF'}?"
+        else:
+            why = "Why this value?" if value is not None else "Why?"
+        menu.add_command(label=why, command=lambda: self._run_in_console(f"why {tag}"), state=state)
+        if output:
+            menu.add_command(
+                label="Show simplified logic",
+                command=lambda: self._run_in_console(f"simplified {tag}"),
+                state=state,
+            )
+            how = tk.Menu(menu, tearoff=0)
+            how.add_command(
+                label="How to turn it ON", command=lambda: self._run_in_console(f"how {tag}")
+            )
+            how.add_command(
+                label="How to turn it OFF", command=lambda: self._run_in_console(f"how ~{tag}")
+            )
+            menu.add_cascade(label="How (experimental)", menu=how, state=state)
+        menu.add_separator()
+
     def _input_menu(self, event: tk.Event, address: str) -> None:
         sim = self._simulation
         menu = tk.Menu(self, tearoff=0)
+        self._add_analysis_items(menu, address)
         mode = tk.StringVar(value="momentary" if sim.is_momentary(address) else "maintained")
         menu.add_radiobutton(
             label="Momentary (pushbutton, on while held)", variable=mode, value="momentary",
@@ -730,6 +792,7 @@ class SimulatorWindow(tk.Toplevel):
 
     def _output_menu(self, event: tk.Event, address: str) -> None:
         menu = tk.Menu(self, tearoff=0)
+        self._add_analysis_items(menu, address, output=True)
         self._add_force_items(menu, address, (True, False))
         menu.tk_popup(event.x_root, event.y_root)
 
@@ -762,6 +825,7 @@ class SimulatorWindow(tk.Toplevel):
 
     def _analog_menu(self, event: tk.Event, address: str, *, linkable: bool = False) -> None:
         menu = tk.Menu(self, tearoff=0)
+        self._add_analysis_items(menu, address)
         menu.add_command(label="Force value...", command=lambda: self._force_analog(address))
         menu.add_command(
             label="Release force",
@@ -1137,6 +1201,10 @@ class SimulatorWindow(tk.Toplevel):
             x, cy = info["x"], info["cy"]
             link = sim.driving_link(address)
             self._show_link_chip(info, link)
+            # While the link's delay counts, the chip counts down (simulated time).
+            countdown = sim.link_countdown(address) if link is not None else None
+            if countdown is not None:
+                c.itemconfigure(info["pill_text"], text=_countdown_text(countdown))
             momentary = sim.is_momentary(address)
             toggle_state = "hidden" if momentary or link else "normal"
             button_state = "normal" if momentary and not link else "hidden"
@@ -1155,7 +1223,7 @@ class SimulatorWindow(tk.Toplevel):
             )
             c.itemconfigure(info["led"], fill=P.LED_ON if values.get(address) else P.LED_OFF)
             self._show_badge(info["badge"], address in forces)
-            waiting = address in pending or (link is not None and link.pending)
+            waiting = address in pending or countdown is not None
             c.itemconfigure(info["pending"], state="normal" if waiting else "hidden")
             bench = sim.bench_links.get(address)
             cut = bench is not None and bench.cut and bench.enabled and sim.bench_wiring
@@ -1370,6 +1438,7 @@ class SimulatorWindow(tk.Toplevel):
         if not links:
             menu.add_command(label="No links", state=tk.DISABLED)
         self._link_vars = []
+        self._wiring_entries = {}
         for link in links:
             nickname = self._names(link.feedback)[0]
             name = f"{link.feedback} {nickname}" if nickname else link.feedback
@@ -1380,17 +1449,32 @@ class SimulatorWindow(tk.Toplevel):
             if link.source == "project":
                 suffix = "" if link.active else "   (changed on the bench)"
                 menu.add_command(label=f"{label}   program{suffix}", state=tk.DISABLED)
-                continue
-            var = tk.BooleanVar(value=link.enabled)
-            self._link_vars.append(var)
-            menu.add_checkbutton(
-                label=f"{label}   bench",
-                variable=var,
-                command=lambda f=link.feedback, v=var: sim.set_link_enabled(f, v.get()),
-            )
+            else:
+                var = tk.BooleanVar(value=link.enabled)
+                self._link_vars.append(var)
+                menu.add_checkbutton(
+                    label=f"{label}   bench",
+                    variable=var,
+                    command=lambda f=link.feedback, v=var: sim.set_link_enabled(f, v.get()),
+                )
+            index = menu.index(tk.END)
+            if index is not None and not link.cut:
+                self._wiring_entries[index] = link.feedback
         if sim.bench_links:
             menu.add_separator()
             menu.add_command(label="Discard bench links", command=sim.discard_bench_links)
+
+    def _on_wiring_select(self, _event: tk.Event | None = None) -> None:
+        """Draw the wire of the link under the pointer in the Wiring menu (none once it closes)."""
+        try:
+            index = self._wiring_menu.index("active")
+        except tk.TclError:
+            index = None
+        feedback = self._wiring_entries.get(index) if index is not None else None
+        if feedback is None:
+            self._canvas.delete("wire")
+        else:
+            self._show_wire(feedback)
 
     def _on_any_release(self, _event: tk.Event | None) -> None:
         # The pointer can leave the switch before the button comes up.
@@ -1458,26 +1542,6 @@ class SimulatorWindow(tk.Toplevel):
         self._blink = not self._blink
         self._refresh_cpu()
         self._tick_after_id = self.after(TICK_MS, self._tick)
-
-    def _console_shown(self) -> bool:
-        """The console is in its pane (not hidden, not popped out)."""
-        panes = {str(pane) for pane in self._paned.panes()}
-        return self._console_window is None and str(self._console) in panes
-
-    def _restore_console_height(self) -> None:
-        total = self._paned.winfo_height()
-        if total > 1 and self._console_shown():
-            self._paned.sashpos(0, max(MIN_RACK_H, total - self._console_h))
-
-    def _show_console(self) -> None:
-        window = self._console_window
-        if window is not None:
-            window.deiconify()
-            window.lift()
-        elif not self._console_shown():
-            self._paned.add(self._console, weight=0)
-            self.after_idle(self._restore_console_height)
-        self._console.focus_input()
 
     def _hide_console(self) -> None:
         if self._console_shown():
@@ -1580,6 +1644,7 @@ class SimulatorWindow(tk.Toplevel):
             self._wiring_btn, tearoff=0, postcommand=self._populate_wiring_menu
         )
         self._wiring_btn.configure(menu=self._wiring_menu)
+        self._wiring_menu.bind("<<MenuSelect>>", self._on_wiring_select)
         self._wiring_btn.pack(side=tk.RIGHT, padx=(0, 4))
         bind_tooltip(
             self._wiring_btn,
@@ -1728,6 +1793,8 @@ class SimulatorWindow(tk.Toplevel):
         self._note: str | None = None
         self._bench_var = tk.BooleanVar(value=True)
         self._link_vars: list[tk.BooleanVar] = []
+        # Wiring menu entry index -> the feedback whose wire it shows on hover.
+        self._wiring_entries: dict[int, str] = {}
         self._banner_key: tuple = ()
         self._tick_after_id: str | None = None
         self._tooltip: tk.Toplevel | None = None

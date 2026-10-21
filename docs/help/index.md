@@ -13,6 +13,8 @@ The product tour explains why the tools are useful. This page is the starting po
 
 Both read the saved ladder files, not unsaved edits, so save in CLICK first. Check Program reports findings with the rung source, a severity, and a fix hint where there is one. **Simulate** runs the program offline on your hardware as drawn from System Configuration. Its Console, the pane at the bottom (<kbd>Ctrl</kbd>+<kbd>`</kbd> shows or hides it, **Pop out** gives it its own window), takes the same commands as pyrung's debug console. Type `help` for the list, or read the [command reference](https://pyrung.com/pyrung/guides/dap-vscode/#debug-console) in the pyrung docs.
 
+Right-click a point on the Simulator to ask about it: **Why is it ON?** on any input or output, and on outputs **Show simplified logic** and **How** to turn it on or off. The question runs in the Console, so you see the command it used. What you do on the panel shows there too, as a green `#` line with the matching command (`# force Motor_Run false`), so the panel teaches the console's language. A linked input's chip counts down while its delay runs.
+
 The simulation starts from power-on defaults. To start from the controller's live values instead, save a data dump in CLICK with **PLC > Read Data from PLC > All > Save**, then pick that file with **PLC Data...** in the Simulator, which also sets the switches and analog values from it. This is not the nickname CSV. The simulation reloads whenever the file changes.
 
 The simulation keeps running after you close the Simulator, so a Data View or HMI can stay connected. Stop it with **Stop** on the Simulation line in the main window. If another program already uses Modbus port 502, the Simulator offers **Change port...**.
