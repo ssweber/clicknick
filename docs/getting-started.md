@@ -16,7 +16,7 @@ Click **Check Program**. Findings are grouped by severity, with the rung they po
 
 ## 3. Run it offline
 
-Open **Console** to run the saved program without a PLC. Force inputs, step scans, inspect tags, ask `why` a tag is on or off. Nothing here touches the controller.
+Open **Simulate** to run the saved program without a PLC. Flip inputs and force outputs on the drawn hardware, step scans, and use the Console pane at the bottom to inspect tags or ask `why` a tag is on or off. Nothing here touches the controller.
 
 ## 4. Pick a workspace folder
 

@@ -584,9 +584,9 @@ class ClickNickApp:
         strategy = self.filter_strategies.get(mode, self.filter_strategies["contains"])
         return strategy.filter_matches(candidates, search_text)
 
-    def _focus_session_window(self, session: ConnectionSession, name: str) -> bool:
-        """Raise the session's open Console or Simulator window, if any."""
-        window = getattr(session, name)
+    def _focus_simulator(self, session: ConnectionSession) -> bool:
+        """Raise the session's open Simulator window, if any."""
+        window = session.simulator
         if window is None:
             return False
         try:
@@ -594,7 +594,7 @@ class ClickNickApp:
             window.focus_force()
             return True
         except tk.TclError:
-            setattr(session, name, None)
+            session.simulator = None
             return False
 
     def _on_simulation_event(self, event) -> None:
@@ -604,7 +604,7 @@ class ClickNickApp:
     def _simulation_for_window(self, title: str, purpose: str):
         """Check the project can be simulated and return its SimulationSession.
 
-        Shared by the Console and the Simulator: the project must be saved,
+        For the Simulator and the Simulation switch: the project must be saved,
         and a conversion that already failed will not fix itself by opening
         a window -- say so up front rather than showing an inert one.
         """
@@ -653,28 +653,6 @@ class ClickNickApp:
         simulation = self._simulation_for_window("Cannot Simulate", "Simulation")
         if simulation is not None:
             simulation.turn_on()
-
-    def _open_console(self):
-        """Open the Console window, or focus if already open."""
-        session = self._session
-        if session is not None and self._focus_session_window(session, "console"):
-            return
-        simulation = self._simulation_for_window("Cannot Open Console", "The Console")
-        if session is None or simulation is None:
-            return
-
-        from .views.console_window import ConsoleWindow
-
-        session.console = ConsoleWindow(
-            self.root,
-            simulation=simulation,
-            get_analysis=lambda: session.analysis,
-            filter_func=self._apply_active_filter,
-            on_destroy=lambda: setattr(session, "console", None),
-            title_suffix=session.click.filename,
-        )
-        # After the window is listening, so its transcript shows the startup.
-        simulation.turn_on()
 
     def _open_dataview_editor(self):
         """Open the Dataview Editor window, or focus if already open.
@@ -735,7 +713,7 @@ class ClickNickApp:
     def _open_simulator(self):
         """Open the Simulator window, or focus if already open."""
         session = self._session
-        if session is not None and self._focus_session_window(session, "simulator"):
+        if session is not None and self._focus_simulator(session):
             return
         simulation = self._simulation_for_window("Cannot Simulate", "Simulation")
         if session is None or simulation is None:
@@ -747,8 +725,9 @@ class ClickNickApp:
             self.root,
             simulation=simulation,
             get_store=self._get_store,
+            get_analysis=lambda: session.analysis,
             open_dataview=self._open_dataview_editor,
-            open_console=self._open_console,
+            filter_func=self._apply_active_filter,
             on_destroy=lambda: setattr(session, "simulator", None),
             title_suffix=session.click.filename,
         )
@@ -1163,7 +1142,7 @@ class ClickNickApp:
             messagebox.showerror(title, str(exc), parent=self.root)
 
     def _open_workspace(self) -> None:
-        """Open the one active workspace used by Preview Changes and Console."""
+        """Open the one active workspace used by Preview Changes and the Simulator."""
         self._open_folder(
             self._workspace_display_dir(),
             title="Open Workspace",
@@ -1350,21 +1329,16 @@ class ClickNickApp:
             compound=tk.LEFT,
             command=self._analyze_program,
         ).pack(fill=tk.X, pady=(0, 8))
-        # The front door to simulation; the Console stays the power tool.
+        # The one door to simulation; the command console is a pane inside it.
         ttk.Button(
             test,
             text="Simulate",
-            command=self._open_simulator,
-        ).pack(fill=tk.X, pady=(0, 8))
-        ttk.Button(
-            test,
-            text="Console",
             image=self._action_icons.get("console"),
             compound=tk.LEFT,
-            command=self._open_console,
+            command=self._open_simulator,
         ).pack(fill=tk.X)
         # The simulation runs headless until stopped here (or the project closes);
-        # closing the Simulator or Console leaves it running.
+        # closing the Simulator leaves it running.
         simulation_row = ttk.Frame(test)
         ttk.Label(
             simulation_row, textvariable=self.simulation_status_var, style="Status.TLabel"
@@ -1809,7 +1783,6 @@ class ClickNickApp:
         tools_menu.add_command(label="Dataview Editor...", command=self._open_dataview_editor)
         tools_menu.add_command(label="Check Program", command=self._analyze_program)
         tools_menu.add_command(label="Simulate...", command=self._open_simulator)
-        tools_menu.add_command(label="Console...", command=self._open_console)
         tools_menu.add_separator()
         repairs_menu = tk.Menu(tools_menu, tearoff=0)
         tools_menu.add_cascade(label="Repairs", menu=repairs_menu)
@@ -1966,7 +1939,7 @@ class ClickNickApp:
         self.detector = ClickWindowDetector(CLICK_PLC_WINDOW_MAPPING, self)
 
         # Connection session: owns all resources scoped to a Click project
-        # (store, analysis, ScrWatcher, console, dataview editor).
+        # (store, analysis, ScrWatcher, simulation, Simulator).
         self._session = None
 
         # The loaded address data (CSV or database) and the windows bound to it.
@@ -2391,8 +2364,7 @@ class ClickNickApp:
         if click is None:
             return False
         has_open_windows = (self._data is not None and self._data.has_open_windows) or (
-            self._session is not None
-            and (self._session.console is not None or self._session.simulator is not None)
+            self._session is not None and self._session.simulator is not None
         )
         if has_open_windows:
             from tkinter import messagebox

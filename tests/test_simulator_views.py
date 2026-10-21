@@ -38,14 +38,21 @@ def ready(tmp_path):
 
 
 @pytest.fixture()
-def console(tk_root, monkeypatch):
-    from clicknick.views.console_window import ConsoleWindow
+def simulator(tk_root, monkeypatch):
+    from clicknick.views.console_panel import ConsolePanel
+    from clicknick.views.simulator_window import SimulatorWindow
 
-    monkeypatch.setattr(ConsoleWindow, "_start_background", lambda _self, _t, *, name: None)
+    monkeypatch.setattr(ConsolePanel, "_start_background", lambda _self, _t, *, name: None)
     built = []
 
-    def make(harness, *, turn_on=True):
-        win = ConsoleWindow(tk_root, simulation=harness.sim, get_analysis=lambda: harness.analysis)
+    def make(harness, store=None, *, turn_on=True):
+        win = SimulatorWindow(
+            tk_root,
+            simulation=harness.sim,
+            get_store=lambda: store,
+            get_analysis=lambda: harness.analysis,
+            open_dataview=lambda: None,
+        )
         if turn_on:  # what the app does after opening the window
             harness.sim.turn_on()
         harness.scheduler.run_ready()
@@ -58,79 +65,102 @@ def console(tk_root, monkeypatch):
         win._on_close()
 
 
-def _output(win) -> str:
-    return win._output.get("1.0", "end-1c")
+def _output(panel) -> str:
+    return panel._output.get("1.0", "end-1c")
 
 
-def test_console_shows_startup_and_follows_the_session(console, ready):
-    win = console(ready)
-    assert ready.sim.is_ready
-    assert "OK - simulation ready." in _output(win)
-    assert win._status_var.get() == "STOP | Scan 0"
-    assert not win._retry_btn.winfo_manager()
+def _console_listeners(sim) -> int:
+    from clicknick.views.console_panel import ConsolePanel
+
+    return sum(isinstance(getattr(cb, "__self__", None), ConsolePanel) for cb in sim._listeners)
+
+
+def test_console_pane_starts_open_with_the_startup(simulator, ready):
+    win = simulator(ready)
+    assert win._console_shown()
+    assert "OK - simulation ready." in _output(win._console)
 
     win._on_close()
-    assert ready.sim.is_ready, "closing the window leaves the simulation running"
+    assert ready.sim.is_ready, "closing the Simulator leaves the simulation running"
+    assert _console_listeners(ready.sim) == 0
 
 
-def test_console_offers_start_while_the_simulation_is_off(console, ready):
-    win = console(ready)
-    ready.sim.turn_off()
-    win.update_idletasks()
-    assert win._status_var.get() == "Simulation off"
-    assert win._retry_btn.winfo_manager()
-    assert win._retry_btn.cget("text") == "Start"
+def test_console_pane_hides_and_pops_out_keeping_transcript_and_history(simulator, ready):
+    win = simulator(ready)
+    win._console._append_output("marker\n")
+    win._console_history.append("why Y001")
 
-    win._retry_btn.invoke()
-    ready.scheduler.run_ready()
-    assert ready.sim.is_ready
-    assert not win._retry_btn.winfo_manager()
+    win._toggle_console()
+    assert not win._console_shown()
+    win._toggle_console()
+    assert win._console_shown()
+
+    win._console._pop_btn.invoke()
+    window = win._console_window
+    assert window is not None and not win._console_shown()
+    assert "OK - simulation ready." in _output(win._console)
+    assert "marker" in _output(win._console)
+    assert win._console._console_input._history is win._console_history
+    assert _console_listeners(ready.sim) == 1
+
+    win._toggle_console()  # raises the popped-out window; nothing docks
+    assert win._console_window is window
+
+    win._console._pop_btn.invoke()  # Dock
+    assert win._console_window is None and win._console_shown()
+    assert "marker" in _output(win._console)
+    assert _console_listeners(ready.sim) == 1
 
 
-def test_console_offers_retry_and_details_for_a_failed_conversion(console, tmp_path):
+def test_plc_data_button_names_the_loaded_file(simulator, ready, tmp_path):
+    win = simulator(ready)
+    assert win._plc_data_btn.cget("text") == "PLC Data..."
+    ready.sim._plc_data_path = tmp_path / "line1_live_values_2026_10_21.csv"
+    win._refresh_toolbar()
+    text = win._plc_data_btn.cget("text")
+    assert text.startswith("PLC Data: line1_live_values")
+    assert text.endswith("\N{HORIZONTAL ELLIPSIS}"), "long names are shortened"
+
+
+def test_dragging_the_console_header_resizes_the_pane(simulator, ready):
+    from clicknick.views.simulator_window import MIN_RACK_H
+
+    win = simulator(ready)
+    win.geometry("1100x760")
+    win.update()
+    paned = win._paned
+    sash = paned.sashpos(0)
+    top = paned.winfo_rooty()
+    grab = top + sash + 10  # a point on the header, just under the sash
+
+    win._resize_console(grab, True)
+    win._resize_console(grab - 100, False)
+    assert paned.sashpos(0) == sash - 100, "the console grows as the header is dragged up"
+
+    win._resize_console(top - 500, False)
+    assert paned.sashpos(0) == MIN_RACK_H, "the rack keeps its minimum"
+
+
+def test_a_busy_console_stays_where_it_is(simulator, ready):
+    win = simulator(ready)
+    win._console._set_busy(True)
+    assert str(win._console._pop_btn.cget("state")) == "disabled"
+    win._pop_out_console()
+    assert win._console_window is None and win._console_shown()
+    win._console._set_busy(False)
+
+
+def test_a_failed_conversion_shows_in_the_console_and_offers_retry(simulator, tmp_path):
     svc = AnalysisService()
     svc.mark_failed("pyrung conversion crashed", "Traceback...\nValueError: boom")
     harness = Harness(tmp_path, svc)
-    win = console(harness)
+    win = simulator(harness)
 
     assert harness.sim.status is SimStatus.FAILED
-    assert win._retry_btn.winfo_manager()
-    assert "pyrung conversion crashed" in _output(win)
-    assert "Traceback" not in _output(win)
-    assert win._details_btn.winfo_manager()
-
-    win._details_btn.invoke()
-    assert "Traceback...\nValueError: boom" in _output(win)
-    assert not win._details_btn.winfo_manager()
-
-    win._retry_btn.invoke()
-    assert harness.retries == ["rebuild"]
-
-
-@pytest.fixture()
-def simulator(tk_root):
-    from clicknick.views.simulator_window import SimulatorWindow
-
-    built = []
-
-    def make(harness, store=None, *, turn_on=True):
-        win = SimulatorWindow(
-            tk_root,
-            simulation=harness.sim,
-            get_store=lambda: store,
-            open_dataview=lambda: None,
-            open_console=lambda: None,
-        )
-        if turn_on:
-            harness.sim.turn_on()
-        harness.scheduler.run_ready()
-        built.append(win)
-        win.update_idletasks()
-        return win
-
-    yield make
-    for win in built:
-        win._on_close()
+    assert "pyrung conversion crashed" in _output(win._console)
+    assert "Traceback" not in _output(win._console)
+    [labels] = [labels for text, labels in win._banner_key if text.startswith("Cannot simulate")]
+    assert "Retry" in labels and "Show details" in labels
 
 
 def test_simulator_draws_the_rack_and_drives_the_session(simulator, ready):
@@ -260,6 +290,36 @@ def test_cards_widen_so_24_character_nicknames_show_in_full(simulator, ready):
     assert "Start_PB" in texts
     assert "Conveyor_Infeed_Gate_Sol" in texts
     assert win._card_w > CARD_W
+
+
+def test_slim_cpu_card_with_its_slots_as_one_housing(simulator, ready):
+    from clicknick.services.sim_hardware import build_panel_layout
+    from clicknick.views.simulator_window import CARD_GAP, CPU_CARD_W, HOUSING_GAP, MARGIN
+
+    def module(location, position, model, inputs=(), outputs=()):
+        return SimpleNamespace(
+            location=location, position=position, module=SimpleNamespace(model=model),
+            inputs=inputs, outputs=outputs, analog_inputs=(), analog_outputs=(),
+        )  # fmt: skip
+
+    modules = [
+        module("cpu", 0, "C2-03CPU-2"),
+        module("slot", 0, "C2-08ND3", inputs=("X001", "X002")),
+        module("expansion", 1, "C0-08TD1", outputs=("Y101",)),
+    ]
+    ready.sim._layout_reader = lambda _path, used: build_panel_layout(modules, used)
+    win = simulator(ready)
+    texts = {
+        win._canvas.itemcget(item, "text")
+        for item in win._canvas.find_all()
+        if win._canvas.type(item) == "text"
+    }
+    assert {"CPU", "Option slot 0", "Expansion 1"} <= texts
+    assert "Built-in I/O" not in texts, "a CPU without I/O is just the slim card"
+
+    slot_x = MARGIN + CPU_CARD_W + HOUSING_GAP
+    assert win._inputs["X001"]["x"] == slot_x
+    assert win._outputs["Y101"]["x"] == slot_x + win._card_w + CARD_GAP
 
 
 # ----------------------------------------------------------------------

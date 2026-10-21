@@ -80,9 +80,10 @@ ClickNick automatically generates a readable, executable [pyrung](https://pyrung
 
 ![ClickNick Check Program report](https://github.com/user-attachments/assets/38cb2f44-482a-4e60-9f56-4da95074a971)
 
-### Console
+### Simulate and the Console
 
-The **Console** is an offline CLICK test bench. It lets you:
+**Simulate** is an offline CLICK test bench: your hardware drawn from System Configuration,
+with the **Console** in a pane at the bottom (pop it out into its own window if you like). It lets you:
 
 - Run and inspect the program scan by scan.
 - Force inputs and set up machine conditions without changing the live PLC.
@@ -92,7 +93,7 @@ The **Console** is an offline CLICK test bench. It lets you:
 
 ![ClickNick Console demonstrating simplified, why, and how queries](https://github.com/user-attachments/assets/1727f54b-7f5d-4181-923e-4fbf7628d2a6)
 
-Save the project in CLICK before opening Check Program or Console so ClickNick can read the latest ladder files.
+Save the project in CLICK before opening Check Program or Simulate so ClickNick can read the latest ladder files.
 
 ## Keep engineering work with the machine
 

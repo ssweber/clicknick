@@ -1,10 +1,10 @@
-"""Interactive pyrung simulation console.
+"""The Simulator's command console: a bottom pane that pops out into its own window.
 
-Singleton window accessible from Tools > Console. It observes the connection's
-SimulationSession (which owns the pyrung DAP subprocess), shared with the
-Simulator window. Opening either turns the simulation on; closing them does
-not turn it off (the main window's Simulation toggle does). Commands go to the
-pyrung LiveServer via ``pyrung.dap.live.send_command()``.
+It observes the connection's SimulationSession like the rest of the Simulator,
+and sends commands to the pyrung LiveServer via ``pyrung.dap.live.send_command()``.
+The Simulator owns the transcript and command history, so both survive moving
+the console between its pane and its own window. Start, Retry and the PLC data
+file live on the Simulator's toolbar and banners, not here.
 """
 
 from __future__ import annotations
@@ -12,8 +12,7 @@ from __future__ import annotations
 import os
 import threading
 import tkinter as tk
-from pathlib import Path
-from tkinter import filedialog, ttk
+from tkinter import ttk
 from typing import TYPE_CHECKING
 
 from ..services.console_completer import ConsoleCompleter
@@ -31,10 +30,15 @@ _COPY_FLASH_MS = 1200
 # different font and sits oddly among ttk's monochrome controls.
 _COPY_LABEL = "Copy"
 _COPIED_LABEL = "Copied"
+_DIVIDER = "#c8c8c8"
+_DIVIDER_ACTIVE = "#0078d4"
+
+#: Everything the console has printed, as (text, tag) pieces, oldest first.
+Transcript = list[tuple[str, str | None]]
 
 
-class ConsoleWindow(tk.Toplevel):
-    """Interactive pyrung simulation console."""
+class ConsolePanel(ttk.Frame):
+    """Transcript over a command line, under a slim header of console actions."""
 
     def _start_background(self, target: Callable[[], None], *, name: str) -> None:
         """Start a named daemon worker."""
@@ -44,7 +48,7 @@ class ConsoleWindow(tk.Toplevel):
     # Output helpers
     # ------------------------------------------------------------------
 
-    def _append_output(self, text: str, tag: str | None = None) -> None:
+    def _write(self, text: str, tag: str | None) -> None:
         self._output.configure(state="normal")
         if tag:
             self._output.insert(tk.END, text, tag)
@@ -52,6 +56,10 @@ class ConsoleWindow(tk.Toplevel):
             self._output.insert(tk.END, text)
         self._output.configure(state="disabled")
         self._output.see(tk.END)
+
+    def _append_output(self, text: str, tag: str | None = None) -> None:
+        self._transcript.append((text, tag))
+        self._write(text, tag)
 
     def _restore_copy_button(self) -> None:
         self._copy_flash_after_id = None
@@ -81,61 +89,14 @@ class ConsoleWindow(tk.Toplevel):
         self._flash_copy_button()
 
     # ------------------------------------------------------------------
-    # Simulation status (the SimulationSession owns the DAP)
+    # Simulation events (the SimulationSession owns the DAP)
     # ------------------------------------------------------------------
-
-    def _show_retry(self) -> None:
-        if not self._retry_btn.winfo_manager():
-            self._retry_btn.pack(side=tk.LEFT, padx=(4, 0))
-
-    def _hide_retry(self) -> None:
-        if self._retry_btn.winfo_manager():
-            self._retry_btn.pack_forget()
-        self._details_btn.pack_forget()
-
-    def _show_startup_details(self) -> None:
-        detail = self._simulation.error_detail
-        if detail:
-            self._append_output(detail.rstrip() + "\n", "progress")
-        self._details_btn.pack_forget()
-        self._details_shown_for = detail
-
-    def _retry_startup(self) -> None:
-        """Rebuild the analysis (if we can) and launch the simulation again."""
-        self._details_shown_for = None
-        self._simulation.retry()
-
-    def _refresh_status(self) -> None:
-        from ..simulation_session import SimStatus
-
-        sim = self._simulation
-        self._status_var.set(sim.status_text)
-        # The Simulator can load PLC data too; both show the session's file.
-        plc_data = sim.plc_data_path
-        self._plc_data_var.set(str(plc_data) if plc_data is not None else "")
-        if not sim.enabled:
-            # Turned off from the main window: the console stays, ready to start it again.
-            self._retry_btn.configure(text="Start", command=sim.turn_on)
-            self._show_retry()
-            self._details_btn.pack_forget()
-        elif sim.status is SimStatus.FAILED:
-            self._retry_btn.configure(text="Retry", command=self._retry_startup)
-            self._show_retry()
-            if sim.error_detail and self._details_shown_for != sim.error_detail:
-                if not self._details_btn.winfo_manager():
-                    self._details_btn.pack(side=tk.RIGHT, padx=(0, 4))
-            else:
-                self._details_btn.pack_forget()
-        else:
-            self._hide_retry()
 
     def _on_simulation_event(self, event: SimEvent) -> None:
         if self._destroyed:
             return
         if event.kind == "message":
             self._append_output(event.text.rstrip("\n") + "\n", event.level)
-        if event.kind in ("status", "frame", "message"):
-            self._refresh_status()
 
     def _schedule_ui(self, callback: Callable[[], None]) -> None:
         if self._destroyed:
@@ -186,6 +147,8 @@ class ConsoleWindow(tk.Toplevel):
         self._start_background(_worker, name="console-stop")
 
     def _set_busy(self, busy: bool) -> None:
+        # A command's output arrives in this panel, so it stays put until done.
+        self._pop_btn.configure(state="disabled" if busy else "normal")
         if busy:
             self._busy_tick = 0
             self._console_input.set_busy(True)
@@ -248,7 +211,7 @@ class ConsoleWindow(tk.Toplevel):
         self._start_background(_worker, name="console-cmd")
 
     # ------------------------------------------------------------------
-    # Help
+    # Header actions
     # ------------------------------------------------------------------
 
     def _show_help(self) -> None:
@@ -261,20 +224,6 @@ class ConsoleWindow(tk.Toplevel):
         project_dir = analysis.project_dir
         if project_dir is not None and project_dir.is_dir():
             os.startfile(project_dir)
-
-    # ------------------------------------------------------------------
-    # PLC data file browsing (the simulation watches it for changes)
-    # ------------------------------------------------------------------
-
-    def _browse_plc_data(self) -> None:
-        path = filedialog.askopenfilename(
-            parent=self,
-            title="Load PLC Data",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-        )
-        if not path:
-            return
-        self._simulation.set_plc_data_path(Path(path))
 
     # ------------------------------------------------------------------
     # Tag provider for autocomplete
@@ -300,38 +249,77 @@ class ConsoleWindow(tk.Toplevel):
     # Widget creation
     # ------------------------------------------------------------------
 
-    def _create_widgets(self) -> None:
-        # Toolbar row: PLC Data + Help
-        toolbar = ttk.Frame(self, padding=(8, 6))
-        toolbar.pack(fill=tk.X)
+    def _header_button(
+        self, header: ttk.Frame, text: str, command: Callable[[], None], tip: str
+    ) -> ttk.Button:
+        """A flat header action (VS Code panel style) that still looks clickable on hover."""
+        button = ttk.Button(header, text=text, style="Toolbutton", cursor="hand2", command=command)
+        button.pack(side=tk.RIGHT)
+        bind_tooltip(button, tip)
+        return button
 
-        ttk.Label(toolbar, text="PLC Data:").pack(side=tk.LEFT, padx=(0, 4))
-        self._plc_data_var = tk.StringVar()
-        plc_entry = ttk.Entry(toolbar, textvariable=self._plc_data_var, state="readonly")
-        plc_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
-        browse_btn = ttk.Button(toolbar, text="Browse...", width=8, command=self._browse_plc_data)
-        browse_btn.pack(side=tk.LEFT, padx=(0, 4))
-        bind_tooltip(
-            browse_btn,
-            "Start from the PLC's live values: a CSV saved in CLICK with\n"
-            "PLC > Read Data from PLC > All > Save (not the nickname CSV)",
+    def _set_divider_active(self, active: bool) -> None:
+        if not self._destroyed:
+            self._divider.configure(background=_DIVIDER_ACTIVE if active else _DIVIDER)
+
+    def _bind_resize(self, handles: tuple[ttk.Frame | ttk.Label, ...]) -> None:
+        """Dragging the header resizes the pane, like the sash just above it."""
+        on_resize = self._on_resize
+        assert on_resize is not None
+        dragging = False
+
+        def press(event: tk.Event) -> None:
+            nonlocal dragging
+            dragging = True
+            on_resize(event.y_root, True)
+
+        def release(_event: tk.Event) -> None:
+            nonlocal dragging
+            dragging = False
+            self._set_divider_active(False)
+
+        for handle in handles:
+            handle.configure(cursor="sb_v_double_arrow")
+            handle.bind("<ButtonPress-1>", press)
+            handle.bind("<B1-Motion>", lambda e: on_resize(e.y_root, False))
+            handle.bind("<ButtonRelease-1>", release)
+            handle.bind("<Enter>", lambda _e: self._set_divider_active(True))
+            handle.bind("<Leave>", lambda _e: dragging or self._set_divider_active(False))
+
+    def _create_widgets(self, *, popped: bool) -> None:
+        # The pane's top edge; it lights up while the header can be dragged.
+        self._divider = tk.Frame(self, height=1, background=_DIVIDER)
+        self._divider.pack(fill=tk.X)
+        # Header: what this pane is, then its actions, VS Code panel style.
+        header = ttk.Frame(self, padding=(8, 2, 4, 2))
+        header.pack(fill=tk.X)
+        title = ttk.Label(header, text="CONSOLE", foreground="gray")
+        title.pack(side=tk.LEFT)
+        if self._on_resize is not None:
+            self._bind_resize((header, title))
+        if self._on_hide is not None:
+            self._header_button(
+                header, "\N{MULTIPLICATION SIGN}", self._on_hide, "Hide the console (Ctrl+`)"
+            )
+        if popped:
+            pop = ("Dock", "Put the console back in the Simulator")
+        else:
+            pop = ("Pop out", "Move the console to its own window")
+        self._pop_btn = self._header_button(header, pop[0], self._on_pop, pop[1])
+        self._copy_btn = self._header_button(
+            header, _COPY_LABEL, self._copy_output,
+            "Copy output (or the current selection) to the clipboard",
+        )  # fmt: skip
+        self._header_button(
+            header, "Workspace", self._open_project_folder, "Open the workspace folder"
         )
-        ttk.Button(toolbar, text="Help", width=6, command=self._show_help).pack(side=tk.LEFT)
+        self._header_button(header, "Help", self._show_help, "List the console's commands")
 
-        ttk.Button(
-            toolbar,
-            text="\N{OPEN FILE FOLDER}",
-            width=3,
-            command=self._open_project_folder,
-        ).pack(side=tk.LEFT, padx=(4, 0))
-
-        # Packed only while startup is in a failed state (see _show_retry).
-        self._retry_btn = ttk.Button(toolbar, text="Retry", width=6, command=self._retry_startup)
-
-        # Input row (at top, before output)
-        input_frame = ttk.Frame(self, padding=(8, 0, 8, 6))
-        input_frame.pack(fill=tk.X)
-
+        # Command line at the bottom, terminal style. Packed before the output:
+        # the Text asks for more height than a slim pane has, and pack starves
+        # whatever was packed last.
+        input_frame = ttk.Frame(self, padding=(8, 4, 8, 6))
+        input_frame.pack(side=tk.BOTTOM, fill=tk.X)
         self._prompt_label = ttk.Label(input_frame, text=">>>")
         self._prompt_label.pack(side=tk.LEFT, padx=(0, 4))
         self._console_input = ConsoleInput(
@@ -339,6 +327,7 @@ class ConsoleWindow(tk.Toplevel):
             completer=self._completer,
             tag_provider=self._provide_filtered_tags,
             on_submit=self._submit_command_text,
+            history=self._history,
         )
         self._console_input.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
         self._send_btn = ttk.Button(
@@ -346,33 +335,13 @@ class ConsoleWindow(tk.Toplevel):
         )
         self._send_btn.pack(side=tk.LEFT)
 
-        # Status bar. Packed against the bottom *before* the output area: the
-        # output Text asks for its natural 24-line height, which oversubscribes
-        # the window, and pack starves whatever was packed last.
-        self._status_var = tk.StringVar(value="Starting...")
-        status_bar = ttk.Frame(self, padding=(8, 2, 8, 4))
-        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-        self._copy_btn = ttk.Button(
-            status_bar, text=_COPY_LABEL, width=8, command=self._copy_output
-        )
-        self._copy_btn.pack(side=tk.RIGHT)
-        bind_tooltip(self._copy_btn, "Copy output (or the current selection) to the clipboard")
-        self._details_btn = ttk.Button(
-            status_bar, text="Show details", command=self._show_startup_details
-        )
-        ttk.Label(status_bar, textvariable=self._status_var, foreground="gray").pack(
-            side=tk.LEFT, fill=tk.X, expand=True
-        )
-
-        # Output area
         output_frame = ttk.Frame(self)
-        output_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 4))
-
+        output_frame.pack(fill=tk.BOTH, expand=True, padx=8)
         self._output = tk.Text(
             output_frame,
             wrap=tk.WORD,
             state="disabled",
-            height=10,
+            height=5,
             font=("Consolas", 10),
             bg="#1e1e1e",
             fg="#d4d4d4",
@@ -392,21 +361,6 @@ class ConsoleWindow(tk.Toplevel):
         self._output.tag_configure("output", foreground="#d4d4d4")
         self._output.tag_configure("progress", foreground="#808080")
 
-        self._console_input.focus_set()
-
-    # ------------------------------------------------------------------
-    # Window lifecycle
-    # ------------------------------------------------------------------
-
-    def _on_close(self) -> None:
-        if self._destroyed:
-            return
-        self._destroyed = True
-        self._simulation.remove_listener(self._on_simulation_event)
-        if self._on_destroy:
-            self._on_destroy()
-        self.destroy()
-
     def _load_grammar(self) -> None:
         def _load() -> None:
             try:
@@ -418,36 +372,69 @@ class ConsoleWindow(tk.Toplevel):
 
     def __init__(
         self,
-        parent: tk.Widget,
+        parent: tk.Misc,
         *,
         simulation: SimulationSession,
         get_analysis: Callable[[], AnalysisService | None],
+        transcript: Transcript,
+        history: list[str],
+        on_pop: Callable[[], None],
+        popped: bool = False,
+        on_hide: Callable[[], None] | None = None,
+        on_resize: Callable[[int, bool], None] | None = None,
         filter_func: Callable[[list[str], str], list[str]] | None = None,
-        on_destroy: Callable[[], None] | None = None,
-        title_suffix: str = "",
     ) -> None:
         super().__init__(parent)
         self._simulation = simulation
         self._get_analysis = get_analysis
+        self._transcript = transcript
+        self._history = history
+        self._on_pop = on_pop
+        self._on_hide = on_hide
+        # Called with the pointer's screen y as the header is pressed (True) and dragged.
+        self._on_resize = on_resize
         self._filter_func = filter_func
-        self._on_destroy = on_destroy
-
-        self.title(f"Console — {title_suffix}" if title_suffix else "Console")
-        self.geometry("750x500")
-        self.minsize(500, 300)
 
         self._copy_flash_after_id: str | None = None
-        # The failure whose details were already printed, so the button hides.
-        self._details_shown_for: str | None = None
         self._busy_tick: int = -1
         self._cancel_requested = False
         self._destroyed = False
         self._completer = ConsoleCompleter()
 
-        self._create_widgets()
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
-        # The opener turns the simulation on after this, so its startup lands
-        # in the transcript. Closing the console leaves the simulation running.
+        self._create_widgets(popped=popped)
+        for text, tag in transcript:
+            self._write(text, tag)
         simulation.add_listener(self._on_simulation_event)
-        self._refresh_status()
         self._load_grammar()
+
+    @property
+    def busy(self) -> bool:
+        """A command is in flight; its output will arrive in this panel."""
+        return self._busy_tick >= 0
+
+    def focus_input(self) -> None:
+        self._console_input.focus_set()
+
+    def close(self) -> None:
+        """Stop following the simulation and destroy the panel."""
+        if self._destroyed:
+            return
+        self._destroyed = True
+        self._simulation.remove_listener(self._on_simulation_event)
+        self.destroy()
+
+
+class ConsoleWindow(tk.Toplevel):
+    """The console popped out of the Simulator; closing it docks it back."""
+
+    def __init__(
+        self, parent: tk.Misc, *, title: str, on_dock: Callable[[], None], **panel_options
+    ) -> None:
+        super().__init__(parent)
+        self.title(title)
+        self.geometry("750x400")
+        self.minsize(400, 200)
+        self.panel = ConsolePanel(self, on_pop=on_dock, popped=True, **panel_options)
+        self.panel.pack(fill=tk.BOTH, expand=True)
+        self.protocol("WM_DELETE_WINDOW", on_dock)
+        self.panel.focus_input()

@@ -211,17 +211,16 @@ def test_switching_workspace_moves_and_restarts_the_simulation(tmp_path, monkeyp
     assert session.workspace_dir == workspace.resolve()
 
 
-def test_closing_the_connection_closes_simulation_windows_first() -> None:
+def test_closing_the_connection_closes_the_simulator_first() -> None:
     session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
     order: list[str] = []
-    session.console = MagicMock(_on_close=lambda: order.append("console"))
     session.simulator = MagicMock(_on_close=lambda: order.append("simulator"))
     simulation = MagicMock(close=lambda: order.append("simulation"))
     session.simulation = simulation
 
     session.close()
 
-    assert order == ["console", "simulator", "simulation"]
+    assert order == ["simulator", "simulation"]
     assert session.simulation is None
 
 

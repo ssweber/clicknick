@@ -52,7 +52,7 @@ class ConnectionSession:
     """Owns the resources whose lifetime is bounded by a CLICK project connection.
 
     Resources managed (in teardown order):
-    1. Console and Simulator windows
+    1. Simulator window (with its console)
     2. SimulationSession (pyrung DAP subprocess, its Modbus server and client)
     3. ScrWatcher (file polling)
     4. AnalysisService (stale graph)
@@ -70,7 +70,6 @@ class ConnectionSession:
 
         self.analysis: AnalysisService | None = None
         self.scr_watcher: ScrWatcher | None = None
-        self.console: Any | None = None
         self.simulator: Any | None = None
         self.simulation: SimulationSession | None = None
 
@@ -200,14 +199,13 @@ class ConnectionSession:
     # -- Private helpers ---------------------------------------------------
 
     def _close_windows(self) -> None:
-        for name in ("console", "simulator"):
-            window = getattr(self, name)
-            if window is not None:
-                try:
-                    window._on_close()
-                except Exception:
-                    pass
-                setattr(self, name, None)
+        window = self.simulator
+        if window is not None:
+            try:
+                window._on_close()
+            except Exception:
+                pass
+            self.simulator = None
 
     def use_workspace(self, workspace_dir: Path) -> None:
         """Move future analysis builds (and simulator settings) to a durable workspace.

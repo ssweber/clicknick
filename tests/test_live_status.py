@@ -41,7 +41,7 @@ def test_workflow_footer_composes_outgoing_changes_before_capability() -> None:
     assert _status_footer(ctx) == (
         "\n[2 tags staged | 7 tags synced | 31 rungs staged | "
         "Next: Sync tags in ClickNick, paste rungs if needed, then Save in CLICK]"
-        "\n[project ready | open Console for pyrung live]"
+        "\n[project ready | open Simulate for pyrung live]"
     )
 
 
@@ -88,7 +88,7 @@ def test_ping_prompts_for_console_when_project_is_ready_but_dap_is_closed() -> N
         project_saved=True,
     )
 
-    assert dispatch(ctx, "ping").endswith("status: project ready | open Console for pyrung live")
+    assert dispatch(ctx, "ping").endswith("status: project ready | open Simulate for pyrung live")
 
 
 def test_ping_reports_project_preparing_during_analysis() -> None:

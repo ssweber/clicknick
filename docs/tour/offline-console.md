@@ -15,11 +15,11 @@ Click **Simulate**. ClickNick draws your CPU and modules from System Configurati
 
 ![ClickNick Console showing simplified, why, and how queries](https://github.com/user-attachments/assets/1727f54b-7f5d-4181-923e-4fbf7628d2a6)
 
-Open the **Console** to question the program. Start with `why`: it traces what's holding a tag on, off, or blocked, which is usually the first troubleshooting question anyway.
+Open **Simulate** and use the **Console** pane at the bottom to question the program. Start with `why`: it traces what's holding a tag on, off, or blocked, which is usually the first troubleshooting question anyway.
 
 `how` is the experimental one. It searches for a way to reach a state you name. When it finds one, you get a recording you can replay. On real programs it sometimes stops without one, and it can take a minute.
 
-The simulator, Console, Data View and AI agents all drive the same simulated PLC. Nothing you do here touches the machine.
+The Simulator, its Console, Data View and AI agents all drive the same simulated PLC. Nothing you do here touches the machine.
 
 This is a model of the program, not the PLC. It doesn't know about wiring, sensor timing, or network behavior, and analog values are whatever you feed it. What it tells you about the ladder is real. Confirm it on the machine.
 

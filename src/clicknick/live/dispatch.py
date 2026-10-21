@@ -229,7 +229,7 @@ def _project_status(ctx: DispatchContext) -> str | None:
     if analysis.is_available:
         if ctx.pyrung_live_available:
             return "pyrung live available"
-        return "project ready | open Console for pyrung live"
+        return "project ready | open Simulate for pyrung live"
 
     return None
 

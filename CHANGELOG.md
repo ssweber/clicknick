@@ -17,7 +17,7 @@
 
 ### Changed
 
-- The Console and the Simulator share one simulation that keeps running after their windows close until it is stopped from the main window, and setting up a workspace restarts it instead of closing the Console.
+- The Console now lives in **Simulate** as a resizable pane under the hardware (<kbd>Ctrl</kbd>+<kbd>`</kbd> shows or hides it) that pops out into its own window, so there is one way in; the simulation keeps running after the Simulator closes until it is stopped from the main window, and setting up a workspace restarts it instead of closing the window.
 - In the annotation editor, a link needs only an on/off delay or a profile; the physical name is optional and defaults to the tag's own, and `link=` takes a CLICK address such as `Y001`.
 
 ### Fixed

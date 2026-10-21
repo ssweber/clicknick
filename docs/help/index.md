@@ -9,13 +9,13 @@ The product tour explains why the tools are useful. This page is the starting po
 - [Take the six-part product tour](../tour/autocomplete.md)
 - [Editing tools](../editing.md) — Address Editor, Tag Browser, Data View builder
 
-## Check Program and Console
+## Check Program and Simulate
 
-Both read the saved ladder files, not unsaved edits, so save in CLICK first. Check Program reports findings with the rung source, a severity, and a fix hint where there is one. The Console runs the program offline and takes the same commands as pyrung's debug console. Type `help` for the list, or read the [command reference](https://pyrung.com/pyrung/guides/dap-vscode/#debug-console) in the pyrung docs.
+Both read the saved ladder files, not unsaved edits, so save in CLICK first. Check Program reports findings with the rung source, a severity, and a fix hint where there is one. **Simulate** runs the program offline on your hardware as drawn from System Configuration. Its Console, the pane at the bottom (<kbd>Ctrl</kbd>+<kbd>`</kbd> shows or hides it, **Pop out** gives it its own window), takes the same commands as pyrung's debug console. Type `help` for the list, or read the [command reference](https://pyrung.com/pyrung/guides/dap-vscode/#debug-console) in the pyrung docs.
 
-The Console starts from power-on defaults. To start from the controller's live values instead, save a data dump in CLICK with **PLC > Read Data from PLC > All > Save**, then pick that file with **Browse...** next to PLC Data (or **PLC Data...** in the Simulator, which also sets the switches and analog values from it). This is not the nickname CSV. The simulation reloads whenever the file changes.
+The simulation starts from power-on defaults. To start from the controller's live values instead, save a data dump in CLICK with **PLC > Read Data from PLC > All > Save**, then pick that file with **PLC Data...** in the Simulator, which also sets the switches and analog values from it. This is not the nickname CSV. The simulation reloads whenever the file changes.
 
-**Simulate** and the Console share one simulation. It keeps running after you close their windows, so a Data View or HMI can stay connected. Stop it with **Stop** on the Simulation line in the main window. If another program already uses Modbus port 502, the Simulator offers **Change port...**.
+The simulation keeps running after you close the Simulator, so a Data View or HMI can stay connected. Stop it with **Stop** on the Simulation line in the main window. If another program already uses Modbus port 502, the Simulator offers **Change port...**.
 
 ## Workspaces
 
@@ -87,7 +87,7 @@ Forced `jet` and `odbc` modes report errors instead of switching connections. Yo
 
 ### CSV mode
 
-Load a nickname CSV manually, or save a copy of CLICK's project CSV when offered. CSV mode supports autocomplete and CSV editing, but does not sync changes with CLICK's database. Check Program, Console, and workspaces require a database connection.
+Load a nickname CSV manually, or save a copy of CLICK's project CSV when offered. CSV mode supports autocomplete and CSV editing, but does not sync changes with CLICK's database. Check Program, Simulate, and workspaces require a database connection.
 
 ## Common setup questions
 

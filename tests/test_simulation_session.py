@@ -494,6 +494,26 @@ def test_plc_data_change_relaunches_from_the_snapshot(ready, tmp_path):
     assert "Loading PLC data" in ready.messages()
 
 
+def test_saving_the_plc_data_file_again_reloads_it(ready, tmp_path):
+    import os
+
+    from clicknick.simulation_session import WATCH_MS
+
+    ready.open()
+    data = tmp_path / "data.csv"
+    data.write_text("a", encoding="utf-8")
+    ready.sim.set_plc_data_path(data)
+    ready.scheduler.run_ready()
+    ready.scheduler.fire(WATCH_MS)
+    assert len(ready.daps) == 2, "an unchanged file is not reloaded"
+
+    later = data.stat().st_mtime + 5
+    os.utime(data, (later, later))  # CLICK saved the dump again
+    ready.scheduler.fire(WATCH_MS)
+    assert len(ready.daps) == 3
+    assert "PLC data file changed. Reloading..." in ready.messages()
+
+
 # ----------------------------------------------------------------------
 # The STOP / STEP / RUN switch
 # ----------------------------------------------------------------------

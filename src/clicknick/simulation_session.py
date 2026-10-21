@@ -5,8 +5,8 @@ subprocess (launched with a Modbus server, real-time pacing and STOP mode),
 the Modbus client the Simulator window reads values through, the
 switch/analog/force settings and bench links the user chose, and their
 persistence. The
-Console, the Simulator window and the Dataview editor observe it and call
-its methods; none of them owns the simulation.
+Simulator window (with its console) and the Dataview editor observe it and
+call its methods; neither owns the simulation.
 
 Two channels reach the simulated PLC: values are read over Modbus exactly
 as from real hardware; inputs (switches, analog values), mode, speed,
@@ -239,7 +239,7 @@ def _mtime(path: Path | None) -> float | None:
 
 
 class SimulationSession:
-    """One simulated PLC, shared by the Console, the Simulator and the Dataview."""
+    """One simulated PLC, shared by the Simulator, its console and the Dataview."""
 
     def __init__(
         self,
@@ -1201,8 +1201,8 @@ class SimulationSession:
     def set_plc_data_path(self, path: Path) -> None:
         """Start the simulation from a CLICK data dump, relaunching now and when it changes.
 
-        Shared by the Console and the Simulator. The dump wins for inputs:
-        switch positions and analog values take its values (forces stay).
+        The dump wins for inputs: switch positions and analog values take its
+        values (forces stay).
         """
         self._plc_data_path = path
         self._plc_data_mtime = _mtime(path)

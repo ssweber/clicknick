@@ -198,10 +198,11 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 ### Simulation
 - `ConnectionSession.simulation` (a `SimulationSession`) is the one home of the simulated PLC: the pyrung DAP
   subprocess, its Modbus client, switch/analog/force settings and their persistence (`services/sim_state.py`)
-- It runs headless: `turn_on()` starts it (opening the Console or Simulator does this), and only `turn_off()` (the
+- It runs headless: `turn_on()` starts it (opening the Simulator does this), and only `turn_off()` (the
   main window's Simulation toggle) or connection teardown stops it. Closing windows never does. The on/off state is
   not persisted: nothing launches a subprocess or listens on port 502 at app start
-- The Console, Simulator and Dataview editor only observe it (the Dataview attaches while it serves Modbus). Views
+- The Simulator (whose command console is a bottom pane, `views/console_panel.py`, that pops out and docks back)
+  and the Dataview editor only observe it (the Dataview attaches while it serves Modbus). Views
   never own a `DapService`; while it is off they stay open and offer Start
 - Launched with `keepForcesOnRun`, so forces survive STOP -> RUN; switch/analog patches ride `set_mode("run")`
 - Values are read over Modbus; inputs (switch/analog patches), mode, speed, stepping and forces go over DAP.

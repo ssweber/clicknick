@@ -2,9 +2,10 @@
 
 A passive view of the connection's SimulationSession. Inputs are switches
 (Momentary pushbuttons or Maintained toggles, chosen by right-click), outputs
-are LEDs, analog inputs take a value (and a slider when the tag has a range),
-and the CPU card carries the PWR/RUN/ERR LEDs and the STOP / STEP / RUN mode
-switch. Values come from the session's Modbus reads; forces, mode, speed and
+are LEDs, analog inputs take a value (and a slider when the tag has a range).
+A slim CPU card carries the RUN / STEP / STOP mode switch and the PWR/RUN/ERR
+LEDs; the CPU's built-in I/O and option slots sit tight beside it as cards of
+their own, one housing as on the hardware. Values come from the session's Modbus reads; forces, mode, speed and
 feedback links from its DAP frames. Every action goes through the session.
 
 An input driven by a feedback link shows a chip naming its driver instead of
@@ -15,15 +16,20 @@ the project from the right-click menu; the Wiring menu lists them all.
 Cards are compact and flow into rows in rack order, so a full rack (CPU, two
 option slots, eight expansions and the unassigned strip) fits without
 horizontal scrolling.
+
+The command console is a resizable pane under the rack (Ctrl+` shows or hides
+it) and pops out into its own window; closing that window docks it back.
 """
 
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from tkinter import font as tkfont
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from pyclickplc.addresses import get_addr_key, parse_address
 
@@ -32,30 +38,41 @@ from ..services.sim_state import BenchLink
 from ..simulation_session import SPEEDS, SWITCH_LABELS, SimStatus, format_speed
 from ..widgets.tooltip import bind_tooltip
 from . import sim_palette as P
+from .console_panel import ConsolePanel, ConsoleWindow, Transcript
 from .sim_link_dialog import LinkDialog
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ..data.address_store import AddressStore
+    from ..services.analysis_service import AnalysisService
     from ..services.sim_hardware import Card, PanelLayout
     from ..simulation_session import SimEvent, SimulationSession, SwitchPosition, WiredLink
 
 CARD_W = 184
 CARD_GAP = 12
+#: Between cards in one housing: the CPU, its built-in I/O and its option slots.
+HOUSING_GAP = 4
 ROW_GAP = 18
-MARGIN = 16
+MARGIN = 12
 HEADER_H = 36
+#: Between a card's header and its first section.
+BODY_PAD = 4
 ROW_H = 24
 ANALOG_ROW_H = 46
 SECTION_H = 18
-#: The faceplate band under every module's header: the CPU's LEDs and mode
-#: switch, an I/O summary on other modules. The same height on every card, so
-#: all modules' INPUTS sections line up.
-FACE_H = 58
+#: The slim CPU card: mode switch over the PWR/RUN/ERR LEDs.
+CPU_CARD_W = 96
+CPU_CARD_MIN_H = 164
 #: One position of the CPU's vertical mode switch.
 MODE_ZONE_H = 16
 BADGE_W = 20
+#: The console pane's height when shown again after hiding, until the user sizes it.
+CONSOLE_H = 170
+#: The least the rack keeps when the console pane is dragged taller.
+MIN_RACK_H = 120
+#: The least the console pane keeps when its header is dragged down: header and command line.
+MIN_CONSOLE_H = 70
+#: Characters of the PLC data file's name shown on its toolbar button.
+PLC_DATA_NAME_MAX = 24
 TICK_MS = 500
 
 _FONT = ("Segoe UI", 9)
@@ -80,6 +97,18 @@ def _round_rect(
     canvas: tk.Canvas, x0: float, y0: float, x1: float, y1: float, r: float, **kw: Any
 ) -> int:
     return canvas.create_polygon(_rounded_points(x0, y0, x1, y1, r), smooth=True, **kw)
+
+
+class _Piece(NamedTuple):
+    """One card to place in the rack."""
+
+    width: float
+    height: float
+    draw: Callable[[float, float], None]
+    #: Installed on the DIN rail (the placeholder and unassigned strip are not).
+    on_rail: bool = True
+    #: Space before it when it follows another card in the same rack row.
+    gap: float = CARD_GAP
 
 
 def _value_text(value: object) -> str:
@@ -204,17 +233,17 @@ class SimulatorWindow(tk.Toplevel):
         c.tag_bind(tag, "<Button-3>", menu)
 
     def _draw_card_frame(
-        self, x: float, y: float, height: float, title: str, subtitle: str, *, dashed: bool = False
-    ) -> None:
+        self, x: float, y: float, height: float, title: str, subtitle: str, *,
+        dashed: bool = False, width: float | None = None,
+    ) -> None:  # fmt: skip
         c = self._canvas
+        right = x + (self._card_w if width is None else width)
         _round_rect(
-            c, x, y, x + self._card_w, y + height, 9,
+            c, x, y, right, y + height, 9,
             fill=P.CARD_FACE, outline=P.CARD_EDGE, width=2, dash=(4, 3) if dashed else (),
         )  # fmt: skip
-        _round_rect(c, x, y, x + self._card_w, y + HEADER_H, 9, fill=P.CARD_HEADER, outline="")
-        c.create_rectangle(
-            x, y + HEADER_H - 9, x + self._card_w, y + HEADER_H, fill=P.CARD_HEADER, width=0
-        )
+        _round_rect(c, x, y, right, y + HEADER_H, 9, fill=P.CARD_HEADER, outline="")
+        c.create_rectangle(x, y + HEADER_H - 9, right, y + HEADER_H, fill=P.CARD_HEADER, width=0)
         c.create_text(
             x + 10, y + 12, text=title, anchor="w", fill=P.CARD_HEADER_TEXT, font=_FONT_TITLE
         )
@@ -563,28 +592,32 @@ class SimulatorWindow(tk.Toplevel):
         target: dict[str, Any],
         end: tuple[float, float],
     ) -> list[float]:
-        """A wire that stays in the gaps between cards, clear of the other rows.
+        """A wire that stays in the gaps between cards, clear of the other cards.
 
-        It leaves the source card through the gutter on its left. Within one
-        column it runs straight down that gutter into the chip. To another
-        column it climbs over the source card's top edge, crosses above the
-        cards, and comes down the gutter beside the target: entering its chip
-        from the left, or the end of its row from the right.
+        It leaves the source card through the gap on its left. Within one card
+        it runs straight down that gap into the chip; from the card just right
+        of the target, down the gap they share to the end of the target's row.
+        Otherwise it climbs into the space above the source's rack row, and in
+        another rack row it changes rows down the left margin, which is clear
+        in every row; then it comes down the gap left of the target's card into
+        the chip.
         """
         (sx, sy), (ex, ey) = start, end
-        tx = target["x"]
-        sg = source.get("x", tx) - 7
-        if source.get("x") == tx:
-            return [sx, sy, sg, sy, sg, ey, ex, ey]
-        over = source["top"] - 8
-        if tx < source["x"]:
-            tg = tx + self._card_w + 7
+        tx, tg, t_top = target["x"], target["gutter"], target["top"]
+        sg, s_top = source.get("gutter", tg), source.get("top", t_top)
+        if s_top == t_top:
+            if source.get("x") == tx:
+                return [sx, sy, sg, sy, sg, ey, ex, ey]
             row_end = tx + self._card_w - 2
-            if abs(tg - sg) <= CARD_GAP:  # the next column over: one shared gutter
+            if abs(sg - row_end) <= CARD_GAP:  # the card just right of the target
                 return [sx, sy, sg, sy, sg, ey, row_end, ey]
-            return [sx, sy, sg, sy, sg, over, tg, over, tg, ey, row_end, ey]
-        tg = tx - 7
-        return [sx, sy, sg, sy, sg, over, tg, over, tg, ey, ex, ey]
+            over = s_top - 8
+            return [sx, sy, sg, sy, sg, over, tg, over, tg, ey, ex, ey]
+        lane = MARGIN / 2
+        s_over, t_over = s_top - 8, t_top - 8
+        return [
+            sx, sy, sg, sy, sg, s_over, lane, s_over, lane, t_over, tg, t_over, tg, ey, ex, ey,
+        ]  # fmt: skip
 
     def _show_wire(self, address: str) -> None:
         """Draw the wire from the driving terminal to *address* while the chip is hovered."""
@@ -690,7 +723,7 @@ class SimulatorWindow(tk.Toplevel):
         self._inputs[address] = {
             "track": track, "knob": knob, "bezel": bezel, "cap": cap, "led": led,
             "badge": badge, "pending": pending, "pill": pill, "pill_text": pill_text,
-            "cut": cut, "x": x, "cy": cy, "top": self._card_top,
+            "cut": cut, "x": x, "cy": cy, "top": self._card_top, "gutter": self._card_gutter,
         }  # fmt: skip
         c.tag_bind(switch, "<ButtonPress-1>", lambda _e, a=address: self._on_switch_press(a))
         c.tag_bind(switch, "<ButtonRelease-1>", lambda _e, a=address: self._on_switch_release(a))
@@ -710,7 +743,9 @@ class SimulatorWindow(tk.Toplevel):
         )
         self._draw_label(x + 26, cy, address, x + self._card_w - BADGE_W, tag)
         badge = self._draw_badge(x + self._card_w - 11, cy, tag)
-        self._outputs[address] = {"led": led, "badge": badge, "x": x, "top": self._card_top}
+        self._outputs[address] = {
+            "led": led, "badge": badge, "x": x, "top": self._card_top, "gutter": self._card_gutter,
+        }  # fmt: skip
         self._tooltip_item((led,), lambda: "Drag onto an input to link it.")
         c.tag_bind(tag, "<ButtonPress-1>", lambda _e, a=address: self._start_link_drag(a))
 
@@ -838,7 +873,7 @@ class SimulatorWindow(tk.Toplevel):
 
     @staticmethod
     def _card_height(inputs: int, outputs: int, ai: int, ao: int) -> float:
-        height = HEADER_H + FACE_H
+        height = HEADER_H + BODY_PAD
         for count, row in ((inputs, ROW_H), (outputs, ROW_H), (ai, ANALOG_ROW_H), (ao, ROW_H)):
             if count:
                 height += SECTION_H + count * row
@@ -903,20 +938,14 @@ class SimulatorWindow(tk.Toplevel):
             "run": f"RUN: running at {sim.speed_text}.",
         }[sim.switch_position]
 
-    def _draw_cpu_panel(self, x: float, y: float) -> None:
-        """The CPU's faceplate: PWR/RUN/ERR LEDs, then the vertical RUN / STEP / STOP switch."""
+    def _draw_cpu_card(self, x: float, y: float, card: Card, height: float) -> None:
+        """The slim CPU card: the vertical RUN / STEP / STOP switch over the PWR/RUN/ERR LEDs."""
         c = self._canvas
-        for i, name in enumerate(("PWR", "RUN", "ERR")):
-            ly = y + 8 + i * MODE_ZONE_H
-            self._cpu_leds[name] = c.create_oval(
-                x + 12, ly, x + 22, ly + 10, fill=P.LED_OFF, outline=P.LED_RIM
-            )
-            c.create_text(x + 27, ly + 5, text=name, anchor="w", fill=P.TEXT, font=_FONT_SMALL)
-
-        sx, sy, zone = x + 74, y + 5, MODE_ZONE_H
+        self._draw_card_frame(x, y, height, "CPU", card.model, width=CPU_CARD_W)
+        sx, sy, zone = x + 12, y + HEADER_H + 10, MODE_ZONE_H
         height = len(_POSITIONS) * zone
         self._mode_hint = _round_rect(
-            c, sx - 5, sy - 4, sx + 74, sy + height + 4, 8, fill="", outline="", width=3
+            c, sx - 5, sy - 4, sx + 72, sy + height + 4, 8, fill="", outline="", width=3
         )
         slot = _round_rect(
             c, sx, sy, sx + 24, sy + height, 7, fill=P.SWITCH_OFF, outline="", tags=("mode",)
@@ -938,36 +967,34 @@ class SimulatorWindow(tk.Toplevel):
         c.tag_bind("mode", "<Leave>", lambda _e: c.configure(cursor=""))
         self._tooltip_item(tuple(items), self._mode_text)
 
-    def _draw_face_summary(
-        self, x: float, y: float, inputs: int, outputs: int, ai: int, ao: int
-    ) -> None:
-        """A non-CPU module's faceplate: what it carries."""
-        parts = [
+        for i, name in enumerate(("PWR", "RUN", "ERR")):
+            ly = sy + height + 14 + i * MODE_ZONE_H
+            self._cpu_leds[name] = c.create_oval(
+                x + 14, ly, x + 24, ly + 10, fill=P.LED_OFF, outline=P.LED_RIM
+            )
+            c.create_text(x + 30, ly + 5, text=name, anchor="w", fill=P.TEXT, font=_FONT_SMALL)
+
+    def _card_subtitle(self, model: str, counts: tuple[int, int, int, int]) -> str:
+        """The module's model and what it carries, or just the model when that won't fit."""
+        parts = [model] + [
             f"{count} {label}"
-            for count, label in (
-                (inputs, "inputs"),
-                (outputs, "outputs"),
-                (ai, "analog in"),
-                (ao, "analog out"),
+            for count, label in zip(
+                counts, ("inputs", "outputs", "analog in", "analog out"), strict=True
             )
             if count
         ]
-        self._canvas.create_text(
-            x + 10, y + 12, text=" \N{MIDDLE DOT} ".join(parts), anchor="w", fill=P.MUTED,
-            font=_FONT_SMALL,
-        )  # fmt: skip
+        text = " \N{MIDDLE DOT} ".join(parts)
+        return text if self._small.measure(text) <= self._card_w - 20 else model
 
     def _draw_card(self, x: float, y: float, card: Card) -> None:
+        """A module's I/O; the CPU's own I/O is the card beside the slim CPU card."""
         inputs, outputs, analog_in, analog_out = self._card_parts(card)
-        self._draw_card_frame(x, y, self._module_height(card), card.title, card.model)
+        title = "Built-in I/O" if card.location == "cpu" else card.title
+        counts = (len(inputs), len(outputs), len(analog_in), len(analog_out))
+        subtitle = self._card_subtitle(card.model, counts)
+        self._draw_card_frame(x, y, self._module_height(card), title, subtitle)
         self._card_top = y
-        if card.location == "cpu":
-            self._draw_cpu_panel(x, y + HEADER_H)
-        else:
-            self._draw_face_summary(
-                x, y + HEADER_H, len(inputs), len(outputs), len(analog_in), len(analog_out)
-            )
-        self._draw_rows(x, y + HEADER_H + FACE_H, inputs, outputs, analog_in, analog_out)
+        self._draw_rows(x, y + HEADER_H + BODY_PAD, inputs, outputs, analog_in, analog_out)
 
     def _placeholder_text(self) -> str:
         text = (
@@ -995,8 +1022,7 @@ class SimulatorWindow(tk.Toplevel):
             x, y, height, "Unassigned I/O", "Used, not on any module", dashed=True
         )
         self._card_top = y
-        self._draw_face_summary(x, y + HEADER_H, len(inputs), len(outputs), 0, 0)
-        self._draw_rows(x, y + HEADER_H + FACE_H, inputs, outputs, (), ())
+        self._draw_rows(x, y + HEADER_H + BODY_PAD, inputs, outputs, (), ())
 
     def _draw_rail(self, x0: float, x1: float, y: float) -> None:
         """A DIN rail running behind a row of installed modules (visible in the gaps)."""
@@ -1029,11 +1055,55 @@ class SimulatorWindow(tk.Toplevel):
                     width = max(width, start + label + right + 4)
         return float(width)
 
-    def _per_row(self) -> int:
+    def _pieces(self, layout: PanelLayout | None) -> list[_Piece]:
+        """Everything to draw, in rack order."""
+        pieces: list[_Piece] = []
+        if layout is None or not layout.has_cpu:
+            pieces.append(
+                _Piece(self._card_w, self._placeholder_height(), self._draw_placeholder, False)
+            )
+        if layout is None:
+            return pieces
+        # The CPU card stands as tall as the I/O cards in its housing.
+        housing = [card for card in layout.cards if card.location in ("cpu", "slot")]
+        cpu_h = max([CPU_CARD_MIN_H] + [self._module_height(card) for card in housing])
+        for card in layout.cards:
+            draw = partial(self._draw_card, card=card)
+            if card.location == "cpu":
+                pieces.append(
+                    _Piece(CPU_CARD_W, cpu_h, partial(self._draw_cpu_card, card=card, height=cpu_h))
+                )
+                if any(self._card_parts(card)):
+                    pieces.append(
+                        _Piece(self._card_w, self._module_height(card), draw, gap=HOUSING_GAP)
+                    )
+            else:
+                gap = HOUSING_GAP if card.location == "slot" else CARD_GAP
+                pieces.append(_Piece(self._card_w, self._module_height(card), draw, gap=gap))
+        if layout.unassigned_inputs or layout.unassigned_outputs:
+            n_in, n_out = len(layout.unassigned_inputs), len(layout.unassigned_outputs)
+            height = self._card_height(n_in, n_out, 0, 0)
+            pieces.append(
+                _Piece(self._card_w, height, partial(self._draw_unassigned, layout=layout), False)
+            )
+        return pieces
+
+    def _flow(self, pieces: list[_Piece]) -> list[list[_Piece]]:
+        """*pieces* wrapped into rack rows that fit the canvas, keeping rack order."""
         width = self._canvas.winfo_width()
         if width <= 1:  # not laid out yet
             width = self._requested_width
-        return max(1, int((width - 2 * MARGIN + CARD_GAP) // (self._card_w + CARD_GAP)))
+        room = width - 2 * MARGIN
+        rows: list[list[_Piece]] = []
+        used = 0.0
+        for piece in pieces:
+            if rows and rows[-1] and used + piece.gap + piece.width <= room:
+                rows[-1].append(piece)
+                used += piece.gap + piece.width
+            else:
+                rows.append([piece])
+                used = piece.width
+        return rows
 
     # ------------------------------------------------------------------
     # Live updates (no redraw)
@@ -1194,6 +1264,12 @@ class SimulatorWindow(tk.Toplevel):
             self._speed_var.set(format_speed(sim.speed))
         self._actual_var.set(sim.speed_text.partition(" ")[2])
 
+        plc_data = sim.plc_data_path
+        name = plc_data.name if plc_data is not None else ""
+        if len(name) > PLC_DATA_NAME_MAX:
+            name = name[: PLC_DATA_NAME_MAX - 1] + "\N{HORIZONTAL ELLIPSIS}"
+        self._plc_data_btn.configure(text=f"PLC Data: {name}" if name else "PLC Data...")
+
         count = len(sim.forces)
         self._forces_btn.configure(text=f"Forces ({count})" if count else "Forces")
         bench = len(sim.bench_links)
@@ -1227,52 +1303,35 @@ class SimulatorWindow(tk.Toplevel):
         self._mode_knob = None
         self._mode_hint = None
 
-        # Everything to draw, in rack order: (height, draw(x, y), sits on the rail).
         layout = self._simulation.layout
         self._card_w = self._fit_card_width(layout)
-        pieces: list[tuple[float, Callable[[float, float], None], bool]] = []
-        if layout is None or not layout.has_cpu:
-            pieces.append((self._placeholder_height(), self._draw_placeholder, False))
-        if layout is not None:
-            for card in layout.cards:
-                pieces.append(
-                    (self._module_height(card), lambda x, y, k=card: self._draw_card(x, y, k), True)
-                )
-            if layout.unassigned_inputs or layout.unassigned_outputs:
-                n_in, n_out = len(layout.unassigned_inputs), len(layout.unassigned_outputs)
-                pieces.append(
-                    (
-                        self._card_height(n_in, n_out, 0, 0),
-                        lambda x, y: self._draw_unassigned(x, y, layout),
-                        False,
-                    )
-                )
-
-        # Flow the cards into rows that fit the window, keeping rack order.
-        per_row = self._per_row()
-        self._drawn_per_row = per_row
+        self._drawn_pieces = self._pieces(layout)
+        rows = self._flow(self._drawn_pieces)
+        self._drawn_rows = tuple(len(row) for row in rows)
         y = float(MARGIN)
         widest = 0.0
-        for start in range(0, len(pieces), per_row):
-            row = pieces[start : start + per_row]
-            x = float(MARGIN)
+        for row in rows:
+            x = float(MARGIN) - row[0].gap
             rail: list[float] = []
-            for _height, draw, on_rail in row:
-                draw(x, y)
-                if on_rail:
-                    rail.extend((x, x + self._card_w))
-                x += self._card_w + CARD_GAP
+            for piece in row:
+                x += piece.gap
+                # Wires run down the middle of the gap left of the card.
+                self._card_gutter = x - (piece.gap if x > MARGIN else MARGIN) / 2
+                piece.draw(x, y)
+                if piece.on_rail:
+                    rail.extend((x, x + piece.width))
+                x += piece.width
             if rail:
                 self._draw_rail(min(rail) - 6, max(rail) + 6, y + 70)
             widest = max(widest, x)
-            y += max(height for height, _draw, _rail in row) + ROW_GAP
+            y += max(piece.height for piece in row) + ROW_GAP
         c.configure(scrollregion=(0, 0, widest + MARGIN, y + MARGIN))
         if layout is not None:
             self._simulation.watch(self, layout.poll_addresses)
         self._refresh_dynamic()
 
     def _on_canvas_resized(self, _event: tk.Event) -> None:
-        if self._per_row() != self._drawn_per_row:
+        if tuple(len(row) for row in self._flow(self._drawn_pieces)) != self._drawn_rows:
             self._redraw()
 
     def _populate_forces_menu(self) -> None:
@@ -1349,7 +1408,7 @@ class SimulatorWindow(tk.Toplevel):
                 return
 
     def _browse_plc_data(self) -> None:
-        """Same session-level PLC data as the Console's Browse..."""
+        """Start the simulation from a CLICK data dump (the session watches it for changes)."""
         current = self._simulation.plc_data_path
         path = filedialog.askopenfilename(
             parent=self,
@@ -1399,6 +1458,37 @@ class SimulatorWindow(tk.Toplevel):
         self._blink = not self._blink
         self._refresh_cpu()
         self._tick_after_id = self.after(TICK_MS, self._tick)
+
+    def _console_shown(self) -> bool:
+        """The console is in its pane (not hidden, not popped out)."""
+        panes = {str(pane) for pane in self._paned.panes()}
+        return self._console_window is None and str(self._console) in panes
+
+    def _restore_console_height(self) -> None:
+        total = self._paned.winfo_height()
+        if total > 1 and self._console_shown():
+            self._paned.sashpos(0, max(MIN_RACK_H, total - self._console_h))
+
+    def _show_console(self) -> None:
+        window = self._console_window
+        if window is not None:
+            window.deiconify()
+            window.lift()
+        elif not self._console_shown():
+            self._paned.add(self._console, weight=0)
+            self.after_idle(self._restore_console_height)
+        self._console.focus_input()
+
+    def _hide_console(self) -> None:
+        if self._console_shown():
+            self._console_h = self._paned.winfo_height() - self._paned.sashpos(0)
+            self._paned.forget(self._console)
+
+    def _toggle_console(self) -> None:
+        if self._console_shown():
+            self._hide_console()
+        else:
+            self._show_console()
 
     # ------------------------------------------------------------------
     # Widgets
@@ -1463,17 +1553,21 @@ class SimulatorWindow(tk.Toplevel):
             command=lambda: self._simulation.set_switch_position("step"),
         ).pack(side=tk.LEFT, padx=(8, 0))
 
-        ttk.Button(bar, text="Console", command=self._open_console).pack(side=tk.RIGHT)
+        console_btn = ttk.Button(bar, text="Console", command=self._toggle_console)
+        console_btn.pack(side=tk.RIGHT)
+        bind_tooltip(console_btn, "Show or hide the command console (Ctrl+`)")
         ttk.Button(bar, text="Dataview", command=self._open_dataview).pack(
             side=tk.RIGHT, padx=(0, 4)
         )
-        plc_data = ttk.Button(bar, text="PLC Data...", command=self._browse_plc_data)
-        plc_data.pack(side=tk.RIGHT, padx=(0, 4))
+        # Names the loaded file: it sets where both the panel and the console start.
+        self._plc_data_btn = ttk.Button(bar, text="PLC Data...", command=self._browse_plc_data)
+        self._plc_data_btn.pack(side=tk.RIGHT, padx=(0, 4))
         bind_tooltip(
-            plc_data,
+            self._plc_data_btn,
             "Start from the PLC's live values: a CSV saved in CLICK with\n"
             "PLC > Read Data from PLC > All > Save (not the nickname CSV).\n"
-            "Switches and analog values take the file's values.",
+            "Switches and analog values take the file's values, and the\n"
+            "simulation reloads whenever the file changes.",
         )
         self._forces_btn = ttk.Menubutton(bar, text="Forces")
         self._forces_menu = tk.Menu(
@@ -1503,8 +1597,11 @@ class SimulatorWindow(tk.Toplevel):
         self._banner = ttk.Frame(self)
 
     def _create_canvas(self) -> None:
-        frame = ttk.Frame(self)
-        frame.pack(fill=tk.BOTH, expand=True)
+        # The rack over the console pane; the rack takes any height the window gains.
+        self._paned = ttk.PanedWindow(self, orient=tk.VERTICAL)
+        self._paned.pack(fill=tk.BOTH, expand=True)
+        frame = ttk.Frame(self._paned)
+        self._paned.add(frame, weight=1)
         self._canvas = tk.Canvas(frame, background=P.RACK_BG, highlightthickness=0)
         ybar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self._canvas.yview)
         self._canvas.configure(yscrollcommand=ybar.set)
@@ -1515,6 +1612,40 @@ class SimulatorWindow(tk.Toplevel):
         self._canvas.bind("<Configure>", self._on_canvas_resized, add="+")
         self._canvas.bind(
             "<MouseWheel>", lambda e: self._canvas.yview_scroll(-1 * (e.delta // 120), "units")
+        )
+
+    # ------------------------------------------------------------------
+    # Console pane
+    # ------------------------------------------------------------------
+
+    def _console_options(self) -> dict[str, Any]:
+        return {
+            "simulation": self._simulation,
+            "get_analysis": self._get_analysis,
+            "filter_func": self._filter_func,
+            "transcript": self._console_transcript,
+            "history": self._console_history,
+        }
+
+    def _resize_console(self, y_root: int, start: bool) -> None:
+        """Move the sash with the console's header, keeping the grab point under the pointer."""
+        if not self._console_shown():
+            return
+        top = self._paned.winfo_rooty()
+        if start:
+            self._resize_grab = y_root - top - self._paned.sashpos(0)
+            return
+        limit = self._paned.winfo_height() - MIN_CONSOLE_H
+        position = y_root - top - self._resize_grab
+        self._paned.sashpos(0, max(MIN_RACK_H, min(position, limit)))
+
+    def _new_console_panel(self) -> ConsolePanel:
+        return ConsolePanel(
+            self._paned,
+            on_pop=self._pop_out_console,
+            on_hide=self._hide_console,
+            on_resize=self._resize_console,
+            **self._console_options(),
         )
 
     # ------------------------------------------------------------------
@@ -1533,6 +1664,9 @@ class SimulatorWindow(tk.Toplevel):
         sim = self._simulation
         sim.remove_listener(self._on_simulation_event)
         sim.unwatch(self)  # closing the window leaves the simulation running
+        self._console.close()
+        if self._console_window is not None:
+            self._console_window.destroy()
         if self._tooltip is not None:
             self._tooltip.destroy()
         store = self._observed_store
@@ -1548,28 +1682,33 @@ class SimulatorWindow(tk.Toplevel):
         *,
         simulation: SimulationSession,
         get_store: Callable[[], AddressStore | None],
+        get_analysis: Callable[[], AnalysisService | None],
         open_dataview: Callable[[], None],
-        open_console: Callable[[], None],
+        filter_func: Callable[[list[str], str], list[str]] | None = None,
         on_destroy: Callable[[], None] | None = None,
         title_suffix: str = "",
     ) -> None:
         super().__init__(parent)
         self._simulation = simulation
         self._get_store = get_store
+        self._get_analysis = get_analysis
         self._open_dataview = open_dataview
-        self._open_console = open_console
+        self._filter_func = filter_func
         self._on_destroy = on_destroy
+        self._title_suffix = title_suffix
         self._destroyed = False
 
         self.title(f"Simulator — {title_suffix}" if title_suffix else "Simulator")
         self._requested_width = 1180
         self._card_w = float(CARD_W)
         self._card_top = 0.0
-        self.geometry(f"{self._requested_width}x720")
+        self._card_gutter = 0.0
+        self.geometry(f"{self._requested_width}x760")
         self.minsize(480, 360)
 
         self._font = tkfont.Font(self, font=_FONT)
         self._mono = tkfont.Font(self, font=_FONT_MONO)
+        self._small = tkfont.Font(self, font=_FONT_SMALL)
         self._inputs: dict[str, dict[str, Any]] = {}
         self._outputs: dict[str, dict[str, Any]] = {}
         self._analog_in: dict[str, dict[str, Any]] = {}
@@ -1592,7 +1731,8 @@ class SimulatorWindow(tk.Toplevel):
         self._banner_key: tuple = ()
         self._tick_after_id: str | None = None
         self._tooltip: tk.Toplevel | None = None
-        self._drawn_per_row = 0
+        self._drawn_pieces: list[_Piece] = []
+        self._drawn_rows: tuple[int, ...] = ()
 
         self._status_var = tk.StringVar()
         self._scan_var = tk.StringVar()
@@ -1602,8 +1742,20 @@ class SimulatorWindow(tk.Toplevel):
         self._step_count_var = tk.StringVar(value="10")
         self._run_for_var = tk.StringVar(value="1 s")
 
+        # The console's transcript and history outlive any one panel showing them.
+        self._console_transcript: Transcript = []
+        self._console_history: list[str] = []
+        self._console_window: ConsoleWindow | None = None
+        self._console_h = CONSOLE_H
+        # Where in the header the pointer grabbed it, measured from the sash.
+        self._resize_grab = 0
+
         self._create_toolbar()
         self._create_canvas()
+        # Open from the start, slim, so the simulation's startup shows in it.
+        self._console = self._new_console_panel()
+        self._paned.add(self._console, weight=0)
+        self.bind("<Control-grave>", lambda _e: self._toggle_console())
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self._observed_store = get_store()
@@ -1614,6 +1766,30 @@ class SimulatorWindow(tk.Toplevel):
         simulation.refresh_layout()
         self._redraw()
         self._tick_after_id = self.after(TICK_MS, self._tick)
+
+    def _pop_out_console(self) -> None:
+        """Move the console to its own window, transcript and history included."""
+        if self._console.busy:
+            return
+        self._hide_console()
+        self._console.close()
+        title = f"Console \N{EM DASH} {self._title_suffix}" if self._title_suffix else "Console"
+        window = ConsoleWindow(
+            self, title=title, on_dock=self._dock_console, **self._console_options()
+        )
+        self._console_window = window
+        self._console = window.panel
+
+    def _dock_console(self) -> None:
+        """Close the console's own window and put it back in its pane."""
+        window = self._console_window
+        if window is None:
+            return
+        self._console_window = None
+        self._console.close()
+        window.destroy()
+        self._console = self._new_console_panel()
+        self._show_console()
 
     def _dismiss_note(self) -> None:
         self._note = None
