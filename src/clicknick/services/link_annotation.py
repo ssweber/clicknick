@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from pyclickplc.addresses import normalize_address, parse_address
+from pyclickplc.banks import BANKS, DataType
 from pyrung.click.tag_map import TagMeta
 
 from .annotation_service import AnnotationService
@@ -40,6 +42,27 @@ def split_profile(token: str) -> tuple[str, dict[str, str]]:
         if eq:
             values[key.strip()] = value.strip()
     return kind, values
+
+
+def bit_enable(address: str | None) -> bool:
+    """True when the CLICK *address* is a bit (X, Y, C, T, CT, SC): it is only ON or OFF.
+
+    A bit enable's trigger is 0 (drive while it is OFF) or none (while it is ON).
+    """
+    normalized = normalize_address(address or "")
+    if normalized is None:
+        return False
+    bank, _index = parse_address(normalized)
+    return BANKS[bank].data_type == DataType.BIT
+
+
+def when_text(enable: str | None, trigger: int | str | None) -> str:
+    """When the enable drives the link, for labels: ``""``, ``" when OFF"`` or ``" = 3"``."""
+    if trigger is None:
+        return ""
+    if bit_enable(enable):
+        return " when OFF" if trigger == 0 else ""
+    return f" = {trigger}"
 
 
 def link_text(enable_name: str, link: BenchLink) -> str:

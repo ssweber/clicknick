@@ -50,3 +50,13 @@ def test_profile_tokens():
         {"toward": "Setpoint", "rate": "0.3"},
     )
     assert split_profile("2s") == ("", {})
+
+
+def test_bit_enables_are_on_or_off():
+    from clicknick.services.link_annotation import bit_enable, when_text
+
+    assert bit_enable("Y001") and bit_enable("c5") and not bit_enable("DS1")
+    assert not bit_enable("Motor_Run"), "only CLICK addresses"
+    assert when_text("Y001", None) == ""
+    assert when_text("Y001", 0) == " when OFF"
+    assert when_text("DS1", 3) == " = 3"

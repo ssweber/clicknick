@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 from pyclickplc.addresses import get_addr_key, parse_address
 
-from ..services.link_annotation import comment_has_link, comment_with_link
+from ..services.link_annotation import comment_has_link, comment_with_link, when_text
 from ..services.sim_state import BenchLink
 from ..simulation_session import SPEEDS, SWITCH_LABELS, SimStatus, format_speed
 from ..widgets.tooltip import bind_tooltip
@@ -326,7 +326,7 @@ class SimulatorWindow(tk.Toplevel):
         enable = link.enable or ""
         nickname = self._names(enable)[0]
         driver = f"{enable} {nickname}" if nickname else enable
-        when = f" = {link.trigger}" if link.trigger is not None else ""
+        when = when_text(link.enable, link.trigger)
         kind = "Program link" if link.source == "project" else "Bench link"
         text = f"{kind}: driven by {driver}{when} ({link.response})."
         bench = sim.bench_links.get(address)
@@ -1445,7 +1445,8 @@ class SimulatorWindow(tk.Toplevel):
             if link.cut:
                 label = f"{name}: program link cut"
             else:
-                label = f"{name} \N{LEFTWARDS ARROW} {link.enable}   {link.response}"
+                when = when_text(link.enable, link.trigger)
+                label = f"{name} \N{LEFTWARDS ARROW} {link.enable}{when}   {link.response}"
             if link.source == "project":
                 suffix = "" if link.active else "   (changed on the bench)"
                 menu.add_command(label=f"{label}   program{suffix}", state=tk.DISABLED)

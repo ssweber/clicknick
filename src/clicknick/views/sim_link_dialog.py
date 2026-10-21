@@ -1,8 +1,10 @@
 """Link dialog: wire a simulator input to the tag that drives it, on the bench.
 
 A bool input (X) follows its enable after an on/off delay, or pulses while it
-is on. An analog input (DF) ramps or approaches a target while it is on. The
-result is a BenchLink; the Simulator window hands it to the session.
+is on. An analog input (DF) ramps or approaches a target while it is on. A bit
+enable (Y, C...) drives the link while it is ON or while it is OFF; a word
+enable (DS...) while it equals a value. The result is a BenchLink; the
+Simulator window hands it to the session.
 """
 
 from __future__ import annotations
@@ -13,7 +15,12 @@ from tkinter import messagebox, ttk
 
 from pyclickplc.addresses import normalize_address
 
-from ..services.link_annotation import PROFILE_PARAMS, profile_token, split_profile
+from ..services.link_annotation import (
+    PROFILE_PARAMS,
+    bit_enable,
+    profile_token,
+    split_profile,
+)
 from ..services.sim_state import BenchLink
 
 #: Responses offered for each kind of input: (value, label, first field, second field).
@@ -59,6 +66,16 @@ class LinkDialog(tk.Toplevel):
         if reset:
             self._first_var.set(_DEFAULTS[self._kind_var.get()][0])
             self._second_var.set(_DEFAULTS[self._kind_var.get()][1])
+
+    def _on_enable_changed(self) -> None:
+        """ON / OFF for a bit enable, a value to match for a word."""
+        bit = bit_enable(self._enable_var.get().strip())
+        shown, hidden = (
+            (self._when_bit, self._when_word) if bit else (self._when_word, self._when_bit)
+        )
+        hidden.grid_forget()
+        shown.grid(row=1, column=1, sticky="w", pady=2)
+        self._when_label.configure(text="When it is" if bit else "When it equals")
 
     def _accept(self) -> None:
         try:
@@ -106,6 +123,8 @@ class LinkDialog(tk.Toplevel):
         self._enable_var = tk.StringVar(value=enable or (current.enable or "" if current else ""))
         trigger = current.trigger if current is not None else None
         self._trigger_var = tk.StringVar(value="" if trigger is None else str(trigger))
+        # A bit enable is only ON or OFF: trigger 0 drives the link while it is OFF.
+        self._when_on = tk.BooleanVar(value=trigger != 0)
         self._kind_var = tk.StringVar(value=kind)
         self._first_var = tk.StringVar(value=first)
         self._second_var = tk.StringVar(value=second)
@@ -119,13 +138,21 @@ class LinkDialog(tk.Toplevel):
             body, textvariable=self._enable_var, values=list(enables), width=14
         )
         enable_box.grid(row=0, column=1, sticky="we", pady=2)
-        ttk.Label(body, text="When it equals").grid(row=1, column=0, sticky="w", pady=2)
-        ttk.Entry(body, textvariable=self._trigger_var, width=10).grid(
-            row=1, column=1, sticky="w", pady=2
+        self._when_label = ttk.Label(body)
+        self._when_label.grid(row=1, column=0, sticky="w", pady=2)
+        # Two forms of the same row; _on_enable_changed shows the one that fits.
+        self._when_bit = ttk.Frame(body)
+        for text, value in (("ON", True), ("OFF", False)):
+            ttk.Radiobutton(self._when_bit, text=text, value=value, variable=self._when_on).pack(
+                side=tk.LEFT, padx=(0, 12)
+            )
+        self._when_word = ttk.Frame(body)
+        ttk.Entry(self._when_word, textvariable=self._trigger_var, width=10).pack(side=tk.LEFT)
+        ttk.Label(self._when_word, text="(blank: whenever it is not 0)", foreground="gray").pack(
+            side=tk.LEFT, padx=(8, 0)
         )
-        ttk.Label(body, text="(blank: whenever it is on)", foreground="gray").grid(
-            row=1, column=1, sticky="e", padx=(80, 0)
-        )
+        self._enable_var.trace_add("write", lambda *_a: self._on_enable_changed())
+        self._on_enable_changed()
 
         kinds = ttk.Frame(body)
         kinds.grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 2))
@@ -173,7 +200,10 @@ class LinkDialog(tk.Toplevel):
             raise ValueError("Enter the CLICK address that drives this input, such as Y001.")
         kind = self._kind_var.get()
         first, second = self._first_var.get().strip(), self._second_var.get().strip()
-        trigger = _trigger(self._trigger_var.get())
+        if bit_enable(enable):
+            trigger = None if self._when_on.get() else 0
+        else:
+            trigger = _trigger(self._trigger_var.get())
         if kind == "delay":
             if not first and not second:
                 raise ValueError("Enter an on delay, an off delay, or both.")
