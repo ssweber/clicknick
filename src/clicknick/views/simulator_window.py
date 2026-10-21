@@ -189,7 +189,8 @@ class SimulatorWindow(tk.Toplevel):
     def _draw_label(self, x: float, cy: float, address: str, right: float, tag: str) -> None:
         """One line: the address, then the nickname cut to end at *right*.
 
-        Hovering shows the full nickname and the comment.
+        The address and nickname are on screen already, so hovering shows the comment
+        (and the full nickname, if it had to be cut); with neither there is no tooltip.
         """
         c = self._canvas
         address_item = c.create_text(
@@ -197,23 +198,28 @@ class SimulatorWindow(tk.Toplevel):
         )
         nickname, comment = self._names(address)
         items = [address_item]
+        cut = False
         if nickname:
             left = c.bbox(address_item)[2] + 5
             shown = self._truncate(nickname, right - left)
+            cut = shown != nickname
             if shown:
                 items.append(
                     c.create_text(
                         left, cy, text=shown, anchor="w", fill=P.TEXT, font=_FONT, tags=(tag,)
                     )
                 )
-        if nickname or comment:
-            tip = "\n".join(part for part in (nickname, comment) if part)
+        tip = "\n".join(part for part in (nickname if cut else "", comment) if part)
+        if tip:
             self._tooltip_item(tuple(items), lambda: tip)
 
-    def _draw_badge(self, cx: float, cy: float, tag: str = "") -> tuple[int, ...]:
-        """A small padlock, shown while the address is forced."""
+    def _draw_badge(self, cx: float, cy: float, address: str) -> tuple[int, ...]:
+        """A small padlock, shown while *address* is forced; clicking it releases the force.
+
+        Its own tag, not the row's: a click here must not also start the row's link drag.
+        """
         c = self._canvas
-        tags = (tag,) if tag else ()
+        tags = (f"badge:{address}",)
         shackle = c.create_arc(
             cx - 4, cy - 9, cx + 4, cy - 1, start=0, extent=180, style="arc",
             outline=P.FORCED, width=2, state="hidden", tags=tags,
@@ -221,7 +227,10 @@ class SimulatorWindow(tk.Toplevel):
         body = c.create_rectangle(
             cx - 6, cy - 4, cx + 6, cy + 6, fill=P.FORCED, outline="", state="hidden", tags=tags
         )
-        self._tooltip_item((shackle, body), lambda: "Forced. Right-click to release.")
+        c.tag_bind(tags[0], "<Button-1>", lambda _e: self._simulation.release_force(address))
+        c.tag_bind(tags[0], "<Enter>", lambda _e: c.configure(cursor="hand2"), add="+")
+        c.tag_bind(tags[0], "<Leave>", lambda _e: c.configure(cursor=""), add="+")
+        self._tooltip_item((shackle, body), lambda: "Forced. Click to release.")
         return (shackle, body)
 
     def _row_target(
@@ -784,7 +793,7 @@ class SimulatorWindow(tk.Toplevel):
             c.tag_bind(item, "<Enter>", lambda _e, a=address: self._show_wire(a), add="+")
             c.tag_bind(item, "<Leave>", lambda _e: c.delete("wire"), add="+")
         self._draw_label(x + 52, cy, address, x + self._card_w - BADGE_W, tag)
-        badge = self._draw_badge(x + self._card_w - 11, cy, tag)
+        badge = self._draw_badge(x + self._card_w - 11, cy, address)
         self._inputs[address] = {
             "track": track, "knob": knob, "bezel": bezel, "cap": cap, "led": led,
             "badge": badge, "pending": pending, "pill": pill, "pill_text": pill_text,
@@ -799,6 +808,19 @@ class SimulatorWindow(tk.Toplevel):
         self._add_force_items(menu, address, (True, False))
         menu.tk_popup(event.x_root, event.y_root)
 
+    def _output_hint(self, address: str) -> str:
+        if address in self._simulation.forces:
+            return "Forced. Double-click (or click the padlock) to release."
+        return "Double-click to force it the other way. Drag onto an input to link it."
+
+    def _flip_output(self, address: str) -> None:
+        """Double-click: force an output the other way from what it shows, or release it."""
+        sim = self._simulation
+        if address in sim.forces:
+            sim.release_force(address)
+        else:
+            sim.force(address, not sim.values.get(address), on_error=self._show_action_error)
+
     def _draw_output(self, x: float, y: float, address: str) -> None:
         c = self._canvas
         tag = f"out:{address}"
@@ -808,12 +830,13 @@ class SimulatorWindow(tk.Toplevel):
             x + 10, cy - 5, x + 20, cy + 5, fill=P.LED_OFF, outline=P.LED_RIM, tags=(tag,)
         )
         self._draw_label(x + 26, cy, address, x + self._card_w - BADGE_W, tag)
-        badge = self._draw_badge(x + self._card_w - 11, cy, tag)
+        badge = self._draw_badge(x + self._card_w - 11, cy, address)
         self._outputs[address] = {
             "led": led, "badge": badge, "x": x, "top": self._card_top, "gutter": self._card_gutter,
         }  # fmt: skip
-        self._tooltip_item((led,), lambda: "Drag onto an input to link it.")
+        self._tooltip_item((led,), lambda a=address: self._output_hint(a))
         c.tag_bind(tag, "<ButtonPress-1>", lambda _e, a=address: self._start_link_drag(a))
+        c.tag_bind(tag, "<Double-Button-1>", lambda _e, a=address: self._flip_output(a))
 
     def _force_analog(self, address: str) -> None:
         current = self._simulation.forces.get(address)
@@ -880,7 +903,7 @@ class SimulatorWindow(tk.Toplevel):
             height=ANALOG_ROW_H,
         )  # fmt: skip
         self._draw_label(x + 10, y + 11, address, x + self._card_w - BADGE_W, tag)
-        badge = self._draw_badge(x + self._card_w - 11, y + 11, tag)
+        badge = self._draw_badge(x + self._card_w - 11, y + 11, address)
         var = tk.StringVar()
         entry = ttk.Entry(c, textvariable=var, width=8, justify="right")
         entry.bind("<Return>", lambda _e, a=address: self._commit_analog(a))
@@ -931,7 +954,7 @@ class SimulatorWindow(tk.Toplevel):
             x + self._card_w - BADGE_W - 2, cy, text="", anchor="e", fill=P.TEXT, font=_FONT_BOLD,
             tags=(tag,),
         )  # fmt: skip
-        badge = self._draw_badge(x + self._card_w - 11, cy, tag)
+        badge = self._draw_badge(x + self._card_w - 11, cy, address)
         self._analog_out[address] = {"value": value, "badge": badge}
 
     # ------------------------------------------------------------------

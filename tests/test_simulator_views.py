@@ -672,3 +672,54 @@ def test_toggling_the_console_brings_it_back_at_its_height(simulator, ready):
     win._toggle_console()
     win.update()
     assert abs(paned.sashpos(0) - (opened - 100)) <= 2
+
+
+def test_clicking_the_padlock_releases_the_force(simulator, ready):
+    win = simulator(ready)
+    win.geometry("1100x760")
+    ready.sim.force("Y001", True)
+    win._refresh_dynamic()
+    win.update()
+    c = win._canvas
+    x0, y0, x1, y1 = c.bbox("badge:Y001")
+    x, y = (x0 + x1) // 2, (y0 + y1) // 2
+    c.event_generate("<Motion>", x=x, y=y)
+    c.event_generate("<ButtonPress-1>", x=x, y=y)
+    c.event_generate("<ButtonRelease-1>", x=x, y=y)
+    win.update()
+    assert "Y001" not in ready.sim.forces
+    assert win._link_drag is None, "the click is not also the start of a link drag"
+
+
+def test_labels_offer_a_tooltip_only_for_a_comment(simulator, ready):
+    rows = {
+        get_addr_key("X", 1): SimpleNamespace(nickname="Start_PB", comment=""),
+        get_addr_key("X", 2): SimpleNamespace(nickname="Motor_Aux", comment="Aux contact on M1"),
+    }
+    store = SimpleNamespace(
+        visible_state=rows, add_observer=lambda _cb: None, remove_observer=lambda _cb: None
+    )
+    win = simulator(ready, store)
+    c = win._canvas
+
+    def has_tooltip(text: str) -> bool:
+        [item] = [i for i in c.find_all() if c.type(i) == "text" and c.itemcget(i, "text") == text]
+        return bool(c.tag_bind(item, "<Enter>"))
+
+    assert not has_tooltip("Start_PB"), "address and nickname are already on screen"
+    assert has_tooltip("Motor_Aux")
+
+
+def test_double_clicking_an_output_forces_it_the_other_way_then_releases(simulator, ready):
+    win = simulator(ready)
+    assert win._canvas.tag_bind("out:Y001", "<Double-Button-1>"), "on the LED and the name"
+    ready.sim._values = {"Y001": False}
+    win._flip_output("Y001")
+    assert ready.sim.forces == {"Y001": True}
+    assert "release" in win._output_hint("Y001")
+    win._flip_output("Y001")
+    assert ready.sim.forces == {}
+
+    ready.sim._values = {"Y001": True}
+    win._flip_output("Y001")
+    assert ready.sim.forces == {"Y001": False}

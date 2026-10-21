@@ -6,7 +6,7 @@ The panel isn't wired yet, or the machine is two hours away. Run the saved progr
 
 Click **Simulate**. ClickNick draws your CPU and modules from System Configuration, with a switch on every input, an LED on every output and a box on every analog channel. Flip the CPU to **RUN** and work the switches.
 
-- **Right-click a point to force it.** It shows a padlock and stays forced until you release it.
+- **Right-click a point to force it, or double-click an output** to force it the other way from what it shows. It shows a padlock and stays forced until you click the padlock or double-click it again.
 - **STEP** advances one scan at a time. **RUN** runs in real time, or faster.
 - **It answers Modbus** at `127.0.0.1:502`, like the real PLC. The Data View connects to it with a Force column, and so can an HMI.
 - **Start from the machine's state.** In CLICK, choose **PLC > Read Data from PLC > All > Save**, then load that file with **PLC Data** in the simulator.
