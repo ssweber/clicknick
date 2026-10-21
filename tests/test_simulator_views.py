@@ -649,3 +649,26 @@ def test_hovering_a_wiring_entry_draws_its_wire(simulator, ready):
     win._wiring_menu.activate("none")
     win._on_wiring_select()
     assert not win._canvas.find_withtag("wire")
+
+
+def test_toggling_the_console_brings_it_back_at_its_height(simulator, ready):
+    win = simulator(ready)
+    win.geometry("1100x760")
+    win.update()
+    paned = win._paned
+    opened = paned.sashpos(0)
+
+    for _ in range(2):  # not a sliver at the bottom, and not shrinking each time
+        win._toggle_console()
+        win.update()
+        win._toggle_console()
+        win.update()
+        assert abs(paned.sashpos(0) - opened) <= 2
+
+    paned.sashpos(0, opened - 100)  # dragged taller
+    win.update()
+    win._toggle_console()
+    win.update()
+    win._toggle_console()
+    win.update()
+    assert abs(paned.sashpos(0) - (opened - 100)) <= 2

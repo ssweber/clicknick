@@ -665,7 +665,10 @@ class SimulatorWindow(tk.Toplevel):
             window.lift()
         elif not self._console_shown():
             self._paned.add(self._console, weight=0)
-            self.after_idle(self._restore_console_height)
+            # Lay the new pane out first: a sash set before that is overridden, which
+            # left the console as a sliver at the bottom.
+            self._paned.update_idletasks()
+            self._restore_console_height()
         self._console.focus_input()
 
     def _run_in_console(self, command: str) -> None:
@@ -1546,7 +1549,9 @@ class SimulatorWindow(tk.Toplevel):
 
     def _hide_console(self) -> None:
         if self._console_shown():
-            self._console_h = self._paned.winfo_height() - self._paned.sashpos(0)
+            # A pane dragged nearly shut comes back at the slim default, not as a sliver.
+            height = self._paned.winfo_height() - self._paned.sashpos(0)
+            self._console_h = height if height >= MIN_CONSOLE_H else CONSOLE_H
             self._paned.forget(self._console)
 
     def _toggle_console(self) -> None:
