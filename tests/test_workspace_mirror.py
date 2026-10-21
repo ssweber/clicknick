@@ -93,6 +93,19 @@ def test_write_plc_name_replaces_existing_value_without_touching_neighbors(
     )
 
 
+def test_plc_name_uses_click_4_placeholder_names(tmp_path: Path) -> None:
+    project_ini = tmp_path / "Project.ini"
+    project_ini.write_bytes(b"[Sec21]\r\nKey1=1\r\n[Sec20]\r\nKey1=AutoDayTankFill\r\n[Sec22]\r\n")
+
+    assert read_plc_name(project_ini) == "AutoDayTankFill"
+    write_plc_name(project_ini, "Tank Fill")
+
+    assert read_plc_name(project_ini) == "Tank Fill"
+    assert project_ini.read_bytes() == (
+        b"[Sec21]\r\nKey1=1\r\n[Sec20]\r\nKey1=Tank Fill\r\n[Sec22]\r\n"
+    )
+
+
 def test_workspace_selection_uses_plc_name(tmp_path: Path) -> None:
     assert (
         workspace_path_for_selection(tmp_path, "Laser Ball")

@@ -3,6 +3,7 @@ import re
 from dataclasses import dataclass
 
 from ..utils.win32_utils import WIN32
+from .window_mapping import DIALOG_CLASS, unprefixed, window_key
 
 
 @dataclass
@@ -10,8 +11,8 @@ class ChildWindowInfo:
     """Information about a detected Click.exe child window."""
 
     window_id: int  # HWND as integer
-    window_class: str
-    edit_control: str
+    window_class: str  # the mapping key (window_key)
+    edit_control: str  # as CLICK names it, for Win32 lookups
 
 
 @dataclass(frozen=True)
@@ -73,29 +74,26 @@ class ClickWindowDetector:
             if active_window_pid != click_pid:
                 return None
 
-            # Get window handle and class
+            # Get window handle and its mapping key (class, or title for a standard dialog)
             active_window_hwnd = WIN32.get_foreground_hwnd()
             window_class = WIN32.get_class(active_window_hwnd)
+            title = WIN32.get_title(active_window_hwnd) if window_class == DIALOG_CLASS else ""
+            window_class = window_key(window_class, title)
 
-            # Check if it's a recognized window class
+            # Check if it's a recognized window
             if window_class not in self.window_mapping:
                 return None
 
-            if window_class == "#32770":
-                window_name = WIN32.get_title_by_class("#32770")
-                if "Replace" not in window_name and "Find" not in window_name:
-                    return None
-
             # Get focused control
-            # TfrmDataView creates inline edit controls dynamically, requiring GetGUIThreadInfo
-            use_gui_thread_info = window_class == "TfrmDataView"
+            # frmDataView creates inline edit controls dynamically, requiring GetGUIThreadInfo
+            use_gui_thread_info = window_class == "frmDataView"
             focused_control = WIN32.get_focused_control(active_window_hwnd, use_gui_thread_info)
             if not focused_control:
                 return None
 
             # Check if focused control is in our list of edit controls
             allowed_fields = self.window_mapping[window_class]
-            if focused_control not in allowed_fields:
+            if unprefixed(focused_control) not in allowed_fields:
                 return None
 
             # We found a valid popup with a focused edit control
@@ -212,13 +210,9 @@ class ClickWindowDetector:
             return WindowFieldInfo(False, [])
 
         # Return result
-        if not self.current_field or self.current_field not in self.window_mapping.get(
-            self.current_window, {}
-        ):
+        fields = self.window_mapping.get(self.current_window, {})
+        if not self.current_field or unprefixed(self.current_field) not in fields:
             return WindowFieldInfo(False, [])
 
         # Get allowed address types
-        allowed_addresses = self.window_mapping.get(self.current_window, {}).get(
-            self.current_field, []
-        )
-        return WindowFieldInfo(True, allowed_addresses)
+        return WindowFieldInfo(True, fields[unprefixed(self.current_field)])

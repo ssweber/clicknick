@@ -132,13 +132,24 @@ def load_project_workspace_config(sidecar: Path) -> ProjectWorkspaceConfig:
     )
 
 
+def _plc_name_option(sections: set[str]) -> tuple[str, str]:
+    """The section and key holding the PLC name, given the file's lowercased sections.
+
+    CLICK 4 writes Project.ini with placeholder names: [PLCName] PLCName= is [Sec20] Key1=.
+    """
+    if "plcname" not in sections and "sec20" in sections:
+        return "Sec20", "Key1"
+    return "PLCName", "PLCName"
+
+
 def read_plc_name(project_ini: Path) -> str | None:
     """Read CLICK's configured PLC name from a temporary ``Project.ini``."""
     parser = ConfigParser(interpolation=None)
     try:
         with Path(project_ini).open(encoding="utf-8-sig") as stream:
             parser.read_file(stream)
-        value = parser.get("PLCName", "PLCName", fallback="").strip()
+        section, key = _plc_name_option({name.lower() for name in parser.sections()})
+        value = parser.get(section, key, fallback="").strip()
     except (ConfigParserError, OSError, UnicodeError):
         return None
     return value or None
@@ -153,24 +164,31 @@ def write_plc_name(project_ini: Path, plc_name: str) -> None:
     original = project_ini.read_bytes()
     newline = b"\r\n" if b"\r\n" in original else b"\n"
     lines = original.splitlines(keepends=True)
+    sections = {
+        line.strip()[1:-1].decode("ascii", "replace").lower()
+        for line in lines
+        if line.strip().startswith(b"[") and line.strip().endswith(b"]")
+    }
+    section, key = _plc_name_option(sections)
+    header = f"[{section}]".encode("ascii")
     section_start = None
     section_end = len(lines)
     for index, line in enumerate(lines):
         stripped = line.strip().lower()
-        if stripped == b"[plcname]":
+        if stripped == header.lower():
             section_start = index
         elif section_start is not None and stripped.startswith(b"[") and stripped.endswith(b"]"):
             section_end = index
             break
 
-    entry = b"PLCName=" + plc_name.strip().encode("ascii") + newline
+    entry = key.encode("ascii") + b"=" + plc_name.strip().encode("ascii") + newline
     if section_start is None:
         if original and not original.endswith((b"\r", b"\n")):
             lines.append(newline)
-        lines.extend((b"[PLCName]" + newline, entry))
+        lines.extend((header + newline, entry))
     else:
         for index in range(section_start + 1, section_end):
-            if lines[index].split(b"=", 1)[0].strip().lower() == b"plcname":
+            if lines[index].split(b"=", 1)[0].strip().lower() == key.lower().encode("ascii"):
                 lines[index] = entry
                 break
         else:

@@ -119,13 +119,6 @@ class Win32API:
         except Exception:
             return ""
 
-    def get_title_by_class(self, class_name: str) -> str:
-        """Get window title by class name."""
-        hwnd = win32gui.FindWindow(class_name, None)
-        if hwnd:
-            return win32gui.GetWindowText(hwnd)
-        return ""
-
     def get_pos(self, hwnd: int) -> str:
         """Get window position as 'x,y,width,height' string."""
         if not hwnd or not win32gui.IsWindow(hwnd):
@@ -286,7 +279,7 @@ class Win32API:
         Args:
             hwnd: Parent window handle
             use_gui_thread_info: If True, use GetGUIThreadInfo (better for dynamically
-                created controls like TfrmDataView's inline edit). If False, use
+                created controls like the Data View's inline edit). If False, use
                 thread attachment method (faster for most windows).
         """
         if not hwnd or not win32gui.IsWindow(hwnd):

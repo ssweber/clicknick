@@ -36,7 +36,7 @@ class Overlay(tk.Toplevel):
             # Move cursor to end of text
             WIN32.control_send_end(self.target_window_id, self.target_edit_control)
             WIN32.activate(self.target_window_id)
-            if self.target_window_class == "TfrmTagDB":
+            if self.target_window_class == "frmTagDB":
                 WIN32.send_key("{Enter}")
         except Exception as e:
             print(f"Error inserting text: {e}")
@@ -215,8 +215,8 @@ class Overlay(tk.Toplevel):
             screen_x = win_x + ctrl_x
             screen_y = win_y + ctrl_y
 
-            # Quick fix: add buffer for Edit controls
-            if self.target_edit_control.startswith("Edit"):
+            # Find / Replace and the Address Picker edit inside a dropdown: cover its arrow too
+            if self.target_window_class in ("Find", "frmTagDB"):
                 return (screen_x - 5, screen_y - 5, ctrl_width + 28.5, ctrl_height + 10)
 
             return (screen_x, screen_y, ctrl_width, ctrl_height)
@@ -231,12 +231,12 @@ class Overlay(tk.Toplevel):
 
     def set_target_window(self, window_id, window_class, edit_control):
         """Set the target window information."""
-        # Reset debounce if targeting a different edit control, or if TfrmDataView
-        # (TfrmDataView reuses the same TEdit1 for all grid cells)
+        # Reset debounce if targeting a different edit control, or if frmDataView
+        # (frmDataView reuses the same Edit1 for all grid cells)
         if (
             edit_control != self.target_edit_control
             or window_id != self.target_window_id
-            or window_class == "TfrmDataView"
+            or window_class == "frmDataView"
         ):
             self._debounce_retrigger = False
             if self.debounce_after_id:
