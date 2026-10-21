@@ -575,34 +575,64 @@ def test_regeneration_preserves_workspace_owned_files(tmp_path):
     assert (persist / "pyproject.toml").read_text(encoding="utf-8") == "user config\n"
 
 
-def test_regeneration_refreshes_only_marked_workspace_guidance(tmp_path):
+_POINTER = "<!-- pyrung:guidance --> Read @AGENTS.pyrung.md first."
+
+
+def _staged_guidance(path):
+    staged = _staged_project(path, "generated\n")
+    (staged / "AGENTS.md").write_text(f"# Machine: Line1\n\n{_POINTER}\n", encoding="utf-8")
+    (staged / "AGENTS.pyrung.md").write_text("fresh guidance\n", encoding="utf-8")
+    return staged
+
+
+def test_regeneration_rewrites_pyrungs_guidance_and_keeps_the_users(tmp_path):
     persist = tmp_path / "Example Workspace"
     persist.mkdir()
-    (persist / "README.md").write_text(
-        "# User heading\n\n"
+    user = f"# Machine: Line1\n\n{_POINTER}\n\n## Notes\n\nStation 3 prox is flaky.\n"
+    (persist / "AGENTS.md").write_text(user, encoding="utf-8")
+    (persist / "AGENTS.pyrung.md").write_text("stale guidance\n", encoding="utf-8")
+
+    _publish_generated_project(_staged_guidance(tmp_path / "staged"), persist)
+
+    assert (persist / "AGENTS.md").read_text(encoding="utf-8") == user
+    assert (persist / "AGENTS.pyrung.md").read_text(encoding="utf-8") == "fresh guidance\n"
+
+
+def test_regeneration_puts_a_missing_pointer_back(tmp_path):
+    persist = tmp_path / "Example Workspace"
+    persist.mkdir()
+    (persist / "AGENTS.md").write_text("My own notes.\n", encoding="utf-8")
+
+    _publish_generated_project(_staged_guidance(tmp_path / "staged"), persist)
+
+    assert (persist / "AGENTS.md").read_text(encoding="utf-8") == f"{_POINTER}\n\nMy own notes.\n"
+
+    (persist / "AGENTS.md").write_text("# Line 1\n\nMy own notes.\n", encoding="utf-8")
+    _publish_generated_project(_staged_guidance(tmp_path / "staged-again"), persist)
+    assert (persist / "AGENTS.md").read_text(encoding="utf-8") == (
+        f"# Line 1\n\n{_POINTER}\n\nMy own notes.\n"
+    ), "under the user's title"
+
+
+def test_guidance_written_whole_by_an_older_pyrung_moves_aside(tmp_path):
+    persist = tmp_path / "Example Workspace"
+    persist.mkdir()
+    old = (
+        "# Machine: Line1\n\n"
         "<!-- pyrung:workspace-lifecycle:start -->\n"
         "temporary guidance\n"
         "<!-- pyrung:workspace-lifecycle:end -->\n\n"
-        "User notes.\n",
-        encoding="utf-8",
+        "Edited by hand.\n"
     )
+    (persist / "AGENTS.md").write_text(old, encoding="utf-8")
 
-    staged = _staged_project(tmp_path / "staged-guidance", "generated\n")
-    (staged / "README.md").write_text(
-        "# Generated heading\n\n"
-        "<!-- pyrung:workspace-lifecycle:start -->\n"
-        "persistent guidance\n"
-        "<!-- pyrung:workspace-lifecycle:end -->\n",
-        encoding="utf-8",
-    )
-
+    staged = _staged_guidance(tmp_path / "staged")
     _publish_generated_project(staged, persist)
 
-    readme = (persist / "README.md").read_text(encoding="utf-8")
-    assert "# User heading" in readme
-    assert "User notes." in readme
-    assert "persistent guidance" in readme
-    assert "temporary guidance" not in readme
+    assert (persist / "AGENTS.previous.md").read_text(encoding="utf-8") == old
+    assert (persist / "AGENTS.md").read_text(encoding="utf-8") == (
+        (staged / "AGENTS.md").read_text(encoding="utf-8")
+    )
 
 
 def test_clean_regeneration_does_not_replace_existing_recovery_snapshot(tmp_path):

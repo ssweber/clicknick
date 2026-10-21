@@ -1,7 +1,8 @@
 # Visual Simulator — Design Notes
 
-Design session 2026-10-18. Implemented on branch `feat/simulator` in pyclickplc (834a6c4), pyrung (100785c8)
-and clicknick (f68e5a9). Not released yet. Re-grounded 2026-10-21: Modbus input writes dropped (below), links added.
+Design session 2026-10-18. Implemented on branch `feat/simulator` in pyclickplc, pyrung and clicknick; not
+released yet. Re-grounded 2026-10-21: Modbus input writes dropped (pyclickplc 0e739de), bench links added (pyrung
+c396ea1, clicknick f13096c, c4100d7), then layout B, the Console pane and the workspace guidance split.
 
 ## Agreed design
 
@@ -25,7 +26,8 @@ and clicknick (f68e5a9). Not released yet. Re-grounded 2026-10-21: Modbus input 
 
 ### CPU mode switch
 
-- Three positions: **STOP / STEP** (neutral position, label TBD) **/ RUN**.
+- Three positions: **RUN / STEP / STOP**, vertical with RUN up as on the CPU. STEP is the neutral position; "Manual"
+  was considered and rejected, because Auto/Manual is a machine mode in users' own ladder.
 - The position is derived from frames (mode + running). The last command wins, because the Console and agents can
   drive the same simulation.
 - Forces survive STOP -> RUN through an opt-in: a pyrung runner setting plus a DAP launch arg (`keepForcesOnRun`),
@@ -36,8 +38,8 @@ and clicknick (f68e5a9). Not released yet. Re-grounded 2026-10-21: Modbus input 
 - One sim session object (not `ConsoleWindow`) owns the `DapService`, the Modbus port, desired forces and switch
   state. It re-applies them after STOP -> RUN, reboot or relaunch.
 - The simulation can run headless. There is an on/off toggle in the main window, and it turns on automatically when
-  the Console or Simulate window opens. Closing windows does not stop it. The on/off state is not persisted across
-  app restarts.
+  the Simulator opens. Closing the Simulator does not stop it. The on/off state is not persisted across app
+  restarts.
 
 ### UX
 
@@ -58,11 +60,13 @@ and clicknick (f68e5a9). Not released yet. Re-grounded 2026-10-21: Modbus input 
 
 ### Open TODOs
 
-- Simulate action icon.
-- Simulator screenshot in the docs.
+- Simulator screenshot in the docs (`<!-- TODO -->` in `docs/help/index.md`).
 - docs-build not run.
-- Release order: see [Modbus input writes](#resolved-modbus-input-writes-are-not-needed); pyrung no longer needs a
-  new pyclickplc floor.
+- Contract tests against a real DAP subprocess (session and view tests use fakes).
+- Remember the Console pane's open state and height across app restarts? It always opens slim today.
+- Release order: pyclickplc, then pyrung, then ClickNick bumps both pins (it pins pyrung 0.15.2 today, so the real
+  simulator, `link=Tag:trigger` promote and the split guidance files need the new pyrung). pyrung no longer needs a
+  new pyclickplc floor; see [Modbus input writes](#resolved-modbus-input-writes-are-not-needed).
 
 ## Resolved: Modbus input writes are not needed
 
@@ -159,7 +163,7 @@ option. It can. Nothing on the branch needs Modbus writes to X.
 
 ### pyrung work
 
-**Status 2026-10-21: implemented on pyrung `feat/simulator` (uncommitted).**
+**Status 2026-10-21: implemented on pyrung `feat/simulator` (c396ea1).**
 
 - `Harness.declared()` / `set_overrides()` / `pending()`, plus `link_problem()`; `unlink` is now a cut override.
 - `pyrung.dap.links` keeps the overlay on the adapter and adds the `link` / `unlink` / `restore` / `links` verbs.
@@ -235,12 +239,14 @@ Original plan:
 - **Validation:** reject a bench link whose feedback the program writes (an OUT coil, or a C bit set by logic)
   and say which rung writes it. Reject `readonly` feedbacks too.
 
-### Open
+### Built vs. the plan above
 
-- Draw wires on hover/select only, or offer an "always show wiring" toggle? Built: hover only; a wire
-  between terminals on the same card runs through the gutter beside it.
-- Built 2026-10-21: drag from an output onto an input or analog input to open the link dialog with that
-  output filled in.
+- Built: chips (program solid, bench dashed, cut as a dashed red ring), hover wire through the gaps, drag an output
+  onto an input to open the link dialog, the right-click menu, the Wiring menu (per-link enable, Bench wiring
+  on/off, Discard bench links), adoption of Console edits, Save to project.
+- Different: no "pending Sync" badge. A saved bench link says so in its tooltip and the menu reads "Saved to project".
+- Not built: dwell progress on the chip (pyrung reports only `pending`), "Save all to project", click-to-select a
+  link, an "always show wiring" toggle (wires show on hover only).
 
 ## To re-evaluate
 
@@ -257,5 +263,28 @@ A change made on the graphical simulator shows up in the Console as the equivale
 command path. Routing all inputs through DAP (above) is the first step. Frames already carry
 `source = {origin, command}`.
 
-The Console could be re-imagined as a **drop-down / tear-off window** attached to the simulator rather than a
-separate standalone window.
+**Decided (2026-10-21):** the Console always lives in the Simulator, as a resizable bottom pane like VS Code's
+terminal (open and slim at start, Ctrl+` toggles it). **Pop out** moves it to its own window and closing that window
+docks it back; the Simulator owns the transcript and command history, so both survive the move. Simulate is the one
+door: the main window's separate Console button and Tools > Console are gone. PLC data is loaded from the
+Simulator's toolbar (the button names the loaded file), since it sets the start for the panel and the console alike.
+
+Still open: right-click **Why / How / Simplified** and echoing panel actions as commands. Both are cheaper now
+that the Console is a pane in the same window: they can type the command into it.
+
+### Rack layout (decided 2026-10-21)
+
+Layout B from the mockups: a slim CPU card (vertical RUN / STEP / STOP over PWR/RUN/ERR) on the left, with the CPU's
+built-in I/O, or option slots 0 and 1, as their own cards 4 px away (one housing), then the expansions. No faceplate
+band, so I/O starts right under each header; each card's subtitle carries its model and point counts. It reads like
+the hardware, which beat the denser variants that save space in theory but make you think about what you're looking
+at. Margins are 12 px so four full-width cards fit at 1100 px. Wires stay in the gaps: across rack rows they change
+rows down the left margin, since columns no longer line up.
+
+### Workspace guidance files (decided 2026-10-21)
+
+pyrung owns `AGENTS.pyrung.md` and `README.pyrung.md` and rewrites them on every generation, so the program shape and
+the workflow stay current. `AGENTS.md` and `README.md` are the user's: seeded once with a
+`<!-- pyrung:guidance -->` pointer line and an empty notes section. On each save ClickNick only puts a missing
+pointer line back; a file an older pyrung wrote whole (lifecycle markers) moves to `*.previous.md`. This replaced the
+marked-section refresh, which left everything outside the markers (program shape, commands) stale.

@@ -18,6 +18,7 @@
 ### Changed
 
 - The Console now lives in **Simulate** as a resizable pane under the hardware (<kbd>Ctrl</kbd>+<kbd>`</kbd> shows or hides it) that pops out into its own window, so there is one way in; the simulation keeps running after the Simulator closes until it is stopped from the main window, and setting up a workspace restarts it instead of closing the window.
+- A workspace's `AGENTS.md` and `README.md` are now yours to edit: pyrung's guidance lives in `AGENTS.pyrung.md` and `README.pyrung.md`, refreshed on every CLICK save so the program shape and workflow stay current, and an older generated `AGENTS.md` or `README.md` is kept as `*.previous.md`.
 - In the annotation editor, a link needs only an on/off delay or a profile; the physical name is optional and defaults to the tag's own, and `link=` takes a CLICK address such as `Y001`.
 
 ### Fixed

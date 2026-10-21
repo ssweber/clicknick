@@ -114,8 +114,20 @@ def _build_tag_addr_key_map(
 
 
 _GENERATED_DIR_NAMES = {"src", "csv", "csv_output"}
-_GENERATED_FILE_NAMES = {"nicknames.csv", "project_to_csv.py", "run.py"}
+_GENERATED_FILE_NAMES = {
+    "nicknames.csv",
+    "project_to_csv.py",
+    "run.py",
+    # pyrung's own guidance, rewritten with the program on every save.
+    "AGENTS.pyrung.md",
+    "README.pyrung.md",
+}
+#: The user's guidance files; ClickNick only keeps their pointer to pyrung's.
 _WORKSPACE_GUIDANCE_FILES = {"AGENTS.md", "README.md"}
+#: Starts the pointer line pyrung seeds into each of them.
+_GUIDANCE_MARKER = "<!-- pyrung:guidance -->"
+#: An older pyrung wrote these files whole, around a marked section.
+_OLD_GUIDANCE_MARKER = "<!-- pyrung:workspace-lifecycle:start -->"
 _EXPORT_IGNORE = shutil.ignore_patterns(".venv", "__pycache__", "*.pyc")
 
 
@@ -148,14 +160,31 @@ def _copy_missing(source: Path, destination: Path) -> None:
 
 
 def _refresh_workspace_guidance(source: Path, destination: Path) -> None:
-    """Refresh the pyrung-marked lifecycle section; everything outside it is the user's."""
-    from pyrung.click import refresh_workspace_lifecycle_guidance
+    """Keep the user's AGENTS.md / README.md pointing at pyrung's guidance file.
 
-    existing = destination.read_text(encoding="utf-8")
+    The file is the user's: when its pointer line is missing it goes back on
+    top, and nothing else changes. A file an older pyrung wrote whole (it still
+    carries that pyrung's markers) is all stale guidance, so it moves aside to
+    ``*.previous.md`` and the fresh one takes its place.
+    """
     generated = source.read_text(encoding="utf-8")
-    refreshed = refresh_workspace_lifecycle_guidance(existing, generated)
-    if refreshed == existing:
+    pointer = next(
+        (line for line in generated.splitlines() if line.startswith(_GUIDANCE_MARKER)), None
+    )
+    existing = destination.read_text(encoding="utf-8")
+    if pointer is None or _GUIDANCE_MARKER in existing:
         return
+    if _OLD_GUIDANCE_MARKER in existing:
+        destination.replace(destination.with_name(f"{destination.stem}.previous.md"))
+        refreshed = generated
+    else:
+        # Under the file's title when it opens with one, otherwise on top.
+        title, _, body = existing.partition("\n")
+        if title.startswith("# "):
+            body = body.lstrip("\n")
+            refreshed = f"{title}\n\n{pointer}\n\n{body}"
+        else:
+            refreshed = f"{pointer}\n\n{existing}"
     staging = destination.with_suffix(f"{destination.suffix}.clicknick-guidance")
     try:
         staging.write_text(refreshed, encoding="utf-8")
