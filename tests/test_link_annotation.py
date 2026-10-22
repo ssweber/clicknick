@@ -60,3 +60,22 @@ def test_bit_enables_are_on_or_off():
     assert when_text("Y001", None) == ""
     assert when_text("Y001", 0) == " when OFF"
     assert when_text("DS1", 3) == " = 3"
+
+
+def test_a_bit_enable_that_drives_while_off_is_written_with_a_tilde():
+    vent = BenchLink("Y001", trigger=0, on_delay="300ms")
+    comment = comment_with_link("Vent open", vent, "Vent_Sol")
+    assert comment == "[link=~Vent_Sol, on_delay=300ms] Vent open"
+    assert comment_has_link(comment, vent, ("Vent_Sol", "Y001"))
+
+
+def test_an_older_colon_zero_comment_still_declares_the_link():
+    vent = BenchLink("Y001", trigger=0, on_delay="300ms")
+    assert comment_has_link("[link=Vent_Sol:0, on_delay=300ms] Vent open", vent, ("Vent_Sol",))
+
+
+def test_a_word_enable_keeps_its_zero_trigger():
+    from clicknick.services.link_annotation import link_text
+
+    assert link_text("Mode", BenchLink("DS1", trigger=0)) == "Mode:0"
+    assert link_text("Mode", BenchLink("DS1", trigger=2)) == "Mode:2"

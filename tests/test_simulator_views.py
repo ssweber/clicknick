@@ -501,8 +501,11 @@ def test_link_dialog_builds_bench_links(tk_root):
         dialog._first_var.set("2s")
         dialog._second_var.set("")
         assert dialog.build() == BenchLink("Y001", on_delay="2s")
-        # A bit enable is ON or OFF: OFF drives the link while Y001 is off.
+        # A bit enable is a contact beside the driver: [O] by default, [/] drives
+        # the link while Y001 is off.
         assert dialog._when_bit.winfo_manager() and not dialog._when_word.winfo_manager()
+        assert dialog._when_bit.grid_info()["row"] == 0
+        assert dialog._when_on.get()
         dialog._when_on.set(False)
         assert dialog.build() == BenchLink("Y001", 0, on_delay="2s")
         # A word enable matches a value instead.

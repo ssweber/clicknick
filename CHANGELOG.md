@@ -14,13 +14,13 @@
 
 - **Simulate** draws your CLICK hardware from System Configuration and runs the saved program behind it, with input switches, output LEDs, analog values, forces, a STOP / STEP / RUN switch with speed control, and a Modbus server on 127.0.0.1:502 that the Data View editor joins with a Force column.
 - Right-click a Simulator point to ask **Why**, **Show simplified logic** or **How** in the Console; panel actions echo there as the matching console commands, a linked input's chip counts down while its delay runs, and hovering a link in the Wiring menu draws its wire. Double-click an output to force it the other way (again to release), or click a padlock to release a force.
-- Feedback links show on the Simulator: an input driven by an output (a contactor's aux contact, a limit switch, a ramping temperature) shows its driver instead of a switch, and by dragging an output onto an input, or from the right-click menu, you can add or change a link for the session, cut one to simulate a failed sensor, or save it to the input's comment for the program; the Wiring menu lists every link and sets bench links aside, and bench links are remembered with the other simulator settings.
+- Feedback links show on the Simulator: an input driven by an output (a contactor's aux contact, a limit switch, a ramping temperature) shows its driver instead of a switch, and by dragging an output onto an input, or from the right-click menu, you can add or change a link for the session (an output drives it normally open `[O]` or normally closed `[/]`), cut one to simulate a failed sensor, or save it to the input's comment for the program; the Wiring menu lists every link and sets bench links aside, and bench links are remembered with the other simulator settings.
 
 ### Changed
 
 - The Console now lives in **Simulate** as a resizable pane under the hardware (<kbd>Ctrl</kbd>+<kbd>`</kbd> shows or hides it) that pops out into its own window, so there is one way in; the simulation keeps running after the Simulator closes until it is stopped from the main window, and setting up a workspace restarts it instead of closing the window.
 - A workspace's `AGENTS.md` and `README.md` are now yours to edit: pyrung's guidance lives in `AGENTS.pyrung.md` and `README.pyrung.md`, refreshed on every CLICK save so the program shape and workflow stay current, and an older generated `AGENTS.md` or `README.md` is kept as `*.previous.md`.
-- In the annotation editor, a link needs only an on/off delay or a profile; the physical name is optional and defaults to the tag's own, and `link=` takes a CLICK address such as `Y001`.
+- In the annotation editor, a link needs only an on/off delay or a profile; the physical name is optional and defaults to the tag's own, and `link=` takes a CLICK address such as `Y001`, or `~Y001` for feedback that follows a bit while it is OFF.
 
 ### Fixed
 

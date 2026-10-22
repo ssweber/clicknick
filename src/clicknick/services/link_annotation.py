@@ -66,8 +66,23 @@ def when_text(enable: str | None, trigger: int | str | None) -> str:
 
 
 def link_text(enable_name: str, link: BenchLink) -> str:
-    """The ``link=`` value: the enable's nickname (or address), plus ``:trigger``."""
-    return enable_name if link.trigger is None else f"{enable_name}:{link.trigger}"
+    """The ``link=`` value: the enable's nickname (or address), plus ``:trigger``.
+
+    A bit enable that drives while OFF is written ``~Motor_Run``.
+    """
+    if link.trigger is None:
+        return enable_name
+    if link.trigger == 0 and bit_enable(link.enable):
+        return f"~{enable_name}"
+    return f"{enable_name}:{link.trigger}"
+
+
+def _link_texts(enable_name: str, link: BenchLink) -> set[str]:
+    """Every ``link=`` value that declares *link*; older projects spell ``~X`` as ``X:0``."""
+    texts = {link_text(enable_name, link)}
+    if link.trigger is not None:
+        texts.add(f"{enable_name}:{link.trigger}")
+    return texts
 
 
 def comment_with_link(comment: str, link: BenchLink, enable_name: str) -> str:
@@ -102,7 +117,7 @@ def comment_has_link(comment: str, link: BenchLink, enable_names: tuple[str, ...
     if meta is None or meta.link is None:
         return False
     return (
-        meta.link in {link_text(name, link) for name in enable_names if name}
+        any(meta.link in _link_texts(name, link) for name in enable_names if name)
         and meta.on_delay == link.on_delay
         and meta.off_delay == link.off_delay
         and meta.profile == link.profile

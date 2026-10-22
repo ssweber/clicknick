@@ -414,13 +414,14 @@ class AnnotationDialog(tk.Toplevel):
         self._link_var.trace_add("write", lambda *_: self._update_preview())
         ttk.Entry(link_row, textvariable=self._link_var, width=20).pack(side=tk.LEFT, padx=(4, 4))
         link_hint = ttk.Label(
-            link_row, text="e.g. Motor_Run, Y001 or State:RUNNING", foreground="gray"
+            link_row, text="e.g. Motor_Run, ~Y001 or State:RUNNING", foreground="gray"
         )
         link_hint.pack(side=tk.LEFT)
         _bind_tooltip(
             link_hint,
             "Tag or CLICK address that drives this feedback signal,\n"
-            "with an optional :value trigger",
+            "with an optional :value trigger.\n"
+            "~ in front of a bit drives it while the bit is OFF",
         )
 
         # ── Lock ──

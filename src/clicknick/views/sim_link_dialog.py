@@ -2,8 +2,9 @@
 
 A bool input (X) follows its enable after an on/off delay, or pulses while it
 is on. An analog input (DF) ramps or approaches a target while it is on. A bit
-enable (Y, C...) drives the link while it is ON or while it is OFF; a word
-enable (DS...) while it equals a value. The result is a BenchLink; the
+enable (Y, C...) is a contact beside the driver: normally open [O] drives the
+link while it is ON, normally closed [/] while it is OFF (``link=~Y001``). A
+word enable (DS...) drives it while it equals a value. The result is a BenchLink; the
 Simulator window hands it to the session.
 """
 
@@ -22,6 +23,7 @@ from ..services.link_annotation import (
     split_profile,
 )
 from ..services.sim_state import BenchLink
+from ..widgets.tooltip import bind_tooltip
 
 #: Responses offered for each kind of input: (value, label, first field, second field).
 _BOOL_RESPONSES = (
@@ -38,6 +40,29 @@ _DEFAULTS = {
     "ramp": ("1.0", "-0.5"),
     "approach": ("100", "0.3"),
 }
+
+
+def _contact_style(widget: tk.Misc) -> str:
+    """A ttk style for the [O][/] contact: native push buttons, the chosen one pressed in.
+
+    Under the Windows ``vista`` theme a radio button gets the push-button
+    element, drawn pressed while selected; other themes use ``Toolbutton``.
+    """
+    style = ttk.Style(widget)
+    if style.theme_use() != "vista":
+        return "Toolbutton"
+    if "Contact.button" not in style.element_names():
+        # Windows BUTTON part 1 states: 1 normal, 2 hot, 3 pressed, 4 disabled.
+        style.element_create(
+            "Contact.button", "vsapi", "BUTTON", 1,
+            [("disabled", 4), ("pressed", 3), ("selected", 3), ("active", 2), ("", 1)],
+        )  # fmt: skip
+        style.layout(
+            "Contact.TRadiobutton",
+            [("Contact.button", {"sticky": "nswe", "children": style.layout("TButton")[0][1]["children"]})],
+        )  # fmt: skip
+        style.configure("Contact.TRadiobutton", anchor="center", padding=(6, 1))
+    return "Contact.TRadiobutton"
 
 
 def _trigger(text: str) -> int | str | None:
@@ -68,14 +93,15 @@ class LinkDialog(tk.Toplevel):
             self._second_var.set(_DEFAULTS[self._kind_var.get()][1])
 
     def _on_enable_changed(self) -> None:
-        """ON / OFF for a bit enable, a value to match for a word."""
-        bit = bit_enable(self._enable_var.get().strip())
-        shown, hidden = (
-            (self._when_bit, self._when_word) if bit else (self._when_word, self._when_bit)
-        )
-        hidden.grid_forget()
-        shown.grid(row=1, column=1, sticky="w", pady=2)
-        self._when_label.configure(text="When it is" if bit else "When it equals")
+        """The [O][/] contact beside a bit enable, a value to match below a word."""
+        if bit_enable(self._enable_var.get().strip()):
+            self._when_label.grid_remove()
+            self._when_word.grid_remove()
+            self._when_bit.grid(row=0, column=2, sticky="w", padx=(6, 0), pady=2)
+        else:
+            self._when_bit.grid_remove()
+            self._when_label.grid(row=1, column=0, sticky="w", pady=2)
+            self._when_word.grid(row=1, column=1, columnspan=2, sticky="w", pady=2)
 
     def _accept(self) -> None:
         try:
@@ -123,7 +149,8 @@ class LinkDialog(tk.Toplevel):
         self._enable_var = tk.StringVar(value=enable or (current.enable or "" if current else ""))
         trigger = current.trigger if current is not None else None
         self._trigger_var = tk.StringVar(value="" if trigger is None else str(trigger))
-        # A bit enable is only ON or OFF: trigger 0 drives the link while it is OFF.
+        # A bit enable is a contact: normally open (the default) or normally closed,
+        # which is trigger 0 and drives the link while the bit is OFF.
         self._when_on = tk.BooleanVar(value=trigger != 0)
         self._kind_var = tk.StringVar(value=kind)
         self._first_var = tk.StringVar(value=first)
@@ -131,6 +158,7 @@ class LinkDialog(tk.Toplevel):
 
         body = ttk.Frame(self, padding=12)
         body.pack(fill=tk.BOTH, expand=True)
+        body.columnconfigure(0, pad=12)
         body.columnconfigure(1, weight=1)
 
         ttk.Label(body, text="Driven by").grid(row=0, column=0, sticky="w", pady=2)
@@ -138,14 +166,20 @@ class LinkDialog(tk.Toplevel):
             body, textvariable=self._enable_var, values=list(enables), width=14
         )
         enable_box.grid(row=0, column=1, sticky="we", pady=2)
-        self._when_label = ttk.Label(body)
-        self._when_label.grid(row=1, column=0, sticky="w", pady=2)
-        # Two forms of the same row; _on_enable_changed shows the one that fits.
+        # _on_enable_changed shows the contact for a bit, the value row for a word.
         self._when_bit = ttk.Frame(body)
-        for text, value in (("ON", True), ("OFF", False)):
-            ttk.Radiobutton(self._when_bit, text=text, value=value, variable=self._when_on).pack(
-                side=tk.LEFT, padx=(0, 12)
-            )
+        contact_style = _contact_style(self)
+        for text, value, tip in (
+            ("O", True, "Normally open: drives this input while the output is ON"),
+            ("/", False, "Normally closed: drives this input while the output is OFF"),
+        ):
+            contact = ttk.Radiobutton(
+                self._when_bit, text=text, value=value, variable=self._when_on,
+                style=contact_style, width=2, cursor="hand2",
+            )  # fmt: skip
+            contact.pack(side=tk.LEFT)
+            bind_tooltip(contact, tip)
+        self._when_label = ttk.Label(body, text="When it equals")
         self._when_word = ttk.Frame(body)
         ttk.Entry(self._when_word, textvariable=self._trigger_var, width=10).pack(side=tk.LEFT)
         ttk.Label(self._when_word, text="(blank: whenever it is not 0)", foreground="gray").pack(
@@ -155,7 +189,7 @@ class LinkDialog(tk.Toplevel):
         self._on_enable_changed()
 
         kinds = ttk.Frame(body)
-        kinds.grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 2))
+        kinds.grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 2))
         for value, label, *_ in self._responses:
             ttk.Radiobutton(
                 kinds, text=label, value=value, variable=self._kind_var,
@@ -176,7 +210,7 @@ class LinkDialog(tk.Toplevel):
             text="This changes the simulation only. Save it to the project from the right-click menu.",
             foreground="gray",
             wraplength=280,
-        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         buttons = ttk.Frame(self, padding=(12, 0, 12, 12))
         buttons.pack(fill=tk.X)
