@@ -9,7 +9,7 @@ from tkinter import messagebox, ttk
 
 from tksheet import Sheet
 
-from ..ladder.clipboard import copy_to_clipboard
+from ..ladder.clipboard import copy_to_clipboard, is_click_v4
 from ..ladder.program import (
     count_csv_rungs,
     import_nicknames_csv,
@@ -161,7 +161,10 @@ class GuidedPasteWindow(tk.Toplevel):
             mdb_path = self._get_mdb_path()
             click_hwnd = self._get_click_hwnd()
             result = prepare_csv_load(
-                path, mdb_path=mdb_path, show_nicknames=self._show_nicks_var.get()
+                path,
+                click_v4=is_click_v4(click_hwnd),
+                mdb_path=mdb_path,
+                show_nicknames=self._show_nicks_var.get(),
             )
             copy_to_clipboard(result.payload, owner_hwnd=click_hwnd)
 

@@ -15,6 +15,7 @@
 - **Simulate** draws your CLICK hardware from System Configuration and runs the saved program behind it, with input switches, output LEDs, analog values, forces, a STOP / STEP / RUN switch with speed control, and a Modbus server on 127.0.0.1:502 that the Data View editor joins with a Force column.
 - Right-click a Simulator point to ask **Why**, **Show simplified logic** or **How** in the Console; panel actions echo there as the matching console commands, a linked input's chip counts down while its delay runs, and hovering a link in the Wiring menu draws its wire. Double-click an output to force it the other way (again to release), or click a padlock to release a force.
 - Feedback links show on the Simulator: an input driven by an output (a contactor's aux contact, a limit switch, a ramping temperature) shows its driver instead of a switch, and by dragging an output onto an input, or from the right-click menu, you can add or change a link for the session (an output drives it normally open `[O]` or normally closed `[/]`), cut one to simulate a failed sensor, or save it to the input's comment for the program; the Wiring menu lists every link and sets bench links aside, and bench links are remembered with the other simulator settings.
+- Copying ladder rungs to the clipboard refuses, and lists the rungs, when they use CLICK v4 instructions (Break/Continue, Out variants, Time & Event drums, v4 math functions) and the CLICK window is an older version that would silently change them on paste.
 
 ### Changed
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes
+import re
 import time
 
 CLICK_CLIPBOARD_FORMAT = 522  # 0x020A
@@ -29,6 +30,9 @@ _user32.GetClipboardOwner.restype = ctypes.c_void_p
 _user32.EmptyClipboard.restype = ctypes.c_bool
 _user32.CloseClipboard.restype = ctypes.c_bool
 GMEM_MOVEABLE = 0x0002
+
+#: "CLICK Programming Software (Version4.00) - Project.ckp - [Main Program]"
+_CLICK_VERSION_RE = re.compile(r"\(Version(\d+)\.")
 
 
 def find_click_hwnds() -> list[int]:
@@ -54,6 +58,23 @@ def find_click_hwnd() -> int:
     if not results:
         raise RuntimeError("Click Programming Software not found. Is it running?")
     return results[0]
+
+
+def parse_click_major_version(title: str) -> int | None:
+    """CLICK's major version from its main window title, or None if the title has none."""
+    match = _CLICK_VERSION_RE.search(title)
+    return int(match.group(1)) if match else None
+
+
+def is_click_v4(hwnd: int | None = None) -> bool:
+    """Whether the CLICK window *hwnd* is v4 or later.
+
+    None checks the window ``copy_to_clipboard`` would pick: the first CLICK found.
+    """
+    import win32gui
+
+    major = parse_click_major_version(win32gui.GetWindowText(hwnd or find_click_hwnd()))
+    return major is not None and major >= 4
 
 
 def _open_clipboard_with_retry(owner_hwnd: int | None = None) -> None:

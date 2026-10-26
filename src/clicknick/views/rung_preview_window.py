@@ -130,7 +130,7 @@ class RungPreviewWindow(tk.Toplevel):
         if self._pending_dir is None:
             return
         try:
-            from ..ladder.clipboard import copy_to_clipboard
+            from ..ladder.clipboard import copy_to_clipboard, is_click_v4
             from ..ladder.program import prepare_rungs_load
 
             all_rungs = self._read_csv()
@@ -138,9 +138,8 @@ class RungPreviewWindow(tk.Toplevel):
                 return
 
             mdb_path = self._get_mdb_path() if self._get_mdb_path else None
-            result = prepare_rungs_load(all_rungs, mdb_path=mdb_path)
-
             hwnd = self._get_click_hwnd() if self._get_click_hwnd else None
+            result = prepare_rungs_load(all_rungs, click_v4=is_click_v4(hwnd), mdb_path=mdb_path)
             copy_to_clipboard(result.payload, owner_hwnd=hwnd)
 
             self._group_idx = len(self._groups)
@@ -166,7 +165,7 @@ class RungPreviewWindow(tk.Toplevel):
         if group is None or self._pending_dir is None:
             return
         try:
-            from ..ladder.clipboard import copy_to_clipboard
+            from ..ladder.clipboard import copy_to_clipboard, is_click_v4
             from ..ladder.program import prepare_rungs_load
 
             all_rungs = self._read_csv()
@@ -179,9 +178,10 @@ class RungPreviewWindow(tk.Toplevel):
                 return
 
             mdb_path = self._get_mdb_path() if self._get_mdb_path else None
-            result = prepare_rungs_load(selected, mdb_path=mdb_path)
-
             hwnd = self._get_click_hwnd() if self._get_click_hwnd else None
+            result = prepare_rungs_load(
+                selected, click_v4=is_click_v4(hwnd), mdb_path=mdb_path, first_rung=group[0]
+            )
             copy_to_clipboard(result.payload, owner_hwnd=hwnd)
 
             self._copied = True

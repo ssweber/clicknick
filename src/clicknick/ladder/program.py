@@ -19,6 +19,7 @@ from laddercodec import (
     decode,
     decode_program,
     encode,
+    find_v4_only,
     read_csv,
     write_csv,
 )
@@ -74,6 +75,38 @@ class PrepareResult:
     addresses_inserted: int
     mdb_path: Path | None
     mdb_error: str | None
+
+
+class NeedsClickV4Error(ValueError):
+    """The rungs use CLICK v4 instructions, but the target CLICK is older."""
+
+
+# ---------------------------------------------------------------------------
+# CLICK version
+# ---------------------------------------------------------------------------
+
+_V4_ONLY_LISTED = 5
+
+
+def check_click_version(rungs: list[Rung], *, click_v4: bool, first_rung: int = 1) -> None:
+    """Raise NeedsClickV4Error if *rungs* need CLICK v4 and the target is older.
+
+    An older CLICK takes a v4 rung on paste without complaint and silently
+    changes it, so this refuses before anything reaches the clipboard.
+    *first_rung* numbers the rungs in the message.
+    """
+    if click_v4:
+        return
+    found = find_v4_only(rungs)
+    if not found:
+        return
+    lines = [f"  rung {first_rung + index}: {ins.to_csv()}" for index, ins in found]
+    if len(lines) > _V4_ONLY_LISTED:
+        lines[_V4_ONLY_LISTED:] = [f"  ...and {len(lines) - _V4_ONLY_LISTED} more"]
+    raise NeedsClickV4Error(
+        "These rungs need CLICK v4, but the CLICK window is an older version, "
+        "which would silently change them on paste:\n" + "\n".join(lines)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -417,10 +450,17 @@ def program_save(
 def prepare_rungs_load(
     rungs: list[Rung],
     *,
+    click_v4: bool,
     mdb_path: Path | None = None,
     show_nicknames: bool = False,
+    first_rung: int = 1,
 ) -> PrepareResult:
-    """Encode parsed rungs and provision every referenced MDB address."""
+    """Encode parsed rungs and provision every referenced MDB address.
+
+    Raises NeedsClickV4Error, before touching the MDB, if the rungs need a
+    newer CLICK than the target (*click_v4*).
+    """
+    check_click_version(rungs, click_v4=click_v4, first_rung=first_rung)
     payload = (
         encode(rungs, show_nicknames=show_nicknames)
         if len(rungs) > 1
@@ -446,6 +486,7 @@ def prepare_rungs_load(
 def prepare_csv_load(
     csv_path: Path,
     *,
+    click_v4: bool,
     mdb_path: Path | None = None,
     best_effort: bool = False,
     show_nicknames: bool = False,
@@ -458,14 +499,16 @@ def prepare_csv_load(
     rungs = read_csv(csv_path, strict=not best_effort)
     return prepare_rungs_load(
         rungs,
+        click_v4=click_v4,
         mdb_path=mdb_path,
         show_nicknames=show_nicknames,
     )
 
 
-def prepare_bin_load(data: bytes, *, mdb_path: Path | None = None) -> PrepareResult:
+def prepare_bin_load(data: bytes, *, click_v4: bool, mdb_path: Path | None = None) -> PrepareResult:
     """Decode a binary payload and provision MDB addresses."""
     rungs = _decode_to_rungs(data)
+    check_click_version(rungs, click_v4=click_v4)
     addresses = extract_addresses_from_rungs(rungs)
     addresses_inserted, resolved_mdb_path, mdb_error = _provision_mdb_addresses(
         addresses,

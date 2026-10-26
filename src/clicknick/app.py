@@ -1658,7 +1658,7 @@ class ClickNickApp:
 
         from pathlib import Path
 
-        from .ladder.clipboard import copy_to_clipboard
+        from .ladder.clipboard import copy_to_clipboard, is_click_v4
         from .ladder.program import prepare_csv_load
         from .utils.mdb_shared import find_click_database
 
@@ -1671,7 +1671,8 @@ class ClickNickApp:
                 mdb_path = Path(db_path)
 
         try:
-            result = prepare_csv_load(csv_path, mdb_path=mdb_path)
+            click_v4 = is_click_v4(self._click.hwnd if self._click else None)
+            result = prepare_csv_load(csv_path, click_v4=click_v4, mdb_path=mdb_path)
         except (ValueError, RuntimeError) as exc:
             messagebox.showerror(
                 "Load Ladder CSV",

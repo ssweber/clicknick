@@ -23,8 +23,9 @@ from typing import Any
 from laddercodec.csv.writer import WriterError
 
 from ..utils.mdb_shared import find_click_database
-from .clipboard import copy_to_clipboard, find_click_hwnd, read_from_clipboard
+from .clipboard import copy_to_clipboard, find_click_hwnd, is_click_v4, read_from_clipboard
 from .program import (
+    NeedsClickV4Error,
     decode_to_csv,
     describe_csv,
     list_program_bundle,
@@ -97,7 +98,9 @@ def _load_csv(csv_path: Path, mdb_path: str | None, *, best_effort: bool = False
     except (FileNotFoundError, RuntimeError):
         resolved_mdb = None
 
-    result = prepare_csv_load(csv_path, mdb_path=resolved_mdb, best_effort=best_effort)
+    result = prepare_csv_load(
+        csv_path, click_v4=is_click_v4(), mdb_path=resolved_mdb, best_effort=best_effort
+    )
 
     _print_mdb_status(result)
     copy_to_clipboard(result.payload)
@@ -112,7 +115,7 @@ def _load_program_csv(csv_path: Path, mdb_path: str | None) -> bytes:
     except (FileNotFoundError, RuntimeError):
         resolved_mdb = None
 
-    result = prepare_csv_load(csv_path, mdb_path=resolved_mdb)
+    result = prepare_csv_load(csv_path, click_v4=is_click_v4(), mdb_path=resolved_mdb)
 
     print(f"  {result.rung_count} rung{'s' if result.rung_count != 1 else ''}")
     _print_mdb_status(result)
@@ -122,7 +125,7 @@ def _load_program_csv(csv_path: Path, mdb_path: str | None) -> bytes:
 
 
 def _load_bin(bin_path: Path, mdb_path: str | None) -> bytes:
-    """Provision MDB addresses from a decoded .bin payload, then copy raw bytes."""
+    """Check the CLICK version and provision MDB addresses from a decoded .bin, then copy raw bytes."""
     data = bin_path.read_bytes()
 
     try:
@@ -130,13 +133,14 @@ def _load_bin(bin_path: Path, mdb_path: str | None) -> bytes:
     except (FileNotFoundError, RuntimeError):
         resolved_mdb = None
 
-    if resolved_mdb is not None:
-        try:
-            result = prepare_bin_load(data, mdb_path=resolved_mdb)
-        except ValueError as exc:
-            print(f"  MDB: skipped (could not decode .bin for address extraction: {exc})")
-        else:
-            _print_mdb_status(result)
+    try:
+        result = prepare_bin_load(data, click_v4=is_click_v4(), mdb_path=resolved_mdb)
+    except NeedsClickV4Error:
+        raise
+    except ValueError as exc:
+        print(f"  Could not decode .bin to check it or provision the MDB: {exc}")
+    else:
+        _print_mdb_status(result)
 
     copy_to_clipboard(data)
     print(f"Copied {bin_path.name} to clipboard ({len(data):,} bytes)")

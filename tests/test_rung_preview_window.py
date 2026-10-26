@@ -13,6 +13,7 @@ def test_copy_all_remains_available_after_copy(monkeypatch, tmp_path) -> None:
     copy_to_clipboard = Mock()
     monkeypatch.setattr("clicknick.ladder.program.prepare_rungs_load", lambda *_args, **_kw: result)
     monkeypatch.setattr("clicknick.ladder.clipboard.copy_to_clipboard", copy_to_clipboard)
+    monkeypatch.setattr("clicknick.ladder.clipboard.is_click_v4", lambda _hwnd: True)
 
     window = SimpleNamespace(
         _pending_dir=tmp_path,
