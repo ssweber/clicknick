@@ -573,6 +573,42 @@ def list_csv_folder(folder: Path) -> list[tuple[str, Path]]:
     return items
 
 
+def rung_fingerprint(rung: Rung) -> tuple[tuple[str, ...], ...]:
+    """Serialize a rung into laddercodec's canonical CSV rows, for comparison.
+
+    Independent of how the CSV was written (rung index column, header comment).
+    """
+    from laddercodec.csv.writer import decoded_rung_to_rows
+
+    return tuple(tuple(row) for row in decoded_rung_to_rows(rung))
+
+
+def compare_csv_folder(folder: Path, current_dir: Path) -> dict[str, bool]:
+    """Report which programs in a CSV bundle differ from the current program.
+
+    *folder* is a bundle laid out like ``program_save`` output (``main.csv`` +
+    ``subroutines/*.csv``); *current_dir* holds the program now in CLICK in the
+    same layout. Returns ``{item name: differs}`` keyed like ``list_csv_folder``;
+    a program CLICK lacks differs. Folders without ``main.csv`` are not program
+    bundles and give ``{}``. Items that cannot be read are left out (unknown).
+    """
+    if not (folder / "main.csv").is_file():
+        return {}
+    current = {name.casefold(): path for name, path in list_csv_folder(current_dir)}
+    result: dict[str, bool] = {}
+    for name, path in list_csv_folder(folder):
+        try:
+            proposed = [rung_fingerprint(r) for r in read_csv(path)]
+            current_path = current.get(name.casefold())
+            if current_path is None:
+                result[name] = True
+                continue
+            result[name] = proposed != [rung_fingerprint(r) for r in read_csv(current_path)]
+        except Exception:
+            continue  # unreadable: unknown, same as count_csv_rungs
+    return result
+
+
 def read_csv_comment(csv_path: Path) -> str:
     """Return the first ``# …`` comment line from a CSV, or ``''``."""
     try:

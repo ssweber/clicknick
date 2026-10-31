@@ -463,13 +463,6 @@ def _csv_path(directory: Path, csv_stem: str) -> Path:
     return directory / "subroutines" / f"{csv_stem}.csv"
 
 
-def _canonical_rung_fingerprint(rung: object) -> tuple[tuple[str, ...], ...]:
-    """Serialize a decoded rung into laddercodec's canonical CSV form."""
-    from laddercodec.csv.writer import decoded_rung_to_rows
-
-    return tuple(tuple(row) for row in decoded_rung_to_rows(rung))
-
-
 def _read_source_manifest(project_dir: Path, csv_stem: str) -> dict[int, list[int]]:
     """Return output-rung -> Python source lines from the exporter manifest."""
     path = project_dir / "csv_output" / "rung_sources.json"
@@ -565,6 +558,8 @@ def _canonical_diff(
     """Align real Click rungs, then render the corresponding pyrung chunks."""
     from laddercodec import read_csv
 
+    from ..ladder.program import rung_fingerprint
+
     before_path = _csv_path(project_dir / "csv", csv_stem)
     after_path = _csv_path(project_dir / "csv_output", csv_stem)
     if not before_path.is_file() or not after_path.is_file():
@@ -575,8 +570,8 @@ def _canonical_diff(
     except (OSError, ValueError):
         return None
 
-    before_keys = [_canonical_rung_fingerprint(rung) for rung in before_rungs]
-    after_keys = [_canonical_rung_fingerprint(rung) for rung in after_rungs]
+    before_keys = [rung_fingerprint(rung) for rung in before_rungs]
+    after_keys = [rung_fingerprint(rung) for rung in after_rungs]
     matcher = difflib.SequenceMatcher(a=before_keys, b=after_keys, autojunk=False)
 
     before_chunks = _chunks_by_output_rung(before)

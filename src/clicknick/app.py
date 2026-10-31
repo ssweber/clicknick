@@ -1763,11 +1763,20 @@ class ClickNickApp:
             db_path = find_click_database(click_hwnd=click.hwnd)
             return Path(db_path) if db_path else None
 
+        def get_current_csv_dir() -> Path | None:
+            """CLICK's saved program as CSVs, regenerated into the workspace on each save."""
+            project_dir = self._workspace_source_dir()
+            if project_dir is None:
+                return None
+            csv_dir = project_dir / "csv"
+            return csv_dir if csv_dir.is_dir() else None
+
         GuidedPasteWindow(
             self.root,
             folder_path,
             get_mdb_path=get_mdb_path,
             get_click_hwnd=lambda: self._click.hwnd if self._click else None,
+            get_current_csv_dir=get_current_csv_dir,
         )
 
     def _create_menu_bar(self):
