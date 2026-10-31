@@ -11,6 +11,7 @@ from tksheet import Sheet
 
 from ..ladder.clipboard import copy_to_clipboard, is_click_v4
 from ..ladder.program import (
+    FolderComparison,
     compare_csv_folder,
     count_csv_rungs,
     import_nicknames_csv,
@@ -33,15 +34,19 @@ _ICON_CURRENT = "\u25b6"  # ▶
 _ICON_PENDING = "\u25cb"  # ○
 
 _ICON_MATCHES = "="
+_ICON_ONLY_IN_CLICK = "!"
 
 # "vs CLICK" column
 _CLICK_CHANGED = "Changed"
 _CLICK_MATCHES = "Up to date"
+_CLICK_ONLY = "Only in CLICK"
+_DESC_ONLY_IN_CLICK = "Not in this folder; delete it in CLICK if it is no longer used"
 
 # Row colours
 _BG_DONE = "#d4edda"
 _BG_CURRENT = "#cce5ff"
 _FG_MATCHES = "gray"
+_FG_ONLY_IN_CLICK = "#a94442"
 
 # Special display name for the nicknames import step
 _NICKNAMES_NAME = "nicknames.csv"
@@ -59,23 +64,37 @@ class GuidedPasteWindow(tk.Toplevel):
         nicks = self._folder / "nicknames.csv"
         if nicks.exists():
             self._nickname_path = nicks
-            self._items.append((_NICKNAMES_NAME, nicks, 0, "Import nicknames into MDB"))
+            self._folder_items.append((_NICKNAMES_NAME, nicks, 0, "Import nicknames into MDB"))
 
         raw = list_csv_folder(self._folder)
         for name, path in raw:
             rungs = count_csv_rungs(path)
             desc = read_csv_comment(path)
-            self._items.append((name, path, rungs, desc))
+            self._folder_items.append((name, path, rungs, desc))
 
     def _compare_with_click(self) -> None:
-        """Mark which programs in the folder differ from the program now in CLICK."""
+        """Compare the folder with the program now in CLICK; rebuild the rows.
+
+        Programs CLICK has that the folder lacks are listed after the folder's
+        own items, for information only: pasting cannot remove them.
+        """
         current_dir = self._get_current_csv_dir()
         if current_dir is None:
-            self._differs = {}
+            comparison = FolderComparison()
             self._compare_note = "Connect to CLICK to see which programs changed"
-            return
-        self._differs = compare_csv_folder(self._folder, current_dir)
-        self._compare_note = "Compared with CLICK's last save" if self._differs else ""
+        else:
+            comparison = compare_csv_folder(self._folder, current_dir)
+            compared = comparison.differs or comparison.only_in_click
+            self._compare_note = "Compared with CLICK's last save" if compared else ""
+        self._differs = comparison.differs
+        self._only_in_click = set(comparison.only_in_click)
+        self._items = [
+            *self._folder_items,
+            *(
+                (name, path, count_csv_rungs(path), _DESC_ONLY_IN_CLICK)
+                for name, path in comparison.only_in_click.items()
+            ),
+        ]
 
     def _is_nickname_step(self, idx: int) -> bool:
         return idx is not None and idx < len(self._items) and self._items[idx][0] == _NICKNAMES_NAME
@@ -84,15 +103,25 @@ class GuidedPasteWindow(tk.Toplevel):
         return self._differs.get(name) is False
 
     def _needs_paste(self, name: str) -> bool:
-        return name not in self._done and not self._matches_click(name)
+        return (
+            name not in self._done
+            and not self._matches_click(name)
+            and name not in self._only_in_click
+        )
 
     def _update_progress_text(self) -> None:
-        todo = [name for name, *_ in self._items if not self._matches_click(name)]
+        todo = [
+            name
+            for name, *_ in self._items
+            if not self._matches_click(name) and name not in self._only_in_click
+        ]
         done_n = sum(1 for name in todo if name in self._done)
         text = f"{done_n} of {len(todo)} done"
-        matching = len(self._items) - len(todo)
+        matching = sum(1 for name, *_ in self._items if self._matches_click(name))
         if matching:
             text += f" · {matching} up to date in CLICK"
+        if self._only_in_click:
+            text += f" · {len(self._only_in_click)} only in CLICK"
         self._progress_lbl.configure(text=text)
 
     # ------------------------------------------------------------------
@@ -119,6 +148,10 @@ class GuidedPasteWindow(tk.Toplevel):
                 self._dehighlight_row(idx)
                 self._highlight_row(idx, fg=_FG_MATCHES)
                 self._sheet.set_cell_data(idx, COL_STATUS, _ICON_MATCHES)
+            elif name in self._only_in_click:
+                self._dehighlight_row(idx)
+                self._highlight_row(idx, fg=_FG_ONLY_IN_CLICK)
+                self._sheet.set_cell_data(idx, COL_STATUS, _ICON_ONLY_IN_CLICK)
             else:
                 self._dehighlight_row(idx)
                 self._sheet.set_cell_data(idx, COL_STATUS, _ICON_PENDING)
@@ -135,7 +168,12 @@ class GuidedPasteWindow(tk.Toplevel):
             icon = _ICON_DONE if name in self._done else _ICON_PENDING
             rung_str = "" if name == _NICKNAMES_NAME else str(rungs)
             differs = self._differs.get(name)
-            click_str = "" if differs is None else _CLICK_CHANGED if differs else _CLICK_MATCHES
+            if name in self._only_in_click:
+                click_str = _CLICK_ONLY
+            elif differs is None:
+                click_str = ""
+            else:
+                click_str = _CLICK_CHANGED if differs else _CLICK_MATCHES
             data.append([icon, name, rung_str, click_str, desc])
         self._sheet.set_sheet_data(data)
         self._sheet.set_column_widths([30, 250, 45, 80, 370])
@@ -147,9 +185,15 @@ class GuidedPasteWindow(tk.Toplevel):
         self._copied = False
         self._update_highlights()
         if any(self._matches_click(name) for name, *_ in self._items):
-            self._status_var.set("Every changed program has been pasted!")
+            msg = "Every changed program has been pasted!"
         else:
-            self._status_var.set("All CSVs have been pasted!")
+            msg = "All CSVs have been pasted!"
+        if self._only_in_click:
+            msg += (
+                f"\n{len(self._only_in_click)} program(s) in CLICK are not in this folder;"
+                " delete them in CLICK if they are no longer used"
+            )
+        self._status_var.set(msg)
         self._action_btn.configure(state="disabled", text="Done")
 
     # ------------------------------------------------------------------
@@ -286,7 +330,12 @@ class GuidedPasteWindow(tk.Toplevel):
         row = selected.row
         if 0 <= row < len(self._items):
             name = self._items[row][0]
-            if name not in self._done:
+            if name in self._only_in_click:
+                self._status_var.set(
+                    f"{name} is in CLICK but not in this folder. Pasting cannot remove it;\n"
+                    "delete it in CLICK if it is no longer used"
+                )
+            elif name not in self._done:
                 self._select_row(row)
 
     def _on_action(self) -> None:
@@ -444,6 +493,8 @@ class GuidedPasteWindow(tk.Toplevel):
         self._get_current_csv_dir = get_current_csv_dir
 
         # (display_name, path, rung_count, description)
+        self._folder_items: list[tuple[str, Path, int, str]] = []
+        # The sheet rows: the folder's items, then programs only in CLICK
         self._items: list[tuple[str, Path, int, str]] = []
         self._done: set[str] = set()
         self._current_idx: int | None = None
@@ -451,6 +502,7 @@ class GuidedPasteWindow(tk.Toplevel):
         self._nickname_path: Path | None = None
         # name -> differs from CLICK; absent when unknown (no workspace, not a program)
         self._differs: dict[str, bool] = {}
+        self._only_in_click: set[str] = set()
         self._compare_note = ""
 
         self._scan_folder()

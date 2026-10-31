@@ -7,7 +7,7 @@ from pathlib import Path
 
 from laddercodec import Coil, Contact, Rung, write_csv
 
-from clicknick.ladder.program import compare_csv_folder
+from clicknick.ladder.program import FolderComparison, compare_csv_folder
 
 _IT = typing.get_type_hints(Contact)["type"]
 
@@ -54,7 +54,7 @@ def test_reports_changed_unchanged_and_new_programs(tmp_path: Path) -> None:
         },
     )
 
-    assert compare_csv_folder(proposed, current) == {
+    assert compare_csv_folder(proposed, current).differs == {
         "main.csv": False,
         "subroutines/fill.csv": False,
         "subroutines/Drain.csv": True,
@@ -62,11 +62,36 @@ def test_reports_changed_unchanged_and_new_programs(tmp_path: Path) -> None:
     }
 
 
+def test_lists_programs_only_in_click(tmp_path: Path) -> None:
+    current = _bundle(
+        tmp_path / "current",
+        {
+            "main.csv": _rungs("Y001"),
+            "subroutines/Fill.csv": _rungs("Y002"),
+            "subroutines/Old Alarm.csv": _rungs("Y003"),
+        },
+    )
+    proposed = _bundle(
+        tmp_path / "proposed",
+        {"main.csv": _rungs("Y001"), "subroutines/FILL.csv": _rungs("Y002")},
+    )
+
+    comparison = compare_csv_folder(proposed, current)
+
+    assert comparison.only_in_click == {
+        "subroutines/Old Alarm.csv": current / "subroutines" / "Old Alarm.csv"
+    }
+    assert "subroutines/Old Alarm.csv" not in comparison.differs
+
+
 def test_folder_without_main_is_not_compared(tmp_path: Path) -> None:
-    current = _bundle(tmp_path / "current", {"main.csv": _rungs("Y001")})
+    current = _bundle(
+        tmp_path / "current",
+        {"main.csv": _rungs("Y001"), "subroutines/Fill.csv": _rungs("Y002")},
+    )
     fixtures = _bundle(tmp_path / "fixtures", {"coil.csv": _rungs("Y001")})
 
-    assert compare_csv_folder(fixtures, current) == {}
+    assert compare_csv_folder(fixtures, current) == FolderComparison()
 
 
 def test_unreadable_program_is_unknown(tmp_path: Path) -> None:
@@ -75,4 +100,4 @@ def test_unreadable_program_is_unknown(tmp_path: Path) -> None:
     (proposed / "subroutines").mkdir()
     (proposed / "subroutines" / "Broken.csv").write_text("not,a,ladder\n", encoding="utf-8")
 
-    assert compare_csv_folder(proposed, current) == {"main.csv": False}
+    assert compare_csv_folder(proposed, current).differs == {"main.csv": False}

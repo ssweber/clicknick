@@ -7,7 +7,7 @@ Returns structured data; callers decide presentation.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from laddercodec import (
@@ -583,30 +583,48 @@ def rung_fingerprint(rung: Rung) -> tuple[tuple[str, ...], ...]:
     return tuple(tuple(row) for row in decoded_rung_to_rows(rung))
 
 
-def compare_csv_folder(folder: Path, current_dir: Path) -> dict[str, bool]:
-    """Report which programs in a CSV bundle differ from the current program.
+@dataclass(frozen=True)
+class FolderComparison:
+    """How a CSV bundle compares with the program now in CLICK."""
+
+    # Folder item name -> differs from CLICK (a program CLICK lacks differs).
+    # Items that cannot be read are absent: unknown.
+    differs: dict[str, bool] = field(default_factory=dict)
+    # Programs CLICK has that the folder does not: name -> CLICK's CSV.
+    only_in_click: dict[str, Path] = field(default_factory=dict)
+
+
+def compare_csv_folder(folder: Path, current_dir: Path) -> FolderComparison:
+    """Compare a CSV bundle with the program now in CLICK.
 
     *folder* is a bundle laid out like ``program_save`` output (``main.csv`` +
     ``subroutines/*.csv``); *current_dir* holds the program now in CLICK in the
-    same layout. Returns ``{item name: differs}`` keyed like ``list_csv_folder``;
-    a program CLICK lacks differs. Folders without ``main.csv`` are not program
-    bundles and give ``{}``. Items that cannot be read are left out (unknown).
+    same layout. Names are keyed like ``list_csv_folder`` and matched ignoring
+    case. Folders without ``main.csv`` are not program bundles and compare empty.
     """
     if not (folder / "main.csv").is_file():
-        return {}
-    current = {name.casefold(): path for name, path in list_csv_folder(current_dir)}
-    result: dict[str, bool] = {}
-    for name, path in list_csv_folder(folder):
+        return FolderComparison()
+    proposed_items = list_csv_folder(folder)
+    proposed_names = {name.casefold() for name, _ in proposed_items}
+    current: dict[str, Path] = {}
+    only_in_click: dict[str, Path] = {}
+    for name, path in list_csv_folder(current_dir):
+        current[name.casefold()] = path
+        if name.casefold() not in proposed_names:
+            only_in_click[name] = path
+
+    differs: dict[str, bool] = {}
+    for name, path in proposed_items:
         try:
             proposed = [rung_fingerprint(r) for r in read_csv(path)]
             current_path = current.get(name.casefold())
             if current_path is None:
-                result[name] = True
+                differs[name] = True
                 continue
-            result[name] = proposed != [rung_fingerprint(r) for r in read_csv(current_path)]
+            differs[name] = proposed != [rung_fingerprint(r) for r in read_csv(current_path)]
         except Exception:
             continue  # unreadable: unknown, same as count_csv_rungs
-    return result
+    return FolderComparison(differs=differs, only_in_click=only_in_click)
 
 
 def read_csv_comment(csv_path: Path) -> str:
