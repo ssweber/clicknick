@@ -12,32 +12,27 @@
 
 ### Added
 
-- **Simulate** draws your CLICK hardware from System Configuration and runs the saved program behind it, with input switches, output LEDs, analog values, forces, a STOP / STEP / RUN switch with speed control, and a Modbus server on 127.0.0.1:502 that the Data View editor joins with a Force column.
-- Right-click a Simulator point to ask **Why**, **Show simplified logic** or **How** in the Console; panel actions echo there as the matching console commands, a linked input's chip counts down while its delay runs, and hovering a link in the Wiring menu draws its wire. Double-click an output to force it the other way (again to release), or click a padlock to release a force.
-- Feedback links show on the Simulator: an input driven by an output (a contactor's aux contact, a limit switch, a ramping temperature) shows its driver instead of a switch, and by dragging an output onto an input, or from the right-click menu, you can add or change a link for the session (an output drives it normally open `[O]` or normally closed `[/]`), cut one to simulate a failed sensor, or save it to the input's comment for the program; the Wiring menu lists every link and sets bench links aside, and bench links are remembered with the other simulator settings.
-- Copying ladder rungs to the clipboard refuses, and lists the rungs, when they use CLICK v4 instructions (Break/Continue, Out variants, Time & Event drums, v4 math functions) and the CLICK window is an older version that would silently change them on paste.
+- **Simulate** runs the saved program on your CLICK hardware as drawn from System Configuration, with input switches, output LEDs, analog values, forces, STOP / STEP / RUN with speed control, and a Modbus server on 127.0.0.1:502 that the Data View editor joins with a Force column.
+- Right-click a Simulator point to ask **Why**, **How** or **Show simplified logic** in the Console, where panel actions also echo as the matching commands, and double-click an output to force it.
+- Feedback links let an output drive an input on the Simulator, like a contactor's aux contact or a limit switch: drag one to add it for the session, cut it to simulate a failed sensor, or save it to the input's comment for the program.
+- Copying rungs that use CLICK v4 instructions is refused when the CLICK window is older, instead of letting CLICK silently change them on paste.
 - Guided Paste marks which programs differ from CLICK's last save and steps through only those.
 
 ### Changed
 
-- The Console now lives in **Simulate** as a resizable pane under the hardware (<kbd>Ctrl</kbd>+<kbd>`</kbd> shows or hides it) that pops out into its own window, so there is one way in; the simulation keeps running after the Simulator closes until it is stopped from the main window, and setting up a workspace restarts it instead of closing the window.
-- A workspace's `AGENTS.md` and `README.md` are now yours to edit: pyrung's guidance lives in `AGENTS.pyrung.md` and `README.pyrung.md`, refreshed on every CLICK save so the program shape and workflow stay current, and an older generated `AGENTS.md` or `README.md` is kept as `*.previous.md`.
-- In the annotation editor, a link needs only an on/off delay or a profile; the physical name is optional and defaults to the tag's own, and `link=` takes a CLICK address such as `Y001`, or `~Y001` for feedback that follows a bit while it is OFF.
+- The Console is now a pane in **Simulate** (<kbd>Ctrl</kbd>+<kbd>`</kbd> toggles it, **Pop out** gives it a window), and the simulation keeps running after the Simulator closes until you stop it from the main window.
+- A workspace's `AGENTS.md` and `README.md` are now yours to edit: pyrung's guidance moves to `AGENTS.pyrung.md` and `README.pyrung.md`, and an older generated `AGENTS.md` or `README.md` is kept as `*.previous.md`.
+- `link=` annotations take a CLICK address such as `Y001`, or `~Y001` to follow a bit while it is OFF, and need only a delay or a profile.
+- Sync and Discard clear the undo history.
 
 ### Fixed
 
-- CLICK v4 projects work: nickname autocomplete sits over its instruction dialogs' fields without covering the `...` buttons, and Simulate and the workspace read its hardware and PLC name.
-- Check Program, Preview Changes and the simulation no longer leave Windows' busy cursor up for a few seconds when they start their background Python process.
-- Undo, Discard, and edits that create or resolve a duplicate nickname or block name now update the error marks on every affected row, so Sync is no longer blocked by a stale "Duplicate".
-- Rows no longer show as unsaved after CLICK saves the value you typed, Sync and Discard clear the undo history, and changes CLICK writes right after a Sync are no longer missed.
-- An edit that fails partway, such as an AI tag apply, now changes nothing.
-- Sort by nickname stays in effect after edits and CLICK saves, and turning it off restores address order.
-- Loading a CSV over unsaved changes asks to save or discard first and closes editors still showing the old data.
-- Block colors match first load after edits, including interleaved T/TD blocks.
-- Program analysis and AI tag lookups use the same nicknames as the generated code, overlapping rebuilds no longer race, and switching CLICK projects no longer freezes the window while the new database loads.
-- The "tags synced" count counts each tag once and ignores CSV saves.
-- The Dataview editor shows nickname and comment changes immediately and writes unchanged CDV files back byte-for-byte.
-- The window title and Workspace details stay current after every connect, disconnect, CSV load, Sync and workspace change.
+- CLICK v4 projects work: autocomplete fits its instruction dialogs, and Simulate and the workspace read its hardware and PLC name.
+- Check Program, Preview Changes and the simulation no longer show Windows' busy cursor while they start.
+- Unsaved-change tracking is reliable: Undo, Discard and edits update duplicate marks so Sync isn't blocked by a stale "Duplicate", rows stop showing as unsaved once CLICK saves the value, changes CLICK writes right after a Sync are picked up, and an edit that fails partway changes nothing.
+- Sort by nickname, block colors, the Dataview editor, the window title and Workspace details stay current after edits, CLICK saves, Sync, CSV loads and workspace changes, and the Dataview editor writes unchanged CDV files back byte-for-byte.
+- Loading a CSV over unsaved changes asks to save or discard first.
+- Program analysis and AI tag lookups use the same nicknames as the generated code, switching CLICK projects no longer freezes the window, and the "tags synced" count counts each tag once.
 
 ## v0.23.4 - 2026-10-11
 
