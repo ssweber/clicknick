@@ -33,6 +33,7 @@
 - Sort by nickname, block colors, the Dataview editor, the window title and Workspace details stay current after edits, CLICK saves, Sync, CSV loads and workspace changes, and the Dataview editor writes unchanged CDV files back byte-for-byte.
 - Loading a CSV over unsaved changes asks to save or discard first.
 - Program analysis and AI tag lookups use the same nicknames as the generated code, switching CLICK projects no longer freezes the window, and the "tags synced" count counts each tag once.
+- Opening another project in the same CLICK window no longer leaves its workspace unbuilt until ClickNick restarts, and Guided Paste now updates its comparison when CLICK's program changes.
 
 ## v0.23.4 - 2026-10-11
 

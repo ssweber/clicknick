@@ -20,6 +20,27 @@ if TYPE_CHECKING:
     from .services.scr_watcher import ScrWatcher
     from .simulation_session import SimulationSession
 
+# A temporary workspace lives in CLICK's folder for the window, so a session opening
+# another project there writes where the closed session's last build may still be
+# writing. Builds of every session run one at a time.
+_BUILD_GATE = threading.Lock()
+
+
+@dataclass(frozen=True)
+class SavedProgram:
+    """The program CLICK last saved, as CSVs to compare with, at one moment.
+
+    A value different from the last one means a comparison may be out of date.
+    """
+
+    # A different session is a different project; None when nothing is connected.
+    session: ConnectionSession | None = None
+    generation: int = 0
+    building: bool = False
+    csv_dir: Path | None = None
+    # Why there is no csv_dir to compare with.
+    note: str = "Connect to CLICK to see which programs changed"
+
 
 @dataclass(frozen=True)
 class ClickConnection:
@@ -79,6 +100,7 @@ class ConnectionSession:
         self._build_lock = threading.Lock()
         self._build_running = False
         self._next_build: _BuildRequest | None = None
+        self._closed = False
 
     @property
     def synced_pending(self) -> int:
@@ -108,15 +130,17 @@ class ConnectionSession:
 
         error: str | None = None
         try:
-            published = analysis.build(
-                request.scr_folder,
-                request.db_path,
-                persist_dir=persist,
-                workspace_kind="persistent" if persistent_workspace else "temporary",
-            )
-            if published:
-                selection.sync(persist)
-            else:
+            with _BUILD_GATE:
+                # Closed while waiting: the session that replaced this one owns the folder.
+                published = not self._closed and analysis.build(
+                    request.scr_folder,
+                    request.db_path,
+                    persist_dir=persist,
+                    workspace_kind="persistent" if persistent_workspace else "temporary",
+                )
+                if published:
+                    selection.sync(persist)
+            if not published:
                 error = "The project changed while converting; conversion was discarded."
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
@@ -220,12 +244,6 @@ class ConnectionSession:
             self.simulation.set_state_location(self._simulation_key(), self.workspace_dir)
             self.simulation.restart()
 
-    def _on_scr_changed(self, scr_folder: Path, db_path: str) -> None:
-        """Rebuild analysis when Scr*.tmp files change."""
-        if self.analysis is None:
-            return
-        self._start_analysis_thread(scr_folder, Path(db_path))
-
     def _analysis_paths(self) -> tuple[Path, Path] | None:
         """Resolve the saved CLICK inputs needed to regenerate the workspace."""
         from .services.analysis_service import AnalysisService
@@ -251,6 +269,34 @@ class ConnectionSession:
             return None
         return scr_folder, db_path
 
+    def _on_scr_changed(self) -> None:
+        """Rebuild analysis when Scr*.tmp files change."""
+        paths = self._analysis_paths()
+        if paths is not None:
+            self._start_analysis_thread(*paths)
+
+    def saved_program(self) -> SavedProgram:
+        """Where the program CLICK last saved can be read as CSVs, right now."""
+        from .services.analysis_service import AnalysisStatus
+
+        reading = "Reading CLICK's program…"
+        analysis = self.analysis
+        if analysis is None:
+            return SavedProgram(self, note=reading)
+        generation = analysis.generation
+        status = analysis.status
+        if status is AnalysisStatus.BUILDING:
+            return SavedProgram(self, generation, building=True, note=reading)
+        project_dir = analysis.project_dir
+        csv_dir = project_dir / "csv" if project_dir is not None else None
+        if csv_dir is not None and csv_dir.is_dir():
+            return SavedProgram(self, generation, csv_dir=csv_dir, note="")
+        if status is AnalysisStatus.FAILED:
+            return SavedProgram(
+                self, generation, note="Could not read CLICK's program; see the main window"
+            )
+        return SavedProgram(self, generation, note=reading)
+
     def reload_workspace_from_click(
         self,
         root: tk.Tk,
@@ -270,19 +316,20 @@ class ConnectionSession:
 
     def start_analysis(self, root: tk.Tk) -> None:
         """Build program analysis in background and start ScrWatcher."""
+        from .live.session import click_temp_dir
         from .services.scr_watcher import ScrWatcher
 
         paths = self._analysis_paths()
-        if paths is None:
-            return
-        scr_folder, db_path = paths
-        self._start_analysis_thread(scr_folder, db_path)
+        if paths is not None:
+            self._start_analysis_thread(*paths)
 
         if self.scr_watcher is not None:
             self.scr_watcher.stop()
+        # Watch even with nothing to build yet: CLICK may still be writing the project
+        # it is opening, and the build must follow once it has.
         self.scr_watcher = ScrWatcher(
-            scr_folder,
-            lambda: self._on_scr_changed(scr_folder, str(db_path)),
+            paths[0] if paths is not None else click_temp_dir(self.click.hwnd),
+            self._on_scr_changed,
             on_sync_status_changed=self._on_sync_status_changed,
         )
         self.scr_watcher.start(root)
@@ -298,6 +345,7 @@ class ConnectionSession:
 
     def close(self) -> None:
         """Close the simulation windows and stop simulating, watching and analysing."""
+        self._closed = True
         self._close_windows()
         if self.simulation is not None:
             self.simulation.close()

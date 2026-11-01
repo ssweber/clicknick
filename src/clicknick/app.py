@@ -8,7 +8,7 @@ from tkinter import PhotoImage, filedialog, font, messagebox, simpledialog, ttk
 from typing import TYPE_CHECKING, Any, Generic, TypeVar, overload
 
 from .config import AppSettings
-from .connection_session import ClickConnection
+from .connection_session import ClickConnection, SavedProgram
 from .data.address_store import AddressStore
 from .data.nickname_manager import NicknameManager
 from .detection.window_detector import ClickWindowDetector
@@ -1763,20 +1763,14 @@ class ClickNickApp:
             db_path = find_click_database(click_hwnd=click.hwnd)
             return Path(db_path) if db_path else None
 
-        def get_current_csv_dir() -> Path | None:
-            """CLICK's saved program as CSVs, regenerated into the workspace on each save."""
-            project_dir = self._workspace_source_dir()
-            if project_dir is None:
-                return None
-            csv_dir = project_dir / "csv"
-            return csv_dir if csv_dir.is_dir() else None
-
         GuidedPasteWindow(
             self.root,
             folder_path,
             get_mdb_path=get_mdb_path,
             get_click_hwnd=lambda: self._click.hwnd if self._click else None,
-            get_current_csv_dir=get_current_csv_dir,
+            get_saved_program=lambda: (
+                self._session.saved_program() if self._session else SavedProgram()
+            ),
         )
 
     def _create_menu_bar(self):

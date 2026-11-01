@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -194,6 +195,107 @@ def test_connection_session_labels_click_folder_as_temporary(tmp_path, monkeypat
         persist_dir=scr_folder / "pyrung_project",
         workspace_kind="temporary",
     )
+
+
+def test_new_session_builds_after_the_closed_sessions_build(tmp_path) -> None:
+    """Opening another project in one window: both sessions write the same folder."""
+    old = ConnectionSession(ClickConnection("1", 2, "Old.ckp"))
+    new = ConnectionSession(ClickConnection("1", 2, "New.ckp"))
+    old_building = threading.Event()
+    release_old = threading.Event()
+    order: list[str] = []
+
+    def old_build(*_args, **_kwargs):
+        order.append("old start")
+        old_building.set()
+        release_old.wait(5)
+        order.append("old end")
+        return False
+
+    def new_build(*_args, **_kwargs):
+        order.append("new")
+        return True
+
+    old.analysis = MagicMock(build=old_build)
+    new.analysis = MagicMock(build=new_build)
+    new_done = threading.Event()
+
+    old._start_analysis_thread(tmp_path, tmp_path / "db")
+    assert old_building.wait(5)
+    old.close()
+    new._start_analysis_thread(
+        tmp_path, tmp_path / "db", on_complete=lambda _ok, _error: new_done.set()
+    )
+    assert not new_done.wait(0.1)
+    release_old.set()
+
+    assert new_done.wait(5)
+    assert order == ["old start", "old end", "new"]
+
+
+def test_closed_session_drops_its_queued_build_and_tells_the_caller(tmp_path) -> None:
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    session.analysis = MagicMock()
+    results: list[tuple[bool, str | None]] = []
+    done = threading.Event()
+
+    def finished(ok: bool, error: str | None) -> None:
+        results.append((ok, error))
+        done.set()
+
+    session.close()
+    session._start_analysis_thread(tmp_path, tmp_path / "db", on_complete=finished)
+
+    assert done.wait(5)
+    session.analysis.build.assert_not_called()
+    assert results == [(False, "The project changed while converting; conversion was discarded.")]
+
+
+def test_scr_files_appearing_after_connect_start_the_build(tmp_path, monkeypatch) -> None:
+    """CLICK may still be writing the project when the new session starts."""
+    db_path = tmp_path / "SC_.mdb"
+    db_path.write_text("db", encoding="utf-8")
+    monkeypatch.setattr(
+        "clicknick.utils.mdb_shared.find_click_database", lambda **_kwargs: str(db_path)
+    )
+    monkeypatch.setattr("clicknick.live.session.click_temp_dir", lambda _hwnd: tmp_path)
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    session._start_analysis_thread = MagicMock()
+    root = MagicMock()
+
+    session.start_analysis(root)
+    session._start_analysis_thread.assert_not_called()
+    assert session.analysis.status is AnalysisStatus.FAILED
+
+    (tmp_path / "Scr1.tmp").write_text("ladder", encoding="utf-8")
+    session.scr_watcher._check()
+    session._start_analysis_thread.assert_called_once_with(tmp_path, db_path)
+    session.scr_watcher.stop()
+
+
+def test_saved_program_reports_what_can_be_compared(tmp_path) -> None:
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    assert session.saved_program().csv_dir is None
+
+    project = tmp_path / "pyrung_project"
+    session.analysis = _analysis(AnalysisStatus.BUILDING, project)
+    session.analysis.generation = 3
+    (project / "csv").mkdir(parents=True)
+    building = session.saved_program()
+    assert building.building is True
+    assert building.csv_dir is None
+
+    session.analysis.status = AnalysisStatus.READY
+    ready = session.saved_program()
+    assert ready.csv_dir == project / "csv"
+    assert ready.generation == 3
+    assert ready != building
+
+    session.analysis = _analysis(AnalysisStatus.FAILED, error="broken")
+    session.analysis.generation = 4
+    failed = session.saved_program()
+    assert failed.csv_dir is None
+    assert "main window" in failed.note
 
 
 def test_switching_workspace_moves_and_restarts_the_simulation(tmp_path, monkeypatch) -> None:

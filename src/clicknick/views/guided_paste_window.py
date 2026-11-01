@@ -9,6 +9,7 @@ from tkinter import messagebox, ttk
 
 from tksheet import Sheet
 
+from ..connection_session import SavedProgram
 from ..ladder.clipboard import copy_to_clipboard, is_click_v4
 from ..ladder.program import (
     FolderComparison,
@@ -51,6 +52,9 @@ _FG_ONLY_IN_CLICK = "#a94442"
 # Special display name for the nicknames import step
 _NICKNAMES_NAME = "nicknames.csv"
 
+# How often to check whether the program in CLICK has changed
+_WATCH_INTERVAL_MS = 1000
+
 
 class GuidedPasteWindow(tk.Toplevel):
     """Non-modal panel that walks the user through pasting ladder CSVs."""
@@ -78,12 +82,12 @@ class GuidedPasteWindow(tk.Toplevel):
         Programs CLICK has that the folder lacks are listed after the folder's
         own items, for information only: pasting cannot remove them.
         """
-        current_dir = self._get_current_csv_dir()
-        if current_dir is None:
+        program = self._saved_program = self._get_saved_program()
+        if program.csv_dir is None:
             comparison = FolderComparison()
-            self._compare_note = "Connect to CLICK to see which programs changed"
+            self._compare_note = program.note
         else:
-            comparison = compare_csv_folder(self._folder, current_dir)
+            comparison = compare_csv_folder(self._folder, program.csv_dir)
             compared = comparison.differs or comparison.only_in_click
             self._compare_note = "Compared with CLICK's last save" if compared else ""
         self._differs = comparison.differs
@@ -320,6 +324,46 @@ class GuidedPasteWindow(tk.Toplevel):
         self._all_done()
 
     # ------------------------------------------------------------------
+    # Following the program in CLICK
+    # ------------------------------------------------------------------
+
+    def _on_saved_program_changed(self, program: SavedProgram) -> None:
+        """Bring the rows up to date with what CLICK now has."""
+        new_project = (
+            program.session is not None
+            and self._project_session is not None
+            and program.session is not self._project_session
+        )
+        if program.session is not None:
+            self._project_session = program.session
+        if new_project:
+            # What was pasted went into the other project.
+            self._done.clear()
+            self._current_idx = None
+            self._copied = False
+        elif program.building and self._differs:
+            # CLICK saved: keep the rows until the new CSVs are ready.
+            self._saved_program = program
+            self._compare_lbl.configure(text=program.note)
+            return
+
+        self._compare_with_click()
+        self._populate_sheet()
+        if self._copied:
+            return  # Mid-paste: the row stays current until "Next"
+        idx = self._current_idx
+        if idx is None or not self._needs_paste(self._items[idx][0]):
+            self._advance_to_first_pending()
+
+    def _watch_saved_program(self) -> None:
+        if not self.winfo_exists():
+            return
+        program = self._get_saved_program()
+        if program != self._saved_program:
+            self._on_saved_program_changed(program)
+        self.after(_WATCH_INTERVAL_MS, self._watch_saved_program)
+
+    # ------------------------------------------------------------------
     # Event handlers
     # ------------------------------------------------------------------
 
@@ -479,7 +523,7 @@ class GuidedPasteWindow(tk.Toplevel):
         *,
         get_mdb_path: Callable[[], Path | None],
         get_click_hwnd: Callable[[], int | None],
-        get_current_csv_dir: Callable[[], Path | None],
+        get_saved_program: Callable[[], SavedProgram],
     ):
         super().__init__(parent)
         self.title(f"Guided Paste \u2014 {folder.name}")
@@ -490,7 +534,7 @@ class GuidedPasteWindow(tk.Toplevel):
         self._get_mdb_path = get_mdb_path
         self._get_click_hwnd = get_click_hwnd
         # The program now in CLICK as CSVs: the generated workspace's csv/ folder
-        self._get_current_csv_dir = get_current_csv_dir
+        self._get_saved_program = get_saved_program
 
         # (display_name, path, rung_count, description)
         self._folder_items: list[tuple[str, Path, int, str]] = []
@@ -507,6 +551,9 @@ class GuidedPasteWindow(tk.Toplevel):
 
         self._scan_folder()
         self._compare_with_click()
+        # The session of the project being pasted into; survives a brief disconnect
+        self._project_session = self._saved_program.session
         self._create_widgets()
         self._populate_sheet()
         self._advance_to_first_pending()
+        self.after(_WATCH_INTERVAL_MS, self._watch_saved_program)
