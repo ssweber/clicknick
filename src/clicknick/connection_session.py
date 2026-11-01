@@ -85,6 +85,7 @@ class ConnectionSession:
         *,
         workspace_dir: Path | None = None,
         on_sync_status_changed: Callable[[int], None] | None = None,
+        on_build_finished: Callable[[], None] | None = None,
     ) -> None:
         self.click = click
         self.workspace_dir = workspace_dir.resolve() if workspace_dir is not None else None
@@ -95,6 +96,8 @@ class ConnectionSession:
         self.simulation: SimulationSession | None = None
 
         self._on_sync_status_changed = on_sync_status_changed
+        # Called on the build worker's thread, not the Tk thread.
+        self._on_build_finished = on_build_finished
 
         # One build worker: requests made while it runs collapse into the next build.
         self._build_lock = threading.Lock()
@@ -119,17 +122,19 @@ class ConnectionSession:
             self.scr_watcher.record_rung_stage(count)
 
     def _run_build(self, request: _BuildRequest) -> None:
-        from .services.program_check_selection import ProgramCheckSelection
+        from .services.analysis_service import AnalysisStatus
 
         analysis = self.analysis
         assert analysis is not None
         persistent_workspace = self.workspace_dir is not None
         persist = self.workspace_dir or (request.scr_folder / "pyrung_project")
-        selection = ProgramCheckSelection(self.workspace_dir)
-        analysis.check_selection = selection
 
         error: str | None = None
         try:
+            from .services.program_check_selection import ProgramCheckSelection
+
+            selection = ProgramCheckSelection(self.workspace_dir)
+            analysis.check_selection = selection
             with _BUILD_GATE:
                 # Closed while waiting: the session that replaced this one owns the folder.
                 published = not self._closed and analysis.build(
@@ -145,12 +150,17 @@ class ConnectionSession:
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
             traceback.print_exc()
+            # Failed before build() ran, so nothing else will end the "building" status.
+            if analysis.status is AnalysisStatus.BUILDING:
+                analysis.mark_failed(error, traceback.format_exc())
 
         for root, on_complete in request.callbacks:
             if root is None:
                 on_complete(error is None, error)
             else:
                 root.after(0, lambda cb=on_complete: cb(error is None, error))
+        if self._on_build_finished is not None:
+            self._on_build_finished()
 
     def _run_builds(self) -> None:
         while True:
@@ -177,6 +187,9 @@ class ConnectionSession:
         a single follow-up build of the latest inputs; every caller's
         on_complete hears the result of the build that served it.
         """
+        analysis = self.analysis
+        assert analysis is not None
+        analysis.mark_building()
         with self._build_lock:
             pending = self._next_build
             callbacks = pending.callbacks if pending is not None else []

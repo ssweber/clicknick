@@ -197,6 +197,85 @@ def test_connection_session_labels_click_folder_as_temporary(tmp_path, monkeypat
     )
 
 
+class _InlineThread:
+    def __init__(self, *, target, daemon):
+        self.target = target
+
+    def start(self):
+        self.target()
+
+
+def test_queued_build_reads_as_preparing_before_its_thread_runs(tmp_path, monkeypatch) -> None:
+    """A refresh in that gap used to stop the polling, leaving the window out of date."""
+    from clicknick.services.analysis_service import AnalysisService
+
+    class _NotStarted(_InlineThread):
+        def start(self):
+            pass
+
+    monkeypatch.setattr("clicknick.connection_session.threading.Thread", _NotStarted)
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    session.analysis = AnalysisService()
+    session.analysis.mark_failed("Save the project in Click Software first.")
+
+    session._start_analysis_thread(tmp_path, tmp_path / "db")
+
+    assert get_workspace_status(session.analysis).state is WorkspaceState.PREPARING
+    assert session.analysis.error is None
+
+
+def test_finished_build_tells_the_app_with_the_result_in_place(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("clicknick.connection_session.threading.Thread", _InlineThread)
+    seen: list[bool] = []
+    session = ConnectionSession(
+        ClickConnection("1", 2, "Example.ckp"),
+        on_build_finished=lambda: seen.append(session.analysis.build.called),
+    )
+    session.analysis = MagicMock()
+
+    session._start_analysis_thread(tmp_path, tmp_path / "db")
+
+    assert seen == [True]
+
+
+def test_app_refreshes_on_the_tk_thread_when_a_build_finishes() -> None:
+    app = ClickNickApp.__new__(ClickNickApp)
+    app.root = MagicMock()
+    app._request_ui_refresh = MagicMock()
+
+    app._on_build_finished()
+
+    app.root.after.assert_called_once_with(0, app._request_ui_refresh)
+    app._request_ui_refresh.assert_not_called()
+
+
+def test_failure_before_the_build_starts_does_not_stay_preparing(tmp_path, monkeypatch) -> None:
+    from clicknick.services.analysis_service import AnalysisService
+
+    monkeypatch.setattr("clicknick.connection_session.threading.Thread", _InlineThread)
+
+    def broken_selection(_workspace):
+        raise OSError("selection unreadable")
+
+    monkeypatch.setattr(
+        "clicknick.services.program_check_selection.ProgramCheckSelection", broken_selection
+    )
+    finished = MagicMock()
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"), on_build_finished=finished)
+    session.analysis = AnalysisService()
+    results: list[tuple[bool, str | None]] = []
+
+    session._start_analysis_thread(
+        tmp_path, tmp_path / "db", on_complete=lambda ok, error: results.append((ok, error))
+    )
+
+    assert session.analysis.status is AnalysisStatus.FAILED
+    assert session.analysis.error == "OSError: selection unreadable"
+    assert results == [(False, "OSError: selection unreadable")]
+    finished.assert_called_once_with()
+    assert session._build_running is False
+
+
 def test_new_session_builds_after_the_closed_sessions_build(tmp_path) -> None:
     """Opening another project in one window: both sessions write the same folder."""
     old = ConnectionSession(ClickConnection("1", 2, "Old.ckp"))

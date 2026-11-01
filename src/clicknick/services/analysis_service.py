@@ -396,6 +396,14 @@ class AnalysisService:
             self._error_detail = detail
             self._system_nickname_repairs = ()
 
+    def mark_building(self) -> None:
+        """Report a queued build, so nobody sees a stale status until its thread starts."""
+        with self._lock:
+            self._status = AnalysisStatus.BUILDING
+            self._error = None
+            self._error_detail = None
+            self._system_nickname_repairs = ()
+
     @property
     def tag_to_addr_key(self) -> dict[str, int]:
         """Tag name → addr_key map (empty if analysis not built)."""

@@ -381,6 +381,7 @@ def test_unloadable_odbc_loads_off_ui_thread_and_handles_result(jet_database, mo
         _connect_csv_fallback=Mock(),
         _configured_workspace_dir=lambda: None,
         _on_sync_status_changed=Mock(),
+        _on_build_finished=Mock(),
         nickname_manager=Mock(),
         load_from_database=Mock(),
         _start_analysis_build=Mock(),

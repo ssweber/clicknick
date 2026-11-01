@@ -513,8 +513,6 @@ class ClickNickApp:
             return
         self._session.start_analysis(self.root)
         self._request_ui_refresh()
-        if self._workspace_refresh_after_id is None:
-            self._workspace_refresh_after_id = self.root.after(250, self._poll_workspace_ui)
 
     def _workspace_rung_apply(self) -> None:
         """Preview workspace changes through the reviewed proposal flow."""
@@ -2088,6 +2086,13 @@ class ClickNickApp:
                     "Multiple workspaces are known for this PLC. Choose one in Workspace setup."
                 )
 
+    def _on_build_finished(self) -> None:
+        """Show the build's result. Runs on the build worker's thread."""
+        try:
+            self.root.after(0, self._request_ui_refresh)
+        except (RuntimeError, tk.TclError):
+            pass  # The window closed while the build ran
+
     def _on_sync_status_changed(self, _pending: int) -> None:
         self._request_ui_refresh()
         if self._data is not None:
@@ -2282,6 +2287,7 @@ class ClickNickApp:
                 ClickConnection(pid, hwnd, filename),
                 workspace_dir=self._configured_workspace_dir(),
                 on_sync_status_changed=self._on_sync_status_changed,
+                on_build_finished=self._on_build_finished,
             )
             self.load_from_database()
             self._start_analysis_build()
