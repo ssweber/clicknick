@@ -1,6 +1,6 @@
 # Install ClickNick
 
-ClickNick supports Windows 10 and 11 and CLICK Programming Software v2.60-v3.90.
+ClickNick supports Windows 10 and 11 and CLICK Programming Software v2.60-v4.00.
 
 ## Install with `uv`
 

@@ -32,6 +32,6 @@ body:
     id: click
     attributes:
       label: CLICK Programming Software version
-      placeholder: v3.90
+      placeholder: v4.00
     validations:
       required: true
