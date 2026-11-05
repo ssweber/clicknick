@@ -11,9 +11,7 @@ Click **Simulate**. ClickNick draws your CPU and modules from System Configurati
 - **It answers Modbus** at `127.0.0.1:502`, like the real PLC. The Data View connects to it with a Force column, and so can an HMI.
 - **Start from the machine's state.** In CLICK, choose **PLC > Read Data from PLC > All > Save**, then load that file with **PLC Data** in the simulator.
 
-<!-- TODO: add a Simulator window screenshot here. -->
-
-![ClickNick Console showing simplified, why, and how queries](https://github.com/user-attachments/assets/1727f54b-7f5d-4181-923e-4fbf7628d2a6)
+![ClickNick Simulator: pressing Start does nothing, the Console's why and how queries explain it, the panel's switches start the motor, and a force stops it](https://github.com/user-attachments/assets/b7076056-e825-47d5-acc7-8945111600e3)
 
 Open **Simulate** and use the **Console** pane at the bottom to question the program. Start with `why`: it traces what's holding a tag on, off, or blocked, which is usually the first troubleshooting question anyway.
 
