@@ -20,7 +20,8 @@ SWITCH_OFF = "#c3c8d0"
 SWITCH_ON = "#2f9e44"
 SWITCH_KNOB = "#ffffff"
 BUTTON_BEZEL = "#8d96a3"
-BUTTON_CAP = "#d9480f"
+#: A released pushbutton shows no color of its own: it says nothing about what the input does.
+BUTTON_CAP = "#c3c8d0"
 
 #: The DIN rail behind the modules: a light top lip, the channel, a dark lower lip.
 RAIL_TOP = "#d8dde3"
