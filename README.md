@@ -72,17 +72,7 @@ ClickNick started by fixing a few editor annoyances - especially the need to rem
 
 ![ClickNick autocomplete demo](https://github.com/user-attachments/assets/3a1cdff9-c425-46b7-8b90-4a357d43b6d3)
 
-## Check the program before running the machine
-
-ClickNick automatically generates a readable, executable [pyrung](https://pyrung.com/) version of the saved ladder in the open CLICK project. This powers two built-in testing tools:
-
-### Check Program
-
-**Check Program** catches common ladder mistakes and questionable patterns without running the machine. Findings include the relevant ladder source, severity, and a suggested fix.
-
-![ClickNick Check Program report](https://github.com/user-attachments/assets/38cb2f44-482a-4e60-9f56-4da95074a971)
-
-### Simulate and the Console
+## Simulate the program without the PLC
 
 **Simulate** is an offline CLICK test bench: your hardware drawn from System Configuration, with LEDs and switches,
 and the **Console** in a pane at the bottom (pop it out into its own window if you like). It lets you:
@@ -98,7 +88,15 @@ and the **Console** in a pane at the bottom (pop it out into its own window if y
 
 Interrupts, PID, and high-speed instructions are not yet supported.
 
-Save the project in CLICK before opening Check Program or Simulate so ClickNick can read the latest ladder files.
+Save the project in CLICK before opening Simulate so ClickNick can read the latest ladder files.
+
+## Check the program before running the machine
+
+ClickNick automatically generates a readable, executable [pyrung](https://pyrung.com/) version of the saved ladder in the open CLICK project. Simulate runs it, and **Check Program** reads it, catching common ladder mistakes and questionable patterns without running the machine. Findings include the relevant ladder source, severity, and a suggested fix.
+
+![ClickNick Check Program report](https://github.com/user-attachments/assets/38cb2f44-482a-4e60-9f56-4da95074a971)
+
+Save the project in CLICK before opening Check Program, too.
 
 ## Keep engineering work with the machine
 
