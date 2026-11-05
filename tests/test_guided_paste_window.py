@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
+
+import pytest
 
 from clicknick.connection_session import SavedProgram
 from clicknick.ladder.program import FolderComparison
@@ -118,4 +121,26 @@ def test_click_save_keeps_rows_while_building_and_the_row_being_pasted(monkeypat
     _change(window, SavedProgram(session, generation=2, csv_dir=after, note=""))
     assert window._differs == dict.fromkeys(NAMES, False)
     assert window._current_idx == 0
+    assert window._copied is True
+
+
+@pytest.mark.parametrize(("rungs", "warned"), [(99, False), (100, True)])
+def test_copy_pops_up_from_100_rungs(monkeypatch, rungs: int, warned: bool) -> None:
+    result = SimpleNamespace(payload=b"", rung_count=rungs, addresses_inserted=0, mdb_error=None)
+    showinfo = Mock()
+    monkeypatch.setattr(f"{MODULE}.prepare_csv_load", lambda *_a, **_k: result)
+    monkeypatch.setattr(f"{MODULE}.copy_to_clipboard", lambda *_a, **_k: None)
+    monkeypatch.setattr(f"{MODULE}.is_click_v4", lambda _hwnd: True)
+    monkeypatch.setattr(f"{MODULE}.messagebox.showinfo", showinfo)
+    window = GuidedPasteWindow.__new__(GuidedPasteWindow)
+    window._items = [("main.csv", Path("main.csv"), rungs, "")]
+    window._get_mdb_path = lambda: None
+    window._get_click_hwnd = lambda: 0
+    window._show_nicks_var = Mock()
+    window._update_action_btn = Mock()
+    window._status_var = Mock()
+
+    window._do_copy_to_clipboard(0)
+
+    assert showinfo.called is warned
     assert window._copied is True

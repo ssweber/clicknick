@@ -29,6 +29,9 @@ COL_CLICK = 3
 COL_DESC = 4
 _NUM_COLS = 5
 
+# Past this, CLICK's editor can sit frozen for a long time on the paste.
+_SLOW_PASTE_RUNGS = 100
+
 # Icons
 _ICON_DONE = "\u2713"  # ✓
 _ICON_CURRENT = "\u25b6"  # ▶
@@ -266,6 +269,13 @@ class GuidedPasteWindow(tk.Toplevel):
             msg += '\nPaste into CLICK (Ctrl+V on ladder screen), then click "Next"'
             self._status_var.set(msg)
             self._update_action_btn()
+            if result.rung_count >= _SLOW_PASTE_RUNGS:
+                messagebox.showinfo(
+                    "Large paste",
+                    f"{name} has {result.rung_count} rungs.\n\n"
+                    "Pasting this might take a while, and CLICK may freeze until it finishes.",
+                    parent=self,
+                )
         except RuntimeError as exc:
             self._status_var.set(f"Clipboard error: {exc}\nIs Click running?")
         except Exception as exc:
