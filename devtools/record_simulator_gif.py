@@ -1,4 +1,4 @@
-"""Record the Simulator + Console walkthrough for docs/tour/offline-console.md.
+"""Record the Simulator + Console walkthrough for docs/tour/simulator.md.
 
 Needs no CLICK install. The only mock is the connection to CLICK: this script
 exports a conveyor program to CLICK ladder CSVs and nicknames, generates the

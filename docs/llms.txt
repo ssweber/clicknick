@@ -11,7 +11,7 @@ ClickNick is a free, local Windows application. It adds nickname autocomplete, p
 - [Getting started](getting-started/)
 - [Product tour: nickname autocomplete](tour/autocomplete/)
 - [Product tour: program checks](tour/checks/)
-- [Product tour: offline Console](tour/offline-console/)
+- [Product tour: Simulator](tour/simulator/)
 - [Product tour: readable history](tour/readable-history/)
 - [Product tour: engineering workspace](tour/engineering-workspace/)
 - [Product tour: AI in a workspace you can check](tour/ai-in-the-workspace/)

@@ -19,7 +19,7 @@ Open **Simulate** and use the **Console** pane at the bottom to question the pro
 
 The Simulator, its Console, Data View and AI agents all drive the same simulated PLC. Nothing you do here touches the machine.
 
-This is a model of the program, not the PLC. It doesn't know about wiring, sensor timing, or network behavior, and analog values are whatever you feed it. What it tells you about the ladder is real. Confirm it on the machine.
+This is a model of the program, not the PLC. It doesn't know about wiring, sensor timing, or network behavior, and analog values are whatever you feed it. Interrupts, PID, and high-speed instructions are not yet supported. What it tells you about the ladder is real. Confirm it on the machine.
 
 ---
 

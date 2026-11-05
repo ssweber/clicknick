@@ -23,4 +23,4 @@ A finding is a reason to look at the rung. The checker doesn't know your process
 
 ---
 
-**[Next: Run the CLICK program without the PLC →](offline-console.md)**
+**[Next: Run the CLICK program without the PLC →](simulator.md)**

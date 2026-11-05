@@ -6,7 +6,9 @@
 
 **Write, check, test, troubleshoot, and maintain CLICK ladder without replacing CLICK Programming Software.**
 
-Nickname autocomplete. Automated program checks. Offline testing. Readable project history. Optional AI-assisted ladder programming.
+CLICK Programming Software has no simulator, so ClickNick adds one: run your saved program without the PLC.
+
+Also nickname autocomplete. Automated program checks. Readable project history. Optional AI-assisted ladder programming.
 
 CLICK stays CLICK. ClickNick gives you better tools around it.
 
@@ -15,7 +17,7 @@ Documentation and tour: https://pyrung.com/clicknick/
 > [!IMPORTANT]
 > ClickNick never edits your `.ckp` project file directly. You review proposed changes, and nothing becomes part of the project until you save it in CLICK Programming Software. Close CLICK without saving to discard changes made through ClickNick.
 
-ClickNick is a free, open-source Windows application. It runs locally, with no telemetry or required cloud service.
+ClickNick is a free, open-source Windows application. It runs locally, with no telemetry or required cloud service. ClickNick is an independent project: not official, and not affiliated with or endorsed by AutomationDirect. The simulator and checks don't replace testing. Test on the real machine, with proper safeguards, before anything interacts with people.
 
 ## Install
 
@@ -82,16 +84,19 @@ ClickNick automatically generates a readable, executable [pyrung](https://pyrung
 
 ### Simulate and the Console
 
-**Simulate** is an offline CLICK test bench: your hardware drawn from System Configuration,
-with the **Console** in a pane at the bottom (pop it out into its own window if you like). It lets you:
+**Simulate** is an offline CLICK test bench: your hardware drawn from System Configuration, with LEDs and switches,
+and the **Console** in a pane at the bottom (pop it out into its own window if you like). It lets you:
 
-- Run and inspect the program scan by scan.
-- Force inputs and set up machine conditions without changing the live PLC.
+- Run the saved program and work the panel like the machine, in real time or scan by scan.
+- Force points and set up machine conditions without changing the live PLC.
 - Work from saved PLC and tag data while troubleshooting.
-- Ask why something happened - or why it did not.
+- Right-click a point or use the Console to ask why something happened - or why it did not.
 - Ask how to reach a state, including routes that must pass through or avoid particular conditions.
+- Connect the Data View or an HMI over Modbus at `127.0.0.1:502`, like the real PLC.
 
-![ClickNick Console demonstrating simplified, why, and how queries](https://github.com/user-attachments/assets/1727f54b-7f5d-4181-923e-4fbf7628d2a6)
+![ClickNick Simulator: pressing Start does nothing, the Console's why and how queries explain it, the panel's switches start the motor, right-clicking the output shows its simplified logic, and a force stops it](https://github.com/user-attachments/assets/a1982f37-38f6-4103-a3c9-32469f0761c8)
+
+Interrupts, PID, and high-speed instructions are not yet supported.
 
 Save the project in CLICK before opening Check Program or Simulate so ClickNick can read the latest ladder files.
 
