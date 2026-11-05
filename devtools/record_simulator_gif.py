@@ -14,8 +14,9 @@ sibling checkouts from `make install-dev`.
 Input is synthetic Tk events, so your own mouse is left alone, but the window
 takes keyboard focus and stays on top while recording. The screen is captured,
 because the completion dropdown is its own window. The pointer is drawn on
-afterwards. The simulator listens on Modbus port 502, so close any running
-simulation first.
+afterwards. The right-click menu's popup is a lookalike, but its labels and the
+command it runs come from the app's real menu. The simulator listens on Modbus
+port 502, so close any running simulation first.
 
 To try encoding settings without recording again, add `--capture PATH` once, then
 use `--from-capture PATH` with `--speed`, `--fps`, `--ticker-fps` or `--colors`.
@@ -42,7 +43,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageGrab
+from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter, ImageGrab
 from pyclickplc import read_csv
 from pyrung import (
     And,
@@ -81,6 +82,7 @@ from clicknick.services.analysis_service import (
     _build_tag_addr_key_map,
 )
 from clicknick.simulation_session import SimStatus, SimulationSession
+from clicknick.views import sim_palette
 from clicknick.views.simulator_window import SimulatorWindow
 
 PROJECT_FILE = "ClickConveyor.ckp"
@@ -439,11 +441,23 @@ def _palette_sheet(samples: list[Image.Image]) -> Image.Image:
 
 
 def _exact_palette(sheet: Image.Image, colors: int) -> Image.Image:
-    """The most used colors, unchanged, so flat UI colors stay exact (median cut averages them)."""
+    """The Simulator's own colors, then the most used, so flat UI colors stay exact.
+
+    The padlock and LEDs cover few pixels, so going by use alone can lose them.
+    """
+    named = vars(sim_palette).values()
+    chosen = {
+        ImageColor.getrgb(value): None
+        for value in named
+        if isinstance(value, str) and value.startswith("#")
+    }
     used = sheet.getcolors(maxcolors=sheet.width * sheet.height) or []
-    top = sorted(used, key=lambda entry: entry[0], reverse=True)[:colors]
+    for _count, color in sorted(used, key=lambda entry: entry[0], reverse=True):
+        if len(chosen) >= colors:
+            break
+        chosen[color] = None
     palette = Image.new("P", (1, 1))
-    palette.putpalette([channel for _count, color in top for channel in color])
+    palette.putpalette([channel for color in chosen for channel in color[:3]])
     return palette
 
 
@@ -474,7 +488,7 @@ class Encoding:
     fps: float = 12.0
     #: The scan counter changes every frame. Showing it this often is enough to look alive.
     ticker_fps: float = 4.0
-    #: Below 256 the orange of the forced padlock and the pressed button turns brown.
+    #: Fewer than this roughens antialiased text edges.
     colors: int = 256
     #: Final frame hold, in seconds of the finished gif.
     end_hold: float = 3.0
@@ -565,6 +579,63 @@ def write_gif(capture: Capture, path: Path, encoding: Encoding) -> None:
 Scene = Iterator[float]
 
 
+class MenuLookalike:
+    """Draws a real menu's entries in a plain window, in the colors of Tk's native menus.
+
+    Windows' popup runs its own loop until it is dismissed, which would stall a scene.
+    """
+
+    BACKGROUND = "#f0f0f0"
+    TEXT = "#000000"
+    DISABLED = "#a0a0a0"
+    ACTIVE = "#0078d7"
+    ACTIVE_TEXT = "#ffffff"
+
+    def __init__(self, parent: tk.Misc, menu: tk.Menu, x_root: int, y_root: int) -> None:
+        self.window = tk.Toplevel(parent, bg="#a0a0a0", padx=1, pady=1)
+        self.window.overrideredirect(True)
+        self.window.attributes("-topmost", True)
+        body = tk.Frame(self.window, bg=self.BACKGROUND, pady=3)
+        body.pack()
+        self.rows: dict[str, tuple[int, tk.Frame, list[tk.Label]]] = {}
+        for index in range(cast(int, menu.index("end")) + 1):
+            if menu.type(index) == "separator":
+                tk.Frame(body, bg="#c8c8c8", height=1).pack(fill="x", padx=4, pady=4)
+                continue
+            label = menu.entrycget(index, "label")
+            enabled = menu.entrycget(index, "state") != "disabled"
+            style: dict[str, Any] = {
+                "bg": self.BACKGROUND,
+                "fg": self.TEXT if enabled else self.DISABLED,
+                "font": ("Segoe UI", 9),
+            }
+            row = tk.Frame(body, bg=self.BACKGROUND)
+            row.pack(fill="x")
+            text = tk.Label(row, text=label, anchor="w", padx=26, pady=3, **style)
+            text.pack(side="left")
+            mark = "›" if menu.type(index) == "cascade" else ""
+            arrow = tk.Label(row, text=mark, padx=8, **style)
+            arrow.pack(side="right")
+            self.rows[label] = (index, row, [text, arrow])
+        self.window.geometry(f"+{x_root}+{y_root}")
+        self.window.update()
+
+    def row_center(self, label: str) -> tuple[int, int]:
+        """Screen coordinates of the middle of *label*'s row."""
+        _index, row, _labels = self.rows[label]
+        return (
+            row.winfo_rootx() + row.winfo_width() // 2,
+            row.winfo_rooty() + row.winfo_height() // 2,
+        )
+
+    def highlight(self, label: str) -> None:
+        _index, row, labels = self.rows[label]
+        row.configure(bg=self.ACTIVE)
+        for widget in labels:
+            widget.configure(bg=self.ACTIVE, fg=self.ACTIVE_TEXT)
+        self.window.update()
+
+
 class Driver:
     def __init__(self, win: SimulatorWindow, sim: SimulationSession, recorder: Recorder) -> None:
         self.win = win
@@ -587,8 +658,11 @@ class Driver:
 
     def switch_point(self, address: str) -> tuple[int, int]:
         # A Momentary input shows a pushbutton cap; its toggle knob is hidden and has no bbox.
-        part = "cap" if self.sim.is_momentary(address) else "knob"
-        return self._item_point(self.win._inputs[address][part])
+        if not self.sim.is_momentary(address):
+            return self._item_point(self.win._inputs[address]["knob"])
+        # Press the bezel just below the cap, so the arrow doesn't hide it lighting up.
+        x, y = self._item_point(self.win._inputs[address]["cap"])
+        return x, y + 6
 
     def output_point(self, address: str) -> tuple[int, int]:
         return self._item_point(self.win._outputs[address]["led"])
@@ -634,7 +708,7 @@ class Driver:
     def click(self, point: tuple[int, int], *, hold: float = 0.12) -> Scene:
         yield from self.move(point)
         self._canvas_event("<Motion>", point)
-        self.recorder.show_click(hold + CLICK_SECONDS)
+        self.recorder.show_click()
         self._canvas_event("<ButtonPress-1>", point)
         yield hold
         self._canvas_event("<ButtonRelease-1>", point)
@@ -649,6 +723,39 @@ class Driver:
         self._canvas_event("<ButtonPress-1>", point)
         yield 0.12
         self._canvas_event("<ButtonRelease-1>", point)
+
+    def _right_click_menu(self, point: tuple[int, int]) -> tk.Menu:
+        """Right-click *point* and return the menu the app built, without posting it."""
+        built: list[tk.Menu] = []
+        real_popup = tk.Menu.tk_popup
+        tk.Menu.tk_popup = lambda menu, *_args, **_kwargs: built.append(menu)  # type: ignore[method-assign]
+        try:
+            self._canvas_event("<Motion>", point)
+            self._canvas_event("<ButtonPress-3>", point)
+            self._canvas_event("<ButtonRelease-3>", point)
+        finally:
+            tk.Menu.tk_popup = real_popup  # type: ignore[method-assign]
+        return built[0]
+
+    def choose_from_menu(self, point: tuple[int, int], label: str) -> Scene:
+        """Right-click *point*, then run the app's own *label* entry from a drawn menu."""
+        yield from self.move(point)
+        self.recorder.show_click()
+        menu = self._right_click_menu(point)
+        self.leave_canvas()
+        drawn = MenuLookalike(self.win, menu, point[0] + self.left, point[1] + self.top)
+        yield 0.8
+        x_root, y_root = drawn.row_center(label)
+        yield from self.move((x_root - self.left, y_root - self.top), 0.45)
+        drawn.highlight(label)
+        yield 0.5
+        self.recorder.show_click()
+        yield 0.12
+        drawn.window.destroy()
+        menu.invoke(drawn.rows[label][0])
+        menu.destroy()
+        yield 0.1
+        yield from self.wait_until(lambda: not self.win._console.busy, label, 30)
 
     def park(self) -> Scene:
         """Move the pointer into the empty rack, off anything worth watching."""
@@ -744,7 +851,7 @@ def walkthrough(driver: Driver) -> Scene:
     driver.leave_canvas()
     yield from driver.wait_until(lambda: sim.switch_position == "run", "RUN")
     yield 0.9
-    yield from driver.click(driver.switch_point("X001"), hold=0.5)
+    yield from driver.click(driver.switch_point("X001"), hold=1.2)
     yield 1.0
 
     # Ask the Console.
@@ -758,10 +865,15 @@ def walkthrough(driver: Driver) -> Scene:
     for address in ("X003", "X002", "X004"):
         yield from driver.click(driver.switch_point(address))
         yield 0.45
-    yield from driver.click(driver.switch_point("X001"), hold=0.35)
+    yield from driver.click(driver.switch_point("X001"), hold=1.2)
     yield from driver.park()
     yield from driver.wait_until(lambda: driver.output("Y001") is True, "the motor output", 5)
-    yield 2.0
+    yield 1.5
+
+    # Ask the running output directly, from its right-click menu.
+    yield from driver.choose_from_menu(driver.output_point("Y001"), "Show simplified logic")
+    yield from driver.park()
+    yield 3.5
 
     # Force the motor off: the padlock shows, and the program can't change it.
     yield from driver.double_click(driver.output_point("Y001"))

@@ -63,7 +63,6 @@ c396ea1, clicknick f13096c, c4100d7), then layout B, the Console pane and the wo
 - Simulator screenshot in the docs (`<!-- TODO -->` in `docs/help/index.md`).
 - docs-build not run.
 - Contract tests against a real DAP subprocess (session and view tests use fakes).
-- Remember the Console pane's open state and height across app restarts? It always opens slim today.
 - Release order: pyclickplc, then pyrung, then ClickNick bumps both pins (it pins pyrung 0.15.2 today, so the real
   simulator, `link=Tag:trigger` promote and the split guidance files need the new pyrung). pyrung no longer needs a
   new pyclickplc floor; see [Modbus input writes](#resolved-modbus-input-writes-are-not-needed).
