@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
@@ -20,6 +21,7 @@ from ..ladder.program import (
     prepare_csv_load,
     read_csv_comment,
 )
+from ..utils.win32_utils import WIN32
 
 # Column layout
 COL_STATUS = 0
@@ -58,6 +60,30 @@ _NICKNAMES_NAME = "nicknames.csv"
 # How often to check whether the program in CLICK has changed
 _WATCH_INTERVAL_MS = 1000
 
+_FIRST_TIME_TIPS = (
+    "Guided Paste\n\n"
+    "Each step copies one program to the clipboard. Paste it into CLICK with Ctrl+V, "
+    "then wait until the rungs appear before doing anything else: a big paste can take "
+    "a while, and CLICK may look frozen until it finishes.\n\n"
+    "Subroutines come before main. Create each one in CLICK (New Subroutine does this "
+    "for you), then paste into it."
+)
+
+
+def _tips_seen_path() -> Path:
+    base = Path(os.environ.get("LOCALAPPDATA") or Path.home())
+    return base / "ClickNick" / "guided_paste_popup_seen"
+
+
+# CLICK's Ctrl+U dialog, and its subroutine name box
+_NEW_SUB_TITLE = "New Subroutine Program"
+_NEW_SUB_NAME_CONTROL = "Edit1"
+_SUBROUTINE_PREFIX = "subroutines/"
+# Time for CLICK to come to the front before Ctrl+U, then to open the dialog
+_ACTIVATE_DELAY_MS = 100
+_DIALOG_POLL_MS = 100
+_DIALOG_TIMEOUT_MS = 3000
+
 
 class GuidedPasteWindow(tk.Toplevel):
     """Non-modal panel that walks the user through pasting ladder CSVs."""
@@ -95,6 +121,8 @@ class GuidedPasteWindow(tk.Toplevel):
             self._compare_note = "Compared with CLICK's last save" if compared else ""
         self._differs = comparison.differs
         self._only_in_click = set(comparison.only_in_click)
+        self._missing_in_click = comparison.missing_in_click
+        self._click_compared = comparison.compared
         self._items = [
             *self._folder_items,
             *(
@@ -102,6 +130,19 @@ class GuidedPasteWindow(tk.Toplevel):
                 for name, path in comparison.only_in_click.items()
             ),
         ]
+
+    def _can_add_subroutine(self, idx: int | None) -> bool:
+        """Whether the row is a subroutine CLICK may not have yet.
+
+        Only a comparison showing CLICK's last save has it rules it out: an
+        unsaved project, or one CLICK's program could not be read from, may lack any.
+        """
+        if idx is None or idx >= len(self._items):
+            return False
+        name = self._items[idx][0]
+        if not name.startswith(_SUBROUTINE_PREFIX):
+            return False
+        return name in self._missing_in_click or not self._click_compared
 
     def _is_nickname_step(self, idx: int) -> bool:
         return idx is not None and idx < len(self._items) and self._items[idx][0] == _NICKNAMES_NAME
@@ -166,6 +207,24 @@ class GuidedPasteWindow(tk.Toplevel):
         self._update_progress_text()
 
     # ------------------------------------------------------------------
+    # Action button state
+    # ------------------------------------------------------------------
+
+    def _update_action_btn(self) -> None:
+        """Update the main action button text based on current state."""
+        can_add = self._can_add_subroutine(self._current_idx) and not self._adding_subroutine
+        self._add_sub_btn.configure(state="normal" if can_add else "disabled")
+        if self._current_idx is None:
+            self._action_btn.configure(state="disabled", text="Done")
+            return
+
+        if self._copied:
+            self._action_btn.configure(state="normal", text="Next \u2192")
+        else:
+            label = "Import" if self._is_nickname_step(self._current_idx) else "Copy"
+            self._action_btn.configure(state="normal", text=label)
+
+    # ------------------------------------------------------------------
     # Sheet data
     # ------------------------------------------------------------------
 
@@ -186,6 +245,7 @@ class GuidedPasteWindow(tk.Toplevel):
         self._sheet.set_column_widths([30, 250, 45, 80, 370])
         self._compare_lbl.configure(text=self._compare_note)
         self._update_highlights()
+        self._update_action_btn()
 
     def _all_done(self) -> None:
         self._current_idx = None
@@ -201,23 +261,7 @@ class GuidedPasteWindow(tk.Toplevel):
                 " delete them in CLICK if they are no longer used"
             )
         self._status_var.set(msg)
-        self._action_btn.configure(state="disabled", text="Done")
-
-    # ------------------------------------------------------------------
-    # Action button state
-    # ------------------------------------------------------------------
-
-    def _update_action_btn(self) -> None:
-        """Update the main action button text based on current state."""
-        if self._current_idx is None:
-            self._action_btn.configure(state="disabled", text="Done")
-            return
-
-        if self._copied:
-            self._action_btn.configure(state="normal", text="Next \u2192")
-        else:
-            label = "Import" if self._is_nickname_step(self._current_idx) else "Copy"
-            self._action_btn.configure(state="normal", text=label)
+        self._update_action_btn()
 
     # ------------------------------------------------------------------
     # Clipboard / Import
@@ -281,6 +325,75 @@ class GuidedPasteWindow(tk.Toplevel):
         except Exception as exc:
             self._status_var.set(f"Error loading {name}: {exc}")
 
+    # ------------------------------------------------------------------
+    # New subroutine in CLICK
+    # ------------------------------------------------------------------
+
+    def _finish_add_subroutine(self, msg: str) -> None:
+        self._adding_subroutine = False
+        self._status_var.set(msg)
+        self._update_action_btn()
+
+    def _fill_new_subroutine(self, dialog: int, sub_name: str) -> None:
+        if WIN32.set_control_text(dialog, _NEW_SUB_NAME_CONTROL, sub_name):
+            msg = (
+                f'Named the new subroutine "{sub_name}" in CLICK.\n'
+                'Click OK there, then "Copy" here and paste into the new subroutine'
+            )
+        else:
+            msg = f'CLICK\'s {_NEW_SUB_TITLE} window has no name box; type "{sub_name}" there'
+        self._finish_add_subroutine(msg)
+
+    def _wait_for_new_subroutine(self, pid: str, sub_name: str, remaining_ms: int) -> None:
+        if not self.winfo_exists():
+            return
+        dialog = WIN32.find_process_window(pid, _NEW_SUB_TITLE)
+        if dialog:
+            self._fill_new_subroutine(dialog, sub_name)
+        elif remaining_ms <= 0:
+            self._finish_add_subroutine(
+                f"CLICK did not open {_NEW_SUB_TITLE}.\n"
+                "Click in CLICK's ladder editor (close any open dialogs), then try again"
+            )
+        else:
+            self.after(
+                _DIALOG_POLL_MS,
+                lambda: self._wait_for_new_subroutine(
+                    pid, sub_name, remaining_ms - _DIALOG_POLL_MS
+                ),
+            )
+
+    def _send_new_subroutine_key(self, pid: str, sub_name: str) -> None:
+        if not self.winfo_exists():
+            return
+        # Ctrl+U goes to whichever window is in front: make sure that is CLICK
+        if WIN32.get_foreground_pid() != pid:
+            self._finish_add_subroutine("Could not bring CLICK to the front; try again")
+            return
+        WIN32.send_ctrl_key("U")
+        self._wait_for_new_subroutine(pid, sub_name, _DIALOG_TIMEOUT_MS)
+
+    def _on_add_subroutine(self) -> None:
+        """Open CLICK's New Subroutine Program (Ctrl+U) and fill in the row's name."""
+        idx = self._current_idx
+        if idx is None or self._adding_subroutine or not self._can_add_subroutine(idx):
+            return
+        hwnd = self._get_click_hwnd()
+        pid = WIN32.get_pid(hwnd) if hwnd else ""
+        if not pid:
+            self._status_var.set("No CLICK window found. Connect to CLICK first")
+            return
+        sub_name = Path(self._items[idx][0]).stem
+        self._adding_subroutine = True
+        self._update_action_btn()
+        dialog = WIN32.find_process_window(pid, _NEW_SUB_TITLE)
+        if dialog:  # Already open: just fill it in
+            WIN32.activate(dialog)
+            self._fill_new_subroutine(dialog, sub_name)
+            return
+        WIN32.activate(hwnd)
+        self.after(_ACTIVATE_DELAY_MS, lambda: self._send_new_subroutine_key(pid, sub_name))
+
     def _perform_action(self, idx: int) -> None:
         """Perform the copy or import action for the given row."""
         if self._is_nickname_step(idx):
@@ -305,6 +418,14 @@ class GuidedPasteWindow(tk.Toplevel):
             self._status_var.set(
                 f"{name} already matches CLICK's last save.\n"
                 'Click "Copy" to copy it to the clipboard anyway'
+            )
+        elif self._can_add_subroutine(idx):
+            where = (
+                "is not in CLICK's last save" if self._click_compared else "may not be in CLICK yet"
+            )
+            self._status_var.set(
+                f"{name} {where}.\n"
+                'Click "New Subroutine" to create it in CLICK, or "Copy" if it already exists'
             )
         else:
             self._status_var.set(f'Click "Copy" to copy {name} to the clipboard')
@@ -409,6 +530,18 @@ class GuidedPasteWindow(tk.Toplevel):
         if self._current_idx is None:
             return
         self._advance_to_next()
+
+    def _show_first_time_tips(self) -> None:
+        """Show how to paste, once per user."""
+        seen = _tips_seen_path()
+        if not self.winfo_exists() or seen.exists():
+            return
+        messagebox.showinfo("First-Time Tips", _FIRST_TIME_TIPS, parent=self)
+        try:
+            seen.parent.mkdir(parents=True, exist_ok=True)
+            seen.touch()
+        except OSError:
+            pass  # A settings write failure must not get in the way of pasting
 
     def _on_restart(self) -> None:
         if self._done and not messagebox.askyesno(
@@ -526,6 +659,14 @@ class GuidedPasteWindow(tk.Toplevel):
 
         ttk.Button(btn_frame, text="Skip", command=self._on_skip, width=10).pack(side=tk.RIGHT)
 
+        self._add_sub_btn = ttk.Button(
+            btn_frame,
+            text="New Subroutine",
+            command=self._on_add_subroutine,
+            state="disabled",
+        )
+        self._add_sub_btn.pack(side=tk.RIGHT, padx=(0, 5))
+
     def __init__(
         self,
         parent: tk.Widget,
@@ -557,6 +698,10 @@ class GuidedPasteWindow(tk.Toplevel):
         # name -> differs from CLICK; absent when unknown (no workspace, not a program)
         self._differs: dict[str, bool] = {}
         self._only_in_click: set[str] = set()
+        # Folder items CLICK's last save lacks: subroutines to create first
+        self._missing_in_click: frozenset[str] = frozenset()
+        self._click_compared = False
+        self._adding_subroutine = False
         self._compare_note = ""
 
         self._scan_folder()
@@ -567,3 +712,4 @@ class GuidedPasteWindow(tk.Toplevel):
         self._populate_sheet()
         self._advance_to_first_pending()
         self.after(_WATCH_INTERVAL_MS, self._watch_saved_program)
+        self.after_idle(self._show_first_time_tips)

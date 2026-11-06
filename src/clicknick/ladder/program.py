@@ -558,18 +558,19 @@ def import_nicknames_csv(csv_path: Path, mdb_path: Path) -> NicknameImportResult
 def list_csv_folder(folder: Path) -> list[tuple[str, Path]]:
     """List CSV files in a folder for guided paste.
 
-    Excludes ``nicknames.csv``.  Main-level CSVs come first (sorted),
-    then ``subroutines/*.csv`` (sorted).
+    Excludes ``nicknames.csv``.  ``subroutines/*.csv`` come first (sorted),
+    then main-level CSVs such as ``main.csv`` (sorted), so the subroutines
+    exist in CLICK before main's Call instructions are pasted.
     """
     items: list[tuple[str, Path]] = []
-    for p in sorted(folder.glob("*.csv")):
-        if p.name.lower() == "nicknames.csv":
-            continue
-        items.append((p.name, p))
     sub_dir = folder / "subroutines"
     if sub_dir.is_dir():
         for p in sorted(sub_dir.glob("*.csv")):
             items.append((f"subroutines/{p.name}", p))
+    for p in sorted(folder.glob("*.csv")):
+        if p.name.lower() == "nicknames.csv":
+            continue
+        items.append((p.name, p))
     return items
 
 
@@ -587,11 +588,15 @@ def rung_fingerprint(rung: Rung) -> tuple[tuple[str, ...], ...]:
 class FolderComparison:
     """How a CSV bundle compares with the program now in CLICK."""
 
+    # False when nothing was compared: what CLICK has is unknown.
+    compared: bool = False
     # Folder item name -> differs from CLICK (a program CLICK lacks differs).
     # Items that cannot be read are absent: unknown.
     differs: dict[str, bool] = field(default_factory=dict)
     # Programs CLICK has that the folder does not: name -> CLICK's CSV.
     only_in_click: dict[str, Path] = field(default_factory=dict)
+    # Folder item names CLICK does not have yet (readable or not).
+    missing_in_click: frozenset[str] = frozenset()
 
 
 def compare_csv_folder(folder: Path, current_dir: Path) -> FolderComparison:
@@ -613,6 +618,7 @@ def compare_csv_folder(folder: Path, current_dir: Path) -> FolderComparison:
         if name.casefold() not in proposed_names:
             only_in_click[name] = path
 
+    missing = frozenset(name for name, _ in proposed_items if name.casefold() not in current)
     differs: dict[str, bool] = {}
     for name, path in proposed_items:
         try:
@@ -624,7 +630,9 @@ def compare_csv_folder(folder: Path, current_dir: Path) -> FolderComparison:
             differs[name] = proposed != [rung_fingerprint(r) for r in read_csv(current_path)]
         except Exception:
             continue  # unreadable: unknown, same as count_csv_rungs
-    return FolderComparison(differs=differs, only_in_click=only_in_click)
+    return FolderComparison(
+        compared=True, differs=differs, only_in_click=only_in_click, missing_in_click=missing
+    )
 
 
 def read_csv_comment(csv_path: Path) -> str:

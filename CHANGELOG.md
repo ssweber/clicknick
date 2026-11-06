@@ -17,6 +17,7 @@
 - Feedback links let an output drive an input on the Simulator, like a contactor's aux contact or a limit switch: drag one to add it for the session, cut it to simulate a failed sensor, or save it to the input's comment for the program.
 - Copying rungs that use CLICK v4 instructions is refused when the CLICK window is older, instead of letting CLICK silently change them on paste.
 - Guided Paste marks which programs differ from CLICK's last save, steps through only those, and lists subroutines CLICK has that the folder doesn't.
+- Guided Paste's **New Subroutine** button opens CLICK's New Subroutine Program window with the name filled in, for any subroutine CLICK's last save doesn't show it already has.
 
 ### Changed
 
@@ -24,6 +25,7 @@
 - A workspace's `AGENTS.md` and `README.md` are now yours to edit: pyrung's guidance moves to `AGENTS.pyrung.md` and `README.pyrung.md`, and an older generated `AGENTS.md` or `README.md` is kept as `*.previous.md`.
 - `link=` annotations take a CLICK address such as `Y001`, or `~Y001` to follow a bit while it is OFF, and need only a delay or a profile.
 - Sync and Discard clear the undo history.
+- Guided Paste steps through subroutines before `main.csv`, so they exist in CLICK before main's Call instructions are pasted.
 
 ### Fixed
 

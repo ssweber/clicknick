@@ -7,7 +7,7 @@ from pathlib import Path
 
 from laddercodec import Coil, Contact, Rung, write_csv
 
-from clicknick.ladder.program import FolderComparison, compare_csv_folder
+from clicknick.ladder.program import FolderComparison, compare_csv_folder, list_csv_folder
 
 _IT = typing.get_type_hints(Contact)["type"]
 
@@ -54,12 +54,15 @@ def test_reports_changed_unchanged_and_new_programs(tmp_path: Path) -> None:
         },
     )
 
-    assert compare_csv_folder(proposed, current).differs == {
+    comparison = compare_csv_folder(proposed, current)
+
+    assert comparison.differs == {
         "main.csv": False,
         "subroutines/fill.csv": False,
         "subroutines/Drain.csv": True,
         "subroutines/Rinse.csv": True,
     }
+    assert comparison.missing_in_click == {"subroutines/Rinse.csv"}
 
 
 def test_lists_programs_only_in_click(tmp_path: Path) -> None:
@@ -84,6 +87,16 @@ def test_lists_programs_only_in_click(tmp_path: Path) -> None:
     assert "subroutines/Old Alarm.csv" not in comparison.differs
 
 
+def test_lists_subroutines_before_main(tmp_path: Path) -> None:
+    folder = _bundle(
+        tmp_path,
+        {"main.csv": _rungs("Y001"), "subroutines/Fill.csv": _rungs("Y002")},
+    )
+    (folder / "nicknames.csv").write_text("", encoding="utf-8")
+
+    assert [name for name, _ in list_csv_folder(folder)] == ["subroutines/Fill.csv", "main.csv"]
+
+
 def test_folder_without_main_is_not_compared(tmp_path: Path) -> None:
     current = _bundle(
         tmp_path / "current",
@@ -100,4 +113,7 @@ def test_unreadable_program_is_unknown(tmp_path: Path) -> None:
     (proposed / "subroutines").mkdir()
     (proposed / "subroutines" / "Broken.csv").write_text("not,a,ladder\n", encoding="utf-8")
 
-    assert compare_csv_folder(proposed, current).differs == {"main.csv": False}
+    comparison = compare_csv_folder(proposed, current)
+
+    assert comparison.differs == {"main.csv": False}
+    assert comparison.missing_in_click == {"subroutines/Broken.csv"}
