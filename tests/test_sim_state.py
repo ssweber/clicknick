@@ -209,3 +209,20 @@ def test_a_hand_written_number_is_read_and_a_bad_value_reported(tmp_path):
     ((address, reason),) = state.unread_links
     assert address == "X001" and reason.startswith("on_delay:")
     assert "X001" not in dump_state(state)
+
+
+def test_an_older_profile_runs_through_every_migration_in_order(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from pyrung.click.tag_map import MIGRATIONS
+
+    from clicknick.services import sim_state
+
+    # A made-up older form that a first migration turns into the ramp form.
+    older = SimpleNamespace(
+        rewrite_token=lambda token: "profile=ramp:up=0.8" if token == "profile=older:x" else None
+    )
+    monkeypatch.setattr(sim_state, "MIGRATIONS", (older, *MIGRATIONS))
+    path = tmp_path / "state.toml"
+    path.write_text("[links]\nDF1 = {enable = 'Y001', profile = 'older:x'}\n", encoding="utf-8")
+    assert load_state(path).links == {"DF1": BenchLink("Y001", response=response(ramp_on="0.8"))}

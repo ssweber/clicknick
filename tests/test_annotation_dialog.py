@@ -14,10 +14,15 @@ from clicknick.widgets.annotation_dialog import AnnotationDialog  # noqa: E402
 @pytest.fixture(scope="module")
 def tk_root():
     """One root for the whole module (per-test roots fail intermittently)."""
-    try:
-        root = tk.Tk()
-    except tk.TclError as exc:  # pragma: no cover - no display
-        pytest.skip(f"no Tk display available: {exc}")
+    # Creating a root after another module destroyed its own sometimes fails to find
+    # init.tcl. A second try works, and only a real lack of a display should skip.
+    for attempt in range(3):
+        try:
+            root = tk.Tk()
+            break
+        except tk.TclError as exc:  # pragma: no cover - depends on the machine
+            if attempt == 2:
+                pytest.skip(f"no Tk display available: {exc}")
     root.withdraw()
     yield root
     try:

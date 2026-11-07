@@ -114,17 +114,23 @@ def _key_text(value: object) -> str | None:
 def _old_profile(value: object) -> Response:
     """The response an older bench file's ``profile`` token held, rewritten by pyrung.
 
-    Raises ValueError when no pyrung migration reads the token.
+    Every migration runs in order over the tokens, as ``upgrade_comment`` runs them over a
+    comment. Raises ValueError when an old token is left.
     """
     text = _text(value)
     if text is None:
         return ()
+    tokens = [f"profile={text}"]
     for migration in MIGRATIONS:
-        rewritten = migration.rewrite_token(f"profile={text}")
-        if rewritten is not None:
-            pairs = (token.partition("=") for token in rewritten.split(","))
-            return response_of({name.strip(): new.strip() for name, _sep, new in pairs})
-    raise ValueError(f"no upgrade reads profile={text}")
+        upgraded: list[str] = []
+        for token in tokens:
+            rewritten = migration.rewrite_token(token)
+            upgraded += [token] if rewritten is None else [t.strip() for t in rewritten.split(",")]
+        tokens = upgraded
+    if any(token.startswith("profile=") for token in tokens):
+        raise ValueError(f"no upgrade reads profile={text}")
+    pairs = (token.partition("=") for token in tokens)
+    return response_of({name: new.strip() if sep else True for name, sep, new in pairs})
 
 
 def _parse_link(value: object) -> BenchLink | None:

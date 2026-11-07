@@ -245,7 +245,7 @@ class TestAnalysisStatus:
         assert svc.system_nickname_repairs == (repair,)
         assert "CLICK system nicknames need repair" in (svc.error or "")
 
-    @pytest.mark.parametrize("wrapped", [False, True], ids=["raised", "wrapped"])
+    @pytest.mark.parametrize("wrapped", ["raised", "cause", "context"])
     def test_a_build_refusing_an_old_comment_form_asks_for_upgrade_project(
         self, monkeypatch, tmp_path, wrapped
     ):
@@ -255,12 +255,15 @@ class TestAnalysisStatus:
 
         def _old_form(*_args, **_kwargs):
             error = OldCommentFormError("profile=ramp:up=1", "Level at DF1")
-            if not wrapped:
+            if wrapped == "raised":
                 raise error
             try:
                 raise error
             except OldCommentFormError as exc:
-                raise RuntimeError("project load failed") from exc
+                # "context" wraps it with another error as the cause, so only the
+                # context link leads back to pyrung's error.
+                cause = exc if wrapped == "cause" else KeyError("other")
+                raise RuntimeError("project load failed") from cause
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _old_form)
         with pytest.raises((OldCommentFormError, RuntimeError)):

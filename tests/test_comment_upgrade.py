@@ -179,24 +179,41 @@ def test_the_repairs_entry_lists_comments_to_fix_by_hand(monkeypatch):
     assert app._update_status.call_args.args[0] == "No comment upgrade staged"
 
 
-def test_opening_the_repairs_menu_refreshes_the_upgrade_entry():
+@pytest.fixture(scope="module")
+def tk_root():
+    """One root for the whole module (per-test roots fail intermittently)."""
     tk = pytest.importorskip("tkinter")
+    # Creating a root after another module destroyed its own sometimes fails to find
+    # init.tcl. A second try works, and only a real lack of a display should skip.
+    for attempt in range(3):
+        try:
+            root = tk.Tk()
+            break
+        except tk.TclError as exc:  # pragma: no cover - depends on the machine
+            if attempt == 2:
+                pytest.skip(f"no Tk display available: {exc}")
+    root.withdraw()
+    yield root
+    try:
+        root.destroy()
+    except tk.TclError:
+        pass
+
+
+def test_opening_the_repairs_menu_refreshes_the_upgrade_entry(tk_root):
     from clicknick.app import ClickNickApp
 
+    app = ClickNickApp.__new__(ClickNickApp)
+    app.root = tk_root
+    app._open_workspace_menu_options = MagicMock(return_value=("Open Workspace", "disabled"))
+    app._refresh_upgrade_entry = MagicMock()
+    app._create_menu_bar()
+    menubar = tk_root.nametowidget(tk_root.cget("menu"))
     try:
-        root = tk.Tk()
-    except tk.TclError as exc:  # pragma: no cover - no display
-        pytest.skip(f"no Tk display available: {exc}")
-    root.withdraw()
-    try:
-        app = ClickNickApp.__new__(ClickNickApp)
-        app.root = root
-        app._open_workspace_menu_options = MagicMock(return_value=("Open Workspace", "disabled"))
-        app._refresh_upgrade_entry = MagicMock()
-        app._create_menu_bar()
-
         assert app.repairs_menu.entrycget(1, "label") == "Upgrade Project"
-        root.tk.eval(app.repairs_menu.cget("postcommand"))
+        tk_root.tk.eval(app.repairs_menu.cget("postcommand"))
         app._refresh_upgrade_entry.assert_called_once_with()
     finally:
-        root.destroy()
+        # A menubar left on a Windows root breaks the Tk roots and menus of later modules.
+        tk_root.config(menu="")
+        menubar.destroy()

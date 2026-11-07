@@ -37,14 +37,18 @@ WorkspaceKind = Literal["temporary", "persistent"]
 def _is_old_comment_form(exc: BaseException) -> bool:
     """True when *exc*, or an error it wraps, is pyrung refusing an old annotation form."""
     seen: set[int] = set()
-    current: BaseException | None = exc
-    while current is not None and id(current) not in seen:
+    pending: list[BaseException] = [exc]
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
         if isinstance(current, OldCommentFormError):
             return True
         if getattr(current, "code", None) == OldCommentFormError.code:
             return True
-        seen.add(id(current))
-        current = current.__cause__ or current.__context__
+        # ``raise X from Y`` inside an ``except`` sets both links, so follow each one.
+        pending += [link for link in (current.__cause__, current.__context__) if link is not None]
     return False
 
 
