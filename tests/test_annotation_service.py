@@ -139,10 +139,28 @@ class TestValidateMeta:
         errors = AnnotationService.validate_meta(meta)
         assert any("min" in e for e in errors)
 
-    def test_physical_timing_and_profile_conflict(self) -> None:
-        meta = TagMeta(physical="Sensor", on_delay="50ms", profile="generic_thermal")
+    def test_keys_of_two_kinds_conflict(self) -> None:
+        meta = TagMeta(physical="Sensor", on_delay="50ms", ramp_on="0.8")
         errors = AnnotationService.validate_meta(meta)
-        assert any("timing" in e.lower() or "profile" in e.lower() for e in errors)
+        assert errors == [
+            "on_delay (delay) and ramp_on (ramp) are keys of two kinds. A feedback has one kind."
+        ]
+
+    def test_each_value_goes_through_pyrungs_parser(self) -> None:
+        meta = TagMeta(link="Run", flasher_on="8", flasher_off="8ms")
+        errors = AnnotationService.validate_meta(meta)
+        assert len(errors) == 1 and errors[0].startswith("flasher_on:")
+        meta = TagMeta(link="Run", ramp_on="fast")
+        assert AnnotationService.validate_meta(meta) == ["ramp_on: expected a number, got 'fast'"]
+
+    def test_a_kind_missing_a_key(self) -> None:
+        errors = AnnotationService.validate_meta(TagMeta(link="Run", flasher_on="8ms"))
+        assert errors == ["flasher_on needs flasher_off."]
+
+    def test_a_bare_flag_needs_a_link(self) -> None:
+        errors = AnnotationService.validate_meta(TagMeta(toggle=True))
+        assert errors == ["TagMeta toggle needs link= or physical= beside it."]
+        assert AnnotationService.validate_meta(TagMeta(link="Btn", toggle=True)) == []
 
     def test_system_without_physical_details(self) -> None:
         meta = TagMeta(physical="Sensor", system="Group1")
@@ -181,8 +199,13 @@ class TestMetaHasAdvanced:
 
     @pytest.mark.parametrize(
         "field",
-        ["on_delay", "off_delay", "profile", "system"],
+        ["on_delay", "off_delay", "flasher_on", "timed", "ramp_on", "approach_to", "system"],
     )
     def test_physical_detail_fields(self, field: str) -> None:
         meta = TagMeta(**{field: "value"})  # type: ignore[arg-type]
+        assert AnnotationService.meta_has_advanced(meta) is True
+
+    @pytest.mark.parametrize("flag", ["toggle", "maintained"])
+    def test_physical_flags(self, flag: str) -> None:
+        meta = TagMeta(**{flag: True})  # type: ignore[arg-type]
         assert AnnotationService.meta_has_advanced(meta) is True

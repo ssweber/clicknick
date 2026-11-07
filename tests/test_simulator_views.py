@@ -12,6 +12,7 @@ tk = pytest.importorskip("tkinter")
 from test_simulation_session import Harness, _ready_analysis  # noqa: E402
 
 from clicknick.services.analysis_service import AnalysisService  # noqa: E402
+from clicknick.services.physical_response import response  # noqa: E402
 from clicknick.simulation_session import SimStatus  # noqa: E402
 
 
@@ -375,7 +376,7 @@ def test_a_linked_input_shows_its_driver_instead_of_a_switch(simulator, ready):
     from clicknick.services.sim_state import BenchLink
     from clicknick.views import sim_palette as P
 
-    ready.sim.link("X002", BenchLink("Y001", on_delay="1s"))
+    ready.sim.link("X002", BenchLink("Y001", response=response(on_delay="1s")))
     win = simulator(ready)
     ready.dap.project["X003"] = "Y001"
     _frame(ready)
@@ -389,8 +390,8 @@ def test_a_linked_input_shows_its_driver_instead_of_a_switch(simulator, ready):
     assert c.itemcget(bench["track"], "state") == "hidden"
     assert c.itemcget(project["pill"], "fill") == P.LINK
     assert c.itemcget(free["pill"], "state") == "hidden"
-    assert win._link_text("X002").startswith("Bench link: driven by Y001 (1s).")
-    assert win._link_text("X003").startswith("Program link: driven by Y001 (1s).")
+    assert win._link_text("X002").startswith("Bench link: driven by Y001 (on_delay=1s).")
+    assert win._link_text("X003").startswith("Program link: driven by Y001 (on_delay=1s).")
 
     win._show_wire("X002")
     assert len(c.find_withtag("wire")) == 2
@@ -434,7 +435,7 @@ def test_save_link_to_project_writes_the_comment(simulator, ready):
             motor: SimpleNamespace(nickname="Motor", comment=""),
         }
     )
-    ready.sim.link("X002", BenchLink("Y001", on_delay="1s"))
+    ready.sim.link("X002", BenchLink("Y001", response=response(on_delay="1s")))
     win = simulator(ready, store)
 
     win._save_link_to_project("X002")
@@ -447,7 +448,7 @@ def test_save_link_needs_a_nickname(simulator, ready, monkeypatch):
     from clicknick.services.sim_state import BenchLink
 
     store = _Store({get_addr_key("X", 2): SimpleNamespace(nickname="", comment="")})
-    ready.sim.link("X002", BenchLink("Y001", on_delay="1s"))
+    ready.sim.link("X002", BenchLink("Y001", response=response(on_delay="1s")))
     win = simulator(ready, store)
     errors: list[str] = []
     monkeypatch.setattr(win, "_show_action_error", errors.append)
@@ -459,7 +460,7 @@ def test_save_link_needs_a_nickname(simulator, ready, monkeypatch):
 def test_wiring_menu_lists_links_and_turns_bench_wiring_off(simulator, ready):
     from clicknick.services.sim_state import BenchLink
 
-    ready.sim.link("X002", BenchLink("Y001", on_delay="1s"))
+    ready.sim.link("X002", BenchLink("Y001", response=response(on_delay="1s")))
     win = simulator(ready)
     ready.dap.project["X003"] = "Y001"
     _frame(ready)
@@ -479,7 +480,7 @@ def test_wiring_menu_lists_links_and_turns_bench_wiring_off(simulator, ready):
 def test_restored_links_banner(simulator, ready):
     from clicknick.services.sim_state import BenchLink
 
-    ready.sim.link("X002", BenchLink("Y001", on_delay="1s"))
+    ready.sim.link("X002", BenchLink("Y001", response=response(on_delay="1s")))
     ready.sim._restored_links = 1
     win = simulator(ready)
     assert "1 bench link restored" in str(win._banner_key)
@@ -498,23 +499,25 @@ def test_link_dialog_builds_bench_links(tk_root):
     )  # fmt: skip
     try:
         dialog._enable_var.set("y1")
-        dialog._first_var.set("2s")
-        dialog._second_var.set("")
-        assert dialog.build() == BenchLink("Y001", on_delay="2s")
+        dialog._key_vars["on_delay"].set("2s")
+        dialog._key_vars["off_delay"].set("")
+        assert dialog.build() == BenchLink("Y001", response=response(on_delay="2s"))
         # A bit enable is a contact beside the driver: [O] by default, [/] drives
         # the link while Y001 is off.
         assert dialog._when_bit.winfo_manager() and not dialog._when_word.winfo_manager()
         assert dialog._when_bit.grid_info()["row"] == 0
         assert dialog._when_on.get()
         dialog._when_on.set(False)
-        assert dialog.build() == BenchLink("Y001", 0, on_delay="2s")
+        assert dialog.build() == BenchLink("Y001", 0, response(on_delay="2s"))
         # A word enable matches a value instead.
         dialog._enable_var.set("ds1")
         assert dialog._when_word.winfo_manager() and not dialog._when_bit.winfo_manager()
         dialog._trigger_var.set("2")
-        dialog._kind_var.set("pulse")
+        dialog._kind_var.set("flasher")
         dialog._on_kind_changed()
-        assert dialog.build() == BenchLink("DS1", 2, profile="pulse:on_dwell=500ms|off_dwell=500ms")
+        assert dialog.build() == BenchLink(
+            "DS1", 2, response(flasher_on="500ms", flasher_off="500ms")
+        )
         dialog._enable_var.set("nowhere")
         with pytest.raises(ValueError, match="CLICK address"):
             dialog.build()
@@ -523,17 +526,117 @@ def test_link_dialog_builds_bench_links(tk_root):
 
     dialog = LinkDialog(
         tk_root, feedback="DF1", analog=True,
-        current=BenchLink("Y002", profile="ramp:up=2.0|down=-1.0"), enables=[],
-        on_ok=linked.append,
+        current=BenchLink("Y002", response=response(ramp_on="2.0", ramp_off="-1.0")),
+        enables=[], on_ok=linked.append,
     )  # fmt: skip
     try:
         assert dialog._kind_var.get() == "ramp"
-        assert (dialog._first_var.get(), dialog._second_var.get()) == ("2.0", "-1.0")
+        assert dialog._key_vars["ramp_on"].get() == "2.0"
+        assert dialog._key_vars["ramp_off"].get() == "-1.0"
         dialog._accept()
-        assert linked == [BenchLink("Y002", profile="ramp:up=2.0|down=-1.0")]
+        assert linked == [BenchLink("Y002", response=response(ramp_on="2.0", ramp_off="-1.0"))]
     finally:
         if dialog.winfo_exists():
             dialog.destroy()
+
+
+def test_link_dialog_offers_pyrungs_kinds_for_the_input(tk_root):
+    from pyrung.core.physical import PHYSICAL_KINDS
+
+    from clicknick.views.sim_link_dialog import LinkDialog
+
+    for analog in (False, True):
+        dialog = LinkDialog(
+            tk_root, feedback="X001", analog=analog, current=None, enables=[],
+            on_ok=lambda _link: None,
+        )  # fmt: skip
+        try:
+            expected = [
+                k.name for k in PHYSICAL_KINDS if k.feedback == ("analog" if analog else "bool")
+            ]
+            assert [k.name for k in dialog._kinds] == expected
+            assert dialog._kind_var.get() == expected[0]
+        finally:
+            dialog.destroy()
+
+
+def test_link_dialog_shows_each_kinds_fields_and_checks_them(tk_root):
+    from clicknick.services.sim_state import BenchLink
+    from clicknick.views.sim_link_dialog import LinkDialog
+
+    dialog = LinkDialog(
+        tk_root, feedback="X002", analog=False, current=None, enables=[], on_ok=lambda _l: None,
+        enable="Y001",
+    )  # fmt: skip
+    try:
+
+        def shown() -> list[str]:
+            return [
+                str(widget.cget("text"))
+                for widget in dialog._field_widgets
+                if int(widget.grid_info()["column"]) == 0
+            ]
+
+        assert shown() == ["On delay", "Off delay"]
+        # A missing pair is named by its labels, and a value goes through pyrung's parser.
+        dialog._key_vars["on_delay"].set("")
+        dialog._key_vars["off_delay"].set("")
+        with pytest.raises(ValueError, match="Enter on delay or off delay."):
+            dialog.build()
+        dialog._key_vars["on_delay"].set("2")
+        with pytest.raises(ValueError, match="^On delay: no duration tokens"):
+            dialog.build()
+
+        # Timed has a time and a Maintained checkbox.
+        dialog._kind_var.set("timed")
+        dialog._on_kind_changed()
+        assert shown() == ["On time", "Maintained"]
+        assert dialog.build() == BenchLink("Y001", None, response(timed="200ms"))
+        dialog._key_vars["maintained"].set(True)
+        assert dialog.build() == BenchLink("Y001", None, response(timed="200ms", maintained=True))
+        dialog._key_vars["timed"].set("")
+        with pytest.raises(ValueError, match="Enter on time."):
+            dialog.build()
+
+        # Toggle has no field: picking it is the whole response.
+        dialog._kind_var.set("toggle")
+        dialog._on_kind_changed()
+        assert shown() == []
+        assert dialog.build() == BenchLink("Y001", None, response(toggle=True))
+
+        # Each key keeps the value typed into it across kinds.
+        dialog._kind_var.set("delay")
+        dialog._on_kind_changed()
+        assert dialog._key_vars["on_delay"].get() == "2"
+    finally:
+        dialog.destroy()
+
+
+def test_link_dialog_analog_rates_must_be_numbers(tk_root):
+    from clicknick.services.sim_state import BenchLink
+    from clicknick.views.sim_link_dialog import LinkDialog
+
+    dialog = LinkDialog(
+        tk_root, feedback="DF1", analog=True, current=None, enables=[], on_ok=lambda _l: None,
+        enable="Y001",
+    )  # fmt: skip
+    try:
+        dialog._key_vars["ramp_on"].set("fast")
+        with pytest.raises(ValueError, match="^Rate on: expected a number"):
+            dialog.build()
+        # Rate off may be left out: pyrung holds the value.
+        dialog._key_vars["ramp_on"].set("0.8")
+        dialog._key_vars["ramp_off"].set("")
+        assert dialog.build() == BenchLink("Y001", None, response(ramp_on="0.8"))
+        # Approach takes a tag name as its target.
+        dialog._kind_var.set("approach")
+        dialog._on_kind_changed()
+        dialog._key_vars["approach_to"].set("Oven_SP")
+        assert dialog.build() == BenchLink(
+            "Y001", None, response(approach_to="Oven_SP", approach_rate="0.3")
+        )
+    finally:
+        dialog.destroy()
 
 
 def test_dragging_an_output_onto_an_input_opens_the_link_dialog(simulator, ready, monkeypatch):
@@ -625,7 +728,7 @@ def test_link_chip_counts_down_while_the_delay_runs(simulator, ready):
     from clicknick.services.sim_state import BenchLink
 
     win = simulator(ready)
-    ready.sim.link("X002", BenchLink("Y001", on_delay="2s"))
+    ready.sim.link("X002", BenchLink("Y001", response=response(on_delay="2s")))
     _frame(ready)
     win._refresh_dynamic()
     info = win._inputs["X002"]
@@ -642,7 +745,7 @@ def test_hovering_a_wiring_entry_draws_its_wire(simulator, ready):
     from clicknick.services.sim_state import BenchLink
 
     win = simulator(ready)
-    ready.sim.link("X002", BenchLink("Y001", on_delay="2s"))
+    ready.sim.link("X002", BenchLink("Y001", response=response(on_delay="2s")))
     _frame(ready)
     win._populate_wiring_menu()
     [index] = list(win._wiring_entries)

@@ -3,7 +3,7 @@
 pyrung's ``PHYSICAL_KINDS`` lists every kind (delay, flasher, timed, toggle, ramp,
 approach) and its keys. The Simulator's link dialog, the annotation dialog, the bench
 file, the console text and the CLI all read it from here, so a kind pyrung adds shows up
-without a change in ClickNick. Pure logic: no tkinter, no store.
+without a change in ClickNick. This module is pure logic, with no tkinter and no store.
 """
 
 from __future__ import annotations
@@ -16,14 +16,16 @@ from pyrung.core.physical import (
     PHYSICAL_KEYS,
     PHYSICAL_KINDS,
     FeedbackType,
+    Physical,
     PhysicalKey,
     PhysicalKind,
     kind_of_keys,
     physical_kind,
 )
 
-#: A response as a comment writes it: ``(("on_delay", "2s"), ("toggle", True))``, in table
-#: order. A tuple, so a link that holds one stays hashable and compares by value.
+#: A response as a comment writes it, in table order, such as
+#: ``(("on_delay", "2s"), ("toggle", True))``. It is a tuple so a link that holds one stays
+#: hashable.
 Response = tuple[tuple[str, str | bool], ...]
 
 __all__ = [
@@ -47,6 +49,7 @@ __all__ = [
     "response_label",
     "response_of",
     "response_tokens",
+    "same_response",
     "shown_keys",
 ]
 
@@ -71,8 +74,22 @@ def response_of(values: Mapping[str, Any]) -> Response:
 
 
 def response(**values: str | bool | None) -> Response:
-    """``response(on_delay="2s")``: a response from keyword arguments."""
+    """``response(on_delay="2s")`` builds a response from keyword arguments."""
     return response_of(values)
+
+
+def same_response(a: Response, b: Response) -> bool:
+    """True when pyrung reads *a* and *b* as one response.
+
+    The simulation reports a number as pyrung writes it (``1`` for ``1.0``) and leaves out
+    a key at its default (``ramp_off=0``), so equal responses can differ in text.
+    """
+    if a == b:
+        return True
+    try:
+        return Physical.from_text("_", dict(a)) == Physical.from_text("_", dict(b))
+    except ValueError:
+        return False
 
 
 def response_kind(keys: Response | Iterable[str]) -> PhysicalKind | None:
@@ -134,7 +151,7 @@ def response_label(values: Response) -> str:
 
 
 def meta_fields(values: Response) -> dict[str, str | bool | None]:
-    """Every response field of a ``TagMeta``, set to *values*, for ``replace(meta, **...)``.
+    """Every response field of a ``TagMeta`` set to *values*, ready for ``replace(meta, **...)``.
 
     The keys *values* leaves out are cleared, so the response is replaced whole.
     """
@@ -165,6 +182,10 @@ def cli_option(key: PhysicalKey) -> str:
     return "--" + key.name.replace("_", "-")
 
 
+def _value_hint(key: PhysicalKey) -> str:
+    return {"duration": "TIME", "number": "N", "number_or_tag": "N|TAG"}.get(key.value_type, "")
+
+
 def cli_usage() -> str:
     """The response options of ``tag set-physical``, one kind per bracket group."""
     groups = []
@@ -177,7 +198,3 @@ def cli_usage() -> str:
                 parts.append(f"{cli_option(key)} {_value_hint(key)}")
         groups.append(f"[{' '.join(parts)}]")
     return " | ".join(groups)
-
-
-def _value_hint(key: PhysicalKey) -> str:
-    return {"duration": "TIME", "number": "N", "number_or_tag": "N|TAG"}.get(key.value_type, "")

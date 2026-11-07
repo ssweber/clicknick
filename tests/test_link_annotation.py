@@ -4,15 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from clicknick.services.link_annotation import (
-    comment_has_link,
-    comment_with_link,
-    profile_token,
-    split_profile,
-)
+from clicknick.services.link_annotation import comment_has_link, comment_with_link
+from clicknick.services.physical_response import response
 from clicknick.services.sim_state import BenchLink
 
-AUX = BenchLink("Y001", on_delay="2s", off_delay="500ms")
+AUX = BenchLink("Y001", response=response(on_delay="2s", off_delay="500ms"))
 
 
 def test_the_link_joins_the_comment_keeping_block_tag_and_text():
@@ -25,8 +21,8 @@ def test_the_link_joins_the_comment_keeping_block_tag_and_text():
 
 def test_a_new_link_replaces_the_old_response_and_physical_name():
     comment = comment_with_link(
-        "[link=Old, physical=Shared, profile=ramp:up=1.0|down=0.0] Level",
-        BenchLink("Y002", on_delay="1s"),
+        "[link=Old, physical=Shared, ramp_on=1.0, ramp_off=0] Level",
+        BenchLink("Y002", response=response(on_delay="1s")),
         "Y002",
     )
     assert comment == "[link=Y002, on_delay=1s] Level"
@@ -34,8 +30,13 @@ def test_a_new_link_replaces_the_old_response_and_physical_name():
 
 def test_comment_has_link_compares_the_response():
     comment = comment_with_link("", AUX, "Motor_Run")
-    assert not comment_has_link(comment, BenchLink("Y001", on_delay="3s"), ("Motor_Run",))
+    assert not comment_has_link(
+        comment, BenchLink("Y001", response=response(on_delay="3s")), ("Motor_Run",)
+    )
     assert not comment_has_link("Aux contact", AUX, ("Motor_Run",))
+    # The simulation writes a number its own way and leaves out a default.
+    level = BenchLink("Y002", response=response(ramp_on="1"))
+    assert comment_has_link("[link=Fill, ramp_on=1.0, ramp_off=0] Level", level, ("Fill",))
 
 
 def test_a_cut_is_not_written():
@@ -43,13 +44,28 @@ def test_a_cut_is_not_written():
         comment_with_link("", BenchLink(None), "")
 
 
-def test_profile_tokens():
-    assert profile_token("ramp", "0.8", "-0.05") == "ramp:up=0.8|down=-0.05"
-    assert split_profile("approach:toward=Setpoint|rate=0.3") == (
-        "approach",
-        {"toward": "Setpoint", "rate": "0.3"},
-    )
-    assert split_profile("2s") == ("", {})
+def test_every_kind_is_written_with_its_own_keys():
+    for link, written in (
+        (
+            BenchLink("Y001", response=response(flasher_on="8ms", flasher_off="8ms")),
+            "[link=Encoder_En, flasher_on=8ms, flasher_off=8ms] Encoder",
+        ),
+        (
+            BenchLink("Y001", response=response(timed="200ms", maintained=True)),
+            "[link=Encoder_En, timed=200ms, maintained] Encoder",
+        ),
+        (
+            BenchLink("Y001", response=response(toggle=True)),
+            "[link=Encoder_En, toggle] Encoder",
+        ),
+        (
+            BenchLink("Y001", response=response(approach_to="Oven_SP", approach_rate="0.3")),
+            "[link=Encoder_En, approach_to=Oven_SP, approach_rate=0.3] Encoder",
+        ),
+    ):
+        comment = comment_with_link("[on_delay=1s] Encoder", link, "Encoder_En")
+        assert comment == written
+        assert comment_has_link(comment, link, ("Encoder_En",))
 
 
 def test_bit_enables_are_on_or_off():
@@ -63,14 +79,14 @@ def test_bit_enables_are_on_or_off():
 
 
 def test_a_bit_enable_that_drives_while_off_is_written_with_a_tilde():
-    vent = BenchLink("Y001", trigger=0, on_delay="300ms")
+    vent = BenchLink("Y001", trigger=0, response=response(on_delay="300ms"))
     comment = comment_with_link("Vent open", vent, "Vent_Sol")
     assert comment == "[link=~Vent_Sol, on_delay=300ms] Vent open"
     assert comment_has_link(comment, vent, ("Vent_Sol", "Y001"))
 
 
 def test_an_older_colon_zero_comment_still_declares_the_link():
-    vent = BenchLink("Y001", trigger=0, on_delay="300ms")
+    vent = BenchLink("Y001", trigger=0, response=response(on_delay="300ms"))
     assert comment_has_link("[link=Vent_Sol:0, on_delay=300ms] Vent open", vent, ("Vent_Sol",))
 
 

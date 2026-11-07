@@ -11,8 +11,10 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from pyrung.core.physical import PHYSICAL_KEYS
 
 from clicknick.services.analysis_service import AnalysisResult, AnalysisService, AnalysisStatus
+from clicknick.services.physical_response import response
 from clicknick.services.sim_hardware import build_panel_layout
 from clicknick.services.sim_state import BenchLink, SimulatorState, load_state, save_state
 from clicknick.simulation_session import (
@@ -59,6 +61,14 @@ class FakeScheduler:
 
     def has(self, ms: int) -> bool:
         return any(delay == ms for delay, _f in self.jobs.values())
+
+
+def _dap_fields(values):
+    """A response as pyrungListLinks sends it: every key's request field, unset ones empty."""
+    return {
+        key.dap_field: values.get(name, False if key.is_flag else None)
+        for name, key in PHYSICAL_KEYS.items()
+    }
 
 
 class FakeDap:
@@ -129,11 +139,13 @@ class FakeDap:
         self.calls.append(("patch", dict(patches)))
 
     # Bench links: a small model of pyrung's overlay, keyed by address.
-    def link(self, feedback, enable, **response):
-        self.calls.append(("link", feedback, enable, response))
+    def link(self, feedback, enable, *, trigger=None, response=()):
+        self.calls.append(("link", feedback, enable, {"trigger": trigger, "response": response}))
         if feedback in self.refuse_links:
             raise RuntimeError(f"cannot link {feedback}: {self.refuse_links[feedback]}")
-        self.bench[feedback] = {"enable": enable, "enabled": True, **response}
+        self.bench[feedback] = {
+            "enable": enable, "enabled": True, "trigger": trigger, "response": dict(response),
+        }  # fmt: skip
         self.links_revision += 1
 
     def unlink(self, feedback):
@@ -159,8 +171,9 @@ class FakeDap:
 
     def list_links(self):
         rows = [
-            {"feedback": fb, "enable": en, "source": "project", "onDelay": "1s", "offDelay": None,
-             "profile": None, "trigger": None, "active": fb not in self.bench, "pending": False}
+            {"feedback": fb, "enable": en, "source": "project", "kind": "delay",
+             **_dap_fields({"on_delay": "1s"}),
+             "trigger": None, "active": fb not in self.bench, "pending": False}
             for fb, en in self.project.items()
         ]  # fmt: skip
         for fb, entry in self.bench.items():
@@ -171,9 +184,7 @@ class FakeDap:
                     "source": "bench",
                     "cut": entry["enable"] is None,
                     "trigger": entry.get("trigger"),
-                    "onDelay": entry.get("on_delay"),
-                    "offDelay": entry.get("off_delay"),
-                    "profile": entry.get("profile"),
+                    **_dap_fields(entry.get("response", {})),
                     "enabled": entry["enabled"],
                     "active": self.bench_on and entry["enabled"],
                     "pending": False,
@@ -843,7 +854,7 @@ def test_loading_plc_data_sets_switches_and_analog_values(ready, tmp_path):
 # Bench links
 # ----------------------------------------------------------------------
 
-AUX_LINK = BenchLink("Y001", on_delay="2s", off_delay="500ms")
+AUX_LINK = BenchLink("Y001", response=response(on_delay="2s", off_delay="500ms"))
 
 
 def _frame(harness: Harness) -> None:
@@ -856,12 +867,13 @@ def test_link_is_sent_and_read_back(ready):
     ready.sim.link("X002", AUX_LINK)
     assert ready.dap.calls[-1] == (
         "link", "X002", "Y001",
-        {"trigger": None, "on_delay": "2s", "off_delay": "500ms", "profile": None},
+        {"trigger": None, "response": (("on_delay", "2s"), ("off_delay", "500ms"))},
     )  # fmt: skip
     _frame(ready)
     link = ready.sim.driving_link("X002")
     assert link is not None
-    assert (link.source, link.enable, link.response) == ("bench", "Y001", "2s / 500ms")
+    assert (link.source, link.enable, link.kind) == ("bench", "Y001", "delay")
+    assert link.response_label == "on_delay=2s, off_delay=500ms"
     assert ready.sim.bench_links == {"X002": AUX_LINK}
 
 
@@ -976,7 +988,7 @@ def test_panel_actions_echo_as_console_commands(ready):
     ready.sim.step(10)
     ready.sim.run_for("500ms")
     ready.sim.set_speed(0)
-    ready.sim.link("X002", BenchLink("Y001", on_delay="2s", off_delay="500ms"))
+    ready.sim.link("X002", AUX_LINK)
     ready.sim.cut_link("X003")
     ready.sim.restore_link("X003")
     ready.sim.set_bench_wiring(False)

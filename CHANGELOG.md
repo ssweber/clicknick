@@ -18,12 +18,15 @@
 - Copying rungs that use CLICK v4 instructions is refused when the CLICK window is older, instead of letting CLICK silently change them on paste.
 - Guided Paste marks which programs differ from CLICK's last save, steps through only those, and lists subroutines CLICK has that the folder doesn't.
 - Guided Paste's **New Subroutine** button opens CLICK's New Subroutine Program window with the name filled in, for any subroutine CLICK's last save doesn't show it already has.
+- **Tools > Repairs > Upgrade Project** rewrites comments in pyrung's old `profile=` form into the current keys and stages them on the Changed tab for you to review and Sync, as `clicknick-cli tag upgrade-project` does.
 
 ### Changed
 
 - The Console is now a pane in **Simulate** (<kbd>Ctrl</kbd>+<kbd>`</kbd> toggles it, **Pop out** gives it a window), and the simulation keeps running after the Simulator closes until you stop it from the main window.
 - A workspace's `AGENTS.md` and `README.md` are now yours to edit: pyrung's guidance moves to `AGENTS.pyrung.md` and `README.pyrung.md`, and an older generated `AGENTS.md` or `README.md` is kept as `*.previous.md`.
-- `link=` annotations take a CLICK address such as `Y001`, or `~Y001` to follow a bit while it is OFF, and need only a delay or a profile.
+- `link=` annotations take a CLICK address such as `Y001`, or `~Y001` to follow a bit while it is OFF, and need only a response such as `on_delay=`.
+- The Simulator's link dialog and the annotation dialog offer every pyrung response (on/off delay, flasher, timed, toggle, ramp and approach), each with its own fields.
+- `tag set-physical` takes one option per key, such as `--flasher-on 8ms --flasher-off 8ms` or `--toggle` (it took `--profile`).
 - Sync and Discard clear the undo history.
 - Guided Paste steps through subroutines before `main.csv`, so they exist in CLICK before main's Call instructions are pasted.
 

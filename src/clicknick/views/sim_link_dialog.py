@@ -1,9 +1,8 @@
 """Link dialog: wire a simulator input to the tag that drives it, on the bench.
 
-The responses on offer are pyrung's physical kinds: the bool kinds for an input
-(X), the analog kinds for an analog input (DF). Each kind's fields, labels, hints
-and checks come from pyrung's table. A bit
-enable (Y, C...) is a contact beside the driver: normally open [O] drives the
+An input (X) gets pyrung's bool kinds of response, and an analog input (DF) its
+analog kinds. Each kind's fields, labels, hints and checks come from pyrung's
+table. A bit enable (Y, C...) is a contact beside the driver: normally open [O] drives the
 link while it is ON, normally closed [/] while it is OFF (``link=~Y001``). A
 word enable (DS...) drives it while it equals a value. The result is a BenchLink; the
 Simulator window hands it to the session.

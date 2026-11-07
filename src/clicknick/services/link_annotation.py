@@ -15,7 +15,7 @@ from pyclickplc.banks import BANKS, DataType
 from pyrung.click.tag_map import TagMeta
 
 from .annotation_service import AnnotationService
-from .physical_response import meta_fields, meta_response
+from .physical_response import meta_fields, meta_response, same_response
 from .sim_state import BenchLink
 
 
@@ -89,7 +89,5 @@ def comment_has_link(comment: str, link: BenchLink, enable_names: tuple[str, ...
         return False
     if meta is None or meta.link is None:
         return False
-    return (
-        any(meta.link in _link_texts(name, link) for name in enable_names if name)
-        and meta_response(meta) == link.response
-    )
+    names_enable = any(meta.link in _link_texts(name, link) for name in enable_names if name)
+    return names_enable and same_response(meta_response(meta), link.response)

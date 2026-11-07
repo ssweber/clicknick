@@ -93,6 +93,10 @@ class AnnotationDialog(tk.Toplevel):
             return "Bool"
         return "|".join(f"{label}:{value}" for value, label in choices.items())
 
+    def _response_kind(self) -> PhysicalKind | None:
+        name = self._kind_var.get()
+        return None if name == _NO_RESPONSE else physical_kind(name)
+
     # ── Build / populate ──
 
     def _build_meta_from_widgets(self) -> TagMeta | None:
@@ -327,10 +331,6 @@ class AnnotationDialog(tk.Toplevel):
 
     def _on_physical_changed(self) -> None:
         self._update_preview()
-
-    def _response_kind(self) -> PhysicalKind | None:
-        name = self._kind_var.get()
-        return None if name == _NO_RESPONSE else physical_kind(name)
 
     def _on_kind_changed(self) -> None:
         """Show the chosen kind's keys. Each key keeps its own value across kinds."""

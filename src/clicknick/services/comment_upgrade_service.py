@@ -1,4 +1,4 @@
-"""Upgrade Project: rewrite old annotation forms in nickname comments, staged for review.
+"""Upgrade Project rewrites old annotation forms in nickname comments and stages them.
 
 pyrung reads only the current annotation form and refuses an old one, such as
 ``profile=pulse:on_dwell=8ms|off_dwell=8ms``. pyrung's numbered migrations rewrite it

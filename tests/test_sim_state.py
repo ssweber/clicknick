@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from clicknick.services.physical_response import response
 from clicknick.services.sim_state import (
     BenchLink,
     SimulatorState,
@@ -22,10 +23,12 @@ def _state() -> SimulatorState:
         analog={"DF1": 4.5},
         forces={"Y001": True, "DS10": 7, "TXT1": "A"},
         links={
-            "X002": BenchLink("Y001", on_delay="2s", off_delay="500ms"),
+            "X002": BenchLink("Y001", response=response(on_delay="2s", off_delay="500ms")),
             "X003": BenchLink(None, enabled=False),
-            "DF1": BenchLink("Y002", profile="ramp:up=0.8|down=-0.05"),
-            "X004": BenchLink("DS1", trigger=2, on_delay="1s"),
+            "DF1": BenchLink("Y002", response=response(ramp_on="0.8", ramp_off="-0.05")),
+            "X004": BenchLink("DS1", trigger=2, response=response(on_delay="1s")),
+            "X005": BenchLink("Y003", response=response(timed="200ms", maintained=True)),
+            "X006": BenchLink("Y004", response=response(toggle=True)),
         },
         bench_wiring=False,
         run_hint_seen=True,
@@ -160,6 +163,23 @@ def test_malformed_links_are_skipped(tmp_path):
         encoding="utf-8",
     )
     assert load_state(path).links == {
-        "X002": BenchLink("Y001", on_delay="2s"),
+        "X002": BenchLink("Y001", response=response(on_delay="2s")),
         "X006": BenchLink(None),
     }
+
+
+def test_an_older_profile_link_is_read_through_pyrungs_upgrade(tmp_path):
+    path = tmp_path / "state.toml"
+    path.write_text(
+        "[links]\n"
+        "X002 = {enable = 'Y001', profile = 'pulse:on_dwell=8ms|off_dwell=9ms'}\n"
+        "DF1 = {enable = 'Y002', profile = 'approach:toward=Oven_SP|rate=0.3'}\n"
+        "DF2 = {enable = 'Y003', profile = 'unknown:a=1'}\n",
+        encoding="utf-8",
+    )
+    assert load_state(path).links == {
+        "X002": BenchLink("Y001", response=response(flasher_on="8ms", flasher_off="9ms")),
+        "DF1": BenchLink("Y002", response=response(approach_to="Oven_SP", approach_rate="0.3")),
+    }
+    # Saving writes the current keys.
+    assert "flasher_on" in dump_state(load_state(path))
