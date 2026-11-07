@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pyclickplc.addresses import format_address_display, get_addr_key
 from pyrung.click import SystemNicknameRepair, SystemNicknameRepairRequired
+from pyrung.click.tag_map import OldCommentFormError
 
 from ..models.address_slots import iter_address_slots
 
@@ -31,6 +32,20 @@ if TYPE_CHECKING:
     from .program_check_selection import ProgramCheckSelection
 
 WorkspaceKind = Literal["temporary", "persistent"]
+
+
+def _is_old_comment_form(exc: BaseException) -> bool:
+    """True when *exc*, or an error it wraps, is pyrung refusing an old annotation form."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        if isinstance(current, OldCommentFormError):
+            return True
+        if getattr(current, "code", None) == OldCommentFormError.code:
+            return True
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return False
 
 
 class AnalysisStatus(enum.Enum):
@@ -343,6 +358,7 @@ class AnalysisService:
         self._error: str | None = None
         self._error_detail: str | None = None
         self._system_nickname_repairs: tuple[SystemNicknameRepair, ...] = ()
+        self._needs_comment_upgrade = False
         # Builds run on a worker thread while invalidate() runs on the Tk
         # thread; the lock makes epoch bumps and publish-if-current atomic.
         self._lock = threading.Lock()
@@ -383,6 +399,11 @@ class AnalysisService:
 
         return self._system_nickname_repairs
 
+    @property
+    def needs_comment_upgrade(self) -> bool:
+        """True when the build failed on a comment in an old annotation form."""
+        return self._needs_comment_upgrade
+
     def mark_failed(self, reason: str, detail: str | None = None) -> None:
         """Record a failure the build thread never got to raise.
 
@@ -395,6 +416,7 @@ class AnalysisService:
             self._error = reason
             self._error_detail = detail
             self._system_nickname_repairs = ()
+            self._needs_comment_upgrade = False
 
     def mark_building(self) -> None:
         """Report a queued build, so nobody sees a stale status until its thread starts."""
@@ -403,6 +425,7 @@ class AnalysisService:
             self._error = None
             self._error_detail = None
             self._system_nickname_repairs = ()
+            self._needs_comment_upgrade = False
 
     @property
     def tag_to_addr_key(self) -> dict[str, int]:
@@ -510,6 +533,7 @@ class AnalysisService:
             self._error = None
             self._error_detail = None
             self._system_nickname_repairs = ()
+            self._needs_comment_upgrade = False
 
         def _project_generated(project_dir: Path) -> None:
             with self._lock:
@@ -533,6 +557,7 @@ class AnalysisService:
                     self._error_detail = traceback.format_exc()
                     if isinstance(exc, SystemNicknameRepairRequired):
                         self._system_nickname_repairs = exc.repairs
+                    self._needs_comment_upgrade = _is_old_comment_form(exc)
             raise
         with self._lock:
             if self._epoch != epoch:
@@ -557,6 +582,7 @@ class AnalysisService:
             self._error = None
             self._error_detail = None
             self._system_nickname_repairs = ()
+            self._needs_comment_upgrade = False
 
     def known_tag_names(self) -> frozenset[str]:
         """Tag names present in both the graph and the addr_key map."""

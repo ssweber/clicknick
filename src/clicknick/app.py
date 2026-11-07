@@ -744,7 +744,9 @@ class ClickNickApp:
         if self._session is not None and self.using_database:
             self._session.record_sync(addr_keys)
             analysis = self._session.analysis
-            if analysis is not None and analysis.system_nickname_repairs:
+            if analysis is not None and (
+                analysis.system_nickname_repairs or analysis.needs_comment_upgrade
+            ):
                 self._start_analysis_build()
 
     def _open_address_editor(self, initial_filter: str | None = None):

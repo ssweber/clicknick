@@ -11,12 +11,12 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from pyrung import Physical
 from pyrung.click.tag_map import TagMeta
-from pyrung.core.physical import (
+from pyrung.core import (
     PHYSICAL_KEYS,
     PHYSICAL_KINDS,
     FeedbackType,
-    Physical,
     PhysicalKey,
     PhysicalKind,
     kind_of_keys,

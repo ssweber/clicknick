@@ -19,6 +19,7 @@
 - Guided Paste marks which programs differ from CLICK's last save, steps through only those, and lists subroutines CLICK has that the folder doesn't.
 - Guided Paste's **New Subroutine** button opens CLICK's New Subroutine Program window with the name filled in, for any subroutine CLICK's last save doesn't show it already has.
 - **Tools > Repairs > Upgrade Project** rewrites comments in pyrung's old `profile=` form into the current keys and stages them on the Changed tab for you to review and Sync, as `clicknick-cli tag upgrade-project` does.
+- When the build stops on a comment in the old form, the Workspace status says to run **Tools > Repairs > Upgrade Project** (it said "Build failed").
 
 ### Changed
 

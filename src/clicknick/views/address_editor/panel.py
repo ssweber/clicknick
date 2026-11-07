@@ -448,7 +448,7 @@ class AddressPanel(ttk.Frame):
                 row.comment
             )
         except ValueError as exc:
-            # pyrung's message names the fix, such as Tools > Repairs > Upgrade Project.
+            # For an old annotation form, pyrung's message asks the user to run Upgrade Project.
             messagebox.showerror("Edit Annotations", str(exc), parent=self.winfo_toplevel())
             return
 

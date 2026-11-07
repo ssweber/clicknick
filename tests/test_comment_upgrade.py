@@ -56,8 +56,11 @@ def _comment(store: AddressStore, bank: str, address: int) -> str:
 
 
 def test_pyrung_refuses_an_old_form_and_names_the_upgrade():
-    with pytest.raises(ValueError, match="Upgrade project"):
+    from pyrung.click.tag_map import OldCommentFormError
+
+    with pytest.raises(OldCommentFormError, match="Upgrade Project") as raised:
         AnnotationService.decompose_comment(ENCODER)
+    assert raised.value.code == "OLD_COMMENT_FORM"
 
 
 def test_finding_upgrades_changes_nothing():
@@ -81,7 +84,7 @@ def test_every_upgrade_is_staged_in_one_edit_session():
     )
     assert _comment(store, "X", 2) == "Plain [note]"
     # One undo takes every upgrade back.
-    assert store.get_undo_description() == "Upgrade project annotations"
+    assert store.get_undo_description() == "Upgrade Project annotations"
     store.undo()
     assert _comment(store, "X", 1) == ENCODER
     assert _comment(store, "DF", 1) == LEVEL

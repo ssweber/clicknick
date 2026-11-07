@@ -22,12 +22,14 @@ def _analysis(
     project_dir: Path | None = None,
     error: str | None = None,
     system_nickname_repairs=(),
+    needs_comment_upgrade=False,
 ):
     return SimpleNamespace(
         status=status,
         project_dir=project_dir,
         error=error,
         system_nickname_repairs=system_nickname_repairs,
+        needs_comment_upgrade=needs_comment_upgrade,
         is_available=status is AnalysisStatus.READY,
     )
 
@@ -60,6 +62,12 @@ def test_workspace_status_covers_unavailable_preparing_and_failure() -> None:
         )
     )
     assert repairable.label == "System names need repair"
+
+    old_form = get_workspace_status(
+        _analysis(AnalysisStatus.FAILED, error="old annotation form", needs_comment_upgrade=True)
+    )
+    assert old_form.label == "Run Tools > Repairs > Upgrade Project"
+    assert old_form.detail == "old annotation form"
 
 
 def test_workspace_status_reports_clean_modified_and_changed_rungs(tmp_path: Path) -> None:

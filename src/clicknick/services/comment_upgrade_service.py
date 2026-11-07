@@ -81,7 +81,7 @@ def stage_comment_upgrades(store: AddressStore) -> tuple[CommentUpgrade, ...]:
     upgrades = find_comment_upgrades(store)
     changed = [upgrade for upgrade in upgrades if upgrade.staged]
     if changed:
-        with store.edit_session("Upgrade project annotations") as session:
+        with store.edit_session("Upgrade Project annotations") as session:
             for upgrade in changed:
                 session.set_field(upgrade.addr_key, "comment", upgrade.replacement)
     return upgrades

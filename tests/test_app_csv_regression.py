@@ -214,3 +214,17 @@ def test_only_a_database_save_counts_as_synced_to_click(is_database):
     app._on_editor_synced({1, 2})
 
     assert app._session.record_sync.call_count == (1 if is_database else 0)
+
+
+def test_a_sync_rebuilds_a_build_that_needed_upgrade_project():
+    app = _make_app_stub()
+    app._data = DataSession(FakeAddressStore(is_database=True))
+    app._start_analysis_build = MagicMock()
+    app._session = SimpleNamespace(
+        record_sync=MagicMock(),
+        analysis=SimpleNamespace(system_nickname_repairs=(), needs_comment_upgrade=True),
+    )
+
+    app._on_editor_synced({1})
+
+    app._start_analysis_build.assert_called_once_with()

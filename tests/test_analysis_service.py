@@ -245,6 +245,43 @@ class TestAnalysisStatus:
         assert svc.system_nickname_repairs == (repair,)
         assert "CLICK system nicknames need repair" in (svc.error or "")
 
+    @pytest.mark.parametrize("wrapped", [False, True], ids=["raised", "wrapped"])
+    def test_a_build_refusing_an_old_comment_form_asks_for_upgrade_project(
+        self, monkeypatch, tmp_path, wrapped
+    ):
+        from pyrung.click.tag_map import OldCommentFormError
+
+        svc = AnalysisService()
+
+        def _old_form(*_args, **_kwargs):
+            error = OldCommentFormError("profile=ramp:up=1", "Level at DF1")
+            if not wrapped:
+                raise error
+            try:
+                raise error
+            except OldCommentFormError as exc:
+                raise RuntimeError("project load failed") from exc
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _old_form)
+        with pytest.raises((OldCommentFormError, RuntimeError)):
+            svc.build(tmp_path, None)
+
+        assert svc.status is AnalysisStatus.FAILED
+        assert svc.needs_comment_upgrade
+        svc.mark_building()
+        assert not svc.needs_comment_upgrade
+
+    def test_another_failure_does_not_ask_for_upgrade_project(self, monkeypatch, tmp_path):
+        svc = AnalysisService()
+
+        def _fails(*_args, **_kwargs):
+            raise ValueError("bad rung")
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _fails)
+        with pytest.raises(ValueError):
+            svc.build(tmp_path, None)
+        assert not svc.needs_comment_upgrade
+
     def test_build_success_is_ready(self, monkeypatch, tmp_path):
         svc = AnalysisService()
         monkeypatch.setattr(

@@ -541,7 +541,7 @@ def test_link_dialog_builds_bench_links(tk_root):
 
 
 def test_link_dialog_offers_pyrungs_kinds_for_the_input(tk_root):
-    from pyrung.core.physical import PHYSICAL_KINDS
+    from pyrung.core import PHYSICAL_KINDS
 
     from clicknick.views.sim_link_dialog import LinkDialog
 

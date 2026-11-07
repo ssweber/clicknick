@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from pyrung.core.physical import PHYSICAL_KEYS
+from pyrung.core import PHYSICAL_KEYS
 
 from clicknick.services.analysis_service import AnalysisResult, AnalysisService, AnalysisStatus
 from clicknick.services.physical_response import response
