@@ -1,7 +1,8 @@
 """Link dialog: wire a simulator input to the tag that drives it, on the bench.
 
-A bool input (X) follows its enable after an on/off delay, or pulses while it
-is on. An analog input (DF) ramps or approaches a target while it is on. A bit
+The responses on offer are pyrung's physical kinds: the bool kinds for an input
+(X), the analog kinds for an analog input (DF). Each kind's fields, labels, hints
+and checks come from pyrung's table. A bit
 enable (Y, C...) is a contact beside the driver: normally open [O] drives the
 link while it is ON, normally closed [/] while it is OFF (``link=~Y001``). A
 word enable (DS...) drives it while it equals a value. The result is a BenchLink; the
@@ -16,30 +17,21 @@ from tkinter import messagebox, ttk
 
 from pyclickplc.addresses import normalize_address
 
-from ..services.link_annotation import (
-    PROFILE_PARAMS,
-    bit_enable,
-    profile_token,
-    split_profile,
+from ..services.link_annotation import bit_enable
+from ..services.physical_response import (
+    PhysicalKind,
+    kinds_for,
+    physical_kind,
+    response_kind,
+    response_of,
+    shown_keys,
 )
 from ..services.sim_state import BenchLink
 from ..widgets.tooltip import bind_tooltip
 
-#: Responses offered for each kind of input: (value, label, first field, second field).
-_BOOL_RESPONSES = (
-    ("delay", "Delay", "On delay", "Off delay"),
-    ("pulse", "Pulse while on", "On for", "Off for"),
-)
-_ANALOG_RESPONSES = (
-    ("ramp", "Ramp", "Up per second", "Down per second"),
-    ("approach", "Approach", "Toward (value or tag)", "Rate per second"),
-)
-_DEFAULTS = {
-    "delay": ("500ms", "200ms"),
-    "pulse": ("500ms", "500ms"),
-    "ramp": ("1.0", "-0.5"),
-    "approach": ("100", "0.3"),
-}
+#: The first grid row of the chosen kind's fields, and the row of the note below them.
+_FIELDS_ROW = 3
+_NOTE_ROW = 20
 
 
 def _contact_style(widget: tk.Misc) -> str:
@@ -78,19 +70,35 @@ def _trigger(text: str) -> int | str | None:
 class LinkDialog(tk.Toplevel):
     """Asks which tag drives *feedback* and how it responds."""
 
-    def _labels(self) -> tuple[str, str]:
-        for value, _label, first, second in self._responses:
-            if value == self._kind_var.get():
-                return first, second
-        return "", ""
+    def _kind(self) -> PhysicalKind:
+        return physical_kind(self._kind_var.get())
 
-    def _on_kind_changed(self, *, reset: bool = True) -> None:
-        first, second = self._labels()
-        self._first_label.configure(text=first)
-        self._second_label.configure(text=second)
-        if reset:
-            self._first_var.set(_DEFAULTS[self._kind_var.get()][0])
-            self._second_var.set(_DEFAULTS[self._kind_var.get()][1])
+    def _on_kind_changed(self) -> None:
+        """Show the chosen kind's fields. Each key keeps its own value across kinds."""
+        for widget in self._field_widgets:
+            widget.destroy()
+        self._field_widgets = []
+        self._first_entry = None
+        body = self._body
+        for row, key in enumerate(shown_keys(self._kind()), start=_FIELDS_ROW):
+            var = self._key_vars[key.name]
+            if key.is_flag:
+                check = ttk.Checkbutton(body, text=key.label, variable=var)
+                check.grid(row=row, column=0, columnspan=3, sticky="w", pady=2)
+                bind_tooltip(check, key.help)
+                self._field_widgets.append(check)
+                continue
+            label = ttk.Label(body, text=key.label)
+            label.grid(row=row, column=0, sticky="w", pady=2)
+            entry = ttk.Entry(body, textvariable=var, width=12)
+            entry.grid(row=row, column=1, sticky="w", pady=2)
+            unit = ttk.Label(body, text=key.unit, foreground="gray")
+            unit.grid(row=row, column=2, sticky="w", padx=(6, 0), pady=2)
+            for widget in (label, entry, unit):
+                bind_tooltip(widget, key.help)
+            self._field_widgets += [label, entry, unit]
+            if self._first_entry is None:
+                self._first_entry = entry
 
     def _on_enable_changed(self) -> None:
         """The [O][/] contact beside a bit enable, a value to match below a word."""
@@ -129,22 +137,24 @@ class LinkDialog(tk.Toplevel):
         self.transient(parent.winfo_toplevel())
         self.resizable(False, False)
         self._on_ok = on_ok
-        self._responses = _ANALOG_RESPONSES if analog else _BOOL_RESPONSES
+        self._kinds = kinds_for("analog" if analog else "bool")
 
-        kind = "delay"
-        first, second = "", ""
-        if current is not None and current.profile is not None:
-            kind, values = split_profile(current.profile)
-            if kind:
-                a, b = PROFILE_PARAMS[kind]
-                first, second = values.get(a, ""), values.get(b, "")
-        elif current is not None:
-            first, second = current.on_delay or "", current.off_delay or ""
-        if kind not in {value for value, *_ in self._responses}:
-            kind = self._responses[0][0]
-            first, second = _DEFAULTS[kind]
-        if current is None:
-            first, second = _DEFAULTS[kind]
+        # The current link's kind starts with its own values, every other kind with
+        # pyrung's suggested ones.
+        values = dict(current.response) if current is not None else {}
+        current_kind = response_kind(current.response) if current is not None else None
+        if current_kind not in self._kinds:
+            current_kind, values = None, {}
+        kind = current_kind or self._kinds[0]
+        self._key_vars: dict[str, tk.Variable] = {}
+        for each in self._kinds:
+            for key in each.keys:
+                if key.is_flag:
+                    self._key_vars[key.name] = tk.BooleanVar(value=bool(values.get(key.name)))
+                elif each is current_kind:
+                    self._key_vars[key.name] = tk.StringVar(value=str(values.get(key.name, "")))
+                else:
+                    self._key_vars[key.name] = tk.StringVar(value=key.suggested or "")
 
         self._enable_var = tk.StringVar(value=enable or (current.enable or "" if current else ""))
         trigger = current.trigger if current is not None else None
@@ -152,9 +162,7 @@ class LinkDialog(tk.Toplevel):
         # A bit enable is a contact: normally open (the default) or normally closed,
         # which is trigger 0 and drives the link while the bit is OFF.
         self._when_on = tk.BooleanVar(value=trigger != 0)
-        self._kind_var = tk.StringVar(value=kind)
-        self._first_var = tk.StringVar(value=first)
-        self._second_var = tk.StringVar(value=second)
+        self._kind_var = tk.StringVar(value=kind.name)
 
         body = ttk.Frame(self, padding=12)
         body.pack(fill=tk.BOTH, expand=True)
@@ -190,27 +198,24 @@ class LinkDialog(tk.Toplevel):
 
         kinds = ttk.Frame(body)
         kinds.grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 2))
-        for value, label, *_ in self._responses:
-            ttk.Radiobutton(
-                kinds, text=label, value=value, variable=self._kind_var,
+        for each in self._kinds:
+            radio = ttk.Radiobutton(
+                kinds, text=each.label, value=each.name, variable=self._kind_var,
                 command=self._on_kind_changed,
-            ).pack(side=tk.LEFT, padx=(0, 12))  # fmt: skip
+            )  # fmt: skip
+            radio.pack(side=tk.LEFT, padx=(0, 12))
+            bind_tooltip(radio, each.description)
 
-        self._first_label = ttk.Label(body)
-        self._first_label.grid(row=3, column=0, sticky="w", pady=2)
-        first_entry = ttk.Entry(body, textvariable=self._first_var, width=12)
-        first_entry.grid(row=3, column=1, sticky="w", pady=2)
-        self._second_label = ttk.Label(body)
-        self._second_label.grid(row=4, column=0, sticky="w", pady=2)
-        ttk.Entry(body, textvariable=self._second_var, width=12).grid(
-            row=4, column=1, sticky="w", pady=2
-        )
+        # _on_kind_changed puts the chosen kind's fields in the rows from _FIELDS_ROW.
+        self._body = body
+        self._field_widgets: list[ttk.Widget] = []
+        self._first_entry: ttk.Entry | None = None
         ttk.Label(
             body,
             text="This changes the simulation only. Save it to the project from the right-click menu.",
             foreground="gray",
             wraplength=280,
-        ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ).grid(row=_NOTE_ROW, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         buttons = ttk.Frame(self, padding=(12, 0, 12, 12))
         buttons.pack(fill=tk.X)
@@ -219,10 +224,10 @@ class LinkDialog(tk.Toplevel):
         self.bind("<Return>", lambda _e: self._accept())
         self.bind("<Escape>", lambda _e: self.destroy())
 
-        self._on_kind_changed(reset=False)
-        if enable:
-            first_entry.focus_set()
-            first_entry.select_range(0, tk.END)
+        self._on_kind_changed()
+        if enable and self._first_entry is not None:
+            self._first_entry.focus_set()
+            self._first_entry.select_range(0, tk.END)
         else:
             enable_box.focus_set()
         self.grab_set()
@@ -232,23 +237,30 @@ class LinkDialog(tk.Toplevel):
         enable = normalize_address(self._enable_var.get().strip())
         if enable is None:
             raise ValueError("Enter the CLICK address that drives this input, such as Y001.")
-        kind = self._kind_var.get()
-        first, second = self._first_var.get().strip(), self._second_var.get().strip()
+        kind = self._kind()
         if bit_enable(enable):
             trigger = None if self._when_on.get() else 0
         else:
             trigger = _trigger(self._trigger_var.get())
-        if kind == "delay":
-            if not first and not second:
-                raise ValueError("Enter an on delay, an off delay, or both.")
-            return BenchLink(enable, trigger, on_delay=first or None, off_delay=second or None)
-        if not first or not second:
-            raise ValueError("Enter both values.")
-        if kind in ("ramp", "approach"):
-            numbers = (second,) if kind == "approach" else (first, second)
+        values: dict[str, str | bool] = {}
+        for key in kind.keys:
+            var = self._key_vars[key.name]
+            if key.is_flag:
+                # A required flag (toggle) is the kind itself.
+                if key.required or var.get():
+                    values[key.name] = True
+                continue
+            text = str(var.get()).strip()
+            if not text:
+                continue
             try:
-                for number in numbers:
-                    float(number)
-            except ValueError:
-                raise ValueError("Rates must be numbers.") from None
-        return BenchLink(enable, trigger, profile=profile_token(kind, first, second))
+                key.parse(text)
+            except ValueError as exc:
+                reason = str(exc).removeprefix(f"{key.name}: ")
+                raise ValueError(f"{key.label}: {reason}") from None
+            values[key.name] = text
+        missing = [key.label.lower() for key in kind.keys if key.name in kind.missing(values)]
+        if missing:
+            joiner = " or " if kind.needs == "any" else " and "
+            raise ValueError(f"Enter {joiner.join(missing)}.")
+        return BenchLink(enable, trigger, response_of(values))

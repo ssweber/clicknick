@@ -309,7 +309,9 @@ tags:
   tag clear-constraints <tag>
   tag set-uom <tag> <unit>
   tag clear-uom <tag>
-  tag set-physical <tag> <name> [--on-delay D] [--off-delay D] [--profile P] [--system S]
+  tag upgrade-project                 -> stage old annotation forms rewritten (pyrung migrations)
+  tag set-physical <tag> <name> <response> [--system S]
+    response: {physical_options}
   tag set-link <tag> <link>
   tag clear-physical <tag>
   tag apply                          -> edit src/plc/tags.py, then push the diff
@@ -324,7 +326,9 @@ workflow:
 
 
 def _format_help() -> str:
-    return _HELP_TEXT
+    from ..services.physical_response import cli_usage
+
+    return _HELP_TEXT.format(physical_options=cli_usage())
 
 
 def dispatch(ctx: DispatchContext, command: str) -> str:

@@ -15,6 +15,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from .physical_response import Response, dap_arguments
 from .project_workspace import NO_WINDOW, headless_python, project_environment
 
 
@@ -667,23 +668,17 @@ class DapService:
         enable: str,
         *,
         trigger: int | str | None = None,
-        on_delay: str | None = None,
-        off_delay: str | None = None,
-        profile: str | None = None,
+        response: Response = (),
     ) -> dict[str, Any]:
         """Add or replace the bench link on *feedback* (tags or CLICK addresses).
 
+        *response* holds pyrung's response keys as a comment writes them.
         Returns ``{text, command}``; *command* is the equivalent console line.
         """
         arguments: dict[str, Any] = {"feedback": feedback, "enable": enable}
-        for key, value in (
-            ("trigger", trigger),
-            ("onDelay", on_delay),
-            ("offDelay", off_delay),
-            ("profile", profile),
-        ):
-            if value is not None:
-                arguments[key] = value
+        if trigger is not None:
+            arguments["trigger"] = trigger
+        arguments.update(dap_arguments(response))
         return self._request("pyrungLink", arguments)
 
     def unlink(self, feedback: str) -> dict[str, Any]:

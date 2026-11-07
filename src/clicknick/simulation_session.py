@@ -37,6 +37,13 @@ from pyclickplc.addresses import (
     parse_address,
 )
 
+from .services.physical_response import (
+    Response,
+    response_from_dap,
+    response_kind,
+    response_label,
+    response_tokens,
+)
 from .services.sim_hardware import (
     MODULE_STATUS_PREFIX,
     PanelLayout,
@@ -147,9 +154,7 @@ class WiredLink:
     enable: str | None
     source: LinkSource
     trigger: int | str | None = None
-    on_delay: str | None = None
-    off_delay: str | None = None
-    profile: str | None = None
+    response: Response = ()
     active: bool = False
     pending: bool = False
     enabled: bool = True
@@ -159,11 +164,15 @@ class WiredLink:
         return self.enable is None
 
     @property
-    def response(self) -> str:
-        """``2s / 500ms`` or the profile token, for labels."""
-        if self.profile is not None:
-            return self.profile
-        return " / ".join(d for d in (self.on_delay or "0ms", self.off_delay) if d)
+    def response_label(self) -> str:
+        """``on_delay=2s, off_delay=500ms``, for labels."""
+        return response_label(self.response)
+
+    @property
+    def kind(self) -> str:
+        """The response's kind (``delay``, ``ramp``...), or ``""`` when it makes none."""
+        kind = response_kind(self.response)
+        return "" if kind is None else kind.name
 
 
 class _SerialWorker:
@@ -242,14 +251,7 @@ def _send_link(dap: Any, feedback: str, link: BenchLink) -> None:
         dap.unlink(feedback)
         return
     assert link.enable is not None
-    dap.link(
-        feedback,
-        link.enable,
-        trigger=link.trigger,
-        on_delay=link.on_delay,
-        off_delay=link.off_delay,
-        profile=link.profile,
-    )
+    dap.link(feedback, link.enable, trigger=link.trigger, response=link.response)
 
 
 def _mtime(path: Path | None) -> float | None:
@@ -640,9 +642,7 @@ class SimulationSession:
                 link.enable,
                 "bench",
                 link.trigger,
-                link.on_delay,
-                link.off_delay,
-                link.profile,
+                link.response,
                 enabled=link.enabled,
             )  # fmt: skip
             for address, link in self._state.links.items()
@@ -953,9 +953,7 @@ class SimulationSession:
             enable=None if row.get("cut") or enable is None else self.to_address(str(enable)),
             source="project" if row.get("source") == "project" else "bench",
             trigger=row.get("trigger"),
-            on_delay=row.get("onDelay"),
-            off_delay=row.get("offDelay"),
-            profile=row.get("profile"),
+            response=response_from_dap(row),
             active=bool(row.get("active")),
             pending=bool(row.get("pending")),
             enabled=row.get("enabled", True) is not False,
@@ -975,9 +973,7 @@ class SimulationSession:
             self._links_revision_seen = revision if isinstance(revision, int) else None
         if self._links_synced:
             adopted = {
-                row.feedback: BenchLink(
-                    row.enable, row.trigger, row.on_delay, row.off_delay, row.profile, row.enabled
-                )
+                row.feedback: BenchLink(row.enable, row.trigger, row.response, row.enabled)
                 for row in rows
                 if row.source == "bench"
             }
@@ -1544,16 +1540,9 @@ class SimulationSession:
         if link.cut:
             return f"unlink {fb}"
         assert link.enable is not None
-        keys = [
-            f"{key}={value}"
-            for key, value in (
-                ("on_delay", link.on_delay),
-                ("off_delay", link.off_delay),
-                ("profile", link.profile),
-            )
-            if value
-        ]
-        return " ".join(["link", fb, link_text(self.to_tag(link.enable), link), *keys])
+        return " ".join(
+            ["link", fb, link_text(self.to_tag(link.enable), link), *response_tokens(link.response)]
+        )
 
     def link(
         self, feedback: str, link: BenchLink, *, on_error: Callable[[str], None] | None = None

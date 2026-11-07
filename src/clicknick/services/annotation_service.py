@@ -5,6 +5,8 @@ from __future__ import annotations
 from pyclickplc.blocks import format_block_tag, parse_block_tag
 from pyrung.click.tag_map import TagMeta, format_tag_meta, parse_tag_meta
 
+from .physical_response import meta_response, response_check
+
 
 class AnnotationService:
     """Pure-Python operations on bracket-syntax annotations in comment fields."""
@@ -52,14 +54,18 @@ class AnnotationService:
         if meta.min is not None and meta.max is not None and meta.min >= meta.max:
             errors.append("'min' must be less than 'max'.")
 
-        has_timing = meta.on_delay is not None or meta.off_delay is not None
-        has_profile = meta.profile is not None
-        if has_timing and has_profile:
-            errors.append("Physical timing and profile are mutually exclusive.")
-        if meta.system is not None and not has_timing and not has_profile:
-            errors.append("'system' requires on_delay/off_delay or profile.")
-        if meta.link is not None and meta.physical is None and not has_timing and not has_profile:
-            errors.append("'link' requires on_delay/off_delay, profile or 'physical'.")
+        response = meta_response(meta)
+        errors += response_check(response)
+        if meta.system is not None and not response:
+            errors.append("'system' requires a response, such as on_delay=.")
+        if meta.link is not None and meta.physical is None and not response:
+            errors.append("'link' requires a response, such as on_delay=, or 'physical'.")
+        if not errors:
+            # The writer has rules of its own, such as a flag needing link= beside it.
+            try:
+                format_tag_meta(meta)
+            except ValueError as exc:
+                errors.append(str(exc))
 
         return errors
 
@@ -72,8 +78,6 @@ class AnnotationService:
             meta.lock
             or meta.link is not None
             or meta.physical is not None
-            or meta.on_delay is not None
-            or meta.off_delay is not None
-            or meta.profile is not None
             or meta.system is not None
+            or bool(meta_response(meta))
         )

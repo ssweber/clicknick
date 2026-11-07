@@ -6,7 +6,7 @@ Uses tksheet for high-performance table display with virtual rows.
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from typing import TYPE_CHECKING
 
 from pyclickplc.banks import DATA_TYPE_HINTS, NON_EDITABLE_TYPES, DataType
@@ -15,6 +15,7 @@ from tksheet import num2alpha
 from ...models.address_row import AddressRow
 from ...services.analysis_service import AnalysisService
 from ...services.annotation_service import AnnotationService
+from ...services.physical_response import FeedbackType
 from ...utils.filters import parse_analysis_prefix, text_matches_filter
 from ...widgets.annotation_dialog import AnnotationDialog
 from ...widgets.char_limit_tooltip import CharLimitTooltip
@@ -442,9 +443,24 @@ class AddressPanel(ttk.Frame):
             return
 
         row = self.rows[data_idx]
-        block_tag_str, current_meta, free_text = AnnotationService.decompose_comment(row.comment)
+        try:
+            block_tag_str, current_meta, free_text = AnnotationService.decompose_comment(
+                row.comment
+            )
+        except ValueError as exc:
+            # pyrung's message names the fix, such as Tools > Repairs > Upgrade Project.
+            messagebox.showerror("Edit Annotations", str(exc), parent=self.winfo_toplevel())
+            return
 
-        dialog = AnnotationDialog(self.winfo_toplevel(), current_meta, free_text, block_tag_str)
+        if row.data_type == DataType.BIT:
+            feedback: FeedbackType | None = "bool"
+        elif row.data_type == DataType.TXT:
+            feedback = None
+        else:
+            feedback = "analog"
+        dialog = AnnotationDialog(
+            self.winfo_toplevel(), current_meta, free_text, block_tag_str, feedback=feedback
+        )
         self.winfo_toplevel().wait_window(dialog)
 
         if dialog.result is None:

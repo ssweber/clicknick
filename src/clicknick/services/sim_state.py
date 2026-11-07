@@ -19,6 +19,9 @@ from pathlib import Path
 
 import tomlkit
 from pyclickplc.addresses import normalize_address
+from pyrung.click.tag_map import parse_tag_meta, upgrade_comment
+
+from .physical_response import PHYSICAL_KEYS, Response, meta_response, response_of
 
 PlcValue = bool | int | float | str
 
@@ -33,15 +36,13 @@ class BenchLink:
 
     *enable* is the CLICK address that drives the feedback (with an optional
     *trigger* value); ``None`` cuts the program's own link on that input.
-    The response is an on/off delay or a pyrung profile token
-    (``ramp:up=0.8|down=-0.05``). A disabled entry is kept but not applied.
+    *response* holds pyrung's response keys as a comment writes them
+    (``response(on_delay="2s")``). A disabled entry is kept but not applied.
     """
 
     enable: str | None
     trigger: int | str | None = None
-    on_delay: str | None = None
-    off_delay: str | None = None
-    profile: str | None = None
+    response: Response = ()
     enabled: bool = True
 
     @property
@@ -101,6 +102,18 @@ def _text(value: object) -> str | None:
     return value.strip() or None if isinstance(value, str) else None
 
 
+def _old_profile(value: object) -> Response:
+    """The response an older bench file's ``profile`` token held, rewritten by pyrung."""
+    text = _text(value)
+    if text is None:
+        return ()
+    try:
+        meta, _rest = parse_tag_meta(upgrade_comment(f"[link=_, profile={text}]"))
+    except ValueError:
+        return ()
+    return meta_response(meta)
+
+
 def _parse_link(value: object) -> BenchLink | None:
     if not isinstance(value, Mapping):
         return None
@@ -111,19 +124,24 @@ def _parse_link(value: object) -> BenchLink | None:
     if enable is None:
         return None
     trigger = value.get("trigger")
-    link = BenchLink(
+    found = response_of(
+        {
+            name: (value.get(name) is True) if key.is_flag else _text(value.get(name))
+            for name, key in PHYSICAL_KEYS.items()
+        }
+    )
+    if not found:
+        found = _old_profile(value.get("profile"))
+    if not found:
+        return None
+    return BenchLink(
         enable,
         trigger=trigger
         if isinstance(trigger, int | str) and not isinstance(trigger, bool)
         else None,
-        on_delay=_text(value.get("on_delay")),
-        off_delay=_text(value.get("off_delay")),
-        profile=_text(value.get("profile")),
+        response=found,
         enabled=enabled,
     )
-    if link.on_delay is None and link.off_delay is None and link.profile is None:
-        return None
-    return link
 
 
 def _parse(data: Mapping[str, object]) -> SimulatorState:
@@ -225,9 +243,10 @@ def dump_state(state: SimulatorState) -> str:
             entry["cut"] = True
         else:
             entry["enable"] = link.enable
-            for key in ("trigger", "on_delay", "off_delay", "profile"):
-                if (value := getattr(link, key)) is not None:
-                    entry[key] = value
+            if link.trigger is not None:
+                entry["trigger"] = link.trigger
+            for key, value in link.response:
+                entry[key] = value
         if not link.enabled:
             entry["enabled"] = False
         links[address] = entry

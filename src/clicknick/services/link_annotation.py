@@ -1,7 +1,7 @@
 """Bench links written into, and read back from, a feedback tag's comment.
 
 "Save to project" turns a simulator bench link into the comment metadata
-pyrung reads (``[on_delay=2s, off_delay=500ms, link=Motor_Run]``); after a
+pyrung reads (``[link=Motor_Run, on_delay=2s, off_delay=500ms]``); after a
 Sync the program declares the link itself and the bench copy drops away.
 Pure logic: no tkinter, no store.
 """
@@ -15,33 +15,8 @@ from pyclickplc.banks import BANKS, DataType
 from pyrung.click.tag_map import TagMeta
 
 from .annotation_service import AnnotationService
+from .physical_response import meta_fields, meta_response
 from .sim_state import BenchLink
-
-#: The parameters each pyrung profile takes, in the order a form shows them.
-PROFILE_PARAMS: dict[str, tuple[str, str]] = {
-    "pulse": ("on_dwell", "off_dwell"),
-    "ramp": ("up", "down"),
-    "approach": ("toward", "rate"),
-}
-
-
-def profile_token(kind: str, first: str, second: str) -> str:
-    """``ramp:up=0.8|down=-0.05`` from a profile kind and its two parameters."""
-    a, b = PROFILE_PARAMS[kind]
-    return f"{kind}:{a}={first.strip()}|{b}={second.strip()}"
-
-
-def split_profile(token: str) -> tuple[str, dict[str, str]]:
-    """The kind and parameters of a profile token; ``("", {})`` if it is not one."""
-    kind, sep, params = token.partition(":")
-    if not sep or kind not in PROFILE_PARAMS:
-        return "", {}
-    values: dict[str, str] = {}
-    for pair in params.split("|"):
-        key, eq, value = pair.partition("=")
-        if eq:
-            values[key.strip()] = value.strip()
-    return kind, values
 
 
 def bit_enable(address: str | None) -> bool:
@@ -99,9 +74,7 @@ def comment_with_link(comment: str, link: BenchLink, enable_name: str) -> str:
         meta or TagMeta(),
         link=link_text(enable_name, link),
         physical=None,
-        on_delay=link.on_delay,
-        off_delay=link.off_delay,
-        profile=link.profile,
+        **meta_fields(link.response),
     )
     return AnnotationService.recompose_comment(block_tag, meta, free_text)
 
@@ -118,7 +91,5 @@ def comment_has_link(comment: str, link: BenchLink, enable_names: tuple[str, ...
         return False
     return (
         any(meta.link in _link_texts(name, link) for name in enable_names if name)
-        and meta.on_delay == link.on_delay
-        and meta.off_delay == link.off_delay
-        and meta.profile == link.profile
+        and meta_response(meta) == link.response
     )

@@ -809,6 +809,49 @@ class ClickNickApp:
             "connected",
         )
 
+    def _refresh_upgrade_entry(self) -> None:
+        """Enable Upgrade Project while a comment holds an old annotation form.
+
+        Runs as the Repairs menu opens, so it sees the comments as they are now.
+        """
+        from .services.comment_upgrade_service import find_comment_upgrades
+
+        store = self._get_store()
+        needed = store is not None and bool(find_comment_upgrades(store))
+        self.repairs_menu.entryconfigure(
+            self._repairs_upgrade_project_index,
+            state=tk.NORMAL if needed else tk.DISABLED,
+        )
+
+    def _upgrade_project(self) -> None:
+        """Stage pyrung's rewrites of old annotation forms for review and Sync."""
+        store = self._get_store()
+        if store is None:
+            self._update_status("No address data loaded", "error")
+            return
+
+        from .services.comment_upgrade_service import stage_comment_upgrades
+
+        upgrades = stage_comment_upgrades(store)
+        staged = sum(1 for upgrade in upgrades if upgrade.changed)
+        unresolved = [upgrade.display_address for upgrade in upgrades if upgrade.unresolved]
+        if staged:
+            self._open_address_editor("changed")
+        if unresolved:
+            messagebox.showwarning(
+                "Upgrade Project",
+                "No upgrade reads the old annotation in these comments. Fix them by hand:\n"
+                + "\n".join(unresolved),
+                parent=self.root,
+            )
+        if not staged:
+            self._update_status("Every annotation is already in the current form", "connected")
+            return
+        self._update_status(
+            f"Staged {staged} comment upgrade(s); review Changed, then Sync",
+            "connected",
+        )
+
     def _run_program_checks(self):
         """Validate the current connection for an initial report or an in-window rerun."""
         analysis = self._session.analysis if self._session else None
@@ -1791,15 +1834,21 @@ class ClickNickApp:
         tools_menu.add_command(label="Check Program", command=self._analyze_program)
         tools_menu.add_command(label="Simulate...", command=self._open_simulator)
         tools_menu.add_separator()
-        repairs_menu = tk.Menu(tools_menu, tearoff=0)
+        repairs_menu = tk.Menu(tools_menu, tearoff=0, postcommand=self._refresh_upgrade_entry)
         tools_menu.add_cascade(label="Repairs", menu=repairs_menu)
         repairs_menu.add_command(
             label="System Nicknames",
             command=self._repair_system_nicknames,
             state=tk.DISABLED,
         )
+        repairs_menu.add_command(
+            label="Upgrade Project",
+            command=self._upgrade_project,
+            state=tk.DISABLED,
+        )
         self.repairs_menu = repairs_menu
         self._repairs_system_nicknames_index = 0
+        self._repairs_upgrade_project_index = 1
         repairs_menu.add_separator()
         repairs_menu.add_command(label="Verify MDB & CDV...", command=self._verify_mdb_and_cdv)
         repairs_menu.add_command(label="Clean MDB...", command=self._clean_mdb)

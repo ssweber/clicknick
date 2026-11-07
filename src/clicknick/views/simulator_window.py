@@ -337,7 +337,7 @@ class SimulatorWindow(tk.Toplevel):
         driver = f"{enable} {nickname}" if nickname else enable
         when = when_text(link.enable, link.trigger)
         kind = "Program link" if link.source == "project" else "Bench link"
-        text = f"{kind}: driven by {driver}{when} ({link.response})."
+        text = f"{kind}: driven by {driver}{when} ({link.response_label})."
         bench = sim.bench_links.get(address)
         if link.source == "bench" and bench is not None and self._saved_to_project(address, bench):
             text += "\nSaved to the project; the program takes it over after the next Sync."
@@ -355,9 +355,7 @@ class SimulatorWindow(tk.Toplevel):
         if current is None or current.cut:
             wired = sim.driving_link(address) or sim.project_link(address)
             if wired is not None and not wired.cut:
-                current = BenchLink(
-                    wired.enable, wired.trigger, wired.on_delay, wired.off_delay, wired.profile
-                )
+                current = BenchLink(wired.enable, wired.trigger, wired.response)
             else:
                 current = None
         LinkDialog(
@@ -1281,7 +1279,7 @@ class SimulatorWindow(tk.Toplevel):
                     info["scale"].state(["disabled"] if link else ["!disabled"])
             if link is not None:
                 color = P.LINK if link.source == "project" else P.LINK_BENCH
-                kind = (link.profile or "delay").partition(":")[0]
+                kind = link.kind
                 c.itemconfigure(
                     info["live"], text=f"\N{LEFTWARDS ARROW} {link.enable} {kind}", fill=color
                 )
@@ -1472,7 +1470,7 @@ class SimulatorWindow(tk.Toplevel):
                 label = f"{name}: program link cut"
             else:
                 when = when_text(link.enable, link.trigger)
-                label = f"{name} \N{LEFTWARDS ARROW} {link.enable}{when}   {link.response}"
+                label = f"{name} \N{LEFTWARDS ARROW} {link.enable}{when}   {link.response_label}"
             if link.source == "project":
                 suffix = "" if link.active else "   (changed on the bench)"
                 menu.add_command(label=f"{label}   program{suffix}", state=tk.DISABLED)
