@@ -1795,6 +1795,12 @@ class SimulationSession:
             except (OSError, ValueError) as exc:
                 self._message(f"Simulator settings could not be read: {exc}", "error")
                 loaded = SimulatorState()
+            for address, reason in loaded.unread_links:
+                self._message(
+                    f"Could not restore the bench link on {address}: {reason}. Dropped it.",
+                    "error",
+                )
+            loaded = replace(loaded, unread_links=())
             self._state = loaded
             self._restore_pending = True
             self._restored_forces = len(loaded.forces)

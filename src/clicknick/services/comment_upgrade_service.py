@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 
 from pyrung.click.tag_map import comment_needs_upgrade, old_form_tokens, upgrade_comment
 
+from .annotation_service import AnnotationService
+
 if TYPE_CHECKING:
     from ..data.address_store import AddressStore
 
@@ -22,19 +24,32 @@ if TYPE_CHECKING:
 class CommentUpgrade:
     """One comment with an old annotation form.
 
-    ``replacement`` is the upgraded comment. ``unresolved`` lists the old tokens no
-    migration can rewrite, which the user fixes by hand.
+    ``replacement`` is the upgraded comment. ``problem`` says why pyrung still refuses it,
+    such as an old token no migration reads. Such a comment is left for the user to fix.
     """
 
     addr_key: int
     display_address: str
     current: str
     replacement: str
-    unresolved: tuple[str, ...] = ()
+    problem: str = ""
 
     @property
-    def changed(self) -> bool:
-        return self.replacement != self.current
+    def staged(self) -> bool:
+        """True when Upgrade Project writes the replacement into the store."""
+        return not self.problem and self.replacement != self.current
+
+
+def _problem(replacement: str) -> str:
+    """Why pyrung refuses *replacement*, or ``""`` when it reads it."""
+    tokens = old_form_tokens(replacement)
+    if tokens:
+        return f"no upgrade reads {', '.join(tokens)}"
+    try:
+        AnnotationService.decompose_comment(replacement)
+    except ValueError as exc:
+        return str(exc)
+    return ""
 
 
 def find_comment_upgrades(store: AddressStore) -> tuple[CommentUpgrade, ...]:
@@ -52,7 +67,7 @@ def find_comment_upgrades(store: AddressStore) -> tuple[CommentUpgrade, ...]:
                 display_address=row.display_address,
                 current=comment,
                 replacement=replacement,
-                unresolved=old_form_tokens(replacement),
+                problem=_problem(replacement),
             )
         )
     return tuple(found)
@@ -61,10 +76,10 @@ def find_comment_upgrades(store: AddressStore) -> tuple[CommentUpgrade, ...]:
 def stage_comment_upgrades(store: AddressStore) -> tuple[CommentUpgrade, ...]:
     """Stage every rewrite through one edit session, and return every comment found.
 
-    A comment no migration can change is returned but not staged.
+    A comment pyrung would still refuse is returned with its problem but not staged.
     """
     upgrades = find_comment_upgrades(store)
-    changed = [upgrade for upgrade in upgrades if upgrade.changed]
+    changed = [upgrade for upgrade in upgrades if upgrade.staged]
     if changed:
         with store.edit_session("Upgrade project annotations") as session:
             for upgrade in changed:

@@ -13,6 +13,7 @@ from ..services.physical_response import (
     PHYSICAL_KEYS,
     FeedbackType,
     PhysicalKind,
+    key_tooltip,
     kinds_for,
     meta_fields,
     meta_response,
@@ -341,19 +342,19 @@ class AnnotationDialog(tk.Toplevel):
             var = self._key_vars[key.name]
             if key.is_flag:
                 check = ttk.Checkbutton(
-                    self._response_frame, text=key.name, variable=var, command=self._update_preview
+                    self._response_frame, text=key.label, variable=var, command=self._update_preview
                 )
                 check.grid(row=row, column=0, columnspan=3, sticky=tk.W)
-                _bind_tooltip(check, key.help)
+                _bind_tooltip(check, key_tooltip(key))
                 continue
-            label = ttk.Label(self._response_frame, text=f"{key.name}:")
+            label = ttk.Label(self._response_frame, text=f"{key.label}:")
             label.grid(row=row, column=0, sticky=tk.W)
             entry = ttk.Entry(self._response_frame, textvariable=var, width=12)
             entry.grid(row=row, column=1, sticky=tk.W, padx=(4, 4), pady=1)
             hint = ttk.Label(self._response_frame, text=key.unit, foreground="gray")
             hint.grid(row=row, column=2, sticky=tk.W)
             for widget in (label, entry, hint):
-                _bind_tooltip(widget, key.help)
+                _bind_tooltip(widget, key_tooltip(key))
         if kind is None:
             self._response_frame.pack_forget()
         else:
@@ -390,8 +391,9 @@ class AnnotationDialog(tk.Toplevel):
         )
 
         # The response kinds come from pyrung's table, each with its own keys.
-        kind_row = ttk.Frame(self._adv_frame)
-        kind_row.pack(fill=tk.X, pady=(0, 2))
+        kind_row = self._kind_row = ttk.Frame(self._adv_frame)
+        if self._kinds:
+            kind_row.pack(fill=tk.X, pady=(0, 2))
         ttk.Label(kind_row, text="response:").pack(side=tk.LEFT)
         self._kind_var = tk.StringVar(value=_NO_RESPONSE)
         ttk.Radiobutton(
@@ -573,8 +575,13 @@ class AnnotationDialog(tk.Toplevel):
         block_tag_str: str | None,
         *,
         feedback: FeedbackType | None = None,
+        responds: bool = True,
     ):
-        """*feedback* offers only the bool or the analog response kinds (``None``: all)."""
+        """*feedback* limits the kinds to bool or analog. ``None`` offers every kind.
+
+        A text tag passes ``responds=False``, because no kind applies to text. The response
+        row then shows only for a comment that already declares a response.
+        """
         super().__init__(parent)
         self.title("Edit Annotations")
         self.resizable(False, True)
@@ -588,7 +595,9 @@ class AnnotationDialog(tk.Toplevel):
         # The comment's own kind stays on offer, even when it doesn't suit the tag's type.
         current_kind = response_kind(meta_response(self._meta))
         self._kinds = tuple(
-            kind for kind in kinds_for(None) if kind in kinds_for(feedback) or kind == current_kind
+            kind
+            for kind in kinds_for(None)
+            if (responds and kind in kinds_for(feedback)) or kind == current_kind
         )
         self._updating = True
 

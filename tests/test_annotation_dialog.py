@@ -70,10 +70,30 @@ def test_the_kinds_on_offer_follow_the_tags_type(open_dialog):
     assert offered(meta=meta, feedback="bool") == ["delay", "flasher", "timed", "toggle", "ramp"]
 
 
+def test_a_text_tag_shows_no_response_row(open_dialog):
+    dialog = open_dialog(responds=False)
+    assert dialog._kinds == ()
+    assert not dialog._kind_row.winfo_manager()
+    # A text tag whose comment already declares a response still shows it, so it can be cleared.
+    held = open_dialog(TagMeta(link="Run", toggle=True), responds=False)
+    assert [kind.name for kind in held._kinds] == ["toggle"]
+    assert held._kind_row.winfo_manager() == "pack"
+
+
+def test_a_field_tooltip_names_the_key():
+    from pyrung.core.physical import PHYSICAL_KEYS
+
+    from clicknick.services.physical_response import key_tooltip
+
+    tip = key_tooltip(PHYSICAL_KEYS["flasher_on"])
+    assert tip.startswith(PHYSICAL_KEYS["flasher_on"].help)
+    assert tip.endswith("Written in the comment as flasher_on.")
+
+
 def test_a_comment_opens_on_its_kind_with_its_values(open_dialog):
     dialog = open_dialog(TagMeta(link="Bell", timed="500ms", maintained=True), feedback="bool")
     assert dialog._kind_var.get() == "timed"
-    assert _fields(dialog) == ["timed:", "maintained"]
+    assert _fields(dialog) == ["On time:", "Maintained"]
     assert dialog._key_vars["timed"].get() == "500ms"
     assert dialog._key_vars["maintained"].get() is True
     assert _preview(dialog) == "[link=Bell, timed=500ms, maintained]"
@@ -82,10 +102,10 @@ def test_a_comment_opens_on_its_kind_with_its_values(open_dialog):
 
 def test_each_kind_shows_its_own_keys_and_writes_only_those(open_dialog):
     dialog = open_dialog(TagMeta(link="Run", on_delay="1s"), feedback="bool")
-    assert _fields(dialog) == ["on_delay:", "off_delay:"]
+    assert _fields(dialog) == ["On delay:", "Off delay:"]
 
     _choose(dialog, "flasher")
-    assert _fields(dialog) == ["flasher_on:", "flasher_off:"]
+    assert _fields(dialog) == ["On time:", "Off time:"]
     dialog._key_vars["flasher_on"].set("8ms")
     dialog._key_vars["flasher_off"].set("9ms")
     assert _preview(dialog) == "[link=Run, flasher_on=8ms, flasher_off=9ms]"

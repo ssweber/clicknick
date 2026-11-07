@@ -107,3 +107,26 @@ def test_labels_and_cli_options_come_from_the_keys():
     for key in PHYSICAL_KEYS.values():
         assert cli_option(key) in usage
     assert cli_option(PHYSICAL_KEYS["flasher_on"]) == "--flasher-on"
+
+
+def test_the_link_request_carries_pyrungs_field_names():
+    from clicknick.services.dap_service import DapService
+
+    sent: list[tuple[str, dict]] = []
+    dap = DapService()
+    dap._request = lambda command, arguments=None, timeout=10.0: sent.append((command, arguments))
+    dap.link("Encoder", "Y001", response=response(toggle=True))
+    dap.link("Level", "DS1", trigger=2, response=response(ramp_on="0.8", ramp_off="-0.05"))
+    assert sent == [
+        ("pyrungLink", {"feedback": "Encoder", "enable": "Y001", "toggle": True}),
+        (
+            "pyrungLink",
+            {
+                "feedback": "Level",
+                "enable": "DS1",
+                "trigger": 2,
+                "rampOn": "0.8",
+                "rampOff": "-0.05",
+            },
+        ),
+    ]

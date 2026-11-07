@@ -19,9 +19,9 @@ from pathlib import Path
 
 import tomlkit
 from pyclickplc.addresses import normalize_address
-from pyrung.click.tag_map import parse_tag_meta, upgrade_comment
+from pyrung.click.tag_map import MIGRATIONS
 
-from .physical_response import PHYSICAL_KEYS, Response, meta_response, response_of
+from .physical_response import PHYSICAL_KEYS, Response, response_check, response_of
 
 PlcValue = bool | int | float | str
 
@@ -60,6 +60,8 @@ class SimulatorState:
     forces: Mapping[str, PlcValue] = field(default_factory=dict)
     #: Bench links by feedback address, and whether they are applied at all.
     links: Mapping[str, BenchLink] = field(default_factory=dict)
+    #: Links the file holds but ClickNick can't read, with the reason. They are not saved back.
+    unread_links: tuple[tuple[str, str], ...] = ()
     bench_wiring: bool = True
     run_hint_seen: bool = False
     modbus_port: int = DEFAULT_MODBUS_PORT
@@ -102,19 +104,34 @@ def _text(value: object) -> str | None:
     return value.strip() or None if isinstance(value, str) else None
 
 
+def _key_text(value: object) -> str | None:
+    """A response value as text. A hand-written file may give a number (``ramp_on = 0.8``)."""
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return str(value)
+    return _text(value)
+
+
 def _old_profile(value: object) -> Response:
-    """The response an older bench file's ``profile`` token held, rewritten by pyrung."""
+    """The response an older bench file's ``profile`` token held, rewritten by pyrung.
+
+    Raises ValueError when no pyrung migration reads the token.
+    """
     text = _text(value)
     if text is None:
         return ()
-    try:
-        meta, _rest = parse_tag_meta(upgrade_comment(f"[link=_, profile={text}]"))
-    except ValueError:
-        return ()
-    return meta_response(meta)
+    for migration in MIGRATIONS:
+        rewritten = migration.rewrite_token(f"profile={text}")
+        if rewritten is not None:
+            pairs = (token.partition("=") for token in rewritten.split(","))
+            return response_of({name.strip(): new.strip() for name, _sep, new in pairs})
+    raise ValueError(f"no upgrade reads profile={text}")
 
 
 def _parse_link(value: object) -> BenchLink | None:
+    """The bench link in a file entry, or ``None`` for an entry with no link at all.
+
+    Raises ValueError for a link whose response pyrung can't read, so the user is told.
+    """
     if not isinstance(value, Mapping):
         return None
     enabled = value.get("enabled", True) is not False
@@ -126,14 +143,17 @@ def _parse_link(value: object) -> BenchLink | None:
     trigger = value.get("trigger")
     found = response_of(
         {
-            name: (value.get(name) is True) if key.is_flag else _text(value.get(name))
+            name: (value.get(name) is True) if key.is_flag else _key_text(value.get(name))
             for name, key in PHYSICAL_KEYS.items()
         }
     )
     if not found:
         found = _old_profile(value.get("profile"))
     if not found:
-        return None
+        raise ValueError("it has no response")
+    errors = response_check(found)
+    if errors:
+        raise ValueError(" ".join(errors))
     return BenchLink(
         enable,
         trigger=trigger
@@ -171,11 +191,19 @@ def _parse(data: Mapping[str, object]) -> SimulatorState:
         for key, value in table("forces").items()
         if isinstance(value, bool | int | float | str) and (address := _address(key))
     }
-    links = {
-        address: link
-        for key, value in table("links").items()
-        if (address := _address(key)) and (link := _parse_link(value))
-    }
+    links: dict[str, BenchLink] = {}
+    unread_links: list[tuple[str, str]] = []
+    for key, value in table("links").items():
+        address = _address(key)
+        if address is None:
+            continue
+        try:
+            link = _parse_link(value)
+        except ValueError as exc:
+            unread_links.append((address, str(exc)))
+            continue
+        if link is not None:
+            links[address] = link
     port = data.get("modbus_port", DEFAULT_MODBUS_PORT)
     if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
         port = DEFAULT_MODBUS_PORT
@@ -186,6 +214,7 @@ def _parse(data: Mapping[str, object]) -> SimulatorState:
         analog=analog,
         forces=forces,
         links=links,
+        unread_links=tuple(unread_links),
         bench_wiring=data.get("bench_wiring") is not False,
         run_hint_seen=data.get("run_hint_seen") is True,
         modbus_port=port,

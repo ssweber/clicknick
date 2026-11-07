@@ -759,6 +759,23 @@ def test_settings_are_saved_and_restored(ready, tmp_path):
     assert fresh.sim.restored_forces == 1
 
 
+def test_a_bench_link_the_file_cannot_hold_is_reported(ready, tmp_path):
+    path = tmp_path / "app" / "Line1.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "[links]\n"
+        "DF1 = {enable = 'Y001', profile = 'approach:toward=180'}\n"
+        "X001 = {enable = 'Y002', on_delay = '2s'}\n",
+        encoding="utf-8",
+    )
+    ready.sim.set_state_location("Line1", None)
+    assert ready.messages("error") == (
+        "Could not restore the bench link on DF1: no upgrade reads "
+        "profile=approach:toward=180. Dropped it."
+    )
+    assert ready.sim.restored_links == 1
+
+
 def test_restore_drops_inputs_the_hardware_no_longer_has(ready, tmp_path):
     save_state(
         tmp_path / "app" / "Line1.toml",

@@ -833,22 +833,28 @@ class ClickNickApp:
         from .services.comment_upgrade_service import stage_comment_upgrades
 
         upgrades = stage_comment_upgrades(store)
-        staged = sum(1 for upgrade in upgrades if upgrade.changed)
-        unresolved = [upgrade.display_address for upgrade in upgrades if upgrade.unresolved]
+        staged = sum(1 for upgrade in upgrades if upgrade.staged)
+        problems = [
+            f"{upgrade.display_address}: {upgrade.problem}"
+            for upgrade in upgrades
+            if upgrade.problem
+        ]
         if staged:
             self._open_address_editor("changed")
-        if unresolved:
+        if problems:
             messagebox.showwarning(
                 "Upgrade Project",
-                "No upgrade reads the old annotation in these comments. Fix them by hand:\n"
-                + "\n".join(unresolved),
+                "pyrung still refuses these comments. Fix them by hand.\n\n" + "\n".join(problems),
                 parent=self.root,
             )
         if not staged:
-            self._update_status("Every annotation is already in the current form", "connected")
+            if problems:
+                self._update_status("No comment upgrade staged", "error")
+            else:
+                self._update_status("Every annotation is already in the current form", "connected")
             return
         self._update_status(
-            f"Staged {staged} comment upgrade(s); review Changed, then Sync",
+            f"Staged {staged} comment upgrade(s). Review Changed, then Sync.",
             "connected",
         )
 

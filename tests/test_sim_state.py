@@ -162,10 +162,12 @@ def test_malformed_links_are_skipped(tmp_path):
         "X006 = {cut = true}\n",
         encoding="utf-8",
     )
-    assert load_state(path).links == {
+    state = load_state(path)
+    assert state.links == {
         "X002": BenchLink("Y001", response=response(on_delay="2s")),
         "X006": BenchLink(None),
     }
+    assert state.unread_links == (("X004", "it has no response"),)
 
 
 def test_an_older_profile_link_is_read_through_pyrungs_upgrade(tmp_path):
@@ -174,12 +176,36 @@ def test_an_older_profile_link_is_read_through_pyrungs_upgrade(tmp_path):
         "[links]\n"
         "X002 = {enable = 'Y001', profile = 'pulse:on_dwell=8ms|off_dwell=9ms'}\n"
         "DF1 = {enable = 'Y002', profile = 'approach:toward=Oven_SP|rate=0.3'}\n"
-        "DF2 = {enable = 'Y003', profile = 'unknown:a=1'}\n",
+        "DF2 = {enable = 'Y003', profile = 'unknown:a=1'}\n"
+        "DF3 = {enable = 'Y004', profile = 'approach:toward=180'}\n"
+        "DF4 = {enable = 'Y005', profile = 'ramp:up=1]x'}\n",
         encoding="utf-8",
     )
-    assert load_state(path).links == {
+    state = load_state(path)
+    assert state.links == {
         "X002": BenchLink("Y001", response=response(flasher_on="8ms", flasher_off="9ms")),
         "DF1": BenchLink("Y002", response=response(approach_to="Oven_SP", approach_rate="0.3")),
     }
+    # A token no upgrade reads is reported, not dropped without a word.
+    assert dict(state.unread_links) == {
+        "DF2": "no upgrade reads profile=unknown:a=1",
+        "DF3": "no upgrade reads profile=approach:toward=180",
+        "DF4": "no upgrade reads profile=ramp:up=1]x",
+    }
     # Saving writes the current keys.
     assert "flasher_on" in dump_state(load_state(path))
+
+
+def test_a_hand_written_number_is_read_and_a_bad_value_reported(tmp_path):
+    path = tmp_path / "state.toml"
+    path.write_text(
+        "[links]\n"
+        "DF1 = {enable = 'Y001', ramp_on = 0.8, ramp_off = 2}\n"
+        "X001 = {enable = 'Y002', on_delay = '2'}\n",
+        encoding="utf-8",
+    )
+    state = load_state(path)
+    assert state.links == {"DF1": BenchLink("Y001", response=response(ramp_on="0.8", ramp_off="2"))}
+    ((address, reason),) = state.unread_links
+    assert address == "X001" and reason.startswith("on_delay:")
+    assert "X001" not in dump_state(state)

@@ -1,9 +1,9 @@
 """How a feedback answers its command, read from pyrung's table of physical kinds.
 
 pyrung's ``PHYSICAL_KINDS`` lists every kind (delay, flasher, timed, toggle, ramp,
-approach) and its keys. The Simulator's link dialog, the annotation dialog, the bench
-file, the console text and the CLI all read it from here, so a kind pyrung adds shows up
-without a change in ClickNick. This module is pure logic, with no tkinter and no store.
+approach) and its keys. Every ClickNick view of a response reads pyrung's table through
+this module, so a kind pyrung adds needs no change here. This module is pure logic, with
+no tkinter and no store.
 """
 
 from __future__ import annotations
@@ -175,6 +175,11 @@ def dap_arguments(values: Response) -> dict[str, str | bool]:
 def response_from_dap(row: Mapping[str, Any]) -> Response:
     """The response in a ``pyrungListLinks`` row, which uses the request field names."""
     return response_of({name: row.get(key.dap_field) for name, key in PHYSICAL_KEYS.items()})
+
+
+def key_tooltip(key: PhysicalKey) -> str:
+    """A field's tooltip. The form shows the key's label, so the tooltip names the key."""
+    return f"{key.help}\nWritten in the comment as {key.name}."
 
 
 def cli_option(key: PhysicalKey) -> str:

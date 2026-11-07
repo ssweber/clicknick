@@ -226,7 +226,7 @@ Original plan:
 
   ```
   link X002 Y001 on_delay=2s off_delay=500ms
-  link DF5 Y003 profile=ramp:up=0.8|down=-0.05
+  link DF5 Y003 ramp_on=0.8 ramp_off=-0.05
   link X010 State:3 on_delay=1s
   unlink X002        # cut a project link / remove a bench link
   restore X002       # back to the project link

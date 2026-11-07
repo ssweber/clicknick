@@ -71,6 +71,8 @@ def test_bad_values_are_refused_by_pyrungs_parsers():
         dispatch(ctx, "tag set-physical X001 Clamp --on-delay 50ms --toggle")
     with pytest.raises(ValueError, match="--flasher-on TIME"):
         dispatch(ctx, "tag set-physical X001 Clamp --profile pulse")
+    with pytest.raises(ValueError, match="--on-delay is given twice"):
+        dispatch(ctx, "tag set-physical X001 Clamp --on-delay 1s --on-delay 2s")
     assert _comment(ctx, key) == "Feedback"
 
 

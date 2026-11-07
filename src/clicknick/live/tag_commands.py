@@ -131,7 +131,7 @@ def _cmd_upgrade_project(ctx: DispatchContext, parts: list[str]) -> str:
     if not upgrades:
         return "upgrade project: every annotation is in the current form"
 
-    staged = [upgrade for upgrade in upgrades if upgrade.changed]
+    staged = [upgrade for upgrade in upgrades if upgrade.staged]
     if staged and ctx.show_address_editor is not None:
         ctx.show_address_editor("changed")
 
@@ -139,9 +139,8 @@ def _cmd_upgrade_project(ctx: DispatchContext, parts: list[str]) -> str:
     for upgrade in staged:
         lines.append(f"{upgrade.display_address}: {upgrade.current!r} -> {upgrade.replacement!r}")
     for upgrade in upgrades:
-        if upgrade.unresolved:
-            tokens = ", ".join(upgrade.unresolved)
-            lines.append(f"{upgrade.display_address}: fix by hand, no migration reads {tokens}")
+        if upgrade.problem:
+            lines.append(f"{upgrade.display_address}: fix by hand, {upgrade.problem}")
     if staged:
         lines.append("Review in Address Editor -> Changed, then Sync to save")
     return "\n".join(lines)
@@ -282,9 +281,13 @@ def _cmd_set_physical(ctx: DispatchContext, parts: list[str]) -> str:
     values: dict[str, str | bool] = {}
     system = None
 
+    seen: set[str] = set()
     i = 2
     while i < len(parts):
         opt = parts[i].lower()
+        if opt in seen:
+            raise ValueError(f"{opt} is given twice")
+        seen.add(opt)
         key = options.get(opt)
         if key is not None and key.is_flag:
             values[key.name] = True

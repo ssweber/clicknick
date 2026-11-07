@@ -19,6 +19,7 @@ from pyclickplc.addresses import normalize_address
 from ..services.link_annotation import bit_enable
 from ..services.physical_response import (
     PhysicalKind,
+    key_tooltip,
     kinds_for,
     physical_kind,
     response_kind,
@@ -84,7 +85,7 @@ class LinkDialog(tk.Toplevel):
             if key.is_flag:
                 check = ttk.Checkbutton(body, text=key.label, variable=var)
                 check.grid(row=row, column=0, columnspan=3, sticky="w", pady=2)
-                bind_tooltip(check, key.help)
+                bind_tooltip(check, key_tooltip(key))
                 self._field_widgets.append(check)
                 continue
             label = ttk.Label(body, text=key.label)
@@ -94,7 +95,7 @@ class LinkDialog(tk.Toplevel):
             unit = ttk.Label(body, text=key.unit, foreground="gray")
             unit.grid(row=row, column=2, sticky="w", padx=(6, 0), pady=2)
             for widget in (label, entry, unit):
-                bind_tooltip(widget, key.help)
+                bind_tooltip(widget, key_tooltip(key))
             self._field_widgets += [label, entry, unit]
             if self._first_entry is None:
                 self._first_entry = entry

@@ -65,7 +65,8 @@ def test_finding_upgrades_changes_nothing():
     (upgrade,) = find_comment_upgrades(store)
     assert upgrade.display_address == "X001"
     assert upgrade.replacement == "[link=Run, flasher_on=8ms, flasher_off=8ms] Encoder"
-    assert upgrade.unresolved == ()
+    assert upgrade.problem == ""
+    assert upgrade.staged
     assert not store.has_unsaved_changes()
 
 
@@ -93,9 +94,19 @@ def test_every_upgrade_is_staged_in_one_edit_session():
 def test_a_form_no_migration_reads_is_reported_not_staged():
     store = _store({("DF", 2): STUCK})
     (upgrade,) = stage_comment_upgrades(store)
-    assert not upgrade.changed
-    assert upgrade.unresolved == ("profile=approach:toward=180",)
+    assert not upgrade.staged
+    assert upgrade.problem == "no upgrade reads profile=approach:toward=180"
     assert not store.has_unsaved_changes()
+
+
+def test_a_rewrite_pyrung_still_refuses_is_reported_not_staged():
+    two_kinds = "[link=Run, on_delay=1s, profile=ramp:up=1] Level"
+    store = _store({("DF", 3): two_kinds, ("X", 1): ENCODER})
+    upgrades = {upgrade.display_address: upgrade for upgrade in stage_comment_upgrades(store)}
+    assert not upgrades["DF3"].staged
+    assert "two kinds" in upgrades["DF3"].problem
+    assert _comment(store, "DF", 3) == two_kinds
+    assert upgrades["X001"].staged
 
 
 def test_cli_upgrade_project_stages_and_opens_changed():
@@ -109,7 +120,7 @@ def test_cli_upgrade_project_stages_and_opens_changed():
     assert result.splitlines()[:4] == [
         "OK: 1 comment upgrade staged",
         f"X001: {ENCODER!r} -> '[link=Run, flasher_on=8ms, flasher_off=8ms] Encoder'",
-        "DF2: fix by hand, no migration reads profile=approach:toward=180",
+        "DF2: fix by hand, no upgrade reads profile=approach:toward=180",
         "Review in Address Editor -> Changed, then Sync to save",
     ]
     assert opened == ["changed"]
@@ -143,7 +154,9 @@ def test_the_repairs_entry_is_enabled_while_an_old_form_remains():
 
     app._upgrade_project()
     app._open_address_editor.assert_called_once_with("changed")
-    assert "Staged 1 comment upgrade(s)" in app._update_status.call_args.args[0]
+    assert app._update_status.call_args.args[0] == (
+        "Staged 1 comment upgrade(s). Review Changed, then Sync."
+    )
 
     app._refresh_upgrade_entry()
     app.repairs_menu.entryconfigure.assert_called_with(1, state="disabled")
@@ -158,5 +171,29 @@ def test_the_repairs_entry_lists_comments_to_fix_by_hand(monkeypatch):
     )
     app = _app(_store({("DF", 2): STUCK}))
     app._upgrade_project()
-    assert warnings and warnings[0].endswith("DF2")
+    assert warnings and warnings[0].endswith("DF2: no upgrade reads profile=approach:toward=180")
     app._open_address_editor.assert_not_called()
+    assert app._update_status.call_args.args[0] == "No comment upgrade staged"
+
+
+def test_opening_the_repairs_menu_refreshes_the_upgrade_entry():
+    tk = pytest.importorskip("tkinter")
+    from clicknick.app import ClickNickApp
+
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:  # pragma: no cover - no display
+        pytest.skip(f"no Tk display available: {exc}")
+    root.withdraw()
+    try:
+        app = ClickNickApp.__new__(ClickNickApp)
+        app.root = root
+        app._open_workspace_menu_options = MagicMock(return_value=("Open Workspace", "disabled"))
+        app._refresh_upgrade_entry = MagicMock()
+        app._create_menu_bar()
+
+        assert app.repairs_menu.entrycget(1, "label") == "Upgrade Project"
+        root.tk.eval(app.repairs_menu.cget("postcommand"))
+        app._refresh_upgrade_entry.assert_called_once_with()
+    finally:
+        root.destroy()

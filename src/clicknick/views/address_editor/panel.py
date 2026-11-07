@@ -452,14 +452,14 @@ class AddressPanel(ttk.Frame):
             messagebox.showerror("Edit Annotations", str(exc), parent=self.winfo_toplevel())
             return
 
-        if row.data_type == DataType.BIT:
-            feedback: FeedbackType | None = "bool"
-        elif row.data_type == DataType.TXT:
-            feedback = None
-        else:
-            feedback = "analog"
+        feedback: FeedbackType = "bool" if row.data_type == DataType.BIT else "analog"
         dialog = AnnotationDialog(
-            self.winfo_toplevel(), current_meta, free_text, block_tag_str, feedback=feedback
+            self.winfo_toplevel(),
+            current_meta,
+            free_text,
+            block_tag_str,
+            feedback=feedback,
+            responds=row.data_type != DataType.TXT,
         )
         self.winfo_toplevel().wait_window(dialog)
 
