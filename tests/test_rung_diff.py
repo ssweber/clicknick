@@ -11,6 +11,7 @@ from laddercodec import Coil, Contact, Rung, write_csv
 from clicknick.services.rung_diff import (
     BundleComparison,
     BundleSources,
+    PasteStep,
     compare_bundle,
     compare_rungs,
     format_group,
@@ -226,6 +227,45 @@ def test_touches_only_selected_rungs_that_need_pasting() -> None:
 
     assert change.touches([2, 3])
     assert not change.touches([1, 3])
+
+
+def test_steps_number_rungs_as_click_shows_them_working_down() -> None:
+    # CLICK:    A  B  C  D  E  F
+    # proposed: A  N1 N2 B  X  E  (C, D -> X; F dropped)
+    change = compare_rungs(
+        _commented("A", "B", "C", "D", "E", "F"), _commented("A", "N1", "N2", "B", "X", "E")
+    )
+
+    assert change.steps == (
+        # New rungs 2..3 go in above CLICK's rung 2 (B)
+        PasteStep(rungs=(2, 3), above=2, block=0),
+        # With those in, C stands at 5: rung 5 is pasted over it, leaving D at 6
+        PasteStep(rungs=(5,), over=5, block=1),
+        PasteStep(delete=(6,), block=1),
+        # With D gone, F stands at 7
+        PasteStep(delete=(7,), block=2),
+    )
+
+
+def test_new_rungs_at_the_bottom_have_no_rung_to_go_above() -> None:
+    assert compare_rungs(_commented("A"), _commented("A", "B")).steps == (
+        PasteStep(rungs=(2,), above=None, block=0),
+    )
+    assert compare_rungs([], _commented("A")).steps == (PasteStep(rungs=(1,), above=None, block=0),)
+
+
+def test_same_rungs_need_no_steps() -> None:
+    assert compare_rungs(_commented("A", "B"), _commented("A", "B")).steps == ()
+
+
+def test_diff_records_where_each_difference_starts() -> None:
+    change = compare_rungs(_commented("A", "B", "C", "D"), _commented("A1", "B", "C"))
+
+    diff = render_diff(change, "main.csv", before=BundleSources(), after=BundleSources())
+
+    assert diff.lines[2:] == ("-R1  # A\n", "+R1  # A1\n", "-R4  # D\n")
+    assert diff.blocks == (2, 4)
+    assert [step.block for step in change.steps] == [0, 1]
 
 
 def test_paste_groups_are_contiguous_runs() -> None:

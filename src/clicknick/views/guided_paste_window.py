@@ -9,9 +9,10 @@ whole program or just the rungs that differ.
 
 from __future__ import annotations
 
+import json
 import os
 import tkinter as tk
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -24,6 +25,7 @@ from ..ladder.program import import_nicknames_csv, prepare_rungs_load
 from ..services.rung_diff import (
     BundleComparison,
     BundleSources,
+    PasteStep,
     ProgramChange,
     ProposedProgram,
     RenderedDiff,
@@ -46,6 +48,9 @@ _NUM_COLS = 5
 # Past this, CLICK's editor can sit frozen for a long time on the paste.
 _SLOW_PASTE_RUNGS = 100
 
+# From this many steps in one program, clearing it and pasting it whole is likely less work.
+_MANY_STEPS = 6
+
 # Icons
 _ICON_DONE = "✓"  # ✓
 _ICON_CURRENT = "▶"  # ▶
@@ -66,6 +71,10 @@ _BG_CURRENT = "#cce5ff"
 _FG_MATCHES = "gray"
 _FG_ONLY_IN_CLICK = "#a94442"
 
+# The Copy switch: what a step copies for a program CLICK already has
+_COPY_CHANGED = "Changed rungs"
+_COPY_WHOLE = "Whole program"
+
 # Special display name for the nicknames import step
 _NICKNAMES_NAME = "nicknames.csv"
 
@@ -75,7 +84,9 @@ _WATCH_INTERVAL_MS = 1000
 _FIRST_TIME_TIPS = (
     "Guided Paste\n\n"
     "Each step copies rungs to the clipboard: a whole program, or just the rungs that "
-    "differ when CLICK already has it. The pane under the list shows the difference. "
+    "differ when CLICK already has it (the Copy switch chooses). The pane under the list "
+    "shows the difference. Work down each program in order: a step's rung numbers are "
+    "the ones CLICK shows once the steps before it are done. "
     "Paste into CLICK with Ctrl+V, then wait until the rungs appear before doing anything "
     "else: a big paste can take a while, and CLICK may look frozen until it finishes.\n\n"
     "Subroutines come before main. Create each one in CLICK (New Subroutine does this "
@@ -86,6 +97,55 @@ _FIRST_TIME_TIPS = (
 def _tips_seen_path() -> Path:
     base = Path(os.environ.get("LOCALAPPDATA") or Path.home())
     return base / "ClickNick" / "guided_paste_popup_seen"
+
+
+def _preferences_path() -> Path:
+    base = Path(os.environ.get("LOCALAPPDATA") or Path.home())
+    return base / "ClickNick" / "guided-paste.json"
+
+
+def _read_copy_whole() -> bool:
+    """Read the user's Copy switch choice; changed rungs until they choose otherwise."""
+    try:
+        payload = json.loads(_preferences_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(payload, dict) and payload.get("copy_whole_program") is True
+
+
+def _save_copy_whole(whole: bool) -> None:
+    """Remember the user's Copy switch choice for the next Guided Paste window."""
+    path = _preferences_path()
+    staging = path.with_suffix(".json.staging")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        staging.write_text(
+            json.dumps({"copy_whole_program": whole}, indent=2) + "\n", encoding="utf-8"
+        )
+        staging.replace(path)
+    except OSError:
+        pass  # The choice still holds for this window
+
+
+def _rungs_in_click(numbers: Sequence[int]) -> str:
+    """Name rungs by the numbers CLICK shows: ``rung 5`` or ``rungs 5 to 7``."""
+    if len(numbers) == 1:
+        return f"rung {numbers[0]}"
+    return f"rungs {numbers[0]} to {numbers[-1]}"
+
+
+def _where_to_paste(step: PasteStep) -> str:
+    """Say where in CLICK a step's rungs go.
+
+    CLICK pastes over the selected rung: that rung is replaced by the first
+    pasted rung and the rest go in below it.
+    """
+    if not step.placed:
+        return "Paste it in CLICK (Ctrl+V) over the rung it replaces, or over a new empty rung"
+    if step.over is not None:
+        return f"In CLICK, select rung {step.over} and paste over it (Ctrl+V)"
+    where = "after the last rung" if step.above is None else f"above rung {step.above}"
+    return f"In CLICK, insert an empty rung {where} and paste over it (Ctrl+V)"
 
 
 def _change_label(change: ProgramChange) -> str:
@@ -196,29 +256,40 @@ class GuidedPasteWindow(tk.Toplevel):
             and name not in self._only_in_click
         )
 
-    def _groups(self, name: str) -> list[list[int]]:
-        """The runs of rungs to paste one at a time into a program CLICK has.
+    def _steps(self, name: str) -> list[PasteStep]:
+        """What to do in CLICK, one difference at a time, for a program CLICK has.
 
-        Empty when the whole program is pasted instead: CLICK lacks it, what
-        CLICK has is unknown, or no rung of it needs pasting.
+        Empty when the whole program is pasted instead: the Copy switch says so,
+        CLICK lacks it, what CLICK has is unknown, or nothing of it differs.
         """
+        if self._copy_whole_var.get():
+            return []
         selected = self._selection.get(name)
         if selected:
-            return paste_groups(selected)
+            return [PasteStep(tuple(group), placed=False) for group in paste_groups(selected)]
         change = self._changes.get(name)
         if change is None or name in self._missing_in_click:
             return []
-        return paste_groups(change.changed)
+        return list(change.steps)
 
-    def _current_groups(self) -> list[list[int]]:
+    def _current_steps(self) -> list[PasteStep]:
         if self._current_idx is None:
             return []
-        return self._groups(self._items[self._current_idx][0])
+        return self._steps(self._items[self._current_idx][0])
 
-    def _current_group(self) -> list[int] | None:
-        """The run of rungs the current step copies; None when it is the whole program."""
-        groups = self._current_groups()
-        return groups[self._group_idx] if self._group_idx < len(groups) else None
+    def _current_step(self) -> PasteStep | None:
+        """The current row's step; None when the whole program is copied in one."""
+        steps = self._current_steps()
+        return steps[self._step_idx] if self._step_idx < len(steps) else None
+
+    def _whole_placement(self, name: str) -> str:
+        """Say how a whole program goes into CLICK, given what CLICK has of it."""
+        change = self._changes.get(name)
+        if change is None or not change.before or name in self._missing_in_click:
+            return "Paste into CLICK (Ctrl+V on ladder screen)"
+        return (
+            "In CLICK, select all of its rungs (Shift+Up/Down) and delete them, then paste (Ctrl+V)"
+        )
 
     def _click_label(self, name: str) -> str:
         if name in self._only_in_click:
@@ -298,15 +369,16 @@ class GuidedPasteWindow(tk.Toplevel):
             note = "pyrung could not show this program as text; each rung is listed by its instructions."
         return note, render_diff(change, name, before=before, after=after)
 
-    def _scroll_to_group(self) -> None:
-        """Bring the rungs the current step copies to the top of the pane."""
+    def _scroll_to_step(self) -> None:
+        """Bring the difference the current step works on to the top of the pane."""
         line = None
         current = self._items[self._current_idx][0] if self._current_idx is not None else None
-        if current == self._view_name:
-            for number in self._current_group() or ():
-                line = self._shown_diff.starts.get(number)
-                if line is not None:
-                    break
+        step = self._current_step() if current == self._view_name else None
+        if step is not None and step.placed and step.block < len(self._shown_diff.blocks):
+            line = self._shown_diff.blocks[step.block]
+        elif step is not None:
+            starts = (self._shown_diff.starts.get(number) for number in step.rungs)
+            line = next((start for start in starts if start is not None), None)
         if line is None:
             self._text.yview_moveto(0)
         else:
@@ -332,7 +404,7 @@ class GuidedPasteWindow(tk.Toplevel):
         self._text.configure(state=tk.DISABLED)
         self._shown_diff = diff
         self._diff_first_line = 2 if note else 1  # as the Text widget numbers lines
-        self._scroll_to_group()
+        self._scroll_to_step()
 
     # ------------------------------------------------------------------
     # Row highlighting
@@ -372,24 +444,26 @@ class GuidedPasteWindow(tk.Toplevel):
     # Action button state
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _nothing_to_copy(step: PasteStep | None) -> bool:
+        """Whether the step is done in CLICK alone: rungs to delete, none to paste."""
+        return step is not None and not step.rungs
+
     def _update_action_btn(self) -> None:
         """Update the action buttons based on current state."""
         can_add = self._can_add_subroutine(self._current_idx) and not self._adding_subroutine
         self._add_sub_btn.configure(state="normal" if can_add else "disabled")
-        # Only a row stepped through in parts needs the whole-program copy beside it.
-        # It stays available after a copy, in case the clipboard gets overwritten.
-        self._copy_all_btn.configure(state="normal" if self._current_groups() else "disabled")
         if self._current_idx is None:
             self._action_btn.configure(state="disabled", text="Done")
             return
 
-        if self._copied:
+        step = self._current_step()
+        if self._copied or self._nothing_to_copy(step):
             self._action_btn.configure(state="normal", text="Next →")
         elif self._is_nickname_step(self._current_idx):
             self._action_btn.configure(state="normal", text="Import")
         else:
-            group = self._current_group()
-            label = f"Copy {format_group(group)}" if group else "Copy"
+            label = f"Copy {format_group(step.rungs)}" if step else "Copy"
             self._action_btn.configure(state="normal", text=label)
 
     # ------------------------------------------------------------------
@@ -453,6 +527,7 @@ class GuidedPasteWindow(tk.Toplevel):
     def _all_done(self) -> None:
         self._current_idx = None
         self._copied = False
+        self._sheet.deselect()
         self._update_highlights()
         if any(self._matches_click(name) for name, *_ in self._items):
             msg = "Every changed program has been pasted!"
@@ -492,13 +567,14 @@ class GuidedPasteWindow(tk.Toplevel):
         self._status_var.set(msg)
         self._update_action_btn()
 
-    def _copy_rungs(self, idx: int, group: list[int] | None) -> bool:
-        """Copy a program to the clipboard, or just *group* of its rungs.
+    def _copy_rungs(self, idx: int, step: PasteStep | None) -> bool:
+        """Copy a program to the clipboard, or just the rungs of *step*.
 
         Returns whether the clipboard now holds them.
         """
         name = self._items[idx][0]
         program = self._programs.get(name)
+        group = step.rungs if step is not None else None
         try:
             if program is None or program.rungs is None:
                 raise ValueError(program.error if program else "it is not in this folder")
@@ -531,7 +607,8 @@ class GuidedPasteWindow(tk.Toplevel):
             msg += f"\nMDB: inserted {result.addresses_inserted} address(es)"
         elif result.mdb_error:
             msg += f"\nMDB: {result.mdb_error}"
-        msg += '\nPaste into CLICK (Ctrl+V on ladder screen), then click "Next"'
+        where = _where_to_paste(step) if step is not None else self._whole_placement(name)
+        msg += f'\n{where}, then click "Next". To copy it again, click its row'
         self._status_var.set(msg)
         self._update_action_btn()
         if result.rung_count >= _SLOW_PASTE_RUNGS:
@@ -617,22 +694,42 @@ class GuidedPasteWindow(tk.Toplevel):
         if self._is_nickname_step(idx):
             self._do_import_nicknames(idx)
         else:
-            self._copy_rungs(idx, self._current_group())
+            self._copy_rungs(idx, self._current_step())
 
     def _step_prompt(self, idx: int) -> str:
         """Say what the current step of the row does."""
         name, _path, rung_count, _ = self._items[idx]
         if self._is_nickname_step(idx):
             return 'Click "Import" to import nicknames into the Click database'
-        group = self._current_group()
-        if group:
-            label = format_group(group)
-            return (
-                f"{name}: {label} is step {self._group_idx + 1} of "
-                f"{len(self._current_groups())} for this program.\n"
-                f'Click "Copy {label}" to copy just that, '
-                f'or "Copy whole program" for all {rung_count} rungs'
-            )
+        step = self._current_step()
+        if step is not None:
+            head = f"{name}, step {self._step_idx + 1} of {len(self._current_steps())}"
+            label = format_group(step.rungs)
+            if not step.rungs:
+                old = _rungs_in_click(step.delete)
+                if len(step.delete) == 1:
+                    return (
+                        f"{head}: {old} is not in the program any more.\n"
+                        'Delete it in CLICK, then click "Next"'
+                    )
+                return (
+                    f"{head}: {old} are not in the program any more.\n"
+                    'Select them in CLICK (Shift+Up/Down) and delete them, then click "Next"'
+                )
+            if not step.placed:
+                what = f"{label} was asked for by number"
+            elif step.over is not None:
+                what = f"{label} replaces rung {step.over}"
+            else:
+                what = f"{label} is new"
+            prompt = f'{head}: {what}.\nClick "Copy {label}". {_where_to_paste(step)}'
+            steps = len(self._current_steps())
+            if self._step_idx == 0 and steps >= _MANY_STEPS:
+                prompt += (
+                    f'\nWith {steps} steps, switching Copy to "{_COPY_WHOLE}" may be quicker: '
+                    "delete all its rungs in CLICK and paste once"
+                )
+            return prompt
         if self._matches_click(name):
             return (
                 f"{name} already matches CLICK's last save.\n"
@@ -647,13 +744,22 @@ class GuidedPasteWindow(tk.Toplevel):
                 'Click "New Subroutine" to create it in CLICK, or "Copy" if it already exists'
             )
         change = self._changes.get(name)
-        if change is not None and change.differs and name not in self._missing_in_click:
-            # Nothing to paste rung by rung: the proposal only drops rungs
+        if change is not None and change.before and name not in self._missing_in_click:
             return (
-                f"{name} only removes rungs CLICK has: delete them in CLICK, the diff shows which.\n"
-                'Or click "Copy" to copy the whole program'
+                f"{name}: the whole program, {rung_count} rungs, replaces what CLICK has.\n"
+                f'Click "Copy". {self._whole_placement(name)}'
             )
         return f'Click "Copy" to copy {name} to the clipboard'
+
+    def _follow_in_sheet(self, idx: int) -> None:
+        """Move the sheet's own selection to the row and bring it into view.
+
+        A cell the user clicked in that row stays the selected one.
+        """
+        selected = self._sheet.get_currently_selected()
+        if not selected or selected.row != idx:
+            self._sheet.select_cell(idx, COL_FILE, run_binding_func=False)
+        self._sheet.see(idx, COL_FILE, keep_xscroll=True)
 
     def _select_row(self, idx: int) -> None:
         if idx < 0 or idx >= len(self._items):
@@ -661,11 +767,12 @@ class GuidedPasteWindow(tk.Toplevel):
         name = self._items[idx][0]
         if name in self._done:
             return
-        if idx != self._current_idx or self._group_idx >= len(self._groups(name)):
-            self._group_idx = 0
+        if idx != self._current_idx or self._step_idx >= len(self._steps(name)):
+            self._step_idx = 0
         self._current_idx = idx
         self._copied = False
         self._view_name = name
+        self._follow_in_sheet(idx)
         self._update_highlights()
         self._update_action_btn()
         self._status_var.set(self._step_prompt(idx))
@@ -715,7 +822,7 @@ class GuidedPasteWindow(tk.Toplevel):
             self._done.clear()
         self._current_idx = None
         self._copied = False
-        self._group_idx = 0
+        self._step_idx = 0
         self._compare_with_click()
         self._populate_sheet()
         wanted = None if select is None else select.casefold()
@@ -743,14 +850,14 @@ class GuidedPasteWindow(tk.Toplevel):
             self._done.clear()
             self._current_idx = None
             self._copied = False
-            self._group_idx = 0
+            self._step_idx = 0
         elif program.building and self._changes:
             # CLICK saved: keep the rows until the new CSVs are ready.
             self._saved_program = program
             self._compare_lbl.configure(text=program.note)
             return
 
-        old_groups = self._current_groups()
+        old_steps = self._current_steps()
         # Something was known to be left to do; an unread program is not that
         was_pending = self._click_compared and not self._settled()
         self._compare_with_click()
@@ -761,17 +868,17 @@ class GuidedPasteWindow(tk.Toplevel):
             self.destroy()
             return
         self._populate_sheet()
-        groups = self._current_groups()
-        if groups and groups != old_groups:
+        steps = self._current_steps()
+        if steps and steps != old_steps:
             # CLICK took some of the row's rungs: step through what is left.
-            self._group_idx = 0
+            self._step_idx = 0
             self._copied = False
         if self._copied:
             return  # Mid-paste: the row stays current until "Next"
         idx = self._current_idx
         if idx is None or not self._needs_paste(self._items[idx][0]):
             self._advance_to_first_pending()
-        elif groups != old_groups:
+        elif steps != old_steps:
             self._select_row(idx)
 
     def _watch_saved_program(self) -> None:
@@ -810,27 +917,28 @@ class GuidedPasteWindow(tk.Toplevel):
         idx = self._current_idx
         if idx is None:
             return
-        if not self._copied:
+        if not self._copied and not self._nothing_to_copy(self._current_step()):
             # "Copy" or "Import" — perform the action
             self._perform_action(idx)
-        elif self._group_idx + 1 < len(self._current_groups()):
-            # "Next" — the row's next run of rungs
-            self._group_idx += 1
+        elif self._step_idx + 1 < len(self._current_steps()):
+            # "Next" — the row's next step
+            self._step_idx += 1
             self._copied = False
             self._update_action_btn()
             self._status_var.set(self._step_prompt(idx))
-            self._scroll_to_group()
+            self._scroll_to_step()
         else:
             # "Next" — mark done and advance
             self._done.add(self._items[idx][0])
             self._advance_to_next()
 
-    def _on_copy_all(self) -> None:
-        """Copy the current row's whole program instead of stepping through its parts."""
+    def _on_copy_mode(self) -> None:
+        """Handle the Copy switch: remember it, and start the current row's step over."""
+        _save_copy_whole(self._copy_whole_var.get())
         idx = self._current_idx
-        if idx is not None and self._copy_rungs(idx, None):
-            # Nothing of the row is left to step through
-            self._group_idx = len(self._current_groups())
+        if idx is not None:
+            self._step_idx = 0
+            self._select_row(idx)
 
     def _on_skip(self) -> None:
         if self._current_idx is None:
@@ -898,6 +1006,9 @@ class GuidedPasteWindow(tk.Toplevel):
         self._compare_lbl.pack(side=tk.LEFT, padx=(10, 0))
 
         self._show_nicks_var = tk.BooleanVar(value=True)
+        # The Copy switch: off steps through the rungs that differ, on copies whole
+        # programs. It opens as the user last left it.
+        self._copy_whole_var = tk.BooleanVar(value=_read_copy_whole())
         ttk.Checkbutton(
             opts,
             text="Show nicknames in math instructions",
@@ -994,10 +1105,16 @@ class GuidedPasteWindow(tk.Toplevel):
             side=tk.LEFT
         )
 
-        self._copy_all_btn = ttk.Button(
-            btn_frame, text="Copy whole program", command=self._on_copy_all, state="disabled"
-        )
-        self._copy_all_btn.pack(side=tk.LEFT, padx=(5, 0))
+        # What a step copies for a program CLICK already has (_steps)
+        ttk.Label(btn_frame, text="Copy:").pack(side=tk.LEFT, padx=(15, 0))
+        for label, whole in ((_COPY_CHANGED, False), (_COPY_WHOLE, True)):
+            ttk.Radiobutton(
+                btn_frame,
+                text=label,
+                variable=self._copy_whole_var,
+                value=whole,
+                command=self._on_copy_mode,
+            ).pack(side=tk.LEFT, padx=(5, 0))
 
         self._action_btn = ttk.Button(
             btn_frame, text="Copy", command=self._on_action, width=14, state="disabled"
@@ -1037,7 +1154,7 @@ class GuidedPasteWindow(tk.Toplevel):
         super().__init__(parent)
         self.title(f"Guided Paste — {folder.name}")
         self.geometry("900x720")
-        self.minsize(560, 480)
+        self.minsize(660, 480)
 
         self._folder = folder
         self._source_dir = source_dir
@@ -1058,7 +1175,7 @@ class GuidedPasteWindow(tk.Toplevel):
         self._current_idx: int | None = None
         self._copied: bool = False
         # Which of the current row's runs of rungs is being pasted
-        self._group_idx = 0
+        self._step_idx = 0
         # Program name -> the rungs asked for, in place of the ones that differ
         self._selection: dict[str, list[int]] = {}
         self._nickname_path: Path | None = None
@@ -1100,6 +1217,9 @@ class GuidedPasteWindow(tk.Toplevel):
         """
         self._source_dir = source_dir
         self._selection = {select[0]: select[1]} if select and select[1] else {}
+        if self._selection:
+            # Rungs were asked for by number. This is not the user's choice, so it is not saved.
+            self._copy_whole_var.set(False)
         self._start(select[0] if select else None, keep_done=True)
 
     @property

@@ -202,6 +202,10 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - `services/rung_diff.py` is the one comparison of a CSV bundle with CLICK's last save (`csv/`): which programs
   differ, which rungs, and the diff text. Rungs are compared by `rung_fingerprint`; pyrung source is only how a
   difference is shown
+- CLICK pastes over the selected rung: that rung is replaced by the first pasted rung and the rest go in
+  below it. `ProgramChange.steps` turns a program's differences into steps on that basis, worked from the top
+  so each step's rung numbers are the ones CLICK shows: paste over one rung, paste over a new empty rung, or
+  delete rungs. The Copy switch's **Whole program** clears the program in CLICK and pastes it in one piece
 - The folder is read once (`load_bundle`) and compared and copied from memory: a CLICK save regenerates the
   workspace and deletes `csv_output/`, and the window must still know whether what it pasted landed
 - It closes itself when a CLICK save holds everything it was pasting. After a save that leaves work to do it

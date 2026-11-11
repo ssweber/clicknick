@@ -72,6 +72,31 @@ def load_bundle(folder: Path) -> list[ProposedProgram]:
 
 
 @dataclass(frozen=True)
+class PasteStep:
+    """One thing to do in CLICK to turn its program into the proposed one.
+
+    Steps run from the top of the program: by the time one is reached,
+    everything above it already matches, so its rung numbers are the ones CLICK
+    shows. CLICK pastes over the selected rung: that rung is replaced by the
+    first pasted rung and the rest go in below it.
+    """
+
+    # Proposed rung numbers to copy; empty when the step only deletes
+    rungs: tuple[int, ...] = ()
+    # CLICK's rung to select and paste over
+    over: int | None = None
+    # For new rungs, which have nothing to paste over: the rung they go in above.
+    # None with *over* also None means after the last rung.
+    above: int | None = None
+    # CLICK's rungs to delete, when nothing is copied
+    delete: tuple[int, ...] = ()
+    # Which difference of the program the step belongs to, counting from 0
+    block: int = 0
+    # False when the rungs were picked by number: where they go is not known
+    placed: bool = True
+
+
+@dataclass(frozen=True)
 class ProgramChange:
     """How a proposed program differs from the same program in CLICK."""
 
@@ -107,6 +132,27 @@ class ProgramChange:
     def touches(self, selected: Iterable[int]) -> bool:
         """Whether any of the *selected* proposed rungs is one to paste."""
         return not set(selected).isdisjoint(self.changed)
+
+    @property
+    def steps(self) -> tuple[PasteStep, ...]:
+        """What to do in CLICK, from the top of the program down."""
+        steps: list[PasteStep] = []
+        differences = (opcode for opcode in self.opcodes if opcode[0] != "equal")
+        for block, (tag, i1, i2, j1, j2) in enumerate(differences):
+            rungs = tuple(range(j1 + 1, j2 + 1))
+            if tag == "insert":
+                # CLICK's rung i1+1 stands at j1+1 by now, if there is one
+                above = j1 + 1 if i1 < len(self.before) else None
+                steps.append(PasteStep(rungs, above=above, block=block))
+                continue
+            leftover = i2 - i1
+            if tag == "replace":
+                steps.append(PasteStep(rungs, over=j1 + 1, block=block))
+                leftover -= 1  # The paste took the place of the first of CLICK's rungs
+            if leftover:
+                # They now stand right below what was pasted
+                steps.append(PasteStep(delete=tuple(range(j2 + 1, j2 + 1 + leftover)), block=block))
+        return tuple(steps)
 
 
 def compare_rungs(before: Sequence[Rung], after: Sequence[Rung]) -> ProgramChange:
@@ -495,6 +541,9 @@ class RenderedDiff:
     lines: tuple[str, ...] = ()
     # Proposed rung number -> index in *lines* where the block holding it starts
     starts: Mapping[int, int] = field(default_factory=dict)
+    # Index in *lines* where each difference shown starts, in order. They are
+    # the program's differences (``PasteStep.block``) unless rungs were selected.
+    blocks: tuple[int, ...] = ()
 
     @property
     def text(self) -> str:
@@ -522,6 +571,7 @@ def render_diff(
 
     body: list[str] = []
     starts: dict[int, int] = {}
+    blocks: list[int] = []
     for tag, i1, i2, j1, j2 in change.opcodes:
         after_range = range(j1 + 1, j2 + 1)
         if selected_set is not None and selected_set.isdisjoint(after_range):
@@ -538,6 +588,7 @@ def render_diff(
             continue
 
         start = len(body)
+        blocks.append(start)
         if tag in ("delete", "replace"):
             body.extend(
                 _render_rungs(
@@ -554,5 +605,7 @@ def render_diff(
         return RenderedDiff()
     header = (f"--- CLICK/{name}\n", f"+++ proposed/{name}\n")
     return RenderedDiff(
-        (*header, *body), {number: index + len(header) for number, index in starts.items()}
+        (*header, *body),
+        {number: index + len(header) for number, index in starts.items()},
+        tuple(index + len(header) for index in blocks),
     )
