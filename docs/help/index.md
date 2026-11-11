@@ -54,7 +54,7 @@ A workspace is a folder that links up with your open project. Until you pick one
 
 On every CLICK save, ClickNick refreshes `src/plc/` (your ladder as Python), `csv/` (the CLICK snapshot it was built from), nickname data, and its generation scripts. Files you add are left alone. If you edited `src/plc/` and a CLICK save is about to replace it, ClickNick copies it to `backup/src/plc/` first; `clicknick-cli restore` puts it back.
 
-Edits to the ladder text go back into CLICK through **Preview Changes**: review the rung diff, **Copy to Click** the rungs you want, and paste them in CLICK's ladder editor. (**Guided Paste**, under the Ladder menu, is different: it walks you through pasting a whole folder of ladder CSVs, such as a program exported from pyrung.) **Reload from CLICK** throws those edits away and restores the saved CLICK version, taking the same backup first.
+Edits to the ladder text go back into CLICK through **Preview Changes**, which opens Guided Paste on your edits. Each program that differs from CLICK's last save is listed, with its rung diff underneath; step through it with **Copy** to put just the rungs that differ on the clipboard (or **Copy whole program**), and paste them in CLICK's ladder editor. Rows turn **Up to date** as CLICK saves what you pasted, and the window closes once CLICK has saved all of it. If CLICK is saved before you finish, the window stays open and can keep pasting. (**Ladder > Open in Guided Paste** opens the same window on any folder of ladder CSVs, such as a program exported from pyrung.) **Reload from CLICK** throws those edits away and restores the saved CLICK version, taking the same backup first.
 
 ## Where ClickNick writes { #where-clicknick-writes }
 
@@ -62,7 +62,7 @@ ClickNick does not directly edit the `.ckp` file. It works through the files and
 
 - Nickname and comment tools read and write CLICK's temporary `SC_.mdb` working database. Those changes become part of the project only when you save in CLICK.
 - Data View tools read and write temporary `.cdv` files. A Data View created in ClickNick must be imported into CLICK manually.
-- Ladder text edits stay in the workspace until you review them rung by rung in Preview Changes and paste the ones you choose through CLICK's own ladder editor.
+- Ladder text edits stay in the workspace until you review them rung by rung in Preview Changes (Guided Paste) and paste the ones you choose through CLICK's own ladder editor.
 - The Tag Browser is built from nickname data and stores nothing.
 - The Simulator remembers switch positions, analog values and forces in `%LOCALAPPDATA%\ClickNick\simulator\<PLC name>.toml`, or in `simulator.toml` inside the workspace once you set one up.
 

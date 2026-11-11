@@ -433,16 +433,57 @@ def test_main_window_preview_changes_uses_consolidated_workflow() -> None:
     app._update_status.assert_called_once_with("Previewing 4 changed rungs", "connected")
 
 
+def test_guided_paste_shows_each_folder_in_one_window(monkeypatch, tmp_path: Path) -> None:
+    opened: list[MagicMock] = []
+
+    def _open(*_args, **kwargs) -> MagicMock:
+        opened.append(MagicMock(opened_with=kwargs))
+        return opened[-1]
+
+    monkeypatch.setattr("clicknick.views.guided_paste_window.GuidedPasteWindow", _open)
+    app = ClickNickApp.__new__(ClickNickApp)
+    app.root = MagicMock()
+    app._guided_paste_windows = {}
+    folder, source = tmp_path / "csv_output", tmp_path / "src" / "plc"
+
+    # Nothing to paste and no window showing the folder: none is opened
+    app._show_guided_paste(folder, source, None, None, False)
+    assert opened == []
+
+    app._show_guided_paste(folder, source, "main.csv", [3], True)
+    assert len(opened) == 1
+    assert opened[0].opened_with["source_dir"] == source
+    assert opened[0].opened_with["select"] == ("main.csv", [3])
+
+    # Exported again: the same window reads the folder again
+    app._show_guided_paste(folder, source, None, None, True)
+    assert len(opened) == 1
+    opened[0].reload.assert_called_once_with(source_dir=source, select=None)
+
+    # A closed window is forgotten; another folder gets its own
+    opened[0].winfo_exists.return_value = False
+    app._show_guided_paste(folder)
+    app._show_guided_paste(tmp_path / "other")
+    assert len(opened) == 3
+    assert opened[1].opened_with["source_dir"] is None
+
+
 def test_successful_main_window_reload_clears_changed_rung_count() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
     app._request_ui_refresh = MagicMock()
     app._update_status = MagicMock()
     app._session = SimpleNamespace(record_rung_stage=MagicMock())
+    proposal = MagicMock(shows_workspace_proposal=True)
+    folder = MagicMock(shows_workspace_proposal=False)
+    app._guided_paste_windows = {Path("csv_output"): proposal, Path("export"): folder}
 
     app._workspace_reload_finished(True, None)
 
     app._session.record_rung_stage.assert_called_once_with(0)
     app._update_status.assert_called_once_with("Workspace reloaded from CLICK", "connected")
+    # The discarded edits are no longer offered for pasting; an unrelated folder stays
+    proposal.destroy.assert_called_once_with()
+    folder.destroy.assert_not_called()
 
 
 def test_main_window_reload_ignores_completion_from_replaced_session(monkeypatch) -> None:

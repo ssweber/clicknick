@@ -34,6 +34,7 @@ from ..services.annotation_service import AnnotationService
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
     from ..data.address_store import AddressStore
 
@@ -48,7 +49,9 @@ class DispatchContext:
     resolve_tag: Callable[[str], int | None] | None = None
     analysis: Any | None = None  # AnalysisService (avoid import for lightweight CLI)
     annotation: AnnotationService = field(default_factory=AnnotationService)
-    show_preview: Callable[..., None] | None = None
+    # (bundle folder, workspace source folder, program to select, its rungs to
+    # paste, open a window if none shows the folder) -> Guided Paste
+    show_proposal: Callable[[Path, Path, str | None, list[int] | None, bool], None] | None = None
     show_address_editor: Callable[[str], None] | None = None
     show_save_prompt: Callable[[str, str], None] | None = None
     record_staged_rungs: Callable[[int], None] | None = None
@@ -319,7 +322,7 @@ tags:
 
 rungs:
   rung list [file]
-  rung apply [file] [--select r3,r7]  -> stage and open the paste window
+  rung apply [file] [--select r3,r7]  -> stage and open Guided Paste
 
 workflow:
   prompt-save"""

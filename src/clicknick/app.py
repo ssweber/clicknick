@@ -538,6 +538,10 @@ class ClickNickApp:
         if success:
             if self._session is not None:
                 self._session.record_rung_stage(0)
+            # The edits were thrown away: so is the window offering to paste them.
+            for window in self._guided_paste_windows.values():
+                if window.winfo_exists() and window.shows_workspace_proposal:
+                    window.destroy()
             self._update_status("Workspace reloaded from CLICK", "connected")
             self._request_ui_refresh()
             return
@@ -1788,39 +1792,59 @@ class ClickNickApp:
             "connected",
         )
 
+    def _show_guided_paste(
+        self,
+        folder: Path,
+        source_dir: Path | None = None,
+        program: str | None = None,
+        rungs: list[int] | None = None,
+        create: bool = True,
+    ) -> None:
+        """Show *folder* in Guided Paste: one window per folder, reloaded when shown again.
+
+        Preview Changes (``rung apply``) passes the workspace source the folder
+        was exported from, and may name a program to start on and the rungs of
+        it to paste. With *create* off, only a window already showing the folder
+        is brought up to date.
+        """
+        from .views.guided_paste_window import GuidedPasteWindow
+
+        self._guided_paste_windows = {
+            path: window
+            for path, window in self._guided_paste_windows.items()
+            if window.winfo_exists()
+        }
+        select = (program, rungs) if program else None
+        key = folder.resolve()
+        window = self._guided_paste_windows.get(key)
+        if window is not None:
+            window.reload(source_dir=source_dir, select=select)
+        elif create:
+            window = self._guided_paste_windows[key] = GuidedPasteWindow(
+                self.root,
+                folder,
+                get_mdb_path=self._live_mdb_path,
+                get_click_hwnd=lambda: self._click.hwnd if self._click else None,
+                get_saved_program=lambda: (
+                    self._session.saved_program() if self._session else SavedProgram()
+                ),
+                source_dir=source_dir,
+                select=select,
+                on_pasted=lambda: self._update_status(
+                    "CLICK saved everything from Guided Paste", "connected"
+                ),
+            )
+        if window is not None and create:
+            window.after_idle(window.show)
+
     def _open_guided_paste(self):
         """Open a folder of ladder CSVs in the guided paste panel."""
         folder = filedialog.askdirectory(
             title="Open in Guided Paste — choose ladder CSV folder",
             parent=self.root,
         )
-        if not folder:
-            return
-
-        from pathlib import Path
-
-        from .utils.mdb_shared import find_click_database
-        from .views.guided_paste_window import GuidedPasteWindow
-
-        folder_path = Path(folder)
-
-        def get_mdb_path() -> Path | None:
-            """Resolve MDB from the currently connected Click instance."""
-            click = self._click
-            if click is None:
-                return None
-            db_path = find_click_database(click_hwnd=click.hwnd)
-            return Path(db_path) if db_path else None
-
-        GuidedPasteWindow(
-            self.root,
-            folder_path,
-            get_mdb_path=get_mdb_path,
-            get_click_hwnd=lambda: self._click.hwnd if self._click else None,
-            get_saved_program=lambda: (
-                self._session.saved_program() if self._session else SavedProgram()
-            ),
-        )
+        if folder:
+            self._show_guided_paste(Path(folder))
 
     def _create_menu_bar(self):
         """Create the application menu bar."""
@@ -2009,6 +2033,9 @@ class ClickNickApp:
         # The loaded address data (CSV or database) and the windows bound to it.
         self._data = None
 
+        # Open Guided Paste windows by the folder each shows
+        self._guided_paste_windows = {}
+
         # Live editing server: lets `clicknick-cli` push edits into this
         # running instance. Holds getters (not snapshots) so it always targets
         # the current store and advertises in the current session directory,
@@ -2022,7 +2049,7 @@ class ClickNickApp:
             lambda: self._click.project_name if self._click else None,
             lambda: self._session.analysis if self._session else None,
             get_workspace_dir=self._workspace_source_dir,
-            get_click_hwnd=lambda: self._click.hwnd if self._click else None,
+            show_proposal=self._show_guided_paste,
             get_mdb_path=self._live_mdb_path,
             get_synced_pending=lambda: self._session.synced_pending if self._session else 0,
             get_staged_rungs=lambda: self._session.staged_rungs if self._session else 0,

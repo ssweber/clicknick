@@ -195,6 +195,22 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - The generated code, persisted project and tag map all come from one nickname snapshot read from CLICK's
   database, so tag names always match the code. ClickNick edits reach analysis on the next build after Sync
 
+### Guided Paste
+- The one window for getting ladder into CLICK (`views/guided_paste_window.py`): **Ladder > Open in Guided Paste**
+  opens it on any folder of ladder CSVs, **Preview Changes** / `clicknick-cli rung apply` on the workspace's
+  `csv_output/`. The app keeps one window per folder and reloads it when the folder is shown again
+- `services/rung_diff.py` is the one comparison of a CSV bundle with CLICK's last save (`csv/`): which programs
+  differ, which rungs, and the diff text. Rungs are compared by `rung_fingerprint`; pyrung source is only how a
+  difference is shown
+- The folder is read once (`load_bundle`) and compared and copied from memory: a CLICK save regenerates the
+  workspace and deletes `csv_output/`, and the window must still know whether what it pasted landed
+- It closes itself when a CLICK save holds everything it was pasting. After a save that leaves work to do it
+  stays open with a notice (the edited source is then in `backup/src/plc`); **Reload from CLICK** closes it,
+  because that throws the edits away. It is not modal: the Address Editor's Sync is part of the same workflow
+- Given the workspace source (`source_dir`), the diff shows that source through the exporter's `rung_sources.json`
+  and there is no nicknames step (workspace tags go through `tag apply`). Any other folder is shown by converting
+  its CSVs with pyrung
+
 ### Simulation
 - `ConnectionSession.simulation` (a `SimulationSession`) is the one home of the simulated PLC: the pyrung DAP
   subprocess, its Modbus client, switch/analog/force settings and their persistence (`services/sim_state.py`)

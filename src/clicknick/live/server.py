@@ -72,7 +72,8 @@ class LiveServer:
         get_session_label: Callable[[], str | None] | None = None,
         get_analysis: Callable[[], AnalysisService | None] | None = None,
         get_workspace_dir: Callable[[], Path | None] | None = None,
-        get_click_hwnd: Callable[[], int | None] | None = None,
+        show_proposal: Callable[[Path, Path, str | None, list[int] | None, bool], None]
+        | None = None,
         get_mdb_path: Callable[[], Path | None] | None = None,
         get_synced_pending: Callable[[], int] | None = None,
         get_staged_rungs: Callable[[], int] | None = None,
@@ -86,7 +87,7 @@ class LiveServer:
         self._get_session_label = get_session_label
         self._get_analysis = get_analysis
         self._get_workspace_dir = get_workspace_dir
-        self._get_click_hwnd = get_click_hwnd
+        self._show_proposal = show_proposal
         self._get_mdb_path = get_mdb_path
         self._get_synced_pending = get_synced_pending
         self._get_staged_rungs = get_staged_rungs
@@ -146,35 +147,6 @@ class LiveServer:
         if analysis is not None and analysis.is_available:
             resolve_tag = analysis.tag_to_addr_key.get
 
-        show_preview = None
-        if self._root is not None:
-            get_hwnd = self._get_click_hwnd
-            get_mdb = self._get_mdb_path
-
-            def _open_preview(
-                file_stem: str,
-                selection: str | None,
-                diff_text: str,
-                rung_nums: list[int] | None,
-                pending_dir: Path,
-                csv_stem: str | None = None,
-            ) -> None:
-                from ..views.rung_preview_window import RungPreviewWindow
-
-                RungPreviewWindow(
-                    self._root,
-                    diff_text,
-                    file_stem=file_stem,
-                    selection=selection,
-                    rung_nums=rung_nums,
-                    pending_dir=pending_dir,
-                    get_click_hwnd=get_hwnd,
-                    get_mdb_path=get_mdb,
-                    csv_stem=csv_stem,
-                )
-
-            show_preview = _open_preview
-
         show_address_editor = self._open_editor
 
         show_save_prompt = None
@@ -197,7 +169,7 @@ class LiveServer:
             store=self._get_store(),
             resolve_tag=resolve_tag,
             analysis=analysis,
-            show_preview=show_preview,
+            show_proposal=self._show_proposal,
             show_address_editor=show_address_editor,
             show_save_prompt=show_save_prompt,
             record_staged_rungs=self._record_staged_rungs,
