@@ -103,6 +103,8 @@ def _bare_window(folder_names: list[str] = NAMES):
     window._saved_program = SavedProgram()
     window._before_sources = None
     window._after_sources = BundleSources()
+    window._expanded = {}
+    window._expanded_change = None
     window._sheet = Mock()
     window._text = Mock()
     window._text.index.return_value = "1.0"
@@ -805,11 +807,38 @@ def test_vs_click_column_counts_rungs(monkeypatch, change: ProgramChange, label:
     assert window._click_label("main.csv") == label
 
 
-def _inserted(window) -> list[tuple[str, str]]:
-    """(line, tag) for everything put in the diff pane since it was last cleared."""
+def _pieces(window) -> list[tuple[str, str | tuple[str, ...]]]:
+    """(text, tags) of each insert into the diff pane since it was last cleared."""
     calls = window._text.method_calls
     last_clear = max(i for i, call in enumerate(calls) if call[0] == "delete")
     return [(call.args[1], call.args[2]) for call in calls[last_clear:] if call[0] == "insert"]
+
+
+def _inserted(window) -> list[tuple[str, str]]:
+    """(line, line tag) for everything put in the diff pane since it was last cleared.
+
+    A line put in piece by piece (its gutter, its changed words) is joined.
+    """
+    lines: list[tuple[str, str]] = []
+    for text, tags in _pieces(window):
+        if lines and not lines[-1][0].endswith("\n"):
+            lines[-1] = (lines[-1][0] + text, lines[-1][1])
+        else:
+            lines.append((text, tags if isinstance(tags, str) else "".join(tags[:1])))
+    return lines
+
+
+def test_pane_marks_the_gutter_and_the_changed_words(monkeypatch) -> None:
+    window = _on_main(monkeypatch, compare_rungs(_coils("Y001"), _coils("Y009")))
+
+    assert _pieces(window)[-6:] == [
+        ("+", ("added", "added_gutter")),
+        ("R1  out(", "added"),
+        ("Y009", ("added", "added_word")),
+        (")  # ", "added"),
+        ("Y009", ("added", "added_word")),
+        ("\n", "added"),
+    ]
 
 
 def test_pane_shows_the_current_rows_difference_and_scrolls_to_its_step(monkeypatch) -> None:
@@ -824,14 +853,35 @@ def test_pane_shows_the_current_rows_difference_and_scrolls_to_its_step(monkeypa
         ),
         ("--- CLICK/main.csv\n", "file_header"),
         ("+++ proposed/main.csv\n", "file_header"),
+        (" R1  out(Y001)  # Y001\n", ""),
         ("+R2  out(Y005)  # Y005\n", "added"),
-        ("~ R2 -> R3  # Y002\n", "renumbered"),
+        (" R3  out(Y002)  # Y002\n", ""),
     ]
     assert window._shown_diff.starts == {2: 2}
-    # Line 4 of 5 in the pane: the note, two header lines, then the rung to paste
-    window._text.index.return_value = "5.0"
+    # Line 4 of 6 in the pane: the note, two header lines, then the rung above
+    # the one to paste
+    window._text.index.return_value = "6.0"
     window._scroll_to_step()
-    window._text.yview_moveto.assert_called_with(3 / 5)
+    window._text.yview_moveto.assert_called_with(3 / 6)
+
+
+def test_clicking_a_separator_arrow_shows_more_unchanged_rungs(monkeypatch) -> None:
+    coils = [f"Y00{number}" for number in range(1, 9)]
+    window = _on_main(monkeypatch, compare_rungs(_coils(*coils), _coils(*coils[:7], "Y009")))
+    assert _inserted(window)[3] == ("↑ @@ R1..6 unchanged @@\n", "separator")
+
+    # The arrow is on line 4: the note and two header lines are above it
+    positions = {"@3,40": "4.0", "@0,0": "1.0", "end-1c": "9.0"}
+    window._text.index.side_effect = positions.__getitem__
+    window._text.get.return_value = "↑"
+    window._on_expand(SimpleNamespace(x=3, y=40))
+
+    assert _inserted(window)[3] == ("↑ @@ R1..3 unchanged @@\n", "separator")
+    assert [line for line, _tag in _inserted(window)[4:8]] == [
+        f" R{number}  out(Y00{number})  # Y00{number}\n" for number in range(4, 8)
+    ]
+    # Where the pane was, not the step's difference
+    window._text.yview_moveto.assert_called_with(0)
 
 
 def test_pane_explains_rows_with_nothing_to_show(monkeypatch) -> None:

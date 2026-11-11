@@ -190,7 +190,10 @@ def test_without_a_window_one_file_replies_with_its_diff(project) -> None:
 
     reply = dispatch(ctx, "rung apply main")
 
-    assert "--- CLICK/main.csv\n+++ proposed/main.csv\n+R2  out(Y005)\n~ R2 -> R3\n" in reply
+    assert (
+        "--- CLICK/main.csv\n+++ proposed/main.csv\n"
+        " R1  out(Y001)\n+R2  out(Y005)\n R3  out(Y002)\n"
+    ) in reply
 
 
 def _earlier_export(project_dir: Path) -> tuple[Path, Path]:

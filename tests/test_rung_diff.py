@@ -11,7 +11,9 @@ from laddercodec import Coil, Contact, Rung, write_csv
 from clicknick.services.rung_diff import (
     BundleComparison,
     BundleSources,
+    Gap,
     PasteStep,
+    RenderedDiff,
     compare_bundle,
     compare_rungs,
     format_group,
@@ -263,8 +265,9 @@ def test_diff_records_where_each_difference_starts() -> None:
 
     diff = render_diff(change, "main.csv", before=BundleSources(), after=BundleSources())
 
-    assert diff.lines[2:] == ("-R1  # A\n", "+R1  # A1\n", "-R4  # D\n")
-    assert diff.blocks == (2, 4)
+    assert diff.lines[2:] == ("-R1  # A\n", "+R1  # A1\n", " R2  # B\n", " R3  # C\n", "-R4  # D\n")
+    # The second difference starts with the unchanged rung shown above it
+    assert diff.blocks == (2, 5)
     assert [step.block for step in change.steps] == [0, 1]
 
 
@@ -303,20 +306,82 @@ def test_diff_shows_insert_and_neutral_renumber() -> None:
     assert change.changed == (7,)
     assert "+    comment('Bottom shift')" in diff.text
     assert "+    with rung(C1):  # R7" in diff.text
-    assert "~ R7 -> R8  # Bottom minimum" in diff.text
+    # The rung below is shown unchanged, as proposed: moved down one
+    assert "     comment('Bottom minimum')\n     with rung(C1):  # R8" in diff.text
     assert "-    comment('Bottom minimum')" not in diff.text
     assert "+    comment('Bottom minimum')" not in diff.text
-    # The block to paste can be found in the text
-    assert diff.lines[diff.starts[7]] == "+    comment('Bottom shift')\n"
+    # The block to paste can be found in the text, after the unchanged rung above it
+    assert diff.lines[diff.starts[7]] == "     comment('Existing 6')\n"
+    assert diff.lines[diff.starts[7] + 3] == "+    comment('Bottom shift')\n"
 
 
-def test_diff_shows_a_run_of_renumbered_rungs_as_one_line() -> None:
+def test_unchanged_rungs_beyond_the_one_beside_a_difference_are_a_separator() -> None:
     # One rung inserted near the top moves every rung below it
     change = compare_rungs(_commented("A", "B", "C", "D"), _commented("A", "New", "B", "C", "D"))
 
     diff = render_diff(change, "main.csv", before=BundleSources(), after=BundleSources())
 
-    assert diff.lines[2:] == ("+R2  # New\n", "~ R2..4 -> R3..5\n")
+    assert diff.lines[2:] == (
+        " R1  # A\n",
+        "+R2  # New\n",
+        " R3  # B\n",
+        "@@ R3..4 unchanged, now R4..5 @@\n",
+    )
+    assert diff.gaps == {5: Gap(opcode=2, shown=(1, 0), hidden=2, follows=True, precedes=False)}
+    assert diff.gaps[5].arrows == "↓"
+
+
+def test_a_separator_between_differences_expands_from_either_end() -> None:
+    labels = [f"Same {number}" for number in range(1, 11)]
+    change = compare_rungs(_commented("A", *labels, "B"), _commented("A1", *labels, "B1"))
+
+    def _render(shown: dict[int, tuple[int, int]] | None = None) -> RenderedDiff:
+        return render_diff(
+            change, "main.csv", before=BundleSources(), after=BundleSources(), shown=shown
+        )
+
+    diff = _render()
+    ((index, gap),) = diff.gaps.items()
+    assert diff.lines[index] == "@@ R3..10 unchanged @@\n"
+    assert (gap.shown, gap.hidden, gap.arrows) == ((1, 1), 8, "↓↑")
+
+    # Down shows more below the difference above, up more above the one below
+    assert gap.expand("↓") == (4, 1)
+    assert gap.expand("↑") == (1, 4)
+    diff = _render({gap.opcode: gap.expand("↑")})
+    ((index, gap),) = diff.gaps.items()
+    assert diff.lines[index] == "@@ R3..7 unchanged @@\n"
+    assert diff.lines[index + 1 : index + 5] == tuple(
+        f" R{number}  # Same {number - 1}\n" for number in range(8, 12)
+    )
+
+    # Once few are left, one arrow shows them all
+    diff = _render({gap.opcode: (3, 4)})
+    ((index, gap),) = diff.gaps.items()
+    assert (gap.hidden, gap.arrows) == (3, "↕")
+    assert not _render({gap.opcode: gap.expand("↕")}).gaps
+
+
+def test_a_separator_above_the_first_difference_expands_up() -> None:
+    labels = [f"Same {number}" for number in range(1, 6)]
+    change = compare_rungs(_commented(*labels, "A"), _commented(*labels, "A1"))
+
+    diff = render_diff(change, "main.csv", before=BundleSources(), after=BundleSources())
+
+    assert diff.lines[2:4] == ("@@ R1..4 unchanged @@\n", " R5  # Same 5\n")
+    assert diff.gaps[2].arrows == "↑"
+    assert diff.blocks == (3,)
+
+
+def test_selected_rungs_are_shown_without_unchanged_rungs() -> None:
+    change = compare_rungs(_commented("A", "B", "C"), _commented("A", "B1", "C"))
+
+    diff = render_diff(
+        change, "main.csv", before=BundleSources(), after=BundleSources(), selected=[2]
+    )
+
+    assert diff.lines[2:] == ("-R2  # B\n", "+R2  # B1\n")
+    assert not diff.gaps
 
 
 def test_diff_uses_exporter_manifest_for_source_chunk() -> None:
@@ -386,6 +451,69 @@ with Program() as logic:
     assert "+R1  # Flag bottom thickness" not in diff.text
 
 
+def _marked(diff: RenderedDiff, index: int) -> str:
+    """Line *index* of *diff* with its changed words in brackets."""
+    line = diff.lines[index].rstrip("\n")
+    for start, end in reversed(diff.words.get(index, ())):
+        line = f"{line[:start]}[{line[start:end]}]{line[end:]}"
+    return line
+
+
+def test_a_changed_rung_shows_only_its_changed_lines_and_words() -> None:
+    before = _program(("1", "Fill tank when level low", "copy(DS1, DS101)"))
+    after = _program(("1", "Fill tank when level is low", "copy(DS1, DS101)"))
+
+    change = compare_rungs(
+        _commented("Fill tank when level low"), _commented("Fill tank when level is low")
+    )
+    diff = render_diff(change, "main.csv", before=_sources(before), after=_sources(after))
+
+    assert [_marked(diff, index) for index in range(2, len(diff.lines))] == [
+        "-    comment('Fill tank when level low')",
+        "+    comment('Fill tank when level [is ]low')",
+        "     with rung(C1):  # R1",
+        "         copy(DS1, DS101)",
+    ]
+
+
+def test_a_rung_marker_alone_does_not_make_a_line_differ() -> None:
+    before = _program(("9", "Pump", "copy(DS1, DS101)"))
+    after = _program(("10", "Pump", "copy(DS2, DS101)"))
+
+    change = compare_rungs(_rungs("Y001"), _rungs("Y002"))
+    diff = render_diff(
+        change, "main.csv", before=_sources(before, {1: [5]}), after=_sources(after, {1: [5]})
+    )
+
+    assert [_marked(diff, index) for index in range(2, len(diff.lines))] == [
+        "     comment('Pump')",
+        "     with rung(C1):  # R10",
+        "-        copy([DS1], DS101)",
+        "+        copy([DS2], DS101)",
+    ]
+
+
+def test_rungs_whose_source_shows_no_difference_are_shown_whole() -> None:
+    source = _program(("1", "Pump", "copy(DS1, DS101)"))
+
+    change = compare_rungs(_rungs("Y001"), _rungs("Y002"))
+    diff = render_diff(change, "main.csv", before=_sources(source), after=_sources(source))
+
+    assert [line[0] for line in diff.lines[2:]] == ["-"] * 3 + ["+"] * 3
+    assert diff.words == {}
+
+
+def test_lines_with_little_in_common_are_not_split_into_words() -> None:
+    before = _program(("1", "Pump", "copy(DS1, DS101)"))
+    after = _program(("1", "Pump", "out(Y001)"))
+
+    change = compare_rungs(_rungs("Y001"), _rungs("Y002"))
+    diff = render_diff(change, "main.csv", before=_sources(before), after=_sources(after))
+
+    assert diff.lines[4:] == ("-        copy(DS1, DS101)\n", "+        out(Y001)\n")
+    assert diff.words == {}
+
+
 def test_diff_lists_rungs_by_number_without_source() -> None:
     change = compare_rungs(_commented("Keep"), _commented("Keep", "Start the pump"))
 
@@ -394,6 +522,7 @@ def test_diff_lists_rungs_by_number_without_source() -> None:
     assert diff.lines == (
         "--- CLICK/main.csv\n",
         "+++ proposed/main.csv\n",
+        " R1  # Keep\n",
         "+R2  # Start the pump\n",
     )
 
@@ -403,7 +532,7 @@ def test_diff_without_source_names_each_rungs_instructions() -> None:
 
     diff = render_diff(change, "main.csv", before=BundleSources(), after=BundleSources())
 
-    assert diff.lines[2:] == ("+R2  out(Y002)\n",)
+    assert diff.lines[2:] == (" R1  out(Y001)\n", "+R2  out(Y002)\n")
 
 
 def test_diff_of_a_new_program_is_all_added_and_of_a_dropped_one_all_removed() -> None:
@@ -494,7 +623,12 @@ def test_round_trip_generates_numbered_source_for_a_bundle(tmp_path: Path) -> No
     change = compare_rungs(_rungs("Y001"), _rungs("Y001", "Y002"))
     diff = render_diff(change, "main.csv", before=BundleSources(), after=sources)
 
-    assert diff.lines[2:] == ("+    with rung():  # R2\n", "+        out(Y002)\n")
+    assert diff.lines[2:] == (
+        "     with rung():  # R1\n",
+        "         out(Y001)\n",
+        "+    with rung():  # R2\n",
+        "+        out(Y002)\n",
+    )
 
 
 def test_round_trip_of_something_pyrung_cannot_convert_is_empty(tmp_path: Path) -> None:

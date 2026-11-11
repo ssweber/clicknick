@@ -71,6 +71,11 @@ _BG_CURRENT = "#cce5ff"
 _FG_MATCHES = "gray"
 _FG_ONLY_IN_CLICK = "#a94442"
 
+# Diff pane text (GitHub Desktop's light theme); see the tags in _build_ui
+_DIFF_TEXT = "#24292e"
+_DIFF_MUTED = "#586069"
+_DIFF_LINE_TAGS = {"+": "added", "-": "removed"}
+
 # The Copy switch: what a step copies for a program CLICK already has
 _COPY_CHANGED = "Changed rungs"
 _COPY_WHOLE = "Whole program"
@@ -367,7 +372,10 @@ class GuidedPasteWindow(tk.Toplevel):
         note = ""
         if not before.text(name) and not after.text(name):
             note = "pyrung could not show this program as text; each rung is listed by its instructions."
-        return note, render_diff(change, name, before=before, after=after)
+        if change is not self._expanded_change:
+            # What was expanded belongs to the difference it was expanded in
+            self._expanded_change, self._expanded = change, {}
+        return note, render_diff(change, name, before=before, after=after, shown=self._expanded)
 
     def _scroll_to_step(self) -> None:
         """Bring the difference the current step works on to the top of the pane."""
@@ -386,8 +394,13 @@ class GuidedPasteWindow(tk.Toplevel):
             total = int(self._text.index("end-1c").split(".")[0])
             self._text.yview_moveto((line + self._diff_first_line - 1) / total)
 
-    def _show_diff(self) -> None:
-        """Show how the viewed row's program differs from CLICK."""
+    def _show_diff(self, *, keep_scroll: bool = False) -> None:
+        """Show how the viewed row's program differs from CLICK.
+
+        Scrolls to the current step's difference, or with *keep_scroll* stays
+        where the pane was.
+        """
+        top_line = int(self._text.index("@0,0").split(".")[0]) if keep_scroll else 0
         note, diff = self._describe_view()
         self._text.configure(state=tk.NORMAL)
         self._text.delete("1.0", tk.END)
@@ -395,16 +408,45 @@ class GuidedPasteWindow(tk.Toplevel):
             self._text.insert(tk.END, f"{note}\n", "note")
         for index, line in enumerate(diff.lines):
             if index < 2:
-                tag = "file_header"
-            elif line.startswith("~"):
-                tag = "renumbered"
-            else:
-                tag = "added" if line.startswith("+") else "removed"
-            self._text.insert(tk.END, line, tag)
+                self._text.insert(tk.END, line, "file_header")
+                continue
+            gap = diff.gaps.get(index)
+            if gap is not None:
+                for arrow in gap.arrows:
+                    self._text.insert(tk.END, arrow, ("separator", "expander"))
+                self._text.insert(tk.END, f" {line}", "separator")
+                continue
+            tag = _DIFF_LINE_TAGS.get(line[0])
+            if tag not in ("added", "removed"):
+                self._text.insert(tk.END, line, tag or ())
+                continue
+            # The +/- sits in its own gutter colour; the changed words are darker
+            self._text.insert(tk.END, line[0], (tag, f"{tag}_gutter"))
+            column = 1
+            for start, end in diff.words.get(index, ()):
+                if column < start:
+                    self._text.insert(tk.END, line[column:start], tag)
+                self._text.insert(tk.END, line[start:end], (tag, f"{tag}_word"))
+                column = end
+            self._text.insert(tk.END, line[column:], tag)
         self._text.configure(state=tk.DISABLED)
         self._shown_diff = diff
         self._diff_first_line = 2 if note else 1  # as the Text widget numbers lines
-        self._scroll_to_step()
+        if keep_scroll:
+            total = int(self._text.index("end-1c").split(".")[0])
+            self._text.yview_moveto((top_line - 1) / total)
+        else:
+            self._scroll_to_step()
+
+    def _on_expand(self, event: tk.Event) -> None:
+        """Show more of the unchanged rungs behind the clicked separator arrow."""
+        position = self._text.index(f"@{event.x},{event.y}")
+        gap = self._shown_diff.gaps.get(int(position.split(".")[0]) - self._diff_first_line)
+        arrow = self._text.get(position)
+        if gap is None or arrow not in gap.arrows:
+            return
+        self._expanded[gap.opcode] = gap.expand(arrow)
+        self._show_diff(keep_scroll=True)
 
     # ------------------------------------------------------------------
     # Row highlighting
@@ -1084,7 +1126,8 @@ class GuidedPasteWindow(tk.Toplevel):
             wrap=tk.NONE,
             height=10,
             state=tk.DISABLED,
-            background="#fafafa",
+            background="#ffffff",
+            foreground=_DIFF_TEXT,
         )
         scrollbar_y = ttk.Scrollbar(diff_frame, orient=tk.VERTICAL, command=self._text.yview)
         scrollbar_x = ttk.Scrollbar(diff_frame, orient=tk.HORIZONTAL, command=self._text.xview)
@@ -1094,11 +1137,23 @@ class GuidedPasteWindow(tk.Toplevel):
         scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
         self._text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        self._text.tag_configure("added", background="#d4edda")
-        self._text.tag_configure("removed", background="#f8d7da")
-        self._text.tag_configure("renumbered", foreground="#6a737d")
-        self._text.tag_configure("file_header", foreground="#6a737d", font=("Consolas", 10, "bold"))
-        self._text.tag_configure("note", foreground="#6a737d", font=("TkDefaultFont", 9))
+        # GitHub Desktop's light diff colours. Tags configured later draw on top,
+        # so the gutter and word tags come after the line tags.
+        self._text.tag_configure("added", background="#e6ffed")
+        self._text.tag_configure("removed", background="#ffeef0")
+        self._text.tag_configure("added_gutter", background="#cdffd8")
+        self._text.tag_configure("removed_gutter", background="#ffdce0")
+        self._text.tag_configure("added_word", background="#acf2bd")
+        self._text.tag_configure("removed_word", background="#fdb8c0")
+        self._text.tag_configure("separator", background="#f1f8ff", foreground=_DIFF_MUTED)
+        self._text.tag_configure("expander", background="#dbedff", foreground="#0366d6")
+        self._text.tag_bind("expander", "<Button-1>", self._on_expand)
+        self._text.tag_bind("expander", "<Enter>", lambda _e: self._text.configure(cursor="hand2"))
+        self._text.tag_bind("expander", "<Leave>", lambda _e: self._text.configure(cursor="xterm"))
+        self._text.tag_configure(
+            "file_header", foreground=_DIFF_MUTED, font=("Consolas", 10, "bold")
+        )
+        self._text.tag_configure("note", foreground=_DIFF_MUTED, font=("TkDefaultFont", 9))
 
         # --- buttons (frame packed above, before the panes) ---
         ttk.Button(btn_frame, text="⟳ Restart", command=self._on_restart, width=10).pack(
@@ -1192,6 +1247,10 @@ class GuidedPasteWindow(tk.Toplevel):
         self._view_name: str | None = None
         self._shown_diff = RenderedDiff()
         self._diff_first_line = 1
+        # Unchanged rungs shown behind each separator (render_diff's *shown*), for the
+        # difference the pane shows
+        self._expanded: dict[int, tuple[int, int]] = {}
+        self._expanded_change: ProgramChange | None = None
         # pyrung source of CLICK's program and the folder's, generated when first shown
         self._before_sources: BundleSources | None = None
         self._after_sources: BundleSources | None = None

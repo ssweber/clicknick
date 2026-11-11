@@ -27,6 +27,14 @@ _MAIN = "main.csv"
 _SUBROUTINE_NAME_RE = re.compile(r'@subroutine\("([^"]+)"\)')
 _RUNG_MARKER_RE = re.compile(r"#\s*R(\d+)\s*$")
 _COMMENT_SUMMARY_LIMIT = 88
+# A line splits into words, runs of spaces, and single punctuation marks
+_WORD_RE = re.compile(r"\w+|\s+|[^\w\s]")
+# Paired lines sharing less than this are shown changed whole, not word by word
+_PAIRED_LINE_MIN_RATIO = 0.5
+# Unchanged rungs shown above and below each difference, like a diff's lines of context
+CONTEXT_RUNGS = 1
+# How many more unchanged rungs one click on a separator's arrow shows
+EXPAND_RUNGS = 3
 
 # One SequenceMatcher step: (tag, CLICK start, CLICK end, proposed start, proposed end)
 Opcode = tuple[str, int, int, int, int]
@@ -513,37 +521,154 @@ def _render_rungs(
     rung_numbers: range,
     source: str,
     chunks_by_rung: dict[int, tuple[_SourceChunk, ...]],
-    *,
-    prefix: str,
 ) -> list[str]:
+    """The lines that show *rung_numbers*, without line endings."""
     lines = source.splitlines()
     result: list[str] = []
     emitted: set[tuple[int, int]] = set()
     for rung_number in rung_numbers:
         chunks = chunks_by_rung.get(rung_number, ())
         if not chunks:
-            result.append(f"{prefix}R{rung_number}{_rung_summary(rungs[rung_number - 1])}\n")
+            result.append(f"R{rung_number}{_rung_summary(rungs[rung_number - 1])}")
             continue
         for chunk in chunks:
             identity = (chunk.start_line, chunk.end_line)
             if identity in emitted:
                 continue
             emitted.add(identity)
-            for line in lines[chunk.start_line - 1 : chunk.end_line]:
-                result.append(f"{prefix}{line}\n")
+            result.extend(lines[chunk.start_line - 1 : chunk.end_line])
     return result
+
+
+# Column ranges (start, end) of one shown line
+Spans = tuple[tuple[int, int], ...]
+
+
+def _line_key(line: str) -> str:
+    """A source line as compared: its ``# Rn`` marker only numbers the rung."""
+    return _RUNG_MARKER_RE.sub("", line).rstrip()
+
+
+def _changed_words(old: str, new: str) -> tuple[Spans, Spans]:
+    """Where two paired lines differ, word by word, as column ranges of each.
+
+    Empty when they have too little in common for the words to mean anything:
+    the whole line is the change.
+    """
+    old_words = _WORD_RE.findall(old)
+    new_words = _WORD_RE.findall(new)
+    matcher = difflib.SequenceMatcher(a=old_words, b=new_words, autojunk=False)
+    if matcher.ratio() < _PAIRED_LINE_MIN_RATIO:
+        return (), ()
+
+    def _columns(words: list[str]) -> list[int]:
+        columns = [0]
+        for word in words:
+            columns.append(columns[-1] + len(word))
+        return columns
+
+    old_columns, new_columns = _columns(old_words), _columns(new_words)
+    old_spans: list[tuple[int, int]] = []
+    new_spans: list[tuple[int, int]] = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        if i1 < i2:
+            old_spans.append((old_columns[i1], old_columns[i2]))
+        if j1 < j2:
+            new_spans.append((new_columns[j1], new_columns[j2]))
+    return tuple(old_spans), tuple(new_spans)
+
+
+def _diff_lines(old: list[str], new: list[str]) -> list[tuple[str, str, Spans]]:
+    """Show one difference line by line, as (prefix, line, changed words).
+
+    Lines both sides share are context (`` ``), shown as proposed. A removed
+    line and an added line are paired, and their changed words picked out,
+    when a run of removed lines meets a run of added lines just as long.
+    """
+    matcher = difflib.SequenceMatcher(
+        a=[_line_key(line) for line in old], b=[_line_key(line) for line in new], autojunk=False
+    )
+    opcodes = matcher.get_opcodes()
+    if all(tag == "equal" for tag, *_ in opcodes):
+        # The rungs differ in something their source does not show: show them whole
+        return [("-", line, ()) for line in old] + [("+", line, ()) for line in new]
+
+    rows: list[tuple[str, str, Spans]] = []
+    for tag, i1, i2, j1, j2 in opcodes:
+        if tag == "equal":
+            rows.extend((" ", line, ()) for line in new[j1:j2])
+            continue
+        removed, added = old[i1:i2], new[j1:j2]
+        removed_words: list[Spans] = [()] * len(removed)
+        added_words: list[Spans] = [()] * len(added)
+        if len(removed) == len(added):
+            for pair, (old_line, new_line) in enumerate(zip(removed, added, strict=True)):
+                # Columns of the compared text are columns of the line: only the end was cut
+                removed_words[pair], added_words[pair] = _changed_words(
+                    _line_key(old_line), _line_key(new_line)
+                )
+        rows.extend(("-", line, spans) for line, spans in zip(removed, removed_words, strict=True))
+        rows.extend(("+", line, spans) for line, spans in zip(added, added_words, strict=True))
+    return rows
+
+
+def _rung_range(first: int, count: int) -> str:
+    return f"R{first}" if count == 1 else f"R{first}..{first + count - 1}"
+
+
+@dataclass(frozen=True)
+class Gap:
+    """A run of unchanged rungs, shown around the differences beside it.
+
+    What is not shown is a separator line, whose arrows show more of it.
+    """
+
+    # Its place in ``ProgramChange.opcodes``: what ``render_diff``'s *shown* is keyed by
+    opcode: int
+    # Rungs shown at its top (below the difference above) and at its bottom
+    shown: tuple[int, int]
+    hidden: int
+    # Whether a difference is shown above it / below it
+    follows: bool
+    precedes: bool
+
+    @property
+    def arrows(self) -> str:
+        """``↓`` shows more below the difference above, ``↑`` more above the one below, ``↕`` all."""
+        if self.follows and self.precedes:
+            return "↕" if self.hidden <= EXPAND_RUNGS else "↓↑"
+        return "↓" if self.follows else "↑"
+
+    def expand(self, arrow: str) -> tuple[int, int]:
+        """What *shown* becomes when *arrow* is clicked."""
+        top, bottom = self.shown
+        more = self.hidden if arrow == "↕" else min(EXPAND_RUNGS, self.hidden)
+        return (top, bottom + more) if arrow == "↑" else (top + more, bottom)
 
 
 @dataclass(frozen=True)
 class RenderedDiff:
-    """A program's change as text: ``-`` CLICK's rungs, ``+`` proposed, ``~`` renumbered."""
+    """A program's change as text.
+
+    ``-`` CLICK's rungs, ``+`` proposed, `` `` unchanged lines (of a changed
+    rung, or of the unchanged rungs shown around it), ``@@`` unchanged rungs
+    not shown.
+    """
 
     lines: tuple[str, ...] = ()
     # Proposed rung number -> index in *lines* where the block holding it starts
     starts: Mapping[int, int] = field(default_factory=dict)
     # Index in *lines* where each difference shown starts, in order. They are
     # the program's differences (``PasteStep.block``) unless rungs were selected.
+    # A block starts with the unchanged rungs shown above it.
     blocks: tuple[int, ...] = ()
+    # Index in *lines* -> column ranges of the words that changed on that line
+    # (columns count the line's prefix). Lines without an entry changed whole.
+    words: Mapping[int, Spans] = field(default_factory=dict)
+    # Index in *lines* of each ``@@`` separator -> the unchanged rungs it stands in for
+    gaps: Mapping[int, Gap] = field(default_factory=dict)
 
     @property
     def text(self) -> str:
@@ -557,48 +682,73 @@ def render_diff(
     before: BundleSources,
     after: BundleSources,
     selected: Iterable[int] | None = None,
+    shown: Mapping[int, tuple[int, int]] | None = None,
 ) -> RenderedDiff:
     """Show *change* as the pyrung source of the rungs that differ.
 
-    With *selected*, only the blocks holding one of those proposed rungs are
-    shown. Empty when nothing differs.
+    Each difference has ``CONTEXT_RUNGS`` unchanged rungs shown above and below
+    it; *shown* (``Gap.opcode`` -> ``Gap.shown``) shows more of a run. With
+    *selected*, only the blocks holding one of those proposed rungs are shown,
+    without unchanged rungs. Empty when nothing differs.
     """
     before_text = before.text(name)
     after_text = after.text(name)
     before_chunks = _chunks_by_rung(before_text, before.lines(name))
     after_chunks = _chunks_by_rung(after_text, after.lines(name))
     selected_set = None if selected is None else set(selected)
+    shown = shown or {}
 
     body: list[str] = []
     starts: dict[int, int] = {}
     blocks: list[int] = []
-    for tag, i1, i2, j1, j2 in change.opcodes:
+    words: dict[int, Spans] = {}
+    gaps: dict[int, Gap] = {}
+    # Where the unchanged rungs shown above the next difference start
+    lead: int | None = None
+
+    def _context(numbers: range) -> None:
+        body.extend(
+            f" {line}\n" for line in _render_rungs(change.after, numbers, after_text, after_chunks)
+        )
+
+    for opcode, (tag, i1, i2, j1, j2) in enumerate(change.opcodes):
         after_range = range(j1 + 1, j2 + 1)
+        if tag == "equal":
+            if selected_set is not None:
+                continue
+            # Differences and unchanged runs alternate
+            follows, precedes = opcode > 0, opcode < len(change.opcodes) - 1
+            count = i2 - i1
+            top, bottom = shown.get(
+                opcode, (CONTEXT_RUNGS if follows else 0, CONTEXT_RUNGS if precedes else 0)
+            )
+            top = min(top, count)
+            bottom = min(bottom, count - top)
+            hidden = count - top - bottom
+            _context(range(j1 + 1, j1 + 1 + top))
+            if hidden:
+                in_click = _rung_range(i1 + top + 1, hidden)
+                proposed = _rung_range(j1 + top + 1, hidden)
+                moved = f", now {proposed}" if proposed != in_click else ""
+                gaps[len(body)] = Gap(opcode, (top, bottom), hidden, follows, precedes)
+                body.append(f"@@ {in_click} unchanged{moved} @@\n")
+            lead = len(body)
+            _context(range(j2 - bottom + 1, j2 + 1))
+            continue
         if selected_set is not None and selected_set.isdisjoint(after_range):
             continue
 
-        if tag == "equal":
-            # One line for the whole run: its rungs all moved by the same amount
-            if i1 != j1 and i2 - i1 == 1:
-                label = comment_summary(change.after[j1].comment or "")
-                suffix = f"  # {label}" if label else ""
-                body.append(f"~ R{i1 + 1} -> R{j1 + 1}{suffix}\n")
-            elif i1 != j1:
-                body.append(f"~ R{i1 + 1}..{i2} -> R{j1 + 1}..{j2}\n")
-            continue
-
-        start = len(body)
+        start = len(body) if lead is None else lead
+        lead = None
         blocks.append(start)
-        if tag in ("delete", "replace"):
-            body.extend(
-                _render_rungs(
-                    change.before, range(i1 + 1, i2 + 1), before_text, before_chunks, prefix="-"
-                )
-            )
-        if tag in ("insert", "replace"):
-            body.extend(
-                _render_rungs(change.after, after_range, after_text, after_chunks, prefix="+")
-            )
+        old = _render_rungs(change.before, range(i1 + 1, i2 + 1), before_text, before_chunks)
+        new = _render_rungs(change.after, after_range, after_text, after_chunks)
+        for prefix, line, spans in _diff_lines(old, new):
+            if spans:
+                # Shifted past the prefix
+                words[len(body)] = tuple((begin + 1, end + 1) for begin, end in spans)
+            body.append(f"{prefix}{line}\n")
+        if tag != "delete":
             starts.update(dict.fromkeys(after_range, start))
 
     if not any(line.startswith(("+", "-")) for line in body):
@@ -608,4 +758,6 @@ def render_diff(
         (*header, *body),
         {number: index + len(header) for number, index in starts.items()},
         tuple(index + len(header) for index in blocks),
+        {index + len(header): spans for index, spans in words.items()},
+        {index + len(header): gap for index, gap in gaps.items()},
     )
