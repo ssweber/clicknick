@@ -28,6 +28,7 @@ from .program import (
     NeedsClickV4Error,
     decode_to_csv,
     describe_csv,
+    describe_legacy_encoding,
     list_program_bundle,
     prepare_bin_load,
     prepare_csv_load,
@@ -522,6 +523,13 @@ def main() -> None:
                 f"\nProgram bundle: 1 main + {len(result.subroutine_csvs)} subroutine(s),"
                 f" {result.total_rungs} total rungs"
             )
+            if result.legacy_encodings:
+                print(
+                    "\nCLICK holds these rungs in an old encoding and runs them differently."
+                    " Paste them into CLICK again:"
+                )
+                for item in result.legacy_encodings:
+                    print(f"  {describe_legacy_encoding(item)}")
             return
 
         # program load

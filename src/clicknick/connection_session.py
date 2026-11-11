@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     import tkinter as tk
     from collections.abc import Callable
 
+    from .ladder.program import LegacyEncoding
     from .services.analysis_service import AnalysisService
     from .services.scr_watcher import ScrWatcher
     from .simulation_session import SimulationSession
@@ -98,6 +99,8 @@ class ConnectionSession:
         self._on_sync_status_changed = on_sync_status_changed
         # Called on the build worker's thread, not the Tk thread.
         self._on_build_finished = on_build_finished
+        # Legacy encodings in CLICK's last save that the user has been told about
+        self._legacy_reported: frozenset[tuple[str, str, str]] = frozenset()
 
         # One build worker: requests made while it runs collapse into the next build.
         self._build_lock = threading.Lock()
@@ -309,6 +312,25 @@ class ConnectionSession:
                 self, generation, note="Could not read CLICK's program; see the main window"
             )
         return SavedProgram(self, generation, note=reading)
+
+    def legacy_encodings_to_report(self) -> tuple[LegacyEncoding, ...]:
+        """Every legacy encoding in CLICK's last save, when it holds one not reported yet.
+
+        Empty when nothing new turned up, so pasting a fix and saving does not
+        report the rest again. Each finding is keyed by its program, instruction
+        and token, not its rung number. Pasting rungs above it moves it, and that
+        is not news.
+        """
+        from .ladder.program import read_legacy_encodings
+
+        csv_dir = self.saved_program().csv_dir
+        if csv_dir is None:
+            return ()
+        found = read_legacy_encodings(csv_dir)
+        keys = frozenset((item.file.casefold(), item.instruction, item.token) for item in found)
+        new = keys - self._legacy_reported
+        self._legacy_reported = keys
+        return found if new else ()
 
     def reload_workspace_from_click(
         self,

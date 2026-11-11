@@ -182,6 +182,26 @@ def test_sync_overwrites_only_owned_paths_and_never_deletes(tmp_path: Path) -> N
     assert not (mirror / ".clicknick.toml").exists()
 
 
+def test_sync_removes_the_mirrors_legacy_record_once_the_workspace_has_none(
+    tmp_path: Path,
+) -> None:
+    source = _write_workspace(tmp_path / "active")
+    record = Path("csv") / "legacy_encodings.json"
+    (source / record).write_text("[]", encoding="utf-8")
+    mirror = tmp_path / "Example Workspace"
+    sync_workspace_to_mirror(source, mirror)
+    assert (mirror / record).is_file()
+    (mirror / "csv" / "user.txt").write_text("keep\n", encoding="utf-8")
+
+    # CLICK saved a clean copy
+    (source / record).unlink()
+    sync_workspace_to_mirror(source, mirror)
+
+    assert not (mirror / record).exists()
+    assert (mirror / "csv" / "main.csv").is_file()
+    assert (mirror / "csv" / "user.txt").is_file()  # Nothing else is removed
+
+
 def test_sync_rejects_overlapping_workspace_paths(tmp_path: Path) -> None:
     source = _write_workspace(tmp_path / "active")
 

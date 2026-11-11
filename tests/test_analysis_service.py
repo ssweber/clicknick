@@ -713,3 +713,51 @@ def test_failed_regeneration_keeps_dirty_source_in_place(tmp_path, monkeypatch):
 
     assert active.read_text(encoding="utf-8") == "unfinished work\n"
     assert not (persist / "backup" / "src" / "plc").exists()
+
+
+def test_regeneration_publishes_the_legacy_record_and_removes_it_after_a_clean_save(
+    tmp_path, monkeypatch
+):
+    import warnings
+
+    import laddercodec
+    from laddercodec.model import Program
+
+    from clicknick.ladder.program import LEGACY_ENCODINGS_FILE, read_legacy_encodings
+
+    class FakeLegacyWarning(UserWarning):
+        def __init__(self, rung: int) -> None:
+            super().__init__("Math H70000")
+            self.instruction, self.token, self.rung, self.program = "Math", "H70000", rung, None
+            self.detail = "it is stored as 16-bit and CLICK runs it as 4464."
+
+    monkeypatch.setattr(laddercodec, "LegacyEncodingWarning", FakeLegacyWarning, raising=False)
+    stale = [True]
+
+    def decode_program(_data):
+        if stale[0]:
+            warnings.warn(FakeLegacyWarning(0), stacklevel=2)
+        return Program(name="Main Program", prog_idx=1, rungs=[])
+
+    def generate(_csv_dir, *, output_dir, **_kwargs):
+        (output_dir / "src" / "plc").mkdir(parents=True)
+        (output_dir / "src" / "plc" / "main.py").write_text("generated\n", encoding="utf-8")
+
+    monkeypatch.setattr("clicknick.ladder.program.decode_program", decode_program)
+    monkeypatch.setattr("clicknick.ladder.program.write_csv", lambda *_a, **_k: None)
+    monkeypatch.setattr("pyrung.click.ladder_to_pyrung_project", generate)
+    monkeypatch.setattr("clicknick.services.analysis_service._channel_inputs", lambda _s: [])
+    scr = tmp_path / "scr"
+    scr.mkdir()
+    (scr / "Scr1.tmp").write_bytes(b"scr")
+    persist = tmp_path / "pyrung_project"
+
+    _regenerate_persisted_project(scr, None, persist)
+
+    record = persist / "csv" / LEGACY_ENCODINGS_FILE
+    assert [item.rung for item in read_legacy_encodings(persist / "csv")] == [1]
+
+    stale[0] = False  # CLICK saved a clean copy
+    _regenerate_persisted_project(scr, None, persist)
+
+    assert not record.exists()

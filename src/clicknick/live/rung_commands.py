@@ -231,6 +231,11 @@ def _describe_change(change: ProgramChange, *, new: bool) -> str:
         parts.append(_runs(change.changed))
     if change.removed:
         parts.append(f"removes CLICK's {_runs(change.removed)}")
+    stale = tuple(sorted({item.rung for item in change.legacy if item.rung is not None}))
+    if stale:
+        parts.append(f"CLICK's {_runs(stale)} in an old encoding")
+    elif change.legacy:
+        parts.append("CLICK's copy in an old encoding")
     return "; ".join(parts)
 
 

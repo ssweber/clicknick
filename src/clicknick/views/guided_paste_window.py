@@ -21,7 +21,12 @@ from tksheet import Sheet
 
 from ..connection_session import SavedProgram
 from ..ladder.clipboard import copy_to_clipboard, is_click_v4
-from ..ladder.program import import_nicknames_csv, prepare_rungs_load
+from ..ladder.program import (
+    LegacyEncoding,
+    describe_legacy_encoding,
+    import_nicknames_csv,
+    prepare_rungs_load,
+)
 from ..services.rung_diff import (
     BundleComparison,
     BundleSources,
@@ -70,6 +75,11 @@ _BG_DONE = "#d4edda"
 _BG_CURRENT = "#cce5ff"
 _FG_MATCHES = "gray"
 _FG_ONLY_IN_CLICK = "#a94442"
+# CLICK holds some of the program's rungs in a legacy encoding
+_BG_LEGACY = "#f8d7da"
+_FG_LEGACY = "#842029"
+# A note lists this many of a program's legacy-encoded rungs and counts the rest
+_LEGACY_LISTED = 5
 
 # Diff pane text (GitHub Desktop's light theme); see the tags in _build_ui
 _DIFF_TEXT = "#24292e"
@@ -153,13 +163,39 @@ def _where_to_paste(step: PasteStep) -> str:
     return f"In CLICK, insert an empty rung {where} and paste over it (Ctrl+V)"
 
 
+def _legacy_note(change: ProgramChange) -> str:
+    """Say which of CLICK's rungs hold a legacy encoding and that they need pasting again."""
+    if not change.legacy:
+        return ""
+    rungs = sorted({item.rung for item in change.legacy if item.rung is not None})
+    if not rungs:
+        head = "CLICK's copy has an old encoding. Paste the whole program again."
+    elif len(rungs) == 1:
+        head = f"CLICK's copy of rung {rungs[0]} has an old encoding. Paste it again."
+    else:
+        listed = ", ".join(
+            str(run[0]) if len(run) == 1 else f"{run[0]} to {run[-1]}"
+            for run in paste_groups(rungs)
+        )
+        head = f"CLICK's copy of rungs {listed} has an old encoding. Paste them again."
+    lines = [
+        f"  {describe_legacy_encoding(item, program=False)}"
+        for item in change.legacy[:_LEGACY_LISTED]
+    ]
+    if len(change.legacy) > _LEGACY_LISTED:
+        lines.append(f"  ...and {len(change.legacy) - _LEGACY_LISTED} more")
+    return "\n".join([head, *lines])
+
+
 def _change_label(change: ProgramChange) -> str:
     """Say how much of a program CLICK already has differs, for the "vs CLICK" column."""
     changed, removed = len(change.changed), len(change.removed)
     if changed and removed:
-        return f"{changed} changed, {removed} removed"
-    count, verb = (changed, "changed") if changed else (removed, "removed")
-    return f"{count} rung{'s' if count != 1 else ''} {verb}"
+        label = f"{changed} changed, {removed} removed"
+    else:
+        count, verb = (changed, "changed") if changed else (removed, "removed")
+        label = f"{count} rung{'s' if count != 1 else ''} {verb}"
+    return f"{label}, old encoding" if change.legacy else label
 
 
 # CLICK's Ctrl+U dialog, and its subroutine name box
@@ -249,6 +285,42 @@ class GuidedPasteWindow(tk.Toplevel):
 
     def _is_nickname_step(self, idx: int) -> bool:
         return idx is not None and idx < len(self._items) and self._items[idx][0] == _NICKNAMES_NAME
+
+    def _has_legacy(self, name: str) -> bool:
+        """Whether CLICK holds some of the program's rungs in a legacy encoding."""
+        change = self._changes.get(name)
+        return change is not None and bool(change.legacy)
+
+    def _legacy_in_step(self, name: str, step: PasteStep) -> list[LegacyEncoding]:
+        """CLICK's rungs in a legacy encoding that *step* pastes over or deletes."""
+        change = self._changes.get(name)
+        if change is None or not change.legacy or not step.placed:
+            return []
+        differences = [opcode for opcode in change.opcodes if opcode[0] != "equal"]
+        if step.block >= len(differences):
+            return []
+        tag, i1, i2, _j1, _j2 = differences[step.block]
+        if step.rungs:
+            # A paste takes the place of CLICK's first rung of the difference, if any
+            numbers = range(i1 + 1, i1 + 2) if tag == "replace" else range(0)
+        else:
+            # A delete takes what the paste before it did not
+            numbers = range(i1 + 2 if tag == "replace" else i1 + 1, i2 + 1)
+        return [item for item in change.legacy if item.rung is None or item.rung in numbers]
+
+    def _legacy_line(self, name: str, step: PasteStep) -> str:
+        """Say that the step's rungs in CLICK hold an old encoding, or nothing."""
+        stale = self._legacy_in_step(name, step)
+        if not stale:
+            return ""
+        found = " ".join(
+            dict.fromkeys(f"{item.instruction} {item.token}: {item.detail}" for item in stale)
+        )
+        line = f"\nCLICK's copy has an old encoding. {found}"
+        if not step.rungs:
+            return line
+        again = "it" if len({item.rung for item in stale}) == 1 else "them"
+        return f"{line} Paste {again} again."
 
     def _matches_click(self, name: str) -> bool:
         change = self._changes.get(name)
@@ -369,9 +441,12 @@ class GuidedPasteWindow(tk.Toplevel):
                 return f"{name} matches CLICK's last save.", RenderedDiff()
 
         before, after = self._click_sources(), self._proposed_sources()
-        note = ""
+        notes = [_legacy_note(change)]
         if not before.text(name) and not after.text(name):
-            note = "pyrung could not show this program as text; each rung is listed by its instructions."
+            notes.append(
+                "pyrung could not show this program as text; each rung is listed by its instructions."
+            )
+        note = "\n".join(line for line in notes if line)
         if change is not self._expanded_change:
             # What was expanded belongs to the difference it was expanded in
             self._expanded_change, self._expanded = change, {}
@@ -431,7 +506,8 @@ class GuidedPasteWindow(tk.Toplevel):
             self._text.insert(tk.END, line[column:], tag)
         self._text.configure(state=tk.DISABLED)
         self._shown_diff = diff
-        self._diff_first_line = 2 if note else 1  # as the Text widget numbers lines
+        # The Text widget numbers lines from 1, and the diff starts below the note
+        self._diff_first_line = note.count("\n") + 2 if note else 1
         if keep_scroll:
             total = int(self._text.index("end-1c").split(".")[0])
             self._text.yview_moveto((top_line - 1) / total)
@@ -476,6 +552,10 @@ class GuidedPasteWindow(tk.Toplevel):
                 self._dehighlight_row(idx)
                 self._highlight_row(idx, fg=_FG_ONLY_IN_CLICK)
                 self._sheet.set_cell_data(idx, COL_STATUS, _ICON_ONLY_IN_CLICK)
+            elif self._has_legacy(name):
+                self._dehighlight_row(idx)
+                self._highlight_row(idx, _BG_LEGACY, _FG_LEGACY)
+                self._sheet.set_cell_data(idx, COL_STATUS, _ICON_PENDING)
             else:
                 self._dehighlight_row(idx)
                 self._sheet.set_cell_data(idx, COL_STATUS, _ICON_PENDING)
@@ -749,15 +829,32 @@ class GuidedPasteWindow(tk.Toplevel):
             label = format_group(step.rungs)
             if not step.rungs:
                 old = _rungs_in_click(step.delete)
-                if len(step.delete) == 1:
-                    return (
-                        f"{head}: {old} is not in the program any more.\n"
-                        'Delete it in CLICK, then click "Next"'
-                    )
-                return (
-                    f"{head}: {old} are not in the program any more.\n"
-                    'Select them in CLICK (Shift+Up/Down) and delete them, then click "Next"'
+                legacy = self._legacy_line(name, step)
+                steps = self._current_steps()
+                # After a paste of fresh copies of old-encoded rungs, the rungs left to delete
+                # are CLICK's old copies. The program still has those rungs.
+                after_paste = (
+                    bool(legacy)
+                    and self._step_idx > 0
+                    and steps[self._step_idx - 1].block == step.block
                 )
+                if after_paste:
+                    what = (
+                        "CLICK's old copy of this rung is"
+                        if len(step.delete) == 1
+                        else "CLICK's old copies of these rungs are"
+                    )
+                    what = f"{what} now below the pasted ones, at {old}"
+                else:
+                    verb = "is" if len(step.delete) == 1 else "are"
+                    what = f"{old} {verb} not in the program any more"
+                if len(step.delete) == 1:
+                    action = 'Delete it in CLICK, then click "Next"'
+                else:
+                    action = (
+                        'Select them in CLICK (Shift+Up/Down) and delete them, then click "Next"'
+                    )
+                return f"{head}: {what}.\n{action}{legacy}"
             if not step.placed:
                 what = f"{label} was asked for by number"
             elif step.over is not None:
@@ -765,6 +862,7 @@ class GuidedPasteWindow(tk.Toplevel):
             else:
                 what = f"{label} is new"
             prompt = f'{head}: {what}.\nClick "Copy {label}". {_where_to_paste(step)}'
+            prompt += self._legacy_line(name, step)
             steps = len(self._current_steps())
             if self._step_idx == 0 and steps >= _MANY_STEPS:
                 prompt += (
@@ -787,10 +885,13 @@ class GuidedPasteWindow(tk.Toplevel):
             )
         change = self._changes.get(name)
         if change is not None and change.before and name not in self._missing_in_click:
-            return (
+            prompt = (
                 f"{name}: the whole program, {rung_count} rungs, replaces what CLICK has.\n"
                 f'Click "Copy". {self._whole_placement(name)}'
             )
+            if change.legacy:
+                prompt += f"\n{_legacy_note(change)}"
+            return prompt
         return f'Click "Copy" to copy {name} to the clipboard'
 
     def _follow_in_sheet(self, idx: int) -> None:

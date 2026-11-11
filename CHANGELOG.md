@@ -19,6 +19,9 @@
 - Guided Paste marks which programs differ from CLICK's last save, steps through only those, and lists subroutines CLICK has that the folder doesn't.
 - Guided Paste shows the selected program's rung diff against CLICK's last save and steps through just the rungs that differ, saying which rung to paste over or delete in CLICK, or copies whole programs when you switch **Copy** to **Whole program**.
 - Guided Paste's rung diff highlights only the lines and words that changed, like GitHub Desktop, with one unchanged rung on each side of a difference and separators whose arrows show more.
+- ClickNick warns when CLICK holds rungs an older ClickNick pasted in a form CLICK runs differently.
+  - Guided Paste shows those programs in red until you paste them again.
+  - `clicknick-cli program save` lists them.
 - Guided Paste's **New Subroutine** button opens CLICK's New Subroutine Program window with the name filled in, for any subroutine CLICK's last save doesn't show it already has.
 - **Tools > Repairs > Upgrade Project** rewrites comments in pyrung's old `profile=` form into the current keys and stages them on the Changed tab for you to review and Sync, as `clicknick-cli tag upgrade-project` does.
 - When the build stops on a comment in the old form, the Workspace status says to run **Tools > Repairs > Upgrade Project** (it said "Build failed").

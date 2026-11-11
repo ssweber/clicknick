@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 from clicknick.app import ClickNickApp
 from clicknick.connection_session import ClickConnection, ConnectionSession
@@ -250,11 +250,16 @@ def test_app_refreshes_on_the_tk_thread_when_a_build_finishes() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
     app.root = MagicMock()
     app._request_ui_refresh = MagicMock()
+    app._report_legacy_encodings = MagicMock()
 
     app._on_build_finished()
 
-    app.root.after.assert_called_once_with(0, app._request_ui_refresh)
+    assert app.root.after.call_args_list == [
+        call(0, app._request_ui_refresh),
+        call(0, app._report_legacy_encodings),
+    ]
     app._request_ui_refresh.assert_not_called()
+    app._report_legacy_encodings.assert_not_called()
 
 
 def test_failure_before_the_build_starts_does_not_stay_preparing(tmp_path, monkeypatch) -> None:

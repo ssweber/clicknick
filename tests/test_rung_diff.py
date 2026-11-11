@@ -8,6 +8,7 @@ from pathlib import Path
 
 from laddercodec import Coil, Contact, Rung, write_csv
 
+from clicknick.ladder.program import LegacyEncoding, write_legacy_encodings
 from clicknick.services.rung_diff import (
     BundleComparison,
     BundleSources,
@@ -184,6 +185,54 @@ def test_comparison_outlives_the_folder(tmp_path: Path) -> None:
     (proposed / "main.csv").unlink()
 
     assert compare_bundle(programs, current).changes["main.csv"].changed == (2,)
+
+
+def _legacy(file: str, rung: int | None) -> LegacyEncoding:
+    detail = "it is stored as 16-bit and CLICK runs it as 4464."
+    return LegacyEncoding(file, "P", rung, "Math", "H70000", detail)
+
+
+def test_rung_click_holds_in_a_legacy_encoding_differs_though_its_text_matches(
+    tmp_path: Path,
+) -> None:
+    programs = {"main.csv": _rungs("Y001", "Y002", "Y003"), "subroutines/Fill.csv": _rungs("Y004")}
+    current = _bundle(tmp_path / "current", programs, index=True)
+    proposed = _bundle(tmp_path / "proposed", programs)
+    # Files are matched ignoring case, like program names
+    write_legacy_encodings(current, [_legacy("main.csv", 2), _legacy("subroutines/fill.csv", 1)])
+
+    comparison = _compare(proposed, current)
+
+    main = comparison.changes["main.csv"]
+    assert main.differs
+    assert main.changed == (2,)
+    assert main.removed == ()
+    assert main.steps == (PasteStep((2,), over=2),)
+    assert main.legacy == (_legacy("main.csv", 2),)
+    assert comparison.changes["subroutines/Fill.csv"].changed == (1,)
+
+    # Once CLICK saves a clean copy, the record is gone and nothing differs
+    write_legacy_encodings(current, [])
+    assert not any(change.differs for change in _compare(proposed, current).changes.values())
+
+
+def test_legacy_encoding_without_a_rung_number_stands_for_the_whole_program() -> None:
+    rungs = _rungs("Y001", "Y002")
+
+    change = compare_rungs(rungs, rungs, [_legacy("main.csv", None)])
+
+    assert change.changed == (1, 2)
+    # Pasting both over rung 1 leaves CLICK's old rung 2 below them
+    assert change.steps == (PasteStep((1, 2), over=1), PasteStep(delete=(3,)))
+
+
+def test_legacy_rung_past_the_end_is_ignored() -> None:
+    rungs = _rungs("Y001")
+
+    change = compare_rungs(rungs, rungs, [_legacy("main.csv", 5)])
+
+    assert not change.differs
+    assert change.legacy == ()
 
 
 # ---------------------------------------------------------------------------

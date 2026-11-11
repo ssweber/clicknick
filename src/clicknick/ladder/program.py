@@ -6,10 +6,15 @@ Returns structured data; callers decide presentation.
 
 from __future__ import annotations
 
+import json
 import re
-from dataclasses import dataclass
+import warnings
+from collections.abc import Sequence
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+import laddercodec
 from laddercodec import (
     Coil,
     CompareContact,
@@ -29,6 +34,9 @@ from pyclickplc.addresses import format_address_display, get_addr_key, parse_add
 
 from ..utils.mdb_operations import ensure_addresses_exist
 
+if TYPE_CHECKING:
+    from laddercodec.model import Program
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -38,6 +46,9 @@ ADDRESS_RANGE_RE = re.compile(
     r"(?<![A-Za-z0-9_])([A-Za-z]{1,3}\d{1,5})\s*\.\.\s*([A-Za-z]{1,3}\d{1,5})(?![A-Za-z0-9_])"
 )
 _WINDOWS_UNSAFE_FILENAME_RE = re.compile(r'[<>:"/\\|?*]')
+
+# Written beside a CSV bundle when CLICK holds rungs in a form an older laddercodec wrote
+LEGACY_ENCODINGS_FILE = "legacy_encodings.json"
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +66,24 @@ class ProgramInfo:
     rung_count: int
 
 
+@dataclass(frozen=True)
+class LegacyEncoding:
+    """A rung CLICK holds in a form an older laddercodec wrote, which CLICK runs differently.
+
+    Its CSV text reads the same as a good rung's, so only pasting it again fixes it.
+    """
+
+    # The bundle names the program main.csv or subroutines/<stem>.csv
+    file: str
+    program: str
+    # CLICK numbers rungs from 1. None means the decoder could not say which rung.
+    rung: int | None
+    instruction: str
+    token: str
+    # What CLICK runs instead, e.g. "it is stored as 16-bit and CLICK runs it as 4464."
+    detail: str
+
+
 @dataclass
 class SaveResult:
     """Result of program_save(): decoded Scr*.tmp files into a CSV bundle."""
@@ -63,6 +92,8 @@ class SaveResult:
     subroutine_csvs: list[Path]
     programs: list[ProgramInfo]
     total_rungs: int
+    # Also written to LEGACY_ENCODINGS_FILE beside the CSVs
+    legacy_encodings: list[LegacyEncoding] = field(default_factory=list)
 
 
 @dataclass
@@ -379,13 +410,91 @@ def _dedupe_filename_stem(stem: str, used_stems: set[str]) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _decode_program_recording_legacy(data: bytes) -> tuple[Program, list[Warning]]:
+    """Decode one Scr*.tmp, collecting the legacy encodings laddercodec warns about.
+
+    Other warnings are passed on once decoding is done. A laddercodec too old
+    to warn about legacy encodings decodes as before and reports none.
+    """
+    legacy_type = getattr(laddercodec, "LegacyEncodingWarning", None)
+    if legacy_type is None:
+        return decode_program(data), []
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", legacy_type)
+        prog = decode_program(data)
+    found: list[Warning] = []
+    for record in caught:
+        if isinstance(record.message, legacy_type):
+            found.append(record.message)
+        else:
+            warnings.warn_explicit(record.message, record.category, record.filename, record.lineno)
+    return prog, found
+
+
+def _legacy_encoding(file: str, prog: Program, warning: Warning) -> LegacyEncoding:
+    """Name a legacy-encoding warning's rung the way CLICK and the bundle name it."""
+    rung = getattr(warning, "rung", None)
+    return LegacyEncoding(
+        file=file,
+        program=str(getattr(warning, "program", None) or prog.name),
+        rung=rung + 1 if isinstance(rung, int) else None,
+        instruction=str(getattr(warning, "instruction", "")),
+        token=str(getattr(warning, "token", "")),
+        detail=str(getattr(warning, "detail", "")),
+    )
+
+
+def write_legacy_encodings(csv_dir: Path, found: Sequence[LegacyEncoding]) -> None:
+    """Record *found* beside the bundle in *csv_dir*, or remove the record when none."""
+    path = csv_dir / LEGACY_ENCODINGS_FILE
+    if not found:
+        path.unlink(missing_ok=True)
+        return
+    text = json.dumps([asdict(item) for item in found], indent=2)
+    path.write_text(text + "\n", encoding="utf-8")
+
+
+def describe_legacy_encoding(item: LegacyEncoding, *, program: bool = True) -> str:
+    """Say which rung holds a legacy encoding and what CLICK runs instead.
+
+    ``Main Program rung 12, Math H70000: it is stored as 16-bit and CLICK runs
+    it as 4464.`` Without *program* the line starts at ``rung 12``.
+    """
+    where = "an unknown rung" if item.rung is None else f"rung {item.rung}"
+    if program:
+        where = f"{item.program or item.file} {where}"
+    return f"{where}, {item.instruction} {item.token}: {item.detail}"
+
+
+def read_legacy_encodings(csv_dir: Path) -> tuple[LegacyEncoding, ...]:
+    """Read the legacy encodings ``program_save`` recorded beside *csv_dir*'s bundle.
+
+    Empty when it found none, or when the record cannot be read.
+    """
+    try:
+        payload = json.loads((csv_dir / LEGACY_ENCODINGS_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ()
+    found: list[LegacyEncoding] = []
+    for item in payload if isinstance(payload, list) else ():
+        try:
+            entry = LegacyEncoding(**item)
+        except TypeError:
+            continue
+        if isinstance(entry.file, str) and (entry.rung is None or isinstance(entry.rung, int)):
+            found.append(entry)
+    return tuple(found)
+
+
 def program_save(
     scr_folder: Path, output: Path | None = None, *, index: bool = False
 ) -> SaveResult:
     """Decode all Scr*.tmp files into a CSV bundle.
 
     Writes main.csv for prog_idx 1 and subroutines/{name}.csv for prog_idx 2+.
-    Output defaults to *scr_folder* unless *output* is given.
+    Output defaults to *scr_folder* unless *output* is given. Rungs held in a
+    legacy encoding are listed in LEGACY_ENCODINGS_FILE beside the CSVs, and a
+    save that finds none removes that file.
 
     Raises FileNotFoundError if no Scr*.tmp files found.
     Raises ValueError if no main program (prog_idx=1) found.
@@ -397,14 +506,12 @@ def program_save(
     dest = output or scr_folder
     dest.mkdir(parents=True, exist_ok=True)
 
-    from laddercodec.model import Program
-
-    raw_programs: list[Program] = []
+    decoded: list[tuple[Program, list[Warning]]] = []
     infos: list[ProgramInfo] = []
     for scr_path in scr_files:
         data = scr_path.read_bytes()
-        prog = decode_program(data)
-        raw_programs.append(prog)
+        prog, legacy = _decode_program_recording_legacy(data)
+        decoded.append((prog, legacy))
         infos.append(
             ProgramInfo(
                 source=scr_path.name,
@@ -414,36 +521,42 @@ def program_save(
             )
         )
 
-    raw_programs.sort(key=lambda p: p.prog_idx)
+    decoded.sort(key=lambda item: item[0].prog_idx)
     infos.sort(key=lambda i: i.prog_idx)
 
-    main_progs = [p for p in raw_programs if p.prog_idx == 1]
-    sub_progs = [p for p in raw_programs if p.prog_idx > 1]
+    main_progs = [item for item in decoded if item[0].prog_idx == 1]
+    sub_progs = [item for item in decoded if item[0].prog_idx > 1]
 
     if not main_progs:
         raise ValueError("No main program (prog_idx=1) found")
 
+    main_prog, main_legacy = main_progs[0]
     main_csv = dest / "main.csv"
-    write_csv(main_csv, main_progs[0].rungs, index=index)
+    write_csv(main_csv, main_prog.rungs, index=index)
+    legacy_encodings = [_legacy_encoding("main.csv", main_prog, w) for w in main_legacy]
 
     subroutine_csvs: list[Path] = []
     if sub_progs:
         sub_dir = dest / "subroutines"
         sub_dir.mkdir(exist_ok=True)
         used_stems: set[str] = set()
-        for prog in sub_progs:
+        for prog, legacy in sub_progs:
             stem = _dedupe_filename_stem(_slugify(prog.name), used_stems)
             csv_path = sub_dir / f"{stem}.csv"
             write_csv(csv_path, prog.rungs, index=index)
             subroutine_csvs.append(csv_path)
+            file = f"subroutines/{stem}.csv"
+            legacy_encodings.extend(_legacy_encoding(file, prog, w) for w in legacy)
 
-    total_rungs = sum(len(p.rungs) for p in raw_programs)
+    write_legacy_encodings(dest, legacy_encodings)
+    total_rungs = sum(len(prog.rungs) for prog, _ in decoded)
 
     return SaveResult(
         main_csv=main_csv,
         subroutine_csvs=subroutine_csvs,
         programs=infos,
         total_rungs=total_rungs,
+        legacy_encodings=legacy_encodings,
     )
 
 

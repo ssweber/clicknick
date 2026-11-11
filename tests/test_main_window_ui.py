@@ -281,3 +281,32 @@ def test_simulation_toggle_reports_and_switches_state() -> None:
     app._simulation_for_window = MagicMock(return_value=simulation)
     app._toggle_simulation()
     simulation.turn_on.assert_called_once_with()
+
+
+@pytest.mark.parametrize("answer", [True, False])
+def test_new_legacy_encodings_pop_up_and_offer_preview_changes(monkeypatch, answer: bool) -> None:
+    from clicknick.ladder.program import LegacyEncoding
+
+    app = ClickNickApp.__new__(ClickNickApp)
+    app.root = MagicMock()
+    app._ui_refresh_id = None
+    app._refresh_ui = MagicMock()
+    app._workspace_rung_apply = MagicMock()
+    detail = "it is stored as 16-bit and CLICK runs it as 4464."
+    found = (LegacyEncoding("main.csv", "Main Program", 12, "Math", "H70000", detail),)
+    app._session = SimpleNamespace(legacy_encodings_to_report=MagicMock(return_value=found))
+    ask = MagicMock(return_value=answer)
+    monkeypatch.setattr("clicknick.app.messagebox.askyesno", ask)
+
+    app._report_legacy_encodings()
+
+    message = ask.call_args.args[1]
+    assert f"Main Program rung 12, Math H70000: {detail}" in message
+    assert "Open Preview Changes now?" in message
+    assert app._workspace_rung_apply.called is answer
+
+    # The next build finds nothing new, so no popup shows
+    ask.reset_mock()
+    app._session.legacy_encodings_to_report.return_value = ()
+    app._report_legacy_encodings()
+    ask.assert_not_called()

@@ -38,6 +38,8 @@ windll.shcore.SetProcessDpiAwareness(1)
 
 _MATCH_MODES = ("none", "prefix", "contains", "containsplus")
 _MATCH_LABELS = ("None", "Prefix", "Contains", "Fuzzy")
+# The popup lists this many legacy-encoded rungs by name and counts the rest
+_LEGACY_LISTED = 10
 
 
 _T = TypeVar("_T")
@@ -2170,10 +2172,34 @@ class ClickNickApp:
                     "Multiple workspaces are known for this PLC. Choose one in Workspace setup."
                 )
 
+    def _report_legacy_encodings(self) -> None:
+        """Say once which programs CLICK holds in an old encoding, and offer Preview Changes.
+
+        Their text matches, so nothing else would show that CLICK runs them differently.
+        """
+        from .ladder.program import describe_legacy_encoding
+
+        found = self._session.legacy_encodings_to_report() if self._session else ()
+        if not found:
+            return
+        lines = [f"  {describe_legacy_encoding(item)}" for item in found[:_LEGACY_LISTED]]
+        if len(found) > _LEGACY_LISTED:
+            lines.append(f"  ...and {len(found) - _LEGACY_LISTED} more")
+        message = (
+            "CLICK holds these rungs in an old encoding, which an older ClickNick pasted. "
+            "CLICK runs them differently from how they read:\n\n"
+            + "\n".join(lines)
+            + "\n\nPaste them into CLICK again. Preview Changes lists them in red.\n\n"
+            "Open Preview Changes now?"
+        )
+        if messagebox.askyesno("Paste Again", message, icon=messagebox.WARNING, parent=self.root):
+            self._workspace_rung_apply()
+
     def _on_build_finished(self) -> None:
         """Show the build's result. Runs on the build worker's thread."""
         try:
             self.root.after(0, self._request_ui_refresh)
+            self.root.after(0, self._report_legacy_encodings)
         except (RuntimeError, tk.TclError):
             pass  # The window closed while the build ran
 

@@ -11,6 +11,7 @@ import pytest
 from laddercodec import Coil, Contact, Rung, write_csv
 
 from clicknick.connection_session import SavedProgram
+from clicknick.ladder.program import LegacyEncoding
 from clicknick.services.rung_diff import (
     BundleComparison,
     BundleSources,
@@ -999,3 +1000,155 @@ def test_no_notice_while_the_folder_still_holds_what_was_read(tmp_path: Path) ->
 
     window._notice_lbl.pack.assert_not_called()
     window._notice_lbl.pack_forget.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# Rungs CLICK holds in a legacy encoding
+# ---------------------------------------------------------------------------
+
+
+def _legacy(rung: int | None, file: str = "main.csv") -> LegacyEncoding:
+    detail = "it is stored as 16-bit and CLICK runs it as 4464."
+    return LegacyEncoding(file, "Main Program", rung, "Math", "H70000", detail)
+
+
+def _legacy_click_copy(*rungs: int | None) -> ProgramChange:
+    """CLICK's copy reads the same as the proposal, but holds *rungs* in a legacy encoding."""
+    return compare_rungs(RUNGS, RUNGS, [_legacy(rung) for rung in rungs])
+
+
+def test_program_whose_click_copy_has_a_legacy_encoding_needs_pasting(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _legacy_click_copy(3))
+
+    assert not window._matches_click("main.csv")
+    assert window._needs_paste("main.csv")
+    assert window._current_idx == MAIN
+    assert _action(window) == "Copy r3"
+    status = _status(window)
+    assert "r3 replaces rung 3" in status
+    assert (
+        "CLICK's copy has an old encoding. Math H70000: it is stored as 16-bit and CLICK runs"
+        " it as 4464. Paste it again." in status
+    )
+    assert window._click_label("main.csv") == "1 rung changed, old encoding"
+
+    window._on_action()
+    assert copies == [(RUNGS[2:3], 3)]
+
+
+def test_legacy_encoding_row_is_red_until_it_is_the_current_row(monkeypatch) -> None:
+    window = _on_main(monkeypatch, _legacy_click_copy(3))
+    window._sheet.reset_mock()
+    window._current_idx = None
+    window._update_highlights()
+
+    red = {
+        call.kwargs["row"]
+        for call in window._sheet.highlight_cells.call_args_list
+        if call.kwargs.get("bg") == "#f8d7da"
+    }
+    assert red == {MAIN}
+
+    window._sheet.reset_mock()
+    window._current_idx = MAIN
+    window._update_highlights()
+    assert {call.kwargs.get("bg") for call in window._sheet.highlight_cells.call_args_list} == {
+        "#cce5ff",
+        None,
+    }
+
+
+def test_pane_says_which_rungs_click_holds_in_a_legacy_encoding(monkeypatch) -> None:
+    window = _on_main(monkeypatch, _legacy_click_copy(2, 4))
+
+    note, _diff = window._describe_view()
+
+    assert note.splitlines()[:3] == [
+        "CLICK's copy of rungs 2, 4 has an old encoding. Paste them again.",
+        "  rung 2, Math H70000: it is stored as 16-bit and CLICK runs it as 4464.",
+        "  rung 4, Math H70000: it is stored as 16-bit and CLICK runs it as 4464.",
+    ]
+    # The diff starts below every line of the note
+    assert window._diff_first_line == note.count("\n") + 2
+
+
+def test_legacy_encoding_without_a_rung_number_pastes_the_whole_program(monkeypatch) -> None:
+    window = _on_main(monkeypatch, _legacy_click_copy(None))
+
+    assert window._needs_paste("main.csv")
+    assert "Paste the whole program again." in window._describe_view()[0]
+
+    _switch_copy(window, whole=True)
+    assert "CLICK's copy has an old encoding" in _status(window)
+
+
+def test_row_clears_once_click_saves_a_clean_copy(monkeypatch) -> None:
+    session = object()
+    before, after = Path("before/csv"), Path("after/csv")
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {
+            before: {**_changes(dict.fromkeys(NAMES, False)), "main.csv": _legacy_click_copy(3)},
+            after: _changes(dict.fromkeys(NAMES, False)),
+        },
+    )
+    assert window._needs_paste("main.csv")
+
+    _change(window, SavedProgram(session, generation=2, csv_dir=after, note=""))
+
+    assert window._matches_click("main.csv")
+    window.destroy.assert_called_once_with()
+
+
+def test_legacy_note_names_runs_of_rungs_and_counts_past_five() -> None:
+    from clicknick.views.guided_paste_window import _legacy_note
+
+    rungs = _coils(*(f"Y{n:03d}" for n in range(1, 10)))
+    change = compare_rungs(rungs, rungs, [_legacy(n) for n in (1, 2, 3, 4, 5, 6, 9)])
+
+    lines = _legacy_note(change).splitlines()
+
+    assert lines[0] == "CLICK's copy of rungs 1 to 6, 9 has an old encoding. Paste them again."
+    assert len(lines) == 7
+    assert lines[-1] == "  ...and 2 more"
+
+
+def test_deleting_a_legacy_encoded_rung_says_why(monkeypatch, copies) -> None:
+    # CLICK's first Y001 is the stale one. The matcher keeps its second Y001,
+    # so the stale rung is deleted and a good copy goes in after the last rung.
+    rungs = _coils("Y001", "Y001")
+    change = compare_rungs(rungs, rungs, [_legacy(1)])
+    assert [opcode[0] for opcode in change.opcodes] == ["delete", "equal", "insert"]
+    window = _on_main(monkeypatch, change)
+
+    status = _status(window)
+    assert "step 1 of 2: rung 1 is not in the program any more" in status
+    assert status.endswith(
+        "CLICK's copy has an old encoding. Math H70000: it is stored as 16-bit and CLICK"
+        " runs it as 4464."
+    )
+
+    window._on_action()  # Next: the good copy
+    assert "step 2 of 2: r2 is new" in _status(window)
+    assert "old encoding" not in _status(window)
+
+
+def test_old_copies_left_after_pasting_stale_rungs_are_named_as_such(monkeypatch, copies) -> None:
+    # Pasting r2..4 over CLICK's rung 2 leaves CLICK's old rungs 3 and 4 below them
+    window = _on_main(monkeypatch, _legacy_click_copy(2, 3, 4))
+    assert _action(window) == "Copy r2..4"
+
+    window._on_action()  # Copy
+    window._on_action()  # Next: the old copies
+
+    status = _status(window)
+    assert status.startswith(
+        "main.csv, step 2 of 2: CLICK's old copies of these rungs are now below the pasted"
+        " ones, at rungs 5 to 6.\nSelect them in CLICK"
+    )
+    assert "not in the program any more" not in status
+    assert status.endswith(
+        "CLICK's copy has an old encoding. Math H70000: it is stored as 16-bit and CLICK"
+        " runs it as 4464."
+    )

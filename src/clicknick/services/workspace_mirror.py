@@ -344,7 +344,11 @@ def validate_mirror_destination(source: Path, mirror: Path) -> None:
 
 
 def sync_workspace_to_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
-    """Overlay the active workspace onto a mirror without deleting target files."""
+    """Overlay the active workspace onto a mirror without deleting target files.
+
+    The one exception is ``csv/legacy_encodings.json``, which goes when the
+    active workspace has none.
+    """
     source = _normalized(source)
     mirror = _normalized(mirror)
     if not source.is_dir():
@@ -358,6 +362,12 @@ def sync_workspace_to_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
     owned_roots = set(MIRROR_OWNED_DIRS)
     for relative in MIRROR_OWNED_DIRS:
         copied += _copy_tree(source / relative, mirror / relative, overwrite=True)
+    # An old record would ask for rungs to be pasted again that CLICK has already fixed.
+    from ..ladder.program import LEGACY_ENCODINGS_FILE
+
+    legacy_record = Path("csv") / LEGACY_ENCODINGS_FILE
+    if not (source / legacy_record).is_file():
+        (mirror / legacy_record).unlink(missing_ok=True)
     for relative in MIRROR_OWNED_FILES:
         source_file = source / relative
         if source_file.is_file():

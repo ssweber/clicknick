@@ -21,7 +21,14 @@ from pathlib import Path
 
 from laddercodec import Rung, read_csv
 
-from ..ladder.program import count_csv_rungs, list_csv_folder, read_csv_comment, rung_fingerprint
+from ..ladder.program import (
+    LegacyEncoding,
+    count_csv_rungs,
+    list_csv_folder,
+    read_csv_comment,
+    read_legacy_encodings,
+    rung_fingerprint,
+)
 
 _MAIN = "main.csv"
 _SUBROUTINE_NAME_RE = re.compile(r'@subroutine\("([^"]+)"\)')
@@ -112,6 +119,9 @@ class ProgramChange:
     before: tuple[Rung, ...] = ()
     after: tuple[Rung, ...] = ()
     opcodes: tuple[Opcode, ...] = ()
+    # CLICK's rungs held in a legacy encoding. Each counts as differing even
+    # when its text matches, so it is pasted again.
+    legacy: tuple[LegacyEncoding, ...] = ()
 
     @property
     def differs(self) -> bool:
@@ -163,20 +173,30 @@ class ProgramChange:
         return tuple(steps)
 
 
-def compare_rungs(before: Sequence[Rung], after: Sequence[Rung]) -> ProgramChange:
+def compare_rungs(
+    before: Sequence[Rung], after: Sequence[Rung], legacy: Sequence[LegacyEncoding] = ()
+) -> ProgramChange:
     """Align CLICK's rungs with the proposed ones.
 
     A rung that only moved (rungs were added or removed above it) is equal:
-    its number is not part of what it is.
+    its number is not part of what it is. A rung of *legacy* (CLICK's rungs in
+    a legacy encoding) equals no proposed rung, and with no rung number it
+    stands for the whole program. A finding numbered past CLICK's last rung is ignored.
     """
-    before_keys = [rung_fingerprint(rung) for rung in before]
-    after_keys = [rung_fingerprint(rung) for rung in after]
+    before_keys: list[object] = [rung_fingerprint(rung) for rung in before]
+    after_keys: list[object] = [rung_fingerprint(rung) for rung in after]
+    legacy = [item for item in legacy if item.rung is None or 1 <= item.rung <= len(before)]
+    stale = {item.rung - 1 for item in legacy if item.rung is not None}
+    if any(item.rung is None for item in legacy):
+        stale = set(range(len(before_keys)))
+    for index in stale:
+        before_keys[index] = object()  # equal to nothing
     if before_keys == after_keys:
         opcodes: Sequence[Opcode] = [("equal", 0, len(before_keys), 0, len(after_keys))]
     else:
         matcher = difflib.SequenceMatcher(a=before_keys, b=after_keys, autojunk=False)
         opcodes = matcher.get_opcodes()
-    return ProgramChange(tuple(before), tuple(after), tuple(opcodes))
+    return ProgramChange(tuple(before), tuple(after), tuple(opcodes), tuple(legacy))
 
 
 @dataclass(frozen=True)
@@ -199,12 +219,17 @@ def compare_bundle(programs: Iterable[ProposedProgram], current_dir: Path) -> Bu
 
     *current_dir* holds the program now in CLICK, laid out like the bundle.
     Names are matched ignoring case. A bundle without ``main.csv`` is not a
-    program and compares empty.
+    program and compares empty. CLICK's rungs that ``program_save`` found in a
+    legacy encoding count as changed.
     """
     programs = list(programs)
     proposed_names = {program.name.casefold() for program in programs}
     if _MAIN not in proposed_names:
         return BundleComparison()
+
+    legacy: dict[str, list[LegacyEncoding]] = {}
+    for item in read_legacy_encodings(current_dir):
+        legacy.setdefault(item.file.casefold(), []).append(item)
 
     current: dict[str, Path] = {}
     only_in_click: dict[str, ProgramChange] = {}
@@ -215,7 +240,7 @@ def compare_bundle(programs: Iterable[ProposedProgram], current_dir: Path) -> Bu
                 rungs = read_csv(path)
             except Exception:
                 rungs = []
-            only_in_click[name] = compare_rungs(rungs, [])
+            only_in_click[name] = compare_rungs(rungs, [], legacy.get(name.casefold(), ()))
 
     changes: dict[str, ProgramChange] = {}
     for program in programs:
@@ -226,7 +251,8 @@ def compare_bundle(programs: Iterable[ProposedProgram], current_dir: Path) -> Bu
             before = read_csv(current_path) if current_path is not None else []
         except Exception:
             continue  # CLICK's copy is unreadable: unknown
-        changes[program.name] = compare_rungs(before, program.rungs)
+        found = legacy.get(program.name.casefold(), ()) if current_path is not None else ()
+        changes[program.name] = compare_rungs(before, program.rungs, found)
     missing = frozenset(
         program.name for program in programs if program.name.casefold() not in current
     )
