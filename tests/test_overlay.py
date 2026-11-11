@@ -63,6 +63,39 @@ def test_focus_elsewhere_counts_as_outside_overlay(overlay, suffix):
     assert not _within_overlay_when_focus_on(overlay, path)
 
 
+@pytest.mark.parametrize(
+    ("typed", "sent"),
+    [
+        ("c1", "C1"),
+        ("X1", "X001"),
+        ("xd0u", "XD0u"),
+        ("ds100", "DS100"),
+        ("Not_A_Nickname", "Not_A_Nickname"),
+        ("100", "100"),
+    ],
+)
+def test_typed_text_is_passed_on_in_click_address_form(tk_root, typed, sent):
+    manager = SimpleNamespace(settings=None, get_address_for_nickname=lambda _: None)
+    overlay = Overlay(tk_root, manager)
+    inserted = []
+    overlay._insert_text_to_field = inserted.append
+
+    overlay._on_nickname_selected(typed)
+
+    assert inserted == [sent]
+
+
+def test_known_nickname_inserts_its_address(tk_root):
+    manager = SimpleNamespace(settings=None, get_address_for_nickname=lambda _: "C5")
+    overlay = Overlay(tk_root, manager)
+    inserted = []
+    overlay._insert_text_to_field = inserted.append
+
+    overlay._on_nickname_selected("Motor_Run")
+
+    assert inserted == ["C5"]
+
+
 def test_programmatic_dropdown_returns_focus_to_combobox(tk_root):
     combobox = NicknameCombobox(tk_root, values=["Motor1_Run"])
     listbox = _popdown_listbox(tk_root, combobox)

@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import ttk
 
+from pyclickplc.addresses import normalize_address
+
 from ..utils.win32_utils import WIN32
 from ..widgets.floating_tooltip import FloatingTooltip
 from ..widgets.nickname_combobox import NicknameCombobox
@@ -89,16 +91,15 @@ class Overlay(tk.Toplevel):
         Handle nickname selection.
 
         If the nickname corresponds to an address, insert that address.
-        Otherwise, pass on the text.
+        Otherwise pass on the text, in CLICK's display form when it is an
+        address ("c1" -> "C1", "x1" -> "X001").
         """
         self.combobox.finalizing = True
 
-        # First check if it's a known nickname
         address = self.nickname_manager.get_address_for_nickname(nickname)
-        if address:
-            self._insert_text_to_field(address)
-        else:
-            self._insert_text_to_field(nickname)
+        if not address:
+            address = normalize_address(nickname) or nickname
+        self._insert_text_to_field(address)
 
     def _setup_combobox(self):
         """Create the combobox and configure"""
