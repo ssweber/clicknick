@@ -88,6 +88,8 @@ _ICON_ONLY_IN_CLICK = "!"
 # "vs CLICK" column
 _CLICK_NEW = "New"
 _CLICK_MATCHES = "Up to date"
+# CLICK holds pastes of it this comparison cannot place (_unplaced)
+_CLICK_UNSAVED = "Pasted, not saved"
 _CLICK_ONLY = "Only in CLICK"
 _DESC_ONLY_IN_CLICK = "Not in this folder: delete it in CLICK, or keep it"
 _DELETE_IN_CLICK = "Delete it in CLICK"
@@ -483,20 +485,35 @@ class PreviewChangesWindow(tk.Toplevel):
         return (name in self._flipped_in_click) == self._source.deletes_only_in_click
 
     def _all_skipped(self, name: str) -> bool:
-        """Whether every difference of the program is skipped: nothing to paste."""
+        """Whether every difference of the program is skipped: nothing to paste.
+
+        Never for a program CLICK holds pastes of that the comparison cannot
+        place (_unplaced): it is pasted whole, skips and all, until CLICK saves.
+        """
         if name == _NICKNAMES_NAME:
             return self._nicknames_skipped
         if name in self._only_in_click:
             return self._kept(name)
+        if name in self._unplaced:
+            return False
         change = self._choosable(name)
         return change is not None and set(change.differences) <= self._skipped_of(name)
 
     def _still_to_do(self, name: str) -> bool:
-        """Whether CLICK's last save shows the program still to paste, or still to delete."""
+        """Whether CLICK's last save shows the program still to paste, or still to delete.
+
+        Not a program ClickNick cannot read all of in CLICK: it differs after
+        every paste, so whether the paste landed is not known.
+        """
         if name in self._only_in_click:
             return not self._kept(name)
         change = self._changes.get(name)
-        return change is not None and change.differs and not self._all_skipped(name)
+        return (
+            change is not None
+            and change.differs
+            and not change.unreadable
+            and not self._all_skipped(name)
+        )
 
     def _carry_choices(self, *, saved: bool) -> None:
         """Bring each program's choices and progress over to the new comparison.
@@ -723,6 +740,8 @@ class PreviewChangesWindow(tk.Toplevel):
     def _matches_click(self, name: str) -> bool:
         if name == _NICKNAMES_NAME:
             return self._nickname_path is not None and self._nicknames_in_click()
+        if name in self._unplaced:
+            return False  # CLICK holds unsaved pastes of it
         change = self._changes.get(name)
         return change is not None and not change.differs
 
@@ -732,6 +751,8 @@ class PreviewChangesWindow(tk.Toplevel):
             return self._nicknames_skipped
         if name in self._only_in_click:
             return self._kept(name)
+        if name in self._unplaced:
+            return False
         change = self._choosable(name)
         taken = self._skipped_of(name) | self._pasted.get(name, frozenset())
         return change is not None and set(change.differences) <= taken
@@ -921,6 +942,8 @@ class PreviewChangesWindow(tk.Toplevel):
         change = self._changes.get(name)
         if change is None:
             return ""
+        if name in self._unplaced:
+            return _CLICK_UNSAVED
         if not change.differs:
             return _CLICK_MATCHES
         label = _CLICK_NEW if name in self._missing_in_click else _change_label(change)
@@ -1238,6 +1261,13 @@ class PreviewChangesWindow(tk.Toplevel):
         """Whether the step is done in CLICK alone: rungs to delete, none to paste."""
         return step is not None and not step.rungs
 
+    def _empty_whole(self, name: str, step: PasteStep | None) -> bool:
+        """Whether the program is copied whole and has no rungs: CLICK's are deleted."""
+        program = self._programs.get(name)
+        if step is not None or program is None or program.rungs is None:
+            return False
+        return name not in self._only_in_click and not self._whole_program(name, program.rungs)
+
     def _update_action_btn(self) -> None:
         """Update the action buttons based on current state."""
         can_add = self._can_add_subroutine(self._current_idx) and not self._adding_subroutine
@@ -1258,6 +1288,7 @@ class PreviewChangesWindow(tk.Toplevel):
         if (
             self._copied
             or self._nothing_to_copy(step)
+            or self._empty_whole(name, step)
             or self._rest_skipped(name)
             or name in self._only_in_click  # Deleted in CLICK; nothing to copy
         ):
@@ -1354,6 +1385,13 @@ class PreviewChangesWindow(tk.Toplevel):
             prompt = f'{head}: {what}.\nClick "Copy {label}". {_where_to_paste(step)}'
             prompt += self._legacy_line(name, step)
             return prompt + self._stepped_line(name)
+        if self._empty_whole(name, step):
+            if self._can_add_subroutine(idx):
+                return (
+                    f"{name} has no rungs.\n"
+                    'Click "New Subroutine" to create it in CLICK, then click "Next"'
+                )
+            return f'{name} has no rungs.\nIn CLICK, delete all its rungs, then click "Next"'
         if self._matches_click(name):
             return (
                 f"{name} already matches CLICK's last save.\n"
@@ -2042,12 +2080,18 @@ class PreviewChangesWindow(tk.Toplevel):
         self._partial.pop(name, None)
 
     def _record_whole_paste(self, name: str) -> None:
-        """Record that CLICK holds the program as copied whole: each difference not skipped."""
-        change = self._choosable(name)
-        if change is None:
+        """Record that CLICK holds the program as copied whole: each difference not skipped.
+
+        Without a comparison that reads all of CLICK's copy, what CLICK holds
+        is not one the comparison can number steps from (_unplaced).
+        """
+        change = self._changes.get(name)
+        self._partial.pop(name, None)
+        if change is None or change.unreadable:
+            self._pasted.pop(name, None)
+            self._unplaced.add(name)
             return
         self._pasted[name] = frozenset(change.differences) - self._skipped_of(name)
-        self._partial.pop(name, None)
         self._unplaced.discard(name)
         self._basis[name] = change
 
@@ -2064,7 +2108,12 @@ class PreviewChangesWindow(tk.Toplevel):
                 self._done.add(name)
             self._advance_to_next()
             return
-        if not self._copied and not self._nothing_to_copy(step) and name not in self._only_in_click:
+        if (
+            not self._copied
+            and not self._nothing_to_copy(step)
+            and not self._empty_whole(name, step)
+            and name not in self._only_in_click
+        ):
             # "Copy" or "Stage nicknames" — perform the action
             self._perform_action(idx)
             return

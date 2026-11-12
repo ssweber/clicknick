@@ -241,8 +241,10 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   saves. A save is told by CLICK's programs changing (`_last_save`), not by a rebuild: the workspace is also built
   after a Sync. The Copy switch keeps it. A new reading of the folder before a save places it in the new comparison
   when CLICK would hold the same rungs (`_carry_pasted`); otherwise that program is copied whole until CLICK saves
-  (`_unplaced`). **Restart** asks before forgetting it. After a save, a program marked done that CLICK's save
-  still shows to do is a step again
+  (`_unplaced`), whatever the comparison or the skips say, and so is one copied whole without a comparison.
+  **Restart** asks before forgetting it. After a save, a program marked done that CLICK's save still shows to do
+  is a step again, unless ClickNick cannot read all of CLICK's copy of it
+- A whole copy of a program with no rungs copies nothing: the step is deleting its rungs in CLICK
 - The folder is read once (`load_bundle`) and compared and copied from memory: a CLICK save regenerates the
   workspace and deletes `csv_output/`, and the window must still know whether what it pasted landed
 - It closes itself when a CLICK save holds everything it was pasting. After a save that leaves work to do it
