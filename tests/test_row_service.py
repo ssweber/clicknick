@@ -396,6 +396,27 @@ def test_clone_through_a_destination_with_a_tag_keeps_its_tag(store):
     assert not store.has_errors()
 
 
-def test_comment_without_block_tag_collapses_the_gap():
-    assert RowService._comment_without_block_tag("a <B> b") == "a b"
-    assert RowService._comment_without_block_tag("plain  text") == "plain  text"
+def test_comment_without_block_tag_closes_only_the_gap_it_leaves():
+    strip = RowService._comment_without_block_tag
+    assert strip("a <B> b") == "a b"
+    assert strip("<A> x") == "x"
+    assert strip("plain  text") == "plain  text"
+    assert strip("<A> line one\nline  two") == "line one\nline  two"
+    assert strip("a  b <B> c") == "a  b c"
+
+
+def test_comment_without_block_tag_removes_every_tag():
+    assert RowService._comment_without_block_tag("<A>y</A>") == "y"
+
+
+def test_fill_down_of_an_open_and_close_comment_leaves_no_stray_tag(store):
+    first = get_addr_key("DS", 1)
+    with store.edit_session("Setup") as session:
+        session.set_field(first, "nickname", "Alarm1")
+        session.set_field(first, "comment", "<A>y</A>")
+    targets = [get_addr_key("DS", n) for n in (2, 3)]
+
+    with store.edit_session("Fill down") as session:
+        RowService.fill_down(session, store, first, targets)
+
+    assert [store.visible_state[k].comment for k in targets] == ["y", "y"]

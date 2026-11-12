@@ -276,3 +276,19 @@ def test_rename_changes_nicknames_and_leaves_comments(tk_root) -> None:
     import clicknick.views.address_editor.window as module
 
     assert "Renamed 2 nicknames" in module.messagebox.showinfo.call_args.args[1]
+
+
+@pytest.mark.parametrize("action", ["_save_all", "_discard_changes", "_on_closing"])
+def test_a_cell_editor_that_will_not_commit_stops_save_discard_and_close(action) -> None:
+    panel = _panel([], editor_open=True)
+    panel.sheet.MT.mouseclick_outside_editor_or_dropdown_all_canvases = Mock()  # commits nothing
+    window = _window(Mock(), panel)
+    window.focus_force = Mock()
+    import clicknick.views.address_editor.window as module
+
+    getattr(window, action)()
+
+    module.messagebox.showwarning.assert_called_once()
+    window._store.save_all_changes.assert_not_called()
+    window._store.discard_all_changes.assert_not_called()
+    window.close_without_prompt.assert_not_called()

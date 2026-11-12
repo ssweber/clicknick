@@ -425,21 +425,33 @@ class AddressEditorWindow(tk.Toplevel):
         """True while a cell editor is open in any tab."""
         return any(panel.sheet.MT.text_editor.open for panel, *_ in self._tabs.values())
 
-    def _commit_open_cell_editor(self) -> None:
-        """Commit the text typed in an open cell editor, so it is an edit like any other."""
+    def _commit_open_cell_editor(self) -> bool:
+        """Commit the text typed in an open cell editor, so it is an edit like any other.
+
+        Returns False, after telling the user, when an editor is still open
+        (tksheet commits nothing while the application has no focus).
+        """
         for panel, *_ in self._tabs.values():
             mt = panel.sheet.MT
             if not mt.text_editor.open:
                 continue
             mt.mouseclick_outside_editor_or_dropdown_all_canvases()
             if mt.text_editor.open:
-                # tksheet commits nothing while the application has no focus
                 self.focus_force()
                 mt.mouseclick_outside_editor_or_dropdown_all_canvases()
+            if mt.text_editor.open:
+                messagebox.showwarning(
+                    "Cell Being Edited",
+                    "Finish the cell edit first (Enter to keep it, Esc to cancel).",
+                    parent=self,
+                )
+                return False
+        return True
 
     def _save_all(self) -> None:
         """Save all changes to database."""
-        self._commit_open_cell_editor()
+        if not self._commit_open_cell_editor():
+            return
         save_label = self._get_save_label()
         action_verb = "synced" if self._is_using_mdb() else "saved"
 
@@ -500,7 +512,8 @@ class AddressEditorWindow(tk.Toplevel):
 
     def _discard_changes(self) -> None:
         """Discard all unsaved changes by resetting to original values."""
-        self._commit_open_cell_editor()
+        if not self._commit_open_cell_editor():
+            return
         if not self._store.has_unsaved_changes():
             messagebox.showinfo("Discard", "No changes to discard.", parent=self)
             return
@@ -1150,7 +1163,8 @@ class AddressEditorWindow(tk.Toplevel):
 
     def _on_closing(self) -> None:
         """Handle window close - prompt to save if needed."""
-        self._commit_open_cell_editor()
+        if not self._commit_open_cell_editor():
+            return
         if self._has_unsaved_changes():
             save_label = self._get_save_label()
             result = messagebox.askyesnocancel(

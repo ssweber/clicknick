@@ -72,13 +72,25 @@ class RowService:
 
     @staticmethod
     def _comment_without_block_tag(comment: str) -> str:
-        """The comment with the block tag the parser finds removed.
+        """The comment with every block tag removed, so a copy names no block.
 
-        Text around the tag is kept and runs of spaces left by the removal are
-        collapsed. A closing tag elsewhere in the text is not touched.
+        Tags are removed until none is left. The space on one side of each
+        removed tag goes with it and the ends are trimmed; whitespace elsewhere
+        in the text stays as written.
         """
-        stripped = strip_block_tag(comment)
-        return " ".join(stripped.split()) if stripped != comment else comment
+        text = comment
+        while True:
+            stripped = strip_block_tag(text)
+            if stripped == text:
+                break
+            # Where the tag stood: the first character the two texts differ at
+            at = 0
+            while at < len(stripped) and at < len(text) and stripped[at] == text[at]:
+                at += 1
+            if 0 < at < len(stripped) and stripped[at - 1].isspace() and stripped[at].isspace():
+                stripped = stripped[:at] + stripped[at + 1 :]
+            text = stripped.strip()
+        return text
 
     @staticmethod
     def _set_copied_comment(
