@@ -896,3 +896,16 @@ class TestSpellingsStayApart:
             if item.leaf is not None and not item.children and not item.is_array
         }
         assert paths == {i + 1: nick for i, nick in enumerate(nicks)}
+
+
+class TestSpellingsAreLabelledApart:
+    def test_trailing_underscore_shows(self):
+        assert sorted(get_all_texts(_build(["Pump_", "Pump"]))) == ["Pump", "Pump_"]
+
+    def test_extra_underscore_after_a_gap_shows(self):
+        texts = get_all_texts(_build(["A__B", "A___B"]))
+        assert "B" in texts and "_B" in texts
+
+    def test_extra_underscore_before_a_leading_gap_name_shows(self):
+        texts = get_all_texts(_build(["___A", "__A"]))
+        assert sorted(t for t in texts if t.endswith("A")) == ["A", "_A"]

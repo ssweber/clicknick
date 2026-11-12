@@ -578,3 +578,11 @@ class TestRenameFromOutlineItems:
         ]
         assert gaps
         assert all(item.rename_text == "" for item in gaps)
+
+    def test_folder_leaves_a_sibling_with_a_trailing_underscore_alone(self):
+        nicks = ["T", "T_", "T_T10"]
+        assert self._rename(nicks, "T", "New", occurrence=0)[1] == "T_"
+
+    def test_index_folder_leaves_a_sibling_with_a_trailing_underscore_alone(self):
+        nicks = ["Pump1", "Pump1_X", "Pump1_", "Pump2_X"]
+        assert self._rename(nicks, "1", "New", occurrence=0)[2] == "Pump1_"

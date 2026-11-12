@@ -95,6 +95,7 @@ class TreeNode:
     is_index: bool = False
     has_gap: bool = False  # a child is a "_" gap
     name: str = ""
+    label: str = ""  # the name as spelled: with a separator left over or a trailing "_"
     seg_start: str = ""
     path_end: str = ""
 
@@ -255,11 +256,13 @@ def _insert_path(
         if name_trailing or (not gap and has_sep == prev_gap):
             # a separator where none is due, or none where one is, or a trailing "_"
             key = f"{key}\x00{int(has_sep)}{name_trailing}"
+        prev_was_gap = prev_gap
         prev_gap = gap
         child = node.children.get(key)
         if child is None:
             child = TreeNode(
                 name=name,
+                label=f"{'_' if has_sep and prev_was_gap else ''}{name}{'_' * name_trailing}",
                 seg_start=nickname[: sep_start if gap else text_start],
                 path_end=nickname[: (end if gap else name_end) + name_trailing],
             )
@@ -276,6 +279,7 @@ def _insert_path(
             if child is None:
                 child = TreeNode(
                     name=index,
+                    label=index + "_" * trailing,
                     is_index=True,
                     seg_start=node.seg_start,
                     path_end=nickname[: end + trailing],
@@ -527,14 +531,14 @@ def _flatten_mixed_array(name: str, node: TreeNode) -> list[DisplayItem]:
     if numeric_children := _numeric_children(node):
         array_children: list[DisplayItem] = []
         for index_node in numeric_children:
-            array_children.extend(_flatten_child_with_prefix(index_node.name, index_node))
+            array_children.extend(_flatten_child_with_prefix(index_node.label, index_node))
         items.append(
             _make_item(f"{name}{_get_array_range(node)}", node, array_children, array=True)
         )
 
     # Emit non-numeric children collapsed with parent name
     for child in _named_children(node):
-        items.extend(_flatten_child_with_prefix(f"{name}_{child.name}", child))
+        items.extend(_flatten_child_with_prefix(f"{name}_{child.label}", child))
 
     return items
 
@@ -551,7 +555,7 @@ def _flatten_child_with_prefix(prefix: str, node: TreeNode) -> list[DisplayItem]
     # A node that is an array itself (the child of a mixed array) is shown as one
     if node.is_array and not _has_mixed_array_content(node):
         if index_node := _is_single_element_array(node):
-            current_path[0] = f"{prefix}{index_node.name}"
+            current_path[0] = f"{prefix}{index_node.label}"
             collapse_node = index_node
         else:
             current_path[0] = f"{prefix}{_get_array_range(node)}"
@@ -563,18 +567,18 @@ def _flatten_child_with_prefix(prefix: str, node: TreeNode) -> list[DisplayItem]
         if only.is_index:
             break
         if _has_mixed_array_content(only):
-            current_path.append(only.name)
+            current_path.append(only.label)
             collapse_node = only
             break
         if index_node := _is_single_element_array(only):
-            current_path.append(f"{only.name}{index_node.name}")
+            current_path.append(f"{only.label}{index_node.label}")
             collapse_node = index_node
         elif only.is_array:
-            current_path.append(f"{only.name}{_get_array_range(only)}")
+            current_path.append(f"{only.label}{_get_array_range(only)}")
             collapse_node = only
             array_chain = True
         else:
-            current_path.append(only.name)
+            current_path.append(only.label)
             collapse_node = only
 
     text = "_".join(current_path)
@@ -595,16 +599,16 @@ def _flatten_node_children(node: TreeNode) -> list[DisplayItem]:
         # Rule 3: collapse array index with single leaf child
         if child.is_index:
             if leaf_child := _get_collapsible_leaf(child):
-                items.append(_make_item(f"{child.name}_{leaf_child.name}", leaf_child))
+                items.append(_make_item(f"{child.label}_{leaf_child.label}", leaf_child))
                 continue
 
         # Rule 4: Handle array nodes (an array with only indices is one item)
         if child.is_array and _has_mixed_array_content(child):
-            items.extend(_flatten_mixed_array(child.name, child))
+            items.extend(_flatten_mixed_array(child.label, child))
             continue
 
         # Non-array nodes, and arrays of indices only
-        items.extend(_flatten_child_with_prefix(child.name, child))
+        items.extend(_flatten_child_with_prefix(child.label, child))
 
     return items
 

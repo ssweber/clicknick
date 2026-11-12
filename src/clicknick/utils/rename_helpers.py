@@ -24,8 +24,8 @@ def build_rename_pattern(
         pattern = rf"^({re.escape(prefix)})({re.escape(current_text)})(\d+)(_|$)"
         replacement_template = r"\g<1>{new_text}\g<3>\g<4>"
     else:
-        # Non-array pattern: ^(prefix)(current)(_|$), or ^(prefix)(current)($) when exact
-        tail = "($)" if exact else "(_|$)"
+        # Non-array pattern: ^(prefix)(current)(_(?!$)|$), or ^(prefix)(current)($) when exact
+        tail = "($)" if exact else "(_(?!$)|$)"
         pattern = rf"^({re.escape(prefix)})({re.escape(current_text)}){tail}"
         replacement_template = r"\g<1>{new_text}\g<3>"
 
