@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -16,20 +15,20 @@ SCR_WATCH_INTERVAL_MS = 3000
 class ScrWatcher:
     """Monitors a folder's Scr*.tmp files and fires a callback on change.
 
-    Uses the same mtime-based, tkinter.after() pattern as FileMonitor.
-    Tracks the newest mtime across all Scr*.tmp files.
+    Uses the same tkinter.after() polling as FileMonitor. Any change to the
+    set of Scr*.tmp files, or to one file's mtime or size, counts as a save,
+    including an earlier mtime (a copied-back file or a clock step).
     """
 
-    def _newest_mtime(self) -> float:
-        best = 0.0
-        for p in self._folder.glob("Scr*.tmp"):
+    def _snapshot(self) -> frozenset[tuple[str, int, int]]:
+        files: set[tuple[str, int, int]] = set()
+        for path in self._folder.glob("Scr*.tmp"):
             try:
-                mt = os.path.getmtime(p)
-                if mt > best:
-                    best = mt
+                stat = path.stat()
             except OSError:
-                pass
-        return best
+                continue
+            files.add((path.name.casefold(), stat.st_mtime_ns, stat.st_size))
+        return frozenset(files)
 
     def __init__(
         self,
@@ -44,7 +43,7 @@ class ScrWatcher:
         # so syncing the same tag twice still counts it once.
         self._synced_keys: set[int] = set()
         self._staged_rungs: int = 0
-        self._last_mtime: float = self._newest_mtime()
+        self._last_snapshot = self._snapshot()
         self._after_id: str | None = None
         self._active = False
         self._tk_root: Scheduler | None = None
@@ -91,9 +90,10 @@ class ScrWatcher:
         if not self._active:
             return
         try:
-            current = self._newest_mtime()
-            if current > self._last_mtime:
-                self._last_mtime = current
+            current = self._snapshot()
+            # No Scr*.tmp left is not a save: there is nothing to read.
+            if current and current != self._last_snapshot:
+                self._last_snapshot = current
                 self._on_changed()
                 self._synced_keys.clear()
                 self._staged_rungs = 0
