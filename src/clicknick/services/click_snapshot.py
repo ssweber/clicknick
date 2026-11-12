@@ -10,6 +10,8 @@ whole each time it is taken, so it never mixes two saves.
 from __future__ import annotations
 
 import os
+import shutil
+from collections.abc import Iterable
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -20,10 +22,36 @@ _DATABASE = "SC_.mdb"
 _NICKNAMES = "nicknames.csv"
 
 
+def _snapshots_root() -> Path:
+    root = Path(os.environ.get("LOCALAPPDATA") or Path.home())
+    return root / "ClickNick" / "compare"
+
+
 def snapshot_dir(hwnd: int) -> Path:
     """Where the copy of the CLICK window *hwnd*'s last save is kept."""
-    root = Path(os.environ.get("LOCALAPPDATA") or Path.home())
-    return root / "ClickNick" / "compare" / f"CLICK ({hwnd:08X})"
+    return _snapshots_root() / f"CLICK ({hwnd:08X})"
+
+
+def remove_stale_snapshots(keep_hwnds: Iterable[int], keep_dirs: Iterable[Path]) -> list[Path]:
+    """Delete the copies of CLICK windows other than *keep_hwnds*; return what was deleted.
+
+    A copy in *keep_dirs* (one a window shows) stays, and so does anything in
+    the folder that is not a copy. A copy cut short leaves a ``.CLICK (hwnd)-*``
+    folder behind; those go too.
+    """
+    root = _snapshots_root()
+    if not root.is_dir():
+        return []
+    keep = {snapshot_dir(hwnd).resolve() for hwnd in keep_hwnds}
+    keep |= {Path(folder).resolve() for folder in keep_dirs}
+    removed = []
+    for path in root.iterdir():
+        if not path.name.startswith(("CLICK (", ".CLICK (")) or not path.is_dir():
+            continue
+        if path.resolve() not in keep:
+            shutil.rmtree(path, ignore_errors=True)
+            removed.append(path)
+    return removed
 
 
 def _copy_nicknames(click_dir: Path, staged: Path) -> str:

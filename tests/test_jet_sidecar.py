@@ -323,6 +323,7 @@ def test_none_connects_through_existing_csv_flow(monkeypatch):
         monitoring=False,
         _clear_connection_state=Mock(),
         _load_workspace_pairing=Mock(),
+        _show_instances=Mock(),
         _watch_connection=Mock(),
         _hide_overlay=Mock(),
         nickname_manager=SimpleNamespace(
@@ -388,6 +389,9 @@ def test_unloadable_odbc_loads_off_ui_thread_and_handles_result(jet_database, mo
     )
     view._open_data = lambda store: app_module.ClickNickApp._open_data(view, store)
     view._get_store = lambda: app_module.ClickNickApp._get_store(view)
+    view._open_connection_session = lambda click: app_module.ClickNickApp._open_connection_session(
+        view, click
+    )
     monkeypatch.setattr(data_source, "find_click_database", lambda *_args: str(path))
     monkeypatch.setattr(
         mdb_shared, "get_available_access_drivers", lambda: ["Microsoft Access Driver (*.mdb)"]
@@ -465,6 +469,7 @@ def test_switch_closes_old_session_before_loading_new_database(monkeypatch):
         nickname_manager=Mock(),
         _clear_connection_state=Mock(),
         _load_workspace_pairing=Mock(),
+        _show_instances=Mock(),
         _watch_connection=Mock(),
         _hide_overlay=Mock(),
         _load_instance_database=lambda *_args: events.append("load"),

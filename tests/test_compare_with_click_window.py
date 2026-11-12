@@ -12,9 +12,14 @@ from laddercodec import Coil, Contact, Rung, read_csv
 from laddercodec.model import Program
 
 from clicknick.app import ClickNickApp
+from clicknick.connection_session import ClickConnection
 from clicknick.data.data_source import CsvDataSource
 from clicknick.models.address_row import AddressRow
-from clicknick.services.click_snapshot import snapshot_click_program, snapshot_dir
+from clicknick.services.click_snapshot import (
+    remove_stale_snapshots,
+    snapshot_click_program,
+    snapshot_dir,
+)
 
 _IT = typing.get_type_hints(Contact)["type"]
 
@@ -136,6 +141,30 @@ def test_a_copy_that_cannot_be_swapped_in_leaves_the_last_one_whole(
     assert (dest / "main.csv").read_text(encoding="utf-8") == "last copy"
 
 
+def test_stale_snapshots_are_removed_except_those_kept(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    for hwnd in (1, 2, 3):
+        (snapshot_dir(hwnd) / "csv").mkdir(parents=True)
+    compare = snapshot_dir(1).parent
+    (compare / ".CLICK (00000003)-k2j8").mkdir()  # Left by a copy cut short
+    (compare / "notes").mkdir()
+
+    removed = remove_stale_snapshots([1], [snapshot_dir(2)])
+
+    assert sorted(path.name for path in removed) == [".CLICK (00000003)-k2j8", "CLICK (00000003)"]
+    assert sorted(path.name for path in compare.iterdir()) == [
+        "CLICK (00000001)",
+        "CLICK (00000002)",
+        "notes",
+    ]
+
+
+def test_no_compare_folder_removes_nothing(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    assert remove_stale_snapshots([], []) == []
+
+
 def _app(windows: dict[int, str] | None = None) -> ClickNickApp:
     """An app connected to the CLICK window 1; *windows* are the open ones, hwnd -> file."""
     windows = {1: "Line1.ckp", 2: "Line2.ckp"} if windows is None else windows
@@ -255,3 +284,36 @@ def test_a_click_window_with_nothing_saved_is_explained(monkeypatch) -> None:
 
     assert "Line2.ckp has no saved program" in showerror.call_args.args[1]
     app._show_preview_changes.assert_not_called()
+
+
+def test_refreshing_the_window_list_removes_copies_of_closed_windows(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    for hwnd in (1, 2, 3, 4, 5):
+        (snapshot_dir(hwnd) / "csv").mkdir(parents=True)
+    compare = snapshot_dir(1).parent
+    (compare / ".CLICK (00000003)-k2j8").mkdir()  # Left by a copy cut short
+    (compare / "notes.txt").write_text("mine", encoding="utf-8")
+    app = _app()  # Windows 1 and 2 are open
+    app._click = ClickConnection("p1", 1, "Line1.ckp")
+    app.click_instances = []
+    app.instances_combobox = {}
+    app.selected_instance_var = MagicMock()
+    app.start_button = MagicMock()
+    app._data = None
+    shown = SimpleNamespace(winfo_exists=lambda: True)
+    closed = SimpleNamespace(winfo_exists=lambda: False)
+    app._preview_changes_windows = {
+        snapshot_dir(4).resolve(): shown,
+        snapshot_dir(5).resolve(): closed,
+    }
+
+    app.refresh_click_instances()
+
+    assert sorted(path.name for path in compare.iterdir()) == [
+        "CLICK (00000001)",
+        "CLICK (00000002)",
+        "CLICK (00000004)",
+        "notes.txt",
+    ]

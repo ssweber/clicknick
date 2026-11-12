@@ -12,7 +12,7 @@ from .config import AppSettings
 from .connection_session import ClickConnection, SavedProgram
 from .data.address_store import AddressStore
 from .data.nickname_manager import NicknameManager
-from .detection.window_detector import ClickWindowDetector
+from .detection.window_detector import ClickInstance, ClickWindowDetector
 from .detection.window_mapping import CLICK_PLC_WINDOW_MAPPING
 from .resources.action_icons import ActionIconCache
 from .resources.icon_data import ICON_PNG_BASE64
@@ -200,9 +200,17 @@ class ClickNickApp:
             return "Test - Sim off", "Start"
         return f"Test - Sim {simulation.summary_text}", "Stop"
 
+    def _click_filename(self) -> str:
+        """The connected CLICK window's project filename ("" when none is connected)."""
+        return self._click.filename if self._click else ""
+
     def _refresh_ui(self) -> None:
-        """Bring the title and status/details variables up to date (no widget rebuilds)."""
+        """Bring the titles and status/details variables up to date (no widget rebuilds)."""
         self.root.title(self._window_title())
+        if self._data is not None:
+            dataview = self._data.dataview_window
+            for window in (*self._data.editors, *([dataview] if dataview else [])):
+                window.refresh_title()
         if not hasattr(self, "workspace_status_var"):
             return
 
@@ -720,7 +728,7 @@ class ClickNickApp:
             DataviewEditorWindow(
                 self.root,
                 session=data,
-                title_suffix=self._click.filename if self._click else "",
+                get_title_suffix=self._click_filename,
                 get_simulation=lambda: self._session.simulation if self._session else None,
             )
 
@@ -800,8 +808,8 @@ class ClickNickApp:
             window = AddressEditorWindow(
                 self.root,
                 session=data,
-                click_filename=self._click.filename if self._click else "",
-                analysis_service=self._session.analysis if self._session else None,
+                get_click_filename=self._click_filename,
+                get_analysis_service=lambda: self._session.analysis if self._session else None,
                 on_synced=self._on_editor_synced,
                 get_synced_pending=lambda: self._session.synced_pending if self._session else 0,
                 close_after_sync=close_after_sync,
@@ -1181,8 +1189,9 @@ class ClickNickApp:
             mirror_path.mkdir(parents=True, exist_ok=True)
             if changing_location:
                 source_was_modified = plc_source_is_modified(source)
-                sync_workspace_to_mirror(source, mirror_path)
-                if not source_was_modified:
+                result = sync_workspace_to_mirror(source, mirror_path)
+                # A kept (edited) source of the chosen workspace must still show as edited
+                if not source_was_modified and not result.kept_source:
                     record_generated_plc_source(mirror_path)
             sidecar = save_project_workspace_config(config)
             remember_project_sidecar(sidecar, preferred_for=plc_name)
@@ -1685,10 +1694,12 @@ class ClickNickApp:
                 parent=self.root,
             )
             return
-        if analysis.status is AnalysisStatus.FAILED and analysis.project_dir is None:
+        if analysis.status is AnalysisStatus.FAILED and not analysis.project_is_current:
+            # project_dir, if any, is then an earlier save's workspace
             messagebox.showerror(
                 "Export Workspace",
-                analysis.error or "The workspace could not be built.",
+                "The workspace could not be built from CLICK's last save, so there is "
+                "nothing current to export.\n\n" + (analysis.error or "The build failed."),
                 parent=self.root,
             )
             return
@@ -1721,7 +1732,17 @@ class ClickNickApp:
         )
 
     def _load_ladder_csv(self):
-        """Load a single ladder CSV file to the Click clipboard."""
+        """Load a single ladder CSV file to the clipboard, for the connected CLICK window."""
+        click = self._click
+        if click is None:
+            # What is copied depends on the CLICK it goes into, and its version
+            messagebox.showinfo(
+                "Load Ladder CSV",
+                "Not connected to CLICK. Connect to the CLICK window to paste into, "
+                "then load the CSV again.",
+                parent=self.root,
+            )
+            return
         csv_file = filedialog.askopenfilename(
             title="Load Ladder CSV to Clipboard",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
@@ -1730,22 +1751,14 @@ class ClickNickApp:
         if not csv_file:
             return
 
-        from pathlib import Path
-
         from .ladder.clipboard import copy_to_clipboard, is_click_v4
         from .ladder.program import prepare_csv_load
-        from .utils.mdb_shared import find_click_database
 
         csv_path = Path(csv_file)
-
-        mdb_path = None
-        if self._click is not None:
-            db_path = find_click_database(click_hwnd=self._click.hwnd)
-            if db_path:
-                mdb_path = Path(db_path)
+        mdb_path = self._live_mdb_path()
 
         try:
-            click_v4 = is_click_v4(self._click.hwnd if self._click else None)
+            click_v4 = is_click_v4(click.hwnd)
             result = prepare_csv_load(csv_path, click_v4=click_v4, mdb_path=mdb_path)
         except (ValueError, RuntimeError) as exc:
             messagebox.showerror(
@@ -1756,7 +1769,7 @@ class ClickNickApp:
             return
 
         try:
-            copy_to_clipboard(result.payload, owner_hwnd=self._click.hwnd if self._click else None)
+            copy_to_clipboard(result.payload, owner_hwnd=click.hwnd)
         except RuntimeError as exc:
             messagebox.showerror(
                 "Load Ladder CSV",
@@ -2207,6 +2220,18 @@ class ClickNickApp:
         # Create UI components
         self._create_widgets()
 
+    def _remove_stale_compare_copies(self, open_hwnds: set[int]) -> None:
+        """Delete the copies (``_compare_with_click_window``) of CLICK windows not in
+        *open_hwnds*, except one an open Preview Changes window shows."""
+        from .services.click_snapshot import remove_stale_snapshots
+
+        shown = [
+            folder
+            for folder, window in self._preview_changes_windows.items()
+            if window.winfo_exists()
+        ]
+        remove_stale_snapshots(open_hwnds, shown)
+
     def _select_connected_instance(self) -> None:
         """Select the connected CLICK window in the combobox (nothing when none is)."""
         click = self._click
@@ -2218,8 +2243,26 @@ class ClickNickApp:
                     break
         self.selected_instance_var.set(label)
 
-    def _show_instances(self) -> None:
-        """List the CLICK windows in the combobox and select the connected one."""
+    def _show_instances(self, connected_title: str | None = None) -> None:
+        """List the CLICK windows in the combobox and select the connected one.
+
+        The connected window is always listed, under the project it shows: the
+        list is read only now and then and leaves out a window whose title shows
+        no project. *connected_title* is its title when the caller knows it.
+        """
+        click = self._click
+        if click is not None:
+            listed = next((i for i in self.click_instances if i.hwnd == click.hwnd), None)
+            if listed is None or listed.filename != click.filename:
+                title = connected_title or self.detector.get_window_title(click.hwnd) or ""
+                entry = ClickInstance(click.pid, title, click.filename, click.hwnd)
+                if listed is None:
+                    self.click_instances = [*self.click_instances, entry]
+                else:
+                    self.click_instances = [
+                        entry if instance is listed else instance
+                        for instance in self.click_instances
+                    ]
         self.instances_combobox["values"] = self._instance_labels()
         self._select_connected_instance()
 
@@ -2440,6 +2483,7 @@ class ClickNickApp:
         ):
             self._handle_window_closed()
         self._show_instances()
+        self._remove_stale_compare_copies({instance.hwnd for instance in self.click_instances})
 
         if not click_instances:
             self._update_status("⚠ No ClickPLC windows", "error")
@@ -2467,12 +2511,22 @@ class ClickNickApp:
             self._show_odbc_warning()
             self._odbc_warning_shown = True
 
+    def _open_connection_session(self, click: ClickConnection) -> None:
+        """Start the analysis, Scr watcher and simulation for the connected project."""
+        from .connection_session import ConnectionSession
+
+        self._session = ConnectionSession(
+            click,
+            workspace_dir=self._configured_workspace_dir(),
+            on_sync_status_changed=self._on_sync_status_changed,
+            on_build_finished=self._on_build_finished,
+        )
+
     def _load_instance_database(self, pid, filename, hwnd):
         """Select a backend and load a private store before attaching it to Tk."""
         import queue
         import threading
 
-        from .connection_session import ConnectionSession
         from .data.data_source import MdbDataSource
 
         token = object()
@@ -2511,12 +2565,7 @@ class ClickNickApp:
             if not self._open_data(store):
                 self._update_status("Database load cancelled", "status")
                 return
-            self._session = ConnectionSession(
-                ClickConnection(pid, hwnd, filename),
-                workspace_dir=self._configured_workspace_dir(),
-                on_sync_status_changed=self._on_sync_status_changed,
-                on_build_finished=self._on_build_finished,
-            )
+            self._open_connection_session(ClickConnection(pid, hwnd, filename))
             self.load_from_database()
             self._start_analysis_build()
 
@@ -2562,18 +2611,47 @@ class ClickNickApp:
         )
         self._show_monitoring_button()
 
+    def _keeps_edits_for(self, old_filename: str, new_filename: str) -> bool:
+        """Ask whether unsaved database edits stay, for the project CLICK shows now.
+
+        CLICK's Save As keeps the window's temp folder and its database, and so
+        does opening another project in the same window; ClickNick cannot tell
+        the two apart, so the user says. False when there are no unsaved edits.
+        """
+        data = self._data
+        if data is None or not data.store.is_database:
+            return False
+        data.commit_open_cell_editors()
+        if not data.store.has_unsaved_changes():
+            return False
+        return messagebox.askyesno(
+            "Project Changed",
+            f"The CLICK window now shows {new_filename}. You have unsaved address changes "
+            f"made in {old_filename}.\n\n"
+            f"Keep them as unsaved changes for {new_filename}? Choose Yes after a Save As in "
+            f"CLICK: Sync then writes them to {new_filename}.\n\n"
+            "No discards them.",
+            icon=messagebox.WARNING,
+            parent=self.root,
+        )
+
     def _handle_project_change(self, current_title: str, new_filename: str) -> None:
         """The connected CLICK window shows another project: follow it.
 
-        Database data closes without a prompt, as when the window closes (a
-        Save As included); CSV data stays loaded. With no data loaded, the
-        new project's database is loaded. Monitoring stays as it was.
+        Unsaved database edits are kept for the new project or discarded, as
+        the user says (``_keeps_edits_for``). Kept, the data and its windows stay
+        open, and the store's file monitor reads the base from the database the
+        window now holds. Otherwise database data closes, after offering to save
+        unsaved Dataview edits, and the new project's database is loaded. CSV
+        data stays loaded. Monitoring stays as it was.
         """
         click = self._click
         if click is None:
             return
+        keep = self._keeps_edits_for(click.filename, new_filename)
+        closes_data = self.using_database and not keep
         closing = []
-        if self.using_database and self._data.has_open_windows:
+        if closes_data and self._data.has_open_windows:
             closing.append("Editor windows")
         if self._session is not None and self._session.simulator is not None:
             closing.append("the Simulator" if closing else "The Simulator")
@@ -2586,20 +2664,20 @@ class ClickNickApp:
         if self._session is not None:
             self._session.close()
             self._session = None
-        if self.using_database:
+        if closes_data:
+            self._data.offer_dataview_save()
             self._close_data(prompt_save=False)
 
-        self.click_instances = [
-            replace(inst, title=current_title, filename=new_filename)
-            if inst.pid == click.pid
-            else inst
-            for inst in self.click_instances
-        ]
         self._click = click = replace(click, filename=new_filename)
-        self._show_instances()
+        self._show_instances(current_title)
         self._load_workspace_pairing()
 
-        if self._data is None and self.nickname_manager.has_database_backend():
+        if keep:
+            self._open_connection_session(click)
+            self._update_status(f"Kept unsaved changes for {new_filename}", "connected")
+            self._on_data_ready()
+            self._start_analysis_build()
+        elif self._data is None and self.nickname_manager.has_database_backend():
             # Same off-thread load as connecting, with a token so a result for
             # a project that changed again is dropped.
             self._load_instance_database(click.pid, click.filename, click.hwnd)
@@ -2756,6 +2834,7 @@ class ClickNickApp:
 
         # Store the new connection FIRST (including hwnd to avoid lookup issues)
         self._click = ClickConnection(pid, hwnd, filename)
+        self._show_instances(title)
         self._load_workspace_pairing()
 
         if get_database_backend() == "none":

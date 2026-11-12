@@ -973,7 +973,7 @@ class AddressEditorWindow(tk.Toplevel):
                 self.notebook,
                 self._store,
                 section_boundaries=unified_view.section_boundaries,
-                analysis_service=self._analysis_service,
+                get_analysis_service=self._get_analysis_service,
             )
 
             # Add to notebook
@@ -1402,8 +1402,9 @@ class AddressEditorWindow(tk.Toplevel):
         parts = [base_title]
 
         # Add Click project filename if available
-        if self.click_filename:
-            parts.append(self.click_filename)
+        click_filename = self._get_click_filename()
+        if click_filename:
+            parts.append(click_filename)
 
         # Add data source info
         try:
@@ -1425,8 +1426,8 @@ class AddressEditorWindow(tk.Toplevel):
         self,
         parent: tk.Widget,
         session: DataSession,
-        click_filename: str = "",
-        analysis_service: object | None = None,
+        get_click_filename: Callable[[], str] = lambda: "",
+        get_analysis_service: Callable[[], object | None] = lambda: None,
         on_synced: Callable[[set[int]], None] | None = None,
         get_synced_pending: Callable[[], int] = lambda: 0,
         close_after_sync: bool = False,
@@ -1436,8 +1437,9 @@ class AddressEditorWindow(tk.Toplevel):
         Args:
             parent: Parent widget (main app window)
             session: DataSession holding the AddressStore this window edits
-            click_filename: The connected Click project filename (e.g., "MyProject.ckp")
-            analysis_service: Optional AnalysisService for program-analysis filter prefixes.
+            get_click_filename: The connected Click project's filename (e.g., "MyProject.ckp")
+            get_analysis_service: The connection's AnalysisService, for program-analysis
+                filter prefixes (None when there is none).
             on_synced: Called with the saved addr_keys after a successful save.
             get_synced_pending: Count of tags synced to CLICK but not yet saved there.
             close_after_sync: The window was opened to Sync edits staged elsewhere: its
@@ -1447,8 +1449,8 @@ class AddressEditorWindow(tk.Toplevel):
 
         self._session = session
         self._store = session.store
-        self.click_filename = click_filename
-        self._analysis_service = analysis_service
+        self._get_click_filename = get_click_filename
+        self._get_analysis_service = get_analysis_service
         self._on_synced = on_synced
         self._get_synced_pending = get_synced_pending
         self._close_after_sync = close_after_sync
@@ -1489,6 +1491,10 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Open Tag Browser by default
         self._init_after_id = self.after(100, self._toggle_nav)
+
+    def refresh_title(self) -> None:
+        """Show the project CLICK has open now; the app calls this when it changes."""
+        self.title(self._get_window_title())
 
     def commit_open_cell_editor(self) -> bool:
         """Commit the text typed in an open cell editor, so it is an edit like any other.

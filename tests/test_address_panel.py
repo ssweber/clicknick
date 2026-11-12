@@ -182,3 +182,19 @@ def test_removing_a_block_keeps_the_rest_of_the_comment(store) -> None:
 
     assert store.visible_state[get_addr_key("DS", 1)].comment == "Fill"
     assert store.visible_state[get_addr_key("DS", 2)].comment == ""
+
+
+def test_analysis_filters_use_the_current_analysis(tk_root, store) -> None:
+    view = build_unified_view(store.visible_state)
+    store.set_unified_view(view)
+    frame = ttk.Frame(tk_root)
+    old = Mock(is_available=True, **{"get_role_keys.return_value": {1}})
+    new = Mock(is_available=True, **{"get_role_keys.return_value": {2}})
+    current = [old]
+    panel = AddressPanel(frame, store, get_analysis_service=lambda: current[0])
+    try:
+        assert panel._resolve_analysis_prefix("input", None) == {1}
+        current[0] = new  # A new connection session's build
+        assert panel._resolve_analysis_prefix("input", None) == {2}
+    finally:
+        frame.destroy()

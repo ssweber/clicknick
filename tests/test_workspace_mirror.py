@@ -248,6 +248,22 @@ def test_choosing_an_existing_workspace_keeps_its_edited_source(
     assert (backup / "user_module.py").read_text(encoding="utf-8") == "helper\n"
 
 
+def test_a_chosen_workspace_whose_edited_source_was_kept_shows_as_edited(
+    monkeypatch, tmp_path: Path
+) -> None:
+    durable = tmp_path / "Line1 Workspace"
+    _publish_generated_project(_generated(tmp_path / "g0", "generated A\n"), durable)
+    (durable / "src" / "plc" / "main.py").write_text("unpasted edits\n", encoding="utf-8")
+    temporary = tmp_path / "pyrung_project"
+    _publish_generated_project(_generated(tmp_path / "g1", "generated B\n"), temporary)
+    assert not plc_source_is_modified(temporary)
+
+    _choose_existing_workspace(monkeypatch, temporary, durable)
+
+    assert (durable / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "unpasted edits\n"
+    assert plc_source_is_modified(durable)
+
+
 def test_choosing_an_unedited_workspace_takes_the_active_source(
     monkeypatch, tmp_path: Path
 ) -> None:

@@ -19,9 +19,11 @@ if TYPE_CHECKING:
 
 
 class EditorWindow(Protocol):
-    """What DataSession needs from an editor window."""
+    """What DataSession and the app need from an editor window."""
 
     def close_without_prompt(self) -> None: ...
+
+    def refresh_title(self) -> None: ...
 
 
 class AddressEditor(EditorWindow, Protocol):
@@ -85,28 +87,44 @@ class DataSession:
         if self._dataview_window is window:
             self._dataview_window = None
 
+    def commit_open_cell_editors(self) -> bool:
+        """Make text still typed in an Address Editor cell an edit; False if a cell won't commit."""
+        return all(editor.commit_open_cell_editor() for editor in self._editors)
+
+    def _ask_to_save_dataview(self, *, can_cancel: bool) -> bool:
+        """Offer to save unsaved Dataview edits. False on Cancel or a failed save."""
+        from tkinter import messagebox
+
+        window = self._dataview_window
+        if window is None or not window.has_unsaved_changes():
+            return True
+        # Editor windows are Tk Toplevels; the protocols only name what we call.
+        dataview_owner: Any = window
+        ask = messagebox.askyesnocancel if can_cancel else messagebox.askyesno
+        answer = ask(
+            "Unsaved Changes",
+            "You have unsaved changes in Dataview Editor. Save before closing?",
+            parent=dataview_owner,
+        )
+        if answer is None:
+            return False
+        # The window says why a save was cancelled or failed
+        return not answer or window.save_all()
+
+    def offer_dataview_save(self) -> None:
+        """Offer to save unsaved Dataview edits before a close that cannot be cancelled."""
+        self._ask_to_save_dataview(can_cancel=False)
+
     def _confirm_close(self, parent: tk.Misc | None) -> bool:
         from tkinter import messagebox
 
         # Text still in a cell editor is an edit; a cell that won't commit stops the close.
-        for editor in self._editors:
-            if not editor.commit_open_cell_editor():
-                return False
+        if not self.commit_open_cell_editors():
+            return False
 
-        # Editor windows are Tk Toplevels; the protocols only name what we call.
-        window = self._dataview_window
-        if window is not None and window.has_unsaved_changes():
-            dataview_owner: Any = window
-            answer = messagebox.askyesnocancel(
-                "Unsaved Changes",
-                "You have unsaved changes in Dataview Editor. Save before closing?",
-                parent=dataview_owner,
-            )
-            if answer is None:
-                return False
-            # A cancelled or failed save (the window says why) closes nothing
-            if answer and not window.save_all():
-                return False
+        # A cancelled or failed save closes nothing
+        if not self._ask_to_save_dataview(can_cancel=True):
+            return False
 
         if self.store.has_unsaved_changes():
             owner: Any = self._editors[0] if self._editors else parent
