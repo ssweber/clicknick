@@ -20,6 +20,7 @@ def _editor(*, close_after_sync: bool) -> AddressEditorWindow:
     window._store.get_dirty_keys.return_value = {1}
     window._store.save_all_changes.return_value = 1
     window._close_after_sync = close_after_sync
+    window._tabs = {}
     window._on_synced = Mock()
     window.status_var = Mock()
     window.save_btn = Mock()
