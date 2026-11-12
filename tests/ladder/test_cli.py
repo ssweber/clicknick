@@ -63,7 +63,7 @@ class TestExtractOperandCandidates:
         assert result == ["DS1", "100"]
 
     def test_timer(self):
-        assert _extract_operand_candidates(Timer("on_delay", "T1", "TD1", "1000", "ms")) == [
+        assert _extract_operand_candidates(Timer("on_delay", "T1", "TD1", "1000", "Tms")) == [
             "T1",
             "TD1",
         ]
