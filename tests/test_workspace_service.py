@@ -353,7 +353,8 @@ def test_closed_session_drops_its_queued_build_and_tells_the_caller(tmp_path) ->
 
 
 def _settle(watcher) -> None:
-    """The watcher counts a save once the files stay the same for one more check."""
+    """The watcher counts a save once the files stay the same for two more checks."""
+    watcher._check()
     watcher._check()
     watcher._check()
 

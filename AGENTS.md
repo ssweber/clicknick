@@ -213,7 +213,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - A build that fails before it publishes leaves `project_dir` an earlier save's (`project_is_current`
   is False), and Preview Changes then has nothing to compare with
 - `SavedProgram.save_count` is the one signal that CLICK saved: only the ScrWatcher bumps it, once per save
-  (after a change to the Scr*.tmp files it checks every 500 ms and counts the save once they stop changing).
+  (after a change to the Scr*.tmp files it checks every 500 ms and counts the save once two checks in a row
+  find them unchanged, about 1 s).
   A Sync rebuild, Reload from CLICK, a workspace change, a retry and a failed build leave it as it was
 - `AnalysisService.status` reads BUILDING until a build that serves every request made so far
   (`mark_building` returns the count, `build(serves=)` takes it) finishes. A build of the files before a save

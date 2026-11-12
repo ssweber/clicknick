@@ -12,6 +12,9 @@ if TYPE_CHECKING:
 SCR_WATCH_INTERVAL_MS = 3000
 # After a change, checks this often until the files stop changing.
 SCR_SETTLE_MS = 500
+# A save counts once this many settle checks in a row find the files unchanged
+# (about 1 s), so a pause CLICK makes between two Scr*.tmp writes is not a save.
+SCR_QUIET_CHECKS = 2
 
 
 def _resolved(path: Path) -> Path:
@@ -27,8 +30,9 @@ class ScrWatcher:
     Uses the same tkinter.after() polling as FileMonitor. Any change to the
     set of Scr*.tmp files, or to one file's mtime or size, counts as a save,
     including an earlier mtime (a copied-back file or a clock step). After a
-    change it checks again every SCR_SETTLE_MS and fires once the files stay
-    the same for one of those, so a save caught half written is one save, not two.
+    change it checks again every SCR_SETTLE_MS and fires once SCR_QUIET_CHECKS
+    of those in a row find the files the same, so a save caught half written is
+    one save, not two.
     """
 
     def _snapshot(self) -> frozenset[tuple[str, int, int]]:
@@ -57,6 +61,8 @@ class ScrWatcher:
         self._last_snapshot = self._snapshot()
         # A change seen at the last check, not counted until it holds for one more.
         self._settling: frozenset[tuple[str, int, int]] | None = None
+        # Checks in a row that found _settling unchanged.
+        self._quiet_checks = 0
         self._after_id: str | None = None
         self._active = False
         self._tk_root: Scheduler | None = None
@@ -125,6 +131,9 @@ class ScrWatcher:
                 self._settling = None
             elif current != self._settling:
                 self._settling = current  # CLICK may still be writing
+                self._quiet_checks = 0
+            elif self._quiet_checks + 1 < SCR_QUIET_CHECKS:
+                self._quiet_checks += 1
             else:
                 self._last_snapshot = current
                 self._settling = None

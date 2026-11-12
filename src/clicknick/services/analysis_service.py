@@ -427,9 +427,8 @@ class AnalysisService:
         self._lock = threading.Lock()
         self._generation = 0
         self._epoch = 0
-        # Build requests made (mark_building). The status reads as building until a
-        # build that serves all of them finishes: one queued by a save while another
-        # ran means what the running one publishes is the save before.
+        # Build requests made (`mark_building`). A build that serves fewer than this
+        # leaves the status BUILDING: what it publishes is older than the latest request.
         self._builds_asked = 0
 
     @property

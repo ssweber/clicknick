@@ -16,7 +16,8 @@ class _Root:
 
 
 def _settle(watcher: ScrWatcher) -> None:
-    """Two checks: one sees the files change, the next sees them stay that way."""
+    """One check sees the files change, the next two see them stay that way."""
+    watcher._check()
     watcher._check()
     watcher._check()
 
@@ -154,7 +155,7 @@ class _Clock:
         self._due()
 
 
-def test_a_save_counts_once_its_files_stop_changing_for_half_a_second(tmp_path) -> None:
+def test_a_save_counts_once_its_files_stop_changing_for_a_second(tmp_path) -> None:
     (tmp_path / "Scr1.tmp").write_text("main", encoding="utf-8")
     changed: list[bool] = []
     watcher = ScrWatcher(tmp_path, lambda: changed.append(True))
@@ -165,11 +166,32 @@ def test_a_save_counts_once_its_files_stop_changing_for_half_a_second(tmp_path) 
     clock.tick()  # Seen 3 s in; CLICK is still writing
     (tmp_path / "Scr2.tmp").write_text("sub", encoding="utf-8")
     clock.tick()
+    clock.tick()  # The same half a second later
     assert changed == []
-    clock.tick()  # The same half a second later: the save
+    clock.tick()  # And a second later: the save
 
     assert changed == [True]
-    assert clock.delays == [3000, 500, 500, 3000]
+    assert clock.delays == [3000, 500, 500, 500, 3000]
+    watcher.stop()
+
+
+def test_a_pause_between_two_writes_of_one_save_counts_once(tmp_path) -> None:
+    (tmp_path / "Scr1.tmp").write_text("main", encoding="utf-8")
+    changed: list[bool] = []
+    watcher = ScrWatcher(tmp_path, lambda: changed.append(True))
+    clock = _Clock()
+    watcher.start(clock)
+
+    (tmp_path / "Scr1.tmp").write_text("main, saved", encoding="utf-8")
+    clock.tick()  # Seen
+    clock.tick()  # Unchanged for one check: CLICK pauses
+    (tmp_path / "Scr2.tmp").write_text("sub", encoding="utf-8")
+    clock.tick()  # Changed again
+    clock.tick()
+    clock.tick()  # Quiet for two checks: the save
+
+    assert changed == [True]
+    assert clock.delays == [3000, 500, 500, 500, 500, 3000]
     watcher.stop()
 
 
