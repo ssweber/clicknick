@@ -135,7 +135,9 @@ def _read_nickname_csv(csv_path: str) -> tuple[dict[int, AddressRow], frozenset[
             missing = [column for column in REQUIRED_COLUMNS if column not in columns]
             if missing:
                 raise ValueError(f"{name} has no {' or '.join(missing)} column")
-            fields = frozenset(field for column, field in COLUMN_FIELDS.items() if column in columns)
+            fields = frozenset(
+                field for column, field in COLUMN_FIELDS.items() if column in columns
+            )
 
             for row in reader:
                 try:

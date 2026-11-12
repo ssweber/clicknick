@@ -60,6 +60,9 @@
 - Program analysis and AI tag lookups use the same nicknames as the generated code, switching CLICK projects no longer freezes the window, and the "tags synced" count counts each tag once.
 - Opening another project in the same CLICK window no longer leaves its workspace unbuilt until ClickNick restarts, and Preview Changes now updates its comparison when CLICK's program changes.
 - Open Temporary Workspace and the Workspace status update as soon as a build finishes, instead of waiting for something else to refresh the window, such as opening the Simulator.
+- Nickname CSVs read and write as CLICK's export does: a file Excel saved as "CSV UTF-8" no longer loads empty, XD/YD nicknames (`XD0u`, `XD8`) stay on their own addresses, comments keep their spaces, TXT initial values with `,` or `"` survive, lines end with CRLF, and a file without Address and Nickname columns fails to load, and is not overwritten by Save, instead of loading as an empty project.
+- Import from CSV imports each row of a nested block once, under the innermost block, and skips comments or first-scan values when the file has no column for them instead of clearing them.
+- Save Copy of CLICK's Address.csv keeps addresses that have only an initial value or Retentive set, and ClickNick reloads its data when the database or CSV is replaced by an older copy.
 
 ## v0.23.4 - 2026-10-11
 

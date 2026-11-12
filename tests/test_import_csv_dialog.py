@@ -48,9 +48,7 @@ def test_options_not_in_file():
     assert options_not_in_file(frozenset({"nickname", "comment", "initial_value"})) == {
         "first_scan"
     }
-    assert not options_not_in_file(
-        frozenset({"nickname", "comment", "initial_value", "retentive"})
-    )
+    assert not options_not_in_file(frozenset({"nickname", "comment", "initial_value", "retentive"}))
 
 
 def test_a_file_without_comments_does_not_import_them(tk_root, tmp_path):

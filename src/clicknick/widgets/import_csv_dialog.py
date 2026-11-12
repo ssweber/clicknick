@@ -77,8 +77,11 @@ def detect_blocks_in_csv(rows: list[AddressRow]) -> list[BlockGroup]:
 
     blocks: list[BlockGroup] = []
     for range_idx, block_range in enumerate(block_ranges):
-        block_indices = [i for i in range(block_range.start_idx, block_range.end_idx + 1)
-                         if owner[i] == range_idx]
+        block_indices = [
+            i
+            for i in range(block_range.start_idx, block_range.end_idx + 1)
+            if owner[i] == range_idx
+        ]
         if block_indices:
             blocks.append(BlockGroup(name=block_range.name, indices=block_indices, rows=rows))
 
