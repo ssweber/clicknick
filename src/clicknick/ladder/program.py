@@ -370,6 +370,8 @@ def _describe_single_rung(
 def describe_csv(csv_path: Path, *, best_effort: bool = False) -> str:
     """Return a human-readable summary of a CSV fixture's shape."""
     rungs = read_csv(csv_path, strict=not best_effort)
+    if not rungs:
+        return "0 rungs"
     if len(rungs) > 1:
         rung_descs = [
             _describe_single_rung(r.conditions, r.instructions, r.comment, CONDITION_COLUMNS)
@@ -387,8 +389,13 @@ def describe_csv(csv_path: Path, *, best_effort: bool = False) -> str:
 
 
 def encode_csv(csv_path: Path, *, best_effort: bool = False) -> bytes:
-    """Encode a CSV file and return the payload bytes."""
+    """Encode a CSV file and return the payload bytes.
+
+    Raises ValueError when the CSV holds no rungs: there is nothing to paste.
+    """
     rungs = read_csv(csv_path, strict=not best_effort)
+    if not rungs:
+        raise ValueError(f"{csv_path.name} holds no rungs")
     if len(rungs) > 1:
         return encode(rungs)
     return encode(rungs[0])
@@ -732,7 +739,10 @@ def prepare_rungs_load(
     Raises NeedsClickV4Error, before touching the MDB, if the rungs need a
     newer CLICK than the target (*click_v4*). Raises UnreadableRungError for a
     stand-in rung, whose paste would replace the rung in CLICK with an empty one.
+    Raises ValueError when there are no rungs: there is nothing to paste.
     """
+    if not rungs:
+        raise ValueError("there are no rungs to copy")
     stand_ins = [number for number, rung in enumerate(rungs, start=first_rung) if is_stand_in(rung)]
     if stand_ins:
         numbers = ", ".join(str(number) for number in stand_ins)

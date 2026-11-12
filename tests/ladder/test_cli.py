@@ -6,7 +6,7 @@ import typing
 from pathlib import Path
 
 import pytest
-from laddercodec import BlockCopy, Break, Coil, CompareContact, Contact, Rung, Timer
+from laddercodec import BlockCopy, Break, Coil, CompareContact, Contact, Rung, Timer, write_csv
 from laddercodec.csv.contract import CONDITION_COLUMNS
 from laddercodec.model import Program
 
@@ -28,6 +28,8 @@ from clicknick.ladder.program import (
     _extract_operand_candidates,
     _slugify,
     check_click_version,
+    describe_csv,
+    encode_csv,
     extract_addresses_from_bin,
     extract_addresses_from_csv,
     prepare_rungs_load,
@@ -175,6 +177,42 @@ class TestCheckClickVersion:
                 mdb_path=Path("SC_.mdb"),
             )
         assert provisioned == []
+
+
+# ---------------------------------------------------------------------------
+# A CSV that holds no rungs
+# ---------------------------------------------------------------------------
+
+
+def test_no_rungs_are_refused_with_a_value_error(tmp_path: Path) -> None:
+    empty = tmp_path / "empty.csv"
+    write_csv(empty, [])
+
+    assert describe_csv(empty) == "0 rungs"
+    with pytest.raises(ValueError, match="no rungs"):
+        encode_csv(empty)
+    with pytest.raises(ValueError, match="no rungs"):
+        prepare_rungs_load([], click_v4=True)
+
+
+@pytest.mark.parametrize("text", ["", None])
+def test_load_of_a_csv_without_rungs_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, text
+) -> None:
+    empty = tmp_path / "empty.csv"
+    if text is None:
+        write_csv(empty, [])  # Only the header
+    else:
+        empty.write_text(text, encoding="utf-8")
+    monkeypatch.setattr("clicknick.ladder.cli.resolve_mdb_path", lambda _path: None)
+    monkeypatch.setattr("clicknick.ladder.cli.is_click_v4", lambda *_a: True)
+    monkeypatch.setattr("clicknick.ladder.cli.copy_to_clipboard", lambda *_a, **_k: None)
+    monkeypatch.setattr("sys.argv", ["clicknick-rung", "load", str(empty)])
+
+    with pytest.raises(SystemExit, match="1"):
+        main()
+
+    assert "Error:" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------

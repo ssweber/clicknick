@@ -126,6 +126,14 @@
 - The simulation's forces and bench links stay on their addresses when you rename their tags, and turning it off or restarting it while it restores them no longer deletes them; a saved force or link that is not on a CLICK address is reported instead of dropped without a word.
 - Closing the project or the CLICK window while the simulation starts stops it instead of leaving it holding Modbus port 502, and a simulation that exits as it starts shows as failed instead of ready.
 - Switch settings on Unassigned I/O inputs survive opening the Simulator before the first build finishes, an analog input with a range gets its slider once the simulation starts, and the Simulator follows nickname edits after a CSV is loaded.
+- Preview Changes remembers what you pasted until CLICK saves it: running Preview Changes again, switching **Copy**, a Sync or a failed read of CLICK's program no longer has you paste the same rungs a second time, a program whose pasted rungs the new export changes or takes back is copied whole, and **Restart** asks first.
+- A program or deletion marked done in Preview Changes that CLICK's next save shows still to do is a step again, also when that save changed nothing (it stayed done, and the window never closed).
+- A ladder CSV that Preview Changes cannot read is left out with a notice, so the window still closes once CLICK has saved the rest.
+- **Copy: Whole program** steps through a program when a difference you skipped keeps a rung CLICK holds in an old encoding, so the paste does not rewrite that rung from ClickNick's reading of it.
+- Without a comparison with CLICK, Preview Changes says to delete the program's rungs before pasting it whole, and copies only while connected to a CLICK window (it used the first CLICK window it found).
+- A folder's `nicknames.csv` without an Address Comment, Initial Value or Retentive column no longer clears those fields when Preview Changes stages it.
+- A program with no rungs copied whole in Preview Changes is a step of deleting its rungs in CLICK, then **Next** (copying it failed with "there are no rungs to copy").
+- `clicknick-rung load` on a CSV with no rungs says so instead of crashing.
 
 ## v0.23.4 - 2026-10-11
 
