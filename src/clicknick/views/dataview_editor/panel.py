@@ -764,8 +764,8 @@ class DataviewPanel(ttk.Frame):
         # Live value flash highlight tracking: row_idx -> after_id
         self._live_flash_pending: dict[int, str] = {}
 
-        # File monitoring state
-        self._last_mtime: float = 0.0
+        # File monitoring state: (mtime, size) of the file as last loaded or saved
+        self._file_stamp: tuple[float, int] | None = None
         self._monitor_after_id: str | None = None
         self._monitoring_active = False
         self._reload_prompt_shown = False  # Prevent duplicate prompts
@@ -812,16 +812,26 @@ class DataviewPanel(ttk.Frame):
         self.status_label.config(text=text)
         messagebox.showerror("Save Error", text, parent=self)
 
+    @staticmethod
+    def _stamp(path: Path) -> tuple[float, int] | None:
+        """The file's (mtime, size), or None when it can't be read."""
+        try:
+            stat = os.stat(path)
+        except OSError:
+            return None
+        return stat.st_mtime, stat.st_size
+
     def _changed_on_disk(self) -> bool:
-        """True when the file holds a change (CLICK writes .cdv files) this panel has not loaded."""
+        """True when the file holds a change (CLICK writes .cdv files) this panel has not loaded.
+
+        Any other mtime or size counts, not only a later one: a restored older copy is a change.
+        """
         if self._unloaded_change:
             return True
-        try:
-            return self.file_path is not None and (
-                os.path.getmtime(self.file_path) > self._last_mtime
-            )
-        except OSError:
+        if self.file_path is None:
             return False
+        stamp = self._stamp(self.file_path)
+        return stamp is not None and stamp != self._file_stamp
 
     def _reload_file(self) -> None:
         """Reload the file from disk."""
@@ -842,8 +852,8 @@ class DataviewPanel(ttk.Frame):
         self._mark_saved()
         self._update_status()
 
-        # Update mtime to prevent immediate re-prompt
-        self._last_mtime = os.path.getmtime(self.file_path)
+        # What was loaded, so it does not prompt again
+        self._file_stamp = self._stamp(self.file_path)
 
     def _confirm_overwrite(self, path: Path) -> bool:
         """Ask before saving over a change another program made; True to save."""
@@ -883,9 +893,8 @@ class DataviewPanel(ttk.Frame):
         self._mark_saved()
         self._update_status()
 
-        # Update mtime so we don't prompt to reload our own save
-        if path.exists():
-            self._last_mtime = os.path.getmtime(path)
+        # What was saved, so our own save does not prompt a reload
+        self._file_stamp = self._stamp(path)
         return True
 
     def save(self) -> bool:
@@ -944,9 +953,8 @@ class DataviewPanel(ttk.Frame):
         if self._monitoring_active or not self.file_path:
             return
 
-        # Store initial modification time
-        if self.file_path.exists():
-            self._last_mtime = os.path.getmtime(self.file_path)
+        # The file as it is now: loaded or just saved
+        self._file_stamp = self._stamp(self.file_path)
 
         self._monitoring_active = True
         self._reload_prompt_shown = False
@@ -985,10 +993,10 @@ class DataviewPanel(ttk.Frame):
             return
 
         try:
-            if self.file_path and self.file_path.exists():
-                current_mtime = os.path.getmtime(self.file_path)
-                if current_mtime > self._last_mtime and not self._reload_prompt_shown:
-                    self._last_mtime = current_mtime
+            if self.file_path and not self._reload_prompt_shown:
+                stamp = self._stamp(self.file_path)
+                if stamp is not None and stamp != self._file_stamp:
+                    self._file_stamp = stamp
                     self._prompt_reload()
         except Exception:
             # File might be locked during write, skip this check

@@ -143,11 +143,14 @@ def _copy(tmp_path: Path, name: str = "DataView1.cdv") -> Path:
     return target
 
 
-def _click_writes(path: Path) -> bytes:
-    """Rewrite path as CLICK does while connected, with a later mtime; return its bytes."""
+def _click_writes(path: Path, seconds: float = 10) -> bytes:
+    """Rewrite path as CLICK does while connected, its mtime moved by seconds; return its bytes.
+
+    A negative shift is an older copy put back, such as a restored backup.
+    """
+    mtime = os.path.getmtime(path) + seconds
     shutil.copy(FIXTURES / "DataView1WithNewValues.cdv", path)
-    later = os.path.getmtime(path) + 10
-    os.utime(path, (later, later))
+    os.utime(path, (mtime, mtime))
     return path.read_bytes()
 
 
@@ -338,15 +341,16 @@ def test_a_failed_save_as_keeps_the_old_path(tk_root, dialogs, tmp_path):
 # -- A save never goes over a newer CLICK write without asking ---------------
 
 
+@pytest.mark.parametrize("seconds", [10, -100], ids=["newer", "older copy"])
 @pytest.mark.parametrize(("answer", "saved"), [(None, False), (True, True), (False, False)])
 def test_saving_over_a_change_click_made_between_checks_asks_first(
-    tk_root, dialogs, tmp_path, answer, saved
+    tk_root, dialogs, tmp_path, answer, saved, seconds
 ):
     path = _copy(tmp_path)
     panel = DataviewPanel(tk_root, file_path=path, address_normalizer=normalize_address)
     try:
         panel.add_address("DS1")
-        clicks = _click_writes(path)  # inside the 2 s between file checks
+        clicks = _click_writes(path, seconds)  # inside the 2 s between file checks
 
         dialogs.yes_no_cancel.append(answer)
         assert panel.save() is saved
@@ -383,6 +387,23 @@ def test_saving_after_declining_a_reload_asks_first(tk_root, dialogs, tmp_path):
         assert panel.save() is False
         assert len(dialogs.shown) == 2 and "changed by another program" in dialogs.shown[1]
         assert path.read_bytes() == clicks
+    finally:
+        panel.destroy()
+
+
+def test_an_older_copy_put_back_is_offered_for_reload(tk_root, dialogs, tmp_path):
+    path = _copy(tmp_path)
+    panel = DataviewPanel(tk_root, file_path=path, address_normalizer=normalize_address)
+    try:
+        _click_writes(path, -100)
+
+        dialogs.yes_no.append(True)
+        panel._check_file_modified()
+
+        assert len(dialogs.shown) == 1 and "modified by another program" in dialogs.shown[0]
+        assert panel.rows[0].new_value is True, "the restored file is loaded"
+        panel._check_file_modified()
+        assert len(dialogs.shown) == 1, "asked once"
     finally:
         panel.destroy()
 
