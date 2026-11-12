@@ -462,3 +462,60 @@ class TestBuildRenamePattern:
 
         result = re.sub(pattern, repl.format(new_text="Data"), "Test.Value[0]_X")
         assert result == "Test.Data_X"
+
+
+class TestRenameFromOutlineItems:
+    """Rename as the panel runs it: the item says which segment it renames and what precedes it."""
+
+    @staticmethod
+    def _rename(nicknames: list[str], text: str, new_text: str, depth: int = 0) -> list[str]:
+        """Rename with the item shown as ``text`` (the first one at ``depth`` in the tree)."""
+        from clicknick.utils.rename_helpers import build_rename_pattern as real_pattern
+        from clicknick.views.nav_window.outline_logic import build_tree, flatten_tree
+
+        entries = [("DS", i + 1, nick, i + 1) for i, nick in enumerate(nicknames)]
+        found = [
+            item
+            for top in flatten_tree(build_tree(entries))
+            for item, d in top.iter_preorder()
+            if item.text == text and d >= 0
+        ]
+        item = found[depth]
+        pattern, template = real_pattern(item.rename_prefix, item.rename_text, item.rename_is_array)
+        replacement = template.format(new_text=new_text)
+        return [re.sub(pattern, replacement, nick) for nick in nicknames]
+
+    def test_inner_segment_that_prefixes_its_path_renames_only_itself(self):
+        nicks = ["Tank_T_A", "Tank_T_B", "T_Ambient"]
+        assert self._rename(nicks, "Tank_T", "NEW") == ["Tank_NEW_A", "Tank_NEW_B", "T_Ambient"]
+
+    def test_outer_segment_repeated_inside_renames_the_outer(self):
+        nicks = ["Pump_Pump_Status", "Pump_Pump_X", "Pump_Status", "Pump_Q"]
+        assert self._rename(nicks, "Pump", "Motor", depth=0) == [
+            "Motor_Pump_Status",
+            "Motor_Pump_X",
+            "Motor_Status",
+            "Motor_Q",
+        ]
+
+    def test_inner_segment_repeating_the_outer_name_renames_the_inner(self):
+        nicks = ["Pump_Pump_Status", "Pump_Pump_X", "Pump_Status", "Pump_Q"]
+        assert self._rename(nicks, "Pump", "Inner", depth=1) == [
+            "Pump_Inner_Status",
+            "Pump_Inner_X",
+            "Pump_Status",
+            "Pump_Q",
+        ]
+
+    def test_collapsed_array_chain_renames_the_array_name(self):
+        nicks = ["Tank_Pump1_Run", "Tank_Pump2_Run", "Tank_Pump2_Stop", "Tank_Pump1_Stop"]
+        assert self._rename(nicks, "Tank_Pump[1-2]", "Fan") == [
+            "Tank_Fan1_Run",
+            "Tank_Fan2_Run",
+            "Tank_Fan2_Stop",
+            "Tank_Fan1_Stop",
+        ]
+
+    def test_leading_zero_array_renames_keep_the_digits(self):
+        nicks = ["Pump01_Run", "Pump02_Run"]
+        assert self._rename(nicks, "Pump[01-02]", "Fan") == ["Fan01_Run", "Fan02_Run"]

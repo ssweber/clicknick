@@ -10,7 +10,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from tkinter import ttk
 
-from ...models.address_row import AddressRow
+from ...models.address_row import AddressRow, with_pair_retentive
 from ...widgets.rename_dialog import RenameDialog
 from .outline_logic import (
     FLAT_MEMORY_TYPES,
@@ -56,63 +56,6 @@ class OutlinePanel(ttk.Frame):
         # Show context menu
         self._context_menu.post(event.x_root, event.y_root)
 
-    def _extract_current_text(self, item: DisplayItem) -> str:
-        """Extract the current text (for items without base_text set).
-
-        Args:
-            item: The DisplayItem to analyze
-
-        Returns:
-            The base text of the node
-        """
-        text = item.text
-
-        # For leaf nodes or collapsed nodes, use the last segment
-        if "_" in text:
-            parts = text.split("_")
-            return parts[-1] if parts else text
-        return text
-
-    def _extract_prefix(self, item: DisplayItem, current_text: str) -> str:
-        """Extract the prefix path for a node.
-
-        Args:
-            item: The DisplayItem being renamed
-            current_text: The current text of the node
-
-        Returns:
-            The prefix path (e.g., "Tank_" for renaming Pump in Tank_Pump_Speed)
-        """
-        full_path = item.full_path
-
-        if not full_path:
-            return ""
-
-        # For array nodes displayed as "Motor[1-2]", full_path is just "Motor"
-        if full_path == current_text or full_path.startswith(current_text):
-            return ""
-
-        # For leaves, full_path is the complete nickname
-        if item.is_leaf:
-            if full_path.endswith(current_text):
-                return full_path[: -len(current_text)]
-            parts = full_path.rsplit("_", 1)
-            return parts[0] + "_" if len(parts) > 1 else ""
-
-        # For folders, full_path ends with underscore
-        if full_path.endswith("_"):
-            prefix_candidate = full_path[: -len(current_text) - 1]
-            if prefix_candidate and not prefix_candidate.endswith("_"):
-                prefix_candidate += "_"
-            return prefix_candidate if prefix_candidate != "_" else ""
-
-        # Default: try to extract from full_path
-        if current_text in full_path:
-            idx = full_path.rfind(current_text)
-            return full_path[:idx]
-
-        return ""
-
     def _show_rename_dialog(self) -> None:
         """Show rename dialog for the selected item."""
         if not hasattr(self, "_selected_iid") or not self._selected_iid:
@@ -122,14 +65,12 @@ class OutlinePanel(ttk.Frame):
         if item is None:
             return
 
-        # Only array folders (_make_display_item) carry base_text, their text
-        # without the [range]. Leaves and collapsed chains such as "Tank_Pump"
-        # are built without it and rename their last segment.
-        current_text = item.base_text if item.base_text else self._extract_current_text(item)
-        is_array = item.is_array
-
-        # Determine the prefix path
-        prefix = self._extract_prefix(item, current_text)
+        # The item knows which nickname segment it renames and what precedes it
+        if not item.rename_text:
+            return
+        current_text = item.rename_text
+        is_array = item.rename_is_array
+        prefix = item.rename_prefix
 
         # Show dialog
         dialog = RenameDialog(self, current_text, is_array)
@@ -200,7 +141,7 @@ class OutlinePanel(ttk.Frame):
         # Build display text with outline_suffix for leaves
         display_text = item.text
         if item.addr_key is not None and item.addr_key in all_rows:
-            row = all_rows[item.addr_key]
+            row = with_pair_retentive(all_rows[item.addr_key], all_rows)
             display_text = f"{item.text} {row.outline_suffix}"
 
         iid = self.tree.insert(parent_iid, tk.END, text=display_text)
@@ -243,11 +184,14 @@ class OutlinePanel(ttk.Frame):
                 continue
             if type_entries := sorted(by_type.get(memory_type, []), key=lambda x: x[0]):
                 parent_iid = self.tree.insert("", tk.END, text=memory_type)
+                self._item_data[parent_iid] = DisplayItem(text=memory_type)
                 for address, row in type_entries:
-                    # Create a DisplayItem for flat entries too
+                    # Flat entries are leaves whose path is the exact nickname
                     item = DisplayItem(
                         text=f"• {row.nickname} {row.outline_suffix}",
+                        full_path=row.nickname,
                         leaf=(memory_type, address),
+                        addr_key=row.addr_key,
                     )
                     iid = self.tree.insert(parent_iid, tk.END, text=item.text)
                     self._item_data[iid] = item
