@@ -7,9 +7,8 @@ address data from different sources (MDB database, CSV files).
 from __future__ import annotations
 
 import csv
-import ctypes
 import os
-import tempfile
+import stat
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -200,78 +199,39 @@ def _read_nickname_csv(
     return result, fields
 
 
-_FILE_ATTRIBUTE_READONLY = 0x1
-_FILE_ATTRIBUTE_HIDDEN = 0x2
-_FILE_ATTRIBUTE_NORMAL = 0x80
-_INVALID_FILE_ATTRIBUTES = 0xFFFFFFFF
-
-
-def _file_attributes(path: Path) -> int | None:
-    """The file's Windows attributes, or None (not Windows, or no such file)."""
-    if os.name != "nt":
-        return None
-    value = ctypes.windll.kernel32.GetFileAttributesW(str(path))
-    return None if value == _INVALID_FILE_ATTRIBUTES else value
-
-
-def _set_file_attributes(path: Path, attributes: int) -> None:
-    """Set the file's Windows attributes; best effort, nothing elsewhere."""
-    if os.name == "nt":
-        ctypes.windll.kernel32.SetFileAttributesW(str(path), attributes)
-
-
-def _discard(path: Path) -> None:
-    """Remove a temp file; a failure here must not hide the error being raised."""
+def _is_read_only(path: Path) -> bool:
     try:
-        path.unlink(missing_ok=True)
+        attributes = getattr(os.stat(path), "st_file_attributes", 0)
     except OSError:
-        pass
-
-
-def _write_in_place(path: Path, data: str) -> None:
-    try:
-        with open(path, "w", newline="", encoding="utf-8") as csvfile:
-            csvfile.write(data)
-    except PermissionError as exc:
-        raise PermissionError(
-            f"{path.name} is open in another program (Excel?); close it and save again."
-        ) from exc
+        return False
+    return bool(attributes & stat.FILE_ATTRIBUTE_READONLY) or not os.access(path, os.W_OK)
 
 
 def _write_file(path: Path, data: str) -> None:
-    """Write *data* to *path* so a write that fails partway leaves the file whole.
+    """Write *data* to *path*, keeping an existing file's identity and attributes.
 
-    It is written to a hidden temp file beside *path* and swapped in. The swap
-    gives the file a new identity (creation time, permissions); its Hidden and
-    other attributes are kept. Windows refuses the swap while any program has
-    the file open, even to read it (Explorer's preview pane, antivirus,
-    OneDrive), so then the file is written in place, which fails only when a
-    program such as Excel locks it.
+    The text is encoded before the file is opened, so an encoding error leaves
+    it as it was. An existing file is overwritten in place and truncated to the
+    new length rather than recreated, so a Hidden file still saves and stays
+    Hidden. A program that only reads the file (Explorer's preview pane,
+    antivirus, OneDrive) does not stop the write; one that locks it, such as
+    Excel, does.
     """
+    encoded = data.encode("utf-8")
     try:
-        fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}-", suffix=".tmp", dir=path.parent)
-    except OSError:
-        _write_in_place(path, data)
-        return
-    temp = Path(temp_name)
-    try:
-        _set_file_attributes(temp, _FILE_ATTRIBUTE_HIDDEN)
-        with os.fdopen(fd, "w", newline="", encoding="utf-8") as csvfile:
-            csvfile.write(data)
-        # Read-only stays off the temp file, so it can always be removed
-        original = _file_attributes(path)
-        _set_file_attributes(
-            temp,
-            (original or 0) & ~_FILE_ATTRIBUTE_READONLY or _FILE_ATTRIBUTE_NORMAL,
-        )
-    except BaseException:
-        _discard(temp)
-        raise
-    try:
-        os.replace(temp, path)
-    except OSError:
-        _discard(temp)
-        _write_in_place(path, data)
+        if path.exists():
+            with open(path, "r+b") as csvfile:
+                csvfile.write(encoded)
+                csvfile.truncate()
+        else:
+            with open(path, "xb") as csvfile:
+                csvfile.write(encoded)
+    except PermissionError as exc:
+        if _is_read_only(path):
+            raise PermissionError(f"{path.name} is read-only.") from exc
+        raise PermissionError(
+            f"{path.name} is open in another program (Excel?); close it and save again."
+        ) from exc
 
 
 class DataSource(ABC):

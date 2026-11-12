@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -196,30 +197,23 @@ class TestCsvModeStore:
         assert store.visible_state[key].nickname == "Stop"
         assert store.base_state[key].nickname == ""
 
-    def test_a_write_that_fails_partway_leaves_the_file_whole(self, tmp_path):
+    def test_an_encoding_failure_leaves_the_file_as_it_was(self, tmp_path):
         path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
         before = path.read_bytes()
-        # A lone surrogate cannot be encoded: the write stops after the rows before it
+        # A lone surrogate cannot be encoded
         rows = [AddressRow("C", 1, nickname="Motor"), AddressRow("C", 2, comment="\ud800")]
 
         with pytest.raises(UnicodeEncodeError):
             CsvDataSource(str(path)).save_changes(rows)
 
         assert path.read_bytes() == before
-        assert [p.name for p in tmp_path.iterdir()] == ["names.csv"]
 
-    def test_a_refused_swap_writes_the_file_in_place(self, tmp_path, monkeypatch):
-        path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
+    def test_a_save_writes_a_shorter_file_whole(self, tmp_path):
+        path = _write(tmp_path / "names.csv", f"{HEADER}\n" + 'C1,BIT,"Long name",0,No,""\n' * 9)
 
-        def refused(src, dst):
-            raise PermissionError(13, "The process cannot access the file", str(dst))
+        CsvDataSource(str(path)).save_changes([AddressRow("C", 1, nickname="M")])
 
-        monkeypatch.setattr("clicknick.data.data_source.os.replace", refused)
-
-        CsvDataSource(str(path)).save_changes([AddressRow("C", 1, nickname="Motor")])
-
-        assert '"Motor"' in path.read_text(encoding="utf-8")
-        assert [p.name for p in tmp_path.iterdir()] == ["names.csv"]
+        assert path.read_bytes() == f'{HEADER}\r\nC1,BIT,"M",0,No,""\r\n'.encode()
 
     def test_a_file_another_program_is_reading_is_saved(self, tmp_path):
         """Explorer's preview pane or antivirus holding it open must not fail Save."""
@@ -251,15 +245,36 @@ class TestCsvModeStore:
         assert path.read_bytes() == before
         assert [p.name for p in tmp_path.iterdir()] == ["names.csv"]
 
-    @pytest.mark.skipif(os.name != "nt", reason="Windows file attributes")
-    def test_a_hidden_file_stays_hidden(self, tmp_path):
+    def test_a_read_only_file_says_so(self, tmp_path):
         path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
-        hidden = 0x2
-        ctypes.windll.kernel32.SetFileAttributesW(str(path), hidden)
+        before = path.read_bytes()
+        path.chmod(stat.S_IREAD)
+        try:
+            with pytest.raises(PermissionError, match=r"^names\.csv is read-only\.$"):
+                CsvDataSource(str(path)).save_changes([AddressRow("C", 1, nickname="Motor")])
+        finally:
+            path.chmod(stat.S_IREAD | stat.S_IWRITE)
+
+        assert path.read_bytes() == before
+
+    @pytest.mark.skipif(os.name != "nt", reason="Windows file attributes")
+    def test_a_new_file_is_neither_hidden_nor_system(self, tmp_path):
+        path = tmp_path / "export.csv"
 
         CsvDataSource(str(path)).save_changes([AddressRow("C", 1, nickname="Motor")])
 
-        assert ctypes.windll.kernel32.GetFileAttributesW(str(path)) & hidden
+        hidden_or_system = stat.FILE_ATTRIBUTE_HIDDEN | stat.FILE_ATTRIBUTE_SYSTEM
+        assert not os.stat(path).st_file_attributes & hidden_or_system
+
+    @pytest.mark.skipif(os.name != "nt", reason="Windows file attributes")
+    def test_a_hidden_file_saves_and_stays_hidden(self, tmp_path):
+        path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
+        ctypes.windll.kernel32.SetFileAttributesW(str(path), stat.FILE_ATTRIBUTE_HIDDEN)
+
+        CsvDataSource(str(path)).save_changes([AddressRow("C", 1, nickname="Motor")])
+
+        assert '"Motor"' in path.read_text(encoding="utf-8")
+        assert os.stat(path).st_file_attributes & stat.FILE_ATTRIBUTE_HIDDEN
 
 
 class TestFieldValues:
