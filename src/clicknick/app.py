@@ -124,8 +124,8 @@ class ClickNickApp:
         click = getattr(self, "_click", None)
         if click is None:
             return None
-        from .utils.click_temp import click_temp_dir
         from .services.workspace_mirror import read_plc_name
+        from .utils.click_temp import click_temp_dir
 
         return read_plc_name(click_temp_dir(click.hwnd) / "Project.ini")
 
@@ -990,9 +990,9 @@ class ClickNickApp:
         if plc_name:
             return plc_name
 
-        from .utils.click_temp import click_temp_dir
         from .models.name_validation import validate_click_name
         from .services.workspace_mirror import write_plc_name
+        from .utils.click_temp import click_temp_dir
 
         if self._session is None or self._click is None:
             self._update_status("Connect to a CLICK project first", "error")
@@ -1933,8 +1933,8 @@ class ClickNickApp:
         Changes shows as a copy of another PLC; Refresh copies them again, as
         long as that window still has the same project open.
         """
-        from .utils.click_temp import click_temp_dir
         from .services.click_snapshot import snapshot_click_program, snapshot_dir
+        from .utils.click_temp import click_temp_dir
         from .views.preview_changes_window import ProposalSource
 
         open_now = {

@@ -125,6 +125,9 @@
 - Two CLICK windows with the same project name are listed with their PIDs, so either can be picked, and the window list and status no longer show a window or "Monitoring" that is not current.
 - The window list always shows the connected CLICK window, also after ClickNick connects by itself or CLICK opens another project (it could be empty while the status said "Monitoring").
 - When CLICK saves under a new name or opens another project while you have unsaved address or Dataview changes, ClickNick asks whether to keep them for the new project, where Sync and Save then write them, or discard them (it discarded them).
+- With nicknames loaded from a CSV, that question covers unsaved Dataview changes too (they stayed open, and a Save wrote them over the new project's dataviews), and a Dataview Editor without them reopens on the new project's dataviews.
+- The Dataview Editor and **Verify** use the DataView folder of the CLICK window ClickNick is connected to (with a second CLICK window open, or a folder left by a crash, they could show, save and check another project's dataviews).
+- ClickNick finds CLICK's project in the Windows temp folder when that is not under `C:\Users\<your name>`, such as on a renamed or domain account or with TEMP moved (it could not locate the CLICK database).
 - **Load Ladder CSV to Clipboard** copies for the connected CLICK window and asks you to connect first (it used the first CLICK window it found).
 - ClickNick deletes its copies of CLICK windows that have closed, made by **Compare with > Other CLICK window**, when it starts and when the window list is refreshed.
 - `clicknick-cli tag apply` keeps a comment's text and block tag and changes only the annotations you changed in `tags.py` (it replaced the comment with them alone, such as `[uom=mm]`).

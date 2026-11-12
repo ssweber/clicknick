@@ -373,9 +373,9 @@ class ConnectionSession:
         A build already under way serves the request. The ScrWatcher is made
         once per session, as it counts what was synced since CLICK last saved.
         """
-        from .utils.click_temp import click_temp_dir
         from .services.analysis_service import AnalysisStatus
         from .services.scr_watcher import ScrWatcher
+        from .utils.click_temp import click_temp_dir
 
         paths = None
         if self.analysis is None or self.analysis.status is not AnalysisStatus.BUILDING:

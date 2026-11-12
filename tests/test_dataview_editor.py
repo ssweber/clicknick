@@ -123,7 +123,9 @@ def editor(tk_root, monkeypatch, tmp_path):
 
     def make(store: AddressStore | None = None) -> DataviewEditorWindow:
         session = DataSession(store or _store())
-        session.dataview = SharedDataviewData(session.store, get_folder=lambda: tmp_path / "DataView")
+        session.dataview = SharedDataviewData(
+            session.store, get_folder=lambda: tmp_path / "DataView"
+        )
         window = DataviewEditorWindow(tk_root, session)
         window.withdraw()
         built.append(window)
