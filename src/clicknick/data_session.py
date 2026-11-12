@@ -112,6 +112,8 @@ class DataSession:
 
         # Editor windows are Tk Toplevels; the protocols only name what we call.
         window = self._dataview_window
+        if window is not None and not window.commit_open_cell_editor():
+            return False
         if window is not None and window.has_unsaved_changes():
             dataview_owner: Any = window
             answer = messagebox.askyesnocancel(

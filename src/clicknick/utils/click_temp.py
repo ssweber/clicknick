@@ -58,8 +58,8 @@ def _long_path(path: str) -> str:
 def temp_root() -> Path:
     """The folder CLICK makes its ``CLICK (hwnd)`` folders in, in its long form.
 
-    CLICK is a Win32 app and gets the temp folder from Windows, so this is the
-    Windows temp path, or Python's temp folder where Windows gives none.
+    ClickNick takes CLICK's temp folder to be the Windows temp path (USER-CHECKS Q8),
+    or Python's temp folder where Windows gives none.
     """
     return Path(_long_path(_windows_temp_path() or tempfile.gettempdir()))
 

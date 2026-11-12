@@ -770,3 +770,85 @@ def test_a_cell_that_will_not_commit_is_reported(monkeypatch):
 
     assert not window.commit_open_cell_editor()
     assert warnings == ["Cell Being Edited"]
+
+
+def _typed(editor, dialogs, tk_root, tmp_path) -> tuple[DataviewEditorWindow, DataviewPanel, Path]:
+    """A shown editor on DataView1.cdv with `x1` typed into row 5's address, not committed.
+
+    tksheet commits nothing on FocusOut, so this is the state after switching to CLICK.
+    """
+    path = _copy(tmp_path)
+    window = editor()
+    window.deiconify()
+    window._open_dataview(path)
+    tk_root.update()
+    (panel,) = window._iter_open_panels()
+    panel.sheet.select_cell(5, COL_ADDRESS)
+    panel.sheet.open_cell()
+    tk_root.update()
+    panel.sheet.set_text_editor_value("x1")
+    assert panel.sheet.MT.text_editor.open
+    assert not window.has_unsaved_changes()
+    return window, panel, path
+
+
+def test_text_typed_in_a_real_cell_is_committed(editor, dialogs, tk_root, tmp_path):
+    window, panel, _path = _typed(editor, dialogs, tk_root, tmp_path)
+
+    assert window.commit_open_cell_editor()
+
+    assert not panel.sheet.MT.text_editor.open
+    assert panel.rows[5].address == "X001"
+    assert window.has_unsaved_changes()
+    assert dialogs.errors == []
+
+
+def test_closing_the_window_asks_about_text_still_in_a_cell(editor, dialogs, tk_root, tmp_path):
+    window, panel, _path = _typed(editor, dialogs, tk_root, tmp_path)
+    dialogs.yes_no_cancel.append(None)  # Cancel
+
+    window._on_close()
+
+    assert dialogs.shown == ["You have unsaved changes. Save before closing?"]
+    assert _exists(window)
+    assert panel.rows[5].address == "X001"
+
+
+def test_closing_a_tab_asks_about_text_still_in_its_cell(editor, dialogs, tk_root, tmp_path):
+    window, panel, _path = _typed(editor, dialogs, tk_root, tmp_path)
+    dialogs.yes_no_cancel.append(None)  # Cancel
+
+    window._close_current_tab()
+
+    assert dialogs.shown == ["'DataView1' has unsaved changes. Save before closing?"]
+    assert window._iter_open_panels() == [panel]
+
+
+def test_save_writes_text_still_in_a_cell(editor, dialogs, tk_root, tmp_path):
+    window, panel, path = _typed(editor, dialogs, tk_root, tmp_path)
+
+    window._save_current()
+
+    assert DataViewFile.load(path).rows[5].address == "X001"
+    assert not panel.is_dirty
+
+
+def test_save_all_writes_text_still_in_a_cell(editor, dialogs, tk_root, tmp_path):
+    window, panel, path = _typed(editor, dialogs, tk_root, tmp_path)
+
+    assert window.save_all()
+
+    assert DataViewFile.load(path).rows[5].address == "X001"
+    assert not panel.is_dirty
+
+
+def test_closing_the_data_asks_about_text_still_in_a_dataview_cell(
+    editor, dialogs, tk_root, tmp_path
+):
+    window, _panel, _path = _typed(editor, dialogs, tk_root, tmp_path)
+    dialogs.yes_no_cancel.append(None)  # Cancel
+
+    assert not window._session.close(prompt_save=True)
+
+    assert dialogs.shown == ["You have unsaved changes in Dataview Editor. Save before closing?"]
+    assert _exists(window)

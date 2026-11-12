@@ -574,16 +574,38 @@ class DataviewEditorWindow(tk.Toplevel):
         self._update_tab_title(panel)
         return saved
 
+    def _commit_cell_editor(self, panel: DataviewPanel) -> bool:
+        """Commit the text typed in *panel*'s open cell editor; False, said, if it stays open.
+
+        tksheet commits nothing on FocusOut, or while the application has no
+        focus, so text typed before switching to CLICK is still in the editor.
+        """
+        mt = panel.sheet.MT
+        if not mt.text_editor.open:
+            return True
+        mt.mouseclick_outside_editor_or_dropdown_all_canvases()
+        if mt.text_editor.open:
+            self.focus_force()
+            mt.mouseclick_outside_editor_or_dropdown_all_canvases()
+        if mt.text_editor.open:
+            messagebox.showwarning(
+                "Cell Being Edited",
+                "Finish the cell edit first (Enter to keep it, Esc to cancel).",
+                parent=self,
+            )
+            return False
+        return True
+
     def _save_current(self) -> None:
         """Save the current dataview."""
         panel = self._get_current_panel()
-        if panel is not None:
+        if panel is not None and self._commit_cell_editor(panel):
             self._save_panel(panel)
 
     def _export(self) -> None:
         """Export the current dataview to a new location."""
         panel = self._get_current_panel()
-        if not panel:
+        if not panel or not self._commit_cell_editor(panel):
             return
 
         initial_dir = self.shared_data.dataview_folder or Path.cwd()
@@ -670,7 +692,9 @@ class DataviewEditorWindow(tk.Toplevel):
 
     def _on_close(self) -> None:
         """Handle window close."""
-        # Check for unsaved changes
+        # Text still in a cell editor is an edit; a cell that won't commit stops the close.
+        if not self.commit_open_cell_editor():
+            return
         if self.has_unsaved_changes():
             result = messagebox.askyesnocancel(
                 "Unsaved Changes",
@@ -967,7 +991,8 @@ class DataviewEditorWindow(tk.Toplevel):
             tab_id = self.notebook.tabs()[tab_index]
             panel = self.notebook.nametowidget(tab_id)
 
-            # Check for unsaved changes
+            if not self._commit_cell_editor(panel):
+                return False
             if panel.is_dirty:
                 result = messagebox.askyesnocancel(
                     "Unsaved Changes",
@@ -1372,28 +1397,12 @@ class DataviewEditorWindow(tk.Toplevel):
         self.destroy()
 
     def commit_open_cell_editor(self) -> bool:
-        """Commit the text typed in an open cell editor, so it is an edit like any other.
+        """Commit the text typed in every tab's open cell editor, so it is an edit like any other.
 
-        The app calls this before it asks about unsaved changes on a project change.
-        Returns False, after telling the user, when an editor is still open
-        (tksheet commits nothing while the application has no focus).
+        Closing, saving and the app's project-change question call this first.
+        Returns False, after telling the user, when an editor is still open.
         """
-        for panel in self._iter_open_panels():
-            mt = panel.sheet.MT
-            if not mt.text_editor.open:
-                continue
-            mt.mouseclick_outside_editor_or_dropdown_all_canvases()
-            if mt.text_editor.open:
-                self.focus_force()
-                mt.mouseclick_outside_editor_or_dropdown_all_canvases()
-            if mt.text_editor.open:
-                messagebox.showwarning(
-                    "Cell Being Edited",
-                    "Finish the cell edit first (Enter to keep it, Esc to cancel).",
-                    parent=self,
-                )
-                return False
-        return True
+        return all(self._commit_cell_editor(panel) for panel in self._iter_open_panels())
 
     def has_unsaved_changes(self) -> bool:
         """Check if any open dataviews have unsaved changes."""
@@ -1404,7 +1413,10 @@ class DataviewEditorWindow(tk.Toplevel):
 
         Stops at the first one that is not saved (cancelled or failed; a failed
         save says why) and returns False, so a caller closing the window closes nothing.
+        Text still in a cell editor is saved too; a cell that won't commit saves nothing.
         """
+        if not self.commit_open_cell_editor():
+            return False
         for panel in self._iter_open_panels():
             if panel.is_dirty and not self._save_panel(panel):
                 return False
