@@ -425,29 +425,6 @@ class AddressEditorWindow(tk.Toplevel):
         """True while a cell editor is open in any tab."""
         return any(panel.sheet.MT.text_editor.open for panel, *_ in self._tabs.values())
 
-    def commit_open_cell_editor(self) -> bool:
-        """Commit the text typed in an open cell editor, so it is an edit like any other.
-
-        Returns False, after telling the user, when an editor is still open
-        (tksheet commits nothing while the application has no focus).
-        """
-        for panel, *_ in self._tabs.values():
-            mt = panel.sheet.MT
-            if not mt.text_editor.open:
-                continue
-            mt.mouseclick_outside_editor_or_dropdown_all_canvases()
-            if mt.text_editor.open:
-                self.focus_force()
-                mt.mouseclick_outside_editor_or_dropdown_all_canvases()
-            if mt.text_editor.open:
-                messagebox.showwarning(
-                    "Cell Being Edited",
-                    "Finish the cell edit first (Enter to keep it, Esc to cancel).",
-                    parent=self,
-                )
-                return False
-        return True
-
     def _save_all(self) -> None:
         """Save all changes to database."""
         if not self.commit_open_cell_editor():
@@ -1512,6 +1489,29 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Open Tag Browser by default
         self._init_after_id = self.after(100, self._toggle_nav)
+
+    def commit_open_cell_editor(self) -> bool:
+        """Commit the text typed in an open cell editor, so it is an edit like any other.
+
+        Returns False, after telling the user, when an editor is still open
+        (tksheet commits nothing while the application has no focus).
+        """
+        for panel, *_ in self._tabs.values():
+            mt = panel.sheet.MT
+            if not mt.text_editor.open:
+                continue
+            mt.mouseclick_outside_editor_or_dropdown_all_canvases()
+            if mt.text_editor.open:
+                self.focus_force()
+                mt.mouseclick_outside_editor_or_dropdown_all_canvases()
+            if mt.text_editor.open:
+                messagebox.showwarning(
+                    "Cell Being Edited",
+                    "Finish the cell edit first (Enter to keep it, Esc to cancel).",
+                    parent=self,
+                )
+                return False
+        return True
 
     def close_without_prompt(self) -> None:
         """Clean up resources and destroy window without save prompts."""
