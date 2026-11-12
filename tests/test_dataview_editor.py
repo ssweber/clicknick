@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 from pathlib import Path
@@ -140,6 +141,14 @@ def _copy(tmp_path: Path, name: str = "DataView1.cdv") -> Path:
     target = folder / name
     shutil.copy(FIXTURES / name, target)
     return target
+
+
+def _click_writes(path: Path) -> bytes:
+    """Rewrite path as CLICK does while connected, with a later mtime; return its bytes."""
+    shutil.copy(FIXTURES / "DataView1WithNewValues.cdv", path)
+    later = os.path.getmtime(path) + 10
+    os.utime(path, (later, later))
+    return path.read_bytes()
 
 
 def _addresses(panel: DataviewPanel, count: int = 4) -> list[str]:
@@ -326,6 +335,58 @@ def test_a_failed_save_as_keeps_the_old_path(tk_root, dialogs, tmp_path):
         panel.destroy()
 
 
+# -- A save never goes over a newer CLICK write without asking ---------------
+
+
+@pytest.mark.parametrize(("answer", "saved"), [(None, False), (True, True), (False, False)])
+def test_saving_over_a_change_click_made_between_checks_asks_first(
+    tk_root, dialogs, tmp_path, answer, saved
+):
+    path = _copy(tmp_path)
+    panel = DataviewPanel(tk_root, file_path=path, address_normalizer=normalize_address)
+    try:
+        panel.add_address("DS1")
+        clicks = _click_writes(path)  # inside the 2 s between file checks
+
+        dialogs.yes_no_cancel.append(answer)
+        assert panel.save() is saved
+
+        assert len(dialogs.shown) == 1 and "changed by another program" in dialogs.shown[0]
+        on_disk = [row.address for row in DataViewFile.load(path).rows if not row.is_empty]
+        if answer is True:  # Overwrite
+            assert "DS1" in on_disk
+            assert not panel.is_dirty
+        else:
+            assert path.read_bytes() == clicks
+        if answer is False:  # Reload: CLICK's rows, the edit dropped
+            assert [row.address for row in panel.rows if not row.is_empty] == on_disk
+            assert panel.rows[0].new_value is True
+            assert not panel.is_dirty
+        if answer is None:  # Cancel: the edit stays, unsaved
+            assert panel.is_dirty
+    finally:
+        panel.destroy()
+
+
+def test_saving_after_declining_a_reload_asks_first(tk_root, dialogs, tmp_path):
+    path = _copy(tmp_path)
+    panel = DataviewPanel(tk_root, file_path=path, address_normalizer=normalize_address)
+    try:
+        panel.add_address("DS1")
+        clicks = _click_writes(path)
+
+        dialogs.yes_no.append(False)  # don't reload
+        panel._check_file_modified()
+        assert "drops this dataview's unsaved edits" in dialogs.shown[0]
+
+        dialogs.yes_no_cancel.append(None)
+        assert panel.save() is False
+        assert len(dialogs.shown) == 2 and "changed by another program" in dialogs.shown[1]
+        assert path.read_bytes() == clicks
+    finally:
+        panel.destroy()
+
+
 # -- Inserts store CLICK's address form --------------------------------------
 
 
@@ -372,6 +433,21 @@ def test_tag_browser_insert_stores_clicks_form(editor, dialogs):
 
     rows = window._get_current_panel().rows
     assert [row.address for row in rows if not row.is_empty] == ["XD0u", "X001"]
+
+
+def test_a_tag_browser_block_insert_is_one_undo_step(editor, dialogs):
+    window = editor()
+    dialogs.new_names.append("Block")
+    window._new_dataview()
+    panel = window._get_current_panel()
+
+    window._insert_addresses([("DS", n) for n in range(1, 61)])  # more than 50 undo levels
+    assert sum(not row.is_empty for row in panel.rows) == 60
+
+    assert panel.undo()
+    assert all(row.is_empty for row in panel.rows)
+    assert not panel.is_dirty
+    assert not panel.undo()
 
 
 # -- Undo keeps the sheet and the rows together ------------------------------

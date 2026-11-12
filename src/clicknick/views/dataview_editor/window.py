@@ -97,8 +97,7 @@ class DataviewEditorWindow(tk.Toplevel):
     def _iter_open_panels(self) -> list[DataviewPanel]:
         """Return panel widgets currently attached to notebook tabs.
 
-        The tabs are the one record of what is open: an untitled dataview, or
-        one saved onto another's path, is still a tab.
+        The tabs are the one record of what is open, untitled dataviews included.
         """
         panels: list[DataviewPanel] = []
         try:
@@ -716,11 +715,15 @@ class DataviewEditorWindow(tk.Toplevel):
         if not address_shared:
             return
 
-        for memory_type, address in addresses:
-            addr_key = get_addr_key(memory_type, address)
-            row = address_shared.visible_state.get(addr_key)
-            if row:
-                self.add_address_to_current(row.display_address)
+        panel = self._get_current_panel()
+        if panel is None:
+            return
+        rows = (
+            address_shared.visible_state.get(get_addr_key(memory_type, address))
+            for memory_type, address in addresses
+        )
+        # One undo step for the whole folder or block
+        panel.add_addresses([row.display_address for row in rows if row is not None])
 
     def _on_outline_select(self, path: str, leaves: list[tuple[str, int]]) -> None:
         """Handle outline selection from NavWindow - insert addresses into current dataview.
@@ -1373,17 +1376,3 @@ class DataviewEditorWindow(tk.Toplevel):
             if panel.is_dirty and not self._save_panel(panel):
                 return False
         return True
-
-    def add_address_to_current(self, address: str) -> bool:
-        """Add an address to the currently active dataview.
-
-        Args:
-            address: The address to add
-
-        Returns:
-            True if added successfully
-        """
-        panel = self._get_current_panel()
-        if panel:
-            return panel.add_address(address)
-        return False

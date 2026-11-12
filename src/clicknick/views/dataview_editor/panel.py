@@ -275,6 +275,7 @@ class DataviewPanel(ttk.Frame):
         """The rows now match the file."""
         self._saved_values = self._row_values()
         self._is_dirty = False
+        self._unloaded_change = False
 
     def _on_undo_key(self, _event=None) -> str:
         self.undo()
@@ -752,6 +753,8 @@ class DataviewPanel(ttk.Frame):
         self._redo_stack: list[_UndoFrame] = []
         #: Why file_path could not be read; while set, Save refuses to write over it.
         self.load_error: str | None = None
+        #: The file changed on disk and the user chose not to reload it.
+        self._unloaded_change = False
         self._write_checks: list[bool] = [False] * len(self.rows)
         self._live_values: dict[str, PlcValue] = {}
 
@@ -809,6 +812,59 @@ class DataviewPanel(ttk.Frame):
         self.status_label.config(text=text)
         messagebox.showerror("Save Error", text, parent=self)
 
+    def _changed_on_disk(self) -> bool:
+        """True when the file holds a change (CLICK writes .cdv files) this panel has not loaded."""
+        if self._unloaded_change:
+            return True
+        try:
+            return self.file_path is not None and (
+                os.path.getmtime(self.file_path) > self._last_mtime
+            )
+        except OSError:
+            return False
+
+    def _reload_file(self) -> None:
+        """Reload the file from disk."""
+        if not self.file_path or not self.file_path.exists():
+            return
+
+        try:
+            self._file = DataViewFile.load(self.file_path)
+        except Exception as e:
+            self.status_label.config(text=f"Error reloading: {e}")
+            return
+        self.load_error = None
+        self._write_checks = [False] * len(self.rows)
+        self._live_values.clear()
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        self._populate_sheet()
+        self._mark_saved()
+        self._update_status()
+
+        # Update mtime to prevent immediate re-prompt
+        self._last_mtime = os.path.getmtime(self.file_path)
+
+    def _confirm_overwrite(self, path: Path) -> bool:
+        """Ask before saving over a change another program made; True to save."""
+        # The file monitor keeps running while the dialog is up; it must not ask too.
+        self._reload_prompt_shown = True
+        try:
+            answer = messagebox.askyesnocancel(
+                "File Changed",
+                f"'{path.name}' was changed by another program, such as CLICK, "
+                "since ClickNick loaded it.\n\n"
+                "Yes: save this dataview over it.\n"
+                "No: reload it and drop this dataview's unsaved edits.\n"
+                "Cancel: do neither.",
+                parent=self,
+            )
+        finally:
+            self._reload_prompt_shown = False
+        if answer is False:
+            self._reload_file()
+        return bool(answer)
+
     def _save_to(self, path: Path) -> bool:
         """Write the rows to path; on failure say why and change nothing."""
         if self.load_error is not None and path == self.file_path:
@@ -816,6 +872,8 @@ class DataviewPanel(ttk.Frame):
                 f"Could not read '{path.name}' when it was opened ({self.load_error}), "
                 "so it is not saved over."
             )
+            return False
+        if path == self.file_path and self._changed_on_disk() and not self._confirm_overwrite(path):
             return False
         try:
             self._file.save(path)
@@ -904,40 +962,19 @@ class DataviewPanel(ttk.Frame):
                 pass
         self._monitor_after_id = None
 
-    def _reload_file(self) -> None:
-        """Reload the file from disk."""
-        if not self.file_path or not self.file_path.exists():
-            return
-
-        try:
-            self._file = DataViewFile.load(self.file_path)
-        except Exception as e:
-            self.status_label.config(text=f"Error reloading: {e}")
-            return
-        self.load_error = None
-        self._write_checks = [False] * len(self.rows)
-        self._live_values.clear()
-        self._undo_stack.clear()
-        self._redo_stack.clear()
-        self._populate_sheet()
-        self._mark_saved()
-        self._update_status()
-
-        # Update mtime to prevent immediate re-prompt
-        self._last_mtime = os.path.getmtime(self.file_path)
-
     def _prompt_reload(self) -> None:
         """Prompt user to reload the file after external modification."""
         self._reload_prompt_shown = True
 
-        result = messagebox.askyesno(
-            "Reload",
-            "This file has been modified by another program.\n\nDo you want to reload it?",
-            parent=self,
+        message = (
+            f"'{self.name}' has been modified by another program.\n\nDo you want to reload it?"
         )
-
-        if result:
+        if self._is_dirty:
+            message += " Reloading drops this dataview's unsaved edits."
+        if messagebox.askyesno("Reload", message, parent=self):
             self._reload_file()
+        else:
+            self._unloaded_change = True
 
         # Allow future prompts
         self._reload_prompt_shown = False
@@ -1001,7 +1038,6 @@ class DataviewPanel(ttk.Frame):
 
         This shifts existing rows down and triggers auto-padding.
         """
-        before = self._snapshot()
         # Suppress notifications to prevent event handlers from double-inserting
         self._suppress_notifications = True
         try:
@@ -1018,7 +1054,6 @@ class DataviewPanel(ttk.Frame):
 
             # Auto-pad: trim empty rows from bottom if over 100
             self._trim_empty_rows_from_bottom()
-            self._push_undo(before)
 
             # Update display
             self._populate_sheet()
@@ -1048,7 +1083,6 @@ class DataviewPanel(ttk.Frame):
 
     def _fill_row_at(self, address: str, idx: int) -> None:
         """Fill an existing empty row with the given address (no insertion)."""
-        self._push_undo(self._snapshot())
         row = self.rows[idx]
         row.address = address
         row.update_data_type()
@@ -1084,58 +1118,74 @@ class DataviewPanel(ttk.Frame):
 
         return None
 
-    def add_address(self, address: str) -> bool:
-        """Add an address using smart insertion placement.
-
-        Placement rules:
-        - If a row is selected AND empty: Fill it in place
-        - If a row is selected AND has data: INSERT new row immediately AFTER
-        - If no selection: Find first empty row followed by another empty (gap >= 2)
-        - Fallback: Fill first existing empty row (no insertion)
-        - Last resort: Append at end (creates overflow)
-
-        The address is stored in CLICK's form (``x1`` -> ``X001``).
-
-        Args:
-            address: The address to add (e.g., "X001", "DS100")
-
-        Returns:
-            True if the address was added, False if it is not a CLICK address.
-        """
-        normalized = self._display_address(address)
-        if normalized is None:
-            return False
-
+    def _place_address(self, address: str) -> None:
+        """Put an address (already in CLICK's form) where the placement rules say."""
         # Get selection (checks both row and cell selection)
         selected_idx = self._get_selected_row_index()
 
         if selected_idx is not None:
             # If selected row is empty, fill it in place
             if selected_idx < len(self.rows) and self.rows[selected_idx].is_empty:
-                self._fill_row_at(normalized, selected_idx)
-                return True
+                self._fill_row_at(address, selected_idx)
+                return
             # Otherwise insert AFTER the selected row
-            insert_idx = selected_idx + 1
-            self._insert_address_at(normalized, insert_idx)
-            return True
+            self._insert_address_at(address, selected_idx + 1)
+            return
 
         # Find first empty row followed by another empty row (gap >= 2)
         target_idx = self._find_insertion_gap()
 
         if target_idx is not None:
             # Insert at the gap
-            self._insert_address_at(normalized, target_idx)
-            return True
+            self._insert_address_at(address, target_idx)
+            return
 
         # No gap found - find first empty row to FILL (not insert)
         for i, row in enumerate(self.rows):
             if row.is_empty:
-                self._fill_row_at(normalized, i)
-                return True
+                self._fill_row_at(address, i)
+                return
 
         # No empty rows - append at end (creates overflow)
-        self._insert_address_at(normalized, len(self.rows))
-        return True
+        self._insert_address_at(address, len(self.rows))
+
+    def add_addresses(self, addresses: Iterable[str]) -> int:
+        """Add addresses in order using smart insertion placement, as one undo step.
+
+        Placement rules, for each address:
+        - If a row is selected AND empty: Fill it in place
+        - If a row is selected AND has data: INSERT new row immediately AFTER
+        - If no selection: Find first empty row followed by another empty (gap >= 2)
+        - Fallback: Fill first existing empty row (no insertion)
+        - Last resort: Append at end (creates overflow)
+
+        Addresses are stored in CLICK's form (``x1`` -> ``X001``).
+
+        Args:
+            addresses: The addresses to add (e.g., "X001", "DS100")
+
+        Returns:
+            How many were added; text that is not a CLICK address is skipped.
+        """
+        normalized = [
+            address
+            for address in (self._display_address(text) for text in addresses)
+            if address is not None
+        ]
+        if not normalized:
+            return 0
+        self._push_undo(self._snapshot())
+        for address in normalized:
+            self._place_address(address)
+        return len(normalized)
+
+    def add_address(self, address: str) -> bool:
+        """Add one address (see add_addresses).
+
+        Returns:
+            True if the address was added, False if it is not a CLICK address.
+        """
+        return self.add_addresses([address]) == 1
 
     def clear_rows(self, row_indices: Iterable[int]) -> None:
         """Clear rows, as one undo step.
