@@ -205,7 +205,11 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - Duplicate block names: the first definition in address order is valid; later ones are flagged
 
 ### Program Analysis
-- One build worker per connection; requests made while it runs collapse into one follow-up build
+- One build worker per connection; requests made while it runs collapse into one follow-up build.
+  `ConnectionSession.start_analysis` adds none while a build runs, and makes the ScrWatcher once per
+  session, as the watcher counts the tags synced since CLICK last saved
+- A build that fails before it publishes leaves `project_dir` an earlier save's (`project_is_current`
+  is False), and Preview Changes then has nothing to compare with
 - The generated code, persisted project and tag map all come from one nickname snapshot read from CLICK's
   database, so tag names always match the code. ClickNick edits reach analysis on the next build after Sync
 
