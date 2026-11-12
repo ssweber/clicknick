@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -14,6 +16,13 @@ from pathlib import Path
 PLC_PACKAGE_PATH = Path("src") / "plc"
 PLC_BACKUP_PATH = Path("backup") / PLC_PACKAGE_PATH
 GENERATED_SOURCE_STATE_PATH = Path("backup") / "generated-source.json"
+# When the backup in backup/src/plc was taken; older ones carry it in their folder name.
+PLC_BACKUP_TIME_PATH = Path("backup") / "backup-time.txt"
+OLDER_PLC_BACKUPS_PATH = Path("backup") / "older"
+#: Backups kept in all: backup/src/plc and the older ones.
+KEPT_PLC_BACKUPS = 5
+_OLDER_NAME_FORMAT = "%Y%m%d-%H%M%S"
+_OLDER_NAME = re.compile(r"(\d{8}-\d{6})(?:-(\d+))?")
 _COPY_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc")
 
 
@@ -25,6 +34,11 @@ def plc_source_dir(project_dir: Path) -> Path:
 def plc_backup_dir(project_dir: Path) -> Path:
     """Return the recovery snapshot path inside a generated project."""
     return project_dir / PLC_BACKUP_PATH
+
+
+def older_plc_backups_dir(project_dir: Path) -> Path:
+    """Return the folder of the older backups, each ``<YYYYMMDD-HHMMSS>/src/plc``."""
+    return project_dir / OLDER_PLC_BACKUPS_PATH
 
 
 def generated_source_state_path(project_dir: Path) -> Path:
@@ -193,16 +207,120 @@ def _replace_trees(pairs: Sequence[tuple[Path, Path]]) -> None:
 def _replace_tree(source: Path, destination: Path) -> int:
     """Copy *source* over *destination* without exposing a partial new tree."""
     _replace_trees([(source, destination)])
-    return sum(path.is_file() for path in destination.rglob("*"))
+    return _file_count(destination)
+
+
+def _now() -> dt.datetime:
+    return dt.datetime.now().astimezone()
+
+
+def _file_count(root: Path) -> int:
+    return sum(path.is_file() for path in root.rglob("*"))
+
+
+def _latest_mtime(root: Path) -> dt.datetime | None:
+    try:
+        timestamps = [path.stat().st_mtime for path in root.rglob("*") if path.is_file()]
+    except OSError:
+        return None
+    if not timestamps:
+        return None
+    return dt.datetime.fromtimestamp(max(timestamps)).astimezone()
+
+
+def plc_backup_time(project_dir: Path) -> dt.datetime | None:
+    """When the backup in ``backup/src/plc`` was taken, or None without one.
+
+    A backup from an earlier ClickNick has no recorded time: its newest file's
+    time stands in.
+    """
+    backup = plc_backup_dir(project_dir)
+    if not backup.is_dir():
+        return None
+    try:
+        text = (project_dir / PLC_BACKUP_TIME_PATH).read_text(encoding="utf-8").strip()
+        return dt.datetime.fromisoformat(text)
+    except (OSError, ValueError):
+        return _latest_mtime(backup)
+
+
+def _record_backup_time(project_dir: Path, when: dt.datetime) -> None:
+    path = project_dir / PLC_BACKUP_TIME_PATH
+    staging = path.with_suffix(f"{path.suffix}.staging")
+    staging.write_text(when.isoformat(timespec="seconds") + "\n", encoding="utf-8")
+    staging.replace(path)
+
+
+def older_plc_backups(project_dir: Path) -> list[str]:
+    """The names of the older backups, newest first.
+
+    A second backup in the same second gets ``-2``, ``-3`` and so on after its time.
+    Folders named otherwise are not backups and are left alone.
+    """
+    root = older_plc_backups_dir(project_dir)
+    if not root.is_dir():
+        return []
+    slots: list[tuple[tuple[str, int], str]] = []
+    for path in root.iterdir():
+        match = _OLDER_NAME.fullmatch(path.name)
+        if match and (path / PLC_PACKAGE_PATH).is_dir():
+            slots.append(((match.group(1), int(match.group(2) or 1)), path.name))
+    return [name for _key, name in sorted(slots, reverse=True)]
+
+
+def _retire_newest_backup(project_dir: Path) -> Path:
+    """Move ``backup/src/plc`` to a new older slot named by its time; return the slot."""
+    when = plc_backup_time(project_dir) or _now()
+    root = older_plc_backups_dir(project_dir)
+    base = when.strftime(_OLDER_NAME_FORMAT)
+    name, suffix = base, 1
+    while (root / name).exists():
+        suffix += 1
+        name = f"{base}-{suffix}"
+    slot = root / name
+    (slot / PLC_PACKAGE_PATH).parent.mkdir(parents=True)
+    try:
+        plc_backup_dir(project_dir).replace(slot / PLC_PACKAGE_PATH)
+    except OSError:
+        shutil.rmtree(slot, ignore_errors=True)
+        raise
+    return slot
+
+
+def _prune_older_backups(project_dir: Path) -> None:
+    root = older_plc_backups_dir(project_dir)
+    for name in older_plc_backups(project_dir)[KEPT_PLC_BACKUPS - 1 :]:
+        shutil.rmtree(root / name, ignore_errors=True)
 
 
 def backup_plc_source(project_dir: Path) -> tuple[Path, int]:
-    """Replace the recovery snapshot with the active ``src/plc`` tree."""
+    """Copy the active ``src/plc`` tree to ``backup/src/plc``, keeping the backups before it.
+
+    The backup it replaces moves to ``backup/older/<YYYYMMDD-HHMMSS>/src/plc``
+    (the time it was taken), and the oldest go so that ``KEPT_PLC_BACKUPS`` are
+    kept in all. A tree that matches the newest backup makes no new one; only
+    its time moves.
+    """
     source = plc_source_dir(project_dir)
     if not source.is_dir():
         raise ValueError(f"generated source directory not found: {source}")
     destination = plc_backup_dir(project_dir)
-    return destination, _replace_tree(source, destination)
+    when = _now()
+    if destination.is_dir() and _source_fingerprint(destination) == _source_fingerprint(source):
+        _record_backup_time(project_dir, when)
+        return destination, _file_count(destination)
+
+    slot = _retire_newest_backup(project_dir) if destination.exists() else None
+    try:
+        file_count = _replace_tree(source, destination)
+    except Exception:
+        if slot is not None and not destination.exists():
+            (slot / PLC_PACKAGE_PATH).replace(destination)
+            shutil.rmtree(slot, ignore_errors=True)
+        raise
+    _record_backup_time(project_dir, when)
+    _prune_older_backups(project_dir)
+    return destination, file_count
 
 
 def backup_modified_plc_source(project_dir: Path) -> tuple[Path, int] | None:
@@ -212,11 +330,18 @@ def backup_modified_plc_source(project_dir: Path) -> tuple[Path, int] | None:
     return backup_plc_source(project_dir)
 
 
-def restore_plc_source(project_dir: Path) -> tuple[Path, int]:
-    """Replace active ``src/plc`` with the recovery snapshot."""
-    source = plc_backup_dir(project_dir)
-    if not source.is_dir():
-        raise ValueError("no source backup found; run 'clicknick-cli backup' first")
+def restore_plc_source(project_dir: Path, older: str | None = None) -> tuple[Path, int]:
+    """Replace active ``src/plc`` with the newest backup, or the older one named *older*."""
+    if older is None:
+        source = plc_backup_dir(project_dir)
+        if not source.is_dir():
+            raise ValueError("no source backup found; run 'clicknick-cli backup' first")
+    else:
+        names = older_plc_backups(project_dir)
+        if older not in names:
+            listed = ", ".join(names) if names else "none"
+            raise ValueError(f"no older backup named {older!r}; older backups: {listed}")
+        source = older_plc_backups_dir(project_dir) / older / PLC_PACKAGE_PATH
     destination = plc_source_dir(project_dir)
     return source, _replace_tree(source, destination)
 
