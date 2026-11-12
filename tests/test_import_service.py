@@ -71,6 +71,57 @@ class TestDetectBlocks:
         assert sorted(seen) == sorted(r.nickname for r in csv_rows)
 
 
+@pytest.fixture
+def nested_rows() -> list[AddressRow]:
+    """<Motors> C1-C6 holds <Pump> C3-C5."""
+    return [
+        mk(1, "M1", "<Motors>"),
+        mk(2, "M2"),
+        mk(3, "P1", "<Pump>"),
+        mk(4, "P2", "pump note"),
+        mk(5, "P3", "</Pump>"),
+        mk(6, "M3", "</Motors>"),
+    ]
+
+
+class TestNestedBlocks:
+    def test_a_row_belongs_to_its_innermost_block_only(self, nested_rows):
+        assert nicknames_of("Motors", nested_rows) == ["M1", "M2", "M3"]
+        assert nicknames_of("Pump", nested_rows) == ["P1", "P2", "P3"]
+        blocks = detect_blocks_in_csv(nested_rows)
+        assert sorted(r.nickname for b in blocks for r in b.rows) == sorted(
+            r.nickname for r in nested_rows
+        )
+
+    def test_an_unticked_inner_block_is_not_imported(self, store, nested_rows):
+        selected = [b for b in detect_blocks_in_csv(nested_rows) if b.name == "Motors"]
+        options = {id(b): {"nickname": "Overwrite"} for b in selected}
+
+        with store.edit_session("Import") as session:
+            ImportService.merge_blocks(store, session, selected, options)
+
+        assert [store.get_visible_row(get_addr_key("C", n)).nickname for n in range(1, 7)] == [
+            "M1",
+            "M2",
+            "",
+            "",
+            "",
+            "M3",
+        ]
+
+    def test_append_adds_an_inner_row_comment_once(self, store, nested_rows):
+        key = get_addr_key("C", 4)
+        with store.edit_session("Existing") as session:
+            session.set_field(key, "comment", "existing")
+        blocks = detect_blocks_in_csv(nested_rows)
+        options = {id(b): {"comment": "Append"} for b in blocks}
+
+        with store.edit_session("Import") as session:
+            ImportService.merge_blocks(store, session, blocks, options)
+
+        assert store.get_visible_row(key).comment == "existing pump note"
+
+
 class TestMergeBlocks:
     def test_unchecked_block_is_not_imported(self, store, csv_rows):
         """Deselecting a block in the dialog must leave its addresses untouched."""
