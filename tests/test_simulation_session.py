@@ -1296,16 +1296,32 @@ def test_frames_while_the_program_is_rebuilt_do_not_change_the_users_forces(read
     assert ready.sim.forces == {"X001": True}
 
 
-def test_a_save_that_does_not_convert_stops_the_simulation_until_one_does(ready):
+def _save_that_does_not_convert(ready, monkeypatch, tmp_path) -> None:
+    """CLICK saved, and the real build() could not convert the program."""
+    from clicknick.services import analysis_service
+
+    def fail(*_args, **_kwargs):
+        raise TypeError("boom")
+
+    monkeypatch.setattr(analysis_service, "_build_graph", fail)
+    with pytest.raises(TypeError):
+        ready.analysis.build(tmp_path / "scr", None)
+
+
+def test_a_save_that_does_not_convert_stops_the_simulation_until_one_does(
+    ready, monkeypatch, tmp_path
+):
     from clicknick.simulation_session import WATCH_MS
 
     ready.open()
-    ready.analysis._generation += 1
-    ready.analysis.mark_failed("TypeError: boom")
+    _save_that_does_not_convert(ready, monkeypatch, tmp_path)
     ready.scheduler.fire(WATCH_MS)
     assert ready.sim.status is SimStatus.FAILED
     assert ("terminate",) in ready.dap.calls
     assert ready.messages("error").count("TypeError: boom") == 1
+    notice = ready.sim.notice
+    assert notice is not None
+    assert "TypeError: boom" in notice and "next save that converts" in notice
 
     ready.scheduler.fire(WATCH_MS)
     assert ready.messages("error").count("TypeError: boom") == 1, "reported once"
@@ -1314,6 +1330,118 @@ def test_a_save_that_does_not_convert_stops_the_simulation_until_one_does(ready)
     ready.scheduler.fire(WATCH_MS)
     assert len(ready.daps) == 2
     assert ready.sim.is_ready
+    assert ready.sim.notice is not None and "restarted" in ready.sim.notice
+
+
+def test_a_restart_that_fails_does_not_say_it_restarted(ready):
+    from clicknick.simulation_session import WATCH_MS
+
+    ready.open()
+    _rebuild(ready)
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.sim.notice is not None and "restarted" in ready.sim.notice
+
+    _rebuild(ready)
+    ready.next_launch_error = RuntimeError("DAP launch failed: boom")
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.sim.status is SimStatus.FAILED
+    assert ready.sim.notice is None
+
+
+def test_console_forces_and_links_made_while_click_saves_survive_the_restart(ready):
+    from clicknick.simulation_session import WATCH_MS
+
+    ready.open()
+    ready.sim.force("Y001", True)
+    ready.dap.frame(forces={"Y001": True})
+    ready.scheduler.run_ready()
+    ready.analysis._generation += 1
+    ready.analysis._status = AnalysisStatus.BUILDING
+
+    # `force C1 true` and `link X002 Y001` in the Console while the save builds
+    ready.dap.bench["X002"] = {"enable": "Y001", "enabled": True, "response": {}}
+    ready.dap.links_revision += 1
+    ready.dap.frame(forces={"Y001": True, "C1": True})
+    ready.scheduler.run_ready()
+
+    ready.analysis._status = AnalysisStatus.READY
+    ready.scheduler.fire(WATCH_MS)
+    assert len(ready.daps) == 2
+    assert ready.sim.forces == {"Y001": True, "C1": True}
+    assert "X002" in ready.sim.bench_links
+    assert ("force", "C1", True) in ready.dap.calls
+    assert any(call[:3] == ("link", "X002", "Y001") for call in ready.dap.calls)
+
+
+def test_console_changes_while_a_build_fails_to_start_are_followed(ready):
+    from clicknick.simulation_session import WATCH_MS
+
+    ready.open()
+    ready.sim.force("Y001", True)
+    ready.sim.link("X002", ON_DELAY_LINK)
+    ready.dap.frame(forces={"Y001": True})
+    ready.scheduler.run_ready()
+
+    ready.analysis.mark_building()
+    # `unforce Y001`, `force C1 true` and `unlink X002` in the Console
+    ready.dap.bench.pop("X002")
+    ready.dap.links_revision += 1
+    ready.dap.frame(forces={"C1": True})
+    ready.scheduler.run_ready()
+    assert ready.sim.forces == {"Y001": True, "C1": True}, "a release waits for the build"
+
+    ready.analysis.mark_failed("no saved ladder files")  # failed before build() ran
+    ready.scheduler.fire(WATCH_MS)
+    assert len(ready.daps) == 1
+    _frame(ready)
+    assert ready.sim.forces == {"C1": True}
+    assert ready.sim.bench_links == {}
+
+
+def test_a_restore_request_that_goes_unanswered_does_not_stop_the_rest(ready):
+    from clicknick.services.dap_service import DapUnavailableError
+
+    ready.open()
+    ready.sim.force("Y001", True)
+    ready.sim.force("C1", True)
+    ready.sim.link("X002", ON_DELAY_LINK)
+    ready.sim.set_switch_position("run")
+    ready.dap.frame(mode="run", running=True)
+    ready.scheduler.run_ready()
+
+    def hang() -> None:
+        dap = ready.dap
+        real_force, real_list = dap.force, dap.list_links
+        listed: list[int] = []
+
+        def force(tag, value):
+            if tag == "Y001":
+                raise DapUnavailableError("pyrungForce: no response from simulation")
+            real_force(tag, value)
+
+        def list_links():
+            if not listed:
+                listed.append(1)
+                raise DapUnavailableError("pyrungListLinks: no response from simulation")
+            return real_list()
+
+        dap.force = force
+        dap.list_links = list_links
+
+    ready.launch_hook = hang
+    ready.sim.restart()
+    ready.scheduler.run_ready()
+
+    assert ("force", "C1", True) in ready.dap.calls
+    assert [call[0] for call in ready.dap.calls][-2:] == ["set_mode", "continue"]
+    assert ready.sim.forces == {"Y001": True, "C1": True}
+    assert "no answer for the force on Y001" in ready.messages("error")
+    assert ready.sim.bench_links == {"X002": ON_DELAY_LINK}
+
+    _frame(ready)  # reads the links again
+    ready.dap.unlink("X002")  # `unlink X002` in the Console
+    _frame(ready)
+    assert ready.sim.bench_links == {}
 
 
 # ----------------------------------------------------------------------
