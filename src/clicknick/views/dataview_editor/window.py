@@ -43,17 +43,9 @@ class DataviewEditorWindow(tk.Toplevel):
     - Menu bar: File operations (New, Open, Save, Export)
     """
 
-    def _refresh_title(self) -> None:
-        title = "ClickNick Dataview Editor"
-        if self.title_suffix:
-            title += f" - {self.title_suffix}"
-        if self._sim is not None:
-            title += " - Simulator"
-        self.title(title)
-
     def _setup_window(self) -> None:
         """Configure window properties."""
-        self._refresh_title()
+        self.refresh_title()
         self.geometry("800x600")
         self.minsize(800, 400)
 
@@ -854,7 +846,7 @@ class DataviewEditorWindow(tk.Toplevel):
             self._toggle_modbus_toolbar()
         for panel in self._iter_open_panels():
             self._sync_panel_simulation(panel)
-        self._refresh_title()
+        self.refresh_title()
         self._update_modbus_controls()
         self._pending_sim_connect = True
 
@@ -868,7 +860,7 @@ class DataviewEditorWindow(tk.Toplevel):
             self._sync_panel_simulation(panel)
         if self._is_modbus_connected():
             self._disconnect_modbus()
-        self._refresh_title()
+        self.refresh_title()
         self._update_modbus_controls()
 
     def _check_simulation(self) -> None:
@@ -1279,7 +1271,7 @@ class DataviewEditorWindow(tk.Toplevel):
         self,
         parent: tk.Widget,
         session: DataSession,
-        title_suffix: str = "",
+        get_title_suffix: Callable[[], str] = lambda: "",
         get_simulation: Callable[[], SimulationSession | None] | None = None,
     ):
         """Initialize the Dataview Editor window.
@@ -1287,7 +1279,7 @@ class DataviewEditorWindow(tk.Toplevel):
         Args:
             parent: Parent widget (usually the main app window)
             session: DataSession providing the Dataview model and AddressStore
-            title_suffix: Optional suffix for window title (e.g., project name)
+            get_title_suffix: The window title's suffix (the connected project's name)
             get_simulation: The connection's simulation, if any. While it serves
                 Modbus the editor connects to it and shows a Force column.
         """
@@ -1297,7 +1289,7 @@ class DataviewEditorWindow(tk.Toplevel):
             raise ValueError("DataSession has no Dataview model")
         self._session = session
         self.shared_data = session.dataview
-        self.title_suffix = title_suffix
+        self._get_title_suffix = get_title_suffix
         self._get_simulation = get_simulation
         self._sim: SimulationSession | None = None
         self._pending_sim_connect = False
@@ -1342,6 +1334,16 @@ class DataviewEditorWindow(tk.Toplevel):
 
         self._update_modbus_controls()
         self._poll_simulation()
+
+    def refresh_title(self) -> None:
+        """Show the project CLICK has open now; the app calls this when it changes."""
+        title = "ClickNick Dataview Editor"
+        title_suffix = self._get_title_suffix()
+        if title_suffix:
+            title += f" - {title_suffix}"
+        if self._sim is not None:
+            title += " - Simulator"
+        self.title(title)
 
     def close_without_prompt(self) -> None:
         """Clean up resources and destroy window without save prompts."""

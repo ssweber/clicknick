@@ -241,7 +241,9 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - **Compare with > Other CLICK window** lists the CLICK windows other than the connected one. Picking one copies
   its last save and its database's nicknames into `%LOCALAPPDATA%/ClickNick/compare/CLICK (hwnd)/`
   (`services/click_snapshot.py`, replaced whole each time) and shows that folder as `ProposalSource.other_click`.
-  **↻ Refresh from <project>** copies it again (`refresh_source`)
+  **↻ Refresh from <project>** copies it again (`refresh_source`). Each window-list refresh (startup included)
+  deletes the copies of windows not in the list, except one that is or holds a folder an open Preview
+  Changes window shows (`remove_stale_snapshots`)
 - `services/rung_diff.py` is the one comparison of a CSV bundle with CLICK's last save (`csv/`): which programs
   differ, which rungs, and the diff text. Rungs are compared by `rung_fingerprint`; pyrung source is only how a
   difference is shown
@@ -328,15 +330,25 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - Assigning `_click`, `_data`, `_session` or the workspace pairing fields (`_ShownState` attributes)
   schedules one coalesced idle refresh. `ConnectionSession` events (sync count, analysis progress,
   staged rungs) call `_request_ui_refresh()`
+- `_refresh_ui` also re-titles the open editor windows, skipping one being destroyed. They take the
+  project name and analysis as getters, so they follow a project change
 
 ### Connection and Lifecycle
 - While a CLICK window is connected, `_monitor_task` checks every 100 ms whether it closed or shows
   another project, and shows autocomplete popups while `monitoring` is on and data is loaded
 - `monitoring` is the user's choice: it starts on, **Stop** turns it off, and only **Start** or a window
   the user picks turns it on again. A project change, the CSV fallback and an automatic connect keep it
-- When the window closes or changes project (a Save As included), database data closes without a
-  prompt; CSV data stays loaded. The CSV path (`_csv_path`) is read from the loaded CSV store
+- When the window closes, database data closes without a prompt; CSV data stays loaded. The CSV path
+  (`_csv_path`) is read from the loaded CSV store
+- When the window shows another project, CSV data stays loaded. A Save As keeps the window's
+  `CLICK (hwnd)` folder, database and DataView folder, and so does opening another project; ClickNick
+  cannot tell them apart, so it asks whether to keep unsaved address and Dataview edits on database data
+  for the new project (`_keeps_edits_for`; text in a cell that will not commit counts). If they are kept,
+  the data and its windows stay open, the store's file monitor reads the new database, and Sync and the
+  Dataview Save write there. If not, the database data closes with nothing saved (a save after File > Open
+  would overwrite the other project's .cdv files) and the new database loads
 - Refreshing the window list connects to the first window only when nothing is connected and no data is
   loaded; otherwise the user picks. A connected window missing from the list is closed only when its
-  process is gone (the list skips titles without a project)
+  process is gone (the list skips titles without a project). The combobox always lists and selects the
+  connected window, under the project it shows (`_show_instances`)
 - Closing ClickNick goes through `_close_data(prompt_save=True)`: Cancel or a failed save keeps it open

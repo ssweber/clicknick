@@ -6,6 +6,7 @@ Uses tksheet for high-performance table display with virtual rows.
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import messagebox, ttk
 from typing import TYPE_CHECKING
 
@@ -165,7 +166,7 @@ class AddressPanel(ttk.Frame):
 
     def _resolve_analysis_prefix(self, prefix: str, arg: str | None) -> set[int] | None:
         """Resolve an analysis prefix to a set of addr_keys, or None."""
-        svc = self._analysis
+        svc = self._get_analysis()
         if svc is None or not svc.is_available:
             return None
 
@@ -721,7 +722,7 @@ class AddressPanel(ttk.Frame):
         parent: tk.Widget,
         store: AddressStore,
         section_boundaries: dict[str, int] | None = None,
-        analysis_service: AnalysisService | None = None,
+        get_analysis_service: Callable[[], AnalysisService | None] = lambda: None,
     ):
         """Initialize the unified address panel.
 
@@ -729,13 +730,14 @@ class AddressPanel(ttk.Frame):
             parent: Parent widget
             store: AddressStore instance for data management
             section_boundaries: Maps type_key to starting row index for navigation.
-            analysis_service: Optional AnalysisService for program-analysis filter prefixes.
+            get_analysis_service: The connection's AnalysisService, for program-analysis
+                filter prefixes (None when there is none).
         """
         super().__init__(parent)
 
         self._store = store
         self.section_boundaries = section_boundaries or {}
-        self._analysis = analysis_service
+        self._get_analysis = get_analysis_service
 
         self.rows: list[AddressRow] = []
         self._displayed_rows: list[int] = []  # Data indices of currently displayed rows

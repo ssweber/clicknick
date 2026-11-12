@@ -183,7 +183,7 @@ def test_a_new_tab_applies_its_state_after_the_view_is_built(store, monkeypatch)
     window._store = store
     window._tabs = {}
     window._tab_counter = 0
-    window._analysis_service = None
+    window._get_analysis_service = lambda: None
     window.notebook = Mock()
     window._bind_panel_selection = Mock()
     window._apply_state_to_panel = Mock()
@@ -270,3 +270,18 @@ def test_a_cell_editor_that_will_not_commit_stops_save_discard_and_close(action)
     window._store.save_all_changes.assert_not_called()
     window._store.discard_all_changes.assert_not_called()
     window.close_without_prompt.assert_not_called()
+
+
+def test_the_title_names_the_project_the_app_has_now() -> None:
+    from types import SimpleNamespace
+
+    project = ["Main.ckp"]
+    window = AddressEditorWindow.__new__(AddressEditorWindow)
+    window._store = SimpleNamespace(_data_source=SimpleNamespace(file_path="C:/t/SC_.mdb"))
+    window._get_click_filename = lambda: project[0]
+    window.title = Mock()
+
+    project[0] = "Renamed.ckp"
+    window.refresh_title()
+
+    window.title.assert_called_once_with("ClickNick Address Editor - Renamed.ckp - SC_.mdb - DB")

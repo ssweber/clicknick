@@ -196,10 +196,17 @@ def _generated(root: Path, main: str) -> Path:
     return root
 
 
-def _choose_existing_workspace(monkeypatch, source: Path, mirror: Path) -> MagicMock:
+def _choose_existing_workspace(
+    monkeypatch,
+    source: Path,
+    mirror: Path,
+    analysis: object | None = None,
+    ensure_plc_name: MagicMock | None = None,
+) -> MagicMock:
     """Pick *mirror* in Workspace setup while *source* is the active workspace.
 
-    Returns the mocked messagebox.showerror.
+    *analysis* is the connection's analysis, if it matters; *ensure_plc_name*
+    stands in for asking the PLC name. Returns the mocked messagebox.showerror.
     """
     monkeypatch.setattr("clicknick.services.workspace_mirror.remember_project_sidecar", MagicMock())
     monkeypatch.setattr("clicknick.app.messagebox.askokcancel", MagicMock(return_value=True))
@@ -210,12 +217,14 @@ def _choose_existing_workspace(monkeypatch, source: Path, mirror: Path) -> Magic
     app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
     app._session = MagicMock()
+    if analysis is not None:
+        app._session.analysis = analysis
     app._workspace_config = None
     app._workspace_matches = []
     app._pending_workspace_config = ProjectWorkspaceConfig("Line1", mirror)
     app._workspace_mirror_error = None
     app._mirror_setup_window = None
-    app._ensure_plc_name_for_workspace = MagicMock(return_value="Line1")
+    app._ensure_plc_name_for_workspace = ensure_plc_name or MagicMock(return_value="Line1")
     app._workspace_source_dir = MagicMock(return_value=source)
     app._update_status = MagicMock()
     app._start_analysis_build = MagicMock()
@@ -246,6 +255,73 @@ def test_choosing_an_existing_workspace_keeps_its_edited_source(
     backup = durable / "backup" / "src" / "plc"
     assert (backup / "main.py").read_text(encoding="utf-8") == "unpasted edits\n"
     assert (backup / "user_module.py").read_text(encoding="utf-8") == "helper\n"
+
+
+def test_a_chosen_workspace_whose_edited_source_was_kept_shows_as_edited(
+    monkeypatch, tmp_path: Path
+) -> None:
+    durable = tmp_path / "Line1 Workspace"
+    _publish_generated_project(_generated(tmp_path / "g0", "generated A\n"), durable)
+    (durable / "src" / "plc" / "main.py").write_text("unpasted edits\n", encoding="utf-8")
+    temporary = tmp_path / "pyrung_project"
+    _publish_generated_project(_generated(tmp_path / "g1", "generated B\n"), temporary)
+    assert not plc_source_is_modified(temporary)
+
+    _choose_existing_workspace(monkeypatch, temporary, durable)
+
+    assert (durable / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "unpasted edits\n"
+    assert plc_source_is_modified(durable)
+
+
+def _failed_build() -> object:
+    from types import SimpleNamespace
+
+    from clicknick.services.analysis_service import AnalysisStatus
+
+    return SimpleNamespace(
+        status=AnalysisStatus.FAILED, project_is_current=False, error="ValueError: bad rung"
+    )
+
+
+def test_setup_refuses_an_earlier_saves_workspace_after_a_failed_build(
+    monkeypatch, tmp_path: Path
+) -> None:
+    temporary = tmp_path / "pyrung_project"
+    _publish_generated_project(_generated(tmp_path / "g1", "earlier save\n"), temporary)
+    durable = tmp_path / "Line1 Workspace"
+
+    showerror = _choose_existing_workspace(monkeypatch, temporary, durable, _failed_build())
+
+    message = showerror.call_args.args[1]
+    assert "could not be built from CLICK's last save" in message
+    assert "ValueError: bad rung" in message
+    assert not durable.exists()
+
+
+def test_setup_refused_after_a_failed_build_asks_no_plc_name(monkeypatch, tmp_path: Path) -> None:
+    """The PLC name is written into CLICK's folder, so it is not asked for a refused setup."""
+    temporary = tmp_path / "pyrung_project"
+    _publish_generated_project(_generated(tmp_path / "g1", "earlier save\n"), temporary)
+    ensure_plc_name = MagicMock(return_value="Line1")
+
+    showerror = _choose_existing_workspace(
+        monkeypatch, temporary, tmp_path / "Line1 Workspace", _failed_build(), ensure_plc_name
+    )
+
+    showerror.assert_called_once()
+    ensure_plc_name.assert_not_called()
+
+
+def test_setup_of_the_active_workspace_after_a_failed_build_copies_nothing_and_is_not_refused(
+    monkeypatch, tmp_path: Path
+) -> None:
+    workspace = tmp_path / "Line1 Workspace"
+    _publish_generated_project(_generated(tmp_path / "g1", "earlier save\n"), workspace)
+
+    showerror = _choose_existing_workspace(monkeypatch, workspace, workspace, _failed_build())
+
+    showerror.assert_not_called()
+    assert sidecar_path_for(workspace).is_file()
 
 
 def test_choosing_an_unedited_workspace_takes_the_active_source(

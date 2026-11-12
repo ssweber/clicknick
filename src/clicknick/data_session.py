@@ -19,9 +19,13 @@ if TYPE_CHECKING:
 
 
 class EditorWindow(Protocol):
-    """What DataSession needs from an editor window."""
+    """What DataSession and the app need from an editor window."""
 
     def close_without_prompt(self) -> None: ...
+
+    def refresh_title(self) -> None: ...
+
+    def winfo_exists(self) -> bool | int: ...
 
 
 class AddressEditor(EditorWindow, Protocol):
@@ -85,13 +89,20 @@ class DataSession:
         if self._dataview_window is window:
             self._dataview_window = None
 
+    def commit_open_cell_editors(self) -> bool:
+        """Make text still typed in Address Editor cells edits; False if a cell won't commit.
+
+        Every editor is tried, even after one fails.
+        """
+        committed = [editor.commit_open_cell_editor() for editor in self._editors]
+        return all(committed)
+
     def _confirm_close(self, parent: tk.Misc | None) -> bool:
         from tkinter import messagebox
 
         # Text still in a cell editor is an edit; a cell that won't commit stops the close.
-        for editor in self._editors:
-            if not editor.commit_open_cell_editor():
-                return False
+        if not self.commit_open_cell_editors():
+            return False
 
         # Editor windows are Tk Toplevels; the protocols only name what we call.
         window = self._dataview_window
