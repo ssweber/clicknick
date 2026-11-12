@@ -1493,6 +1493,8 @@ class AddressEditorWindow(tk.Toplevel):
     def commit_open_cell_editor(self) -> bool:
         """Commit the text typed in an open cell editor, so it is an edit like any other.
 
+        DataSession calls this before it closes the window or replaces its data.
+
         Returns False, after telling the user, when an editor is still open
         (tksheet commits nothing while the application has no focus).
         """

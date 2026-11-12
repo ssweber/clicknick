@@ -135,21 +135,27 @@ def test_retentive_cells_of_editable_rows_stay_editable(panel) -> None:
     assert not panel.sheet.MT.get_cell_kwargs(row, COL_RETENTIVE, key="readonly")
 
 
-def test_ctrl_w_closes_one_tab_in_the_focused_window_only(tk_root) -> None:
+def test_a_notebook_binds_no_ctrl_w_of_its_own(tk_root) -> None:
     top = tk.Toplevel(tk_root)
-    other = tk.Toplevel(tk_root)
-    closed: list[int] = []
-    notebook = CustomNotebook(top, on_close_callback=lambda i: closed.append(i) or True)
-    other_notebook = CustomNotebook(other, on_close_callback=lambda i: closed.append(-i) or True)
-    for nb in (notebook, other_notebook):
-        nb.add(ttk.Frame(nb), text="a")
-        nb.add(ttk.Frame(nb), text="b")
+    notebook = CustomNotebook(top)
     try:
         assert not top.bind_all("<Control-w>")
         assert not notebook.bind("<Control-w>")
     finally:
         top.destroy()
-        other.destroy()
+
+
+def test_close_icons_survive_the_first_notebook(tk_root) -> None:
+    import gc
+
+    first = CustomNotebook(tk_root)
+    first.destroy()
+    del first
+    gc.collect()
+
+    CustomNotebook(tk_root)
+
+    assert {"img_close", "img_closeactive", "img_closepressed"} <= set(tk_root.image_names())
 
 
 def test_ctrl_w_after_a_notebook_is_destroyed_raises_nothing(tk_root) -> None:

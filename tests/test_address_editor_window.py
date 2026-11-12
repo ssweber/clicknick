@@ -196,9 +196,6 @@ def test_a_new_tab_applies_its_state_after_the_view_is_built(store, monkeypatch)
     assert [c[0] for c in order.mock_calls] == ["initialize", "apply_state"]
 
 
-# Tag Browser rename: nicknames only
-
-
 def test_replace_all_in_nickname_column_leaves_comments_alone(tk_root) -> None:
     from clicknick.views.address_editor.sheet import AddressEditorSheet
 

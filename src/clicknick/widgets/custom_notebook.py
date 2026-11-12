@@ -176,6 +176,8 @@ class CustomNotebook(ttk.Notebook):
             ttk.Style(master).layout("CustomNotebook")
         except tk.TclError:
             self.__initialize_custom_style(master)
+            # Tk deletes an image when its PhotoImage is collected; the root keeps them.
+            (master or tk._get_default_root())._root()._custom_notebook_images = self.images
 
         kwargs["style"] = "CustomNotebook"
         ttk.Notebook.__init__(self, *args, **kwargs)
