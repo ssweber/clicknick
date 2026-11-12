@@ -102,10 +102,32 @@ def test_one_argument_is_a_command_line_chained_at_semicolons(monkeypatch, store
     assert (_comment(store, "C1"), _comment(store, "C2")) == ("Pump", "Valve; spare")
 
 
-def test_one_argument_keeps_backslashes(monkeypatch, store):
-    _run(monkeypatch, store, r"set DS1 comment C:\temp\new")
+def test_a_word_ending_in_a_semicolon_ends_the_command(monkeypatch, store):
+    # cmd.exe: clicknick-cli set C1 comment Pump; set C2 comment Valve
+    sent = _run(
+        monkeypatch, store, "set", "C1", "comment", "Pump;", "set", "C2", "comment", "Valve"
+    )
 
-    assert _comment(store, "DS1") == r"C:\temp\new"
+    assert len(sent) == 2
+    assert (_comment(store, "C1"), _comment(store, "C2")) == ("Pump", "Valve")
+
+
+@pytest.mark.parametrize(
+    ("command", "comment"),
+    [
+        (r"set DS1 comment C:\temp\new", r"C:\temp\new"),
+        (r"set DS1 comment 'C:\temp\new'", r"C:\temp\new"),
+        (r'set DS1 comment "C:\temp"', r"C:\temp"),
+        (r'set DS1 comment "C:\\temp"', r"C:\temp"),
+        (r'set DS1 comment "Valve \"B\" open"', 'Valve "B" open'),
+    ],
+)
+def test_one_argument_escapes_only_quote_and_backslash_in_double_quotes(
+    monkeypatch, store, command, comment
+):
+    _run(monkeypatch, store, command)
+
+    assert _comment(store, "DS1") == comment
 
 
 def test_an_unclosed_quote_sends_nothing(monkeypatch, store, capsys):

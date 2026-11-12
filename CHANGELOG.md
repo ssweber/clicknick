@@ -96,8 +96,12 @@
 - **Stop** in the main window turns off only autocomplete, until you click **Start** or pick a window: ClickNick still notices CLICK closing or opening another project (it kept the old project's editors, simulation and database).
 - A CSV that cannot be loaded shows why, such as a missing Nickname column (the status only said "CSV load failed").
 - Two CLICK windows with the same project name are listed with their PIDs, so either can be picked, and the window list and status no longer show a window or "Monitoring" that is not current.
-- `clicknick-cli tag apply` changes only the annotations you changed in `tags.py` and keeps the rest of the comment, its text and block tag (it replaced the comment with the annotations alone, such as `[uom=mm]`), and no longer stages `[external]` on analog input channels you did not edit.
-- `clicknick-cli` passes each argument as you typed it, so a value can hold quotes, backslashes, `#` or `;` (`set DS1 comment "Don't start"`); a command given as one argument is still split at spaces and `;` outside quotes, and keeps its backslashes.
+- `clicknick-cli tag apply` keeps a comment's text and block tag and changes only the annotations you changed in `tags.py` (it replaced the comment with them alone, such as `[uom=mm]`).
+  - Comments that an earlier `tag apply` cut down to their annotations keep only the annotations in CLICK: put their text back by hand.
+- `clicknick-cli tag apply` no longer stages `[external]` on analog input channels you did not edit.
+- `clicknick-cli` passes each argument as you typed it, so a value can hold quotes, backslashes or `;`, such as `set DS1 comment "Don't start"`.
+  - A command given as one argument is split at spaces and at `;` outside quotes. A backslash there is kept as typed (`C:\temp`), except that `\"` and `\\` still escape inside double quotes.
+  - An argument ending in `;` still ends a command.
 - `clicknick-cli prompt-save` answers at once while ClickNick shows the reminder, instead of holding every other command until the dialog is closed.
 
 ## v0.23.4 - 2026-10-11

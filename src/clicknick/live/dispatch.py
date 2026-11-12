@@ -17,8 +17,8 @@ Grammar (one command per connection)::
     rung <subcommand> ...              -> program listing / apply
     prompt-save                        -> pop a save reminder dialog in the GUI
 ``<field>`` is one of: nickname, comment, initial_value, retentive.
-Values may be quoted, e.g. ``set DS1 comment "Main motor run"``; a backslash is
-an ordinary character (``split_words``).
+Values may be quoted, e.g. ``set DS1 comment "Main motor run"``; a backslash
+escapes only ``"`` and ``\\`` inside double quotes (``split_words``).
 ``<ID>`` is a pyrung tag name (preferred) or CLICK display address (``DS1``, ``C100``).
 """
 
@@ -64,33 +64,70 @@ class DispatchContext:
     pyrung_live_available: bool = False
 
 
-def _lexer(text: str, punctuation_chars: str = "") -> shlex.shlex:
-    lexer = shlex.shlex(text, posix=True, punctuation_chars=punctuation_chars)
-    lexer.whitespace_split = True
-    lexer.commenters = ""
-    # Windows paths: a backslash is kept, never an escape.
-    lexer.escape = ""
-    return lexer
+_WHITESPACE = " \t\r\n"
+
+
+def _read_commands(text: str, *, chain: bool) -> list[list[str]]:
+    """Read *text* into commands of words, as a POSIX shell quotes them.
+
+    Single or double quotes group words. Inside double quotes a backslash
+    escapes ``"`` and ``\\``; anywhere else it is an ordinary character, so a
+    Windows path such as ``C:\\temp`` stays as typed. With *chain*, a ``;``
+    outside quotes ends a command.
+    """
+    commands: list[list[str]] = [[]]
+    word: list[str] = []
+    in_word = False
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch in _WHITESPACE or (chain and ch == ";"):
+            if in_word:
+                commands[-1].append("".join(word))
+                word, in_word = [], False
+            if ch == ";":
+                commands.append([])
+        elif ch == "'":
+            end = text.find("'", i + 1)
+            if end < 0:
+                raise ValueError("No closing quotation")
+            word.append(text[i + 1 : end])
+            in_word, i = True, end
+        elif ch == '"':
+            i += 1
+            while True:
+                if i >= len(text):
+                    raise ValueError("No closing quotation")
+                ch = text[i]
+                if ch == '"':
+                    break
+                if ch == "\\" and text[i + 1 : i + 2] in ('"', "\\"):
+                    i += 1
+                    ch = text[i]
+                word.append(ch)
+                i += 1
+            in_word = True
+        else:
+            word.append(ch)
+            in_word = True
+        i += 1
+    if in_word:
+        commands[-1].append("".join(word))
+    return [words for words in commands if words]
 
 
 def split_words(command: str) -> list[str]:
-    """Split one command into its words.
+    """Split one command into its words (``_read_commands`` says how).
 
-    Single or double quotes group words, and a backslash is an ordinary
-    character. ``quote_words`` writes words back so this returns them unchanged.
+    ``quote_words`` writes words back so this returns them unchanged.
     """
-    return list(_lexer(command))
+    commands = _read_commands(command, chain=False)
+    return commands[0] if commands else []
 
 
 def split_commands(text: str) -> list[list[str]]:
     """Split a command line into commands at each ``;`` outside quotes."""
-    commands: list[list[str]] = [[]]
-    for word in _lexer(text, punctuation_chars=";"):
-        if word and not word.strip(";"):
-            commands.append([])
-        else:
-            commands[-1].append(word)
-    return [words for words in commands if words]
+    return _read_commands(text, chain=True)
 
 
 def quote_words(words: list[str]) -> str:

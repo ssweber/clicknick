@@ -47,9 +47,10 @@ Usage::
     clicknick-cli -s MyProject get DS1
 
 Each argument is one word, as the shell passed it. A command given as one
-argument is split into words at spaces outside quotes; a backslash stays as
-it is. Commands may be chained with ``;``, given as its own argument or inside
-that one argument::
+argument is split into words at spaces outside quotes; a backslash escapes
+only ``"`` and ``\\`` inside double quotes and stays as it is elsewhere.
+Commands may be chained with ``;``: at the end of an argument, as an argument
+of its own, or outside quotes in that one argument::
 
     clicknick-cli "set C1 nickname Pump ; set C2 nickname Valve"
 
@@ -71,7 +72,9 @@ def _commands(argv: list[str], parser: argparse.ArgumentParser) -> list[list[str
     """Return the words of each command in *argv*.
 
     One argument is a command line of its own (``"set DS1 comment 'a b'"``);
-    more are the words the shell already split, with ``;`` alone between commands.
+    more are the words the shell already split. Then a word ending in ``;``
+    ends a command (cmd.exe passes ``Pump; set`` as ``Pump;`` and ``set``); a
+    ``;`` anywhere else in a word is part of it.
     """
     if len(argv) == 1:
         try:
@@ -80,7 +83,9 @@ def _commands(argv: list[str], parser: argparse.ArgumentParser) -> list[list[str
             parser.error(f"cannot read {argv[0]!r}: {exc}")
     commands: list[list[str]] = [[]]
     for word in argv:
-        if word and not word.strip(";"):
+        if word.endswith(";"):
+            if word.rstrip(";"):
+                commands[-1].append(word.rstrip(";"))
             commands.append([])
         else:
             commands[-1].append(word)
