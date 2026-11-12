@@ -37,6 +37,9 @@ class SavedProgram:
     # A different session is a different project; None when nothing is connected.
     session: ConnectionSession | None = None
     generation: int = 0
+    # Saves CLICK made in this session, as the ScrWatcher saw them: the one signal
+    # that CLICK saved. Nothing ClickNick does (Sync, Reload, a retry) bumps it.
+    save_count: int = 0
     building: bool = False
     csv_dir: Path | None = None
     # Why there is no csv_dir to compare with.
@@ -101,6 +104,7 @@ class ConnectionSession:
         self._on_build_finished = on_build_finished
         # Legacy encodings in CLICK's last save that the user has been told about
         self._legacy_reported: frozenset[tuple[str, str, str]] = frozenset()
+        self._save_count = 0
 
         # One build worker: requests made while it runs collapse into the next build.
         self._build_lock = threading.Lock()
@@ -291,7 +295,8 @@ class ConnectionSession:
         return scr_folder, db_path
 
     def _on_scr_changed(self) -> None:
-        """Rebuild analysis when Scr*.tmp files change."""
+        """Count a CLICK save and rebuild analysis from it."""
+        self._save_count += 1
         paths = self._analysis_paths()
         if paths is not None:
             self._start_analysis_thread(*paths)
@@ -301,23 +306,24 @@ class ConnectionSession:
         from .services.analysis_service import AnalysisStatus
 
         reading = "Reading CLICK's program…"
+        saves = self._save_count
         analysis = self.analysis
         if analysis is None:
-            return SavedProgram(self, note=reading)
+            return SavedProgram(self, save_count=saves, note=reading)
         generation = analysis.generation
         status = analysis.status
         if status is AnalysisStatus.BUILDING:
-            return SavedProgram(self, generation, building=True, note=reading)
+            return SavedProgram(self, generation, saves, building=True, note=reading)
         # A build that failed before publishing leaves the workspace of an earlier save.
         project_dir = analysis.project_dir if analysis.project_is_current else None
         csv_dir = project_dir / "csv" if project_dir is not None else None
         if csv_dir is not None and csv_dir.is_dir():
-            return SavedProgram(self, generation, csv_dir=csv_dir, note="")
+            return SavedProgram(self, generation, saves, csv_dir=csv_dir, note="")
         if status is AnalysisStatus.FAILED:
             return SavedProgram(
-                self, generation, note="Could not read CLICK's program; see the main window"
+                self, generation, saves, note="Could not read CLICK's program; see the main window"
             )
-        return SavedProgram(self, generation, note=reading)
+        return SavedProgram(self, generation, saves, note=reading)
 
     def legacy_encodings_to_report(self) -> tuple[LegacyEncoding, ...]:
         """Every legacy encoding in CLICK's last save, when it holds one not reported yet.

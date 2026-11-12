@@ -212,6 +212,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   never holds `csv/` from one save and `src/plc` from another
 - A build that fails before it publishes leaves `project_dir` an earlier save's (`project_is_current`
   is False), and Preview Changes then has nothing to compare with
+- `SavedProgram.save_count` is the one signal that CLICK saved: only the ScrWatcher bumps it. A Sync
+  rebuild, Reload from CLICK, a workspace change, a retry and a failed build leave it as it was
 - The generated code, persisted project and tag map all come from one nickname snapshot read from CLICK's
   database, so tag names always match the code. ClickNick edits reach analysis on the next build after Sync
 

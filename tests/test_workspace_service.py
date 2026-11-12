@@ -413,6 +413,43 @@ def _saved_click_project(tmp_path, monkeypatch) -> Path:
     return db_path
 
 
+def test_save_count_counts_only_the_saves_click_makes(tmp_path, monkeypatch) -> None:
+    """The one signal that CLICK saved: nothing ClickNick does bumps it."""
+    _saved_click_project(tmp_path, monkeypatch)
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    session._start_analysis_thread = MagicMock()
+    root = MagicMock()
+    session.start_analysis(root)
+    assert session.saved_program().save_count == 0
+
+    (tmp_path / "Scr2.tmp").write_text("saved", encoding="utf-8")
+    session.scr_watcher._check()
+    assert session.saved_program().save_count == 1
+
+    # A Sync with repairs rebuilds, as do Reload from CLICK and a workspace change.
+    session.analysis.mark_failed("needs repairs")
+    session.start_analysis(root)
+    session.reload_workspace_from_click(root)
+    session.simulation = None
+    session.use_workspace(tmp_path / "Line1 Workspace")
+    session.start_analysis(root)
+    session.scr_watcher._check()
+    assert session.saved_program().save_count == 1
+
+    # It is the same whatever the build is doing.
+    session.analysis.mark_building()
+    assert session.saved_program().save_count == 1
+    session.analysis.mark_failed("pyrung cannot convert this rung")
+    failed = session.saved_program()
+    assert failed.save_count == 1
+    assert failed.csv_dir is None
+
+    (tmp_path / "Scr1.tmp").write_text("saved again", encoding="utf-8")
+    session.scr_watcher._check()
+    assert session.saved_program().save_count == 2
+    session.scr_watcher.stop()
+
+
 def test_rebuilding_analysis_keeps_the_synced_count(tmp_path, monkeypatch) -> None:
     """A rebuild after a Sync with repairs must still say "N tags synced - Save in CLICK"."""
     db_path = _saved_click_project(tmp_path, monkeypatch)
