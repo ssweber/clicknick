@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
+import time
 import tkinter as tk
 
 import pytest
+
+
+def _new_root() -> tk.Tk:
+    """Tk sometimes fails to read init.tcl while other test processes start; try again."""
+    for attempt in range(5):
+        try:
+            return tk.Tk()
+        except tk.TclError:
+            if attempt == 4:
+                raise
+            time.sleep(1)
+    raise AssertionError("unreachable")
 
 
 @pytest.fixture(scope="module")
@@ -15,7 +28,7 @@ def tk_root():
     module breaks the next module's. A machine with no display fails these tests;
     it does not skip them.
     """
-    root = tk.Tk()
+    root = _new_root()
     root.withdraw()
     yield root
     try:
