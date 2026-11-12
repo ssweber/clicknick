@@ -206,8 +206,10 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 
 ### Program Analysis
 - One build worker per connection; requests made while it runs collapse into one follow-up build.
-  `ConnectionSession.start_analysis` adds none while a build runs, and makes the ScrWatcher once per
-  session, as the watcher counts the tags synced since CLICK last saved
+  `ConnectionSession.start_analysis` queues no build while one runs (that build serves it) and makes the
+  ScrWatcher once per session, because the watcher holds the count of tags synced since CLICK last saved
+- Publishing a build swaps `csv/` and `src/plc` as a pair and records the generation last, so a workspace
+  never holds `csv/` from one save and `src/plc` from another
 - A build that fails before it publishes leaves `project_dir` an earlier save's (`project_is_current`
   is False), and Preview Changes then has nothing to compare with
 - The generated code, persisted project and tag map all come from one nickname snapshot read from CLICK's
