@@ -111,7 +111,9 @@ def test_address_not_in_store_is_skipped(store):
 
 
 def _patch_exports(monkeypatch, base, cur):
-    monkeypatch.setattr(tag_commands, "_load_export_rows", lambda project_dir: (base, cur))
+    monkeypatch.setattr(
+        tag_commands, "_load_export_rows", lambda _project_dir, *, analog_inputs: (base, cur)
+    )
 
 
 def test_tag_apply_applies_and_opens_changed(store, tmp_path, monkeypatch):
@@ -174,11 +176,13 @@ def test_load_export_rows_reads_src_plc_tags(tmp_path, monkeypatch):
     tags_dir.mkdir(parents=True)
     (tags_dir / "tags.py").write_text("current tags\n", encoding="utf-8")
 
-    monkeypatch.setattr(
-        rung_commands,
-        "_get_before_files",
-        lambda _project_dir: {"src/plc/tags.py": "baseline tags\n"},
-    )
+    regenerated_with: list[frozenset[str]] = []
+
+    def _before_files(_project_dir, *, analog_inputs):
+        regenerated_with.append(analog_inputs)
+        return {"src/plc/tags.py": "baseline tags\n"}
+
+    monkeypatch.setattr(rung_commands, "_get_before_files", _before_files)
     exported: list[str] = []
     monkeypatch.setattr(
         tag_commands,
@@ -195,6 +199,134 @@ def test_load_export_rows_reads_src_plc_tags(tmp_path, monkeypatch):
 
     monkeypatch.setattr(data_source, "CsvDataSource", FakeDataSource)
 
-    tag_commands._load_export_rows(tmp_path)
+    tag_commands._load_export_rows(tmp_path, analog_inputs=frozenset({"DF1"}))
 
     assert exported == ["baseline tags\n", "current tags\n"]
+    assert regenerated_with == [frozenset({"DF1"})]
+
+
+# --- a real workspace generated from CLICK's nicknames -----------------------
+
+
+class RowsDataSource(MockDataSource):
+    def __init__(self, rows):
+        self.rows = rows
+
+    def load_all_addresses(self):
+        return dict(self.rows)
+
+
+def _generated_workspace(tmp_path, monkeypatch, rows, *, project_ini: str | None = None):
+    """Generate a workspace from *rows* the way a CLICK save does; return (store, ctx)."""
+    from pyrung import Program, Rung, copy
+    from pyrung.click import ClickBlocks, TagMap, pyrung_to_ladder
+
+    from clicknick.services import analysis_service
+
+    blocks = ClickBlocks()
+    with Program() as program:
+        with Rung():
+            copy(blocks.ds[1], blocks.ds[10])
+            copy(blocks.df[1], blocks.df[10])
+    bundle = pyrung_to_ladder(program, TagMap([], include_system=False))
+    monkeypatch.setattr(
+        "clicknick.ladder.program.program_save",
+        lambda _source, destination, *, index: bundle.write(destination),
+    )
+    monkeypatch.setattr(analysis_service, "_read_nickname_rows", lambda _db: rows)
+    click_folder = tmp_path / "click"
+    click_folder.mkdir()
+    if project_ini is not None:
+        (click_folder / "Project.ini").write_text(project_ini, encoding="utf-8")
+    _graph, _program, project, _rows = analysis_service._build_graph(
+        click_folder, click_folder / "SC_.mdb", tmp_path / "workspace"
+    )
+    store = AddressStore(RowsDataSource(rows))
+    store.load_initial_data()
+    ctx = DispatchContext(store=store, analysis=MockAnalysis(project))
+    if project_ini is not None:
+        ctx.scr_folder = click_folder
+    return store, ctx
+
+
+def _edit_tags_py(ctx, old: str, new: str) -> None:
+    tags = ctx.analysis.project_dir / "src" / "plc" / "tags.py"
+    text = tags.read_text(encoding="utf-8")
+    assert text.count(old) == 1, text
+    tags.write_text(text.replace(old, new), encoding="utf-8")
+
+
+def _rows(**comments):
+    from pyclickplc.banks import DataType
+
+    from clicknick.models.address_row import AddressRow
+
+    names = {
+        "DS1": ("Tank_Level", DataType.INT),
+        "DS2": ("Tank_Temp", DataType.INT),
+        "DS3": ("Tank_Out", DataType.INT),
+        "DS10": ("Level_Copy", DataType.INT),
+        "DF1": ("Level_In", DataType.FLOAT),
+        "DF10": ("Level_Scaled", DataType.FLOAT),
+    }
+    rows = {}
+    for display, (nickname, data_type) in names.items():
+        mem, addr = display.rstrip("0123456789"), int(display.lstrip("DSF"))
+        rows[get_addr_key(mem, addr)] = AddressRow(
+            mem, addr, nickname=nickname, comment=comments.get(display, ""), data_type=data_type
+        )
+    return rows
+
+
+def test_tag_apply_keeps_the_comment_text_and_block_tag_tags_py_leaves_out(tmp_path, monkeypatch):
+    rows = _rows(DS1="<Tank> Level in tank 3", DS2="[uom=degC] temp", DS3="</Tank>")
+    store, ctx = _generated_workspace(tmp_path, monkeypatch, rows)
+    _edit_tags_py(ctx, "ds.slot(1, name='Tank_Level')", "ds.slot(1, name='Tank_Level', uom='mm')")
+    _edit_tags_py(ctx, "uom='degC'", "uom='degF'")
+
+    assert "2 tags changed" in dispatch(ctx, "tag apply")
+
+    assert _row(store, "DS", 1).comment == "<Tank> [uom=mm] Level in tank 3"
+    assert _row(store, "DS", 2).comment == "[uom=degF] temp"
+    assert store.get_dirty_keys() == {get_addr_key("DS", 1), get_addr_key("DS", 2)}
+
+
+_ANALOG_INPUT_DF1 = "[SystemConfig]\nItem1=192\n[CPUBuild]\nAD1=DF1,10,0\nDA1=DF5,10,0\n"
+
+
+def test_tag_apply_on_an_unedited_workspace_leaves_analog_inputs_alone(tmp_path, monkeypatch):
+    rows = _rows(DF1="Level in")
+    store, ctx = _generated_workspace(tmp_path, monkeypatch, rows, project_ini=_ANALOG_INPUT_DF1)
+
+    assert "no changes" in dispatch(ctx, "tag apply")
+
+    _edit_tags_py(
+        ctx, "df.slot(10, name='Level_Scaled')", "df.slot(10, name='Level_Scaled', uom='mm')"
+    )
+    assert "1 tag changed" in dispatch(ctx, "tag apply")
+    assert store.get_dirty_keys() == {get_addr_key("DF", 10)}
+    assert _row(store, "DF", 1).comment == "Level in"
+
+
+def test_tag_apply_keeps_annotations_tags_py_did_not_change(store):
+    # The store's comment gained [readonly] after the workspace was generated.
+    key = get_addr_key("DS", 1)
+    with store.edit_session("user") as session:
+        session.set_field(key, "comment", "[readonly] Setpoint")
+    base = {key: replace(_row(store, "DS", 1), comment="")}
+    cur = {key: replace(base[key], comment="[uom=mm]")}
+
+    changes = _compute_tag_changes(base, cur, store)
+
+    assert changes == [(key, "comment", "[readonly, uom=mm] Setpoint")]
+
+
+def test_tag_apply_refuses_annotations_that_clash_with_the_comment(store):
+    key = get_addr_key("DS", 1)
+    with store.edit_session("user") as session:
+        session.set_field(key, "comment", "[choices=Off:0|On:1] Mode")
+    base = {key: replace(_row(store, "DS", 1), comment="")}
+    cur = {key: replace(base[key], comment="[min=0, max=10]")}
+
+    with pytest.raises(ValueError, match="DS1"):
+        _compute_tag_changes(base, cur, store)

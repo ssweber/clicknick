@@ -102,6 +102,7 @@ class LiveServer:
         self._drain_after_id: str | None = None
         self._advertise_after_id: str | None = None
         self._published_dir: Path | None = None
+        self._save_prompt_shown = False
 
     @property
     def port(self) -> int | None:
@@ -136,13 +137,34 @@ class LiveServer:
             finally:
                 conn.close()
 
+    def _show_save_prompt(self, title: str, message: str) -> None:
+        """Show the save reminder after the drain returns, one at a time.
+
+        The dialog is modal: shown inside the drain it would hold every queued
+        command, and the CLI waiting on this one, until the user closes it.
+        """
+        if self._save_prompt_shown:
+            return
+        self._save_prompt_shown = True
+
+        def _show() -> None:
+            from tkinter import messagebox
+
+            try:
+                messagebox.showinfo(title, message, parent=self._root)
+            finally:
+                self._save_prompt_shown = False
+
+        self._root.after(0, _show)
+
     # -- Tk main thread -----------------------------------------------------
 
     def _build_context(self) -> DispatchContext:
         """Build a fresh dispatch context from current getter values."""
         analysis = self._get_analysis() if self._get_analysis else None
         mdb_path = self._get_mdb_path() if self._get_mdb_path else None
-        project_saved = None if mdb_path is None else any(mdb_path.parent.glob("Scr*.tmp"))
+        scr_folder = None if mdb_path is None else mdb_path.parent
+        project_saved = None if scr_folder is None else any(scr_folder.glob("Scr*.tmp"))
         resolve_tag = None
         if analysis is not None and analysis.is_available:
             resolve_tag = analysis.tag_to_addr_key.get
@@ -151,13 +173,7 @@ class LiveServer:
 
         show_save_prompt = None
         if self._root is not None:
-
-            def _prompt_save(title: str, message: str) -> None:
-                from tkinter import messagebox
-
-                messagebox.showinfo(title, message, parent=self._root)
-
-            show_save_prompt = _prompt_save
+            show_save_prompt = self._show_save_prompt
 
         synced_pending = self._get_synced_pending() if self._get_synced_pending else 0
         staged_rungs = self._get_staged_rungs() if self._get_staged_rungs else 0
@@ -169,6 +185,7 @@ class LiveServer:
             store=self._get_store(),
             resolve_tag=resolve_tag,
             analysis=analysis,
+            scr_folder=scr_folder,
             show_proposal=self._show_proposal,
             show_address_editor=show_address_editor,
             show_save_prompt=show_save_prompt,
