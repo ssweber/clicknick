@@ -1057,9 +1057,9 @@ class DataviewEditorWindow(tk.Toplevel):
     def _address_for_nickname(self, nickname: str) -> str | None:
         """The address with this nickname, matched without case (an exact match first)."""
         store = self.shared_data.address_store
-        addr_keys = store.get_addr_keys_for_nickname(
-            nickname
-        ) or store.get_addr_keys_for_nickname_insensitive(nickname)
+        addr_keys = store.get_addr_keys_for_nickname(nickname)
+        if not addr_keys:
+            addr_keys = store.get_addr_keys_for_nickname_insensitive(nickname)
         if not addr_keys:
             return None
         row = store.visible_state.get(min(addr_keys))
