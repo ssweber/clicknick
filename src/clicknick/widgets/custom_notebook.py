@@ -18,13 +18,12 @@ from tkinter import ttk
 class CustomNotebook(ttk.Notebook):
     """A ttk Notebook with close buttons and enhanced interaction."""
 
-    __initialized = False
-
-    def __initialize_custom_style(self):
-        style = ttk.Style()
+    def __initialize_custom_style(self, master: tk.Misc | None):
+        style = ttk.Style(master)
         self.images = (
             tk.PhotoImage(
                 "img_close",
+                master=master,
                 data="""
                 R0lGODlhCAAIAMIBAAAAADs7O4+Pj9nZ2Ts7Ozs7Ozs7Ozs7OyH+EUNyZWF0ZWQg
                 d2l0aCBHSU1QACH5BAEKAAQALAAAAAAIAAgAAAMVGDBEA0qNJyGw7AmxmuaZhWEU
@@ -33,6 +32,7 @@ class CustomNotebook(ttk.Notebook):
             ),
             tk.PhotoImage(
                 "img_closeactive",
+                master=master,
                 data="""
                 R0lGODlhCAAIAMIEAAAAAP/SAP/bNNnZ2cbGxsbGxsbGxsbGxiH5BAEKAAQALAAA
                 AAAIAAgAAAMVGDBEA0qNJyGw7AmxmuaZhWEU5kEJADs=
@@ -40,6 +40,7 @@ class CustomNotebook(ttk.Notebook):
             ),
             tk.PhotoImage(
                 "img_closepressed",
+                master=master,
                 data="""
                 R0lGODlhCAAIAMIEAAAAAOUqKv9mZtnZ2Ts7Ozs7Ozs7Ozs7OyH+EUNyZWF0ZWQg
                 d2l0aCBHSU1QACH5BAEKAAQALAAAAAAIAAgAAAMVGDBEA0qNJyGw7AmxmuaZhWEU
@@ -169,9 +170,12 @@ class CustomNotebook(ttk.Notebook):
             "on_close_callback", None
         )
 
-        if not CustomNotebook.__initialized:
-            self.__initialize_custom_style()
-            CustomNotebook.__initialized = True
+        # The style belongs to one Tk interpreter; each root needs its own.
+        master = args[0] if args else kwargs.get("master")
+        try:
+            ttk.Style(master).layout("CustomNotebook")
+        except tk.TclError:
+            self.__initialize_custom_style(master)
 
         kwargs["style"] = "CustomNotebook"
         ttk.Notebook.__init__(self, *args, **kwargs)

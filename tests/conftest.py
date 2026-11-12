@@ -7,11 +7,13 @@ import tkinter as tk
 import pytest
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def tk_root():
-    """One hidden Tk root for every test that builds widgets and does not make its own.
+    """One hidden Tk root per module, for tests that do not make their own.
 
-    A machine with no display fails these tests; it does not skip them.
+    Modules that create their own roots destroy them, and a root that outlives its
+    module breaks the next module's. A machine with no display fails these tests;
+    it does not skip them.
     """
     root = tk.Tk()
     root.withdraw()
