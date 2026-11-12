@@ -12,6 +12,7 @@ import tkinter as tk
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from tkinter import messagebox, ttk
+from typing import NamedTuple
 
 from pyclickplc.addresses import normalize_address
 from pyclickplc.dataview import (
@@ -50,8 +51,17 @@ FILE_MONITOR_INTERVAL_MS = 2000
 #: Undo levels kept per dataview.
 MAX_UNDO_DEPTH = 50
 
-#: The rows and their Write checks, as one undo step restores them.
-_UndoFrame = tuple[list[DataViewRecord], list[bool]]
+#: A file's (mtime, size): which version of it is on disk.
+Stamp = tuple[float, int]
+
+
+class _UndoFrame(NamedTuple):
+    """The rows and their Write checks, as one undo step restores them."""
+
+    rows: list[DataViewRecord]
+    checks: list[bool]
+    #: The version of the file these rows came from (None: from no file).
+    based_on: Stamp | None
 
 
 class DataviewPanel(ttk.Frame):
@@ -139,6 +149,10 @@ class DataviewPanel(ttk.Frame):
             self.sheet.set_cell_data(row_idx, COL_WRITE, checked)
         else:
             self.sheet.set_cell_data(row_idx, COL_WRITE, "")
+
+    def _notify_modified(self) -> None:
+        if self.on_modified:
+            self.on_modified(self)
 
     def _notify_addresses_changed(self) -> None:
         if self.on_addresses_changed:
@@ -263,7 +277,11 @@ class DataviewPanel(ttk.Frame):
         return [(row.address, row.data_type, row.new_value) for row in self.rows]
 
     def _snapshot(self) -> _UndoFrame:
-        return [dataclasses.replace(row) for row in self.rows], list(self._write_checks)
+        return _UndoFrame(
+            [dataclasses.replace(row) for row in self.rows],
+            list(self._write_checks),
+            self._based_on,
+        )
 
     def _push_undo(self, before: _UndoFrame) -> None:
         """Record the state an edit started from; a new edit drops Redo."""
@@ -271,11 +289,12 @@ class DataviewPanel(ttk.Frame):
         del self._undo_stack[:-MAX_UNDO_DEPTH]
         self._redo_stack.clear()
 
-    def _mark_saved(self) -> None:
-        """The rows now match the file."""
+    def _mark_read(self, stamp: Stamp | None) -> None:
+        """The rows are the file's version ``stamp``, as just loaded, reloaded or saved."""
         self._saved_values = self._row_values()
         self._is_dirty = False
-        self._unloaded_change = False
+        self._based_on = stamp
+        self._monitor_stamp = stamp
 
     def _on_undo_key(self, _event=None) -> str:
         self.undo()
@@ -366,8 +385,7 @@ class DataviewPanel(ttk.Frame):
             self._push_undo(before)
             self._is_dirty = True
             self._update_status()
-            if self.on_modified:
-                self.on_modified()
+            self._notify_modified()
         if addresses_changed:
             self._notify_addresses_changed()
 
@@ -422,8 +440,7 @@ class DataviewPanel(ttk.Frame):
             self._sync_write_checkbox(i)
         self.sheet.refresh(redraw_header=False, redraw_row_index=True)
 
-        if self.on_modified:
-            self.on_modified()
+        self._notify_modified()
         self._notify_addresses_changed()
 
     def _trim_empty_rows_from_bottom(self) -> None:
@@ -498,8 +515,7 @@ class DataviewPanel(ttk.Frame):
         self._is_dirty = True
         self._update_status()
 
-        if self.on_modified:
-            self.on_modified()
+        self._notify_modified()
         self._notify_addresses_changed()
 
     def _pad_to_target(self) -> None:
@@ -540,8 +556,7 @@ class DataviewPanel(ttk.Frame):
         self._is_dirty = True
         self._update_status()
 
-        if self.on_modified:
-            self.on_modified()
+        self._notify_modified()
         self._notify_addresses_changed()
 
     def _validate_edit(self, event) -> str:
@@ -677,11 +692,22 @@ class DataviewPanel(ttk.Frame):
 
         self._update_status()
 
+    @staticmethod
+    def _stamp(path: Path) -> Stamp | None:
+        """The file's (mtime, size), or None when it can't be read."""
+        try:
+            stat = os.stat(path)
+        except OSError:
+            return None
+        return stat.st_mtime, stat.st_size
+
     def _load_file(self) -> None:
         """Load data from file."""
         if not self.file_path or not self.file_path.exists():
             return
 
+        # Stamped before reading: a write during the read is then a change still to load.
+        stamp = self._stamp(self.file_path)
         try:
             self._file = DataViewFile.load(self.file_path)
         except Exception as e:
@@ -695,7 +721,7 @@ class DataviewPanel(ttk.Frame):
         self._undo_stack.clear()
         self._redo_stack.clear()
         self._populate_sheet()
-        self._mark_saved()
+        self._mark_read(stamp)
         self._update_status()
 
     # --- File Monitoring ---
@@ -710,7 +736,7 @@ class DataviewPanel(ttk.Frame):
         self,
         parent: tk.Widget,
         file_path: Path | None = None,
-        on_modified: Callable[[], None] | None = None,
+        on_modified: Callable[[DataviewPanel], None] | None = None,
         on_addresses_changed: Callable[[DataviewPanel], None] | None = None,
         nickname_lookup: Callable[[str], tuple[str, str] | None] | None = None,
         address_normalizer: Callable[[str], str | None] | None = None,
@@ -722,7 +748,7 @@ class DataviewPanel(ttk.Frame):
         Args:
             parent: Parent widget
             file_path: Path to the CDV file (None for new unsaved dataview)
-            on_modified: Callback when data is modified
+            on_modified: Callback with this panel when its rows or unsaved state change
             on_addresses_changed: Callback when row addresses change
             nickname_lookup: Callback to lookup (nickname, comment) for an address
             address_normalizer: Callback to normalize address to canonical form (e.g., "x1" -> "X001")
@@ -753,8 +779,9 @@ class DataviewPanel(ttk.Frame):
         self._redo_stack: list[_UndoFrame] = []
         #: Why file_path could not be read; while set, Save refuses to write over it.
         self.load_error: str | None = None
-        #: The file changed on disk and the user chose not to reload it.
-        self._unloaded_change = False
+        #: The version of file_path the rows came from: set by load, reload and save,
+        #: kept by edits, restored by Undo/Redo. Save asks when the file is another one.
+        self._based_on: Stamp | None = None
         self._write_checks: list[bool] = [False] * len(self.rows)
         self._live_values: dict[str, PlcValue] = {}
 
@@ -764,8 +791,9 @@ class DataviewPanel(ttk.Frame):
         # Live value flash highlight tracking: row_idx -> after_id
         self._live_flash_pending: dict[int, str] = {}
 
-        # File monitoring state: (mtime, size) of the file as last loaded or saved
-        self._file_stamp: tuple[float, int] | None = None
+        # File monitoring state. The stamp is the file's as last loaded, saved or asked
+        # about, so the monitor asks once about a change; it never decides whether Save asks.
+        self._monitor_stamp: Stamp | None = None
         self._monitor_after_id: str | None = None
         self._monitoring_active = False
         self._reload_prompt_shown = False  # Prevent duplicate prompts
@@ -782,14 +810,13 @@ class DataviewPanel(ttk.Frame):
 
     def _restore(self, frame: _UndoFrame) -> None:
         """Put the rows back as a frame holds them and redraw the whole sheet from them."""
-        rows, checks = frame
-        self.rows = [dataclasses.replace(row) for row in rows]
-        self._write_checks = list(checks)
+        self.rows = [dataclasses.replace(row) for row in frame.rows]
+        self._write_checks = list(frame.checks)
+        self._based_on = frame.based_on
         self._populate_sheet()
         self._is_dirty = self._row_values() != self._saved_values
         self._update_status()
-        if self.on_modified:
-            self.on_modified()
+        self._notify_modified()
         self._notify_addresses_changed()
 
     def undo(self) -> bool:
@@ -812,26 +839,16 @@ class DataviewPanel(ttk.Frame):
         self.status_label.config(text=text)
         messagebox.showerror("Save Error", text, parent=self)
 
-    @staticmethod
-    def _stamp(path: Path) -> tuple[float, int] | None:
-        """The file's (mtime, size), or None when it can't be read."""
-        try:
-            stat = os.stat(path)
-        except OSError:
-            return None
-        return stat.st_mtime, stat.st_size
-
-    def _changed_on_disk(self) -> bool:
-        """True when the file holds a change (CLICK writes .cdv files) this panel has not loaded.
+    def _changed_under_rows(self) -> bool:
+        """True when file_path is not the version the rows came from (CLICK writes .cdv files).
 
         Any other mtime or size counts, not only a later one: a restored older copy is a change.
+        A deleted file is not one.
         """
-        if self._unloaded_change:
-            return True
         if self.file_path is None:
             return False
         stamp = self._stamp(self.file_path)
-        return stamp is not None and stamp != self._file_stamp
+        return stamp is not None and stamp != self._based_on
 
     def _reload_file(self) -> None:
         """Reload the file from disk, as an undo step: Ctrl+Z brings the replaced rows back."""
@@ -839,24 +856,21 @@ class DataviewPanel(ttk.Frame):
             return
 
         before = self._snapshot()
+        stamp = self._stamp(self.file_path)
         try:
             self._file = DataViewFile.load(self.file_path)
         except Exception as e:
             self.status_label.config(text=f"Error reloading: {e}")
             return
         self.load_error = None
-        if [(r.address, r.data_type, r.new_value) for r in before[0]] != self._row_values():
+        if [(r.address, r.data_type, r.new_value) for r in before.rows] != self._row_values():
             self._push_undo(before)
         self._write_checks = [False] * len(self.rows)
         self._live_values.clear()
         self._populate_sheet()
-        self._mark_saved()
+        self._mark_read(stamp)
         self._update_status()
-
-        # What was loaded, so it does not prompt again
-        self._file_stamp = self._stamp(self.file_path)
-        if self.on_modified:
-            self.on_modified()
+        self._notify_modified()
         self._notify_addresses_changed()
 
     def _confirm_overwrite(self, path: Path) -> bool:
@@ -867,7 +881,7 @@ class DataviewPanel(ttk.Frame):
             answer = messagebox.askyesnocancel(
                 "File Changed",
                 f"'{path.name}' was changed by another program, such as CLICK, "
-                "since ClickNick loaded it.\n\n"
+                "after the rows you are saving were read from it.\n\n"
                 "Yes: save this dataview over it.\n"
                 "No: reload it (Ctrl+Z brings your edits back).\n"
                 "Cancel: do neither.",
@@ -877,11 +891,11 @@ class DataviewPanel(ttk.Frame):
             self._reload_prompt_shown = False
         if answer is False:
             self._reload_file()
-            return False
-        # This change has been asked about; the monitor does not ask again. A save
-        # that then fails, or Cancel, still asks before the next save.
-        self._file_stamp = self._stamp(path)
-        self._unloaded_change = True
+        else:
+            # The monitor does not ask about this change again. Save still asks,
+            # until a save succeeds or the file is reloaded.
+            self._monitor_stamp = self._stamp(path)
+        self.sheet.focus_set()
         return bool(answer)
 
     def _save_to(self, path: Path) -> bool:
@@ -892,18 +906,24 @@ class DataviewPanel(ttk.Frame):
                 "so it is not saved over."
             )
             return False
-        if path == self.file_path and self._changed_on_disk() and not self._confirm_overwrite(path):
+        if (
+            path == self.file_path
+            and self._changed_under_rows()
+            and not self._confirm_overwrite(path)
+        ):
             return False
         try:
             self._file.save(path)
         except Exception as e:
             self._show_save_error(f"Could not save '{self.name}': {e}")
             return False
-        self._mark_saved()
+        stamp = self._stamp(path)
+        self._mark_read(stamp)
+        # The file now holds this panel's own write, so saving any undo or redo
+        # step later writes over nothing this panel has not read.
+        self._undo_stack = [frame._replace(based_on=stamp) for frame in self._undo_stack]
+        self._redo_stack = [frame._replace(based_on=stamp) for frame in self._redo_stack]
         self._update_status()
-
-        # What was saved, so our own save does not prompt a reload
-        self._file_stamp = self._stamp(path)
         return True
 
     def save(self) -> bool:
@@ -962,9 +982,6 @@ class DataviewPanel(ttk.Frame):
         if self._monitoring_active or not self.file_path:
             return
 
-        # The file as it is now: loaded or just saved
-        self._file_stamp = self._stamp(self.file_path)
-
         self._monitoring_active = True
         self._reload_prompt_shown = False
         self._schedule_file_check()
@@ -980,21 +997,24 @@ class DataviewPanel(ttk.Frame):
         self._monitor_after_id = None
 
     def _prompt_reload(self) -> None:
-        """Prompt user to reload the file after external modification."""
-        self._reload_prompt_shown = True
+        """Offer to reload the file after another program changed it.
 
+        Declining changes nothing here: the rows still come from the older version, so
+        Save asks before writing over this one.
+        """
         message = (
             f"'{self.name}' has been modified by another program.\n\nDo you want to reload it?"
         )
         if self._is_dirty:
             message += " It replaces your unsaved edits; Ctrl+Z brings them back."
-        if messagebox.askyesno("Reload", message, parent=self):
+        self._reload_prompt_shown = True
+        try:
+            reload = messagebox.askyesno("Reload", message, parent=self)
+        finally:
+            self._reload_prompt_shown = False
+        if reload:
             self._reload_file()
-        else:
-            self._unloaded_change = True
-
-        # Allow future prompts
-        self._reload_prompt_shown = False
+        self.sheet.focus_set()
 
     def _check_file_modified(self) -> None:
         """Check if the CDV file has been modified externally."""
@@ -1004,8 +1024,8 @@ class DataviewPanel(ttk.Frame):
         try:
             if self.file_path and not self._reload_prompt_shown:
                 stamp = self._stamp(self.file_path)
-                if stamp is not None and stamp != self._file_stamp:
-                    self._file_stamp = stamp
+                if stamp is not None and stamp != self._monitor_stamp:
+                    self._monitor_stamp = stamp
                     self._prompt_reload()
         except Exception:
             # File might be locked during write, skip this check
@@ -1094,8 +1114,7 @@ class DataviewPanel(ttk.Frame):
         finally:
             self._suppress_notifications = False
 
-        if self.on_modified:
-            self.on_modified()
+        self._notify_modified()
         self._notify_addresses_changed()
 
     def _fill_row_at(self, address: str, idx: int) -> None:
@@ -1113,8 +1132,7 @@ class DataviewPanel(ttk.Frame):
         self.sheet.see(idx, COL_ADDRESS)
         self.sheet.select_row(idx)
 
-        if self.on_modified:
-            self.on_modified()
+        self._notify_modified()
         self._notify_addresses_changed()
 
     def _get_selected_row_index(self) -> int | None:
@@ -1226,8 +1244,7 @@ class DataviewPanel(ttk.Frame):
         self._is_dirty = True
         self._update_status()
 
-        if self.on_modified:
-            self.on_modified()
+        self._notify_modified()
         self._notify_addresses_changed()
 
     def get_selected_rows(self) -> list[int]:

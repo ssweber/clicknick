@@ -230,6 +230,7 @@ def _make_panel_stub(rows: list[DataViewRecord]) -> DataviewPanel:
     panel._is_dirty = False
     panel._undo_stack = []
     panel._redo_stack = []
+    panel._based_on = None
     panel._saved_values = panel._row_values()
     panel.load_error = None
     panel.sheet = FakeSheet()

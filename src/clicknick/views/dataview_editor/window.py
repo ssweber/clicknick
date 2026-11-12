@@ -88,11 +88,9 @@ class DataviewEditorWindow(tk.Toplevel):
                 self.notebook.tab(i, text=title)
                 break
 
-    def _on_panel_modified(self) -> None:
-        """Handle panel modification event."""
-        panel = self._get_current_panel()
-        if panel:
-            self._update_tab_title(panel)
+    def _on_panel_modified(self, panel: DataviewPanel) -> None:
+        """Retitle the panel's tab, which need not be the current one (a reload from the prompt)."""
+        self._update_tab_title(panel)
 
     def _iter_open_panels(self) -> list[DataviewPanel]:
         """Return panel widgets currently attached to notebook tabs.
