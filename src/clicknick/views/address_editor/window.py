@@ -18,12 +18,12 @@ from pyclickplc.blocks import (
     format_block_tag,
     is_block_name_available,
     parse_block_tag,
-    strip_block_tag,
     validate_block_span,
 )
 
 from ...data.data_source import CsvDataSource
 from ...services import ImportService, RowService
+from ...services.block_service import remove_block_tag
 from ...utils.rename_helpers import build_rename_pattern
 from ...widgets.add_block_dialog import AddBlockDialog
 from ...widgets.custom_notebook import CustomNotebook
@@ -425,7 +425,7 @@ class AddressEditorWindow(tk.Toplevel):
         """True while a cell editor is open in any tab."""
         return any(panel.sheet.MT.text_editor.open for panel, *_ in self._tabs.values())
 
-    def _commit_open_cell_editor(self) -> bool:
+    def commit_open_cell_editor(self) -> bool:
         """Commit the text typed in an open cell editor, so it is an edit like any other.
 
         Returns False, after telling the user, when an editor is still open
@@ -450,7 +450,7 @@ class AddressEditorWindow(tk.Toplevel):
 
     def _save_all(self) -> None:
         """Save all changes to database."""
-        if not self._commit_open_cell_editor():
+        if not self.commit_open_cell_editor():
             return
         save_label = self._get_save_label()
         action_verb = "synced" if self._is_using_mdb() else "saved"
@@ -512,7 +512,7 @@ class AddressEditorWindow(tk.Toplevel):
 
     def _discard_changes(self) -> None:
         """Discard all unsaved changes by resetting to original values."""
-        if not self._commit_open_cell_editor():
+        if not self.commit_open_cell_editor():
             return
         if not self._store.has_unsaved_changes():
             messagebox.showinfo("Discard", "No changes to discard.", parent=self)
@@ -770,7 +770,7 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Remove the tag - edit_session handles paired tag and interleaved sync
         with self._store.edit_session("Remove block tag") as session:
-            new_comment = strip_block_tag(first_row.comment)
+            new_comment = remove_block_tag(first_row.comment)
             session.set_field(first_row.addr_key, "comment", new_comment)
 
         self._update_add_block_button_state()
@@ -1163,7 +1163,7 @@ class AddressEditorWindow(tk.Toplevel):
 
     def _on_closing(self) -> None:
         """Handle window close - prompt to save if needed."""
-        if not self._commit_open_cell_editor():
+        if not self.commit_open_cell_editor():
             return
         if self._has_unsaved_changes():
             save_label = self._get_save_label()

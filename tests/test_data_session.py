@@ -28,6 +28,12 @@ class FakeWindow:
         self.saves = saves
         self.closed = False
         self.saved = False
+        self.commits = True
+        self.commit_calls = 0
+
+    def commit_open_cell_editor(self) -> bool:
+        self.commit_calls += 1
+        return self.commits
 
     def close_without_prompt(self) -> None:
         self.closed = True
@@ -155,3 +161,33 @@ def test_failed_or_cancelled_dataview_save_closes_nothing(answers) -> None:
     assert not dataview.closed
     session.store.save_all_changes.assert_not_called()
     session.store.stop_file_monitoring.assert_not_called()
+
+
+def test_open_cell_editors_commit_before_unsaved_changes_are_checked(answers) -> None:
+    store = FakeStore()
+    session = DataSession(store)
+    editor = FakeWindow(session)
+
+    def typed_text_becomes_an_edit() -> bool:
+        store._unsaved = True
+        return True
+
+    editor.commit_open_cell_editor = typed_text_becomes_an_edit  # type: ignore[method-assign]
+    session.register_editor(editor)
+    queue, prompts = answers
+    queue.append(False)
+
+    assert session.close(None)
+
+    assert prompts == ["You have unsaved address changes. Save before closing?"]
+
+
+def test_a_cell_editor_that_will_not_commit_stops_the_close(answers) -> None:
+    session = DataSession(FakeStore())
+    editor = FakeWindow(session)
+    editor.commits = False
+    session.register_editor(editor)
+
+    assert not session.close(None)
+
+    assert not editor.closed

@@ -5,7 +5,7 @@ Posted by Bryan Oakley, modified by community
 License: CC BY-SA 4.0
 Enhanced with features inspired by Thonny IDE (MIT License)
 
-Added: middle-click close, right-click menu, keyboard shortcuts
+Added: middle-click close, right-click menu
 """
 
 from __future__ import annotations
@@ -163,16 +163,6 @@ class CustomNotebook(ttk.Notebook):
         self.bind("<ButtonPress-3>", self._on_right_click, True)  # Right-click
         self.bind("<ButtonPress-2>", self._on_middle_click, True)  # Middle-click
 
-    def _close_current_tab(self, event=None):
-        """Close current tab (Ctrl+W)."""
-        if len(self.tabs()) > 0:
-            self._try_close_tab(self.index(self.select()))
-            return "break"
-
-    def _bind_keyboard_shortcuts(self):
-        """Add keyboard shortcuts for tab navigation and closing."""
-        self.bind_all("<Control-w>", self._close_current_tab)
-
     def __init__(self, *args, **kwargs):
         # Extract our custom callback before passing to parent
         self._on_close_callback: Callable[[int], bool] | None = kwargs.pop(
@@ -193,9 +183,6 @@ class CustomNotebook(ttk.Notebook):
 
         # Add right-click context menu
         self._create_context_menu()
-
-        # Add keyboard shortcuts
-        self._bind_keyboard_shortcuts()
 
     def set_close_callback(self, callback: Callable[[int], bool] | None) -> None:
         """Set the callback for tab close."""

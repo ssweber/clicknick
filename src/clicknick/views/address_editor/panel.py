@@ -379,7 +379,7 @@ class AddressPanel(ttk.Frame):
             if data_idx is None:
                 continue
 
-            field_name = COL_TO_FIELD.get(col)
+            field_name = COL_TO_FIELD.get(self.sheet.MT.datacn(col))
             if not field_name:
                 continue
 
@@ -476,7 +476,10 @@ class AddressPanel(ttk.Frame):
     def _update_context_menu(
         self, region: str, clicked_row: int | None, clicked_col: int | None
     ) -> None:
-        """Update the popup menu based on what was right-clicked."""
+        """Update the popup menu based on what was right-clicked.
+
+        `clicked_col` is a data column index, not a displayed one.
+        """
         self.sheet.popup_menu_del_command(label="↩ Discard changes")
         self.sheet.popup_menu_del_command(label="Edit Annotations...")
 
@@ -536,6 +539,8 @@ class AddressPanel(ttk.Frame):
         region = self.sheet.identify_region(event)
         clicked_row = self.sheet.identify_row(event)
         clicked_col = self.sheet.identify_column(event)
+        if clicked_col is not None:
+            clicked_col = self.sheet.MT.datacn(clicked_col)  # hidden columns shift display order
         self._update_context_menu(region, clicked_row, clicked_col)
 
     def _setup_header_notes(self) -> None:
@@ -939,6 +944,7 @@ class AddressPanel(ttk.Frame):
                 r=data_idx,
                 c=self.COL_RETENTIVE,
                 checked=row.retentive,
+                state="normal" if row.can_edit_retentive else "readonly",
                 text="",
             )
             # Initial value checkbox
@@ -949,8 +955,14 @@ class AddressPanel(ttk.Frame):
                         r=data_idx,
                         c=self.COL_INIT_VALUE,
                         checked=(init_val is True),
+                        state="normal" if row.can_edit_initial_value else "readonly",
                         text="",
                     )
+            # Cells the store ignores take no edit at all
+            if not row.can_edit_retentive:
+                self.sheet.readonly_cells(data_idx, self.COL_RETENTIVE)
+            if not row.can_edit_initial_value:
+                self.sheet.readonly_cells(data_idx, self.COL_INIT_VALUE)
 
     def initialize_from_view(self, rows: list):
         """Initializes the panel with row data and sets up styling.
@@ -968,7 +980,6 @@ class AddressPanel(ttk.Frame):
             sheet=self.sheet,
             store=self._store,
             get_rows=lambda: self.rows,
-            get_displayed_rows=lambda: self._displayed_rows,
         )
 
         self._refresh_display()

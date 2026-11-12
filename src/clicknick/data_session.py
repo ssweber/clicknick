@@ -24,6 +24,12 @@ class EditorWindow(Protocol):
     def close_without_prompt(self) -> None: ...
 
 
+class AddressEditor(EditorWindow, Protocol):
+    def commit_open_cell_editor(self) -> bool:
+        """Make text typed in an open cell editor an edit; False if it would not commit."""
+        ...
+
+
 class DataviewWindow(EditorWindow, Protocol):
     def has_unsaved_changes(self) -> bool: ...
 
@@ -45,13 +51,13 @@ class DataSession:
     def __init__(self, store: AddressStore) -> None:
         self.store = store
         self.dataview: SharedDataviewData | None = None
-        self._editors: list[EditorWindow] = []
+        self._editors: list[AddressEditor] = []
         self._dataview_window: DataviewWindow | None = None
 
     # -- Windows -------------------------------------------------------------
 
     @property
-    def editors(self) -> tuple[EditorWindow, ...]:
+    def editors(self) -> tuple[AddressEditor, ...]:
         """Open Address Editor windows."""
         return tuple(self._editors)
 
@@ -64,11 +70,11 @@ class DataSession:
     def has_open_windows(self) -> bool:
         return bool(self._editors) or self._dataview_window is not None
 
-    def register_editor(self, window: EditorWindow) -> None:
+    def register_editor(self, window: AddressEditor) -> None:
         if window not in self._editors:
             self._editors.append(window)
 
-    def unregister_editor(self, window: EditorWindow) -> None:
+    def unregister_editor(self, window: AddressEditor) -> None:
         if window in self._editors:
             self._editors.remove(window)
 
@@ -81,6 +87,11 @@ class DataSession:
 
     def _confirm_close(self, parent: tk.Misc | None) -> bool:
         from tkinter import messagebox
+
+        # Text still in a cell editor is an edit; a cell that won't commit stops the close.
+        for editor in self._editors:
+            if not editor.commit_open_cell_editor():
+                return False
 
         # Editor windows are Tk Toplevels; the protocols only name what we call.
         window = self._dataview_window

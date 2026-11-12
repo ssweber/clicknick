@@ -158,7 +158,7 @@ def test_commit_retries_once_the_window_has_focus() -> None:
     window = _window(Mock(), panel)
     window.focus_force = Mock()
 
-    window._commit_open_cell_editor()
+    window.commit_open_cell_editor()
 
     window.focus_force.assert_called_once()
     assert not mt.text_editor.open
@@ -197,25 +197,6 @@ def test_a_new_tab_applies_its_state_after_the_view_is_built(store, monkeypatch)
 
 
 # Tag Browser rename: nicknames only
-tk = pytest.importorskip("tkinter")
-
-
-@pytest.fixture(scope="module")
-def tk_root():
-    for attempt in range(3):
-        try:
-            root = tk.Tk()
-            break
-        except tk.TclError as exc:  # pragma: no cover - depends on the machine
-            if attempt == 2:
-                pytest.skip(f"no Tk display available: {exc}")
-    root.withdraw()
-    yield root
-    try:
-        root.destroy()
-    except tk.TclError:
-        pass
-
 
 def test_replace_all_in_nickname_column_leaves_comments_alone(tk_root) -> None:
     from clicknick.views.address_editor.sheet import AddressEditorSheet
@@ -247,7 +228,6 @@ def test_styling_covers_rows_a_filter_hides(tk_root, store) -> None:
         sheet=sheet,
         store=store,
         get_rows=lambda: [row],
-        get_displayed_rows=lambda: [],  # a filter shows no rows
     )
 
     styler.apply_all_styling()
