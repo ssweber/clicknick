@@ -20,6 +20,30 @@ from pyclickplc.banks import (
 )
 
 
+def value_notes(
+    memory_type: str, data_type_display: str, retentive: bool, initial_value: str
+) -> tuple[str, str]:
+    """Return (initial value, retentive label) as the tooltip and Tag Browser show them.
+
+    A part is empty when there is nothing to show. BIT rows name their Retentive
+    setting ("Retentive" or "Non-retentive") when it differs from the memory type's
+    default. Any row shows its initial value ("ON" for a BIT) when it is not
+    retentive and the value is not the default; a retentive row's initial value is
+    not used.
+    """
+    is_bit = data_type_display == "BIT"
+    label = ""
+    if is_bit and retentive != DEFAULT_RETENTIVE.get(memory_type, False):
+        label = "Retentive" if retentive else "Non-retentive"
+    initial = ""
+    if not retentive:
+        if is_bit:
+            initial = "ON" if initial_value == "1" else ""
+        elif initial_value and (initial_value != "0" or data_type_display == "TXT"):
+            initial = initial_value
+    return initial, label
+
+
 @dataclass(frozen=True)
 class AddressRow:
     """Immutable address row in the editor.
@@ -97,23 +121,14 @@ class AddressRow:
     def outline_suffix(self) -> str:
         """Get suffix string for outline panel (appended to nickname text).
 
-        Format: : DataType = Value, Retentive=X
-        - Value only shown if not 0/False/empty
-        - Retentive only shown if not default for memory type
+        Format: ``  : DataType = Value, Retentive``, the parts from `value_notes`.
         """
-        parts = [f"  : {self.data_type_display}"]
-
-        # only show 'ON' or 'Retentive' for BIT
-        if self.data_type == DataType.BIT:
-            if not self.is_default_retentive:
-                parts.append("= Retentive")
-            elif self.initial_value == "1":
-                parts.append("= ON")
-
-        elif not self.is_default_retentive:
-            parts.append(f"= {self.initial_value}")
-
-        return " ".join(parts)
+        initial, retentive = value_notes(
+            self.memory_type, self.data_type_display, self.retentive, self.initial_value
+        )
+        notes = ", ".join(part for part in (initial, retentive) if part)
+        suffix = f"  : {self.data_type_display}"
+        return f"{suffix} = {notes}" if notes else suffix
 
     # --- State Helper Properties ---
 

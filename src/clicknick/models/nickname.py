@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from pyclickplc.banks import DEFAULT_RETENTIVE
+from .address_row import value_notes
 
 
 @dataclass
@@ -16,12 +16,6 @@ class Nickname:
     address_type: str = ""
     used: bool | None = None
     abbr_tags: tuple[str, ...] = ()
-
-    @property
-    def is_default_retentive(self) -> bool:
-        """Return True if retentive matches the default for this memory type"""
-        default = DEFAULT_RETENTIVE.get(self.address_type, False)
-        return self.retentive == default
 
     def details(self) -> str:
         """Generate a tooltip string for this nickname"""
@@ -43,14 +37,13 @@ class Nickname:
         if self.used is False:
             details.append("Used: No")
 
-        if self.data_type_display == "BIT":
-            if not self.is_default_retentive:
-                details.append("Retentive")
-            elif self.initial_value == "1":
-                details.append("Initial Value = ON")
-
-        elif not self.is_default_retentive:
-            details.append(f"Initial Value = {self.initial_value}")
+        initial, retentive = value_notes(
+            self.address_type, self.data_type_display, self.retentive, self.initial_value
+        )
+        if initial:
+            details.append(f"Initial Value = {initial}")
+        if retentive:
+            details.append(retentive)
 
         if details:
             lines.append(", ".join(details))
