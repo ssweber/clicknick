@@ -7,6 +7,7 @@ queries that return addr_key sets for address editor filtering.
 
 from __future__ import annotations
 
+import codecs
 import enum
 import shutil
 import tempfile
@@ -150,11 +151,11 @@ _OLD_GUIDANCE_MARKER = "<!-- pyrung:workspace-lifecycle:start -->"
 _EXPORT_IGNORE = shutil.ignore_patterns(".venv", "__pycache__", "*.pyc")
 
 
-def _clean_generated(persist_dir: Path, *, preserve_source: bool = False) -> None:
-    """Remove only ClickNick-owned outputs from an active workspace."""
+def _clean_generated(persist_dir: Path, *, keep: frozenset[str] = frozenset()) -> None:
+    """Remove ClickNick-owned outputs from an active workspace, except those named in *keep*."""
     for child in persist_dir.iterdir():
         managed = child.name in _GENERATED_DIR_NAMES or child.name in _GENERATED_FILE_NAMES
-        if not managed or (preserve_source and child.name == "src"):
+        if not managed or child.name in keep:
             continue
         if child.is_dir():
             shutil.rmtree(child, ignore_errors=True)
@@ -190,32 +191,48 @@ def _refresh_workspace_guidance(source: Path, destination: Path) -> None:
     pointer = next(
         (line for line in generated.splitlines() if line.startswith(_GUIDANCE_MARKER)), None
     )
-    existing = destination.read_text(encoding="utf-8")
-    if pointer is None or _GUIDANCE_MARKER in existing:
+    if pointer is None:
         return
-    if _OLD_GUIDANCE_MARKER in existing:
-        destination.replace(destination.with_name(f"{destination.stem}.previous.md"))
-        refreshed = generated
-    else:
-        # Under the file's title when it opens with one, otherwise on top.
-        title, _, body = existing.partition("\n")
-        if title.startswith("# "):
-            body = body.lstrip("\n")
-            refreshed = f"{title}\n\n{pointer}\n\n{body}"
-        else:
-            refreshed = f"{pointer}\n\n{existing}"
-    staging = destination.with_suffix(f"{destination.suffix}.clicknick-guidance")
+    # Only a pointer line is at stake: a file that is not UTF-8 (an ANSI file),
+    # or that cannot be read or replaced, stays as it is and the build goes on.
     try:
-        staging.write_text(refreshed, encoding="utf-8")
-        staging.replace(destination)
-    finally:
-        staging.unlink(missing_ok=True)
+        raw = destination.read_bytes()
+        existing = raw.decode("utf-8-sig")
+    except (OSError, UnicodeDecodeError):
+        return
+    if _GUIDANCE_MARKER in existing:
+        return
+    encoding = "utf-8-sig" if raw.startswith(codecs.BOM_UTF8) else "utf-8"
+    newline = "\r\n" if b"\r\n" in raw else "\n"
+    existing = existing.replace("\r\n", "\n")
+    try:
+        if _OLD_GUIDANCE_MARKER in existing:
+            destination.replace(destination.with_name(f"{destination.stem}.previous.md"))
+            refreshed = generated
+            encoding, newline = "utf-8", None
+        else:
+            # Under the file's title when it opens with one, otherwise on top.
+            title, _, body = existing.partition("\n")
+            if title.startswith("# "):
+                body = body.lstrip("\n")
+                refreshed = f"{title}\n\n{pointer}\n\n{body}"
+            else:
+                refreshed = f"{pointer}\n\n{existing}"
+        staging = destination.with_suffix(f"{destination.suffix}.clicknick-guidance")
+        try:
+            staging.write_text(refreshed, encoding=encoding, newline=newline)
+            staging.replace(destination)
+        finally:
+            staging.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
     """Publish a complete staged generation without risking workspace edits."""
     from .project_workspace import (
         _replace_tree,
+        _replace_trees,
         backup_modified_plc_source,
         plc_source_dir,
         record_generated_plc_source,
@@ -228,24 +245,28 @@ def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
     persist_dir.mkdir(parents=True, exist_ok=True)
     backup_modified_plc_source(persist_dir)
 
-    # Keep active source in place until all other generated files are ready.
-    # _replace_tree then publishes src/plc atomically and restores it if the
-    # filesystem refuses the final rename.
-    _clean_generated(persist_dir, preserve_source=True)
+    # Support files first. csv/ and src/plc go last and together, so a failure
+    # anywhere (a file open in Excel) never leaves csv/ from one save and src/plc
+    # from another; the generation record is written only once both are in.
     for child in staged_dir.iterdir():
-        if child.name == "src":
+        if child.name in {"src", "csv"}:
             continue
         destination = persist_dir / child.name
         if child.name in _GENERATED_DIR_NAMES:
-            shutil.copytree(child, destination, dirs_exist_ok=True)
+            _replace_tree(child, destination)
         elif child.name in _GENERATED_FILE_NAMES:
             shutil.copy2(child, destination)
         elif child.name in _WORKSPACE_GUIDANCE_FILES and destination.is_file():
             _refresh_workspace_guidance(child, destination)
         else:
             _copy_missing(child, destination)
+    # Outputs this generation does not write go, csv_output/ among them.
+    _clean_generated(persist_dir, keep=frozenset(child.name for child in staged_dir.iterdir()))
 
-    _replace_tree(staged_source, plc_source_dir(persist_dir))
+    pairs = [(staged_source, plc_source_dir(persist_dir))]
+    if (staged_dir / "csv").is_dir():
+        pairs.insert(0, (staged_dir / "csv", persist_dir / "csv"))
+    _replace_trees(pairs)
     record_generated_plc_source(persist_dir)
 
 
@@ -292,7 +313,7 @@ def _build_graph(
     persist_dir: Path | None = None,
     *,
     workspace_kind: WorkspaceKind = "temporary",
-    on_project_generated: Callable[[Path], None] | None = None,
+    on_project_generated: Callable[[Path, Mapping[int, AddressRow]], None] | None = None,
 ) -> tuple[ProgramGraph, Program, Path | None, dict[int, AddressRow]]:
     """Run the full pipeline: Scr*.tmp -> CSV -> pyrung code -> exec -> graph.
 
@@ -333,7 +354,7 @@ def _build_graph(
             workspace_kind=workspace_kind,
         )
         if on_project_generated is not None:
-            on_project_generated(project_dir)
+            on_project_generated(project_dir, nickname_rows or {})
 
     namespace: dict[str, object] = {}
     exec(compile(code, "<analysis>", "exec"), namespace)  # noqa: S102
@@ -356,6 +377,11 @@ class AnalysisService:
         self.check_selection: ProgramCheckSelection | None = None
         self._result: AnalysisResult | None = None
         self._project_dir: Path | None = None
+        # Tag names of the project in _project_dir, and whether the latest build
+        # wrote it. A rebuild that fails after publishing leaves both newer than
+        # _result; one that fails before leaves _project_dir an older save's.
+        self._project_tags: dict[str, int] = {}
+        self._project_is_current = False
         # Written from the build thread, read from the UI thread. Plain
         # attribute assignment is atomic enough; there is no read-modify-write.
         self._status = AnalysisStatus.IDLE
@@ -408,6 +434,25 @@ class AnalysisService:
         """True when the build failed on a comment in an old annotation form."""
         return self._needs_comment_upgrade
 
+    @property
+    def project_is_current(self) -> bool:
+        """True when ``project_dir`` holds what the latest build read from CLICK.
+
+        False after a build failed before it published: ``project_dir`` is then
+        the workspace of an earlier save.
+        """
+        return self._project_is_current
+
+    @property
+    def project_tag_to_addr_key(self) -> dict[str, int]:
+        """Tag name -> addr_key for the tag names in ``project_dir``'s source.
+
+        The same as ``tag_to_addr_key`` unless a rebuild failed after publishing
+        the workspace; the graph and ``tag_to_addr_key`` then stay the previous
+        build's, while the workspace on disk already uses the new names.
+        """
+        return self._project_tags
+
     def mark_failed(self, reason: str, detail: str | None = None) -> None:
         """Record a failure the build thread never got to raise.
 
@@ -416,6 +461,7 @@ class AnalysisService:
         """
         with self._lock:
             self._epoch += 1
+            self._project_is_current = False
             self._status = AnalysisStatus.FAILED
             self._error = reason
             self._error_detail = detail
@@ -533,16 +579,23 @@ class AnalysisService:
             self._generation += 1
             self._epoch += 1
             epoch = self._epoch
+            self._project_is_current = False
             self._status = AnalysisStatus.BUILDING
             self._error = None
             self._error_detail = None
             self._system_nickname_repairs = ()
             self._needs_comment_upgrade = False
 
-        def _project_generated(project_dir: Path) -> None:
+        tag_maps: tuple[dict[str, int], dict[int, str]] | None = None
+
+        def _project_generated(project_dir: Path, nickname_rows: Mapping[int, AddressRow]) -> None:
+            nonlocal tag_maps
+            tag_maps = _build_tag_addr_key_map(nickname_rows)
             with self._lock:
                 if self._epoch == epoch:
                     self._project_dir = project_dir
+                    self._project_tags = tag_maps[0]
+                    self._project_is_current = True
 
         try:
             graph, program, project_dir, nickname_rows = _build_graph(
@@ -552,7 +605,7 @@ class AnalysisService:
                 workspace_kind=workspace_kind,
                 on_project_generated=_project_generated,
             )
-            tag_to_key, key_to_tag = _build_tag_addr_key_map(nickname_rows)
+            tag_to_key, key_to_tag = tag_maps or _build_tag_addr_key_map(nickname_rows)
         except Exception as exc:
             with self._lock:
                 if self._epoch == epoch:
@@ -567,6 +620,8 @@ class AnalysisService:
             if self._epoch != epoch:
                 return False
             self._project_dir = project_dir
+            self._project_tags = tag_to_key
+            self._project_is_current = True
             self._result = AnalysisResult(
                 graph=graph,
                 program=program,
@@ -582,6 +637,8 @@ class AnalysisService:
             self._epoch += 1
             self._result = None
             self._project_dir = None
+            self._project_tags = {}
+            self._project_is_current = False
             self._status = AnalysisStatus.IDLE
             self._error = None
             self._error_detail = None

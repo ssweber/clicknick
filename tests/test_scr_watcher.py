@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
+import pytest
+
 from clicknick.services.scr_watcher import ScrWatcher
 
 
@@ -60,3 +65,115 @@ def test_syncing_the_same_tags_twice_counts_them_once(tmp_path) -> None:
 
     assert watcher.synced_pending == 3
     assert sync_updates == [2, 3]
+
+
+def _watching(tmp_path, changed: list[bool]) -> ScrWatcher:
+    watcher = ScrWatcher(tmp_path, lambda: changed.append(True))
+    watcher._active = True
+    watcher._tk_root = _Root()
+    return watcher
+
+
+def test_a_save_with_an_earlier_mtime_still_rebuilds(tmp_path) -> None:
+    scr = tmp_path / "Scr1.tmp"
+    scr.write_text("saved", encoding="utf-8")
+    os.utime(scr, (2_000_000_000, 2_000_000_000))
+    changed: list[bool] = []
+    watcher = _watching(tmp_path, changed)
+
+    # A copied-back file or a clock step: CLICK's new save is older than the last.
+    scr.write_text("saved again", encoding="utf-8")
+    os.utime(scr, (1_000_000_000, 1_000_000_000))
+    watcher._check()
+
+    assert changed == [True]
+
+
+def test_a_save_that_changes_only_the_size_rebuilds(tmp_path) -> None:
+    scr = tmp_path / "Scr1.tmp"
+    scr.write_text("saved", encoding="utf-8")
+    stamp = scr.stat().st_mtime_ns
+    changed: list[bool] = []
+    watcher = _watching(tmp_path, changed)
+
+    scr.write_text("saved, longer", encoding="utf-8")
+    os.utime(scr, ns=(stamp, stamp))
+    watcher._check()
+
+    assert changed == [True]
+
+
+def test_a_save_that_deletes_a_subroutine_rebuilds(tmp_path) -> None:
+    (tmp_path / "Scr1.tmp").write_text("main", encoding="utf-8")
+    (tmp_path / "Scr2.tmp").write_text("sub", encoding="utf-8")
+    changed: list[bool] = []
+    watcher = _watching(tmp_path, changed)
+
+    (tmp_path / "Scr2.tmp").unlink()
+    watcher._check()
+    watcher._check()
+
+    assert changed == [True]
+
+
+def test_no_scr_files_left_is_not_a_save(tmp_path) -> None:
+    (tmp_path / "Scr1.tmp").write_text("main", encoding="utf-8")
+    changed: list[bool] = []
+    watcher = _watching(tmp_path, changed)
+
+    (tmp_path / "Scr1.tmp").unlink()
+    watcher._check()
+
+    assert changed == []
+
+
+def _short_name(path: Path) -> Path:
+    """The 8.3 short spelling of an existing path, or the path when the volume has none."""
+    import ctypes
+
+    buffer = ctypes.create_unicode_buffer(32768)
+    if not ctypes.windll.kernel32.GetShortPathNameW(str(path), buffer, len(buffer)):
+        return path
+    return Path(buffer.value)
+
+
+@pytest.mark.parametrize("spelling", ["dotdot", "case", "short"])
+def test_watching_the_same_folder_spelled_another_way_keeps_a_save(tmp_path, spelling) -> None:
+    folder = tmp_path / "Long Project Folder"
+    folder.mkdir()
+    (tmp_path / "sibling").mkdir()
+    (folder / "Scr1.tmp").write_text("main", encoding="utf-8")
+    if spelling == "dotdot":
+        same = tmp_path / "sibling" / ".." / folder.name
+    elif spelling == "case":
+        same = Path(str(folder).upper())
+    else:
+        same = _short_name(folder)
+        if str(same) == str(folder):
+            pytest.skip("this volume has no 8.3 short names")
+    changed: list[bool] = []
+    watcher = _watching(folder, changed)
+
+    # CLICK saves before the next check; analysis then finds the folder spelled another way.
+    (folder / "Scr1.tmp").write_text("main, saved", encoding="utf-8")
+    watcher.watch(same)
+    watcher._check()
+
+    assert changed == [True]
+
+
+def test_watching_another_folder_starts_from_what_it_holds(tmp_path) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    (first / "Scr1.tmp").write_text("main", encoding="utf-8")
+    (second / "Scr1.tmp").write_text("other", encoding="utf-8")
+    changed: list[bool] = []
+    watcher = _watching(first, changed)
+
+    watcher.watch(second)
+    watcher._check()
+
+    assert changed == []
+    assert watcher.folder == second

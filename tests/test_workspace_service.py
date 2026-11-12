@@ -7,6 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call
 
+import pytest
+
 from clicknick.app import ClickNickApp
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.services.analysis_service import AnalysisStatus
@@ -33,6 +35,7 @@ def _analysis(
         system_nickname_repairs=system_nickname_repairs,
         needs_comment_upgrade=needs_comment_upgrade,
         is_available=status is AnalysisStatus.READY,
+        project_is_current=project_dir is not None,
     )
 
 
@@ -367,6 +370,126 @@ def test_scr_files_appearing_after_connect_start_the_build(tmp_path, monkeypatch
     session.scr_watcher.stop()
 
 
+def test_the_watcher_follows_the_folder_clicks_database_turns_up_in(tmp_path, monkeypatch) -> None:
+    """Where %TEMP% and %LOCALAPPDATA%/Temp differ, the first guess may be the wrong folder."""
+    guessed, found = tmp_path / "guessed", tmp_path / "found"
+    guessed.mkdir()
+    found.mkdir()
+    database: list[str] = []
+    monkeypatch.setattr(
+        "clicknick.utils.mdb_shared.find_click_database",
+        lambda **_kwargs: database[0] if database else None,
+    )
+    monkeypatch.setattr("clicknick.live.session.click_temp_dir", lambda _hwnd: guessed)
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    session._start_analysis_thread = MagicMock()
+    root = MagicMock()
+    session.start_analysis(root)
+    session.record_sync({1, 2})
+    assert session.scr_watcher.folder == guessed
+
+    (found / "SC_.mdb").write_text("db", encoding="utf-8")
+    (found / "Scr1.tmp").write_text("ladder", encoding="utf-8")
+    database.append(str(found / "SC_.mdb"))
+    session.start_analysis(root)
+
+    assert session.scr_watcher.folder == found
+    assert session.synced_pending == 2
+    session._start_analysis_thread.reset_mock()
+    (found / "Scr2.tmp").write_text("saved", encoding="utf-8")
+    session.scr_watcher._check()
+    session._start_analysis_thread.assert_called_once_with(found, found / "SC_.mdb")
+    session.scr_watcher.stop()
+
+
+def _saved_click_project(tmp_path, monkeypatch) -> Path:
+    db_path = tmp_path / "SC_.mdb"
+    db_path.write_text("db", encoding="utf-8")
+    (tmp_path / "Scr1.tmp").write_text("ladder", encoding="utf-8")
+    monkeypatch.setattr(
+        "clicknick.utils.mdb_shared.find_click_database", lambda **_kwargs: str(db_path)
+    )
+    monkeypatch.setattr("clicknick.live.session.click_temp_dir", lambda _hwnd: tmp_path)
+    return db_path
+
+
+def test_save_count_counts_only_the_saves_click_makes(tmp_path, monkeypatch) -> None:
+    """The one signal that CLICK saved: nothing ClickNick does bumps it."""
+    _saved_click_project(tmp_path, monkeypatch)
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    session._start_analysis_thread = MagicMock()
+    root = MagicMock()
+    session.start_analysis(root)
+    assert session.saved_program().save_count == 0
+
+    (tmp_path / "Scr2.tmp").write_text("saved", encoding="utf-8")
+    session.scr_watcher._check()
+    assert session.saved_program().save_count == 1
+
+    # A Sync with repairs rebuilds, as do Reload from CLICK and a workspace change.
+    session.analysis.mark_failed("needs repairs")
+    session.start_analysis(root)
+    session.reload_workspace_from_click(root)
+    session.simulation = None
+    session.use_workspace(tmp_path / "Line1 Workspace")
+    session.start_analysis(root)
+    session.scr_watcher._check()
+    assert session.saved_program().save_count == 1
+
+    # It is the same whatever the build is doing.
+    session.analysis.mark_building()
+    assert session.saved_program().save_count == 1
+    session.analysis.mark_failed("pyrung cannot convert this rung")
+    failed = session.saved_program()
+    assert failed.save_count == 1
+    assert failed.csv_dir is None
+
+    (tmp_path / "Scr1.tmp").write_text("saved again", encoding="utf-8")
+    session.scr_watcher._check()
+    assert session.saved_program().save_count == 2
+    session.scr_watcher.stop()
+
+
+def test_rebuilding_analysis_keeps_the_synced_count(tmp_path, monkeypatch) -> None:
+    """A rebuild after a Sync with repairs must still say "N tags synced - Save in CLICK"."""
+    db_path = _saved_click_project(tmp_path, monkeypatch)
+    counts: list[int] = []
+    session = ConnectionSession(
+        ClickConnection("1", 2, "Example.ckp"), on_sync_status_changed=counts.append
+    )
+    session._start_analysis_thread = MagicMock()
+    root = MagicMock()
+    session.start_analysis(root)
+    session.record_sync({1, 2, 3})
+    session.record_rung_stage(4)
+    watcher = session.scr_watcher
+
+    session.analysis.mark_failed("needs repairs")
+    session.start_analysis(root)
+
+    assert session.scr_watcher is watcher
+    assert session.synced_pending == 3
+    assert session.staged_rungs == 4
+    assert counts == [3]
+    assert session._start_analysis_thread.call_args_list == [call(tmp_path, db_path)] * 2
+    watcher.stop()
+
+
+def test_asking_for_analysis_while_it_builds_does_not_queue_another(tmp_path, monkeypatch) -> None:
+    _saved_click_project(tmp_path, monkeypatch)
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    session._start_analysis_thread = MagicMock()
+    root = MagicMock()
+    session.start_analysis(root)
+    session.analysis.mark_building()
+
+    session.start_analysis(root)
+
+    session._start_analysis_thread.assert_called_once()
+    assert session.analysis.status is AnalysisStatus.BUILDING
+    session.scr_watcher.stop()
+
+
 def test_saved_program_reports_what_can_be_compared(tmp_path) -> None:
     session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
     assert session.saved_program().csv_dir is None
@@ -390,6 +513,47 @@ def test_saved_program_reports_what_can_be_compared(tmp_path) -> None:
     failed = session.saved_program()
     assert failed.csv_dir is None
     assert "main window" in failed.note
+
+
+def test_a_rebuild_that_fails_before_publishing_has_nothing_to_compare(
+    tmp_path, monkeypatch
+) -> None:
+    """Preview Changes must not compare with the save before the one that failed."""
+    from clicknick.services.analysis_service import AnalysisService
+
+    project = tmp_path / "pyrung_project"
+    (project / "csv").mkdir(parents=True)
+
+    def publishes(fails: bool):
+        def build_graph(*_args, on_project_generated, **_kwargs):
+            on_project_generated(project, {})
+            if fails:
+                raise ValueError("graph failed")
+            return MagicMock(), MagicMock(), project, {}
+
+        return build_graph
+
+    def fails_before_publishing(*_args, **_kwargs):
+        raise ValueError("pyrung cannot convert this rung")
+
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    session.analysis = AnalysisService()
+    monkeypatch.setattr("clicknick.services.analysis_service._build_graph", publishes(False))
+    session.analysis.build(tmp_path, None, persist_dir=project)
+    assert session.saved_program().csv_dir == project / "csv"
+
+    monkeypatch.setattr("clicknick.services.analysis_service._build_graph", fails_before_publishing)
+    with pytest.raises(ValueError):
+        session.analysis.build(tmp_path, None, persist_dir=project)
+    failed = session.saved_program()
+    assert failed.csv_dir is None
+    assert "main window" in failed.note
+
+    # Failing after the workspace was published still compares with this save.
+    monkeypatch.setattr("clicknick.services.analysis_service._build_graph", publishes(True))
+    with pytest.raises(ValueError):
+        session.analysis.build(tmp_path, None, persist_dir=project)
+    assert session.saved_program().csv_dir == project / "csv"
 
 
 def test_switching_workspace_moves_and_restarts_the_simulation(tmp_path, monkeypatch) -> None:
@@ -556,6 +720,30 @@ def test_analysis_builds_run_one_at_a_time_and_coalesce(tmp_path) -> None:
 
     assert calls == [tmp_path / "a", tmp_path / "c"]
     assert sorted(results) == [("a", True, None), ("b", True, None), ("c", True, None)]
+
+
+def test_a_malformed_pyproject_does_not_fail_a_published_build(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "Line1 Workspace"
+    workspace.mkdir()
+    (workspace / "pyproject.toml").write_text("[tool.pyrung\nbroken = ", encoding="utf-8")
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"), workspace_dir=workspace)
+    session.analysis = MagicMock()
+    session.analysis.build.return_value = True
+    monkeypatch.setattr("clicknick.connection_session.threading.Thread", _InlineThread)
+    callback = MagicMock()
+
+    session._start_analysis_thread(tmp_path, tmp_path / "db", on_complete=callback)
+
+    callback.assert_called_once_with(True, None)
+    session.analysis.mark_failed.assert_not_called()
+
+
+class _InlineThread:
+    def __init__(self, *, target, daemon):
+        self.target = target
+
+    def start(self):
+        self.target()
 
 
 def test_superseded_build_reports_failure_and_skips_selection_sync(tmp_path, monkeypatch) -> None:

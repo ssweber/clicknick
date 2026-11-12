@@ -78,6 +78,16 @@
 - Program analysis and AI tag lookups use the same nicknames as the generated code, switching CLICK projects no longer freezes the window, and the "tags synced" count counts each tag once.
 - Opening another project in the same CLICK window no longer leaves its workspace unbuilt until ClickNick restarts, and Preview Changes now updates its comparison when CLICK's program changes.
 - Open Temporary Workspace and the Workspace status update as soon as a build finishes, instead of waiting for something else to refresh the window, such as opening the Simulator.
+- Choosing an existing workspace whose `src/plc` holds edits copies them to `backup/src/plc` before the next build regenerates it; `clicknick-cli restore` puts them back.
+- Workspace setup no longer switches when both the current and the chosen workspace's `src/plc` hold edits; it names both folders so you can paste or discard one first.
+- "N tags synced - Save in CLICK" no longer drops to 0 when the workspace rebuilds, such as after a Sync with repairs, opening the Simulator or setting up a workspace, and opening the Simulator during a build no longer starts a second one.
+- A workspace `AGENTS.md` or `README.md` that is not UTF-8 no longer makes every build fail and leave the workspace without `csv/`.
+- A workspace `AGENTS.md` or `README.md` with a UTF-8 BOM gets pyrung's pointer under its title.
+- A workspace `pyproject.toml` ClickNick cannot read no longer reports a finished **Reload from CLICK** as failed.
+- A build that cannot finish writing the workspace, such as when a file in it is open in Excel, still fails but leaves `csv/` and `src/plc` both from the save before.
+- After a CLICK save whose build fails before the workspace is written, Preview Changes says it could not read CLICK's program instead of comparing with the save before.
+- A CLICK save is noticed when its files get an older timestamp (a copied-back project, a clock change) and when it only deletes a subroutine.
+- A broken `%LOCALAPPDATA%\ClickNick\project-sidecars.json` no longer stops ClickNick connecting to CLICK.
 - Editing a timer or counter comment's text no longer deletes the block tag on its TD/CTD (or T/CT) row, renaming a block renames the matching tags where they are without adding spaces or moving text, and a rename never overwrites a tag you set in the same edit.
   - After Sync, CLICK's Address Picker shows each renamed tag with the rest of its comment as it was, such as `</Tanks> last` on the close row.
 - Changing only a timer or counter block's colour no longer adds a half block tag to a TD/CTD row that has none, and Discard row changes on a T or CT row no longer changes its TD/CTD row's Retentive.
