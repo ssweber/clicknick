@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from pyclickplc.addresses import get_addr_key
 
 from clicknick.data.address_store import AddressStore
+from clicknick.live.dispatch import dispatch
 from clicknick.live.server import LiveServer, _Request
 
 
@@ -68,9 +71,39 @@ def test_prompt_save_answers_before_the_dialog_opens(monkeypatch):
     assert shown == ["Unsaved Changes"]  # one dialog, not one per request
 
 
-def test_commands_get_the_click_folder(tmp_path: Path):
+def test_commands_know_whether_click_saved_the_project(tmp_path: Path):
     server = LiveServer(
         FakeRoot(), lambda: None, lambda: None, get_mdb_path=lambda: tmp_path / "SC_.mdb"
     )
+    assert server._build_context().project_saved is False
 
-    assert server._build_context().scr_folder == tmp_path
+    (tmp_path / "Scr1.tmp").write_text("saved", encoding="utf-8")
+
+    assert server._build_context().project_saved is True
+
+
+def _analysis(*, analysis_tags: dict[str, int], workspace_tags: dict[str, int]):
+    """A build that published the workspace with new names, then failed to analyse it."""
+    return SimpleNamespace(
+        is_available=bool(analysis_tags),
+        tag_to_addr_key=analysis_tags,
+        project_tag_to_addr_key=workspace_tags,
+    )
+
+
+def test_commands_find_tags_by_the_workspaces_names():
+    level = get_addr_key("DS", 1)
+    analysis = _analysis(analysis_tags={"Level": level}, workspace_tags={"Tank_Level": level})
+    server = LiveServer(FakeRoot(), _edited_store, lambda: None, get_analysis=lambda: analysis)
+
+    assert dispatch(server._build_context(), "get Tank_Level").startswith("Tank_Level (staged):")
+    with pytest.raises(ValueError):
+        dispatch(server._build_context(), "get Level")
+
+
+def test_commands_find_tags_when_only_the_workspace_was_built():
+    level = get_addr_key("DS", 1)
+    analysis = _analysis(analysis_tags={}, workspace_tags={"Tank_Level": level})
+    server = LiveServer(FakeRoot(), _edited_store, lambda: None, get_analysis=lambda: analysis)
+
+    assert dispatch(server._build_context(), "get Tank_Level").startswith("Tank_Level (staged):")

@@ -362,7 +362,7 @@ def _export_nicknames(tags_source: str, out_csv) -> None:
     mapping.to_nickname_file(out_csv, blocks=ns.get("blocks"))  # type: ignore[attr-defined]
 
 
-def _load_export_rows(project_dir, *, analog_inputs: frozenset[str]):
+def _load_export_rows(project_dir):
     """Return (baseline_rows, current_rows): addr_key -> AddressRow.
 
     ``baseline`` is the pristine tags module reconstructed from the persisted ladder
@@ -370,16 +370,18 @@ def _load_export_rows(project_dir, *, analog_inputs: frozenset[str]):
     the tags.py on disk (with edits). Diffing the two exports cancels every
     systematic round-trip artifact (``[external]`` inference, bank-default
     retentive/initial on unnamed slots, hex padding, system addresses), leaving
-    only the agent's genuine edits. *analog_inputs* are the analog input channels
-    the workspace was generated with: pyrung marks them ``external``.
+    only the agent's genuine edits. The baseline uses the analog input channels
+    recorded in csv/ when the workspace was generated: pyrung marks them ``external``.
     """
     import tempfile
     from pathlib import Path
 
     from ..data.data_source import CsvDataSource
+    from ..services.analysis_service import read_analog_inputs
     from ..services.project_workspace import plc_source_dir
     from .rung_commands import _get_before_files
 
+    analog_inputs = read_analog_inputs(project_dir / "csv")
     baseline_src = _get_before_files(project_dir, analog_inputs=analog_inputs).get(
         "src/plc/tags.py"
     )
@@ -483,15 +485,13 @@ def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
     them so only real edits survive, lands them as one batched staged change,
     and pops the Address Editor filtered to "Changed" for review + Sync.
     """
-    from ..services.analysis_service import _channel_inputs
     from .rung_commands import _get_project_dir
 
     assert ctx.store is not None
     store = ctx.store
 
     project_dir = _get_project_dir(ctx)
-    analog_inputs = _channel_inputs(ctx.scr_folder) if ctx.scr_folder else frozenset()
-    base_rows, cur_rows = _load_export_rows(project_dir, analog_inputs=analog_inputs)
+    base_rows, cur_rows = _load_export_rows(project_dir)
     changes = _compute_tag_changes(base_rows, cur_rows, store)
 
     if not changes:

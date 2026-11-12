@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import codecs
 import enum
+import json
 import shutil
 import tempfile
 import threading
@@ -107,6 +108,32 @@ def _channel_inputs(scr_folder: Path) -> frozenset[str]:
         return read_channel_parameters(scr_folder / "Project.ini").inputs
     except FileNotFoundError:
         return frozenset()
+
+
+#: In a workspace's csv/: the analog input channels it was generated with.
+ANALOG_INPUTS_FILENAME = "analog_inputs.json"
+
+
+def _write_analog_inputs(csv_dir: Path, inputs: frozenset[str]) -> None:
+    text = json.dumps(sorted(inputs)) + "\n"
+    (csv_dir / ANALOG_INPUTS_FILENAME).write_text(text, encoding="utf-8")
+
+
+def read_analog_inputs(csv_dir: Path) -> frozenset[str]:
+    """The analog input channels the workspace holding *csv_dir* was generated with.
+
+    pyrung marks them ``external``; regenerating the workspace's code needs the same set.
+    """
+    path = csv_dir / ANALOG_INPUTS_FILENAME
+    try:
+        inputs = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise ValueError(
+            "the workspace has no record of its analog inputs; reload the workspace from CLICK"
+        ) from None
+    if not isinstance(inputs, list) or not all(isinstance(item, str) for item in inputs):
+        raise ValueError(f"{path} does not hold a list of addresses")
+    return frozenset(inputs)
 
 
 def _build_tag_addr_key_map(
@@ -294,11 +321,14 @@ def _regenerate_persisted_project(
         persist_nickname_csv = None
         if nickname_rows is not None:
             persist_nickname_csv = _write_nicknames_csv(csv_persist, nickname_rows)
+        # Recorded with the generation: `tag apply` regenerates the code from csv/.
+        analog_inputs = _channel_inputs(scr_folder)
+        _write_analog_inputs(csv_persist, analog_inputs)
 
         ladder_to_pyrung_project(
             csv_persist,
             nickname_csv=persist_nickname_csv,
-            analog_inputs=_channel_inputs(scr_folder),
+            analog_inputs=analog_inputs,
             output_dir=staged_dir,
             index=True,
             workspace_kind=workspace_kind,

@@ -4,7 +4,12 @@ import pytest
 from pyrung import Program, Rung, copy
 from pyrung.click import ClickBlocks, TagMap, pyrung_to_ladder
 
-from clicknick.services.analysis_service import _build_graph, _channel_inputs
+from clicknick.services.analysis_service import (
+    _build_graph,
+    _channel_inputs,
+    _regenerate_persisted_project,
+    read_analog_inputs,
+)
 
 
 def test_missing_channel_configuration_is_optional(tmp_path):
@@ -40,3 +45,20 @@ def test_channel_inputs_reach_analysis_and_generated_workspace(tmp_path, monkeyp
     assert namespace["df"][1].external
     assert not namespace["df"][5].external
     assert not namespace["df"][10].external
+    # Recorded with the generation, for regenerating its code later
+    assert read_analog_inputs(project / "csv") == {"DF1"}
+
+
+def test_a_workspace_generated_without_analog_inputs_records_none(tmp_path, monkeypatch):
+    def save(_source, destination, *, index):
+        (destination / "main.csv").write_text("", encoding="utf-8")
+
+    monkeypatch.setattr("clicknick.ladder.program.program_save", save)
+    monkeypatch.setattr(
+        "pyrung.click.ladder_to_pyrung_project",
+        lambda _csv, *, output_dir, **_kwargs: (output_dir / "src" / "plc").mkdir(parents=True),
+    )
+
+    project = _regenerate_persisted_project(tmp_path, None, tmp_path / "workspace")
+
+    assert read_analog_inputs(project / "csv") == frozenset()

@@ -111,9 +111,7 @@ def test_address_not_in_store_is_skipped(store):
 
 
 def _patch_exports(monkeypatch, base, cur):
-    monkeypatch.setattr(
-        tag_commands, "_load_export_rows", lambda _project_dir, *, analog_inputs: (base, cur)
-    )
+    monkeypatch.setattr(tag_commands, "_load_export_rows", lambda _project_dir: (base, cur))
 
 
 def test_tag_apply_applies_and_opens_changed(store, tmp_path, monkeypatch):
@@ -175,6 +173,8 @@ def test_load_export_rows_reads_src_plc_tags(tmp_path, monkeypatch):
     tags_dir = tmp_path / "src" / "plc"
     tags_dir.mkdir(parents=True)
     (tags_dir / "tags.py").write_text("current tags\n", encoding="utf-8")
+    (tmp_path / "csv").mkdir()
+    (tmp_path / "csv" / "analog_inputs.json").write_text('["DF1"]\n', encoding="utf-8")
 
     regenerated_with: list[frozenset[str]] = []
 
@@ -199,7 +199,7 @@ def test_load_export_rows_reads_src_plc_tags(tmp_path, monkeypatch):
 
     monkeypatch.setattr(data_source, "CsvDataSource", FakeDataSource)
 
-    tag_commands._load_export_rows(tmp_path, analog_inputs=frozenset({"DF1"}))
+    tag_commands._load_export_rows(tmp_path)
 
     assert exported == ["baseline tags\n", "current tags\n"]
     assert regenerated_with == [frozenset({"DF1"})]
@@ -243,10 +243,7 @@ def _generated_workspace(tmp_path, monkeypatch, rows, *, project_ini: str | None
     )
     store = AddressStore(RowsDataSource(rows))
     store.load_initial_data()
-    ctx = DispatchContext(store=store, analysis=MockAnalysis(project))
-    if project_ini is not None:
-        ctx.scr_folder = click_folder
-    return store, ctx
+    return store, DispatchContext(store=store, analysis=MockAnalysis(project))
 
 
 def _edit_tags_py(ctx, old: str, new: str) -> None:
@@ -295,6 +292,7 @@ _ANALOG_INPUT_DF1 = "[SystemConfig]\nItem1=192\n[CPUBuild]\nAD1=DF1,10,0\nDA1=DF
 
 
 def test_tag_apply_on_an_unedited_workspace_leaves_analog_inputs_alone(tmp_path, monkeypatch):
+    """The analog inputs come from the workspace, not from a CLICK folder at apply time."""
     rows = _rows(DF1="Level in")
     store, ctx = _generated_workspace(tmp_path, monkeypatch, rows, project_ini=_ANALOG_INPUT_DF1)
 
@@ -306,6 +304,27 @@ def test_tag_apply_on_an_unedited_workspace_leaves_analog_inputs_alone(tmp_path,
     assert "1 tag changed" in dispatch(ctx, "tag apply")
     assert store.get_dirty_keys() == {get_addr_key("DF", 10)}
     assert _row(store, "DF", 1).comment == "Level in"
+
+
+def test_tag_apply_uses_the_analog_inputs_the_workspace_was_generated_with(tmp_path, monkeypatch):
+    rows = _rows(DF1="Level in")
+    store, ctx = _generated_workspace(tmp_path, monkeypatch, rows, project_ini=_ANALOG_INPUT_DF1)
+
+    # CLICK's hardware settings change after the save the workspace came from.
+    (tmp_path / "click" / "Project.ini").unlink()
+
+    assert "no changes" in dispatch(ctx, "tag apply")
+    assert store.get_dirty_keys() == set()
+
+
+def test_tag_apply_refuses_a_workspace_with_no_record_of_its_analog_inputs(tmp_path, monkeypatch):
+    rows = _rows(DF1="Level in")
+    store, ctx = _generated_workspace(tmp_path, monkeypatch, rows, project_ini=_ANALOG_INPUT_DF1)
+    (ctx.analysis.project_dir / "csv" / "analog_inputs.json").unlink()
+
+    with pytest.raises(ValueError, match="reload the workspace from CLICK"):
+        dispatch(ctx, "tag apply")
+    assert store.get_dirty_keys() == set()
 
 
 def test_tag_apply_keeps_annotations_tags_py_did_not_change(store):
