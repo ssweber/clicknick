@@ -388,7 +388,7 @@ def test_connection_menu_uses_same_handlers(monkeypatch):
     window._on_close = MagicMock()
     window._clear_selected_rows = MagicMock()
     window._refresh_nicknames = MagicMock()
-    window._refresh_file_list = MagicMock()
+    window.refresh_file_list = MagicMock()
     window._toggle_nav = MagicMock()
     window._toggle_modbus_toolbar = MagicMock()
     window._modbus_toolbar_var = FakeVar(True)
@@ -567,7 +567,7 @@ def test_export_writes_copy_without_rebinding_tab_path(monkeypatch, tmp_path):
     window.shared_data = SimpleNamespace(dataview_folder=tmp_path / "DataView")
     window._get_current_panel = lambda: panel
     window._iter_open_panels = lambda: [panel]
-    window._refresh_file_list = MagicMock()
+    window.refresh_file_list = MagicMock()
     window._update_tab_title = MagicMock()
 
     monkeypatch.setattr(

@@ -49,17 +49,6 @@ class DataviewEditorWindow(tk.Toplevel):
         self.geometry("800x600")
         self.minsize(800, 400)
 
-    def _refresh_file_list(self) -> None:
-        """Refresh the file list from the dataview folder."""
-        self.file_listbox.delete(0, tk.END)
-
-        files = self.shared_data.get_cdv_files()
-        for file_path in files:
-            self.file_listbox.insert(tk.END, file_path.stem)
-
-        # Store paths for lookup
-        self._file_paths = files
-
     def _get_current_panel(self) -> DataviewPanel | None:
         """Get the currently active panel."""
         try:
@@ -574,7 +563,7 @@ class DataviewEditorWindow(tk.Toplevel):
             and self.shared_data.dataview_folder
             and new_path.parent == self.shared_data.dataview_folder
         ):
-            self._refresh_file_list()
+            self.refresh_file_list()
         return saved
 
     def _save_panel(self, panel: DataviewPanel) -> bool:
@@ -642,7 +631,7 @@ class DataviewEditorWindow(tk.Toplevel):
             self.shared_data.dataview_folder
             and export_path.parent == self.shared_data.dataview_folder
         ):
-            self._refresh_file_list()
+            self.refresh_file_list()
 
     def _close_tab_at_index(self, tab_index: int) -> None:
         """Close the tab at the given index.
@@ -920,7 +909,7 @@ class DataviewEditorWindow(tk.Toplevel):
         # View menu
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="View", menu=view_menu)
-        view_menu.add_command(label="Refresh File List", command=self._refresh_file_list)
+        view_menu.add_command(label="Refresh File List", command=self.refresh_file_list)
         view_menu.add_separator()
 
         # Tag Browser toggle (checkbutton)
@@ -1135,7 +1124,7 @@ class DataviewEditorWindow(tk.Toplevel):
         ttk.Button(btn_frame, text="Open", command=self._open_selected, width=7).pack(
             side=tk.LEFT, padx=2
         )
-        ttk.Button(btn_frame, text="⟳", command=self._refresh_file_list, width=2).pack(
+        ttk.Button(btn_frame, text="⟳", command=self.refresh_file_list, width=2).pack(
             side=tk.LEFT, padx=2
         )
 
@@ -1321,7 +1310,7 @@ class DataviewEditorWindow(tk.Toplevel):
         self.shared_data.address_store.add_observer(self._on_address_store_changed)
 
         # Refresh file list
-        self._refresh_file_list()
+        self.refresh_file_list()
 
         # Show first-run popup
         self._show_dataview_editor_popup()
@@ -1334,6 +1323,17 @@ class DataviewEditorWindow(tk.Toplevel):
 
         self._update_modbus_controls()
         self._poll_simulation()
+
+    def refresh_file_list(self) -> None:
+        """Refresh the file list from the dataview folder."""
+        self.file_listbox.delete(0, tk.END)
+
+        files = self.shared_data.get_cdv_files()
+        for file_path in files:
+            self.file_listbox.insert(tk.END, file_path.stem)
+
+        # Store paths for lookup
+        self._file_paths = files
 
     def refresh_title(self) -> None:
         """Show the project CLICK has open now; the app calls this when it changes."""
@@ -1370,6 +1370,30 @@ class DataviewEditorWindow(tk.Toplevel):
         self.shared_data.address_store.remove_observer(self._on_address_store_changed)
         self._session.unregister_dataview_window(self)
         self.destroy()
+
+    def commit_open_cell_editor(self) -> bool:
+        """Commit the text typed in an open cell editor, so it is an edit like any other.
+
+        The app calls this before it asks about unsaved changes on a project change.
+        Returns False, after telling the user, when an editor is still open
+        (tksheet commits nothing while the application has no focus).
+        """
+        for panel in self._iter_open_panels():
+            mt = panel.sheet.MT
+            if not mt.text_editor.open:
+                continue
+            mt.mouseclick_outside_editor_or_dropdown_all_canvases()
+            if mt.text_editor.open:
+                self.focus_force()
+                mt.mouseclick_outside_editor_or_dropdown_all_canvases()
+            if mt.text_editor.open:
+                messagebox.showwarning(
+                    "Cell Being Edited",
+                    "Finish the cell edit first (Enter to keep it, Esc to cancel).",
+                    parent=self,
+                )
+                return False
+        return True
 
     def has_unsaved_changes(self) -> bool:
         """Check if any open dataviews have unsaved changes."""

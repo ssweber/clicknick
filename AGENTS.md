@@ -347,11 +347,13 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   the data and its windows stay open, the store's file monitor reads the new database, and Sync and the
   Dataview Save write there. If not, the database data closes with nothing saved (a save after File > Open
   would overwrite the other project's .cdv files) and the new database loads. Over CSV data the question
-  covers only Dataview edits. A Dataview Editor that stays open, unless it holds edits the user kept,
-  is closed without saving and opened again on the folder (`_reopen_dataview_editor`)
-- CLICK keeps an open project in `CLICK ({hwnd:08X})` under the Windows temp folder (GetTempPathW).
-  Everything that looks for SC_.mdb, Address.csv, Project.ini, Scr*.tmp or the DataView folder goes
-  through `utils/click_temp.py` (`click_temp_dir`), from the connected window's hwnd
+  covers only Dataview edits, text in a Dataview cell included. A Dataview Editor that stays open lists
+  its folder again when the edits were kept; otherwise it is closed without saving and opened again on
+  the window's DataView folder (`_reopen_dataview_editor`)
+- ClickNick looks for an open project's `CLICK ({hwnd:08X})` folder under the Windows temp folder
+  (GetTempPathW; USER-CHECKS Q8), in its long form. Everything that looks for SC_.mdb, Address.csv,
+  Project.ini, Scr*.tmp or the DataView folder goes through `utils/click_temp.py` (`click_temp_dir`),
+  from the connected window's hwnd
 - The Dataview Editor and Verify use only the connected window's DataView folder
   (`click_dataview_folder`), never another `CLICK (*` folder. The Dataview model takes the folder as a
   getter (`_dataview_folder`): with no window connected it is the loaded CSV's folder, or none

@@ -201,7 +201,7 @@ Default locations for an installation through uv:
 | uv download cache | `%LOCALAPPDATA%\uv\cache\` |
 | Live-session files | The CLICK temp folder for the open project, or `%LOCALAPPDATA%\ClickNick\live\`. CLICK does not read these files. |
 | Generated engineering workspace | `%TEMP%\clicknick_*` while running, or the folder the user chooses for a durable workspace |
-| Project data it edits | `SC_.mdb` in `%LOCALAPPDATA%\Temp\CLICK (...)\`. CLICK writes it back into the `.ckp` on save. |
+| Project data it edits | `SC_.mdb` in `%TEMP%\CLICK (...)\`. CLICK writes it back into the `.ckp` on save. |
 
 ## Uninstall
 

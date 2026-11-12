@@ -55,6 +55,10 @@ class FakeDataview(FakeEditor):
     def __init__(self) -> None:
         super().__init__()
         self.saved = False
+        self.refreshed = False
+
+    def refresh_file_list(self) -> None:
+        self.refreshed = True
 
     def has_unsaved_changes(self) -> bool:
         return True
@@ -905,20 +909,17 @@ def test_project_change_asks_about_dataview_edits_over_csv_data(monkeypatch, kee
     assert app._session is None
     if keep:
         assert not dataview.closed
+        assert dataview.refreshed
         app._open_dataview_editor.assert_not_called()
     else:
         assert dataview.closed
         app._open_dataview_editor.assert_called_once_with()
 
 
-@pytest.mark.parametrize("is_database", [False, True], ids=["csv", "kept-database"])
-def test_project_change_reopens_a_clean_dataview_editor_on_the_folder(monkeypatch, is_database):
-    monkeypatch.setattr(
-        "clicknick.connection_session.ConnectionSession",
-        lambda _click, **_kw: MagicMock(simulator=None, synced_pending=0),
-    )
-    app, prompts = _app(monkeypatch, yes_no=True)
-    app._data = DataSession(FakeStore(is_database=is_database, unsaved=is_database))
+def test_project_change_reopens_a_clean_dataview_editor_over_csv_data(monkeypatch):
+    """Nothing to keep: the editor is opened again on the window's DataView folder."""
+    app, prompts = _app(monkeypatch)
+    app._data = DataSession(FakeStore(is_database=False, source_path="C:/tmp/Main_Address.csv"))
     dataview = FakeDataview()
     dataview.has_unsaved_changes = lambda: False
     app._data.register_dataview_window(dataview)
@@ -926,6 +927,47 @@ def test_project_change_reopens_a_clean_dataview_editor_on_the_folder(monkeypatc
 
     app._handle_project_change("CLICK Programming Software - Other.ckp", "Other.ckp")
 
-    assert len(prompts) == (1 if is_database else 0)  # Only the database's address edits
+    assert prompts == []
     assert dataview.closed
+    assert not dataview.refreshed
     app._open_dataview_editor.assert_called_once_with()
+
+
+def test_kept_database_edits_leave_the_dataview_editor_open_and_list_its_folder(monkeypatch):
+    """A Save As keeps the folder: the editor keeps its tabs and Modbus connection."""
+    monkeypatch.setattr(
+        "clicknick.connection_session.ConnectionSession",
+        lambda _click, **_kw: MagicMock(simulator=None, synced_pending=0),
+    )
+    app, prompts = _app(monkeypatch, yes_no=True)
+    app._data = DataSession(FakeStore(is_database=True, unsaved=True))
+    dataview = FakeDataview()
+    dataview.has_unsaved_changes = lambda: False
+    app._data.register_dataview_window(dataview)
+    app._open_dataview_editor = MagicMock()
+
+    app._handle_project_change("CLICK Programming Software - Renamed.ckp", "Renamed.ckp")
+
+    assert [prompt[:2] for prompt in prompts] == [("askyesno", "Project Changed")]
+    assert not dataview.closed
+    assert dataview.refreshed
+    app._open_dataview_editor.assert_not_called()
+
+
+@pytest.mark.parametrize("commits", [True, False], ids=["commits", "will-not-commit"])
+def test_project_change_counts_text_still_in_a_dataview_cell(monkeypatch, commits):
+    """Over CSV data, text typed in a Dataview cell is an edit: it is asked about, not dropped."""
+    app, prompts = _app(monkeypatch, yes_no=False)
+    app._data = DataSession(FakeStore(is_database=False, source_path="C:/tmp/Main_Address.csv"))
+    dataview = FakeDataview()
+    unsaved = []
+    dataview.has_unsaved_changes = lambda: bool(unsaved)
+    dataview.commit_open_cell_editor = lambda: unsaved.append(True) or True if commits else False
+    app._data.register_dataview_window(dataview)
+    app._open_dataview_editor = MagicMock()
+
+    app._handle_project_change("CLICK Programming Software - Other.ckp", "Other.ckp")
+
+    ((_, title, message),) = prompts
+    assert title == "Project Changed"
+    assert "unsaved Dataview changes" in message

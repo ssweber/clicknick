@@ -2667,8 +2667,10 @@ class ClickNickApp:
             if not committed or data.store.has_unsaved_changes():
                 unsaved.append("address changes")
         dataview = data.dataview_window
-        if dataview is not None and dataview.has_unsaved_changes():
-            unsaved.append("Dataview changes")
+        if dataview is not None:
+            committed = dataview.commit_open_cell_editor()
+            if not committed or dataview.has_unsaved_changes():
+                unsaved.append("Dataview changes")
         if not unsaved:
             return False
         saves = "Sync and Save then write them" if data.store.is_database else "Save writes them"
@@ -2686,13 +2688,18 @@ class ClickNickApp:
     def _reopen_dataview_editor(self, *, kept: bool) -> None:
         """After a project change, show the window's DataView folder as it is now.
 
-        The open Dataview Editor shows the files of the project CLICK had open.
-        It is closed without saving and opened again on the folder, unless it has
-        unsaved edits the user kept (*kept*).
+        The window keeps its ``CLICK (hwnd)`` folder. When the user kept the
+        edits (*kept*) the editor stays as it is, with its tabs and its Modbus
+        connection, and lists the folder again. Otherwise it shows the files of
+        the project CLICK had open: it is closed without saving and opened again
+        on the window's DataView folder.
         """
         data = self._data
         dataview = data.dataview_window if data is not None else None
-        if dataview is None or (kept and dataview.has_unsaved_changes()):
+        if dataview is None:
+            return
+        if kept:
+            dataview.refresh_file_list()
             return
         dataview.close_without_prompt()
         self._open_dataview_editor()
@@ -2706,7 +2713,8 @@ class ClickNickApp:
         reads the base from the database the window now holds. Otherwise
         database data closes with nothing saved, and the new project's database
         is loaded. CSV data stays loaded. A Dataview Editor that stays open
-        reads the window's DataView folder again, unless it holds kept edits.
+        lists its folder again when the edits were kept, and is otherwise opened
+        again on the window's DataView folder (``_reopen_dataview_editor``).
         Monitoring stays as it was.
         """
         click = self._click

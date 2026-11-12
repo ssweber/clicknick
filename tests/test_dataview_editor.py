@@ -720,3 +720,53 @@ def test_clear_selected_rows_is_one_undo_step(tk_root, tmp_path):
         assert not panel.undo()
     finally:
         panel.destroy()
+
+
+# -- Text typed in a cell is an edit -----------------------------------------
+
+
+def _cell_editor_window(*, commits_without_focus: bool) -> tuple[DataviewEditorWindow, list]:
+    """A window with one tab whose cell editor is open; committing closes it.
+
+    tksheet commits nothing while the application has no focus, so the first
+    try may leave it open.
+    """
+    tries: list[int] = []
+    text_editor = SimpleNamespace(open=True)
+
+    def click_outside() -> None:
+        tries.append(1)
+        if commits_without_focus or len(tries) > 1:
+            text_editor.open = False
+
+    mt = SimpleNamespace(
+        text_editor=text_editor, mouseclick_outside_editor_or_dropdown_all_canvases=click_outside
+    )
+    window = DataviewEditorWindow.__new__(DataviewEditorWindow)
+    window._iter_open_panels = lambda: [SimpleNamespace(sheet=SimpleNamespace(MT=mt))]
+    window.focus_force = lambda: None
+    return window, tries
+
+
+@pytest.mark.parametrize("commits_without_focus", [True, False], ids=["focused", "no-focus"])
+def test_text_typed_in_a_cell_is_committed(commits_without_focus):
+    """The app asks this before a project change, so the text is asked about, not dropped."""
+    window, tries = _cell_editor_window(commits_without_focus=commits_without_focus)
+
+    assert window.commit_open_cell_editor()
+
+    assert len(tries) == (1 if commits_without_focus else 2)
+
+
+def test_a_cell_that_will_not_commit_is_reported(monkeypatch):
+    warnings = []
+    monkeypatch.setattr(
+        window_module.messagebox, "showwarning", lambda *args, **_kw: warnings.append(args[0])
+    )
+    window, _tries = _cell_editor_window(commits_without_focus=False)
+    window._iter_open_panels()[0].sheet.MT.mouseclick_outside_editor_or_dropdown_all_canvases = (
+        lambda: None
+    )
+
+    assert not window.commit_open_cell_editor()
+    assert warnings == ["Cell Being Edited"]

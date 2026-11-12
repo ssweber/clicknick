@@ -62,3 +62,29 @@ def test_without_a_windows_temp_path_it_is_pythons_temp_folder(monkeypatch, tmp_
 
     assert click_temp.temp_root() == tmp_path
     assert click_temp.click_temp_dir(0x1234) == tmp_path / "CLICK (00001234)"
+
+
+def _short_path(path: Path) -> str:
+    import ctypes
+
+    buffer = ctypes.create_unicode_buffer(1024)
+    length = ctypes.windll.kernel32.GetShortPathNameW(str(path), buffer, len(buffer))
+    return buffer.value if 0 < length < len(buffer) else str(path)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="8.3 names are Windows only")
+def test_a_short_temp_path_is_given_in_its_long_form(monkeypatch, tmp_path):
+    """A file dialog returns long paths: the DataView folder must compare equal to them."""
+    from clicknick.data.cdv_file import click_dataview_folder
+    from clicknick.utils import click_temp
+
+    long_root = tmp_path / "Long Temp Folder Name"
+    long_root.mkdir()
+    short_root = _short_path(long_root)
+    if Path(short_root).name == long_root.name:
+        pytest.skip("this volume makes no 8.3 names")
+    monkeypatch.setattr(click_temp, "_windows_temp_path", lambda: short_root)
+    folder = _click_folder(long_root)
+
+    assert click_temp.temp_root() == long_root
+    assert click_dataview_folder(HWND) == folder / "DataView"
