@@ -159,6 +159,15 @@ def test_stale_snapshots_are_removed_except_those_kept(monkeypatch, tmp_path: Pa
     ]
 
 
+def test_a_copy_holding_a_shown_folder_is_kept(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    shown = snapshot_dir(3) / "subroutines"  # Compare with > Folder on part of a copy
+    shown.mkdir(parents=True)
+
+    assert remove_stale_snapshots([], [shown]) == []
+    assert shown.is_dir()
+
+
 def test_no_compare_folder_removes_nothing(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
 

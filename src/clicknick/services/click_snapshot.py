@@ -35,22 +35,24 @@ def snapshot_dir(hwnd: int) -> Path:
 def remove_stale_snapshots(keep_hwnds: Iterable[int], keep_dirs: Iterable[Path]) -> list[Path]:
     """Delete the copies of CLICK windows other than *keep_hwnds*; return what was deleted.
 
-    A copy in *keep_dirs* (one a window shows) stays, and so does anything in
-    the folder that is not a copy. A copy cut short leaves a ``.CLICK (hwnd)-*``
-    folder behind; those go too.
+    A copy that is or holds one of *keep_dirs* (folders a window shows) stays, and
+    so does anything in the folder that is not a copy. A copy cut short leaves a
+    ``.CLICK (hwnd)-*`` folder behind; those go too.
     """
     root = _snapshots_root()
     if not root.is_dir():
         return []
     keep = {snapshot_dir(hwnd).resolve() for hwnd in keep_hwnds}
-    keep |= {Path(folder).resolve() for folder in keep_dirs}
+    shown = [Path(folder).resolve() for folder in keep_dirs]
     removed = []
     for path in root.iterdir():
         if not path.name.startswith(("CLICK (", ".CLICK (")) or not path.is_dir():
             continue
-        if path.resolve() not in keep:
-            shutil.rmtree(path, ignore_errors=True)
-            removed.append(path)
+        copy = path.resolve()
+        if copy in keep or any(folder.is_relative_to(copy) for folder in shown):
+            continue
+        shutil.rmtree(path, ignore_errors=True)
+        removed.append(path)
     return removed
 
 
