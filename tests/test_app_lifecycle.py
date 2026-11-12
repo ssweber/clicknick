@@ -44,6 +44,9 @@ class FakeEditor:
     def __init__(self) -> None:
         self.closed = False
 
+    def commit_open_cell_editor(self) -> bool:
+        return True
+
     def close_without_prompt(self) -> None:
         self.closed = True
 

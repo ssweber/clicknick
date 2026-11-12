@@ -90,7 +90,7 @@ class CharLimitTooltip:
         if not event:
             return
         self._destroy_tooltip()
-        c = event.column
+        c = self.sheet.MT.datacn(event.column)  # hidden columns shift display order
         if c in self.char_limits:
             limit = self.char_limits[c]
             # Use 'after' on the sheet so it's tracked by the widget lifecycle

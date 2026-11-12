@@ -49,7 +49,6 @@ class AddressRowStyler:
             sheet=self.sheet,
             store=self._store,
             get_rows=lambda: self.rows,
-            get_displayed_rows=lambda: self._displayed_rows,
         )
         styler.apply_all_styling()  # Full refresh
         styler.update_rows_styling({data_idx})  # Single row update
@@ -60,7 +59,6 @@ class AddressRowStyler:
         sheet: Sheet,
         store: AddressStore,
         get_rows: Callable[[], list[AddressRow]],
-        get_displayed_rows: Callable[[], list[int]],
     ):
         """Initialize the styler.
 
@@ -68,12 +66,10 @@ class AddressRowStyler:
             sheet: The tksheet Sheet instance
             store: The AddressStore for dirty checking
             get_rows: Callable returning the current list of AddressRow
-            get_displayed_rows: Callable returning current displayed row indices
         """
         self.sheet = sheet
         self._store = store
         self._get_rows = get_rows
-        self._get_displayed_rows = get_displayed_rows
 
         # Track pending highlight clear callbacks
         self._pending_highlight_clears: dict[int, str] = {}  # data_idx -> after_id

@@ -59,6 +59,11 @@
 - In the Address Editor, Undo and Redo wait while you are typing in a cell, and Sync and closing the window keep what you typed.
 - Fill Down over a timer or counter selection numbers only the rows of the first row's type, and Fill Down and Clone no longer copy block tags into the new rows' comments (a row that already has its own block tag keeps it); after a Sync, check those comments in CLICK.
 - Add Block over a selection that includes both a timer's T and TD rows (or CT and CTD) tags matching pairs, and the Tag Browser's rename changes nicknames only, leaving comments as they are; after a Sync, check the timer or counter block comments in CLICK.
+- With **Hide Used** ticked, the Address Editor's right-click menu, Discard changes and character-limit tooltip act on the column you clicked, not the one beside it.
+- The Init Value and Ret cells of SC, SD, XD and YD rows are read-only instead of showing an edit that Sync never writes.
+- Ctrl+W in the Address Editor closes one tab, and in either editor only its own tab, instead of closing two and then raising an error.
+- Remove Block keeps the rest of the comment as it was (`<Pumps> Fill` becomes `Fill`, not ` Fill`); after a Sync, check such a comment in CLICK.
+- Text still being typed in an Address Editor cell is kept when you replace the data or close ClickNick and answer the save prompt; a cell that won't commit stops the close.
 - A cloned Address Editor tab shows block colors, errors and unsaved edits on every row, and opens at the saved scroll position.
 - CLICK v4 projects work: autocomplete fits its instruction dialogs, and Simulate and the workspace read its hardware and PLC name.
 - Check Program, Preview Changes and the simulation no longer show Windows' busy cursor while they start.

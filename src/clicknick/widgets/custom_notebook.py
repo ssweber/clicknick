@@ -5,7 +5,7 @@ Posted by Bryan Oakley, modified by community
 License: CC BY-SA 4.0
 Enhanced with features inspired by Thonny IDE (MIT License)
 
-Added: middle-click close, right-click menu, keyboard shortcuts
+Added: middle-click close, right-click menu
 """
 
 from __future__ import annotations
@@ -18,13 +18,12 @@ from tkinter import ttk
 class CustomNotebook(ttk.Notebook):
     """A ttk Notebook with close buttons and enhanced interaction."""
 
-    __initialized = False
-
-    def __initialize_custom_style(self):
-        style = ttk.Style()
+    def __initialize_custom_style(self, master: tk.Misc | None):
+        style = ttk.Style(master)
         self.images = (
             tk.PhotoImage(
                 "img_close",
+                master=master,
                 data="""
                 R0lGODlhCAAIAMIBAAAAADs7O4+Pj9nZ2Ts7Ozs7Ozs7Ozs7OyH+EUNyZWF0ZWQg
                 d2l0aCBHSU1QACH5BAEKAAQALAAAAAAIAAgAAAMVGDBEA0qNJyGw7AmxmuaZhWEU
@@ -33,6 +32,7 @@ class CustomNotebook(ttk.Notebook):
             ),
             tk.PhotoImage(
                 "img_closeactive",
+                master=master,
                 data="""
                 R0lGODlhCAAIAMIEAAAAAP/SAP/bNNnZ2cbGxsbGxsbGxsbGxiH5BAEKAAQALAAA
                 AAAIAAgAAAMVGDBEA0qNJyGw7AmxmuaZhWEU5kEJADs=
@@ -40,6 +40,7 @@ class CustomNotebook(ttk.Notebook):
             ),
             tk.PhotoImage(
                 "img_closepressed",
+                master=master,
                 data="""
                 R0lGODlhCAAIAMIEAAAAAOUqKv9mZtnZ2Ts7Ozs7Ozs7Ozs7OyH+EUNyZWF0ZWQg
                 d2l0aCBHSU1QACH5BAEKAAQALAAAAAAIAAgAAAMVGDBEA0qNJyGw7AmxmuaZhWEU
@@ -163,25 +164,20 @@ class CustomNotebook(ttk.Notebook):
         self.bind("<ButtonPress-3>", self._on_right_click, True)  # Right-click
         self.bind("<ButtonPress-2>", self._on_middle_click, True)  # Middle-click
 
-    def _close_current_tab(self, event=None):
-        """Close current tab (Ctrl+W)."""
-        if len(self.tabs()) > 0:
-            self._try_close_tab(self.index(self.select()))
-            return "break"
-
-    def _bind_keyboard_shortcuts(self):
-        """Add keyboard shortcuts for tab navigation and closing."""
-        self.bind_all("<Control-w>", self._close_current_tab)
-
     def __init__(self, *args, **kwargs):
         # Extract our custom callback before passing to parent
         self._on_close_callback: Callable[[int], bool] | None = kwargs.pop(
             "on_close_callback", None
         )
 
-        if not CustomNotebook.__initialized:
-            self.__initialize_custom_style()
-            CustomNotebook.__initialized = True
+        # The style belongs to one Tk interpreter; each root needs its own.
+        master = args[0] if args else kwargs.get("master")
+        try:
+            ttk.Style(master).layout("CustomNotebook")
+        except tk.TclError:
+            self.__initialize_custom_style(master)
+            # Tk deletes an image when its PhotoImage is collected; the root keeps them.
+            (master or tk._get_default_root())._root()._custom_notebook_images = self.images
 
         kwargs["style"] = "CustomNotebook"
         ttk.Notebook.__init__(self, *args, **kwargs)
@@ -193,9 +189,6 @@ class CustomNotebook(ttk.Notebook):
 
         # Add right-click context menu
         self._create_context_menu()
-
-        # Add keyboard shortcuts
-        self._bind_keyboard_shortcuts()
 
     def set_close_callback(self, callback: Callable[[int], bool] | None) -> None:
         """Set the callback for tab close."""
