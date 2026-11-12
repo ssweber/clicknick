@@ -559,6 +559,15 @@ class DataviewPanel(ttk.Frame):
         self._notify_modified()
         self._notify_addresses_changed()
 
+    def _reject_new_value(self, row_idx: int, text: str, error: str) -> str | None:
+        """Refuse a New Value. Text typed in the cell editor is asked for again once tksheet
+        has closed the editor; a pasted or filled value just keeps the cell as it was."""
+        if not self.sheet.MT.text_editor.open:
+            return self._new_value_display(self.rows[row_idx])
+        self._rejected_edit = (row_idx, text, error or "Invalid value")
+        self.after_idle(self.reopen_rejected_edit)
+        return None
+
     def _validate_edit(self, event) -> str | None:
         """Validate and normalize cell edits.
 
@@ -610,30 +619,6 @@ class DataviewPanel(ttk.Frame):
             return DataViewFile.value_to_display(parsed.value, row.data_type)
 
         return event.value
-
-    def _reject_new_value(self, row_idx: int, text: str, error: str) -> str | None:
-        """Refuse a New Value. Text typed in the cell editor is asked for again once tksheet
-        has closed the editor; a pasted or filled value just keeps the cell as it was."""
-        if not self.sheet.MT.text_editor.open:
-            return self._new_value_display(self.rows[row_idx])
-        self._rejected_edit = (row_idx, text, error or "Invalid value")
-        self.after_idle(self.reopen_rejected_edit)
-        return None
-
-    def reopen_rejected_edit(self) -> bool:
-        """Say why a New Value was refused and reopen its cell with the text typed; False if none."""
-        rejected, self._rejected_edit = self._rejected_edit, None
-        if rejected is None or not self.winfo_exists():
-            return False
-        row_idx, text, error = rejected
-        if row_idx >= len(self.rows):
-            return False
-        address = self.rows[row_idx].address
-        messagebox.showwarning("Invalid New Value", f"{address}: {error}", parent=self)
-        self.sheet.select_cell(row_idx, COL_NEW_VALUE)
-        self.sheet.open_cell()
-        self.sheet.set_text_editor_value(text)
-        return True
 
     def _apply_column_visibility(self) -> None:
         hidden: set[int] = set()
@@ -832,6 +817,21 @@ class DataviewPanel(ttk.Frame):
 
         # Stop monitoring when panel is destroyed
         self.bind("<Destroy>", self._on_destroy)
+
+    def reopen_rejected_edit(self) -> bool:
+        """Say why a New Value was refused and reopen its cell with the text typed; False if none."""
+        rejected, self._rejected_edit = self._rejected_edit, None
+        if rejected is None or not self.winfo_exists():
+            return False
+        row_idx, text, error = rejected
+        if row_idx >= len(self.rows):
+            return False
+        address = self.rows[row_idx].address
+        messagebox.showwarning("Invalid New Value", f"{address}: {error}", parent=self)
+        self.sheet.select_cell(row_idx, COL_NEW_VALUE)
+        self.sheet.open_cell()
+        self.sheet.set_text_editor_value(text)
+        return True
 
     def _rebase_frames(self, old: Stamp | None, new: Stamp | None) -> None:
         """Undo/Redo steps from file version ``old`` now come from ``new``.

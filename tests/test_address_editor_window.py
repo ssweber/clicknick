@@ -9,6 +9,7 @@ import pytest
 from pyclickplc.addresses import get_addr_key
 
 from clicknick.data.address_store import AddressStore
+from clicknick.views.address_editor.panel import AddressPanel
 from clicknick.views.address_editor.panel_constants import COL_COMMENT, COL_NICKNAME
 from clicknick.views.address_editor.window import AddressEditorWindow
 
@@ -285,3 +286,45 @@ def test_the_title_names_the_project_the_app_has_now() -> None:
     window.refresh_title()
 
     window.title.assert_called_once_with("ClickNick Address Editor - Renamed.ckp - SC_.mdb - DB")
+
+
+def test_double_clicking_a_nickname_with_children_shows_it_and_them_only(store) -> None:
+    from clicknick.models.address_row import AddressRow
+
+    names = ["Tank_Pump1", "Tank_Pump1_Run", "Tank_Pump10", "Tank_Pump10_Run"]
+    with store.edit_session("seed") as session:
+        for address, name in enumerate(names, 1):
+            session.set_field(get_addr_key("DS", address), "nickname", name)
+    rows = [store.visible_state[get_addr_key("DS", a)] for a in range(1, 5)]
+    assert all(isinstance(r, AddressRow) for r in rows)
+
+    shown: list[list[int]] = []
+    vars_ = {
+        "filter_var": SimpleNamespace(
+            set=lambda v: vars_.update(text=v), get=lambda: vars_["text"]
+        ),
+        "filter_enabled_var": SimpleNamespace(set=lambda v: None, get=lambda: True),
+        "row_filter_var": SimpleNamespace(set=lambda v: None, get=lambda: "all"),
+    }
+    panel = SimpleNamespace(
+        rows=rows,
+        _displayed_rows=[],
+        sheet=SimpleNamespace(
+            display_rows=lambda rows, **_kw: shown.append(list(rows)), focus_set=Mock()
+        ),
+        scroll_to_address=Mock(),
+        _save_selection=Mock(),
+        _restore_selection=Mock(),
+        _get_analysis=lambda: None,
+        **vars_,
+    )
+    panel._apply_filters = lambda: AddressPanel._apply_filters(panel)
+    panel._resolve_analysis_prefix = lambda p, a: AddressPanel._resolve_analysis_prefix(panel, p, a)
+    window = _window(store, panel)
+
+    window._on_outline_select(
+        "Tank_Pump1_", [("DS", 1), ("DS", 2)]
+    )  # leaves of the Tank_Pump1 item
+
+    assert vars_["text"] == "tree:Tank_Pump1"
+    assert [rows[i].nickname for i in shown[-1]] == ["Tank_Pump1", "Tank_Pump1_Run"]

@@ -32,6 +32,16 @@ def build_rename_pattern(
     return pattern, replacement_template
 
 
+def nickname_under(nickname: str, base: str) -> bool:
+    """True when *nickname* is *base* or continues it after an underscore.
+
+    The nicknames a non-array Rename changes, and the rows the Outline shows for an
+    item that is a nickname itself and has others under it: ``Tank_Pump1`` and
+    ``Tank_Pump1_Run``, not ``Tank_Pump10``.
+    """
+    return nickname == base or (nickname.startswith(base + "_") and len(nickname) > len(base) + 1)
+
+
 def rename_replacement(template: str, new_text: str) -> str:
     """Fill the template's new text so it is read literally by `re.sub`."""
     return template.format(new_text=new_text.replace("\\", "\\\\"))

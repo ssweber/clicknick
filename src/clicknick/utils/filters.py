@@ -313,8 +313,16 @@ class ContainsPlusFilter(FilterBase):
             return self._filter_multiple_words(completion_list, search_words)
 
 
-ANALYSIS_PREFIXES = ("input:", "output:", "pivot:", "isolated:", "upstream:", "downstream:")
-_ARG_PREFIXES = ("upstream:", "downstream:")
+ANALYSIS_PREFIXES = (
+    "input:",
+    "output:",
+    "pivot:",
+    "isolated:",
+    "upstream:",
+    "downstream:",
+    "tree:",
+)
+_ARG_PREFIXES = ("upstream:", "downstream:", "tree:")
 
 
 def parse_analysis_prefix(raw_filter: str) -> tuple[str | None, str | None, str]:

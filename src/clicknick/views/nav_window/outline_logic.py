@@ -47,7 +47,7 @@ Display Rules:
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
 _ARRAY_PATTERN = re.compile(r"^(_?[A-Za-z]+)(\d+)$")
@@ -611,6 +611,19 @@ def _flatten_node_children(node: TreeNode) -> list[DisplayItem]:
         items.extend(_flatten_child_with_prefix(child.label, child))
 
     return items
+
+
+def outline_filter(path: str, nicknames: Iterable[str]) -> str:
+    """The Address Editor filter text for double-clicking an item with this ``full_path``.
+
+    An item that is a nickname itself and has others under it (``Tank_Pump1`` over
+    ``Tank_Pump1_Run``) shows its own row and its children: ``tree:Tank_Pump1``, the
+    nicknames Rename changes. Any other item is its path as a prefix.
+    """
+    base = path[:-1]
+    if path.endswith("_") and base in set(nicknames):
+        return f"tree:{base}"
+    return f"^{path}"
 
 
 def flatten_tree(root: TreeNode) -> list[DisplayItem]:

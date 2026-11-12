@@ -1,12 +1,16 @@
 """Tests for outline_logic.py - tree building and flattening for address outline."""
 
+import re
+
 import pytest
 
+from clicknick.utils.rename_helpers import build_rename_pattern, nickname_under
 from clicknick.views.nav_window.outline_logic import (
     DisplayItem,
     TreeNode,
     build_tree,
     flatten_tree,
+    outline_filter,
     parse_segments,
 )
 
@@ -909,3 +913,38 @@ class TestSpellingsAreLabelledApart:
     def test_extra_underscore_before_a_leading_gap_name_shows(self):
         texts = get_all_texts(_build(["___A", "__A"]))
         assert sorted(t for t in texts if t.endswith("A")) == ["A", "_A"]
+
+
+class TestOutlineFilter:
+    """Double-clicking an item that is a nickname and has others under it keeps its own row."""
+
+    NICKNAMES = ["Tank_Pump1", "Tank_Pump1_Run", "Tank_Pump10", "Tank_Pump10_Run", "Tank_Level"]
+
+    def _top(self):
+        entries = [("DS", i, n, i) for i, n in enumerate(self.NICKNAMES, 1)]
+        return flatten_tree(build_tree(entries))[0]
+
+    def test_a_nickname_with_children_shows_itself_and_its_children_only(self):
+        top = self._top()
+        pump = find_item([top], lambda i: i.leaf == ("DS", 1))
+        assert pump is not None and pump.leaf == ("DS", 1) and pump.children
+
+        text = outline_filter(pump.full_path, self.NICKNAMES)
+
+        assert text == "tree:Tank_Pump1"
+        base = text.removeprefix("tree:")
+        assert [n for n in self.NICKNAMES if nickname_under(n, base)] == [
+            "Tank_Pump1",
+            "Tank_Pump1_Run",
+        ]
+
+    def test_it_shows_what_rename_changes(self):
+        base = "Tank_Pump1"
+        pattern, _ = build_rename_pattern("Tank_", "Pump1", False)
+        renamed = [n for n in self.NICKNAMES if re.match(pattern, n)]
+
+        assert renamed == [n for n in self.NICKNAMES if nickname_under(n, base)]
+
+    def test_a_folder_without_its_own_nickname_filters_by_prefix(self):
+        assert outline_filter("Tank_", self.NICKNAMES) == "^Tank_"
+        assert outline_filter("Tank_Pump1_Run", self.NICKNAMES) == "^Tank_Pump1_Run"

@@ -18,6 +18,7 @@ from ...services.analysis_service import AnalysisService
 from ...services.annotation_service import AnnotationService
 from ...services.physical_response import FeedbackType
 from ...utils.filters import parse_analysis_prefix, text_matches_filter
+from ...utils.rename_helpers import nickname_under
 from ...widgets.annotation_dialog import AnnotationDialog
 from ...widgets.char_limit_tooltip import CharLimitTooltip
 from .panel_constants import (
@@ -166,6 +167,13 @@ class AddressPanel(ttk.Frame):
 
     def _resolve_analysis_prefix(self, prefix: str, arg: str | None) -> set[int] | None:
         """Resolve an analysis prefix to a set of addr_keys, or None."""
+        if prefix == "tree":
+            # An item of the Outline: the nickname and those under it
+            if not arg:
+                return None
+            base = arg.lower()
+            return {row.addr_key for row in self.rows if nickname_under(row.nickname.lower(), base)}
+
         svc = self._get_analysis()
         if svc is None or not svc.is_available:
             return None

@@ -30,6 +30,7 @@ from ...widgets.custom_notebook import CustomNotebook
 from ...widgets.export_csv_dialog import ExportCsvDialog
 from ...widgets.import_csv_dialog import ImportCsvDialog
 from ...widgets.new_tab_dialog import ask_new_tab
+from ..nav_window.outline_logic import outline_filter
 from ..nav_window.window import NavWindow
 from .jump_sidebar import COMBINED_TYPES, JumpSidebar
 from .panel import AddressPanel
@@ -768,7 +769,8 @@ class AddressEditorWindow(tk.Toplevel):
         """Handle selection from outline tree.
 
         For single leaf nodes (exact nickname match): scrolls to address.
-        For folder nodes (multiple children): filters by path prefix using ^ anchor.
+        For folder nodes (multiple children): filters by path prefix using ^ anchor; a nickname
+        with others under it filters to itself and them (`tree:`).
 
         Args:
             path: Filter prefix for folders or exact nickname for leaves
@@ -799,7 +801,9 @@ class AddressEditorWindow(tk.Toplevel):
         # Enable text filter and set prefix pattern with ^ anchor
         panel.filter_enabled_var.set(True)
         if path:
-            panel.filter_var.set(f"^{path}")
+            rows = (self._store.visible_state.get(get_addr_key(mt, a)) for mt, a in leaves)
+            nicknames = [row.nickname for row in rows if row is not None]
+            panel.filter_var.set(outline_filter(path, nicknames))
         panel._apply_filters()
 
         memory_type, address = leaves[0]
