@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ctypes
+import os
 from pathlib import Path
 
 import pytest
@@ -206,20 +208,58 @@ class TestCsvModeStore:
         assert path.read_bytes() == before
         assert [p.name for p in tmp_path.iterdir()] == ["names.csv"]
 
-    def test_a_locked_file_raises_and_is_left_as_it_was(self, tmp_path, monkeypatch):
+    def test_a_refused_swap_writes_the_file_in_place(self, tmp_path, monkeypatch):
         path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
-        before = path.read_bytes()
 
-        def locked(src, dst):
+        def refused(src, dst):
             raise PermissionError(13, "The process cannot access the file", str(dst))
 
-        monkeypatch.setattr("clicknick.data.data_source.os.replace", locked)
+        monkeypatch.setattr("clicknick.data.data_source.os.replace", refused)
 
-        with pytest.raises(PermissionError):
+        CsvDataSource(str(path)).save_changes([AddressRow("C", 1, nickname="Motor")])
+
+        assert '"Motor"' in path.read_text(encoding="utf-8")
+        assert [p.name for p in tmp_path.iterdir()] == ["names.csv"]
+
+    def test_a_file_another_program_is_reading_is_saved(self, tmp_path):
+        """Explorer's preview pane or antivirus holding it open must not fail Save."""
+        path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
+
+        with open(path, "rb"):
             CsvDataSource(str(path)).save_changes([AddressRow("C", 1, nickname="Motor")])
+
+        assert '"Motor"' in path.read_text(encoding="utf-8")
+        assert [p.name for p in tmp_path.iterdir()] == ["names.csv"]
+
+    @pytest.mark.skipif(os.name != "nt", reason="Windows file locks")
+    def test_a_file_excel_locks_fails_naming_the_csv(self, tmp_path):
+        path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
+        before = path.read_bytes()
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateFileW.restype = ctypes.c_void_p
+        generic_read, no_sharing, open_existing = 0x80000000, 0, 3
+        handle = kernel32.CreateFileW(
+            str(path), generic_read, no_sharing, None, open_existing, 0, None
+        )
+        assert handle not in (None, ctypes.c_void_p(-1).value)
+        try:
+            with pytest.raises(PermissionError, match=r"^names\.csv is open in another program"):
+                CsvDataSource(str(path)).save_changes([AddressRow("C", 1, nickname="Motor")])
+        finally:
+            kernel32.CloseHandle(ctypes.c_void_p(handle))
 
         assert path.read_bytes() == before
         assert [p.name for p in tmp_path.iterdir()] == ["names.csv"]
+
+    @pytest.mark.skipif(os.name != "nt", reason="Windows file attributes")
+    def test_a_hidden_file_stays_hidden(self, tmp_path):
+        path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
+        hidden = 0x2
+        ctypes.windll.kernel32.SetFileAttributesW(str(path), hidden)
+
+        CsvDataSource(str(path)).save_changes([AddressRow("C", 1, nickname="Motor")])
+
+        assert ctypes.windll.kernel32.GetFileAttributesW(str(path)) & hidden
 
 
 class TestFieldValues:

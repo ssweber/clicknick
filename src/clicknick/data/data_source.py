@@ -7,6 +7,7 @@ address data from different sources (MDB database, CSV files).
 from __future__ import annotations
 
 import csv
+import ctypes
 import os
 import tempfile
 from abc import ABC, abstractmethod
@@ -199,6 +200,80 @@ def _read_nickname_csv(
     return result, fields
 
 
+_FILE_ATTRIBUTE_READONLY = 0x1
+_FILE_ATTRIBUTE_HIDDEN = 0x2
+_FILE_ATTRIBUTE_NORMAL = 0x80
+_INVALID_FILE_ATTRIBUTES = 0xFFFFFFFF
+
+
+def _file_attributes(path: Path) -> int | None:
+    """The file's Windows attributes, or None (not Windows, or no such file)."""
+    if os.name != "nt":
+        return None
+    value = ctypes.windll.kernel32.GetFileAttributesW(str(path))
+    return None if value == _INVALID_FILE_ATTRIBUTES else value
+
+
+def _set_file_attributes(path: Path, attributes: int) -> None:
+    """Set the file's Windows attributes; best effort, nothing elsewhere."""
+    if os.name == "nt":
+        ctypes.windll.kernel32.SetFileAttributesW(str(path), attributes)
+
+
+def _discard(path: Path) -> None:
+    """Remove a temp file; a failure here must not hide the error being raised."""
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _write_in_place(path: Path, data: str) -> None:
+    try:
+        with open(path, "w", newline="", encoding="utf-8") as csvfile:
+            csvfile.write(data)
+    except PermissionError as exc:
+        raise PermissionError(
+            f"{path.name} is open in another program (Excel?); close it and save again."
+        ) from exc
+
+
+def _write_file(path: Path, data: str) -> None:
+    """Write *data* to *path* so a write that fails partway leaves the file whole.
+
+    It is written to a hidden temp file beside *path* and swapped in. The swap
+    gives the file a new identity (creation time, permissions); its Hidden and
+    other attributes are kept. Windows refuses the swap while any program has
+    the file open, even to read it (Explorer's preview pane, antivirus,
+    OneDrive), so then the file is written in place, which fails only when a
+    program such as Excel locks it.
+    """
+    try:
+        fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}-", suffix=".tmp", dir=path.parent)
+    except OSError:
+        _write_in_place(path, data)
+        return
+    temp = Path(temp_name)
+    try:
+        _set_file_attributes(temp, _FILE_ATTRIBUTE_HIDDEN)
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as csvfile:
+            csvfile.write(data)
+        # Read-only stays off the temp file, so it can always be removed
+        original = _file_attributes(path)
+        _set_file_attributes(
+            temp,
+            (original or 0) & ~_FILE_ATTRIBUTE_READONLY or _FILE_ATTRIBUTE_NORMAL,
+        )
+    except BaseException:
+        _discard(temp)
+        raise
+    try:
+        os.replace(temp, path)
+    except OSError:
+        _discard(temp)
+        _write_in_place(path, data)
+
+
 class DataSource(ABC):
     """Abstract base class for address data sources.
 
@@ -353,16 +428,7 @@ class CsvDataSource(DataSource):
             ]
             lines.append(",".join(line_parts))
 
-        # Written beside the file and swapped in, so a failed write leaves the file whole
-        path = Path(self._csv_path)
-        fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}-", suffix=".tmp", dir=path.parent)
-        try:
-            with os.fdopen(fd, "w", newline="", encoding="utf-8") as csvfile:
-                csvfile.write("".join(line + "\r\n" for line in lines))
-            os.replace(temp_name, path)
-        except BaseException:
-            Path(temp_name).unlink(missing_ok=True)
-            raise
+        _write_file(Path(self._csv_path), "".join(line + "\r\n" for line in lines))
         return len(rows_to_write)
 
 
