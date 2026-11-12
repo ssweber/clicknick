@@ -350,16 +350,23 @@ class ConnectionSession:
     # -- Analysis and ScrWatcher -------------------------------------------
 
     def start_analysis(self, root: tk.Tk) -> None:
-        """Build program analysis in background and start ScrWatcher."""
+        """Build program analysis in the background and watch CLICK's saves.
+
+        A build already under way serves the request. The ScrWatcher is made
+        once per session, as it counts what was synced since CLICK last saved.
+        """
         from .live.session import click_temp_dir
+        from .services.analysis_service import AnalysisStatus
         from .services.scr_watcher import ScrWatcher
 
-        paths = self._analysis_paths()
-        if paths is not None:
-            self._start_analysis_thread(*paths)
+        paths = None
+        if self.analysis is None or self.analysis.status is not AnalysisStatus.BUILDING:
+            paths = self._analysis_paths()
+            if paths is not None:
+                self._start_analysis_thread(*paths)
 
         if self.scr_watcher is not None:
-            self.scr_watcher.stop()
+            return
         # Watch even with nothing to build yet: CLICK may still be writing the project
         # it is opening, and the build must follow once it has.
         self.scr_watcher = ScrWatcher(

@@ -367,6 +367,57 @@ def test_scr_files_appearing_after_connect_start_the_build(tmp_path, monkeypatch
     session.scr_watcher.stop()
 
 
+def _saved_click_project(tmp_path, monkeypatch) -> Path:
+    db_path = tmp_path / "SC_.mdb"
+    db_path.write_text("db", encoding="utf-8")
+    (tmp_path / "Scr1.tmp").write_text("ladder", encoding="utf-8")
+    monkeypatch.setattr(
+        "clicknick.utils.mdb_shared.find_click_database", lambda **_kwargs: str(db_path)
+    )
+    monkeypatch.setattr("clicknick.live.session.click_temp_dir", lambda _hwnd: tmp_path)
+    return db_path
+
+
+def test_rebuilding_analysis_keeps_the_synced_count(tmp_path, monkeypatch) -> None:
+    """A rebuild after a Sync with repairs must still say "N tags synced - Save in CLICK"."""
+    db_path = _saved_click_project(tmp_path, monkeypatch)
+    counts: list[int] = []
+    session = ConnectionSession(
+        ClickConnection("1", 2, "Example.ckp"), on_sync_status_changed=counts.append
+    )
+    session._start_analysis_thread = MagicMock()
+    root = MagicMock()
+    session.start_analysis(root)
+    session.record_sync({1, 2, 3})
+    session.record_rung_stage(4)
+    watcher = session.scr_watcher
+
+    session.analysis.mark_failed("needs repairs")
+    session.start_analysis(root)
+
+    assert session.scr_watcher is watcher
+    assert session.synced_pending == 3
+    assert session.staged_rungs == 4
+    assert counts == [3]
+    assert session._start_analysis_thread.call_args_list == [call(tmp_path, db_path)] * 2
+    watcher.stop()
+
+
+def test_asking_for_analysis_while_it_builds_does_not_queue_another(tmp_path, monkeypatch) -> None:
+    _saved_click_project(tmp_path, monkeypatch)
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    session._start_analysis_thread = MagicMock()
+    root = MagicMock()
+    session.start_analysis(root)
+    session.analysis.mark_building()
+
+    session.start_analysis(root)
+
+    session._start_analysis_thread.assert_called_once()
+    assert session.analysis.status is AnalysisStatus.BUILDING
+    session.scr_watcher.stop()
+
+
 def test_saved_program_reports_what_can_be_compared(tmp_path) -> None:
     session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
     assert session.saved_program().csv_dir is None
