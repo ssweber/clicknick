@@ -20,9 +20,12 @@ class FakeStore:
 
 
 class FakeWindow:
-    def __init__(self, session: DataSession | None = None, *, unsaved: bool = False) -> None:
+    def __init__(
+        self, session: DataSession | None = None, *, unsaved: bool = False, saves: bool = True
+    ) -> None:
         self.session = session
         self.unsaved = unsaved
+        self.saves = saves
         self.closed = False
         self.saved = False
 
@@ -36,8 +39,9 @@ class FakeWindow:
     def has_unsaved_changes(self) -> bool:
         return self.unsaved
 
-    def save_all(self) -> None:
-        self.saved = True
+    def save_all(self) -> bool:
+        self.saved = self.saves
+        return self.saves
 
 
 @pytest.fixture
@@ -135,4 +139,19 @@ def test_failed_save_keeps_everything_open(answers) -> None:
     assert not session.close(prompt_save=True)
 
     assert not editor.closed
+    session.store.stop_file_monitoring.assert_not_called()
+
+
+def test_failed_or_cancelled_dataview_save_closes_nothing(answers) -> None:
+    queue, prompts = answers
+    queue.append(True)
+    session = DataSession(FakeStore(unsaved=True))
+    dataview = FakeWindow(session, unsaved=True, saves=False)
+    session.register_dataview_window(dataview)
+
+    assert not session.close(prompt_save=True)
+
+    assert len(prompts) == 1, "the address prompt is not reached"
+    assert not dataview.closed
+    session.store.save_all_changes.assert_not_called()
     session.store.stop_file_monitoring.assert_not_called()

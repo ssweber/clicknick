@@ -57,6 +57,10 @@
 - Unsaved-change tracking is reliable: Undo, Discard and edits update duplicate marks so Sync isn't blocked by a stale "Duplicate", rows stop showing as unsaved once CLICK saves the value, changes CLICK writes right after a Sync are picked up, and an edit that fails partway changes nothing.
 - Sort by nickname, block colors, the Dataview editor, the window title and Workspace details stay current after edits, CLICK saves, Sync, CSV loads and workspace changes, and the Dataview editor writes unchanged CDV files back byte-for-byte.
 - Loading a CSV over unsaved changes asks to save or discard first.
+- Closing the Dataview Editor, a tab, or the data behind it offers every unsaved dataview for saving, including a second New Dataview and untitled ones (you pick their folder), and a save that fails or is cancelled closes nothing and says why it failed.
+- The Dataview Editor stores addresses added from the Nickname box or the Tag Browser as CLICK writes them (`X001`, `XD0u`), finds nicknames whatever their case, and refuses text that is neither a nickname nor an address.
+- Ctrl+Z and Ctrl+Y in the Dataview Editor undo and redo row moves and edits without the table and the saved file disagreeing, and undoing an address change keeps its New Value.
+- The Dataview Editor no longer opens a .cdv file it cannot read, so it can't save a nearly empty file over it.
 - Program analysis and AI tag lookups use the same nicknames as the generated code, switching CLICK projects no longer freezes the window, and the "tags synced" count counts each tag once.
 - Opening another project in the same CLICK window no longer leaves its workspace unbuilt until ClickNick restarts, and Preview Changes now updates its comparison when CLICK's program changes.
 - Open Temporary Workspace and the Workspace status update as soon as a build finishes, instead of waiting for something else to refresh the window, such as opening the Simulator.

@@ -27,7 +27,7 @@ class EditorWindow(Protocol):
 class DataviewWindow(EditorWindow, Protocol):
     def has_unsaved_changes(self) -> bool: ...
 
-    def save_all(self) -> Any: ...
+    def save_all(self) -> bool: ...
 
 
 def _close_quietly(window: EditorWindow) -> None:
@@ -93,8 +93,9 @@ class DataSession:
             )
             if answer is None:
                 return False
-            if answer:
-                window.save_all()
+            # A cancelled or failed save (the window says why) closes nothing
+            if answer and not window.save_all():
+                return False
 
         if self.store.has_unsaved_changes():
             owner: Any = self._editors[0] if self._editors else parent
