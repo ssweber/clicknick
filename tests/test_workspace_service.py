@@ -11,10 +11,12 @@ from clicknick.app import ClickNickApp
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.services.analysis_service import AnalysisStatus
 from clicknick.services.project_workspace import record_generated_plc_source
+from clicknick.services.rung_diff import WORKSPACE_SOURCE
 from clicknick.services.workspace_service import (
     WorkspaceState,
     get_workspace_status,
 )
+from clicknick.views.preview_changes_window import ProposalSource
 
 
 def _analysis(
@@ -460,10 +462,13 @@ def test_preview_changes_shows_each_folder_in_one_window(monkeypatch, tmp_path: 
     assert opened[0].opened_with["source_dir"] == source
     assert opened[0].opened_with["select"] == ("main.csv", [3])
 
+    assert opened[0].opened_with["source"] == ProposalSource(WORKSPACE_SOURCE)
     # Exported again: the same window reads the folder again
     app._show_preview_changes(folder, source, None, None, True)
     assert len(opened) == 1
-    opened[0].reload.assert_called_once_with(source_dir=source, select=None)
+    opened[0].reload.assert_called_once_with(
+        ProposalSource(WORKSPACE_SOURCE), source_dir=source, refresh_source=None, select=None
+    )
 
     # A closed window is forgotten; another folder gets its own
     opened[0].winfo_exists.return_value = False

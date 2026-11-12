@@ -205,7 +205,12 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   programs only in CLICK, unless the source is a copy of another PLC (`takes_nicknames`, `deletes_only_in_click`).
   The user's choices are kept as they differ from those (`_flipped_in_click`). A window shown as another source
   resets only those two choices (a deletion marked done stays one); skips and what was pasted stay, as they are
-  about what CLICK holds
+  about what CLICK holds. The caller gives the source (`_show_preview_changes(source=)`; by default
+  `ProposalSource.of`)
+- **Compare with > Other CLICK window** lists the CLICK windows other than the connected one. Picking one copies
+  its last save and its database's nicknames into `%LOCALAPPDATA%/ClickNick/compare/CLICK (hwnd)/`
+  (`services/click_snapshot.py`, replaced whole each time) and shows that folder as `ProposalSource.other_click`.
+  **↻ Refresh from <project>** copies it again (`refresh_source`)
 - `services/rung_diff.py` is the one comparison of a CSV bundle with CLICK's last save (`csv/`): which programs
   differ, which rungs, and the diff text. Rungs are compared by `rung_fingerprint`; pyrung source is only how a
   difference is shown

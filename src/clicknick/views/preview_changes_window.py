@@ -329,6 +329,11 @@ class ProposalSource:
         """The workspace's export when *source_dir* is given; otherwise a folder opened."""
         return cls(WORKSPACE_SOURCE if source_dir is not None else folder.name)
 
+    @classmethod
+    def other_click(cls, project: str) -> ProposalSource:
+        """What another CLICK window, with *project* open, last saved: a copy of another PLC."""
+        return cls(project, takes_nicknames=False, deletes_only_in_click=False)
+
     @property
     def title(self) -> str:
         return f"Preview Changes — from {self.label}"
@@ -1914,6 +1919,11 @@ class PreviewChangesWindow(tk.Toplevel):
         self._action_btn.configure(state="normal")
         self._start()
 
+    def _on_refresh_source(self) -> None:
+        """Take the folder again from where it was copied; the window reloads on it."""
+        if self._refresh_source is not None:
+            self._refresh_source()
+
     # ------------------------------------------------------------------
     # Widget creation
     # ------------------------------------------------------------------
@@ -1928,6 +1938,8 @@ class PreviewChangesWindow(tk.Toplevel):
         # Says where the proposal comes from (_show_source)
         self._title_lbl = ttk.Label(header, font=("TkDefaultFont", 10, "bold"))
         self._title_lbl.pack(side=tk.LEFT)
+        # Shown when the folder is a copy that can be taken again (_show_source)
+        self._refresh_btn = ttk.Button(header, command=self._on_refresh_source)
         self._progress_lbl = ttk.Label(header, text="")
         self._progress_lbl.pack(side=tk.RIGHT)
 
@@ -2142,6 +2154,11 @@ class PreviewChangesWindow(tk.Toplevel):
     def _show_source(self) -> None:
         self.title(self._source.title)
         self._title_lbl.configure(text=self._source.title)
+        if self._refresh_source is None:
+            self._refresh_btn.pack_forget()
+        else:
+            self._refresh_btn.configure(text=f"↻ Refresh from {self._source.label}")
+            self._refresh_btn.pack(side=tk.LEFT, padx=(10, 0))
 
     def __init__(
         self,
@@ -2153,15 +2170,20 @@ class PreviewChangesWindow(tk.Toplevel):
         get_saved_program: Callable[[], SavedProgram],
         get_project_store: Callable[[], AddressStore | None],
         open_staged_nicknames: Callable[[], None],
+        source: ProposalSource,
         source_dir: Path | None = None,
+        refresh_source: Callable[[], None] | None = None,
         select: tuple[str, list[int] | None] | None = None,
         on_pasted: Callable[[str], None] | None = None,
     ):
         """Open on *folder*.
 
-        *source_dir* is the workspace ``src/plc`` the folder was just exported
-        from: the diff then shows that source as written, and nicknames are left
-        to the Address Editor. *select* starts on one program, optionally with
+        *source* says where the folder's proposal comes from, and so what
+        starts out taken. *source_dir* is the workspace ``src/plc`` the folder
+        was just exported from: the diff then shows that source as written, and
+        nicknames are left to the Address Editor. *refresh_source* takes the
+        folder again from where it was copied (another CLICK window's last
+        save), shown as a button. *select* starts on one program, optionally with
         the rungs of it to paste: the differences holding them are taken and
         the others skipped. *on_pasted* is called with a status message when a
         CLICK save holds everything taken and the window closes itself.
@@ -2177,7 +2199,8 @@ class PreviewChangesWindow(tk.Toplevel):
         self._folder = folder
         self._source_dir = source_dir
         # Where the proposal comes from, which sets what starts out taken
-        self._source = ProposalSource.of(folder, source_dir)
+        self._source = source
+        self._refresh_source = refresh_source
         self._get_mdb_path = get_mdb_path
         self._get_click_hwnd = get_click_hwnd
         # The program now in CLICK as CSVs: the generated workspace's csv/ folder
@@ -2246,7 +2269,7 @@ class PreviewChangesWindow(tk.Toplevel):
 
         self._create_widgets()
         self._show_source()
-        self.reload(source_dir=source_dir, select=select)
+        self.reload(source, source_dir=source_dir, refresh_source=refresh_source, select=select)
         # The session of the project being pasted into; survives a brief disconnect
         self._project_session = self._saved_program.session
         self.after(_WATCH_INTERVAL_MS, self._watch_saved_program)
@@ -2254,13 +2277,15 @@ class PreviewChangesWindow(tk.Toplevel):
 
     def reload(
         self,
+        source: ProposalSource,
         *,
         source_dir: Path | None = None,
+        refresh_source: Callable[[], None] | None = None,
         select: tuple[str, list[int] | None] | None = None,
     ) -> None:
-        """Read the folder again: it was exported or opened again.
+        """Read the folder again: it was exported, opened or copied again.
 
-        *source_dir* and *select* are as for the constructor. Programs already
+        The arguments are as for the constructor. Programs already
         marked done stay done unless their rungs changed, and skipped
         differences stay skipped. Rungs asked for by number replace the
         program's choices. Shown as a different source (the workspace's export,
@@ -2269,7 +2294,9 @@ class PreviewChangesWindow(tk.Toplevel):
         as they are about what CLICK holds.
         """
         self._source_dir = source_dir
-        source = ProposalSource.of(self._folder, source_dir)
+        if refresh_source is not self._refresh_source:
+            self._refresh_source = refresh_source
+            self._show_source()
         if source != self._source:
             # A deletion marked done stays a deletion under the new default
             deleted = {

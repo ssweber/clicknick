@@ -21,6 +21,7 @@
 - Preview Changes' rung diff highlights only the lines and words that changed, like GitHub Desktop, with one unchanged rung on each side of a difference and separators whose arrows show more.
 - Preview Changes lets you take or skip each difference: untick **Take this difference** or click its +/- gutter and CLICK keeps its rungs there, the steps are numbered around it, **Whole program** copies the program as you chose it, and ◀ ▶ (Alt+Up/Down or F7/Shift+F7) go through every difference across programs. A blue bar beside the +/- gutter marks the difference being looked at.
 - **Ladder > Compare with > Folder** (it was **Open in Preview Changes**) compares CLICK's program with a folder of ladder CSVs, such as a copy of another PLC, so you can take only some of its differences; the title and the diff say which folder the changes come from.
+- **Ladder > Compare with > Other CLICK window** compares CLICK's program with what another open CLICK window last saved, such as a sister PLC's project: its nicknames start out skipped and the programs only this CLICK has start out kept, and **Refresh** takes its latest save.
 - ClickNick warns when CLICK holds rungs an older ClickNick pasted in a form CLICK runs differently.
   - Preview Changes shows those programs in red until you paste them again.
   - `clicknick-cli program save` lists them.

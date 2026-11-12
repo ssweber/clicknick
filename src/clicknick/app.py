@@ -27,11 +27,13 @@ from .views.overlay import Overlay
 from .widgets.tooltip import bind_tooltip
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from typing import Self
 
     from .connection_session import ConnectionSession
     from .data_session import DataSession
     from .services.workspace_mirror import ProjectWorkspaceConfig
+    from .views.preview_changes_window import ProposalSource
 
 # Set DPI awareness for better UI rendering
 windll.shcore.SetProcessDpiAwareness(1)
@@ -1806,16 +1808,23 @@ class ClickNickApp:
         program: str | None = None,
         rungs: list[int] | None = None,
         create: bool = True,
+        *,
+        source: ProposalSource | None = None,
+        refresh_source: Callable[[], None] | None = None,
     ) -> None:
         """Show *folder* in Preview Changes: one window per folder, reloaded when shown again.
 
         Preview Changes (``rung apply``) passes the workspace source the folder
         was exported from, and may name a program to start on and the rungs of
         it to paste. With *create* off, only a window already showing the folder
-        is brought up to date.
+        is brought up to date. *source* says where the folder comes from: the
+        workspace or the folder itself unless given; *refresh_source* copies it
+        again from there.
         """
-        from .views.preview_changes_window import PreviewChangesWindow
+        from .views.preview_changes_window import PreviewChangesWindow, ProposalSource
 
+        if source is None:
+            source = ProposalSource.of(folder, source_dir)
         self._preview_changes_windows = {
             path: window
             for path, window in self._preview_changes_windows.items()
@@ -1825,7 +1834,9 @@ class ClickNickApp:
         key = folder.resolve()
         window = self._preview_changes_windows.get(key)
         if window is not None:
-            window.reload(source_dir=source_dir, select=select)
+            window.reload(
+                source, source_dir=source_dir, refresh_source=refresh_source, select=select
+            )
         elif create:
             window = self._preview_changes_windows[key] = PreviewChangesWindow(
                 self.root,
@@ -1839,7 +1850,9 @@ class ClickNickApp:
                 open_staged_nicknames=lambda: self._open_address_editor(
                     "changed", close_after_sync=True
                 ),
+                source=source,
                 source_dir=source_dir,
+                refresh_source=refresh_source,
                 select=select,
                 on_pasted=lambda message: self._update_status(message, "connected"),
             )
@@ -1854,6 +1867,78 @@ class ClickNickApp:
         )
         if folder:
             self._show_preview_changes(Path(folder))
+
+    def _compare_with_click_window(self, hwnd: int, filename: str) -> None:
+        """Compare CLICK's program with what another CLICK window last saved.
+
+        Its save and nicknames are copied to a ClickNick folder, which Preview
+        Changes shows as a copy of another PLC; Refresh copies them again, as
+        long as that window still has the same project open.
+        """
+        from .live.session import click_temp_dir
+        from .services.click_snapshot import snapshot_click_program, snapshot_dir
+        from .views.preview_changes_window import ProposalSource
+
+        open_now = {
+            instance.hwnd: instance.filename for instance in self.detector.get_click_instances()
+        }
+        if open_now.get(hwnd) != filename:
+            messagebox.showerror(
+                "Compare with",
+                f"The CLICK window that had {filename} open is closed, or has another project "
+                "open now. Choose a window under Ladder > Compare with > Other CLICK window.",
+                parent=self.root,
+            )
+            return
+        project = filename.removesuffix(".ckp")
+        dest = snapshot_dir(hwnd)
+        self._update_status(f"Reading {filename}'s program…", "status")
+        self.root.configure(cursor="watch")
+        self.root.update_idletasks()
+        try:
+            note = snapshot_click_program(click_temp_dir(hwnd), dest)
+        except FileNotFoundError:
+            messagebox.showerror(
+                "Compare with",
+                f"{filename} has no saved program to compare with. Save it in CLICK first.",
+                parent=self.root,
+            )
+            return
+        except (OSError, ValueError) as exc:  # A save or copy ClickNick cannot read or replace
+            messagebox.showerror(
+                "Compare with", f"Could not read {filename}'s program: {exc}", parent=self.root
+            )
+            return
+        finally:
+            self.root.configure(cursor="")
+        self._update_status(
+            f"Compared with {filename}" + (f"; {note}" if note else ""),
+            "error" if note else "connected",
+        )
+        self._show_preview_changes(
+            dest,
+            source=ProposalSource.other_click(project),
+            refresh_source=lambda: self._compare_with_click_window(hwnd, filename),
+        )
+
+    def _fill_other_click_menu(self, menu: tk.Menu) -> None:
+        """List the CLICK windows other than the connected one, to compare with."""
+        menu.delete(0, tk.END)
+        connected = self._click.hwnd if self._click else None
+        others = [
+            instance
+            for instance in self.detector.get_click_instances()
+            if instance.hwnd != connected
+        ]
+        if not others:
+            menu.add_command(label="(no other CLICK window open)", state=tk.DISABLED)
+        for instance in others:
+            menu.add_command(
+                label=instance.filename,
+                command=lambda instance=instance: self._compare_with_click_window(
+                    instance.hwnd, instance.filename
+                ),
+            )
 
     def _create_menu_bar(self):
         """Create the application menu bar."""
@@ -1927,6 +2012,11 @@ class ClickNickApp:
         compare_menu = tk.Menu(ladder_menu, tearoff=0)
         ladder_menu.add_cascade(label="Compare with", menu=compare_menu)
         compare_menu.add_command(label="Folder...", command=self._compare_with_folder)
+        other_click_menu = tk.Menu(compare_menu, tearoff=0)
+        other_click_menu.configure(
+            postcommand=lambda: self._fill_other_click_menu(other_click_menu)
+        )
+        compare_menu.add_cascade(label="Other CLICK window", menu=other_click_menu)
         ladder_menu.add_separator()
         ladder_menu.add_command(label="Save Clipboard to CSV...", command=self._save_clipboard_csv)
 

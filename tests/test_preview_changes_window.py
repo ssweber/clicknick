@@ -93,6 +93,8 @@ def _bare_window(folder_names: list[str] = NAMES):
     window._source = ProposalSource("bundle")
     window._title_lbl = Mock()
     window.title = Mock()
+    window._refresh_source = None
+    window._refresh_btn = Mock()
     window._programs = {
         name: ProposedProgram(name, Path(name), RUNGS, len(RUNGS)) for name in folder_names
     }
@@ -609,7 +611,7 @@ def test_rungs_asked_for_by_number_do_not_change_the_remembered_switch(tmp_path:
     window = _folder_window(tmp_path)
     window._copy_whole_var.set(True)
 
-    window.reload(select=("main.csv", [2]))
+    window.reload(window._source, select=("main.csv", [2]))
 
     assert window._copy_whole_var.get() is False
     assert _read_copy_whole() is True
@@ -1145,7 +1147,7 @@ def test_a_reload_keeps_a_deletion_marked_done(monkeypatch) -> None:
 # Where the proposal comes from
 # ---------------------------------------------------------------------------
 
-SISTER = ProposalSource("sister", takes_nicknames=False, deletes_only_in_click=False)
+SISTER = ProposalSource.other_click("sister")
 
 
 def test_the_title_says_where_the_changes_come_from() -> None:
@@ -1191,7 +1193,8 @@ def test_a_folder_shown_as_the_workspace_keeps_what_is_in_click(tmp_path: Path) 
     window._partial = {"main.csv": 1}
     window._step_through = {"main.csv"}
 
-    window.reload(source_dir=tmp_path / "src" / "plc")
+    source_dir = tmp_path / "src" / "plc"
+    window.reload(ProposalSource.of(window._folder, source_dir), source_dir=source_dir)
 
     assert window._source == ProposalSource(WORKSPACE_SOURCE)
     window.title.assert_called_with("Preview Changes — from workspace")
@@ -1210,9 +1213,8 @@ def test_a_deletion_marked_done_stays_one_under_another_plcs_defaults(monkeypatc
     window._select_row(OLD)
     window._on_action()  # Next: deleted
     window._scan_folder = lambda: None
-    monkeypatch.setattr(ProposalSource, "of", classmethod(lambda cls, folder, source_dir: SISTER))
 
-    window.reload()
+    window.reload(SISTER)
 
     assert not window._kept("subroutines/old.csv")
     assert "subroutines/old.csv" in window._done
@@ -1226,6 +1228,24 @@ def test_another_plcs_window_says_what_click_keeps_when_done(monkeypatch) -> Non
 
     assert "1 program(s) in CLICK that are not in this folder are kept" in _status(window)
     assert "Every change has been made in CLICK" not in _status(window)  # Nothing deleted
+
+
+def test_a_copy_of_another_click_window_can_be_taken_again(monkeypatch) -> None:
+    window = _only_in_click_window(monkeypatch)
+    window._scan_folder = lambda: None
+    refresh = Mock()
+
+    window.reload(SISTER, refresh_source=refresh)
+
+    window.title.assert_called_with("Preview Changes — from sister")
+    window._refresh_btn.configure.assert_called_with(text="↻ Refresh from sister")
+    window._refresh_btn.pack.assert_called()
+    window._on_refresh_source()
+    refresh.assert_called_once_with()
+
+    window.reload(SISTER)  # Shown again, as a folder that is not a copy
+
+    window._refresh_btn.pack_forget.assert_called()
 
 
 class _Database:
@@ -1398,7 +1418,7 @@ def test_reload_starts_on_the_named_program_with_its_selected_rungs(tmp_path: Pa
     window = _folder_window(tmp_path)
     window._copy_whole_var.set(True)
 
-    window.reload(select=("main.csv", [2]))
+    window.reload(window._source, select=("main.csv", [2]))
 
     assert window._items[window._current_idx][0] == "main.csv"
     # Nothing to compare with yet: the rungs asked for wait for CLICK's program
@@ -1415,7 +1435,7 @@ def test_reload_keeps_done_programs_whose_rungs_did_not_change(tmp_path: Path) -
     window._done = {"subroutines/fill.csv", "main.csv"}
 
     write_csv(window._folder / "main.csv", _coils("Y001", "Y009"))  # exported again
-    window.reload(source_dir=window._source_dir)
+    window.reload(window._source, source_dir=window._source_dir)
 
     assert window._done == {"subroutines/fill.csv"}
     assert window._items[window._current_idx][0] == "main.csv"
