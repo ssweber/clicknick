@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from pyclickplc.addresses import get_addr_key
 from pyclickplc.banks import INTERLEAVED_PAIRS
-from pyclickplc.blocks import strip_block_tag
+from pyclickplc.blocks import parse_block_tag, strip_block_tag
 
 if TYPE_CHECKING:
     from ..data.address_store import AddressStore
@@ -72,9 +72,26 @@ class RowService:
 
     @staticmethod
     def _comment_without_block_tag(comment: str) -> str:
-        """The comment's own text: a block tag names one block, so a copy drops it."""
+        """The comment with the block tag the parser finds removed.
+
+        Text around the tag is kept and runs of spaces left by the removal are
+        collapsed. A closing tag elsewhere in the text is not touched.
+        """
         stripped = strip_block_tag(comment)
-        return stripped.strip() if stripped != comment else comment
+        return " ".join(stripped.split()) if stripped != comment else comment
+
+    @staticmethod
+    def _set_copied_comment(
+        session: EditSession, store: AddressStore, dest_key: int, comment: str
+    ) -> None:
+        """Copy a comment to a destination row, keeping a block tag the destination has.
+
+        A destination's own tag (for example the closing row of a block the
+        fill runs through) stays, with its comment, as the copy would remove it.
+        """
+        if parse_block_tag(store.visible_state[dest_key].comment).tag_type is not None:
+            return
+        session.set_field(dest_key, "comment", comment)
 
     @staticmethod
     def fill_down_targets(rows: list[AddressRow]) -> list[AddressRow]:
@@ -289,7 +306,7 @@ class RowService:
                 base_nickname = tmpl["nickname"]
                 if not base_nickname:
                     # Empty row in template - still copy comment/initial_value/retentive
-                    session.set_field(dest_key, "comment", tmpl["comment"])
+                    RowService._set_copied_comment(session, store, dest_key, tmpl["comment"])
                     session.set_field(dest_key, "initial_value", tmpl["initial_value"])
                     session.set_field(dest_key, "retentive", tmpl["retentive"])
                     affected.add(dest_key)
@@ -302,7 +319,7 @@ class RowService:
 
                 # Update via session
                 session.set_field(dest_key, "nickname", new_nickname)
-                session.set_field(dest_key, "comment", tmpl["comment"])
+                RowService._set_copied_comment(session, store, dest_key, tmpl["comment"])
 
                 # Copy/increment initial_value based on flag
                 if tmpl["initial_value"] and orig_num is not None and increment_initial_value:

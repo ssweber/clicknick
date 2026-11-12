@@ -129,18 +129,10 @@ def test_fill_down_over_t_td_numbers_only_the_t_rows(store) -> None:
         session.set_field(get_addr_key("T", 1), "nickname", "Delay1")
     keys = [get_addr_key(m, n) for n in range(1, 5) for m in ("T", "TD")][:7]  # T1 .. T4
     window = _fill_down_window(store, keys)
+    window.fill_down_btn = Mock()
+    window._update_fill_down_button_state = Mock()
 
-    can_fill, targets, _ = window._can_fill_down()
-    assert can_fill
-    with window._store.edit_session("Fill down") as session:
-        from clicknick.services.row_service import RowService
-
-        RowService.fill_down(
-            session,
-            window._store,
-            keys[0],
-            [window._get_current_panel().rows[i].addr_key for i in targets],
-        )
+    window._on_fill_down_clicked()
 
     nicknames = {k: store.visible_state[k].nickname for k in keys}
     assert [nicknames[get_addr_key("T", n)] for n in (1, 2, 3, 4)] == [
@@ -150,6 +142,58 @@ def test_fill_down_over_t_td_numbers_only_the_t_rows(store) -> None:
         "Delay4",
     ]
     assert all(nicknames[get_addr_key("TD", n)] == "" for n in (1, 2, 3))
+
+
+def test_commit_retries_once_the_window_has_focus() -> None:
+    panel = _panel([], editor_open=True)
+    mt = panel.sheet.MT
+    calls = []
+
+    def commit() -> None:
+        calls.append(1)
+        if len(calls) > 1:  # the first try finds no focus and commits nothing
+            mt.text_editor.open = False
+
+    mt.mouseclick_outside_editor_or_dropdown_all_canvases = Mock(side_effect=commit)
+    window = _window(Mock(), panel)
+    window.focus_force = Mock()
+
+    window._commit_open_cell_editor()
+
+    window.focus_force.assert_called_once()
+    assert not mt.text_editor.open
+
+
+def test_discard_commits_the_open_cell_editor_first() -> None:
+    panel = _panel([], editor_open=True)
+    window = _window(Mock(), panel)
+    window._store.has_unsaved_changes.return_value = False
+
+    window._discard_changes()
+
+    panel.sheet.MT.mouseclick_outside_editor_or_dropdown_all_canvases.assert_called_once()
+
+
+def test_a_new_tab_applies_its_state_after_the_view_is_built(store, monkeypatch) -> None:
+    from clicknick.views.address_editor.tab_state import TabState
+
+    panel_cls = Mock()
+    monkeypatch.setattr(f"{MODULE}.AddressPanel", panel_cls)
+    window = AddressEditorWindow.__new__(AddressEditorWindow)
+    window._store = store
+    window._tabs = {}
+    window._tab_counter = 0
+    window._analysis_service = None
+    window.notebook = Mock()
+    window._bind_panel_selection = Mock()
+    window._apply_state_to_panel = Mock()
+    order = Mock()
+    order.attach_mock(panel_cls.return_value.initialize_from_view, "initialize")
+    order.attach_mock(window._apply_state_to_panel, "apply_state")
+
+    assert window._create_new_tab(TabState.fresh())
+
+    assert [c[0] for c in order.mock_calls] == ["initialize", "apply_state"]
 
 
 # Tag Browser rename: nicknames only
@@ -209,3 +253,26 @@ def test_styling_covers_rows_a_filter_hides(tk_root, store) -> None:
     styler.apply_all_styling()
 
     assert (0, COL_NICKNAME) in sheet.cell_notes
+
+
+def test_rename_changes_nicknames_and_leaves_comments(tk_root) -> None:
+    from clicknick.views.address_editor.sheet import AddressEditorSheet
+
+    sheet = AddressEditorSheet(tk_root)
+    sheet.set_sheet_data([["", "Motor_Start", "Motor"], ["", "Motor_1", "Motor_1 overload"]])
+    panel = SimpleNamespace(
+        sheet=sheet,
+        filter_enabled_var=Mock(),
+        filter_var=Mock(),
+        row_filter_var=Mock(),
+        _apply_filters=Mock(),
+    )
+    window = _window(Mock(), panel)
+
+    window._on_rename("", "Motor", "Drive", False)
+
+    assert [sheet.get_cell_data(r, COL_NICKNAME) for r in (0, 1)] == ["Drive_Start", "Drive_1"]
+    assert [sheet.get_cell_data(r, COL_COMMENT) for r in (0, 1)] == ["Motor", "Motor_1 overload"]
+    import clicknick.views.address_editor.window as module
+
+    assert "Renamed 2 nicknames" in module.messagebox.showinfo.call_args.args[1]

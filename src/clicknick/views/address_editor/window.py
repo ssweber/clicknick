@@ -178,15 +178,11 @@ class AddressEditorWindow(tk.Toplevel):
         if not can_fill:
             return False, [], reason
 
-        # Return display indices of rows to fill: below the first row, same memory type
-        source_type = rows[0].memory_type
+        # Display indices of the rows Fill Down writes (the service picks them)
+        targets = {row.addr_key for row in RowService.fill_down_targets(rows)}
         return (
             True,
-            [
-                idx
-                for idx, row in zip(selected[1:], rows[1:], strict=True)
-                if row.memory_type == source_type
-            ],
+            [idx for idx, row in zip(selected, rows, strict=True) if row.addr_key in targets],
             "",
         )
 
@@ -432,8 +428,14 @@ class AddressEditorWindow(tk.Toplevel):
     def _commit_open_cell_editor(self) -> None:
         """Commit the text typed in an open cell editor, so it is an edit like any other."""
         for panel, *_ in self._tabs.values():
-            if panel.sheet.MT.text_editor.open:
-                panel.sheet.MT.mouseclick_outside_editor_or_dropdown_all_canvases()
+            mt = panel.sheet.MT
+            if not mt.text_editor.open:
+                continue
+            mt.mouseclick_outside_editor_or_dropdown_all_canvases()
+            if mt.text_editor.open:
+                # tksheet commits nothing while the application has no focus
+                self.focus_force()
+                mt.mouseclick_outside_editor_or_dropdown_all_canvases()
 
     def _save_all(self) -> None:
         """Save all changes to database."""
@@ -498,6 +500,7 @@ class AddressEditorWindow(tk.Toplevel):
 
     def _discard_changes(self) -> None:
         """Discard all unsaved changes by resetting to original values."""
+        self._commit_open_cell_editor()
         if not self._store.has_unsaved_changes():
             messagebox.showinfo("Discard", "No changes to discard.", parent=self)
             return

@@ -360,3 +360,42 @@ def test_add_block_over_t_td_selection_writes_a_matched_pair(store, span):
     assert comment("T", last) == "</Blk>"
     assert comment("TD", last) == "</Blk_D>"
     assert not store.has_errors()
+
+
+def test_fill_down_through_the_closing_row_keeps_its_tag(store):
+    first, last = get_addr_key("DS", 1), get_addr_key("DS", 5)
+    with store.edit_session("Setup") as session:
+        session.set_field(first, "nickname", "Alarm1")
+        session.set_field(first, "comment", "<Alarms> x")
+        session.set_field(last, "comment", "</Alarms>")
+    targets = [get_addr_key("DS", n) for n in (2, 3, 4, 5)]
+
+    with store.edit_session("Fill down") as session:
+        RowService.fill_down(session, store, first, targets)
+
+    assert store.visible_state[last].comment == "</Alarms>"
+    assert store.visible_state[first].comment == "<Alarms> x"
+    assert store.visible_state[get_addr_key("DS", 3)].comment == "x"
+    assert not store.has_errors()
+
+
+def test_clone_through_a_destination_with_a_tag_keeps_its_tag(store):
+    template = [get_addr_key("DS", 1), get_addr_key("DS", 2)]
+    with store.edit_session("Setup") as session:
+        session.set_field(template[0], "nickname", "Pump1")
+        session.set_field(template[0], "comment", "<Pumps> a")
+        session.set_field(template[1], "nickname", "Pump1_Run")
+        session.set_field(get_addr_key("DS", 4), "comment", "</Pumps>")
+    destination = [get_addr_key("DS", 3), get_addr_key("DS", 4)]
+
+    with store.edit_session("Clone") as session:
+        RowService.clone_structure(session, store, template, destination, 1)
+
+    assert store.visible_state[get_addr_key("DS", 4)].comment == "</Pumps>"
+    assert store.visible_state[get_addr_key("DS", 3)].comment == "a"
+    assert not store.has_errors()
+
+
+def test_comment_without_block_tag_collapses_the_gap():
+    assert RowService._comment_without_block_tag("a <B> b") == "a b"
+    assert RowService._comment_without_block_tag("plain  text") == "plain  text"
