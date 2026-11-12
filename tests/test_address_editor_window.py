@@ -247,7 +247,7 @@ def test_rename_changes_nicknames_and_leaves_comments(tk_root) -> None:
     )
     window = _window(Mock(), panel)
 
-    window._on_rename("", "Motor", "Drive", False)
+    window._on_rename("", "Motor", "Drive", False, False)
 
     assert [sheet.get_cell_data(r, COL_NICKNAME) for r in (0, 1)] == ["Drive_Start", "Drive_1"]
     assert [sheet.get_cell_data(r, COL_COMMENT) for r in (0, 1)] == ["Motor", "Motor_1 overload"]

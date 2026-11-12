@@ -1,5 +1,7 @@
 """Tests for outline_logic.py - tree building and flattening for address outline."""
 
+import pytest
+
 from clicknick.views.nav_window.outline_logic import (
     DisplayItem,
     TreeNode,
@@ -816,3 +818,81 @@ class TestItemPaths:
         (top,) = flatten_tree(build_tree(entries))
         paths = [item.full_path for item, _ in top.iter_preorder()]
         assert paths[-2:] == ["Mtr_A__Debug", "Mtr_A__Other"]
+
+
+def _build(nicks: list[str]) -> list[DisplayItem]:
+    entries = [("DS", i + 1, nick, i + 1) for i, nick in enumerate(nicks)]
+    return flatten_tree(build_tree(entries))
+
+
+def _leaf_addresses(items: list[DisplayItem]) -> list[int]:
+    return sorted(addr for item in items for _, addr in item.get_all_leaves())
+
+
+class TestArrayInsideMixedArray:
+    def test_array_next_to_array_names_shows_its_range(self):
+        items = _build(["Motor1_Speed", "Motor2_Speed", "Motor_Fan1", "Motor_Fan2"])
+        fan = find_item(items, lambda i: i.text == "Motor_Fan[1-2]")
+        assert fan is not None
+        assert fan.full_path == "Motor_Fan"
+        assert (fan.rename_prefix, fan.rename_text, fan.rename_is_array) == ("Motor_", "Fan", True)
+
+    def test_array_with_child_arrays_of_its_own(self):
+        items = _build(
+            ["Command_Alarm", "Command_Alarm1_id", "Command_Alarm_Valve1", "Command_Alarm_Valve2"]
+        )
+        valve = find_item(items, lambda i: i.text == "Command_Alarm_Valve[1-2]")
+        assert valve is not None
+        assert valve.full_path == "Command_Alarm_Valve"
+
+
+class TestNoAddressIsLost:
+    def test_index_that_flattens_to_several_items(self):
+        nicks = ["Tank1_Valve", "Tank1_Valve1_X", "Tank1_Valve2_X", "Tank2_Y"]
+        assert _leaf_addresses(_build(nicks)) == [1, 2, 3, 4]
+
+    def test_index_with_an_address_of_its_own_and_children(self):
+        nicks = ["Tank_Pump1", "Tank_Pump1_Run", "Tank_Pump2_Run"]
+        assert _leaf_addresses(_build(nicks)) == [1, 2, 3]
+
+    def test_random_nicknames_appear_in_exactly_one_item_each(self):
+        import random
+
+        rng = random.Random(7)
+        parts = ["A", "B", "Pump", "T", "Tank", "_X", "1", "", "_"]
+        digits = ["", "", "1", "01", "2", "10"]
+        for _ in range(300):
+            nicks = []
+            for _ in range(rng.randint(1, 12)):
+                segs = [rng.choice(parts) + rng.choice(digits) for _ in range(rng.randint(1, 4))]
+                nick = rng.choice(["_", "_", "__"]).join(segs)
+                if parse_segments(nick):
+                    nicks.append(nick)
+            items = _build(nicks)
+            assert _leaf_addresses(items) == list(range(1, len(nicks) + 1)), nicks
+            # a leaf item's path is its nickname exactly
+            for top in items:
+                for item, _ in top.iter_preorder():
+                    if item.leaf is not None and not item.children and not item.is_array:
+                        assert nicks[item.leaf[1] - 1] == item.full_path, nicks
+
+
+class TestSpellingsStayApart:
+    @pytest.mark.parametrize(
+        "nicks",
+        [
+            ["Tank_1_Pump", "Tank1_Pump"],
+            ["A__B", "A___B", "A____B"],
+            ["Pump_", "Pump"],
+            ["___A", "__A"],
+        ],
+    )
+    def test_each_nickname_keeps_its_exact_path(self, nicks):
+        items = _build(nicks)
+        paths = {
+            item.leaf[1]: item.full_path
+            for top in items
+            for item, _ in top.iter_preorder()
+            if item.leaf is not None and not item.children and not item.is_array
+        }
+        assert paths == {i + 1: nick for i, nick in enumerate(nicks)}

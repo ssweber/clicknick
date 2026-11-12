@@ -24,7 +24,7 @@ from pyclickplc.blocks import (
 from ...data.data_source import CsvDataSource
 from ...services import ImportService, RowService
 from ...services.block_service import remove_block_tag
-from ...utils.rename_helpers import build_rename_pattern
+from ...utils.rename_helpers import build_rename_pattern, rename_replacement
 from ...widgets.add_block_dialog import AddBlockDialog
 from ...widgets.custom_notebook import CustomNotebook
 from ...widgets.export_csv_dialog import ExportCsvDialog
@@ -827,7 +827,9 @@ class AddressEditorWindow(tk.Toplevel):
         # Focus the sheet for immediate keyboard navigation/editing
         panel.sheet.focus_set()
 
-    def _on_rename(self, prefix: str, old_text: str, new_text: str, is_array: bool) -> None:
+    def _on_rename(
+        self, prefix: str, old_text: str, new_text: str, is_array: bool, exact: bool
+    ) -> None:
         """Handle rename from outline tree.
 
         Args:
@@ -835,12 +837,13 @@ class AddressEditorWindow(tk.Toplevel):
             old_text: Current segment text
             new_text: New segment text
             is_array: True if renaming an array node
+            exact: True to rename only the nickname prefix + old_text
         """
         # Build the regex pattern and replacement template
-        pattern, replacement_template = build_rename_pattern(prefix, old_text, is_array)
+        pattern, replacement_template = build_rename_pattern(prefix, old_text, is_array, exact)
 
         # Format the replacement template with the new text
-        replacement = replacement_template.format(new_text=new_text)
+        replacement = rename_replacement(replacement_template, new_text)
 
         # Get the current panel
         panel = self._get_current_panel()

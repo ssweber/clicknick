@@ -52,6 +52,11 @@ class OutlinePanel(ttk.Frame):
 
         self.tree.selection_set(iid)
         self._selected_iid = iid
+        # Only a nickname segment can be renamed: not an SC/SD entry or a "_" node
+        item = self._item_data.get(iid)
+        self._context_menu.entryconfigure(
+            0, state=tk.NORMAL if item is not None and item.rename_text else tk.DISABLED
+        )
 
         # Show context menu
         self._context_menu.post(event.x_root, event.y_root)
@@ -80,7 +85,7 @@ class OutlinePanel(ttk.Frame):
             new_text = dialog.result
             # Trigger rename callback
             if self.on_rename:
-                self.on_rename(prefix, current_text, new_text, is_array)
+                self.on_rename(prefix, current_text, new_text, is_array, item.rename_exact)
 
     def _create_widgets(self) -> None:
         """Create the treeview widget."""
@@ -115,7 +120,7 @@ class OutlinePanel(ttk.Frame):
         self,
         parent: tk.Widget,
         on_select: Callable[[str, list[tuple[str, int]]], None],
-        on_rename: Callable[[str, str, str, bool], None] | None = None,
+        on_rename: Callable[[str, str, str, bool, bool], None] | None = None,
     ):
         """Initialize the outline panel.
 
@@ -123,7 +128,7 @@ class OutlinePanel(ttk.Frame):
             parent: Parent widget
             on_select: Callback when item is selected (path, list of (memory_type, address))
                        Path is the filter prefix for folders or exact name for leaves.
-            on_rename: Callback when rename is performed (prefix, old_text, new_text, is_array)
+            on_rename: Callback when rename is performed (prefix, old_text, new_text, is_array, exact)
         """
         super().__init__(parent, width=275)
         self.pack_propagate(False)
@@ -184,7 +189,9 @@ class OutlinePanel(ttk.Frame):
                 continue
             if type_entries := sorted(by_type.get(memory_type, []), key=lambda x: x[0]):
                 parent_iid = self.tree.insert("", tk.END, text=memory_type)
-                self._item_data[parent_iid] = DisplayItem(text=memory_type)
+                self._item_data[parent_iid] = DisplayItem(
+                    text=memory_type
+                )  # no path: keyed by text
                 for address, row in type_entries:
                     # Flat entries are leaves whose path is the exact nickname
                     item = DisplayItem(
@@ -214,32 +221,26 @@ class OutlinePanel(ttk.Frame):
 
         self._render_flat_types(all_rows)
 
-    def _get_expanded_paths(self) -> set[str]:
-        """Get the full_path of all currently expanded nodes.
+    @staticmethod
+    def _state_key(item: DisplayItem) -> str:
+        """Key an item's expanded state: its path, or for an SC/SD group its type.
 
-        Returns:
-            Set of full_path strings for expanded nodes
+        A group has no path; the prefix keeps its key from a folder of that name.
         """
-        expanded = set()
-        for iid in self._item_data:
-            if self.tree.item(iid, "open"):
-                item = self._item_data[iid]
-                if item.full_path:
-                    expanded.add(item.full_path)
-                else:
-                    # For flat type parent nodes (SC, SD), use the text
-                    expanded.add(self.tree.item(iid, "text"))
-        return expanded
+        return item.full_path or f"\x00{item.text}"
+
+    def _get_expanded_paths(self) -> set[str]:
+        """Get the state key of all currently expanded nodes."""
+        return {
+            self._state_key(item)
+            for iid, item in self._item_data.items()
+            if self.tree.item(iid, "open")
+        }
 
     def _restore_expanded_paths(self, expanded_paths: set[str]) -> None:
-        """Restore expanded state for nodes matching the given paths.
-
-        Args:
-            expanded_paths: Set of full_path strings to expand
-        """
+        """Restore expanded state for nodes matching the given state keys."""
         for iid, item in self._item_data.items():
-            path_to_check = item.full_path if item.full_path else self.tree.item(iid, "text")
-            if path_to_check in expanded_paths:
+            if self._state_key(item) in expanded_paths:
                 self.tree.item(iid, open=True)
 
     def refresh(self, all_rows: dict[int, AddressRow]) -> None:

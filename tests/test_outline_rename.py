@@ -6,6 +6,10 @@ in the outline panel tree.
 
 import re
 
+import pytest
+
+from clicknick.views.nav_window.outline_logic import build_tree, flatten_tree
+
 
 class TestRenameRegexPatterns:
     """Test regex patterns for renaming outline nodes."""
@@ -468,22 +472,33 @@ class TestRenameFromOutlineItems:
     """Rename as the panel runs it: the item says which segment it renames and what precedes it."""
 
     @staticmethod
-    def _rename(nicknames: list[str], text: str, new_text: str, depth: int = 0) -> list[str]:
-        """Rename with the item shown as ``text`` (the first one at ``depth`` in the tree)."""
+    def _rename(nicknames: list[str], text: str, new_text: str, occurrence: int = 0) -> list[str]:
+        """Rename with the item shown as ``text`` (the ``occurrence``-th one in the tree)."""
         from clicknick.utils.rename_helpers import build_rename_pattern as real_pattern
+        from clicknick.utils.rename_helpers import rename_replacement
         from clicknick.views.nav_window.outline_logic import build_tree, flatten_tree
 
         entries = [("DS", i + 1, nick, i + 1) for i, nick in enumerate(nicknames)]
         found = [
             item
             for top in flatten_tree(build_tree(entries))
-            for item, d in top.iter_preorder()
-            if item.text == text and d >= 0
+            for item, _ in top.iter_preorder()
+            if item.text == text
         ]
-        item = found[depth]
-        pattern, template = real_pattern(item.rename_prefix, item.rename_text, item.rename_is_array)
-        replacement = template.format(new_text=new_text)
-        return [re.sub(pattern, replacement, nick) for nick in nicknames]
+        item = found[occurrence]
+        pattern, template = real_pattern(
+            item.rename_prefix, item.rename_text, item.rename_is_array, item.rename_exact
+        )
+        replacement = rename_replacement(template, new_text)
+        renamed = [re.sub(pattern, replacement, nick) for nick in nicknames]
+        # Rename touches exactly the nicknames under the item, the ones double-click filters to
+        touched = {
+            ("DS", i + 1)
+            for i, (new, old) in enumerate(zip(renamed, nicknames, strict=True))
+            if new != old
+        }
+        assert touched == set(item.get_all_leaves())
+        return renamed
 
     def test_inner_segment_that_prefixes_its_path_renames_only_itself(self):
         nicks = ["Tank_T_A", "Tank_T_B", "T_Ambient"]
@@ -491,7 +506,7 @@ class TestRenameFromOutlineItems:
 
     def test_outer_segment_repeated_inside_renames_the_outer(self):
         nicks = ["Pump_Pump_Status", "Pump_Pump_X", "Pump_Status", "Pump_Q"]
-        assert self._rename(nicks, "Pump", "Motor", depth=0) == [
+        assert self._rename(nicks, "Pump", "Motor", occurrence=0) == [
             "Motor_Pump_Status",
             "Motor_Pump_X",
             "Motor_Status",
@@ -500,7 +515,7 @@ class TestRenameFromOutlineItems:
 
     def test_inner_segment_repeating_the_outer_name_renames_the_inner(self):
         nicks = ["Pump_Pump_Status", "Pump_Pump_X", "Pump_Status", "Pump_Q"]
-        assert self._rename(nicks, "Pump", "Inner", depth=1) == [
+        assert self._rename(nicks, "Pump", "Inner", occurrence=1) == [
             "Pump_Inner_Status",
             "Pump_Inner_X",
             "Pump_Status",
@@ -519,3 +534,47 @@ class TestRenameFromOutlineItems:
     def test_leading_zero_array_renames_keep_the_digits(self):
         nicks = ["Pump01_Run", "Pump02_Run"]
         assert self._rename(nicks, "Pump[01-02]", "Fan") == ["Fan01_Run", "Fan02_Run"]
+
+    def test_own_name_of_a_mixed_array_leaves_the_array_items_alone(self):
+        nicks = ["Command_Alarm", "Command_Alarm1_id", "Command_Alarm2_id", "Command_Alarm_Valve1"]
+        assert self._rename(nicks, "Command_Alarm", "Cmd") == [
+            "Command_Cmd",
+            "Command_Alarm1_id",
+            "Command_Alarm2_id",
+            "Command_Alarm_Valve1",
+        ]
+
+    def test_array_inside_a_mixed_array_renames_its_own_name(self):
+        nicks = ["Motor1_Speed", "Motor2_Speed", "Motor_Fan1", "Motor_Fan2"]
+        assert self._rename(nicks, "Motor_Fan[1-2]", "Blower") == [
+            "Motor1_Speed",
+            "Motor2_Speed",
+            "Motor_Blower1",
+            "Motor_Blower2",
+        ]
+
+    @pytest.mark.parametrize("nicks", [["Pump_A", "Pump_B"], ["Pump1_A", "Pump2_A"]])
+    def test_new_text_starting_with_a_digit_is_read_literally(self, nicks):
+        name = "Pump" if nicks[0].startswith("Pump_") else "Pump[1-2]"
+        renamed = self._rename(nicks, name, "2ndPump")
+        assert all(n.startswith("2ndPump") for n in renamed)
+
+    def test_backslash_in_new_text_is_read_literally(self):
+        renamed = self._rename(["Pump_A", "Pump_B"], "Pump", "a\\1b")
+        assert renamed == ["a\\1b_A", "a\\1b_B"]
+
+    def test_gap_node_has_nothing_to_rename(self):
+        entries = [
+            ("DS", 1, "Mtr1__Debug", 1),
+            ("DS", 2, "Mtr1__Other", 2),
+            ("DS", 3, "Mtr1_Run", 3),
+            ("DS", 4, "Mtr2_Run", 4),
+        ]
+        gaps = [
+            item
+            for top in flatten_tree(build_tree(entries))
+            for item, _ in top.iter_preorder()
+            if item.text == "_"
+        ]
+        assert gaps
+        assert all(item.rename_text == "" for item in gaps)

@@ -78,23 +78,44 @@ FLAT_MEMORY_TYPES = frozenset({"SC", "SD"})
 class TreeNode:
     """A node in the nickname tree (intermediate build structure).
 
-    ``seg_start``, ``path_end`` and ``child_start`` are slices of the nickname the
-    node stands for: the text before this node's own segment, the text through it,
-    and the text before its children's segments.
+    A node is one nickname segment: a name, an array index (``is_index``) or a "_"
+    gap from a double underscore. Nodes are keyed by the segment as spelled, so
+    spellings that differ ("Tank_1_Pump" and "Tank1_Pump", "A__B" and "A___B",
+    "Pump_" and "Pump") are never the same node. For an ordinary name the key is
+    the name.
+
+    ``seg_start`` and ``path_end`` are the nickname text before this node's own
+    segment and through it.
     """
 
     children: dict[str, TreeNode] = field(default_factory=dict)
     child_order: list[str] = field(default_factory=list)
     leaves: list[tuple[str, int, int]] = field(default_factory=list)  # (type, address, addr_key)
     is_array: bool = False
+    is_index: bool = False
+    has_gap: bool = False  # a child is a "_" gap
+    name: str = ""
     seg_start: str = ""
     path_end: str = ""
-    child_start: str = ""
 
     @property
     def leaf(self) -> tuple[str, int, int] | None:
         """The first address with this exact nickname."""
         return self.leaves[0] if self.leaves else None
+
+    @property
+    def is_gap(self) -> bool:
+        """True for the "_" node of a double underscore."""
+        return self.name == "_" and not self.is_index
+
+    @property
+    def child_start(self) -> str:
+        """The nickname text every child's segment follows."""
+        return self.path_end if self.is_gap else self.path_end + "_"
+
+    def child_nodes(self) -> list[TreeNode]:
+        """Children in insertion order."""
+        return [self.children[k] for k in self.child_order]
 
 
 @dataclass
@@ -115,6 +136,8 @@ class DisplayItem:
     rename_prefix: str = ""
     rename_text: str = ""
     rename_is_array: bool = False
+    # Rename changes only this exact nickname (an item with nothing under it)
+    rename_exact: bool = False
 
     @property
     def has_children(self) -> bool:
@@ -192,65 +215,76 @@ def parse_segments(nickname: str) -> list[tuple[str, str | None]]:
 
 
 def _insert_path(
-    node: TreeNode,
-    path: list[tuple[str, str | None]],
+    root: TreeNode,
+    nickname: str,
+    segments: list[tuple[str, str | None]],
     memory_type: str,
     address: int,
     addr_key: int,
 ) -> None:
-    """Insert a path into the tree, tracking insertion order.
+    """Insert a nickname's segments into the tree, tracking insertion order.
 
-    Each new node records the slice of the nickname it stands for (``seg_start``,
-    ``path_end``, ``child_start``). A "_" segment (from a double underscore) is
-    joined to its neighbours without a further separator.
+    A node's key is its segment as spelled: the name, plus a suffix when the
+    separator before it or an underscore after it is not the usual one. The slices
+    of the nickname a node records are cut only when the node is created.
+
+    A segment sits in the nickname after its separator (zero or one "_"); a "_" gap
+    is the "__" itself.
     """
-    for name, index in path:
-        if name == "_" and index is None:
-            # The "_" node is the second underscore of "__"; the first is the separator
-            seg_start = node.child_start if node.path_end else ""
-            text = "_" if node.path_end else "__"
-            if node.path_end:
-                seg_start = (
-                    node.path_end + "_" if node.child_start != node.path_end else node.path_end
-                )
-            else:
-                seg_start = ""
-            path_end = seg_start + text
-            child_start = path_end
+    node = root
+    ptr = 0  # where the next segment's separator starts
+    last = len(segments) - 1
+    prev_gap = True  # nothing before the first segment, or a gap, takes no separator
+    for i, (name, index) in enumerate(segments):
+        sep_start = ptr
+        gap = name == "_" and index is None
+        if gap:
+            ptr += 2
+            has_sep = False
+            text_start = name_end = end = ptr
         else:
-            seg_start = node.child_start
-            path_end = seg_start + name
-            child_start = path_end + "_"
+            has_sep = nickname.startswith("_", ptr) and not (ptr == 0 and name[0] == "_")
+            text_start = ptr + has_sep
+            name_end = text_start + len(name)
+            end = name_end if index is None else name_end + len(index)
+            ptr = end
+        trailing = len(nickname) - end if i == last else 0
+        name_trailing = trailing if index is None else 0
 
-        if name not in node.children:
-            node.children[name] = TreeNode(
-                is_array=index is not None,
-                seg_start=seg_start,
-                path_end=path_end,
-                child_start=child_start,
+        key = "\x01" + name if name.isdigit() else name
+        if name_trailing or (not gap and has_sep == prev_gap):
+            # a separator where none is due, or none where one is, or a trailing "_"
+            key = f"{key}\x00{int(has_sep)}{name_trailing}"
+        prev_gap = gap
+        child = node.children.get(key)
+        if child is None:
+            child = TreeNode(
+                name=name,
+                seg_start=nickname[: sep_start if gap else text_start],
+                path_end=nickname[: (end if gap else name_end) + name_trailing],
             )
-            node.child_order.append(name)
-        node = node.children[name]
+            node.children[key] = child
+            node.child_order.append(key)
+            if gap:
+                node.has_gap = True
+        node = child
+
         if index is not None:
             node.is_array = True
-            if index not in node.children:
-                node.children[index] = TreeNode(
-                    seg_start=seg_start,
-                    path_end=path_end + index,
-                    child_start=path_end + index + "_",
+            index_key = f"{index}\x00{trailing}" if trailing else index
+            child = node.children.get(index_key)
+            if child is None:
+                child = TreeNode(
+                    name=index,
+                    is_index=True,
+                    seg_start=node.seg_start,
+                    path_end=nickname[: end + trailing],
                 )
-                node.child_order.append(index)
-            node = node.children[index]
+                node.children[index_key] = child
+                node.child_order.append(index_key)
+            node = child
 
     node.leaves.append((memory_type, address, addr_key))
-
-
-def _mark_array_nodes(node: TreeNode) -> None:
-    """Mark nodes as arrays if they have any numeric children (rule 4)."""
-    for child in node.children.values():
-        _mark_array_nodes(child)
-        if any(k.isdigit() for k in child.children):
-            child.is_array = True
 
 
 def _interleave_timer_entries(
@@ -338,9 +372,8 @@ def build_tree(entries: list[tuple[str, int, str, int]]) -> TreeNode:
         path = parse_segments(nickname)
         if not path:
             continue
-        _insert_path(root, path, memory_type, address, addr_key)
+        _insert_path(root, nickname, path, memory_type, address, addr_key)
 
-    _mark_array_nodes(root)
     return root
 
 
@@ -354,23 +387,32 @@ def _extract_leaf_info(
     return (memory_type, address), addr_key
 
 
-def _numeric_children(node: TreeNode) -> list[str]:
+def _numeric_children(node: TreeNode) -> list[TreeNode]:
     """The array index children of a node, in numeric order (ties by digit string)."""
-    return sorted((k for k in node.child_order if k.isdigit()), key=lambda k: (int(k), k))
+    if not node.is_array:
+        return []
+    return sorted(
+        (c for c in node.child_nodes() if c.is_index), key=lambda c: (int(c.name), c.name)
+    )
 
 
-def _sort_children_underscore_last(child_order: list[str]) -> list[str]:
-    """Sort children so underscore nodes come last, preserving order otherwise."""
-    regular = [name for name in child_order if name != "_"]
-    underscores = [name for name in child_order if name == "_"]
-    return regular + underscores
+def _named_children(node: TreeNode) -> list[TreeNode]:
+    """The children that are not array indices, "_" gaps last."""
+    named = [c for c in node.child_nodes() if not c.is_index]
+    if not node.has_gap:
+        return named
+    return [c for c in named if not c.is_gap] + [c for c in named if c.is_gap]
 
 
-def _ordered_children(node: TreeNode) -> list[str]:
-    """Children in display order: indices by value, "_" nodes last, the rest as inserted."""
-    indices = iter(_numeric_children(node))
-    ordered = [next(indices) if k.isdigit() else k for k in node.child_order]
-    return _sort_children_underscore_last(ordered)
+def _ordered_children(node: TreeNode) -> list[TreeNode]:
+    """Children in display order: indices by value, "_" gaps last, the rest as inserted."""
+    ordered = node.child_nodes()
+    if node.is_array:
+        indices = iter(_numeric_children(node))
+        ordered = [next(indices) if c.is_index else c for c in ordered]
+    if not node.has_gap:
+        return ordered
+    return [c for c in ordered if not c.is_gap] + [c for c in ordered if c.is_gap]
 
 
 def _get_array_range(node: TreeNode) -> str:
@@ -383,8 +425,8 @@ def _get_array_range(node: TreeNode) -> str:
     if not indices:
         return "[#]"  # fallback
     if len(indices) == 1:
-        return f"[{indices[0]}]"
-    return f"[{indices[0]}-{indices[-1]}]"
+        return f"[{indices[0].name}]"
+    return f"[{indices[0].name}-{indices[-1].name}]"
 
 
 def _make_item(
@@ -418,41 +460,42 @@ def _make_item(
         children=children or [],
         is_array=array,
         base_text=text.split("[")[0] if array else "",
-        also_leaves=[] if array else [(mt, addr) for mt, addr, _ in node.leaves[1:]],
+        also_leaves=[]
+        if array or len(node.leaves) < 2
+        else [(mt, a) for mt, a, _ in node.leaves[1:]],
         rename_prefix=node.seg_start,
-        rename_text=node.path_end[len(node.seg_start) :],
+        # A gap is not a name to rename
+        rename_text="" if node.is_gap else node.path_end[len(node.seg_start) :],
         rename_is_array=array,
+        # An item with nothing under it renames its own nickname, not those that
+        # continue it (the array of the same name is another item)
+        rename_exact=leaf is not None and not children,
     )
 
 
-def _get_collapsible_leaf(node: TreeNode) -> tuple[str, TreeNode] | None:
+def _get_collapsible_leaf(node: TreeNode) -> TreeNode | None:
     """Check if an array index node should collapse with its single leaf child.
 
-    Returns (child_name, child_node) if collapsible, None otherwise.
+    Returns the child node if collapsible, None otherwise. An index with an address
+    of its own does not collapse: that address would have no item.
     """
-    if len(node.children) != 1:
+    if len(node.children) != 1 or node.leaves:
         return None
-    child_name = node.child_order[0]
-    child_node = node.children[child_name]
-    if child_node.leaf is not None and not child_node.children:
-        return child_name, child_node
+    child = node.child_nodes()[0]
+    if child.leaf is not None and not child.children:
+        return child
     return None
 
 
-def _is_single_element_array(node: TreeNode) -> tuple[str, TreeNode] | None:
+def _is_single_element_array(node: TreeNode) -> TreeNode | None:
     """Check if node is an array with exactly one numeric child and no others.
 
-    Returns (number, index node) if it should be collapsed, None otherwise.
+    Returns the index node if it should be collapsed, None otherwise.
     """
-    if not node.is_array:
+    if not node.is_array or len(node.children) != 1:
         return None
-    # Must have exactly one child, and it must be numeric
-    if len(node.children) != 1:
-        return None
-    only_child_name = node.child_order[0]
-    if not only_child_name.isdigit():
-        return None
-    return only_child_name, node.children[only_child_name]
+    only = node.child_nodes()[0]
+    return only if only.is_index else None
 
 
 def _has_mixed_array_content(node: TreeNode) -> bool:
@@ -466,7 +509,7 @@ def _has_mixed_array_content(node: TreeNode) -> bool:
         return False
     if node.leaf is not None:
         return True
-    return any(not k.isdigit() for k in node.children)
+    return any(not c.is_index for c in node.child_nodes())
 
 
 def _flatten_mixed_array(name: str, node: TreeNode) -> list[DisplayItem]:
@@ -475,27 +518,23 @@ def _flatten_mixed_array(name: str, node: TreeNode) -> list[DisplayItem]:
     ``name`` is the display text leading to the array name (a collapsed chain).
     """
     items: list[DisplayItem] = []
-    numeric_children = _numeric_children(node)
-    non_numeric_children = [k for k in node.child_order if not k.isdigit()]
 
     # If array node itself is a leaf, emit that first
     if node.leaf is not None:
         items.append(_make_item(name, node))
 
     # Emit array portion with numeric children
-    if numeric_children:
-        array_children = [
-            _flatten_child_with_prefix(num_name, node.children[num_name])[0]
-            for num_name in numeric_children
-        ]
+    if numeric_children := _numeric_children(node):
+        array_children: list[DisplayItem] = []
+        for index_node in numeric_children:
+            array_children.extend(_flatten_child_with_prefix(index_node.name, index_node))
         items.append(
             _make_item(f"{name}{_get_array_range(node)}", node, array_children, array=True)
         )
 
     # Emit non-numeric children collapsed with parent name
-    for non_num_name in _sort_children_underscore_last(non_numeric_children):
-        non_num_child = node.children[non_num_name]
-        items.extend(_flatten_child_with_prefix(f"{name}_{non_num_name}", non_num_child))
+    for child in _named_children(node):
+        items.extend(_flatten_child_with_prefix(f"{name}_{child.name}", child))
 
     return items
 
@@ -509,28 +548,34 @@ def _flatten_child_with_prefix(prefix: str, node: TreeNode) -> list[DisplayItem]
     collapse_node = node
     array_chain = False  # the chain ends on an array name shown with its [range]
 
-    # Collapse single-child chains
-    while len(collapse_node.children) == 1 and collapse_node.leaf is None:
-        only_name = collapse_node.child_order[0]
-        only_child = collapse_node.children[only_name]
-        if only_name.isdigit():
-            break
-        if _has_mixed_array_content(only_child):
-            current_path.append(only_name)
-            collapse_node = only_child
-            break
-        if single_elem := _is_single_element_array(only_child):
-            num, index_node = single_elem
-            current_path.append(f"{only_name}{num}")
+    # A node that is an array itself (the child of a mixed array) is shown as one
+    if node.is_array and not _has_mixed_array_content(node):
+        if index_node := _is_single_element_array(node):
+            current_path[0] = f"{prefix}{index_node.name}"
             collapse_node = index_node
-        elif only_child.is_array:
-            current_path.append(f"{only_name}{_get_array_range(only_child)}")
-            collapse_node = only_child
-            array_chain = True
-            break
         else:
-            current_path.append(only_name)
-            collapse_node = only_child
+            current_path[0] = f"{prefix}{_get_array_range(node)}"
+            array_chain = True
+
+    # Collapse single-child chains
+    while not array_chain and len(collapse_node.children) == 1 and not collapse_node.leaves:
+        only = collapse_node.child_nodes()[0]
+        if only.is_index:
+            break
+        if _has_mixed_array_content(only):
+            current_path.append(only.name)
+            collapse_node = only
+            break
+        if index_node := _is_single_element_array(only):
+            current_path.append(f"{only.name}{index_node.name}")
+            collapse_node = index_node
+        elif only.is_array:
+            current_path.append(f"{only.name}{_get_array_range(only)}")
+            collapse_node = only
+            array_chain = True
+        else:
+            current_path.append(only.name)
+            collapse_node = only
 
     text = "_".join(current_path)
 
@@ -546,51 +591,20 @@ def _flatten_node_children(node: TreeNode) -> list[DisplayItem]:
     """Flatten all children of a node into DisplayItems."""
     items: list[DisplayItem] = []
 
-    for name in _ordered_children(node):
-        child = node.children[name]
-
+    for child in _ordered_children(node):
         # Rule 3: collapse array index with single leaf child
-        if name.isdigit():
-            if collapse_info := _get_collapsible_leaf(child):
-                child_name, leaf_child = collapse_info
-                items.append(_make_item(f"{name}_{child_name}", leaf_child))
+        if child.is_index:
+            if leaf_child := _get_collapsible_leaf(child):
+                items.append(_make_item(f"{child.name}_{leaf_child.name}", leaf_child))
                 continue
 
-        # Rule 4: Handle array nodes
-        if child.is_array:
-            numeric_children = _numeric_children(child)
-            non_numeric_children = [k for k in child.child_order if not k.isdigit()]
-
-            # If array node is also a leaf, emit that first
-            if child.leaf is not None:
-                items.append(_make_item(name, child))
-
-            # Emit array portion
-            if numeric_children:
-                if len(numeric_children) == 1 and not non_numeric_children and child.leaf is None:
-                    # Single element - collapse
-                    num = numeric_children[0]
-                    items.extend(_flatten_child_with_prefix(f"{name}{num}", child.children[num]))
-                else:
-                    # Multi-element - show array brackets
-                    array_children = [
-                        _flatten_child_with_prefix(num_name, child.children[num_name])[0]
-                        for num_name in numeric_children
-                    ]
-                    items.append(
-                        _make_item(
-                            f"{name}{_get_array_range(child)}", child, array_children, array=True
-                        )
-                    )
-
-            # Emit non-numeric children
-            for non_num_name in _sort_children_underscore_last(non_numeric_children):
-                non_num_child = child.children[non_num_name]
-                items.extend(_flatten_child_with_prefix(f"{name}_{non_num_name}", non_num_child))
+        # Rule 4: Handle array nodes (an array with only indices is one item)
+        if child.is_array and _has_mixed_array_content(child):
+            items.extend(_flatten_mixed_array(child.name, child))
             continue
 
-        # Non-array nodes
-        items.extend(_flatten_child_with_prefix(name, child))
+        # Non-array nodes, and arrays of indices only
+        items.extend(_flatten_child_with_prefix(child.name, child))
 
     return items
 
