@@ -7,6 +7,7 @@ so these tests focus on the mapping and query layers using a mock graph.
 from __future__ import annotations
 
 import shutil
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -673,6 +674,75 @@ def test_guidance_written_whole_by_an_older_pyrung_moves_aside(tmp_path):
     assert (persist / "AGENTS.md").read_text(encoding="utf-8") == (
         (staged / "AGENTS.md").read_text(encoding="utf-8")
     )
+
+
+def test_an_ansi_guidance_file_does_not_stop_the_build(tmp_path):
+    persist = tmp_path / "Example Workspace"
+    _publish_generated_project(_staged_project(tmp_path / "first", "generated one\n"), persist)
+    ansi = "# Line 1\r\n\r\nOven at 180\N{DEGREE SIGN}C, caf\N{LATIN SMALL LETTER E WITH ACUTE}.\r\n"
+    (persist / "AGENTS.md").write_bytes(ansi.encode("cp1252"))
+    staged = _staged_guidance(tmp_path / "second")
+    (staged / "csv").mkdir()
+    (staged / "csv" / "main.csv").write_text("rung\n", encoding="utf-8")
+    (staged / "src" / "plc" / "main.py").write_text("generated two\n", encoding="utf-8")
+
+    _publish_generated_project(staged, persist)
+
+    assert (persist / "AGENTS.md").read_bytes() == ansi.encode("cp1252")
+    assert (persist / "csv" / "main.csv").is_file()
+    assert (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "generated two\n"
+
+
+def test_a_guidance_file_with_a_bom_gets_the_pointer_under_its_title(tmp_path):
+    persist = tmp_path / "Example Workspace"
+    persist.mkdir()
+    (persist / "AGENTS.md").write_bytes(b"\xef\xbb\xbf# Line 2\r\n\r\nMy own notes.\r\n")
+
+    _publish_generated_project(_staged_guidance(tmp_path / "staged"), persist)
+
+    assert (persist / "AGENTS.md").read_bytes() == (
+        b"\xef\xbb\xbf# Line 2\r\n\r\n" + _POINTER.encode() + b"\r\n\r\nMy own notes.\r\n"
+    )
+
+
+def test_a_folder_that_cannot_be_copied_leaves_the_last_one(tmp_path, monkeypatch):
+    """A csv/ file open in Excel used to leave the workspace with no csv/ at all."""
+    persist = tmp_path / "pyrung_project"
+    first = _staged_project(tmp_path / "first", "generated one\n")
+    (first / "csv").mkdir()
+    (first / "csv" / "main.csv").write_text("first save\n", encoding="utf-8")
+    _publish_generated_project(first, persist)
+    second = _staged_project(tmp_path / "second", "generated two\n")
+    (second / "csv").mkdir()
+    (second / "csv" / "main.csv").write_text("second save\n", encoding="utf-8")
+    copytree = shutil.copytree
+
+    def refuse_csv(source, *args, **kwargs):
+        if Path(source).name == "csv":
+            raise PermissionError("main.csv is open in another program")
+        return copytree(source, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copytree", refuse_csv)
+
+    with pytest.raises(PermissionError):
+        _publish_generated_project(second, persist)
+
+    assert (persist / "csv" / "main.csv").read_text(encoding="utf-8") == "first save\n"
+    assert (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "generated one\n"
+
+
+def test_regeneration_removes_outputs_it_no_longer_writes(tmp_path):
+    persist = tmp_path / "pyrung_project"
+    _publish_generated_project(_staged_project(tmp_path / "first", "generated\n"), persist)
+    (persist / "csv_output").mkdir()
+    (persist / "csv_output" / "main.csv").write_text("exported\n", encoding="utf-8")
+    (persist / "run.py").write_text("# runner\n", encoding="utf-8")
+
+    _publish_generated_project(_staged_project(tmp_path / "second", "generated\n"), persist)
+
+    assert not (persist / "csv_output").exists()
+    assert not (persist / "run.py").exists()
+    assert (persist / "project_to_csv.py").is_file()
 
 
 def test_clean_regeneration_does_not_replace_existing_recovery_snapshot(tmp_path):

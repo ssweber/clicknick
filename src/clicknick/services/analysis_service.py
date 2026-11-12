@@ -7,6 +7,7 @@ queries that return addr_key sets for address editor filtering.
 
 from __future__ import annotations
 
+import codecs
 import enum
 import shutil
 import tempfile
@@ -150,11 +151,11 @@ _OLD_GUIDANCE_MARKER = "<!-- pyrung:workspace-lifecycle:start -->"
 _EXPORT_IGNORE = shutil.ignore_patterns(".venv", "__pycache__", "*.pyc")
 
 
-def _clean_generated(persist_dir: Path, *, preserve_source: bool = False) -> None:
-    """Remove only ClickNick-owned outputs from an active workspace."""
+def _clean_generated(persist_dir: Path, *, keep: frozenset[str] = frozenset()) -> None:
+    """Remove ClickNick-owned outputs from an active workspace, except those named in *keep*."""
     for child in persist_dir.iterdir():
         managed = child.name in _GENERATED_DIR_NAMES or child.name in _GENERATED_FILE_NAMES
-        if not managed or (preserve_source and child.name == "src"):
+        if not managed or child.name in keep:
             continue
         if child.is_dir():
             shutil.rmtree(child, ignore_errors=True)
@@ -190,26 +191,41 @@ def _refresh_workspace_guidance(source: Path, destination: Path) -> None:
     pointer = next(
         (line for line in generated.splitlines() if line.startswith(_GUIDANCE_MARKER)), None
     )
-    existing = destination.read_text(encoding="utf-8")
-    if pointer is None or _GUIDANCE_MARKER in existing:
+    if pointer is None:
         return
-    if _OLD_GUIDANCE_MARKER in existing:
-        destination.replace(destination.with_name(f"{destination.stem}.previous.md"))
-        refreshed = generated
-    else:
-        # Under the file's title when it opens with one, otherwise on top.
-        title, _, body = existing.partition("\n")
-        if title.startswith("# "):
-            body = body.lstrip("\n")
-            refreshed = f"{title}\n\n{pointer}\n\n{body}"
-        else:
-            refreshed = f"{pointer}\n\n{existing}"
-    staging = destination.with_suffix(f"{destination.suffix}.clicknick-guidance")
+    # Only a pointer line is at stake: a file that is not UTF-8 (an ANSI file),
+    # or that cannot be read or replaced, stays as it is and the build goes on.
     try:
-        staging.write_text(refreshed, encoding="utf-8")
-        staging.replace(destination)
-    finally:
-        staging.unlink(missing_ok=True)
+        raw = destination.read_bytes()
+        existing = raw.decode("utf-8-sig")
+    except (OSError, UnicodeDecodeError):
+        return
+    if _GUIDANCE_MARKER in existing:
+        return
+    encoding = "utf-8-sig" if raw.startswith(codecs.BOM_UTF8) else "utf-8"
+    newline = "\r\n" if b"\r\n" in raw else "\n"
+    existing = existing.replace("\r\n", "\n")
+    try:
+        if _OLD_GUIDANCE_MARKER in existing:
+            destination.replace(destination.with_name(f"{destination.stem}.previous.md"))
+            refreshed = generated
+            encoding, newline = "utf-8", None
+        else:
+            # Under the file's title when it opens with one, otherwise on top.
+            title, _, body = existing.partition("\n")
+            if title.startswith("# "):
+                body = body.lstrip("\n")
+                refreshed = f"{title}\n\n{pointer}\n\n{body}"
+            else:
+                refreshed = f"{pointer}\n\n{existing}"
+        staging = destination.with_suffix(f"{destination.suffix}.clicknick-guidance")
+        try:
+            staging.write_text(refreshed, encoding=encoding, newline=newline)
+            staging.replace(destination)
+        finally:
+            staging.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
@@ -228,22 +244,23 @@ def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
     persist_dir.mkdir(parents=True, exist_ok=True)
     backup_modified_plc_source(persist_dir)
 
-    # Keep active source in place until all other generated files are ready.
-    # _replace_tree then publishes src/plc atomically and restores it if the
-    # filesystem refuses the final rename.
-    _clean_generated(persist_dir, preserve_source=True)
+    # Each generated folder replaces its old copy in one rename, so a failure part
+    # way (a csv/ file open in Excel) leaves the old copy rather than none. Active
+    # source stays in place until everything else is published.
     for child in staged_dir.iterdir():
         if child.name == "src":
             continue
         destination = persist_dir / child.name
         if child.name in _GENERATED_DIR_NAMES:
-            shutil.copytree(child, destination, dirs_exist_ok=True)
+            _replace_tree(child, destination)
         elif child.name in _GENERATED_FILE_NAMES:
             shutil.copy2(child, destination)
         elif child.name in _WORKSPACE_GUIDANCE_FILES and destination.is_file():
             _refresh_workspace_guidance(child, destination)
         else:
             _copy_missing(child, destination)
+    # Outputs this generation does not write go, csv_output/ among them.
+    _clean_generated(persist_dir, keep=frozenset(child.name for child in staged_dir.iterdir()))
 
     _replace_tree(staged_source, plc_source_dir(persist_dir))
     record_generated_plc_source(persist_dir)
