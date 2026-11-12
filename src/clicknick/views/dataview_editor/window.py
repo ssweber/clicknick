@@ -526,9 +526,20 @@ class DataviewEditorWindow(tk.Toplevel):
         self.notebook.add(panel, text=name)
         self.notebook.select(panel)
 
+    def _dialog_folder(self) -> Path:
+        """Where Open, Save As and Export start: the DataView folder shown, else the
+        folder last used here, else Documents."""
+        folder = self.shared_data.dataview_folder
+        if folder is not None and folder.is_dir():
+            return folder
+        if self._last_folder is not None and self._last_folder.is_dir():
+            return self._last_folder
+        documents = Path.home() / "Documents"
+        return documents if documents.is_dir() else Path.home()
+
     def _open_file(self) -> None:
         """Open a CDV file via file dialog."""
-        initial_dir = self.shared_data.dataview_folder or Path.cwd()
+        initial_dir = self._dialog_folder()
 
         file_path = filedialog.askopenfilename(
             parent=self,
@@ -538,6 +549,7 @@ class DataviewEditorWindow(tk.Toplevel):
         )
 
         if file_path:
+            self._last_folder = Path(file_path).parent
             self._open_dataview(Path(file_path))
 
     def _save_as(self, panel: DataviewPanel) -> bool:
@@ -547,7 +559,7 @@ class DataviewEditorWindow(tk.Toplevel):
         the file is open in another tab, or the save fails.
         """
         self.notebook.select(panel)
-        initial_dir = self.shared_data.dataview_folder or Path.cwd()
+        initial_dir = self._dialog_folder()
 
         # Use folder selection dialog
         folder_path = filedialog.askdirectory(
@@ -557,6 +569,7 @@ class DataviewEditorWindow(tk.Toplevel):
         )
         if not folder_path:
             return False
+        self._last_folder = Path(folder_path)
 
         # Use the panel's name for the filename
         new_path = Path(folder_path) / f"{panel.name}.cdv"
@@ -612,7 +625,7 @@ class DataviewEditorWindow(tk.Toplevel):
         if not panel or not self._commit_cell_editor(panel):
             return
 
-        initial_dir = self.shared_data.dataview_folder or Path.cwd()
+        initial_dir = self._dialog_folder()
 
         # Use folder selection dialog
         folder_path = filedialog.askdirectory(
@@ -623,6 +636,7 @@ class DataviewEditorWindow(tk.Toplevel):
 
         if not folder_path:
             return
+        self._last_folder = Path(folder_path)
 
         export_path = Path(folder_path) / f"{panel.name}.cdv"
 
@@ -1311,6 +1325,7 @@ class DataviewEditorWindow(tk.Toplevel):
         self._get_simulation = get_simulation
         self._sim: SimulationSession | None = None
         self._pending_sim_connect = False
+        self._last_folder: Path | None = None
         self._sim_after_id: str | None = None
 
         # Navigation window

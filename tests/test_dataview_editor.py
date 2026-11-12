@@ -847,6 +847,27 @@ def test_write_stops_on_a_new_value_that_does_not_validate(
     assert dialogs.errors == ["X001: Must be 0 or 1"]
 
 
+def test_open_and_save_as_start_in_a_folder_that_exists(
+    editor, dialogs, tk_root, tmp_path, monkeypatch
+):
+    window = editor()
+    window.shared_data._get_folder = lambda: tmp_path / "gone" / "DataView"
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    (tmp_path / "Documents").mkdir()
+
+    assert window._dialog_folder() == tmp_path / "Documents"
+
+    last = tmp_path / "last"
+    last.mkdir()
+    window._last_folder = last
+    assert window._dialog_folder() == last
+
+    shown = tmp_path / "shown"
+    shown.mkdir()
+    window.shared_data._get_folder = lambda: shown
+    assert window._dialog_folder() == shown
+
+
 def test_text_typed_in_a_real_cell_is_committed(editor, dialogs, tk_root, tmp_path, monkeypatch):
     window, panel, _path = _typed(editor, tk_root, tmp_path, monkeypatch)
 

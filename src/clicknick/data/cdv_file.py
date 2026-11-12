@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pyclickplc.dataview import check_cdv_file
 
-from ..utils.click_temp import click_temp_dir
+from ..utils.click_temp import click_temp_dir, temp_root
 
 
 def click_dataview_folder(hwnd: int) -> Path | None:
@@ -17,6 +17,21 @@ def click_dataview_folder(hwnd: int) -> Path | None:
     """
     folder = click_temp_dir(hwnd) / "DataView"
     return folder if folder.is_dir() else None
+
+
+def csv_dataview_folder(csv_path: Path | str) -> Path | None:
+    """The folder holding the CSV *csv_path*, or None when it is gone or is CLICK's own.
+
+    A CSV copied into a ``CLICK (hwnd)`` temp folder lives only as long as that
+    window, so its folder is not somewhere to open or save .cdv files.
+    """
+    folder = Path(csv_path).parent
+    if not folder.is_dir():
+        return None
+    root = temp_root()
+    if any(p.parent == root and p.name.startswith("CLICK (") for p in (folder, *folder.parents)):
+        return None
+    return folder
 
 
 def list_cdv_files(dataview_folder: Path | str) -> list[Path]:

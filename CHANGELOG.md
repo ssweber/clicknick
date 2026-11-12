@@ -59,6 +59,7 @@
 
 ### Fixed
 
+- After the CLICK window closes with a CSV loaded from its temp folder, the Dataview Editor's Open and Save As start in the folder you used last (or Documents) instead of the deleted temp folder.
 - A Dataview **New Value** that is not valid for its address (such as `abc` for DS1) now says why and keeps your text in the cell, instead of reverting to the earlier value that Write would send.
 - In the Tag Browser's Outline, Rename changes the segment you picked instead of an unrelated nickname that starts with the same letters, and nicknames like `Pump01_Run` keep their leading zeros, stay apart from `Pump1_Run`, and double-clicking one filters the Address Editor to it.
 - The Tag Browser's Outline lists array indices in numeric order (Pump2 before Pump10) and lists a nickname used on two addresses once for each.

@@ -694,15 +694,16 @@ class ClickNickApp:
     def _dataview_folder(self) -> Path | None:
         """The DataView folder the Dataview Editor shows: the connected CLICK window's.
 
-        With no window connected, the loaded CSV's folder; otherwise none. Never
-        another ``CLICK (hwnd)`` folder: that one holds another project's .cdv files.
+        With no window connected, the loaded CSV's folder, unless that is a CLICK
+        temp folder or gone; otherwise none. Never another ``CLICK (hwnd)`` folder:
+        that one holds another project's .cdv files.
         """
-        if self._click is not None:
-            from .data.cdv_file import click_dataview_folder
+        from .data.cdv_file import click_dataview_folder, csv_dataview_folder
 
+        if self._click is not None:
             return click_dataview_folder(self._click.hwnd)
         csv_path = self._csv_path
-        return Path(csv_path).parent if csv_path else None
+        return csv_dataview_folder(csv_path) if csv_path else None
 
     def _open_dataview_editor(self):
         """Open the Dataview Editor window, or focus if already open.

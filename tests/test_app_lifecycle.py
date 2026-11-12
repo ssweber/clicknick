@@ -870,6 +870,19 @@ def test_with_no_window_the_dataview_editor_shows_the_csv_folder_or_none(monkeyp
     assert app._dataview_folder() is None
 
 
+def test_after_the_window_closes_a_csv_in_its_temp_folder_has_no_dataview_folder(
+    monkeypatch, tmp_path
+):
+    """CLICK deletes that folder, so Open and Save As must not start in it."""
+    _two_click_folders(monkeypatch, tmp_path)
+    app, _prompts = _app(monkeypatch)
+    app._click = None
+    csv = tmp_path / f"CLICK ({222:08X})" / "Address.csv"
+    app._data = DataSession(FakeStore(is_database=False, source_path=str(csv)))
+
+    assert app._dataview_folder() is None
+
+
 def test_verify_checks_the_connected_windows_dataview_folder(monkeypatch, tmp_path):
     connected = _two_click_folders(monkeypatch, tmp_path)
     checked = []

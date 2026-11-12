@@ -3,7 +3,12 @@
 from pyclickplc.banks import DataType
 from pyclickplc.dataview import DataViewFile
 
-from clicknick.data.cdv_file import check_cdv_files, click_dataview_folder, list_cdv_files
+from clicknick.data.cdv_file import (
+    check_cdv_files,
+    click_dataview_folder,
+    csv_dataview_folder,
+    list_cdv_files,
+)
 from clicknick.utils import click_temp
 
 
@@ -26,6 +31,17 @@ class TestDataviewFolderDiscovery:
         (tmp_path / "CLICK (00C40F12)").mkdir()
 
         assert click_dataview_folder(0x00C40F12) is None
+
+    def test_a_csv_folder_is_its_own_unless_it_is_a_click_temp_folder(self, monkeypatch, tmp_path):
+        temp = tmp_path / "temp"
+        own = tmp_path / "projects"
+        (temp / "CLICK (00C40F12)").mkdir(parents=True)
+        own.mkdir()
+        monkeypatch.setattr(click_temp, "_windows_temp_path", lambda: str(temp))
+
+        assert csv_dataview_folder(own / "a.csv") == own
+        assert csv_dataview_folder(temp / "CLICK (00C40F12)" / "Address.csv") is None
+        assert csv_dataview_folder(tmp_path / "gone" / "a.csv") is None
 
     def test_list_cdv_files_sorted_and_filtered(self, tmp_path):
         folder = tmp_path / "DataView"
