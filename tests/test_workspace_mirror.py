@@ -214,9 +214,7 @@ def test_choosing_an_existing_workspace_keeps_its_edited_source(tmp_path: Path) 
 
     _choose_existing_workspace(temporary, durable)
 
-    assert (durable / "src" / "plc" / "main.py").read_text(encoding="utf-8") == (
-        "unpasted edits\n"
-    )
+    assert (durable / "src" / "plc" / "main.py").read_text(encoding="utf-8") == ("unpasted edits\n")
     # The build that follows regenerates src/plc; the edits stay in the backup.
     _publish_generated_project(_generated(tmp_path / "g2", "generated B\n"), durable)
     backup = durable / "backup" / "src" / "plc"

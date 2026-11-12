@@ -746,7 +746,9 @@ def test_guidance_written_whole_by_an_older_pyrung_moves_aside(tmp_path):
 def test_an_ansi_guidance_file_does_not_stop_the_build(tmp_path):
     persist = tmp_path / "Example Workspace"
     _publish_generated_project(_staged_project(tmp_path / "first", "generated one\n"), persist)
-    ansi = "# Line 1\r\n\r\nOven at 180\N{DEGREE SIGN}C, caf\N{LATIN SMALL LETTER E WITH ACUTE}.\r\n"
+    ansi = (
+        "# Line 1\r\n\r\nOven at 180\N{DEGREE SIGN}C, caf\N{LATIN SMALL LETTER E WITH ACUTE}.\r\n"
+    )
     (persist / "AGENTS.md").write_bytes(ansi.encode("cp1252"))
     staged = _staged_guidance(tmp_path / "second")
     (staged / "csv").mkdir()
