@@ -2502,6 +2502,50 @@ def test_a_write_pyrung_never_answers_keeps_the_switch_position_for_restart(read
     ], "Restart starts in RUN, where the user had it, with the force on C1"
 
 
+def _unanswered_run_time_edit(ready) -> None:
+    """In RUN, a RUN Time Edit pyrung never answers; frames then show it paused."""
+    from clicknick.services.dap_service import DapUnavailableError
+
+    ready.open()
+    ready.sim.set_switch_position("run")
+    ready.dap.frame(mode="run", running=True)
+    ready.scheduler.run_ready()
+    _rebuild(ready)
+    ready.dap.reload_error = DapUnavailableError("evaluate: no response from simulation")
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+    ready.dap.frame(mode="run", running=False)
+    ready.scheduler.run_ready()
+    ready.dap.reload_error = None
+    assert ready.sim.switch_position == "step"
+
+
+def test_choosing_step_where_the_switch_shows_it_ends_the_hold(ready):
+    _unanswered_run_time_edit(ready)
+    mark = len(ready.dap.calls)
+    ready.sim.set_switch_position("step")
+    assert ready.dap.calls[mark:] == [], "it already steps"
+    assert ready.sim.program_change.actions == ("write", "restart")
+
+    ready.sim.restart()
+    ready.scheduler.run_ready()
+    assert [call[:2] for call in ready.dap.calls[1:]] == [("set_mode", "run")], "Restart in STEP"
+
+
+def test_while_the_switch_is_held_the_write_offered_is_for_the_users_position(ready):
+    _unanswered_run_time_edit(ready)
+    assert ready.sim.program_change.actions == ("run_time_edit", "stop_and_write", "restart")
+    mark = len(ready.dap.calls)
+    ready.sim.write_program()  # STEP's action: not what a write does here
+    ready.scheduler.run_ready()
+    assert ready.dap.calls[mark:] == []
+
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+    calls = [call[0] for call in ready.dap.calls[mark:]]
+    assert calls[0] == "pause" and "reload" in calls and calls[-1] == "continue"
+
+
 def test_moving_the_switch_after_an_unanswered_write_follows_frames_again(ready):
     from clicknick.services.dap_service import DapUnavailableError
 

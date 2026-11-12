@@ -144,11 +144,16 @@ def test_dragging_the_console_header_resizes_the_pane(simulator, ready):
 
 def test_a_busy_console_stays_where_it_is(simulator, ready):
     win = simulator(ready)
-    win._console._set_busy(True)
+    started: list = []
+    ready.sim._run_background = lambda target, _name: started.append(target)
+    win._console._send = lambda command, **_kw: (True, "")
+    win._console._submit_command_text("run 10s")
     assert str(win._console._pop_btn.cget("state")) == "disabled"
     win._pop_out_console()
     assert win._console_window is None and win._console_shown()
-    win._console._set_busy(False)
+    started.pop()()
+    ready.scheduler.run_ready()
+    assert str(win._console._pop_btn.cget("state")) == "normal"
 
 
 def test_a_failed_conversion_shows_in_the_console_and_offers_retry(simulator, tmp_path):
@@ -1014,3 +1019,34 @@ def test_closing_the_simulator_mid_command_does_not_hold_writes_back(simulator, 
     ready.scheduler.run_ready()
     assert ("reload",) in ready.dap.calls
     assert "while a Console command runs" not in _output(again._console)
+
+
+def test_a_reopened_console_shows_a_command_still_running_and_stops_it(simulator, ready):
+    win = simulator(ready)
+    _rebuilt(ready)
+    started: list = []
+    ready.sim._run_background = lambda target, _name: started.append(target)
+    win._console._send = lambda command, **_kw: (True, "")
+    win._console._submit_command_text("run 10m")
+    win._on_close()
+
+    again = simulator(ready, turn_on=False)
+    console = again._console
+    assert console.busy and ready.sim.console_busy
+    assert console._send_btn.cget("text") == "Stop"
+    note = "A Console command is still running; the program can be written once it ends"
+    assert note in ready.sim.program_change.text
+    assert any(note in text for text, _labels in again._banner_key)
+
+    sent: list[str] = []
+    console._send = lambda command, **_kw: (sent.append(command), (True, ""))[1]
+    console._start_background = lambda target, *, name: target()
+    console._send_btn.invoke()
+    assert sent == ["stop"]
+
+    started.pop()()  # pyrung ends the command it was asked to stop
+    ready.scheduler.run_ready()
+    assert not console.busy
+    assert console._send_btn.cget("text") == "Send"
+    assert note not in ready.sim.program_change.text
+    assert ready.sim.program_change.actions == ("write",)

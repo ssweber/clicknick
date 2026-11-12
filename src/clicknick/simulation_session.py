@@ -910,7 +910,7 @@ class SimulationSession:
         if self._writing or self._console_commands:
             return ()  # one write at a time, and not under a Console command
         actions: tuple[ProgramAction, ...] = (
-            ("run_time_edit", "stop_and_write") if self.switch_position == "run" else ("write",)
+            ("run_time_edit", "stop_and_write") if self._write_position == "run" else ("write",)
         )
         return (*actions, "restart") if self._write_error else actions
 
@@ -959,6 +959,11 @@ class SimulationSession:
         carry = self._carry_plan(analysis).notice
         if carry:
             tail = f" {carry}{tail}"  # listed before the user writes
+        if self._console_commands and not self._writing:
+            tail += (
+                " A Console command is still running; the program can be written once it ends "
+                "(type stop to cancel it)."
+            )
         if new_build:
             if analysis.status is AnalysisStatus.FAILED:
                 reason = analysis.error or "Program conversion failed."
@@ -1687,6 +1692,11 @@ class SimulationSession:
     # ------------------------------------------------------------------
 
     @property
+    def console_busy(self) -> bool:
+        """A Console command is in flight (:meth:`run_console_command`), from any panel."""
+        return self._console_commands > 0
+
+    @property
     def writing(self) -> bool:
         """True from a write's request until pyrung answers; the Console waits meanwhile."""
         return self._writing
@@ -2045,9 +2055,14 @@ class SimulationSession:
 
         self._run_serial(job)
 
+    @property
+    def _write_position(self) -> SwitchPosition:
+        """The position a write goes back to: the user's while it is held, else the switch."""
+        return self._desired_position if self._position_held else self.switch_position
+
     def run_time_edit(self) -> None:
         """Write the workspace's program while in RUN, keeping every value, timer and force."""
-        if self.switch_position == "run":
+        if self._write_position == "run":
             self._write_program("keep")
 
     def stop_and_write(self) -> None:
@@ -2056,12 +2071,12 @@ class SimulationSession:
         pyrung's STOP -> RUN keeps retentive values and forces and clears the
         rest, as a CLICK does after a write in STOP.
         """
-        if self.switch_position == "run":
+        if self._write_position == "run":
             self._write_program("stop")
 
     def write_program(self) -> None:
         """Write the workspace's program in STOP or while stepping; values and mode stay."""
-        if self.switch_position != "run":
+        if self._write_position != "run":
             self._write_program("keep")
 
     def reload(self) -> None:
@@ -2479,6 +2494,11 @@ class SimulationSession:
             return
         current = self.switch_position
         if position == current:
+            if self._position_held:
+                # The switch already shows it; the user's choice now is this position.
+                self._desired_position = position
+                self._position_held = False
+                self._emit("desired")
             return
         if not self._state.run_hint_seen:
             self._update_state(run_hint_seen=True)

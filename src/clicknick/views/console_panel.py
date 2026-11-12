@@ -95,7 +95,9 @@ class ConsolePanel(ttk.Frame):
     def _on_simulation_event(self, event: SimEvent) -> None:
         if self._destroyed:
             return
-        if event.kind == "message":
+        if event.kind == "desired":
+            self._show_busy()
+        elif event.kind == "message":
             self._append_output(event.text.rstrip("\n") + "\n", event.level)
         elif event.kind == "echo":
             # What the user just did on the panel, as the command that does it.
@@ -149,10 +151,19 @@ class ConsolePanel(ttk.Frame):
 
         self._start_background(_worker, name="console-stop")
 
-    def _set_busy(self, busy: bool) -> None:
+    def _show_busy(self) -> None:
+        """Show the session's Console command state: busy, with Stop, while one runs.
+
+        The command may come from a panel that has since closed; Stop still
+        cancels it, through this panel's own connection.
+        """
+        busy = self.busy
+        if busy == (self._busy_tick >= 0):
+            return
         # A command's output arrives in this panel, so it stays put until done.
         self._pop_btn.configure(state="disabled" if busy else "normal")
         if busy:
+            self._cancel_requested = False
             self._busy_tick = 0
             self._console_input.set_busy(True)
             # Repurpose Send as Stop rather than greying it out -- it's the
@@ -199,7 +210,6 @@ class ConsolePanel(ttk.Frame):
                 self._append_output("Send reload on its own.\n", "error")
             return
         self._cancel_requested = False
-        self._set_busy(True)
 
         def _on_progress(text: str) -> None:
             self._schedule_ui(lambda: self._append_output(text, "progress"))
@@ -226,7 +236,6 @@ class ConsolePanel(ttk.Frame):
                     tag = "progress" if self._cancel_requested else "error"
                 self._append_output(text + "\n", tag)
             self._cancel_requested = False
-            self._set_busy(False)
 
         def _worker() -> list[tuple[bool, str]]:
             try:
@@ -234,7 +243,8 @@ class ConsolePanel(ttk.Frame):
             except Exception as exc:  # never leave the console stuck busy
                 return [(False, f"Console error: {exc}")]
 
-        # The session runs it, so the command ends there even if this panel closes first.
+        # The session runs it and says when it ends (a "desired" event), even if
+        # this panel closes first; the panel shows busy from that.
         self._simulation.run_console_command(_worker, _done)
 
     # ------------------------------------------------------------------
@@ -433,12 +443,13 @@ class ConsolePanel(ttk.Frame):
         for text, tag in transcript:
             self._write(text, tag)
         simulation.add_listener(self._on_simulation_event)
+        self._show_busy()  # a command sent before this panel opened may still run
         self._load_grammar()
 
     @property
     def busy(self) -> bool:
-        """A command is in flight; its output will arrive in this panel."""
-        return self._busy_tick >= 0
+        """A Console command is in flight, from this panel or one that closed."""
+        return self._simulation.console_busy
 
     def focus_input(self) -> None:
         self._console_input.focus_set()
