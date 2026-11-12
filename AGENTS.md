@@ -260,7 +260,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - `ConnectionSession.simulation` (a `SimulationSession`) is the one home of the simulated PLC: the pyrung DAP
   subprocess, its Modbus client, switch/analog/force settings and their persistence (`services/sim_state.py`)
 - It runs headless: `turn_on()` starts it (opening the Simulator does this), and only `turn_off()` (the
-  Start/Stop beside the main window's Test legend) or connection teardown stops it. Closing windows never does. The on/off state is
+  Start/Stop beside the main window's Test legend), connection teardown or a CLICK save that does not convert
+  stops it. Closing windows never does. The on/off state is
   not persisted: nothing launches a subprocess or listens on port 502 at app start
 - The Simulator (whose command console is a bottom pane, `views/console_panel.py`, that pops out and docks back)
   and the Dataview editor only observe it (the Dataview attaches while it serves Modbus). Views
@@ -281,9 +282,16 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   reports tag names; they are mapped with the names of the program the simulation was launched on
   (`_tag_maps`), so a rename in CLICK does not move them, and `load_state` reports entries that are not addresses
 - A new analysis generation (a CLICK save, Reload from CLICK) restarts a running simulation on the rebuilt
-  workspace once the build is done, with the same desired state and switch position, and sets a notice
-  (`_follow_program`, on the 2 s watch tick). Until then frames are shown but not adopted
-  (`_program_current`): pyrung's autoreload may already have swapped in the new program
+  workspace once the build is done (`_follow_program`, on the 2 s watch tick): from power-on values or the PLC
+  data file, with the same desired state and switch position. Its notice is set once the restart is ready. A
+  build that fails stops the simulation, since pyrung may already have loaded files of it, with a notice naming
+  the reason; the next build that converts starts it again. This relies on `AnalysisService.build()` bumping
+  the generation when it starts, failed or not
+- Until the simulation runs the current generation (`_program_current`), pyrung's autoreload may already have
+  swapped in the new program and lost forces and links on renamed tags. Frames then add forces and links (the
+  Console's, last command wins) but do not release any; a release is checked again once the program is current
+- `_reapply` sends every entry even when one goes unanswered; an unanswered entry stays set and is reported,
+  and an unanswered link listing is asked again on the next frame
 - A failed DAP request undoes the user's action only when the simulation that was asked refused it: not when it
   has since stopped or restarted (token check) or never answered (`DapUnavailableError`)
 

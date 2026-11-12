@@ -26,6 +26,7 @@ import threading
 import traceback
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
@@ -83,6 +84,9 @@ SAVE_DELAY_MS = 500
 MODBUS_POLL_S = 0.1
 #: A refusal to run lists this many rungs ClickNick cannot read and counts the rest.
 UNREADABLE_LISTED = 10
+RESTARTED_NOTICE = (
+    "The simulation restarted on CLICK's last save. Switches, forces and bench links carried over."
+)
 
 
 SwitchPosition = Literal["stop", "step", "run"]
@@ -323,6 +327,10 @@ class SimulationSession:
         self._program_names: tuple[Mapping[str, int], Mapping[int, str]] | None = None
         # A launch whose process died before the session adopted it.
         self._died_token: int | None = None
+        # Restarting on a CLICK save: say so once it is ready. The notice that a save
+        # which did not convert stopped it, until it runs again.
+        self._restart_notice = False
+        self._stopped_by_save: str | None = None
         self._waited_ms = 0
         self._analysis_after_id: Any | None = None
         self._watch_after_id: Any | None = None
@@ -363,6 +371,9 @@ class SimulationSession:
         self._link_rows: tuple[WiredLink, ...] | None = None
         self._links_revision_seen: int | None = None
         self._links_synced = False
+        # Read the links again on the next frame: a listing failed, or showed
+        # links missing while the program was rebuilt.
+        self._links_refetch = False
         self._restored_links = 0
 
         # Hardware
@@ -799,12 +810,19 @@ class SimulationSession:
         self._schedule_save()
         self._set_notice(f"Loaded PLC data from {path.name}; switches set from snapshot.")
 
+    def _clear_restart_notice(self) -> None:
+        """Drop the restart notice, pending or shown: that restart did not happen."""
+        self._restart_notice = False
+        if self._notice == RESTARTED_NOTICE:
+            self.dismiss_notice()
+
     def _follow_program(self) -> bool:
         """Start again on a program CLICK saved since the simulation was started. True if it did.
 
         Each build of the analysis is a new generation. Once one is done, a
         running simulation restarts on it, with the user's switches, forces and
         bench links (kept by address); one that failed tries the new program.
+        A build that failed stops it: pyrung may already have loaded files of it.
         """
         from .services.analysis_service import AnalysisStatus
 
@@ -817,12 +835,19 @@ class SimulationSession:
             or analysis.generation == self._launch_generation
         ):
             return False
-        if self._dap is not None and analysis.status is AnalysisStatus.READY:
-            self._set_notice(
-                "The simulation restarted on CLICK's last save. "
-                "Switches, forces and bench links carried over."
-            )
+        # Running, or stopped by an earlier save that did not convert.
+        followed = self._dap is not None or self._stopped_by_save is not None
+        converted = analysis.status is AnalysisStatus.READY
+        self._clear_restart_notice()
+        self._restart_notice = converted and followed
         self.restart()
+        if followed and analysis.status is AnalysisStatus.FAILED:
+            reason = analysis.error or "Program conversion failed."
+            self._stopped_by_save = (
+                f"The simulation stopped: CLICK's last save could not be converted ({reason}). "
+                "It starts again on the next save that converts."
+            )
+            self._set_notice(self._stopped_by_save)
         return True
 
     def _watch_tick(self) -> None:
@@ -904,6 +929,7 @@ class SimulationSession:
         self._links_pending = {}
         self._links_revision_seen = None
         self._links_synced = False
+        self._links_refetch = False
         self._program_names = None
         dap = self._dap
         self._dap = None
@@ -921,6 +947,8 @@ class SimulationSession:
             self._cancel(getattr(self, name))
             setattr(self, name, None)
         self._waited_ms = 0
+        self._restart_notice = False
+        self._stopped_by_save = None
         self._flush_save()
         if self._status is not SimStatus.IDLE:
             self._set_status(SimStatus.IDLE)
@@ -934,6 +962,7 @@ class SimulationSession:
         self._shutdown()
 
     def _fail(self, reason: str, detail: str | None = None) -> None:
+        self._clear_restart_notice()
         self._status = SimStatus.FAILED
         self._error = reason
         self._error_detail = detail
@@ -1028,6 +1057,7 @@ class SimulationSession:
             # than reporting the rubble as a real failure.
             self._wait_for_analysis()
             return
+        self._clear_restart_notice()
         self._status = SimStatus.FAILED
         self._error = f"the simulation backend failed to start: {exc}"
         self._error_detail = None
@@ -1093,7 +1123,7 @@ class SimulationSession:
             self._links_synced = True
             revision = body.get("revision")
             self._links_revision_seen = revision if isinstance(revision, int) else None
-        if self._links_synced and self._program_current():
+        if self._links_synced:
             # Kept by address; a link on a tag with no CLICK address is not the user's.
             adopted = {
                 row.feedback: BenchLink(row.enable, row.trigger, row.response, row.enabled)
@@ -1102,11 +1132,22 @@ class SimulationSession:
                 and normalize_address(row.feedback) == row.feedback
                 and (row.enable is None or normalize_address(row.enable) == row.enable)
             }
+            if not self._program_current():
+                # As with forces: a missing link may be lost to a reload under new
+                # names, so it stays until the program is current and is read again.
+                kept = {a: link for a, link in self._state.links.items() if a not in adopted}
+                if kept:
+                    adopted.update(kept)
+                    self._links_refetch = True
             bench = body.get("bench") is not False
             if adopted != dict(self._state.links) or bench != self._state.bench_wiring:
                 self._update_state(links=adopted, bench_wiring=bench)
                 return
         self._emit("desired")
+
+    def _refetch_links(self, token: int) -> None:
+        if token == self._token:
+            self._links_refetch = True  # unanswered: the next frame asks again
 
     # ------------------------------------------------------------------
     # Bench links
@@ -1118,7 +1159,9 @@ class SimulationSession:
         def job() -> None:
             try:
                 body = dict(dap.list_links())
-            except Exception:
+            except Exception as exc:
+                if _unavailable(exc):
+                    self._post(lambda: self._refetch_links(token))
                 return
             self._post(lambda: self._on_links(token, body, sync=sync))
 
@@ -1134,38 +1177,58 @@ class SimulationSession:
         token = self._token
 
         # A refusal drops the entry. A simulation that stopped or never answered
-        # refused nothing: the job ends there and the entries stay.
+        # refused nothing: the entry stays, and the rest is still sent.
         def job() -> None:
+            unanswered: list[str] = []
+            problems: list[str] = []
+
+            def refusal(what: str, request: Callable[[], object]) -> str | None:
+                """Send *request*; why the simulation refused it, or None. No answer is noted."""
+                try:
+                    request()
+                except Exception as exc:
+                    if not _unavailable(exc):
+                        return str(exc)
+                    if what not in unanswered:
+                        unanswered.append(what)
+                return None
+
             failed_links: list[tuple[str, str]] = []
             for address, link in links.items():
-                try:
-                    _send_link(dap, address, link)
-                    if not link.enabled:
-                        dap.set_links(enabled={address: False})
-                except Exception as exc:
-                    if _unavailable(exc):
-                        raise
-                    failed_links.append((address, str(exc)))
+                what = f"the bench link on {address}"
+                reason = refusal(what, partial(_send_link, dap, address, link))
+                if reason is None and not link.enabled:
+                    reason = refusal(what, partial(dap.set_links, enabled={address: False}))
+                if reason is not None:
+                    failed_links.append((address, reason))
             if failed_links:
                 self._post(lambda: self._drop_failed_links(token, failed_links))
             if not bench_wiring:
-                dap.set_links(bench=False)
+                reason = refusal("bench wiring off", partial(dap.set_links, bench=False))
+                if reason is not None:
+                    problems.append(f"bench wiring off: {reason}")
             self._fetch_links(dap, token, sync=True)
             # Launched with keepForcesOnRun, so forces set in STOP survive into RUN.
-            failed: list[str] = []
-            for address, value in forces.items():
-                try:
-                    dap.force(address, value)
-                except Exception as exc:
-                    if _unavailable(exc):
-                        raise
-                    failed.append(address)
+            failed = [
+                address
+                for address, value in forces.items()
+                if refusal(f"the force on {address}", partial(dap.force, address, value))
+                is not None
+            ]
             if failed:
                 self._post(lambda: self._drop_failed_forces(token, failed))
             if position != "stop":
-                dap.set_mode("run", patches=patches)
-                if position == "run":
-                    dap.continue_()
+                reason = refusal(
+                    "the switch position", partial(dap.set_mode, "run", patches=patches)
+                )
+                if reason is None and position == "run":
+                    reason = refusal("the switch position", dap.continue_)
+                if reason is not None:
+                    problems.append(f"the switch position: {reason}")
+            if unanswered:
+                problems.append(f"no answer for {', '.join(unanswered)}; they stay set")
+            if problems:
+                raise RuntimeError("; ".join(problems))
 
         self._submit(job, "Restoring simulator settings")
 
@@ -1190,6 +1253,7 @@ class SimulationSession:
         self._run_background(job, "sim-modbus-info")
 
     def _report_died(self, detail: str | None) -> None:
+        self._clear_restart_notice()
         self._stop_dap()
         self._status = SimStatus.FAILED
         self._error = "the simulation stopped unexpectedly."
@@ -1212,6 +1276,12 @@ class SimulationSession:
         # Confirm success in the transcript; a "Retrying..." line should not trail off.
         self._message("OK - simulation ready.", "progress")
         self._set_status(SimStatus.READY)
+        stopped, self._stopped_by_save = self._stopped_by_save, None
+        if self._restart_notice:
+            self._restart_notice = False
+            self._set_notice(RESTARTED_NOTICE)
+        elif stopped is not None and self._notice == stopped:
+            self.dismiss_notice()
         self._reapply(dap)
         self._modbus_info_after_id = self._scheduler.after(0, self._poll_modbus_info)
 
@@ -1233,11 +1303,17 @@ class SimulationSession:
         """
         baseline = self._forces_baseline
         self._forces_baseline = actual
-        if baseline is None or not self._program_current():
+        if baseline is None:
             return
         missing = object()
         added = {a: v for a, v in actual.items() if baseline.get(a, missing) != v}
         removed = [a for a in baseline if a not in actual]
+        if removed and not self._program_current():
+            # pyrung may have reloaded the rebuilt program and lost forces on renamed
+            # tags. A release waits in the baseline until the program is current again;
+            # a force set meanwhile is someone's command and is kept.
+            self._forces_baseline = {**actual, **{a: baseline[a] for a in removed}}
+            removed = []
         if not added and not removed:
             return
         forces = dict(self._state.forces)
@@ -1260,9 +1336,14 @@ class SimulationSession:
         self._adopt_forces(self._addressed(dap.forces))
         self._links_pending = {self.to_address(k): ms for k, ms in dap.links_pending.items()}
         revision = dap.links_revision
-        if revision != self._links_revision_seen and self._links_synced:
-            self._links_revision_seen = revision
-            self._fetch_links(dap, token)
+        # Unsynced: the listing after the launch went unanswered. Links kept
+        # through a rebuild are checked once the program is current.
+        refetch = self._links_refetch and (not self._links_synced or self._program_current())
+        if refetch or (self._links_synced and revision != self._links_revision_seen):
+            self._links_refetch = False
+            if self._links_synced:
+                self._links_revision_seen = revision
+            self._fetch_links(dap, token, sync=not self._links_synced)
         self._emit("frame")
 
     # ------------------------------------------------------------------
