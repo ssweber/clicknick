@@ -14,6 +14,7 @@ from pathlib import Path
 import pyodbc
 
 from ..utils.win32_utils import WIN32
+from .click_temp import click_temp_dir
 from .jet_sidecar import JetConnection
 from .jet_sidecar import is_available as jet_is_available
 
@@ -153,7 +154,7 @@ def probe_database_connection(db_path: str | Path | None) -> ConnectionTestResul
 
 
 def find_click_database(click_pid: int | None = None, click_hwnd: int | None = None) -> str | None:
-    """Find the CLICK Programming Software's Access database file.
+    """Find the SC_.mdb of a CLICK window, in its ``CLICK (hwnd)`` temp folder.
 
     Args:
         click_pid: Process ID of the CLICK software
@@ -168,13 +169,7 @@ def find_click_database(click_pid: int | None = None, click_hwnd: int | None = N
             click_hwnd = WIN32.get_hwnd_by_pid(click_pid)
 
         if click_hwnd:
-            # Convert window handle to uppercase hex string without '0x' prefix
-            hwnd_hex = format(click_hwnd, "08X")
-
-            # Build the expected database path
-            username = os.environ.get("USERNAME")
-            db_path = Path(f"C:/Users/{username}/AppData/Local/Temp/CLICK ({hwnd_hex})/SC_.mdb")
-
+            db_path = click_temp_dir(click_hwnd) / "SC_.mdb"
             if db_path.exists():
                 print(f"Found database: {db_path}")
                 return str(db_path)
@@ -200,50 +195,5 @@ def find_fallback_csv(click_hwnd: int | None = None) -> Path | None:
     """
     if not click_hwnd:
         return None
-
-    try:
-        hwnd_hex = format(click_hwnd, "08X")
-        username = os.environ.get("USERNAME")
-        csv_path = Path(f"C:/Users/{username}/AppData/Local/Temp/CLICK ({hwnd_hex})/Address.csv")
-
-        if csv_path.exists():
-            return csv_path
-
-        return None
-
-    except Exception as e:
-        print(f"Error finding fallback CSV: {e}")
-        return None
-
-
-def get_project_path_from_hwnd(click_hwnd: int | None = None) -> Path | None:
-    """Get the project path from a CLICK window handle.
-
-    The project is stored in the Temp folder under CLICK ({hwnd_hex}).
-
-    Args:
-        click_hwnd: Window handle of the CLICK software
-
-    Returns:
-        Path to the project folder (the CLICK ({hwnd}) parent) or None if not found
-    """
-    if not click_hwnd:
-        return None
-
-    try:
-        # Convert window handle to uppercase hex string without '0x' prefix
-        hwnd_hex = format(click_hwnd, "08X")
-
-        # Build the expected project path (parent of CLICK folder contains the project)
-        username = os.environ.get("USERNAME")
-        click_folder = Path(f"C:/Users/{username}/AppData/Local/Temp/CLICK ({hwnd_hex})")
-
-        if click_folder.exists():
-            # The project path is the Temp folder containing the CLICK folder
-            return click_folder.parent
-
-        return None
-
-    except Exception as e:
-        print(f"Error getting project path: {e}")
-        return None
+    csv_path = click_temp_dir(click_hwnd) / "Address.csv"
+    return csv_path if csv_path.exists() else None

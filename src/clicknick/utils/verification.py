@@ -175,8 +175,8 @@ def verify_mdb_addresses(store: AddressStore) -> list[str]:
     return issues
 
 
-def verify_cdv_files(project_path: Path | str) -> tuple[list[str], int]:
-    """Verify all CDV files in a project's DataView folder.
+def verify_cdv_files(dataview_folder: Path | None) -> tuple[list[str], int]:
+    """Verify all CDV files in a DataView folder.
 
     Checks:
     - Address format is valid
@@ -187,23 +187,23 @@ def verify_cdv_files(project_path: Path | str) -> tuple[list[str], int]:
     - If new_value is set, address must be writable
 
     Args:
-        project_path: Path to the CLICK project folder
+        dataview_folder: The connected CLICK window's DataView folder (None checks none)
 
     Returns:
         Tuple of (issues list, files checked count)
     """
-    return check_cdv_files(project_path)
+    return check_cdv_files(dataview_folder)
 
 
 def run_verification(
     store: AddressStore,
-    project_path: Path | str,
+    dataview_folder: Path | None,
 ) -> VerificationResult:
     """Run full verification of MDB addresses and CDV files.
 
     Args:
         store: The AddressStore containing all addresses
-        project_path: Path to the CLICK project folder
+        dataview_folder: The connected CLICK window's DataView folder (None checks none)
 
     Returns:
         VerificationResult with all findings
@@ -215,6 +215,6 @@ def run_verification(
     result.mdb_issues = verify_mdb_addresses(store)
 
     # Verify CDV files
-    result.cdv_issues, result.cdv_files_checked = verify_cdv_files(project_path)
+    result.cdv_issues, result.cdv_files_checked = verify_cdv_files(dataview_folder)
 
     return result

@@ -605,7 +605,7 @@ def test_workspace_setup_prompts_for_and_writes_a_missing_plc_name(monkeypatch) 
     monkeypatch.setattr("clicknick.app.messagebox.showinfo", MagicMock())
     monkeypatch.setattr("clicknick.services.workspace_mirror.write_plc_name", write_name)
     monkeypatch.setattr(
-        "clicknick.live.session.click_temp_dir", MagicMock(return_value=Path("CLICK-temp"))
+        "clicknick.utils.click_temp.click_temp_dir", MagicMock(return_value=Path("CLICK-temp"))
     )
 
     app = ClickNickApp.__new__(ClickNickApp)

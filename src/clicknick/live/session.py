@@ -10,7 +10,7 @@ A running ClickNick advertises its live TCP port by writing
 
 Clients scan these locations for live port files; stale ones are pruned.
 Pure ``os``/``pathlib`` only, so the lightweight CLI need not import pyodbc.
-The ``CLICK (hwnd)`` convention mirrors ``utils.mdb_shared``.
+The ``CLICK (hwnd)`` folders are found by ``utils.click_temp``.
 """
 
 from __future__ import annotations
@@ -19,21 +19,13 @@ import os
 import socket
 from pathlib import Path
 
+from ..utils.click_temp import temp_root
+
 PORT_FILENAME = "clicknick-live.port"
 LABEL_FILENAME = "clicknick-live.label"
 WORKSPACE_FILENAME = "clicknick-live.workspace"
 
 _LOCALAPPDATA = Path(os.environ.get("LOCALAPPDATA") or Path.home())
-
-
-def _temp_root() -> Path:
-    """Directory CLICK creates its per-instance ``CLICK (hwnd)`` folders in."""
-    return _LOCALAPPDATA / "Temp"
-
-
-def click_temp_dir(hwnd: int) -> Path:
-    """The CLICK instance temp folder for *hwnd* (may not exist)."""
-    return _temp_root() / f"CLICK ({hwnd:08X})"
 
 
 def fallback_dir() -> Path:
@@ -74,7 +66,7 @@ def workspace_for_port_file(port_file: Path) -> Path | None:
 def iter_session_dirs() -> list[Path]:
     """All directories that may contain a live port file."""
     dirs: list[Path] = []
-    temp = _temp_root()
+    temp = temp_root()
     if temp.is_dir():
         dirs.extend(p for p in temp.glob("CLICK (*)") if p.is_dir())
     fb = fallback_dir()

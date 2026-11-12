@@ -6,20 +6,17 @@ from pathlib import Path
 
 from pyclickplc.dataview import check_cdv_file
 
+from ..utils.click_temp import click_temp_dir
 
-def get_dataview_folder(project_path: Path | str) -> Path | None:
-    """Get the DataView folder for a CLICK project."""
-    project_path = Path(project_path)
-    if not project_path.is_dir():
-        return None
 
-    for child in project_path.iterdir():
-        if child.is_dir() and child.name.startswith("CLICK ("):
-            dataview_path = child / "DataView"
-            if dataview_path.is_dir():
-                return dataview_path
+def click_dataview_folder(hwnd: int) -> Path | None:
+    """The DataView folder of the CLICK window *hwnd*, or None when it has none.
 
-    return None
+    Only that window's ``CLICK (hwnd)`` folder: another window's, or one a
+    crash left behind, holds another project's .cdv files.
+    """
+    folder = click_temp_dir(hwnd) / "DataView"
+    return folder if folder.is_dir() else None
 
 
 def list_cdv_files(dataview_folder: Path | str) -> list[Path]:
@@ -30,13 +27,12 @@ def list_cdv_files(dataview_folder: Path | str) -> list[Path]:
     return sorted(folder.glob("*.cdv"), key=lambda p: p.stem.lower())
 
 
-def check_cdv_files(project_path: Path | str) -> tuple[list[str], int]:
-    """Verify all CDV files in a project's DataView folder."""
+def check_cdv_files(dataview_folder: Path | None) -> tuple[list[str], int]:
+    """Verify all CDV files in a DataView folder (none checked without one)."""
     issues: list[str] = []
     files_checked = 0
 
     try:
-        dataview_folder = get_dataview_folder(project_path)
         if dataview_folder is None:
             return issues, files_checked
 

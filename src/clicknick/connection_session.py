@@ -223,7 +223,7 @@ class ConnectionSession:
     @property
     def project_ini(self) -> Path:
         """CLICK's Project.ini for the connected window (hardware and PLC name)."""
-        from .live.session import click_temp_dir
+        from .utils.click_temp import click_temp_dir
 
         return click_temp_dir(self.click.hwnd) / "Project.ini"
 
@@ -373,7 +373,7 @@ class ConnectionSession:
         A build already under way serves the request. The ScrWatcher is made
         once per session, as it counts what was synced since CLICK last saved.
         """
-        from .live.session import click_temp_dir
+        from .utils.click_temp import click_temp_dir
         from .services.analysis_service import AnalysisStatus
         from .services.scr_watcher import ScrWatcher
 
