@@ -311,14 +311,6 @@ _DIALOG_POLL_MS = 100
 _DIALOG_TIMEOUT_MS = 3000
 
 
-def _click_programs(comparison: BundleComparison) -> dict[str, object]:
-    """What CLICK's last save holds of each program compared, by name ignoring case."""
-    return {
-        name.casefold(): (change.before, change.legacy)
-        for name, change in (*comparison.changes.items(), *comparison.only_in_click.items())
-    }
-
-
 @dataclass(frozen=True)
 class ProposalSource:
     """Where a window's proposal comes from, and so what of it starts out taken.
@@ -515,31 +507,28 @@ class PreviewChangesWindow(tk.Toplevel):
             and not self._all_skipped(name)
         )
 
-    def _carry_choices(self, *, saved: bool) -> None:
+    def _carry_choices(self) -> None:
         """Bring each program's choices and progress over to the new comparison.
 
         A program not compared now keeps them for when it is. Skips follow the
         differences they were made on. What was pasted is in CLICK until it
-        saves. Once CLICK has *saved*, the comparison shows what is left, and a
-        program marked done that it shows still to do is no longer done.
-        Compared again with the same save (the folder was read again), the
-        pastes are placed in the new comparison (_carry_pasted).
+        saves (_note_saves); until then the pastes are placed in each new
+        comparison (_carry_pasted). The first comparison after a save shows
+        what is left, and a program marked done that it shows still to do is
+        no longer done.
         """
-        if saved:
-            self._pasted.clear()
-            self._partial.clear()
-            self._unplaced.clear()
         for name, basis in list(self._basis.items()):
             change = self._changes.get(name)
             if change is None:
                 continue
             old_skipped = self._skipped_of(name)
             self._skipped[name] = carry_skipped(old_skipped, basis, change)
-            if change != basis and not saved:
+            if change != basis:
                 self._carry_pasted(name, basis, old_skipped, change)
             self._basis[name] = change
-        if saved:
-            # Pasted into the wrong program, say, or deleted and then undone
+        if self._click_compared and self._done_unchecked:
+            self._done_unchecked = False
+            # Not pasted at all, say, pasted into the wrong program, or deleted and then undone
             self._done = {name for name in self._done if not self._still_to_do(name)}
         for name, rungs in list(self._selection.items()):
             change = self._changes.get(name)
@@ -552,6 +541,20 @@ class PreviewChangesWindow(tk.Toplevel):
                 self._skipped[name] = frozenset(change.differences) - change.blocks_holding(rungs)
                 self._basis[name] = change
 
+    def _note_saves(self, program: SavedProgram) -> None:
+        """Forget what was pasted once CLICK saves; check what was done on the next comparison.
+
+        Only CLICK's saves count (save_count): the workspace is also rebuilt
+        after a Sync or a Reload, and a build may fail, with CLICK holding the
+        pastes all the while.
+        """
+        if self._save_count is not None and program.save_count != self._save_count:
+            self._pasted.clear()
+            self._partial.clear()
+            self._unplaced.clear()
+            self._done_unchecked = True
+        self._save_count = program.save_count
+
     def _compare_with_click(self) -> None:
         """Compare the folder with the program now in CLICK; rebuild the rows.
 
@@ -559,6 +562,7 @@ class PreviewChangesWindow(tk.Toplevel):
         own items, for information only: pasting cannot remove them.
         """
         program = self._saved_program = self._get_saved_program()
+        self._note_saves(program)
         self._before_sources = None
         if program.csv_dir is None:
             comparison = BundleComparison()
@@ -571,20 +575,7 @@ class PreviewChangesWindow(tk.Toplevel):
         self._only_in_click = comparison.only_in_click
         self._missing_in_click = comparison.missing_in_click
         self._click_compared = comparison.compared
-        previous = self._last_save
-        if comparison.compared:
-            self._last_save = _click_programs(comparison)
-        # The workspace is also rebuilt without a CLICK save (after a Sync, say),
-        # so a save is told by CLICK's programs changing
-        saved = (
-            comparison.compared
-            and previous is not None
-            and any(
-                previous[name] != self._last_save[name]
-                for name in previous.keys() & self._last_save.keys()
-            )
-        )
-        self._carry_choices(saved=saved)
+        self._carry_choices()
         self._items = [
             *self._folder_items,
             *(
@@ -1385,6 +1376,16 @@ class PreviewChangesWindow(tk.Toplevel):
             prompt = f'{head}: {what}.\nClick "Copy {label}". {_where_to_paste(step)}'
             prompt += self._legacy_line(name, step)
             return prompt + self._stepped_line(name)
+        if self._matches_click(name):
+            if self._empty_whole(name, step):
+                return (
+                    f"{name} already matches CLICK's last save: neither has rungs.\n"
+                    'Click "Next" to go on'
+                )
+            return (
+                f"{name} already matches CLICK's last save.\n"
+                'Click "Copy" to copy it to the clipboard anyway'
+            )
         if self._empty_whole(name, step):
             if self._can_add_subroutine(idx):
                 return (
@@ -1392,11 +1393,6 @@ class PreviewChangesWindow(tk.Toplevel):
                     'Click "New Subroutine" to create it in CLICK, then click "Next"'
                 )
             return f'{name} has no rungs.\nIn CLICK, delete all its rungs, then click "Next"'
-        if self._matches_click(name):
-            return (
-                f"{name} already matches CLICK's last save.\n"
-                'Click "Copy" to copy it to the clipboard anyway'
-            )
         if self._can_add_subroutine(idx):
             where = (
                 "is not in CLICK's last save" if self._click_compared else "may not be in CLICK yet"
@@ -2001,7 +1997,8 @@ class PreviewChangesWindow(tk.Toplevel):
             self._viewed.clear()
             self._current_idx = None
             self._copied = False
-            self._last_save = None
+            self._save_count = None  # Each project counts its own saves
+            self._done_unchecked = False
         elif program.building and self._changes:
             # CLICK saved: keep the rows until the new CSVs are ready.
             self._saved_program = program
@@ -2551,8 +2548,10 @@ class PreviewChangesWindow(tk.Toplevel):
         self._before_sources: BundleSources | None = None
         self._after_sources: BundleSources | None = None
         self._saved_program = SavedProgram()
-        # CLICK's programs as last compared (_click_programs): a change means CLICK saved
-        self._last_save: dict[str, object] | None = None
+        # CLICK's saves as last seen (SavedProgram.save_count); a new count means CLICK saved
+        self._save_count: int | None = None
+        # CLICK saved since programs were marked done: check them on the next comparison
+        self._done_unchecked = False
 
         self._create_widgets()
         self._show_source()

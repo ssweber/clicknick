@@ -108,7 +108,8 @@ def _bare_window(folder_names: list[str] = NAMES):
     window._pasted = {}
     window._partial = {}
     window._unplaced = set()
-    window._last_save = None
+    window._save_count = None
+    window._done_unchecked = False
     window._step_through = set()
     window._flipped_in_click = set()
     window._step_through_btn = Mock()
@@ -290,11 +291,13 @@ def test_click_save_keeps_rows_while_building_and_the_row_being_pasted(monkeypat
     )
     window._copied = True
 
-    _change(window, SavedProgram(session, generation=2, building=True, note="reading"))
+    _change(
+        window, SavedProgram(session, generation=2, save_count=1, building=True, note="reading")
+    )
     assert _differs(window) == dict.fromkeys(NAMES, True)
     assert _note(window) == "reading"
 
-    _change(window, SavedProgram(session, generation=2, csv_dir=after, note=""))
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
     assert _differs(window)["subroutines/a.csv"] is False
     assert window._current_idx == 0
     assert window._copied is True
@@ -314,7 +317,7 @@ def test_window_closes_once_click_has_saved_everything(monkeypatch) -> None:
     )
     window._copied = True  # The last paste was saved without clicking "Next"
 
-    _change(window, SavedProgram(session, generation=2, csv_dir=after, note=""))
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
 
     window._on_pasted.assert_called_once_with("CLICK saved everything from Preview Changes")
     window.destroy.assert_called_once_with()
@@ -331,7 +334,7 @@ def test_window_opened_on_an_up_to_date_folder_stays_open(monkeypatch) -> None:
 
     # The first comparison arrives; a later save changes nothing
     _change(window, SavedProgram(session, generation=1, csv_dir=csv_dir, note=""))
-    _change(window, SavedProgram(session, generation=2, csv_dir=csv_dir, note=""))
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=csv_dir, note=""))
 
     window.destroy.assert_not_called()
     assert "Every changed program has been pasted" in _status(window)
@@ -350,7 +353,7 @@ def test_window_stays_open_while_click_has_a_program_the_folder_dropped(monkeypa
         only_in_click={"subroutines/old.csv": _rungs_removed(1)},
     )
 
-    _change(window, SavedProgram(session, generation=2, csv_dir=after, note=""))
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
 
     window.destroy.assert_not_called()
 
@@ -741,7 +744,7 @@ def test_click_save_part_way_steps_through_what_is_left(monkeypatch, copies) -> 
     )
     window._on_action()  # Copy r1, then paste and save in CLICK without "Next"
 
-    _change(window, SavedProgram(session, generation=2, csv_dir=after, note=""))
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
 
     assert window._current_idx == MAIN
     assert window._copied is False
@@ -860,7 +863,7 @@ def test_a_click_save_that_makes_a_program_whole_starts_its_copy_over(monkeypatc
     window._on_action()  # Copy step 1 of 2
     assert window._copied
 
-    _change(window, SavedProgram(session, generation=2, csv_dir=second, note=""))
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=second, note=""))
 
     assert not window._copied  # What was copied was step 1, not the whole program
     assert _action(window) == "Copy"
@@ -871,7 +874,7 @@ def test_rungs_asked_for_by_number_are_stepped_through(monkeypatch) -> None:
     window = _on_main(monkeypatch, _seven_steps())
     window._selection = {"main.csv": list(range(1, 14))}
 
-    window._carry_choices(saved=False)
+    window._carry_choices()
 
     assert window._copied_whole_for_steps("main.csv") == 0
     assert len(window._steps("main.csv")) == 7
@@ -1078,7 +1081,7 @@ def _only_in_click_window(monkeypatch, *, saved_after: bool = False):
         },
         only_in_click={"subroutines/old.csv": compare_rungs(_coils("Y009"), [])},
     )
-    window.saved_after = SavedProgram(session, generation=2, csv_dir=after, note="")
+    window.saved_after = SavedProgram(session, generation=2, save_count=1, csv_dir=after, note="")
     return window
 
 
@@ -1145,7 +1148,7 @@ def test_a_click_save_that_deletes_the_current_row_moves_on(monkeypatch, deleted
     window._select_row(next(i for i, (name, *_) in enumerate(window._items) if name == deleted))
 
     # Deleted in CLICK and saved, before "Next"; the folder's programs are still to do
-    _change(window, SavedProgram(session, generation=2, csv_dir=after, note=""))
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
 
     window.destroy.assert_not_called()
     assert deleted not in [name for name, *_ in window._items]
@@ -1575,7 +1578,7 @@ def test_row_clears_once_click_saves_a_clean_copy(monkeypatch) -> None:
     )
     assert window._needs_paste("main.csv")
 
-    _change(window, SavedProgram(session, generation=2, csv_dir=after, note=""))
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
 
     assert window._matches_click("main.csv")
     window.destroy.assert_called_once_with()
@@ -1834,7 +1837,7 @@ def test_skips_follow_their_differences_over_a_click_save(monkeypatch, copies) -
     )
     window._toggle("main.csv", 0)  # Skip r1
 
-    _change(window, SavedProgram(session, generation=2, csv_dir=after, note=""))
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
 
     # r1 is the same difference as before, still skipped; r3 is a new one, taken
     assert window._skipped_in("main.csv") == 1
@@ -1856,7 +1859,7 @@ def test_window_closes_once_click_holds_everything_not_skipped(monkeypatch, copi
     window._toggle("main.csv", 1)  # Skip r3..4
     window._on_action()  # Copy r1, then paste and save in CLICK
 
-    _change(window, SavedProgram(session, generation=2, csv_dir=after, note=""))
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
 
     window._on_pasted.assert_called_once_with(
         "CLICK saved everything taken from Preview Changes; 1 skipped difference left as CLICK has it"
@@ -2193,7 +2196,13 @@ def _save(window, click: list[Rung]) -> None:
     generation = window.current.generation + 1
     window.saves[str(generation)] = list(click)
     _change(
-        window, SavedProgram(window.session, generation=generation, csv_dir=Path(str(generation)))
+        window,
+        SavedProgram(
+            window.session,
+            generation=generation,
+            save_count=window.current.save_count + 1,
+            csv_dir=Path(str(generation)),
+        ),
     )
 
 
@@ -2350,13 +2359,104 @@ def test_a_program_marked_done_that_clicks_save_still_differs_is_to_do_again(
     window._on_action()  # Next
     assert window._done == {"main.csv"}
 
-    _change(window, SavedProgram(session, generation=2, csv_dir=after, note=""))
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
 
     assert window._done == set()
     assert window._needs_paste("main.csv")
     window._select_row(MAIN)
     assert _action(window) == "Copy r1"
     window.destroy.assert_not_called()
+
+
+def test_a_program_marked_done_but_not_pasted_is_to_do_after_a_save(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, _without(1), RUNGS)
+    window._on_action()  # Copy r1
+    window._on_action()  # Next, though it was not pasted
+
+    _save(window, _without(1))  # CLICK saves; none of its programs changed
+
+    assert window._done == set()
+    assert _action(window) == "Copy r1"
+    window.destroy.assert_not_called()
+
+
+def test_a_deletion_marked_done_is_to_do_after_a_save_that_changes_nothing(monkeypatch) -> None:
+    session, before, after = object(), Path("before/csv"), Path("after/csv")
+    same = _changes(dict.fromkeys(NAMES, False))
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {before: same, after: same},
+        only_in_click={"subroutines/old.csv": compare_rungs(_coils("Y009"), [])},
+    )
+    window._select_row(OLD)
+    window._on_action()  # Next, though it was not deleted
+
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
+
+    assert window._done == set()
+    assert window._items[window._current_idx][0] == "subroutines/old.csv"
+    window.destroy.assert_not_called()
+
+
+def test_a_save_that_changes_no_program_forgets_what_was_pasted(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, _without(1, 3, 4), RUNGS)
+    window._on_action()  # Copy r1
+    window._on_action()  # Next: r1 is in CLICK, not saved
+
+    _save(window, _without(1, 3, 4))  # The paste was undone in CLICK, then CLICK saved
+
+    assert window._pasted == {}
+    assert _action(window) == "Copy r1"
+    assert "step 1 of 2" in _status(window)
+
+
+def test_a_save_forgets_a_whole_paste_made_without_a_comparison(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, RUNGS, RUNGS, compared=False)
+    window._select_row(MAIN)
+    window._on_action()  # Copy
+    window._on_action()  # Next
+    _change(window, SavedProgram(window.session, generation=1, csv_dir=Path("1"), note=""))
+    assert window._unplaced == {"main.csv"}
+
+    _save(window, RUNGS)  # What CLICK saves is what it had
+
+    assert window._unplaced == set()
+    window.destroy.assert_called_once_with()
+
+
+def test_a_save_before_the_first_comparison_checks_what_was_done(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, _without(1), RUNGS, compared=False)
+    window._select_row(MAIN)
+    window._on_action()  # Copy
+    window._on_action()  # Next, though it was not pasted
+
+    _change(
+        window,
+        SavedProgram(window.session, generation=1, save_count=1, building=True, note="reading"),
+    )
+    _change(
+        window, SavedProgram(window.session, generation=2, save_count=1, csv_dir=Path("1"), note="")
+    )
+
+    assert window._done == set()
+    assert window._unplaced == set()
+    window._select_row(MAIN)
+    assert _action(window) == "Copy r1"
+
+
+def test_a_failed_build_keeps_what_was_pasted(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, _without(1, 3, 4), RUNGS)
+    window._on_action()  # Copy r1
+    window._on_action()  # Next: r1 is in CLICK, not saved
+    failed = "Could not read CLICK's program; see the main window"
+
+    _change(window, SavedProgram(window.session, generation=2, note=failed))
+    assert _note(window) == failed
+    _change(window, SavedProgram(window.session, generation=3, csv_dir=Path("1"), note=""))
+
+    assert _action(window) == "Copy r3..4"
+    assert "step 2 of 2" in _status(window)
 
 
 def test_a_rebuild_without_a_click_save_keeps_what_was_pasted(monkeypatch, copies) -> None:
@@ -2401,7 +2501,7 @@ def test_a_csv_that_cannot_be_read_is_left_out(monkeypatch, copies) -> None:
     assert "1 unreadable" in window._progress_lbl.configure.call_args.kwargs["text"]
     window._notice_lbl.pack.assert_called()
 
-    _change(window, SavedProgram(session, generation=2, csv_dir=after, note=""))
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
 
     window.destroy.assert_called_once_with()
     assert "subroutines/b.csv could not be read" in window._on_pasted.call_args.args[0]
@@ -2450,6 +2550,15 @@ def test_a_whole_copy_of_no_rungs_says_to_delete_them_in_click(monkeypatch, copi
     assert window._done == {"main.csv"}
 
 
+def test_a_program_with_no_rungs_like_clicks_says_it_is_up_to_date(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, [], [])
+
+    window._select_row(MAIN)
+
+    assert "main.csv already matches CLICK's last save: neither has rungs" in _status(window)
+    assert _action(window) == "Next →"
+
+
 def test_a_program_pasted_into_whose_new_export_has_no_rungs_says_to_delete_them(
     monkeypatch, copies
 ) -> None:
@@ -2484,7 +2593,7 @@ def test_a_program_click_cannot_read_back_stays_done_after_a_save(monkeypatch, c
     window._on_action()  # Copy r1
     window._on_action()  # Next
 
-    _change(window, SavedProgram(session, generation=2, csv_dir=after, note=""))
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
 
     assert "main.csv" in window._done
 

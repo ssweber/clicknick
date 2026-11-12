@@ -246,12 +246,12 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   rungs is stepped through. A difference locks once its step is done ("Next"), not when copied. Choices live only
   as long as the window; `carry_skipped` moves them onto the comparison after a CLICK save
 - What was pasted (`_pasted`, `_partial`; a whole copy counts every difference taken) is in CLICK until CLICK
-  saves. A save is told by CLICK's programs changing (`_last_save`), not by a rebuild: the workspace is also built
-  after a Sync. The Copy switch keeps it. A new reading of the folder before a save places it in the new comparison
+  saves, as `SavedProgram.save_count` tells (`_note_saves`); a Sync rebuild, a Reload or a failed build keep it.
+  The Copy switch keeps it. A new reading of the folder before a save places it in the new comparison
   when CLICK would hold the same rungs (`_carry_pasted`); otherwise that program is copied whole until CLICK saves
   (`_unplaced`), whatever the comparison or the skips say, and so is one copied whole without a comparison.
-  **Restart** asks before forgetting it. After a save, a program marked done that CLICK's save still shows to do
-  is a step again, unless ClickNick cannot read all of CLICK's copy of it
+  **Restart** asks before forgetting it. On the first comparison after a save, a program or deletion marked done
+  that CLICK's save still shows to do is a step again, unless ClickNick cannot read all of CLICK's copy of it
 - A whole copy of a program with no rungs copies nothing: the step is deleting its rungs in CLICK
 - The folder is read once (`load_bundle`) and compared and copied from memory: a CLICK save regenerates the
   workspace and deletes `csv_output/`, and the window must still know whether what it pasted landed

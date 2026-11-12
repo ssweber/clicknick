@@ -106,12 +106,13 @@
 - **Stop** in the main window turns off only autocomplete, until you click **Start** or pick a window: ClickNick still notices CLICK closing or opening another project (it kept the old project's editors, simulation and database).
 - A CSV that cannot be loaded shows why, such as a missing Nickname column (the status only said "CSV load failed").
 - Two CLICK windows with the same project name are listed with their PIDs, so either can be picked, and the window list and status no longer show a window or "Monitoring" that is not current.
-- Preview Changes remembers what you pasted until CLICK saves it: running Preview Changes again or switching **Copy** no longer has you paste the same rungs a second time, a program whose pasted rungs the new export changes is copied whole, and **Restart** asks first.
-- A program marked done in Preview Changes that CLICK's save shows still to paste is a step again (it stayed done, and the window never closed).
+- Preview Changes remembers what you pasted until CLICK saves it: running Preview Changes again, switching **Copy**, a Sync or a failed read of CLICK's program no longer has you paste the same rungs a second time, a program whose pasted rungs the new export changes or takes back is copied whole, and **Restart** asks first.
+- A program or deletion marked done in Preview Changes that CLICK's next save shows still to do is a step again, also when that save changed nothing (it stayed done, and the window never closed).
 - A ladder CSV that Preview Changes cannot read is left out with a notice, so the window still closes once CLICK has saved the rest.
 - **Copy: Whole program** steps through a program when a difference you skipped keeps a rung CLICK holds in an old encoding, so the paste does not rewrite that rung from ClickNick's reading of it.
 - Without a comparison with CLICK, Preview Changes says to delete the program's rungs before pasting it whole, and copies only while connected to a CLICK window (it used the first CLICK window it found).
 - A folder's `nicknames.csv` without an Address Comment, Initial Value or Retentive column no longer clears those fields when Preview Changes stages it.
+- A program with no rungs copied whole in Preview Changes is a step of deleting its rungs in CLICK, then **Next** (copying it failed with "there are no rungs to copy").
 - `clicknick-rung load` on a CSV with no rungs says so instead of crashing.
 
 ## v0.23.4 - 2026-10-11
