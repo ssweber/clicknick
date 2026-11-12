@@ -10,6 +10,11 @@ import pytest
 
 from clicknick.app import ClickNickApp
 from clicknick.connection_session import ClickConnection
+from clicknick.services.analysis_service import _publish_generated_project
+from clicknick.services.project_workspace import (
+    plc_source_is_modified,
+    record_generated_plc_source,
+)
 from clicknick.services.workspace_mirror import (
     ProjectWorkspaceConfig,
     find_project_configs,
@@ -164,6 +169,7 @@ def test_sync_overwrites_only_owned_paths_and_never_deletes(tmp_path: Path) -> N
     (mirror / "src" / "plc").mkdir(parents=True)
     (mirror / "src" / "plc" / "main.py").write_text("old\n", encoding="utf-8")
     (mirror / "src" / "plc" / "user_module.py").write_text("keep\n", encoding="utf-8")
+    record_generated_plc_source(mirror)
     (mirror / "tests").mkdir()
     (mirror / "tests" / "test_smoke.py").write_text("user test\n", encoding="utf-8")
     (mirror / "notes.md").write_text("keep notes\n", encoding="utf-8")
@@ -177,15 +183,140 @@ def test_sync_overwrites_only_owned_paths_and_never_deletes(tmp_path: Path) -> N
     assert (mirror / "tests" / "test_smoke.py").read_text(encoding="utf-8") == "user test\n"
     assert (mirror / "docs" / "new.md").is_file()
     assert (mirror / "notes.md").is_file()
-    assert not (mirror / "backup").exists()
+    assert not (mirror / "backup" / "secret.py").exists()
+    assert not (mirror / "backup" / "src").exists()
     assert not (mirror / ".venv").exists()
     assert not (mirror / ".clicknick.toml").exists()
+
+
+def _generated(root: Path, main: str) -> Path:
+    (root / "src" / "plc").mkdir(parents=True)
+    (root / "src" / "plc" / "main.py").write_text(main, encoding="utf-8")
+    (root / "project_to_csv.py").write_text("# exporter\n", encoding="utf-8")
+    return root
+
+
+def _choose_existing_workspace(monkeypatch, source: Path, mirror: Path) -> MagicMock:
+    """Pick *mirror* in Workspace setup while *source* is the active workspace.
+
+    Returns the mocked messagebox.showerror.
+    """
+    monkeypatch.setattr("clicknick.services.workspace_mirror.remember_project_sidecar", MagicMock())
+    monkeypatch.setattr("clicknick.app.messagebox.askokcancel", MagicMock(return_value=True))
+    showerror = MagicMock()
+    monkeypatch.setattr("clicknick.app.messagebox.showerror", showerror)
+
+    app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
+    app.root = MagicMock()
+    app._session = MagicMock()
+    app._workspace_config = None
+    app._workspace_matches = []
+    app._pending_workspace_config = ProjectWorkspaceConfig("Line1", mirror)
+    app._workspace_mirror_error = None
+    app._mirror_setup_window = None
+    app._ensure_plc_name_for_workspace = MagicMock(return_value="Line1")
+    app._workspace_source_dir = MagicMock(return_value=source)
+    app._update_status = MagicMock()
+    app._start_analysis_build = MagicMock()
+    app.mirror_project_selection_var = MagicMock()
+    app.mirror_location_selection_var = MagicMock()
+    app.workspace_setup_action_var = MagicMock()
+
+    app._apply_workspace_mirror_setup()
+    return showerror
+
+
+def test_choosing_an_existing_workspace_keeps_its_edited_source(
+    monkeypatch, tmp_path: Path
+) -> None:
+    durable = tmp_path / "Line1 Workspace"
+    _publish_generated_project(_generated(tmp_path / "g0", "generated A\n"), durable)
+    (durable / "src" / "plc" / "main.py").write_text("unpasted edits\n", encoding="utf-8")
+    (durable / "src" / "plc" / "user_module.py").write_text("helper\n", encoding="utf-8")
+    temporary = tmp_path / "pyrung_project"
+    _publish_generated_project(_generated(tmp_path / "g1", "generated B\n"), temporary)
+
+    showerror = _choose_existing_workspace(monkeypatch, temporary, durable)
+
+    showerror.assert_not_called()
+    assert (durable / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "unpasted edits\n"
+    # The build that follows regenerates src/plc; the edits stay in the backup.
+    _publish_generated_project(_generated(tmp_path / "g2", "generated B\n"), durable)
+    backup = durable / "backup" / "src" / "plc"
+    assert (backup / "main.py").read_text(encoding="utf-8") == "unpasted edits\n"
+    assert (backup / "user_module.py").read_text(encoding="utf-8") == "helper\n"
+
+
+def test_choosing_an_unedited_workspace_takes_the_active_source(
+    monkeypatch, tmp_path: Path
+) -> None:
+    durable = tmp_path / "Line1 Workspace"
+    _publish_generated_project(_generated(tmp_path / "g0", "generated A\n"), durable)
+    temporary = tmp_path / "pyrung_project"
+    _publish_generated_project(_generated(tmp_path / "g1", "generated B\n"), temporary)
+    (temporary / "src" / "plc" / "main.py").write_text("agent edits\n", encoding="utf-8")
+
+    showerror = _choose_existing_workspace(monkeypatch, temporary, durable)
+
+    showerror.assert_not_called()
+    assert (durable / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "agent edits\n"
+    assert not (durable / "backup" / "src" / "plc").exists()
+    assert plc_source_is_modified(durable)
+
+
+def test_choosing_an_edited_workspace_while_the_active_one_is_edited_changes_nothing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    durable = tmp_path / "Line1 Workspace"
+    _publish_generated_project(_generated(tmp_path / "g0", "generated A\n"), durable)
+    (durable / "src" / "plc" / "main.py").write_text("durable edits\n", encoding="utf-8")
+    temporary = tmp_path / "pyrung_project"
+    _publish_generated_project(_generated(tmp_path / "g1", "generated B\n"), temporary)
+    (temporary / "src" / "plc" / "main.py").write_text("temporary edits\n", encoding="utf-8")
+    before = sorted(path.relative_to(durable) for path in durable.rglob("*"))
+
+    showerror = _choose_existing_workspace(monkeypatch, temporary, durable)
+
+    message = showerror.call_args.args[1]
+    assert str(durable.resolve() / "src" / "plc") in message
+    assert str(temporary.resolve() / "src" / "plc") in message
+    assert "Paste or discard" in message
+    assert sorted(path.relative_to(durable) for path in durable.rglob("*")) == before
+    assert (durable / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "durable edits\n"
+    assert plc_source_is_modified(durable)
+
+
+def test_sync_says_when_it_kept_the_mirrors_edited_source(tmp_path: Path) -> None:
+    source = _write_workspace(tmp_path / "active", main="proposal\n")
+    record_generated_plc_source(source)
+    clean = _write_workspace(tmp_path / "Clean Workspace")
+    record_generated_plc_source(clean)
+    edited = _write_workspace(tmp_path / "Edited Workspace", main="edits\n")
+
+    assert not sync_workspace_to_mirror(source, clean).kept_source
+    assert sync_workspace_to_mirror(source, edited).kept_source
+    assert sync_workspace_to_mirror(source, tmp_path / "New Workspace").kept_source is False
+
+
+@pytest.mark.parametrize("content", ["[]", "null", '"sidecars"', "[1, 2]"])
+def test_a_locator_that_is_not_an_object_reads_as_empty(tmp_path: Path, content: str) -> None:
+    locator = tmp_path / "project-sidecars.json"
+    locator.write_text(content, encoding="utf-8")
+    config = _config(tmp_path / "home", "Machine")
+    sidecar = save_project_workspace_config(config)
+
+    assert find_project_configs("Machine", locator) == []
+    assert preferred_project_config("Machine", [config], locator) is None
+    remember_project_sidecar(sidecar, locator, preferred_for="Machine")
+    assert find_project_configs("Machine", locator) == [config]
 
 
 def test_sync_removes_the_mirrors_legacy_record_once_the_workspace_has_none(
     tmp_path: Path,
 ) -> None:
     source = _write_workspace(tmp_path / "active")
+    record_generated_plc_source(source)
     record = Path("csv") / "legacy_encodings.json"
     (source / record).write_text("[]", encoding="utf-8")
     mirror = tmp_path / "Example Workspace"

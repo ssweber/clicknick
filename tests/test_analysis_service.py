@@ -7,6 +7,7 @@ so these tests focus on the mapping and query layers using a mock graph.
 from __future__ import annotations
 
 import shutil
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -27,6 +28,7 @@ from clicknick.services.analysis_service import (
 from clicknick.services.project_workspace import (
     backup_plc_source,
     generated_source_state_path,
+    plc_source_is_modified,
 )
 
 
@@ -431,7 +433,7 @@ class TestBuildValidation:
 
         def build_then_switch(*_args, on_project_generated, **_kwargs):
             svc.invalidate()
-            on_project_generated(tmp_path)
+            on_project_generated(tmp_path, {})
             raise ValueError("old project failed")
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", build_then_switch)
@@ -440,6 +442,73 @@ class TestBuildValidation:
 
         assert svc.status is AnalysisStatus.IDLE
         assert svc.project_dir is None
+        assert not svc.project_is_current
+        assert svc.project_tag_to_addr_key == {}
+
+    def test_a_rebuild_failing_after_publishing_names_tags_as_the_workspace_does(
+        self, monkeypatch, tmp_path
+    ):
+        """Nicknames swapped in CLICK: the workspace on disk already uses the new names."""
+        ds1, ds2 = get_addr_key("DS", 1), get_addr_key("DS", 2)
+
+        def rows(first: str, second: str) -> dict[int, AddressRow]:
+            return {
+                ds1: AddressRow(memory_type="DS", address=1, nickname=first),
+                ds2: AddressRow(memory_type="DS", address=2, nickname=second),
+            }
+
+        def build_graph(names: dict[int, AddressRow], fails: bool):
+            def build(*_args, on_project_generated, **_kwargs):
+                on_project_generated(tmp_path, names)
+                if fails:
+                    raise ValueError("graph failed")
+                return MagicMock(), MagicMock(), tmp_path, names
+
+            return build
+
+        svc = AnalysisService()
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            build_graph(rows("Fill", "Drain"), fails=False),
+        )
+        svc.build(tmp_path, None, persist_dir=tmp_path)
+        assert svc.project_tag_to_addr_key["Fill"] == ds1
+        assert svc.project_is_current
+
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            build_graph(rows("Drain", "Fill"), fails=True),
+        )
+        with pytest.raises(ValueError):
+            svc.build(tmp_path, None, persist_dir=tmp_path)
+
+        assert svc.project_tag_to_addr_key["Fill"] == ds2
+        assert svc.tag_to_addr_key["Fill"] == ds1, "the graph's names stay the last good build's"
+        assert svc.project_is_current
+
+    def test_a_rebuild_failing_before_publishing_leaves_an_older_workspace(
+        self, monkeypatch, tmp_path
+    ):
+        svc = AnalysisService()
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
+        )
+        svc.build(tmp_path, None, persist_dir=tmp_path)
+
+        def _boom(*_args, **_kwargs):
+            raise RuntimeError("conversion broke")
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _boom)
+        with pytest.raises(RuntimeError):
+            svc.build(tmp_path, None, persist_dir=tmp_path)
+
+        assert svc.project_dir == tmp_path
+        assert not svc.project_is_current
+
+        svc.mark_building()
+        svc.mark_failed("No saved ladder files")
+        assert not svc.project_is_current
 
 
 class TestGeneration:
@@ -673,6 +742,134 @@ def test_guidance_written_whole_by_an_older_pyrung_moves_aside(tmp_path):
     assert (persist / "AGENTS.md").read_text(encoding="utf-8") == (
         (staged / "AGENTS.md").read_text(encoding="utf-8")
     )
+
+
+def test_an_ansi_guidance_file_does_not_stop_the_build(tmp_path):
+    persist = tmp_path / "Example Workspace"
+    _publish_generated_project(_staged_project(tmp_path / "first", "generated one\n"), persist)
+    ansi = (
+        "# Line 1\r\n\r\nOven at 180\N{DEGREE SIGN}C, caf\N{LATIN SMALL LETTER E WITH ACUTE}.\r\n"
+    )
+    (persist / "AGENTS.md").write_bytes(ansi.encode("cp1252"))
+    staged = _staged_guidance(tmp_path / "second")
+    (staged / "csv").mkdir()
+    (staged / "csv" / "main.csv").write_text("rung\n", encoding="utf-8")
+    (staged / "src" / "plc" / "main.py").write_text("generated two\n", encoding="utf-8")
+
+    _publish_generated_project(staged, persist)
+
+    assert (persist / "AGENTS.md").read_bytes() == ansi.encode("cp1252")
+    assert (persist / "csv" / "main.csv").is_file()
+    assert (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "generated two\n"
+
+
+def test_a_guidance_file_with_a_bom_gets_the_pointer_under_its_title(tmp_path):
+    persist = tmp_path / "Example Workspace"
+    persist.mkdir()
+    (persist / "AGENTS.md").write_bytes(b"\xef\xbb\xbf# Line 2\r\n\r\nMy own notes.\r\n")
+
+    _publish_generated_project(_staged_guidance(tmp_path / "staged"), persist)
+
+    assert (persist / "AGENTS.md").read_bytes() == (
+        b"\xef\xbb\xbf# Line 2\r\n\r\n" + _POINTER.encode() + b"\r\n\r\nMy own notes.\r\n"
+    )
+
+
+def test_a_folder_that_cannot_be_copied_leaves_the_last_one(tmp_path, monkeypatch):
+    """A csv/ file open in Excel used to leave the workspace with no csv/ at all."""
+    persist = tmp_path / "pyrung_project"
+    first = _staged_project(tmp_path / "first", "generated one\n")
+    (first / "csv").mkdir()
+    (first / "csv" / "main.csv").write_text("first save\n", encoding="utf-8")
+    _publish_generated_project(first, persist)
+    second = _staged_project(tmp_path / "second", "generated two\n")
+    (second / "csv").mkdir()
+    (second / "csv" / "main.csv").write_text("second save\n", encoding="utf-8")
+    copytree = shutil.copytree
+
+    def refuse_csv(source, *args, **kwargs):
+        if Path(source).name == "csv":
+            raise PermissionError("main.csv is open in another program")
+        return copytree(source, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copytree", refuse_csv)
+
+    with pytest.raises(PermissionError):
+        _publish_generated_project(second, persist)
+
+    assert (persist / "csv" / "main.csv").read_text(encoding="utf-8") == "first save\n"
+    assert (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "generated one\n"
+
+
+def _save(root: Path, label: str) -> Path:
+    staged = _staged_project(root, f"{label}\n")
+    (staged / "csv").mkdir()
+    (staged / "csv" / "main.csv").write_text(f"{label}\n", encoding="utf-8")
+    (staged / "nicknames.csv").write_text(f"{label}\n", encoding="utf-8")
+    return staged
+
+
+def _assert_workspace_holds(persist: Path, label: str) -> None:
+    """csv/ and src/plc come from one save, recorded as its generation."""
+    assert (persist / "csv" / "main.csv").read_text(encoding="utf-8") == f"{label}\n"
+    assert (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8") == f"{label}\n"
+    assert not plc_source_is_modified(persist)
+
+
+def test_a_locked_nicknames_csv_leaves_csv_and_source_from_one_save(tmp_path, monkeypatch):
+    persist = tmp_path / "pyrung_project"
+    _publish_generated_project(_save(tmp_path / "first", "save 1"), persist)
+    copy2 = shutil.copy2
+
+    def refuse_nicknames(source, *args, **kwargs):
+        if Path(source).name == "nicknames.csv":
+            raise PermissionError("nicknames.csv is open in another program")
+        return copy2(source, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copy2", refuse_nicknames)
+
+    with pytest.raises(PermissionError):
+        _publish_generated_project(_save(tmp_path / "second", "save 2"), persist)
+
+    _assert_workspace_holds(persist, "save 1")
+
+
+def test_a_refused_source_rename_puts_csv_back_too(tmp_path, monkeypatch):
+    persist = tmp_path / "pyrung_project"
+    _publish_generated_project(_save(tmp_path / "first", "save 1"), persist)
+    replace = Path.replace
+
+    def refuse_source(self, target):
+        if self.name == ".plc.staging":
+            raise PermissionError("src/plc is in use")
+        return replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", refuse_source)
+
+    with pytest.raises(PermissionError):
+        _publish_generated_project(_save(tmp_path / "second", "save 2"), persist)
+
+    _assert_workspace_holds(persist, "save 1")
+    assert sorted(path.name for path in persist.iterdir() if path.name.startswith(".")) == []
+    assert sorted(path.name for path in (persist / "src").iterdir()) == ["plc"]
+
+    monkeypatch.setattr(Path, "replace", replace)
+    _publish_generated_project(_save(tmp_path / "third", "save 3"), persist)
+    _assert_workspace_holds(persist, "save 3")
+
+
+def test_regeneration_removes_outputs_it_no_longer_writes(tmp_path):
+    persist = tmp_path / "pyrung_project"
+    _publish_generated_project(_staged_project(tmp_path / "first", "generated\n"), persist)
+    (persist / "csv_output").mkdir()
+    (persist / "csv_output" / "main.csv").write_text("exported\n", encoding="utf-8")
+    (persist / "run.py").write_text("# runner\n", encoding="utf-8")
+
+    _publish_generated_project(_staged_project(tmp_path / "second", "generated\n"), persist)
+
+    assert not (persist / "csv_output").exists()
+    assert not (persist / "run.py").exists()
+    assert (persist / "project_to_csv.py").is_file()
 
 
 def test_clean_regeneration_does_not_replace_existing_recovery_snapshot(tmp_path):
