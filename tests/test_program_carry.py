@@ -22,8 +22,13 @@ OLD = _maps({"X001": "Start", "Y001": "Motor", "C1": "Mode", "DS1": "Speed", "DF
     [
         # Internal memory: kept while the name keeps its address.
         ({"C1": "Mode"}, "Mode", "Mode", ""),
-        ({"C1": "Auto"}, "Mode", None, "Mode (gone)"),
+        # A pure rename: the address keeps the force under its new name.
+        ({"C1": "Auto"}, "Mode", "Auto", "Mode -> Auto (C1)"),
+        ({}, "Mode", "C1", "Mode -> C1"),
+        ({"C2": "Auto"}, "C2", "Auto", "C2 -> Auto"),
+        # Its name now sits on another address: released.
         ({"DS1": "Spare", "DS5": "Speed"}, "Speed", None, "Speed (DS1 -> DS5)"),
+        ({"DS5": "Speed"}, "Speed", None, "Speed (DS1 -> DS5)"),
         # Hardware stays on its address, under the address's new name.
         ({"X001": "StartPB", "X005": "Start"}, "Start", "StartPB", "Start -> StartPB (X001)"),
         ({}, "Motor", "Y001", "Motor -> Y001"),
@@ -44,9 +49,12 @@ def test_forces(new, name, target, note):
 
 
 def test_an_internal_df_is_not_hardware_unless_an_analog_channel_has_it():
-    plan = plan_carry(OLD, _maps({"DF1": "Probe"}), {"Temp": 20.5}, {})
+    new = _maps({"DF1": "Probe", "DF2": "Temp"})
+    plan = plan_carry(OLD, new, {"Temp": 20.5}, {})
     assert plan.forces == {"Temp": None}
-    assert plan.released == ("Temp (gone)",)
+    assert plan.released == ("Temp (DF1 -> DF2)",)
+    plan = plan_carry(OLD, new, {"Temp": 20.5}, {}, analog=("DF1",))
+    assert plan.forces == {"Temp": "Probe"}
 
 
 @pytest.mark.parametrize(
@@ -69,6 +77,25 @@ def test_links(new, feedback, enable, target):
     assert plan.released == ()
 
 
+@pytest.mark.parametrize(
+    ("new", "feedback", "enable", "moved"),
+    [
+        ({"X001": "Start", "Y005": "Motor"}, "Start", "Motor",
+         ("the link on Start now follows Motor on Y005 (was Y001)",)),
+        ({"X005": "Start", "Y001": "Motor"}, "Start", "Motor",
+         ("the link on Start now feeds Start on X005 (was X001)",)),
+        ({"X005": "Start"}, "Start", None,
+         ("the link on Start now feeds Start on X005 (was X001)",)),
+        # A rename, or both names where they were: nothing moved.
+        ({"X001": "Start", "Y001": "Run"}, "Start", "Motor", ()),
+        ({"X001": "Start", "Y001": "Motor"}, "Start", "Motor", ()),
+    ],
+)  # fmt: skip
+def test_a_link_that_follows_a_name_to_another_address_is_noted(new, feedback, enable, moved):
+    plan = plan_carry(OLD, _maps(new), {}, {feedback: enable})
+    assert plan.moved == moved
+
+
 def test_the_plan_takes_pyrungs_reload_shape():
     plan = plan_carry(
         OLD,
@@ -77,7 +104,7 @@ def test_the_plan_takes_pyrungs_reload_shape():
         {"Start": "Motor", "X002": None},
     )
     assert plan.as_dap() == {
-        "forces": {"Start": "Begin", "Mode": "Mode", "Speed": None},
+        "forces": {"Start": "Begin", "Mode": "Mode", "Speed": "DS1"},
         "links": {
             "Start": {"en": "Run", "fb": "Begin"},
             "X002": {"cut": True, "fb": "X002"},
@@ -85,21 +112,22 @@ def test_the_plan_takes_pyrungs_reload_shape():
     }
 
 
-def test_the_notice_lists_releases_then_renames():
+def test_the_notice_lists_releases_renames_then_moves():
     plan = plan_carry(
         OLD,
-        _maps({"X001": "Begin", "DS5": "Speed"}),
+        _maps({"X001": "Begin", "C2": "Mode", "DS5": "Speed", "Y005": "Motor"}),
         {"Mode": True, "Speed": 4, "Start": True},
-        {"X002": "Start"},
+        {"X002": "Start", "X003": "Motor"},
     )
     assert plan.notice == (
-        "Writing releases 2 forces: Mode (gone), Speed (DS1 -> DS5). "
+        "Writing releases 2 forces: Mode (C1 -> C2), Speed (DS1 -> DS5). "
         "Kept under new names: Start -> Begin (X001), "
-        "the link on X002 from Start -> link on X002 from Begin."
+        "the link on X002 from Start -> link on X002 from Begin. "
+        "The link on X003 now follows Motor on Y005 (was Y001)."
     )
     assert CarryPlan().notice == ""
-    one = plan_carry(OLD, _maps({}), {"Mode": True}, {})
-    assert one.notice == "Writing releases 1 force: Mode (gone)."
+    one = plan_carry(OLD, _maps({"DS5": "Speed"}), {"Speed": 4}, {})
+    assert one.notice == "Writing releases 1 force: Speed (DS1 -> DS5)."
 
 
 def test_address_of():

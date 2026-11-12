@@ -12,11 +12,12 @@ The rule:
 - A bench link (or cut) follows each of its names, feedback and enable, while
   the new program still has it. A name that is gone stays on its address,
   under the address's new name (every program has every CLICK address, so no
-  link is released).
-- A force on hardware (X, Y and the analog channels' DF registers) stays on
-  its address, under the address's new name.
-- A force on internal memory is kept while its name keeps its address. One
-  whose name moved to another address or is gone is released.
+  link is released). A name that now sits on another address is noted.
+- A force stays on its address, under the address's new name when its name
+  is gone (a pure rename, an unnamed address gaining a nickname included).
+- A force whose name now sits on another address stays on its address too
+  when that is hardware (X, Y and the analog channels' DF registers). On
+  internal memory it is released.
 
 Entries whose name is on no CLICK address are not the user's: pyrung carries
 them as they are.
@@ -59,13 +60,15 @@ class CarryPlan:
 
     *forces* maps an old tag name to its new name, or None to release it;
     *links* an old feedback name to its new names. The notes say why a force
-    is released or an entry renamed, in listing order.
+    is released, an entry renamed or a link moved with its names, in listing
+    order.
     """
 
     forces: Mapping[str, str | None] = field(default_factory=dict)
     links: Mapping[str, LinkTarget] = field(default_factory=dict)
     released: tuple[str, ...] = ()
     renamed: tuple[str, ...] = ()
+    moved: tuple[str, ...] = ()
 
     def as_dap(self) -> dict[str, Any]:
         """The plan as pyrung's reload takes it: ``{"forces": ..., "links": ...}``."""
@@ -84,6 +87,7 @@ class CarryPlan:
             parts.append(f"Writing releases {count} {forces}: {', '.join(self.released)}.")
         if self.renamed:
             parts.append(f"Kept under new names: {', '.join(self.renamed)}.")
+        parts.extend(f"{note[0].upper()}{note[1:]}." for note in self.moved)
         return " ".join(parts)
 
 
@@ -122,16 +126,14 @@ def _force(
     address = old.address(name)
     if address is None:
         return name, ""  # not on a CLICK address: pyrung carries it
-    if _hardware(address, analog):
-        moved = new.name(address)
-        if moved == name:
-            return name, ""
-        where = "" if address in (name, moved) else f" ({address})"
-        return moved, f"{name} -> {moved}{where}"
     where = new.address(name)
     if where == address:
         return name, ""
-    return None, f"{name} ({address} -> {where})" if where else f"{name} (gone)"
+    if where is not None and not _hardware(address, analog):
+        return None, f"{name} ({address} -> {where})"
+    moved = new.name(address)
+    shown = "" if address in (name, moved) else f" ({address})"
+    return moved, f"{name} -> {moved}{shown}"
 
 
 def _link_name(name: str, address: str, new: _Program) -> str:
@@ -170,6 +172,7 @@ def plan_carry(
             renamed.append(note)
 
     carried_links: dict[str, LinkTarget] = {}
+    moved: list[str] = []
     for feedback, enable in links.items():
         feedback_at = before.address(feedback)
         enable_at = None if enable is None else before.address(enable)
@@ -185,4 +188,15 @@ def plan_carry(
             renamed.append(
                 f"the {_link_text(feedback, enable)} -> {_link_text(new_feedback, new_enable)}"
             )
-    return CarryPlan(carried_forces, carried_links, tuple(released_forces), tuple(renamed))
+        # A name followed to another address: the link now runs between other points.
+        now = after.address(feedback) if new_feedback == feedback else feedback_at
+        if now != feedback_at:
+            moved.append(
+                f"the link on {feedback} now feeds {feedback} on {now} (was {feedback_at})"
+            )
+        now = after.address(enable) if enable is not None and new_enable == enable else enable_at
+        if now != enable_at:
+            moved.append(f"the link on {feedback} now follows {enable} on {now} (was {enable_at})")
+    return CarryPlan(
+        carried_forces, carried_links, tuple(released_forces), tuple(renamed), tuple(moved)
+    )

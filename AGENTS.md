@@ -314,9 +314,10 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - A write (`_write_program`) is one job on the action worker, and the Console refuses commands until it is
   answered. It pauses, reads pyrung's force and link listing (the truth, whatever the Console did since the
   last frame), and `plan_carry` (`services/program_carry.py`) decides each entry's name in the new program:
-  a bench link follows its names while they exist, else stays on the address under its new name; a force on
-  X, Y or an analog channel's DF stays on its address; a force on internal memory is kept while its name keeps
-  its address and released otherwise. The offer lists what it would release before the user writes. Only the
+  a bench link follows its names while they exist (noted when one now sits on another address), else stays on
+  the address under its new name; a force stays on its address under the new name on a pure rename (an unnamed
+  address gaining a nickname included); a force whose name now sits on another address stays only on X, Y or an
+  analog channel's DF and is released on internal memory. The offer lists all this before the user writes. Only the
   entries whose name changes are unforced or restored before the reload and sent again after it (pyrung
   carries the rest by name); a planned pyrung reload that takes `CarryPlan.as_dap()` replaces those calls. The
   listing, placed as planned, is adopted by address. A write answered after another build started keeps the

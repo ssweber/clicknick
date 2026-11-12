@@ -1591,8 +1591,10 @@ def test_internal_forces_whose_name_moves_are_listed_before_the_write_and_releas
     _rebuild(ready, {"C1": "Auto", "DS1": "Spare", "DS5": "Speed"})
 
     change = ready.sim.program_change
-    released = "Writing releases 2 forces: Mode (gone), Speed (DS1 -> DS5)."
-    assert released in change.text, "listed before the user writes"
+    notice = (
+        "Writing releases 1 force: Speed (DS1 -> DS5). Kept under new names: Mode -> Auto (C1)."
+    )
+    assert notice in change.text, "listed before the user writes"
     mark = len(ready.dap.calls)
 
     ready.sim.write_program()
@@ -1603,10 +1605,11 @@ def test_internal_forces_whose_name_moves_are_listed_before_the_write_and_releas
         ("unforce", "Speed"),
         ("reload",),
         ("set_mode", "stop", None),
+        ("force", "Auto", True),  # C1 renamed: the force stays on it
     ]
-    assert ready.dap.forces == {"Level": 7}, "Level keeps DS2: pyrung carried it"
-    assert ready.sim.forces == {"DS2": 7}
-    assert released in (ready.sim.notice or "")
+    assert ready.dap.forces == {"Level": 7, "Auto": True}, "pyrung carried Level"
+    assert ready.sim.forces == {"DS2": 7, "C1": True}
+    assert notice in (ready.sim.notice or "")
 
 
 def test_a_write_is_refused_while_a_rung_clicknick_cannot_read_is_in_the_workspace(ready):
@@ -1719,6 +1722,7 @@ def test_a_bench_link_follows_its_enable_name_to_its_new_address(ready):
 
     assert _calls_since(ready.dap, mark) == [("reload",), ("set_mode", "stop", None)]
     assert ready.dap.bench["X002"]["enable"] == "Motor"
+    assert "The link on X002 now follows Motor on Y002 (was Y001)." in (ready.sim.notice or "")
     assert ready.sim.bench_links == {"X002": BenchLink("Y002", response=response(on_delay="1s"))}
 
 
