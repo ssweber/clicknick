@@ -18,7 +18,7 @@ from clicknick.data.shared_dataview import SharedDataviewData
 from clicknick.data_session import DataSession
 from clicknick.models.address_row import AddressRow
 from clicknick.views.dataview_editor import window as window_module
-from clicknick.views.dataview_editor.panel import COL_ADDRESS, DataviewPanel
+from clicknick.views.dataview_editor.panel import COL_ADDRESS, COL_NEW_VALUE, DataviewPanel
 from clicknick.views.dataview_editor.window import DataviewEditorWindow
 
 tk = pytest.importorskip("tkinter")
@@ -743,7 +743,9 @@ def _cell_editor_window(*, commits_without_focus: bool) -> tuple[DataviewEditorW
         text_editor=text_editor, mouseclick_outside_editor_or_dropdown_all_canvases=click_outside
     )
     window = DataviewEditorWindow.__new__(DataviewEditorWindow)
-    window._iter_open_panels = lambda: [SimpleNamespace(sheet=SimpleNamespace(MT=mt))]
+    window._iter_open_panels = lambda: [
+        SimpleNamespace(sheet=SimpleNamespace(MT=mt), reopen_rejected_edit=lambda: False)
+    ]
     window.focus_force = lambda: None
     return window, tries
 
@@ -810,6 +812,39 @@ def _typed(
 
 
 _FINISH = "Finish the cell edit first (Enter to keep it, Esc to cancel)."
+
+
+def test_a_new_value_that_does_not_validate_is_said_and_kept_open(
+    editor, dialogs, tk_root, tmp_path, monkeypatch
+):
+    window, panel, _path = _typed(
+        editor, tk_root, tmp_path, monkeypatch, row=0, column=COL_NEW_VALUE, text="abc"
+    )
+    before = panel.rows[0].new_value
+
+    mt = panel.sheet.MT
+    mt.close_text_editor(SimpleNamespace(keysym="Return"))
+    tk_root.update()
+
+    assert dialogs.errors == ["X001: Must be 0 or 1"]
+    assert mt.text_editor.open
+    assert mt.text_editor.get() == "abc"
+    assert panel.rows[0].new_value == before
+
+
+def test_write_stops_on_a_new_value_that_does_not_validate(
+    editor, dialogs, tk_root, tmp_path, monkeypatch
+):
+    window, panel, _path = _typed(
+        editor, tk_root, tmp_path, monkeypatch, row=0, column=COL_NEW_VALUE, text="abc"
+    )
+    sent = []
+    monkeypatch.setattr(window, "_write_payload", sent.append)
+
+    window._write_all()
+
+    assert sent == []
+    assert dialogs.errors == ["X001: Must be 0 or 1"]
 
 
 def test_text_typed_in_a_real_cell_is_committed(editor, dialogs, tk_root, tmp_path, monkeypatch):

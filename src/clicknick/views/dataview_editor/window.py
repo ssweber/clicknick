@@ -411,6 +411,9 @@ class DataviewEditorWindow(tk.Toplevel):
         if mt.text_editor.open:
             self.focus_force()
             mt.mouseclick_outside_editor_or_dropdown_all_canvases()
+        # A New Value that does not validate is said and reopened: nothing is written
+        if panel.reopen_rejected_edit():
+            return False
         if mt.text_editor.open:
             messagebox.showwarning(
                 "Cell Being Edited",
