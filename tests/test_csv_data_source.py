@@ -194,9 +194,51 @@ class TestCsvModeStore:
         assert store.visible_state[key].nickname == "Stop"
         assert store.base_state[key].nickname == ""
 
+    def test_a_write_that_fails_partway_leaves_the_file_whole(self, tmp_path):
+        path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
+        before = path.read_bytes()
+        # A lone surrogate cannot be encoded: the write stops after the rows before it
+        rows = [AddressRow("C", 1, nickname="Motor"), AddressRow("C", 2, comment="\ud800")]
+
+        with pytest.raises(UnicodeEncodeError):
+            CsvDataSource(str(path)).save_changes(rows)
+
+        assert path.read_bytes() == before
+        assert [p.name for p in tmp_path.iterdir()] == ["names.csv"]
+
+    def test_a_locked_file_raises_and_is_left_as_it_was(self, tmp_path, monkeypatch):
+        path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
+        before = path.read_bytes()
+
+        def locked(src, dst):
+            raise PermissionError(13, "The process cannot access the file", str(dst))
+
+        monkeypatch.setattr("clicknick.data.data_source.os.replace", locked)
+
+        with pytest.raises(PermissionError):
+            CsvDataSource(str(path)).save_changes([AddressRow("C", 1, nickname="Motor")])
+
+        assert path.read_bytes() == before
+        assert [p.name for p in tmp_path.iterdir()] == ["names.csv"]
+
 
 class TestFieldValues:
-    @pytest.mark.parametrize("value", ['"', ",", " ", 'a"b,c'])
+    @pytest.mark.parametrize(
+        ("value", "written"), [(" ", '" "'), (" a", '" a"'), ("A", "A"), ('"', '""""')]
+    )
+    def test_a_txt_initial_value_is_quoted_when_a_reader_could_change_it(
+        self, tmp_path, value, written
+    ):
+        path = tmp_path / "txt.csv"
+        CsvDataSource(str(path)).save_changes(
+            [AddressRow("TXT", 5, nickname="Sep", data_type=6, initial_value=value)]
+        )
+
+        assert path.read_text(encoding="utf-8").splitlines()[1] == (
+            f'TXT5,TEXT,"Sep",{written},No,""'
+        )
+
+    @pytest.mark.parametrize("value", ['"', ",", " ", " a", 'a"b,c'])
     def test_a_txt_initial_value_round_trips(self, tmp_path, value):
         path = tmp_path / "txt.csv"
         rows = [

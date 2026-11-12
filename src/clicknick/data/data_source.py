@@ -7,6 +7,8 @@ address data from different sources (MDB database, CSV files).
 from __future__ import annotations
 
 import csv
+import os
+import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -116,8 +118,13 @@ def _quoted(text: str) -> str:
 
 
 def _bare(text: str) -> str:
-    """Unquoted, as CLICK writes the other columns, unless it holds a delimiter or quote."""
-    return _quoted(text) if any(char in text for char in ',"\r\n') else text
+    """Unquoted, as CLICK writes the other columns, unless it holds a delimiter or quote.
+
+    Leading or trailing whitespace is quoted too, so a reader that trims bare
+    cells keeps it (a TXT initial value of one space).
+    """
+    special = any(char in text for char in ',"\r\n') or text != text.strip()
+    return _quoted(text) if special else text
 
 
 def _is_blank(row: dict[str | None, str | list[str] | None]) -> bool:
@@ -346,8 +353,16 @@ class CsvDataSource(DataSource):
             ]
             lines.append(",".join(line_parts))
 
-        with open(self._csv_path, "w", newline="", encoding="utf-8") as csvfile:
-            csvfile.write("".join(line + "\r\n" for line in lines))
+        # Written beside the file and swapped in, so a failed write leaves the file whole
+        path = Path(self._csv_path)
+        fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}-", suffix=".tmp", dir=path.parent)
+        try:
+            with os.fdopen(fd, "w", newline="", encoding="utf-8") as csvfile:
+                csvfile.write("".join(line + "\r\n" for line in lines))
+            os.replace(temp_name, path)
+        except BaseException:
+            Path(temp_name).unlink(missing_ok=True)
+            raise
         return len(rows_to_write)
 
 

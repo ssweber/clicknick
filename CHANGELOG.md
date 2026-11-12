@@ -62,7 +62,7 @@
 - Open Temporary Workspace and the Workspace status update as soon as a build finishes, instead of waiting for something else to refresh the window, such as opening the Simulator.
 - A nickname CSV that Excel saved as "CSV UTF-8" loads its nicknames instead of loading empty.
 - A file that is not a nickname CSV, such as one without Address and Nickname columns, CLICK's own Address.csv, or a row whose Address is not a CLICK address, fails to load and names the line, instead of loading as an empty project that Save then overwrites.
-- In CSV mode, Save says so when the file cannot be written, such as while Excel holds it open, and keeps your edits, instead of reporting success; it also leaves alone a file that was changed on disk into one ClickNick cannot read.
+- In CSV mode, Save says so when the file cannot be written, such as while Excel holds it open, and keeps your edits, instead of reporting success, and refuses to overwrite a file that changed on disk into one ClickNick cannot read.
 - XD and YD nicknames in a CSV (`XD0u`, `XD8`) stay on their own addresses when loaded, imported or staged.
 - Nickname CSVs keep comments' leading and trailing spaces, read Retentive written as `1`/`0` or `True`/`False`, and end lines with CRLF, as CLICK's export does.
 - A Text initial value holding `,`, `"` or a space is quoted when ClickNick writes a CSV, and ClickNick reads it back unchanged; whether CLICK's import shows it unchanged is not yet checked (import such a CSV into CLICK and look at the Text address).
