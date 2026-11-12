@@ -96,6 +96,13 @@
 - **Stop** in the main window turns off only autocomplete, until you click **Start** or pick a window: ClickNick still notices CLICK closing or opening another project (it kept the old project's editors, simulation and database).
 - A CSV that cannot be loaded shows why, such as a missing Nickname column (the status only said "CSV load failed").
 - Two CLICK windows with the same project name are listed with their PIDs, so either can be picked, and the window list and status no longer show a window or "Monitoring" that is not current.
+- Preview Changes remembers what you pasted until CLICK saves it: running Preview Changes again or switching **Copy** no longer has you paste the same rungs a second time, a program whose pasted rungs the new export changes is copied whole, and **Restart** asks first.
+- A program marked done in Preview Changes that CLICK's save shows still to paste is a step again (it stayed done, and the window never closed).
+- A ladder CSV that Preview Changes cannot read is left out with a notice, so the window still closes once CLICK has saved the rest.
+- **Copy: Whole program** steps through a program when a difference you skipped keeps a rung CLICK holds in an old encoding, so the paste does not rewrite that rung from ClickNick's reading of it.
+- Without a comparison with CLICK, Preview Changes says to delete the program's rungs before pasting it whole, and copies only while connected to a CLICK window (it used the first CLICK window it found).
+- A folder's `nicknames.csv` without an Address Comment, Initial Value or Retentive column no longer clears those fields when Preview Changes stages it.
+- `clicknick-rung load` on a CSV with no rungs says so instead of crashing.
 
 ## v0.23.4 - 2026-10-11
 

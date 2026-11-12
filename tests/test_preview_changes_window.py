@@ -2262,7 +2262,9 @@ def test_restart_asks_before_forgetting_what_click_holds_pasted(monkeypatch, cop
 
     window._on_restart()
 
-    assert "CLICK holds rungs pasted from this window that it has not saved" in ask.call_args.args[1]
+    assert (
+        "CLICK holds rungs pasted from this window that it has not saved" in ask.call_args.args[1]
+    )
     assert _action(window) == "Copy r3..4"
 
 

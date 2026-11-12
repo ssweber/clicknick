@@ -416,6 +416,88 @@ class PreviewChangesWindow(tk.Toplevel):
             else BundleSources.workspace(self._source_dir, self._folder)
         )
 
+    def _skipped_of(self, name: str) -> frozenset[DifferenceKey]:
+        return self._skipped.get(name, frozenset())
+
+    def _carry_pasted(
+        self,
+        name: str,
+        basis: ProgramChange,
+        old_skipped: frozenset[DifferenceKey],
+        change: ProgramChange,
+    ) -> None:
+        """Place what was pasted of the program in a new comparison with the same CLICK save.
+
+        The folder was read again (exported again, say) before CLICK saved, so
+        CLICK still holds the pasted rungs. They are placed when the new
+        comparison has the same differences pasted, leaving the same rungs in
+        CLICK, and a step begun is still the next one, in the same place.
+        Otherwise the program's steps cannot be numbered from what CLICK
+        holds, and it is copied whole until CLICK saves (_unplaced).
+        """
+        pasted = self._pasted.pop(name, frozenset())
+        partial = self._partial.pop(name, 0)
+        if not pasted and not partial:
+            return
+        carried = pasted & frozenset(change.differences)
+        held = basis.merged(frozenset(basis.differences) - pasted)
+        placed = not change.unreadable and held == change.merged(
+            frozenset(change.differences) - carried
+        )
+        if placed and partial:
+            begun = basis.steps(old_skipped, pasted)[: partial + 1]
+            now = change.steps(self._skipped_of(name), carried)[: partial + 1]
+            placed = (
+                len(now) == len(begun)
+                and change.differences[now[0].block] == basis.differences[begun[0].block]
+                and [(step.over, step.above, step.delete) for step in now]
+                == [(step.over, step.above, step.delete) for step in begun]
+            )
+        if not placed:
+            self._unplaced.add(name)
+            return
+        if carried:
+            self._pasted[name] = carried
+        if partial:
+            self._partial[name] = partial
+
+    # ------------------------------------------------------------------
+    # Taking and skipping differences
+    # ------------------------------------------------------------------
+
+    def _choosable(self, name: str | None) -> ProgramChange | None:
+        """The folder program's change, when it has differences to take or skip.
+
+        A program ClickNick cannot read all of in CLICK has none to skip. It is
+        pasted whole, and a skip would keep CLICK's empty rung.
+        """
+        if name is None or name in self._only_in_click:
+            return None
+        change = self._changes.get(name)
+        if change is None or change.unreadable or not change.differences:
+            return None
+        return change
+
+    def _kept(self, name: str) -> bool:
+        """Whether a program only in CLICK is kept there, rather than deleted."""
+        return (name in self._flipped_in_click) == self._source.deletes_only_in_click
+
+    def _all_skipped(self, name: str) -> bool:
+        """Whether every difference of the program is skipped: nothing to paste."""
+        if name == _NICKNAMES_NAME:
+            return self._nicknames_skipped
+        if name in self._only_in_click:
+            return self._kept(name)
+        change = self._choosable(name)
+        return change is not None and set(change.differences) <= self._skipped_of(name)
+
+    def _still_to_do(self, name: str) -> bool:
+        """Whether CLICK's last save shows the program still to paste, or still to delete."""
+        if name in self._only_in_click:
+            return not self._kept(name)
+        change = self._changes.get(name)
+        return change is not None and change.differs and not self._all_skipped(name)
+
     def _carry_choices(self, *, saved: bool) -> None:
         """Bring each program's choices and progress over to the new comparison.
 
@@ -480,7 +562,10 @@ class PreviewChangesWindow(tk.Toplevel):
         saved = (
             comparison.compared
             and previous is not None
-            and any(previous[name] != self._last_save[name] for name in previous.keys() & self._last_save.keys())
+            and any(
+                previous[name] != self._last_save[name]
+                for name in previous.keys() & self._last_save.keys()
+            )
         )
         self._carry_choices(saved=saved)
         self._items = [
@@ -490,55 +575,6 @@ class PreviewChangesWindow(tk.Toplevel):
                 for name, change in comparison.only_in_click.items()
             ),
         ]
-
-    def _carry_pasted(
-        self,
-        name: str,
-        basis: ProgramChange,
-        old_skipped: frozenset[DifferenceKey],
-        change: ProgramChange,
-    ) -> None:
-        """Place what was pasted of the program in a new comparison with the same CLICK save.
-
-        The folder was read again (exported again, say) before CLICK saved, so
-        CLICK still holds the pasted rungs. They are placed when the new
-        comparison has the same differences pasted, leaving the same rungs in
-        CLICK, and a step begun is still the next one, in the same place.
-        Otherwise the program's steps cannot be numbered from what CLICK
-        holds, and it is copied whole until CLICK saves (_unplaced).
-        """
-        pasted = self._pasted.pop(name, frozenset())
-        partial = self._partial.pop(name, 0)
-        if not pasted and not partial:
-            return
-        carried = pasted & frozenset(change.differences)
-        held = basis.merged(frozenset(basis.differences) - pasted)
-        placed = not change.unreadable and held == change.merged(
-            frozenset(change.differences) - carried
-        )
-        if placed and partial:
-            begun = basis.steps(old_skipped, pasted)[: partial + 1]
-            now = change.steps(self._skipped_of(name), carried)[: partial + 1]
-            placed = (
-                len(now) == len(begun)
-                and change.differences[now[0].block] == basis.differences[begun[0].block]
-                and [(step.over, step.above, step.delete) for step in now]
-                == [(step.over, step.above, step.delete) for step in begun]
-            )
-        if not placed:
-            self._unplaced.add(name)
-            return
-        if carried:
-            self._pasted[name] = carried
-        if partial:
-            self._partial[name] = partial
-
-    def _still_to_do(self, name: str) -> bool:
-        """Whether CLICK's last save shows the program still to paste, or still to delete."""
-        if name in self._only_in_click:
-            return not self._kept(name)
-        change = self._changes.get(name)
-        return change is not None and change.differs and not self._all_skipped(name)
 
     def _unsaved_pastes(self) -> bool:
         """Whether CLICK holds rungs pasted from this window that it has not saved."""
@@ -690,39 +726,6 @@ class PreviewChangesWindow(tk.Toplevel):
         change = self._changes.get(name)
         return change is not None and not change.differs
 
-    # ------------------------------------------------------------------
-    # Taking and skipping differences
-    # ------------------------------------------------------------------
-
-    def _choosable(self, name: str | None) -> ProgramChange | None:
-        """The folder program's change, when it has differences to take or skip.
-
-        A program ClickNick cannot read all of in CLICK has none to skip. It is
-        pasted whole, and a skip would keep CLICK's empty rung.
-        """
-        if name is None or name in self._only_in_click:
-            return None
-        change = self._changes.get(name)
-        if change is None or change.unreadable or not change.differences:
-            return None
-        return change
-
-    def _skipped_of(self, name: str) -> frozenset[DifferenceKey]:
-        return self._skipped.get(name, frozenset())
-
-    def _kept(self, name: str) -> bool:
-        """Whether a program only in CLICK is kept there, rather than deleted."""
-        return (name in self._flipped_in_click) == self._source.deletes_only_in_click
-
-    def _all_skipped(self, name: str) -> bool:
-        """Whether every difference of the program is skipped: nothing to paste."""
-        if name == _NICKNAMES_NAME:
-            return self._nicknames_skipped
-        if name in self._only_in_click:
-            return self._kept(name)
-        change = self._choosable(name)
-        return change is not None and set(change.differences) <= self._skipped_of(name)
-
     def _rest_skipped(self, name: str) -> bool:
         """Whether every difference not pasted yet is skipped: nothing left to paste."""
         if name == _NICKNAMES_NAME:
@@ -809,8 +812,8 @@ class PreviewChangesWindow(tk.Toplevel):
         return (
             f"CLICK holds rungs of {name} pasted before this folder was read again, not "
             f"saved yet, and a whole paste would put back CLICK's {which} from ClickNick's "
-            "reading of its old encoding, which you chose to keep. Save in CLICK first: "
-            "then the changed rungs are stepped through."
+            "reading of its old encoding, which you chose to keep. Save in CLICK first, "
+            "then step through the changed rungs, or take that difference."
         )
 
     def _program_steps(
@@ -1284,6 +1287,17 @@ class PreviewChangesWindow(tk.Toplevel):
             f"{_DELETE_IN_CLICK}"
         )
 
+    def _stepped_line(self, name: str) -> str:
+        """Say why the program is stepped through under "Whole program", or nothing."""
+        kept = self._skipped_legacy(name) if self._copy_whole_var.get() else []
+        if not kept:
+            return ""
+        which = f"rung {kept[0]}" if len(kept) == 1 else f"rungs {_listed_rungs(kept)}"
+        return (
+            f"\nStepped through, not copied whole: a whole paste would put back CLICK's {which} "
+            "from ClickNick's reading of its old encoding, which you chose to keep"
+        )
+
     def _step_prompt(self, idx: int) -> str:
         """Say what the current step of the row does."""
         name, _path, rung_count, _ = self._items[idx]
@@ -1393,17 +1407,6 @@ class PreviewChangesWindow(tk.Toplevel):
                 )
             return prompt
         return f'Click "Copy" to copy {name} to the clipboard. {self._whole_placement(name)}'
-
-    def _stepped_line(self, name: str) -> str:
-        """Say why the program is stepped through under "Whole program", or nothing."""
-        kept = self._skipped_legacy(name) if self._copy_whole_var.get() else []
-        if not kept:
-            return ""
-        which = f"rung {kept[0]}" if len(kept) == 1 else f"rungs {_listed_rungs(kept)}"
-        return (
-            f"\nStepped through, not copied whole: a whole paste would put back CLICK's {which} "
-            "from ClickNick's reading of its old encoding, which you chose to keep"
-        )
 
     def _toggle_kept(self, name: str) -> None:
         """Keep a program only in CLICK, or delete it there after all."""
@@ -1878,8 +1881,9 @@ class PreviewChangesWindow(tk.Toplevel):
         """Read the folder, compare it with CLICK, and begin at *select* or the first step.
 
         With *keep_done*, programs marked done stay done if the folder still
-        holds the same rungs for them, and so does what was pasted of the
-        others. Skipped differences stay skipped either way.
+        holds the same rungs for them, and what was pasted is placed in the new
+        comparison (_carry_pasted). Without it, both are forgotten. Skipped
+        differences stay skipped either way.
         """
         previous = self._programs
         previous_only_in_click = set(self._only_in_click)
@@ -1926,7 +1930,8 @@ class PreviewChangesWindow(tk.Toplevel):
             if self._source_dir is not None:
                 message += " (skipped edits are in backup/src/plc)"
         if left_out := self._left_out_names():
-            message += f"; {', '.join(left_out)} could not be read and {'was' if len(left_out) == 1 else 'were'} left out"
+            verb = "was" if len(left_out) == 1 else "were"
+            message += f"; {', '.join(left_out)} could not be read and {verb} left out"
         return message
 
     def _close_if_settled(self, was_pending: bool) -> bool:
@@ -2036,6 +2041,16 @@ class PreviewChangesWindow(tk.Toplevel):
         self._pasted[name] = self._pasted.get(name, frozenset()) | {change.differences[step.block]}
         self._partial.pop(name, None)
 
+    def _record_whole_paste(self, name: str) -> None:
+        """Record that CLICK holds the program as copied whole: each difference not skipped."""
+        change = self._choosable(name)
+        if change is None:
+            return
+        self._pasted[name] = frozenset(change.differences) - self._skipped_of(name)
+        self._partial.pop(name, None)
+        self._unplaced.discard(name)
+        self._basis[name] = change
+
     def _on_action(self) -> None:
         """Handle the main action button (Copy, Stage nicknames, or Next)."""
         idx = self._current_idx
@@ -2071,16 +2086,6 @@ class PreviewChangesWindow(tk.Toplevel):
                 self._record_whole_paste(name)
             self._done.add(name)
         self._advance_to_next()
-
-    def _record_whole_paste(self, name: str) -> None:
-        """Record that CLICK holds the program as copied whole: each difference not skipped."""
-        change = self._choosable(name)
-        if change is None:
-            return
-        self._pasted[name] = frozenset(change.differences) - self._skipped_of(name)
-        self._partial.pop(name, None)
-        self._unplaced.discard(name)
-        self._basis[name] = change
 
     def _on_copy_mode(self) -> None:
         """Handle the Copy switch: remember it, and show the current row's step under it.
@@ -2519,7 +2524,8 @@ class PreviewChangesWindow(tk.Toplevel):
         """Read the folder again: it was exported, opened or copied again.
 
         The arguments are as for the constructor. Programs already
-        marked done stay done unless their rungs changed, and skipped
+        marked done stay done unless their rungs changed, what was pasted
+        stays pasted where the new reading leaves it in place, and skipped
         differences stay skipped. Rungs asked for by number replace the
         program's choices. Shown as a different source (the workspace's export,
         or the folder itself), the nicknames and the programs only in CLICK
