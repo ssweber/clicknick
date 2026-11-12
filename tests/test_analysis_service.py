@@ -28,6 +28,7 @@ from clicknick.services.analysis_service import (
 from clicknick.services.project_workspace import (
     backup_plc_source,
     generated_source_state_path,
+    plc_source_is_modified,
 )
 
 
@@ -798,6 +799,63 @@ def test_a_folder_that_cannot_be_copied_leaves_the_last_one(tmp_path, monkeypatc
 
     assert (persist / "csv" / "main.csv").read_text(encoding="utf-8") == "first save\n"
     assert (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "generated one\n"
+
+
+def _save(root: Path, label: str) -> Path:
+    staged = _staged_project(root, f"{label}\n")
+    (staged / "csv").mkdir()
+    (staged / "csv" / "main.csv").write_text(f"{label}\n", encoding="utf-8")
+    (staged / "nicknames.csv").write_text(f"{label}\n", encoding="utf-8")
+    return staged
+
+
+def _assert_workspace_holds(persist: Path, label: str) -> None:
+    """csv/ and src/plc come from one save, recorded as its generation."""
+    assert (persist / "csv" / "main.csv").read_text(encoding="utf-8") == f"{label}\n"
+    assert (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8") == f"{label}\n"
+    assert not plc_source_is_modified(persist)
+
+
+def test_a_locked_nicknames_csv_leaves_csv_and_source_from_one_save(tmp_path, monkeypatch):
+    persist = tmp_path / "pyrung_project"
+    _publish_generated_project(_save(tmp_path / "first", "save 1"), persist)
+    copy2 = shutil.copy2
+
+    def refuse_nicknames(source, *args, **kwargs):
+        if Path(source).name == "nicknames.csv":
+            raise PermissionError("nicknames.csv is open in another program")
+        return copy2(source, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copy2", refuse_nicknames)
+
+    with pytest.raises(PermissionError):
+        _publish_generated_project(_save(tmp_path / "second", "save 2"), persist)
+
+    _assert_workspace_holds(persist, "save 1")
+
+
+def test_a_refused_source_rename_puts_csv_back_too(tmp_path, monkeypatch):
+    persist = tmp_path / "pyrung_project"
+    _publish_generated_project(_save(tmp_path / "first", "save 1"), persist)
+    replace = Path.replace
+
+    def refuse_source(self, target):
+        if self.name == ".plc.staging":
+            raise PermissionError("src/plc is in use")
+        return replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", refuse_source)
+
+    with pytest.raises(PermissionError):
+        _publish_generated_project(_save(tmp_path / "second", "save 2"), persist)
+
+    _assert_workspace_holds(persist, "save 1")
+    assert sorted(path.name for path in persist.iterdir() if path.name.startswith(".")) == []
+    assert sorted(path.name for path in (persist / "src").iterdir()) == ["plc"]
+
+    monkeypatch.setattr(Path, "replace", replace)
+    _publish_generated_project(_save(tmp_path / "third", "save 3"), persist)
+    _assert_workspace_holds(persist, "save 3")
 
 
 def test_regeneration_removes_outputs_it_no_longer_writes(tmp_path):

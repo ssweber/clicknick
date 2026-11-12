@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 PLC_PACKAGE_PATH = Path("src") / "plc"
@@ -84,35 +85,66 @@ def record_generated_plc_source(project_dir: Path) -> Path:
     return state_path
 
 
+def _replace_trees(pairs: Sequence[tuple[Path, Path]]) -> None:
+    """Copy each source over its destination: every destination changes, or none does.
+
+    Each copy is staged beside its destination first. The old trees then move
+    aside and the new ones in; if any rename fails, the new trees come out and
+    the old ones go back.
+    """
+    moves: list[tuple[Path, Path, Path]] = []
+    for source, destination in pairs:
+        if not source.is_dir():
+            raise ValueError(f"source directory not found: {source}")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        moves.append(
+            (
+                destination.parent / f".{destination.name}.staging",
+                destination,
+                destination.parent / f".{destination.name}.previous",
+            )
+        )
+    for staging, _destination, previous in moves:
+        for leftover in (staging, previous):
+            if leftover.exists():
+                shutil.rmtree(leftover)
+
+    swapped: list[tuple[Path, Path, Path, bool, bool]] = []
+    try:
+        for (source, _), (staging, _destination, _previous) in zip(pairs, moves, strict=True):
+            shutil.copytree(source, staging, ignore=_COPY_IGNORE)
+        try:
+            for staging, destination, previous in moves:
+                aside = placed = False
+                try:
+                    if destination.exists():
+                        destination.replace(previous)
+                        aside = True
+                    staging.replace(destination)
+                    placed = True
+                finally:
+                    swapped.append((staging, destination, previous, aside, placed))
+        except Exception:
+            for staging, destination, previous, aside, placed in reversed(swapped):
+                try:
+                    if placed:
+                        destination.replace(staging)
+                    if aside:
+                        previous.replace(destination)
+                except OSError:
+                    pass
+            raise
+        for _staging, _destination, previous in moves:
+            shutil.rmtree(previous, ignore_errors=True)
+    finally:
+        for staging, _destination, _previous in moves:
+            if staging.exists():
+                shutil.rmtree(staging, ignore_errors=True)
+
+
 def _replace_tree(source: Path, destination: Path) -> int:
     """Copy *source* over *destination* without exposing a partial new tree."""
-    if not source.is_dir():
-        raise ValueError(f"source directory not found: {source}")
-
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    staging = destination.parent / f".{destination.name}.staging"
-    previous = destination.parent / f".{destination.name}.previous"
-    if staging.exists():
-        shutil.rmtree(staging)
-    if previous.exists():
-        shutil.rmtree(previous)
-
-    try:
-        shutil.copytree(source, staging, ignore=_COPY_IGNORE)
-        if destination.exists():
-            destination.replace(previous)
-        try:
-            staging.replace(destination)
-        except Exception:
-            if previous.exists() and not destination.exists():
-                previous.replace(destination)
-            raise
-        if previous.exists():
-            shutil.rmtree(previous)
-    finally:
-        if staging.exists():
-            shutil.rmtree(staging, ignore_errors=True)
-
+    _replace_trees([(source, destination)])
     return sum(path.is_file() for path in destination.rglob("*"))
 
 

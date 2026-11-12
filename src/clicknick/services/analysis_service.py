@@ -232,6 +232,7 @@ def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
     """Publish a complete staged generation without risking workspace edits."""
     from .project_workspace import (
         _replace_tree,
+        _replace_trees,
         backup_modified_plc_source,
         plc_source_dir,
         record_generated_plc_source,
@@ -244,11 +245,11 @@ def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
     persist_dir.mkdir(parents=True, exist_ok=True)
     backup_modified_plc_source(persist_dir)
 
-    # Each generated folder replaces its old copy in one rename, so a failure part
-    # way (a csv/ file open in Excel) leaves the old copy rather than none. Active
-    # source stays in place until everything else is published.
+    # Support files first. csv/ and src/plc go last and together, so a failure
+    # anywhere (a file open in Excel) never leaves csv/ from one save and src/plc
+    # from another; the generation record is written only once both are in.
     for child in staged_dir.iterdir():
-        if child.name == "src":
+        if child.name in {"src", "csv"}:
             continue
         destination = persist_dir / child.name
         if child.name in _GENERATED_DIR_NAMES:
@@ -262,7 +263,10 @@ def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
     # Outputs this generation does not write go, csv_output/ among them.
     _clean_generated(persist_dir, keep=frozenset(child.name for child in staged_dir.iterdir()))
 
-    _replace_tree(staged_source, plc_source_dir(persist_dir))
+    pairs = [(staged_source, plc_source_dir(persist_dir))]
+    if (staged_dir / "csv").is_dir():
+        pairs.insert(0, (staged_dir / "csv", persist_dir / "csv"))
+    _replace_trees(pairs)
     record_generated_plc_source(persist_dir)
 
 
