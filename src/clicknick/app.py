@@ -1143,8 +1143,7 @@ class ClickNickApp:
     def _apply_workspace_mirror_setup(self) -> None:
         """Make the selected durable directory the active project workspace."""
         dialog_parent = getattr(self, "_mirror_setup_window", None) or self.root
-        plc_name = self._ensure_plc_name_for_workspace()
-        if self._session is None or plc_name is None:
+        if self._session is None:
             self._update_status("Connect to a CLICK project first", "error")
             return
         config = self._pending_workspace_config
@@ -1155,20 +1154,27 @@ class ClickNickApp:
                 parent=dialog_parent,
             )
             return
-        if config.plc_name.casefold() != plc_name.casefold():
-            messagebox.showerror(
-                "Setup Workspace",
-                f'This workspace belongs to PLC "{config.plc_name}", not "{plc_name}".',
-                parent=dialog_parent,
-            )
-            return
         mirror_path = config.workspace_path.resolve()
+        source = self._workspace_source_dir()
+        changing_location = source is not None and source.resolve() != mirror_path
+        # Refused before asking for a PLC name, which is written into CLICK's folder
         build_error = self._earlier_save_build_error()
-        if build_error is not None and self._workspace_source_dir() is not None:
+        if build_error is not None and changing_location:
             messagebox.showerror(
                 "Setup Workspace",
                 "The workspace could not be built from CLICK's last save, so ClickNick "
                 "will not copy an earlier save's workspace.\n\n" + build_error,
+                parent=dialog_parent,
+            )
+            return
+        plc_name = self._ensure_plc_name_for_workspace()
+        if plc_name is None:
+            self._update_status("Connect to a CLICK project first", "error")
+            return
+        if config.plc_name.casefold() != plc_name.casefold():
+            messagebox.showerror(
+                "Setup Workspace",
+                f'This workspace belongs to PLC "{config.plc_name}", not "{plc_name}".',
                 parent=dialog_parent,
             )
             return
@@ -1207,8 +1213,6 @@ class ClickNickApp:
         )
 
         try:
-            source = self._workspace_source_dir()
-            changing_location = source is not None and source.resolve() != mirror_path.resolve()
             if changing_location:
                 validate_mirror_destination(source, mirror_path)
             mirror_path.mkdir(parents=True, exist_ok=True)
