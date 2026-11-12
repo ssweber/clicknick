@@ -52,6 +52,11 @@
 
 ### Fixed
 
+- In the Tag Browser's Outline, Rename changes the segment you picked instead of an unrelated nickname that starts with the same letters, and nicknames like `Pump01_Run` keep their leading zeros, stay apart from `Pump1_Run`, and double-clicking one filters the Address Editor to it.
+- The Tag Browser's Outline lists array indices in numeric order (Pump2 before Pump10) and lists a nickname used on two addresses once for each.
+- Renaming an item in the Outline changes only the nicknames under that item, accepts a new name that starts with a digit, and is off for SC/SD entries and `__` groups.
+- Double-clicking an SC or SD entry in the Outline no longer leaves a stale filter in the Address Editor, and those groups stay open when the list refreshes.
+- The overlay's tooltip and the Tag Browser show a timer or counter value's initial value only when its timer or counter is not Retentive, as the Address Editor does.
 - The overlay sends nothing to CLICK when you press Esc or click away, so an empty or half-typed name no longer lands in CLICK's field, Enter on an empty overlay just closes it and leaves the Address Picker open, and Esc keeps the overlay hidden for that field until you move to another field.
 - The overlay comes back when you click into the same empty field again after clicking away.
 - Multi-word overlay searches list matches in list order instead of a random one, and a one-letter search lists only names containing that letter.

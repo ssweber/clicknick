@@ -6,7 +6,8 @@ Address helpers and constants are imported from pyclickplc.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
 
 from pyclickplc.addresses import (
     format_address_display,
@@ -16,6 +17,7 @@ from pyclickplc.banks import (
     DATA_TYPE_DISPLAY,
     DEFAULT_RETENTIVE,
     NON_EDITABLE_TYPES,
+    PAIRED_RETENTIVE_TYPES,
     DataType,
 )
 
@@ -212,6 +214,22 @@ class AddressRow:
     def needs_full_delete(self, is_dirty: bool) -> bool:
         """True if should DELETE the entire row from database."""
         return is_dirty and not self.has_content and not self.used
+
+
+def with_pair_retentive(row: AddressRow, rows: Mapping[int, AddressRow]) -> AddressRow:
+    """The row as the Address Editor shows its Retentive: a TD/CTD row follows its T/CT row.
+
+    Returns *row* itself when it is not a TD/CTD row or its T/CT row is not in *rows*
+    (keyed by addr_key). The tooltip and the Tag Browser read value notes from this
+    row, so they agree with the editor's masked initial value.
+    """
+    pair_type = PAIRED_RETENTIVE_TYPES.get(row.memory_type)
+    if pair_type is None:
+        return row
+    pair = rows.get(get_addr_key(pair_type, row.address))
+    if pair is None or pair.retentive == row.retentive:
+        return row
+    return replace(row, retentive=pair.retentive)
 
 
 def initial_values_differ(a: AddressRow, b: AddressRow) -> bool:

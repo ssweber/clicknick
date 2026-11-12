@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from pyclickplc.blocks import strip_block_tag
 
+from ..models.address_row import with_pair_retentive
 from ..models.nickname import Nickname
 from ..utils.filters import ContainsFilter, ContainsPlusFilter, NoneFilter, PrefixFilter
 from ..utils.mdb_shared import has_access_driver, has_database_backend
@@ -61,9 +62,12 @@ class NicknameManager:
             return []
 
         nicknames = []
-        for row in self._store.visible_state.values():
+        rows = self._store.visible_state
+        for row in rows.values():
             if not row.nickname:
                 continue
+            # A TD/CTD row's Retentive is its T/CT row's, as the Address Editor shows it
+            row = with_pair_retentive(row, rows)
             nickname_obj = Nickname(
                 nickname=row.nickname,
                 address=row.display_address,
