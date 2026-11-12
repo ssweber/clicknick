@@ -414,6 +414,7 @@ class AnalysisService:
         # wrote it. A rebuild that fails after publishing leaves both newer than
         # _result; one that fails before leaves _project_dir an older save's.
         self._project_tags: dict[str, int] = {}
+        self._project_keys: dict[int, str] = {}
         self._project_is_current = False
         # Written from the build thread, read from the UI thread. Plain
         # attribute assignment is atomic enough; there is no read-modify-write.
@@ -488,6 +489,11 @@ class AnalysisService:
         build's, while the workspace on disk already uses the new names.
         """
         return self._project_tags
+
+    @property
+    def project_addr_key_to_tag(self) -> dict[int, str]:
+        """addr_key -> tag name for ``project_dir``'s source (see ``project_tag_to_addr_key``)."""
+        return self._project_keys
 
     def mark_failed(
         self, reason: str, detail: str | None = None, *, serves: int | None = None
@@ -648,7 +654,7 @@ class AnalysisService:
             with self._lock:
                 if self._epoch == epoch:
                     self._project_dir = project_dir
-                    self._project_tags = tag_maps[0]
+                    self._project_tags, self._project_keys = tag_maps
                     self._project_is_current = True
 
         try:
@@ -675,6 +681,7 @@ class AnalysisService:
                 return False
             self._project_dir = project_dir
             self._project_tags = tag_to_key
+            self._project_keys = key_to_tag
             self._project_is_current = True
             self._result = AnalysisResult(
                 graph=graph,
@@ -693,6 +700,7 @@ class AnalysisService:
             self._result = None
             self._project_dir = None
             self._project_tags = {}
+            self._project_keys = {}
             self._project_is_current = False
             self._status = AnalysisStatus.IDLE
             self._error = None

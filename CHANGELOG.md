@@ -38,6 +38,13 @@
 ### Changed
 
 - The Console is now a pane in **Simulate** (<kbd>Ctrl</kbd>+<kbd>`</kbd> toggles it, **Pop out** gives it a window), and the simulation keeps running after the Simulator closes until you stop it from the main window.
+- When you save in CLICK or edit the workspace's ladder source, the simulation keeps running the program it has and the Simulator offers to write the new one, as CLICK does for a running PLC (it reloaded or restarted on its own).
+  - In RUN, **RUN Time Edit** keeps every value, timer and force, and **Stop and Write** goes through STOP, which keeps retentive values and forces and clears the rest. In STOP or while stepping, **Write** keeps values and the mode.
+  - Forces on inputs and outputs stay on their addresses under the new names. Bench links follow their nicknames, or stay on the address when a nickname is gone. A force on internal memory stays on its address when only the nickname changed; one whose nickname moved to another address is released. When a nickname moves onto an address that has its own bench change, the nickname's link wins and the other is dropped. The Simulator lists these releases, drops and moves before you write.
+  - Forces and links set or released in the Console just before a write are kept as the Console left them.
+  - A save that does not convert, or that holds a rung ClickNick cannot read, leaves the old program running, and the Simulator says why.
+  - **Restart** on the Simulator's toolbar starts the simulation over on what the workspace holds now (CLICK's last save and any edits), from power-on values (or your PLC data file), with your mode, switches, forces and bench links. It is also offered when writing fails.
+  - The Console's `reload` writes the program as the Simulator would; `autoreload` is refused. The Console waits while a program is written.
 - A workspace's `AGENTS.md` and `README.md` are now yours to edit: pyrung's guidance moves to `AGENTS.pyrung.md` and `README.pyrung.md`, and an older generated `AGENTS.md` or `README.md` is kept as `*.previous.md`.
 - `link=` annotations take a CLICK address such as `Y001`, or `~Y001` to follow a bit while it is OFF, and need only a response such as `on_delay=`.
 - The Simulator's link dialog and the annotation dialog offer every pyrung response (on/off delay, flasher, timed, toggle, ramp and approach), each with its own fields.
@@ -135,7 +142,6 @@
   - A command given as one argument is split at spaces and at `;` outside quotes. A backslash there is kept as typed (`C:\temp`), except that `\"` and `\\` still escape inside double quotes.
   - An argument ending in `;` still ends a command.
 - `clicknick-cli prompt-save` answers at once while ClickNick shows the reminder, instead of holding every other command until the dialog is closed.
-- Saving in CLICK while the simulation is on restarts it on the saved program, from power-on values (or your PLC data file), back in the same mode with your switches, forces and bench links, and the Simulator says so (it kept running the old program). A save that does not convert stops the simulation, and the Simulator says why; it starts again on the next save that converts.
 - The simulation's forces and bench links stay on their addresses when you rename their tags, and turning it off or restarting it while it restores them no longer deletes them; a saved force or link that is not on a CLICK address is reported instead of dropped without a word.
 - Closing the project or the CLICK window while the simulation starts stops it instead of leaving it holding Modbus port 502, and a simulation that exits as it starts shows as failed instead of ready.
 - Switch settings on Unassigned I/O inputs survive opening the Simulator before the first build finishes, an analog input with a range gets its slider once the simulation starts, and the Simulator follows nickname edits after a CSV is loaded.

@@ -290,9 +290,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - `ConnectionSession.simulation` (a `SimulationSession`) is the one home of the simulated PLC: the pyrung DAP
   subprocess, its Modbus client, switch/analog/force settings and their persistence (`services/sim_state.py`)
 - It runs headless: `turn_on()` starts it (opening the Simulator does this), and only `turn_off()` (the
-  Start/Stop beside the main window's Test legend), connection teardown or a CLICK save that does not convert
-  stops it. Closing windows never does. The on/off state is
-  not persisted: nothing launches a subprocess or listens on port 502 at app start
+  Start/Stop beside the main window's Test legend) or connection teardown stops it. Closing windows never
+  does. The on/off state is not persisted: nothing launches a subprocess or listens on port 502 at app start
 - The Simulator (whose command console is a bottom pane, `views/console_panel.py`, that pops out and docks back)
   and the Dataview editor only observe it (the Dataview attaches while it serves Modbus). Views
   never own a `DapService`; while it is off they stay open and offer Start
@@ -309,19 +308,51 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   comment through the store (Simulator window, `services/link_annotation.py`); after Sync and a rebuild, pyrung
   drops the bench copy because the program declares the same link
 - Desired state (switches, forces, bench links) is keyed by CLICK address and never holds a tag name. pyrung
-  reports tag names; they are mapped with the names of the program the simulation was launched on
-  (`_tag_maps`), so a rename in CLICK does not move them, and `load_state` reports entries that are not addresses
-- A new analysis generation (a CLICK save, Reload from CLICK) restarts a running simulation on the rebuilt
-  workspace once the build is done (`_follow_program`, on the 2 s watch tick): from power-on values or the PLC
-  data file, with the same desired state and switch position. Its notice is set once the restart is ready. A
-  build that fails stops the simulation, since pyrung may already have loaded files of it, with a notice naming
-  the reason; the next build that converts starts it again. This relies on `AnalysisService.build()` bumping
-  the generation when it starts, failed or not
-- Until the simulation runs the current generation (`_program_current`), pyrung's autoreload may already have
-  swapped in the new program and lost forces and links on renamed tags. Frames then add forces and links (the
-  Console's, last command wins) but do not release any; a release is checked again once the program is current
-- `_reapply` sends every entry even when one goes unanswered; an unanswered entry stays set and is reported,
-  and an unanswered link listing is asked again on the next frame
+  reports tag names; they are mapped with the names of the program the simulation runs (`_tag_maps`: the
+  workspace's `project_tag_to_addr_key`, taken at launch and at each write), so a rename in CLICK does not move
+  them until that program is written, and `load_state` reports entries that are not addresses
+- pyrung's autoreload is off: as on a CLICK, a changed program reaches the simulation only when the user writes
+  it. A new analysis generation (a CLICK save; "rebuilt" when the save count did not move, as after Reload
+  from CLICK or a Sync) or an edit to the workspace's `src/plc` (`PlcSourceWatch`, on the 2 s watch tick) is
+  offered as `program_change`: in RUN, **RUN Time Edit** (pause, reload, continue: values, timers and forces
+  stay) or **Stop and Write** (reload, STOP, RUN again in the same process: pyrung keeps retentive values and
+  forces, clears the rest); in STOP or while stepping, **Write** (values and mode stay). A Console `reload`
+  writes for the current mode. The Console pane refuses `autoreload`; an agent on `pyrung live` can still
+  reload, or change forces while a write runs. A build that fails is a notice; the old program keeps running
+- One check says whether the workspace's program can run (`_workspace_problem`: converted, current, a
+  `run.py`, no rung ClickNick cannot read). Start, a write and Restart all use it; a write or Restart it
+  refuses leaves the simulation running and sets a notice saying why
+- A write (`_write_program`) is one job on the action worker. The Console refuses commands until it is
+  answered, no write is offered while a Console command runs, and Restart waits for it. Console commands run
+  through `run_console_command`, which counts them in flight until each one returns, so closing the pane
+  mid-command does not hold writes back. Every pane shows busy, with Stop, from that count (`console_busy`),
+  and the offer says a Console command holds the write.
+  An agent on `pyrung live` can still change forces and links while a write runs. The write pauses, reads
+  pyrung's force and link listing (the truth, whatever the Console did since the last frame), and
+  `plan_carry` (`services/program_carry.py`) decides each entry's name in the new program:
+  - a bench link follows its names while they exist (noted when one now sits on another address), else stays
+    on the address under its new name; when two land on one feedback, the one that followed its name wins and
+    the other is dropped
+  - a force stays on its address under the new name on a pure rename (an unnamed address gaining a nickname
+    included); a force whose name now sits on another address stays only on X, Y or an analog channel's DF and
+    is released on internal memory
+- The offer lists releases, drops and moves before the user writes. Only the entries whose name changes are
+  unforced or restored before the reload and sent again after it (pyrung carries the rest by name); a planned
+  pyrung reload that takes `CarryPlan.as_dap()` replaces those calls. The listing, placed as planned, is
+  adopted by address. A write answered after another build started keeps the old names and offers the change
+  again. pyrung's reload leaves STOP for RUN, so a Write in STOP sends STOP again, and the switch shows the
+  position it had until the write is answered
+- A reload that fails puts back what it released, keeps the old program and adds **Restart** to the offer. A
+  reload pyrung never answers sends nothing by name (which program runs is unknown) and offers Restart; its
+  notice says the simulation may be paused and names what was released, and the switch position stays the
+  user's (`_position_held`) so Restart starts in it and the write offered is for it, until the user moves
+  the switch.
+  Restart (also on the toolbar) relaunches on what the workspace holds now, from power-on values or the PLC
+  data file, with the same desired state and switch position; so do Start, a PLC data file change, and a
+  simulation that failed to start once a later build converts (`_follow_program`). A workspace move
+  relaunches without the check (`relaunch`), waiting out the build
+- `_reapply` (after a launch) sends every entry even when one goes unanswered; an unanswered entry stays set
+  and is reported, and an unanswered link listing is asked again on the next frame
 - A failed DAP request undoes the user's action only when the simulation that was asked refused it: not when it
   has since stopped or restarted (token check) or never answered (`DapUnavailableError`)
 

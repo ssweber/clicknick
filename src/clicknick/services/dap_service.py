@@ -11,6 +11,7 @@ import enum
 import json
 import subprocess
 import threading
+import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,10 @@ class DapRequestError(RuntimeError):
 
 class DapUnavailableError(DapRequestError):
     """The adapter never answered: it is not running, died, or did not reply in time."""
+
+
+#: How long a reload keeps asking while a pause just sent has not landed yet.
+RELOAD_PAUSE_WAIT_S = 3.0
 
 
 class SimState(enum.Enum):
@@ -508,6 +513,9 @@ class DapService:
         starts a Modbus TCP server inside the session; *speed* paces scanning against wall time (0 = unpaced); *start_mode*
         is ``"stop"`` or ``"run"``; *keep_forces_on_run* keeps forces through
         the STOP -> RUN transition instead of clearing them.
+
+        Autoreload stays off: files rewritten under the process (a CLICK save,
+        an edit) change nothing until :meth:`reload`.
         """
         if self._proc is not None:
             self.terminate()
@@ -548,7 +556,6 @@ class DapService:
 
         launch_args: dict[str, object] = {
             "program": str(run_py),
-            "autoReload": True,
             "session": session_name,
         }
         if snapshot_path is not None:
@@ -665,11 +672,8 @@ class DapService:
         return self._request("pyrungClearForces")
 
     def list_forces(self) -> dict[str, PlcValue]:
-        """Return the current set of forced tags."""
-        resp = self._send_and_wait("pyrungListForces")
-        if resp and resp.get("success"):
-            return (resp.get("body") or {}).get("forces", {})
-        return {}
+        """Every active force, keyed by tag name; raises when the simulation does not answer."""
+        return dict(self._request("pyrungListForces").get("forces") or {})
 
     # ------------------------------------------------------------------
     # Bench links
@@ -718,12 +722,30 @@ class DapService:
         return self._request("pyrungListLinks")
 
     # ------------------------------------------------------------------
-    # Hot-reload
+    # Reload
     # ------------------------------------------------------------------
 
-    def reload(self) -> dict[str, Any] | None:
-        """Hot-reload the program file, preserving PLC state and forces."""
-        return self._send_and_wait("evaluate", {"expression": "reload", "context": "repl"})
+    def reload(self) -> str:
+        """Load the program files again, keeping tag values, timers, counters and forces.
+
+        pyrung refuses while it scans continuously. A pause sent just before
+        can take a moment to land, so that refusal is asked again for a short
+        while. Returns pyrung's summary of the reload.
+        """
+        deadline = time.monotonic() + RELOAD_PAUSE_WAIT_S
+        while True:
+            try:
+                body = self._request(
+                    "evaluate", {"expression": "reload", "context": "repl"}, timeout=60.0
+                )
+            except DapUnavailableError:
+                raise
+            except DapRequestError as exc:
+                if "while continue is running" not in str(exc) or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.05)
+                continue
+            return str(body.get("result") or "")
 
     # ------------------------------------------------------------------
     # Causal analysis

@@ -49,6 +49,54 @@ def _source_fingerprint(source: Path) -> dict[str, str]:
     return fingerprint
 
 
+def _source_stamp(source: Path) -> tuple[tuple[str, int, int], ...]:
+    """Each meaningful file's path, size and modification time: cheap, and moved by any edit."""
+    if not source.is_dir():
+        return ()
+    stamp: list[tuple[str, int, int]] = []
+    for path in sorted(source.rglob("*")):
+        if "__pycache__" in path.parts or path.suffix == ".pyc":
+            continue
+        try:
+            if not path.is_file():
+                continue
+            info = path.stat()
+        except OSError:
+            continue
+        stamp.append((path.relative_to(source).as_posix(), info.st_size, info.st_mtime_ns))
+    return tuple(stamp)
+
+
+class PlcSourceWatch:
+    """Tells whether a project's ``src/plc`` still holds what it held when the watch began.
+
+    Each check reads only file sizes and times; the files are hashed again
+    only when one of those moved, so an edit undone in an editor, or a file
+    saved unchanged, does not count.
+    """
+
+    def __init__(self, project_dir: Path) -> None:
+        self._source = plc_source_dir(project_dir)
+        self._stamp = _source_stamp(self._source)
+        self._fingerprint: dict[str, str] | None
+        try:
+            self._fingerprint = _source_fingerprint(self._source)
+        except OSError:
+            self._fingerprint = None  # unreadable: never reported as changed
+        self._changed = False
+
+    def changed(self) -> bool:
+        stamp = _source_stamp(self._source)
+        if self._fingerprint is None or stamp == self._stamp:
+            return self._changed
+        try:
+            self._changed = _source_fingerprint(self._source) != self._fingerprint
+        except OSError:
+            return self._changed  # a file being written: the next check reads it again
+        self._stamp = stamp
+        return self._changed
+
+
 def plc_source_is_modified(project_dir: Path) -> bool:
     """Return whether active source differs from the last CLICK generation.
 

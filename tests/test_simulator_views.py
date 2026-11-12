@@ -144,11 +144,16 @@ def test_dragging_the_console_header_resizes_the_pane(simulator, ready):
 
 def test_a_busy_console_stays_where_it_is(simulator, ready):
     win = simulator(ready)
-    win._console._set_busy(True)
+    started: list = []
+    ready.sim._run_background = lambda target, _name: started.append(target)
+    win._console._send = lambda command, **_kw: (True, "")
+    win._console._submit_command_text("run 10s")
     assert str(win._console._pop_btn.cget("state")) == "disabled"
     win._pop_out_console()
     assert win._console_window is None and win._console_shown()
-    win._console._set_busy(False)
+    started.pop()()
+    ready.scheduler.run_ready()
+    assert str(win._console._pop_btn.cget("state")) == "normal"
 
 
 def test_a_failed_conversion_shows_in_the_console_and_offers_retry(simulator, tmp_path):
@@ -888,3 +893,160 @@ def test_the_simulator_follows_the_address_data_the_app_holds_now(tk_root, monke
     finally:
         win._on_close()
     assert second.observers == []
+
+
+def _rebuilt(harness) -> None:
+    from test_simulation_session import _rebuild
+
+    from clicknick.simulation_session import WATCH_MS
+
+    _rebuild(harness)
+    harness.scheduler.fire(WATCH_MS)
+
+
+def test_a_changed_program_is_offered_with_clicks_ways_of_writing_it(simulator, ready):
+    win = simulator(ready)
+    _rebuilt(ready)
+    [labels] = [labels for text, labels in win._banner_key if "CLICK saved" in text]
+    assert labels == ("Write",)
+
+    ready.sim.set_switch_position("run")
+    ready.dap.frame(mode="run", running=True)
+    ready.scheduler.run_ready()
+    [labels] = [labels for text, labels in win._banner_key if "CLICK saved" in text]
+    assert labels == ("RUN Time Edit", "Stop and Write")
+
+    [row] = [
+        row
+        for row in win._banner.winfo_children()
+        if "CLICK saved" in str(row.winfo_children()[0].cget("text"))
+    ]
+    [button] = [
+        b
+        for b in row.winfo_children()
+        if b.winfo_class() == "TButton" and b.cget("text") == "RUN Time Edit"
+    ]
+    button.invoke()
+    ready.scheduler.run_ready()
+    assert ("reload",) in ready.dap.calls
+    assert not any("CLICK saved" in text for text, _labels in win._banner_key)
+    assert len(ready.daps) == 1
+
+
+def test_restart_starts_the_simulation_over(simulator, ready):
+    win = simulator(ready)
+    assert str(win._restart_btn.cget("state")) == "normal"
+    win._restart_btn.invoke()
+    ready.scheduler.run_ready()
+    assert len(ready.daps) == 2
+    assert ("terminate",) in ready.daps[0].calls
+
+    ready.sim.turn_off()
+    win._refresh_toolbar()
+    assert str(win._restart_btn.cget("state")) == "disabled"
+
+
+def test_a_console_reload_writes_the_program_and_autoreload_is_refused(simulator, ready):
+    win = simulator(ready)
+    _rebuilt(ready)
+    sent: list[str] = []
+    win._console._send = lambda command, **_kw: (sent.append(command), (True, ""))[1]
+
+    win._console._submit_command_text("autoreload")
+    assert "autoreload stays off" in _output(win._console)
+    win._console._submit_command_text("reload; continue")
+    assert "Send reload on its own." in _output(win._console)
+    assert sent == [] and ("reload",) not in ready.dap.calls
+
+    win._console._submit_command_text("reload")
+    ready.scheduler.run_ready()
+    assert ("reload",) in ready.dap.calls
+    assert ready.sim.program_change is None
+    assert sent == []
+
+
+def test_the_console_waits_while_the_program_is_written(simulator, ready):
+    from test_simulation_session import _record_unreadable
+
+    win = simulator(ready)
+    _rebuilt(ready)
+    sent: list[str] = []
+    win._console._send = lambda command, **_kw: (sent.append(command), (True, ""))[1]
+    jobs: list = []
+    ready.sim._run_serial = jobs.append
+
+    win._console._submit_command_text("reload")
+    assert ready.sim.writing
+    win._refresh_toolbar()
+    assert str(win._restart_btn.cget("state")) == "disabled"
+    win._console._submit_command_text("force C1 1")
+    assert "Send it again once it is written." in _output(win._console)
+    assert sent == []
+
+    while jobs:
+        jobs.pop(0)()
+    ready.scheduler.run_ready()
+    assert not ready.sim.writing
+
+    _rebuilt(ready)
+    _record_unreadable(ready.analysis.project_dir, 4)
+    win._console._submit_command_text("reload")
+    assert "Cannot write the program: ClickNick cannot read this rung" in _output(win._console)
+    while jobs:
+        jobs.pop(0)()
+    assert ready.dap.calls.count(("reload",)) == 1
+
+
+def test_closing_the_simulator_mid_command_does_not_hold_writes_back(simulator, ready):
+    win = simulator(ready)
+    _rebuilt(ready)
+    started: list = []
+    ready.sim._run_background = lambda target, _name: started.append(target)
+    win._console._send = lambda command, **_kw: (True, f"{command}: done")
+
+    win._console._submit_command_text("run 10s")
+    assert win._console.busy
+    assert ready.sim.program_change.actions == ()
+    win._on_close()  # the command is still in flight
+
+    started.pop()()
+    ready.scheduler.run_ready()
+    assert ready.sim.program_change.actions == ("write",)
+
+    again = simulator(ready, turn_on=False)
+    assert not again._console.busy
+    again._console._submit_command_text("reload")
+    ready.scheduler.run_ready()
+    assert ("reload",) in ready.dap.calls
+    assert "while a Console command runs" not in _output(again._console)
+
+
+def test_a_reopened_console_shows_a_command_still_running_and_stops_it(simulator, ready):
+    win = simulator(ready)
+    _rebuilt(ready)
+    started: list = []
+    ready.sim._run_background = lambda target, _name: started.append(target)
+    win._console._send = lambda command, **_kw: (True, "")
+    win._console._submit_command_text("run 10m")
+    win._on_close()
+
+    again = simulator(ready, turn_on=False)
+    console = again._console
+    assert console.busy and ready.sim.console_busy
+    assert console._send_btn.cget("text") == "Stop"
+    note = "A Console command is still running; the program can be written once it ends"
+    assert note in ready.sim.program_change.text
+    assert any(note in text for text, _labels in again._banner_key)
+
+    sent: list[str] = []
+    console._send = lambda command, **_kw: (sent.append(command), (True, ""))[1]
+    console._start_background = lambda target, *, name: target()
+    console._send_btn.invoke()
+    assert sent == ["stop"]
+
+    started.pop()()  # pyrung ends the command it was asked to stop
+    ready.scheduler.run_ready()
+    assert not console.busy
+    assert console._send_btn.cget("text") == "Send"
+    assert note not in ready.sim.program_change.text
+    assert ready.sim.program_change.actions == ("write",)
