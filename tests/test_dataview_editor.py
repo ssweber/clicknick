@@ -457,6 +457,110 @@ def test_an_older_copy_put_back_is_offered_for_reload(tk_root, dialogs, tmp_path
         panel.destroy()
 
 
+def test_saving_rows_undone_past_a_reload_asks_first(tk_root, dialogs, tmp_path):
+    path = _copy(tmp_path)
+    before_click = DataViewFile.load(path).rows[0].new_value
+    panel = DataviewPanel(tk_root, file_path=path, address_normalizer=normalize_address)
+    try:
+        clicks = _click_writes(path)
+        dialogs.yes_no.append(True)  # reload
+        panel._check_file_modified()
+        panel.add_address("DS4321")
+
+        assert panel.undo() and panel.undo()  # the edit, then the reload
+        assert panel.rows[0].new_value == before_click and panel.is_dirty
+
+        dialogs.yes_no_cancel.append(None)
+        assert panel.save() is False
+        assert len(dialogs.shown) == 2 and "changed by another program" in dialogs.shown[1]
+        assert path.read_bytes() == clicks
+    finally:
+        panel.destroy()
+
+
+def test_saving_after_undoing_a_reload_from_the_save_prompt_asks_first(tk_root, dialogs, tmp_path):
+    path = _copy(tmp_path)
+    panel = DataviewPanel(tk_root, file_path=path, address_normalizer=normalize_address)
+    try:
+        panel.add_address("DS4321")
+        clicks = _click_writes(path)
+        dialogs.yes_no_cancel.append(False)  # No: reload
+        assert panel.save() is False
+        _press(panel.sheet.MT, "<Control-z>")
+        assert "DS4321" in [row.address for row in panel.rows]
+
+        dialogs.yes_no_cancel.append(None)
+        assert panel.save() is False
+        assert len(dialogs.shown) == 2 and "changed by another program" in dialogs.shown[1]
+        assert path.read_bytes() == clicks
+
+        dialogs.yes_no_cancel.append(True)  # Yes: save over it
+        assert panel.save() is True
+        assert "DS4321" in [row.address for row in DataViewFile.load(path).rows]
+    finally:
+        panel.destroy()
+
+
+def test_saving_rows_undone_past_an_own_save_does_not_ask(tk_root, dialogs, tmp_path):
+    path = _copy(tmp_path)
+    panel = DataviewPanel(tk_root, file_path=path, address_normalizer=normalize_address)
+    try:
+        panel.add_address("DS4321")
+        assert panel.save()
+        panel.add_address("DS4322")
+        assert panel.save()
+        assert panel.undo() and panel.undo()
+
+        assert panel.save() is True
+        assert dialogs.shown == []
+        assert "DS4321" not in [row.address for row in DataViewFile.load(path).rows]
+        assert panel.redo() and panel.save() is True
+        assert dialogs.shown == []
+    finally:
+        panel.destroy()
+
+
+@pytest.mark.parametrize("reload", [True, False], ids=["reload", "don't reload"])
+def test_after_a_file_prompt_the_sheet_has_the_focus(tk_root, dialogs, tmp_path, reload):
+    path = _copy(tmp_path)
+    panel = DataviewPanel(tk_root, file_path=path, address_normalizer=normalize_address)
+    focused: list[str] = []
+    panel.sheet.focus_set = lambda canvas="table": focused.append(canvas)
+    try:
+        panel.add_address("DS1")
+        _click_writes(path)
+        dialogs.yes_no.append(reload)
+        panel._check_file_modified()
+        assert focused == ["table"]
+
+        _click_writes(path)
+        dialogs.yes_no_cancel.append(None)
+        panel.save()
+        assert focused == ["table", "table"]
+    finally:
+        panel.destroy()
+
+
+def test_a_background_tab_reloaded_from_the_prompt_drops_its_unsaved_marker(
+    editor, dialogs, tmp_path
+):
+    window = editor()
+    path = _copy(tmp_path)
+    window._open_dataview(path)
+    background = window._get_current_panel()
+    background.add_address("DS1")
+    dialogs.new_names.append("Other")
+    window._new_dataview()
+    assert window.notebook.tab(0, "text") == "*DataView1"
+
+    _click_writes(path)
+    dialogs.yes_no.append(True)
+    background._check_file_modified()
+
+    assert not background.is_dirty
+    assert window.notebook.tab(0, "text") == "DataView1"
+
+
 # -- Inserts store CLICK's address form --------------------------------------
 
 
