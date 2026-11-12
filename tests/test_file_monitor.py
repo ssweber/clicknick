@@ -167,6 +167,36 @@ class TestFileMonitorCheckModified:
         assert callback.call_count == 2
         assert monitor._last_mtime == modified_mtime
 
+    def test_a_file_replaced_by_an_older_one_is_reloaded(self, tmp_path):
+        """A restored backup has an earlier mtime than the file it replaces."""
+        test_file = tmp_path / "test.mdb"
+        test_file.write_text("current")
+        callback = MagicMock()
+        monitor = FileMonitor(str(test_file), callback)
+        monitor.start(MagicMock())
+
+        test_file.write_text("backup1")  # same size as before
+        stat = os.stat(test_file)
+        os.utime(test_file, ns=(stat.st_atime_ns, stat.st_mtime_ns - 3_600 * 10**9))
+        monitor._check_modified()
+
+        callback.assert_called_once()
+
+    def test_a_file_whose_size_changed_at_the_same_mtime_is_reloaded(self, tmp_path):
+        test_file = tmp_path / "test.mdb"
+        test_file.write_text("short")
+        mtime_ns = os.stat(test_file).st_mtime_ns
+        callback = MagicMock()
+        monitor = FileMonitor(str(test_file), callback)
+        monitor.start(MagicMock())
+
+        test_file.write_text("a longer body")
+        os.utime(test_file, ns=(mtime_ns, mtime_ns))
+        monitor._check_modified()
+        monitor._check_modified()
+
+        callback.assert_called_once()
+
     def test_check_modified_no_callback_if_unchanged(self, tmp_path):
         """_check_modified doesn't call callback if file unchanged."""
         test_file = tmp_path / "test.mdb"

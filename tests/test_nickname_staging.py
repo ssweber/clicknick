@@ -128,3 +128,40 @@ def test_rows_read_from_a_nicknames_csv(tmp_path: Path, store: AddressStore) -> 
     plan = plan_nicknames(CsvDataSource(str(path)).load_all_addresses(), store.visible_state)
 
     assert plan.summary() == "1 new"
+
+
+def test_only_the_columns_the_file_has_are_staged(tmp_path: Path) -> None:
+    ds1 = get_addr_key("DS", 1)
+    store = AddressStore(
+        _Database(
+            {
+                X1: AddressRow("X", 1, nickname="Start", comment="Green button"),
+                ds1: AddressRow("DS", 1, nickname="Speed", data_type=1, initial_value="1500"),
+            }
+        )
+    )
+    store.load_initial_data()
+    path = tmp_path / "nicknames.csv"
+    path.write_text("Address,Nickname\r\nX001,Start_PB\r\nDS1,Speed\r\n", encoding="utf-8")
+    source = CsvDataSource(str(path))
+    rows = source.load_all_addresses()
+
+    plan = plan_nicknames(rows, store.visible_state, fields=source.fields)
+
+    assert [(c.display_address, c.field, c.new) for c in plan.changes] == [
+        ("X001", "nickname", "Start_PB")
+    ]
+    stage_nicknames(store, plan, "Nicknames from bundle")
+    assert store.visible_state[X1].comment == "Green button"
+    assert store.visible_state[ds1].initial_value == "1500"
+    assert not plan_nicknames(rows, store.visible_state, fields=source.fields)
+
+
+def test_a_file_without_a_retentive_column_leaves_retentive_alone() -> None:
+    store = AddressStore(_Database({X1: AddressRow("X", 1, nickname="Start", retentive=True)}))
+    store.load_initial_data()
+    rows = {X1: AddressRow("X", 1, nickname="Start", comment="Green button")}
+
+    plan = plan_nicknames(rows, store.visible_state, fields={"nickname", "comment"})
+
+    assert [(c.field, c.new) for c in plan.changes] == [("comment", "Green button")]
