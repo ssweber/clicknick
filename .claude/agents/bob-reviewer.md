@@ -52,8 +52,9 @@ the builder's handoff: judge the code, not the story.
   from its source of truth now and list every member, so one fix round covers it.
 
 Targeted tests under a hard timeout are fine to confirm a finding; in-process checks are fine.
-Run them from the branch's worktree with `UV_NO_SYNC=1` (`UV_NO_SYNC=1 uv run pytest <file>`):
-a sync drops the local pyrung/laddercodec/pyclickplc installs the worktree tests against.
+Run them from the branch's worktree without a sync (`uv run --no-sync pytest <file>`, and
+`... run --timeout N -- uv run --no-sync python <tmp>/probe.py`): a sync drops the local
+pyrung/laddercodec/pyclickplc installs the worktree tests against.
 Only a few test runs and scripts go at once and the rest wait, and the wait counts against your
 tool's own timeout: use `run_in_background`, or a tool timeout well above the run's limit. Exit
 125 means it never got a turn and nothing ran: run it again. Run tests on single files or
