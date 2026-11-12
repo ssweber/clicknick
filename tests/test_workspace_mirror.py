@@ -201,9 +201,7 @@ def _choose_existing_workspace(monkeypatch, source: Path, mirror: Path) -> Magic
 
     Returns the mocked messagebox.showerror.
     """
-    monkeypatch.setattr(
-        "clicknick.services.workspace_mirror.remember_project_sidecar", MagicMock()
-    )
+    monkeypatch.setattr("clicknick.services.workspace_mirror.remember_project_sidecar", MagicMock())
     monkeypatch.setattr("clicknick.app.messagebox.askokcancel", MagicMock(return_value=True))
     showerror = MagicMock()
     monkeypatch.setattr("clicknick.app.messagebox.showerror", showerror)

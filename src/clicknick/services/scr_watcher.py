@@ -56,6 +56,16 @@ class ScrWatcher:
     def staged_rungs(self) -> int:
         return self._staged_rungs
 
+    @property
+    def folder(self) -> Path:
+        return self._folder
+
+    def watch(self, scr_folder: Path) -> None:
+        """Watch another folder from now on, keeping the synced and staged counts."""
+        if scr_folder != self._folder:
+            self._folder = scr_folder
+            self._last_snapshot = self._snapshot()
+
     def record_sync(self, addr_keys: Iterable[int]) -> None:
         before = len(self._synced_keys)
         self._synced_keys.update(addr_keys)

@@ -372,6 +372,9 @@ class ConnectionSession:
                 self._start_analysis_thread(*paths)
 
         if self.scr_watcher is not None:
+            # Made before CLICK's database was found, it may watch another folder.
+            if paths is not None:
+                self.scr_watcher.watch(paths[0])
             return
         # Watch even with nothing to build yet: CLICK may still be writing the project
         # it is opening, and the build must follow once it has.

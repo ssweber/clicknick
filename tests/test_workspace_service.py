@@ -370,6 +370,38 @@ def test_scr_files_appearing_after_connect_start_the_build(tmp_path, monkeypatch
     session.scr_watcher.stop()
 
 
+def test_the_watcher_follows_the_folder_clicks_database_turns_up_in(tmp_path, monkeypatch) -> None:
+    """Where %TEMP% and %LOCALAPPDATA%/Temp differ, the first guess may be the wrong folder."""
+    guessed, found = tmp_path / "guessed", tmp_path / "found"
+    guessed.mkdir()
+    found.mkdir()
+    database: list[str] = []
+    monkeypatch.setattr(
+        "clicknick.utils.mdb_shared.find_click_database",
+        lambda **_kwargs: database[0] if database else None,
+    )
+    monkeypatch.setattr("clicknick.live.session.click_temp_dir", lambda _hwnd: guessed)
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    session._start_analysis_thread = MagicMock()
+    root = MagicMock()
+    session.start_analysis(root)
+    session.record_sync({1, 2})
+    assert session.scr_watcher.folder == guessed
+
+    (found / "SC_.mdb").write_text("db", encoding="utf-8")
+    (found / "Scr1.tmp").write_text("ladder", encoding="utf-8")
+    database.append(str(found / "SC_.mdb"))
+    session.start_analysis(root)
+
+    assert session.scr_watcher.folder == found
+    assert session.synced_pending == 2
+    session._start_analysis_thread.reset_mock()
+    (found / "Scr2.tmp").write_text("saved", encoding="utf-8")
+    session.scr_watcher._check()
+    session._start_analysis_thread.assert_called_once_with(found, found / "SC_.mdb")
+    session.scr_watcher.stop()
+
+
 def _saved_click_project(tmp_path, monkeypatch) -> Path:
     db_path = tmp_path / "SC_.mdb"
     db_path.write_text("db", encoding="utf-8")
