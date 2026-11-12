@@ -180,7 +180,8 @@ class ImportCsvDialog(tk.Toplevel):
 
         try:
             # Load CSV using CsvDataSource
-            csv_source = CsvDataSource(str(self.csv_path))
+            # Only Address is needed: a file of comments alone imports its comments
+            csv_source = CsvDataSource(str(self.csv_path), required=("Address",))
             address_dict = csv_source.load_all_addresses()
             self.fields = csv_source.fields
             rows = list(address_dict.values())

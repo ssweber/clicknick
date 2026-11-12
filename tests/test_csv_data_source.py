@@ -91,6 +91,57 @@ class TestEncodingAndColumns:
         full.load_all_addresses()
         assert full.fields == {"nickname", "data_type", "initial_value", "retentive", "comment"}
 
+    def test_clicks_address_csv_is_not_a_nickname_csv(self, tmp_path):
+        """Its Address column holds numbers; read as a nickname CSV it would load empty."""
+        path = _write(
+            tmp_path / "Address.csv",
+            "AddrKey,MemoryType,Address,DataType,Nickname,Use,InitialValue,Retentive,Comment\n"
+            "1,X,1,0,Start,1,0,0,\n"
+            "100663297,DS,1,1,Speed,1,100,1,\n",
+            encoding="utf-8-sig",
+        )
+
+        with pytest.raises(ValueError, match=r"Address.csv line 2: Address '1'"):
+            CsvDataSource(str(path)).load_all_addresses()
+
+    def test_one_row_with_a_bad_address_fails_the_load(self, tmp_path):
+        path = _write(
+            tmp_path / "names.csv",
+            f'{HEADER}\nX001,BIT,"Start",0,No,""\nX017,BIT,"Typo",0,No,""\nX002,BIT,"Stop",0,No,""\n',
+        )
+
+        with pytest.raises(ValueError, match=r"names.csv line 3: Address 'X017'"):
+            CsvDataSource(str(path)).load_all_addresses()
+
+    def test_blank_rows_are_skipped(self, tmp_path):
+        path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n,,,,,\n\n')
+
+        assert list(CsvDataSource(str(path)).load_all_addresses()) == [get_addr_key("X", 1)]
+
+    def test_import_can_read_a_file_without_nicknames(self, tmp_path):
+        path = _write(tmp_path / "notes.csv", 'Address,Address Comment\nC1,"Main motor"\n')
+        source = CsvDataSource(str(path), required=("Address",))
+
+        rows = source.load_all_addresses()
+
+        assert rows[get_addr_key("C", 1)].comment == "Main motor"
+        assert source.fields == {"comment"}
+        with pytest.raises(ValueError, match="no Nickname column"):
+            CsvDataSource(str(path)).load_all_addresses()
+
+    @pytest.mark.parametrize(
+        ("written", "retentive"),
+        [("Yes", True), ("no", False), ("1", True), ("0", False), ("TRUE", True), ("False", False)],
+    )
+    def test_retentive_spellings(self, tmp_path, written, retentive):
+        path = _write(tmp_path / "names.csv", f'{HEADER}\nDS3,INT,"Speed",100,{written},""\n')
+        source = CsvDataSource(str(path))
+        rows = source.load_all_addresses()
+
+        assert rows[get_addr_key("DS", 3)].retentive is retentive
+        source.save_changes(list(rows.values()))
+        assert f",{'Yes' if retentive else 'No'}," in path.read_text(encoding="utf-8")
+
 
 class TestCsvModeStore:
     def test_a_file_not_understood_never_loads_as_an_empty_project(self, tmp_path):
@@ -124,6 +175,24 @@ class TestCsvModeStore:
         assert store._on_database_update() is True
         store.save_all_changes()
         assert '"Stop"' in path.read_text(encoding="utf-8")
+
+    def test_a_save_that_cannot_write_the_file_fails_and_keeps_the_edits(self, tmp_path):
+        """As when Excel holds the file open: Save must not report success."""
+        path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
+        store = AddressStore(CsvDataSource(str(path)))
+        store.load_initial_data()
+        key = get_addr_key("X", 2)
+        with store.edit_session("Rename") as session:
+            session.set_field(key, "nickname", "Stop")
+        path.unlink()
+        path.mkdir()  # Opening it to write now fails
+
+        with pytest.raises(OSError):
+            store.save_all_changes()
+
+        assert store.is_dirty(key)
+        assert store.visible_state[key].nickname == "Stop"
+        assert store.base_state[key].nickname == ""
 
 
 class TestFieldValues:

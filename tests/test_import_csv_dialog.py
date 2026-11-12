@@ -73,6 +73,28 @@ def test_a_file_without_comments_does_not_import_them(tk_root, tmp_path):
             dialog.destroy()
 
 
+def test_a_file_of_comments_alone_imports_its_comments(tk_root, tmp_path):
+    path = tmp_path / "notes.csv"
+    path.write_text('Address,Address Comment\r\nC1,"Main motor"\r\n', encoding="utf-8")
+    dialog = _dialog_on(tk_root, path)
+    try:
+        row = dialog.sheet.get_row_data(0)
+        assert (row[COL_NICKNAME], row[COL_COMMENT]) == (NOT_IN_FILE, "Overwrite")
+
+        dialog._on_import()
+
+        _path, blocks, options = dialog.result
+        assert [r.comment for r in blocks[0].rows] == ["Main motor"]
+        assert options[id(blocks[0])] == {
+            "nickname": "Skip",
+            "comment": "Overwrite",
+            "first_scan": "Skip",
+        }
+    finally:
+        if dialog.winfo_exists():
+            dialog.destroy()
+
+
 def test_a_full_file_offers_every_option(tk_root, tmp_path):
     path = tmp_path / "full.csv"
     path.write_text(

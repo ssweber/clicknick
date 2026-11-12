@@ -60,9 +60,16 @@
 - Program analysis and AI tag lookups use the same nicknames as the generated code, switching CLICK projects no longer freezes the window, and the "tags synced" count counts each tag once.
 - Opening another project in the same CLICK window no longer leaves its workspace unbuilt until ClickNick restarts, and Preview Changes now updates its comparison when CLICK's program changes.
 - Open Temporary Workspace and the Workspace status update as soon as a build finishes, instead of waiting for something else to refresh the window, such as opening the Simulator.
-- Nickname CSVs read and write as CLICK's export does: a file Excel saved as "CSV UTF-8" no longer loads empty, XD/YD nicknames (`XD0u`, `XD8`) stay on their own addresses, comments keep their spaces, TXT initial values with `,` or `"` survive, lines end with CRLF, and a file without Address and Nickname columns fails to load, and is not overwritten by Save, instead of loading as an empty project.
-- Import from CSV imports each row of a nested block once, under the innermost block, and skips comments or first-scan values when the file has no column for them instead of clearing them.
-- Save Copy of CLICK's Address.csv keeps addresses that have only an initial value or Retentive set, and ClickNick reloads its data when the database or CSV is replaced by an older copy.
+- A nickname CSV that Excel saved as "CSV UTF-8" loads its nicknames instead of loading empty.
+- A file that is not a nickname CSV, such as one without Address and Nickname columns, CLICK's own Address.csv, or a row whose Address is not a CLICK address, fails to load and names the line, instead of loading as an empty project that Save then overwrites.
+- In CSV mode, Save says so when the file cannot be written, such as while Excel holds it open, and keeps your edits, instead of reporting success; it also leaves alone a file that was changed on disk into one ClickNick cannot read.
+- XD and YD nicknames in a CSV (`XD0u`, `XD8`) stay on their own addresses when loaded, imported or staged.
+- Nickname CSVs keep comments' leading and trailing spaces, read Retentive written as `1`/`0` or `True`/`False`, and end lines with CRLF, as CLICK's export does.
+- A Text initial value holding `,`, `"` or a space is quoted when ClickNick writes a CSV, and ClickNick reads it back unchanged; whether CLICK's import shows it unchanged is not yet checked (import such a CSV into CLICK and look at the Text address).
+- Import from CSV imports each row of a nested block once, under the innermost block, so unticking an inner block leaves its rows alone.
+- Import from CSV skips nicknames, comments or first-scan values when the file has no column for them, instead of clearing them, and accepts a file with no Nickname column.
+- Save Copy of CLICK's Address.csv keeps addresses that have only an initial value or Retentive set.
+- ClickNick reloads its data when the database or CSV is replaced by an older copy, such as a restored backup.
 
 ## v0.23.4 - 2026-10-11
 

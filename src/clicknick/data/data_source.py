@@ -35,6 +35,9 @@ if TYPE_CHECKING:
 # A nickname CSV must have these columns; without them it is not a nickname CSV
 REQUIRED_COLUMNS = ("Address", "Nickname")
 
+# Retentive as CLICK writes it (Yes/No) and as a spreadsheet may (1/0, True/False)
+_RETENTIVE_ON = ("yes", "true", "1")
+
 # The AddressRow field each nickname CSV column sets
 COLUMN_FIELDS = {
     "Data Type": "data_type",
@@ -117,11 +120,23 @@ def _bare(text: str) -> str:
     return _quoted(text) if any(char in text for char in ',"\r\n') else text
 
 
-def _read_nickname_csv(csv_path: str) -> tuple[dict[int, AddressRow], frozenset[str]]:
+def _is_blank(row: dict[str | None, str | list[str] | None]) -> bool:
+    """A row with nothing in any cell, such as a spreadsheet's trailing ``,,,,,``."""
+    cells = [
+        cell for value in row.values() for cell in (value if isinstance(value, list) else [value])
+    ]
+    return not any((cell or "").strip() for cell in cells)
+
+
+def _read_nickname_csv(
+    csv_path: str, required: Sequence[str]
+) -> tuple[dict[int, AddressRow], frozenset[str]]:
     """Rows of a nickname CSV, and the fields its columns set.
 
-    Raises ValueError when the file is not a nickname CSV it can read: no
-    Address or Nickname column, not UTF-8, or not CSV.
+    Raises ValueError when the file is not a nickname CSV it can read: a
+    *required* column missing, a row whose Address is not a CLICK address (such
+    as CLICK's own Address.csv, whose Address column holds numbers), not UTF-8,
+    or not CSV.
     """
     name = Path(csv_path).name
     result: dict[int, AddressRow] = {}
@@ -132,7 +147,7 @@ def _read_nickname_csv(csv_path: str) -> tuple[dict[int, AddressRow], frozenset[
             columns = reader.fieldnames
             if columns is None:
                 raise ValueError(f"{name} is empty")
-            missing = [column for column in REQUIRED_COLUMNS if column not in columns]
+            missing = [column for column in required if column not in columns]
             if missing:
                 raise ValueError(f"{name} has no {' or '.join(missing)} column")
             fields = frozenset(
@@ -140,10 +155,15 @@ def _read_nickname_csv(csv_path: str) -> tuple[dict[int, AddressRow], frozenset[
             )
 
             for row in reader:
-                try:
-                    mem_type, address = parse_address(row.get("Address") or "")
-                except ValueError:
+                if _is_blank(row):
                     continue
+                text = row.get("Address") or ""
+                try:
+                    mem_type, address = parse_address(text)
+                except ValueError:
+                    raise ValueError(
+                        f"{name} line {reader.line_num}: Address {text!r} is not a CLICK address"
+                    ) from None
 
                 default_data_type = MEMORY_TYPE_TO_DATA_TYPE.get(mem_type, 0)
                 data_type_str = (row.get("Data Type") or "").strip().upper()
@@ -151,7 +171,9 @@ def _read_nickname_csv(csv_path: str) -> tuple[dict[int, AddressRow], frozenset[
 
                 default_retentive = DEFAULT_RETENTIVE.get(mem_type, False)
                 retentive_str = (row.get("Retentive") or "").strip()
-                retentive = retentive_str.lower() == "yes" if retentive_str else default_retentive
+                retentive = (
+                    retentive_str.lower() in _RETENTIVE_ON if retentive_str else default_retentive
+                )
 
                 result[get_addr_key(mem_type, address)] = AddressRow(
                     memory_type=mem_type,
@@ -225,13 +247,16 @@ class CsvDataSource(DataSource):
     Has no 'Used' field information.
     """
 
-    def __init__(self, csv_path: str):
+    def __init__(self, csv_path: str, *, required: Sequence[str] = REQUIRED_COLUMNS):
         """Initialize CSV data source.
 
         Args:
             csv_path: Path to the CSV file
+            required: Columns the file must have to load (Import from CSV needs
+                only Address)
         """
         self._csv_path = csv_path
+        self._required = tuple(required)
         self._fields: frozenset[str] = frozenset()
         # Why the file could not be read the last time it was loaded
         self._unreadable: str | None = None
@@ -270,7 +295,7 @@ class CsvDataSource(DataSource):
             Dict mapping AddrKey (int) to AddressRow
         """
         try:
-            rows, self._fields = _read_nickname_csv(self._csv_path)
+            rows, self._fields = _read_nickname_csv(self._csv_path, self._required)
         except ValueError as exc:
             self._unreadable = str(exc)
             raise
@@ -285,6 +310,7 @@ class CsvDataSource(DataSource):
         Raises:
             ValueError: The last load found a file it could not read; it is
                 left as it is.
+            OSError: The file cannot be written, such as while Excel holds it open.
         """
         if self._unreadable is not None:
             raise ValueError(
@@ -300,33 +326,29 @@ class CsvDataSource(DataSource):
             key=lambda r: (MEMORY_TYPE_BASES.get(r.memory_type, 0xFFFFFFFF), r.address)
         )
 
-        try:
-            with open(self._csv_path, "w", newline="", encoding="utf-8") as csvfile:
-                csvfile.write(",".join(CSV_COLUMNS) + "\r\n")
+        lines = [",".join(CSV_COLUMNS)]
+        for row in rows_to_write:
+            # A defaulted numeric is written "0", as CLICK does; TXT's default is empty
+            if row.initial_value:
+                initial_value_str = str(row.initial_value)
+            elif row.data_type == DataType.TXT:
+                initial_value_str = ""
+            else:
+                initial_value_str = "0"
 
-                for row in rows_to_write:
-                    # A defaulted numeric is written "0", as CLICK does; TXT's default is empty
-                    if row.initial_value:
-                        initial_value_str = str(row.initial_value)
-                    elif row.data_type == DataType.TXT:
-                        initial_value_str = ""
-                    else:
-                        initial_value_str = "0"
+            line_parts = [
+                row.display_address,  # XD/YD as CLICK shows them (XD0u, XD1-8)
+                DATA_TYPE_CODE_TO_STR.get(row.data_type, ""),
+                _quoted(row.nickname),
+                _bare(initial_value_str),
+                "Yes" if row.retentive else "No",
+                _quoted(row.comment),
+            ]
+            lines.append(",".join(line_parts))
 
-                    line_parts = [
-                        row.display_address,  # XD/YD as CLICK shows them (XD0u, XD1-8)
-                        DATA_TYPE_CODE_TO_STR.get(row.data_type, ""),
-                        _quoted(row.nickname),
-                        _bare(initial_value_str),
-                        "Yes" if row.retentive else "No",
-                        _quoted(row.comment),
-                    ]
-                    csvfile.write(",".join(line_parts) + "\r\n")
-
-            return len(rows_to_write)
-
-        except OSError:
-            return 0
+        with open(self._csv_path, "w", newline="", encoding="utf-8") as csvfile:
+            csvfile.write("".join(line + "\r\n" for line in lines))
+        return len(rows_to_write)
 
 
 def convert_mdb_csv_to_user_csv(source_path: str, dest_path: str) -> None:

@@ -99,7 +99,7 @@ class FileMonitor:
 
         try:
             if self._file_path and os.path.exists(self._file_path):
-                # Not only a later mtime: a restored backup is older than the file it replaces
+                # Any change of mtime or size reloads: a restored backup is older than the file it replaces
                 stat = os.stat(self._file_path)
                 if (stat.st_mtime, stat.st_size) != (self._last_mtime, self._last_size):
                     consumed = self._on_modified()
