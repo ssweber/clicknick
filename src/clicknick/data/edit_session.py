@@ -44,7 +44,6 @@ class EditSession:
         self._store = store
         self._description = description
         self._pending: dict[int, MutableRowBuilder] = {}
-        self._comment_old_values: dict[int, str] = {}
 
     @property
     def description(self) -> str:
@@ -55,11 +54,6 @@ class EditSession:
     def pending(self) -> dict[int, MutableRowBuilder]:
         """Get the pending builders dict (for AddressStore to access)."""
         return self._pending
-
-    @property
-    def comment_old_values(self) -> dict[int, str]:
-        """Get dict of addr_key -> old_comment for block tag sync."""
-        return self._comment_old_values
 
     def get_builder(self, addr_key: int) -> MutableRowBuilder:
         """Get or create a builder for the given address key.
@@ -77,19 +71,11 @@ class EditSession:
     def set_field(self, addr_key: int, field_name: str, value: str | bool) -> None:
         """Set a single field on a row.
 
-        Records the row's current comment before its first change (for block tag sync).
-
         Args:
             addr_key: The address key to edit.
             field_name: Field name ('nickname', 'comment', 'initial_value', 'retentive').
             value: The new value.
         """
-        # Track the old comment before the first change (for block tag sync)
-        if field_name == "comment" and addr_key not in self._comment_old_values:
-            current = self._store.get_visible_row(addr_key)
-            if current:
-                self._comment_old_values[addr_key] = current.comment
-
         builder = self.get_builder(addr_key)
         builder.set_field(field_name, value)
 

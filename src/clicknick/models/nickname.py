@@ -19,8 +19,8 @@ class Nickname:
 
     @property
     def is_default_retentive(self) -> bool:
-        """Return True if retentive matches the default for this data_type"""
-        default = DEFAULT_RETENTIVE.get(self.data_type_display, False)
+        """Return True if retentive matches the default for this memory type"""
+        default = DEFAULT_RETENTIVE.get(self.address_type, False)
         return self.retentive == default
 
     def details(self) -> str:

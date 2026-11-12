@@ -274,6 +274,39 @@ class TestWhatStillSyncs:
         assert comment(store, "TD", 1) == "preset <Timers_D>"
         assert comment(store, "TD", 3) == "</Timers_D>"
 
+    @pytest.mark.parametrize(
+        ("open_tag", "td_open_tag"),
+        [("<Blk>", "<Blk_D>"), ('<Blk bg="Red">', '<Blk_D bg="Red">')],
+    )
+    def test_add_block_over_t_keeps_the_td_text(self, open_tag, td_open_tag):
+        """Add Block over T1..T5 sets both T tags in one session; TD keeps its own text."""
+        store = make_store({("TD", 1): "preset ms", ("TD", 5): "last preset"})
+
+        edit(store, ("T", 1, "comment", open_tag), ("T", 5, "comment", "</Blk>"))
+
+        assert comment(store, "TD", 1) == f"preset ms {td_open_tag}"
+        assert comment(store, "TD", 5) == "last preset </Blk_D>"
+
+    @pytest.mark.parametrize(
+        ("open_tag", "td_open_tag"),
+        [("<Blk>", "<Blk_D>"), ('<Blk bg="Red">', '<Blk_D bg="Red">')],
+    )
+    def test_add_block_over_t_replaces_the_old_td_tag_in_place(self, open_tag, td_open_tag):
+        """T rows that held a block get the new one; TD's mirrored tag is replaced where it is."""
+        store = make_store(
+            {
+                ("T", 1): "<Old>",
+                ("T", 5): "</Old>",
+                ("TD", 1): "<Old_D> preset ms",
+                ("TD", 5): "last </Old_D> preset",
+            }
+        )
+
+        edit(store, ("T", 1, "comment", open_tag), ("T", 5, "comment", "</Blk>"))
+
+        assert comment(store, "TD", 1) == f"{td_open_tag} preset ms"
+        assert comment(store, "TD", 5) == "last </Blk_D> preset"
+
     def test_adding_a_block_on_ctd_tags_ct(self):
         store = make_store({})
 

@@ -27,13 +27,13 @@ from pyclickplc.banks import (
     MEMORY_TYPE_TO_DATA_TYPE,
     DataType,
 )
-from pyclickplc.blocks import compute_all_block_ranges, parse_block_tag
+from pyclickplc.blocks import compute_all_block_ranges, find_paired_tag_index, parse_block_tag
 from pyclickplc.validation import SYSTEM_NICKNAME_TYPES, validate_initial_value
 
 from ..models.address_row import AddressRow, initial_values_differ
 from ..models.address_slots import iter_address_slots
 from ..models.validation import validate_comment, validate_nickname
-from ..services.block_service import BlockService, compute_block_colors
+from ..services.block_service import BlockService, compute_block_colors, same_block_tag
 from ..services.nickname_index_service import NicknameIndexService
 from .data_source import DataSource
 from .edit_session import EditSession
@@ -41,6 +41,8 @@ from .file_monitor import FileMonitor
 from .undo_frame import MAX_UNDO_DEPTH, UndoFrame
 
 if TYPE_CHECKING:
+    from pyclickplc.blocks import BlockTag
+
     from ..views.address_editor.view_builder import UnifiedView
 
 logger = logging.getLogger(__name__)
@@ -59,6 +61,44 @@ def _value_differs(base_row: AddressRow, field: str, value: str | bool) -> bool:
     if field == "initial_value":
         return initial_values_differ(replace(base_row, initial_value=value), base_row)
     return getattr(base_row, field) != value
+
+
+def _flag_loaded_error(row: AddressRow) -> AddressRow:
+    """Set loaded_with_error on a base row: an X/SC/SD nickname CLICK holds that breaks our rules.
+
+    CLICK writes system nicknames (`_IO1_Module_Error`, reserved words on SC/SD)
+    that ClickNick would refuse from the user; the flag exempts them while the
+    nickname stays as the database has it. Every base row passes through here
+    (load, reload, Sync), so the flag is the same whichever way the row arrived.
+    It depends on the row alone; duplicates are reported by validation.
+    """
+    flagged = False
+    if row.memory_type in SYSTEM_NICKNAME_TYPES and row.nickname:
+        system_bank: str | None = row.memory_type
+        if row.memory_type == "X" and not row.nickname.startswith("_IO"):
+            system_bank = None
+        is_valid, _ = validate_nickname(
+            row.nickname, row.addr_key, lambda _name, _key: False, system_bank=system_bank
+        )
+        flagged = not is_valid
+    if row.loaded_with_error == flagged:
+        return row
+    return replace(row, loaded_with_error=flagged)
+
+
+def _database_row(row: AddressRow, db_row: AddressRow) -> AddressRow:
+    """*row* holding *db_row*'s database fields, flagged by _flag_loaded_error."""
+    return _flag_loaded_error(
+        replace(
+            row,
+            nickname=db_row.nickname,
+            comment=db_row.comment,
+            used=db_row.used,
+            data_type=db_row.data_type,
+            initial_value=db_row.initial_value,
+            retentive=db_row.retentive,
+        )
+    )
 
 
 class AddressStore:
@@ -100,6 +140,7 @@ class AddressStore:
         # Display order (addr_keys in the order they should appear)
         self.row_order: list[int] = []
         self._row_position: dict[int, int] = {}
+        self._keys_by_type: dict[str, list[int]] = {}  # memory type -> keys in address order
 
         # Undo/Redo stacks
         self.undo_stack: list[UndoFrame] = []
@@ -159,28 +200,10 @@ class AddressStore:
                 retentive=DEFAULT_RETENTIVE.get(mem_type, False),
             )
             self.row_order.append(addr_key)
+            self._keys_by_type.setdefault(mem_type, []).append(addr_key)
 
         self._row_position = {addr_key: i for i, addr_key in enumerate(self.row_order)}
         return skeleton
-
-    def _mark_loaded_with_errors(self) -> None:
-        """Mark X/SC/SD rows that loaded with invalid nicknames."""
-        for addr_key, row in self.visible_state.items():
-            if row.memory_type in SYSTEM_NICKNAME_TYPES and row.nickname:
-                system_bank = row.memory_type
-                if row.memory_type == "X" and not row.nickname.startswith("_IO"):
-                    system_bank = None
-                is_valid, _ = validate_nickname(
-                    row.nickname,
-                    addr_key,
-                    self.is_duplicate_nickname,
-                    system_bank=system_bank,
-                )
-                if not is_valid:
-                    # Update both base and visible
-                    updated = replace(row, loaded_with_error=True)
-                    self.base_state[addr_key] = updated
-                    self.visible_state[addr_key] = updated
 
     def _validate_row(self, addr_key: int) -> None:
         """Validate a single row and update its validation state."""
@@ -359,23 +382,6 @@ class AddressStore:
         else:
             del self.user_overrides[addr_key]
 
-    def _apply_external_base_row(
-        self,
-        addr_key: int,
-        updated_base: AddressRow,
-    ) -> bool:
-        """Apply one externally-loaded base row.
-
-        Returns:
-            True if the base row changed (so the key needs deriving)
-        """
-        old_base = self.base_state.get(addr_key)
-        if old_base is None:
-            return False
-
-        self.base_state[addr_key] = updated_base
-        return updated_base != old_base
-
     def _recompute_block_colors(self, affected: set[int]) -> set[int]:
         """Recompute block colors for the entire unified view.
 
@@ -491,46 +497,33 @@ class AddressStore:
 
         self._notify_observers(affected)
 
+    def _apply_database_rows(self, new_rows: Mapping[int, AddressRow]) -> None:
+        """Make a fresh read of the data source the base layer, then derive what changed."""
+        self.loaded_row_count = len(new_rows)
+
+        changed: set[int] = set()
+        for addr_key, old_base in self.base_state.items():
+            new_row = new_rows.get(addr_key)
+            if new_row is None:
+                # Rows absent from the database are real deletions/clears. Reset
+                # the base row to the skeleton so no stale MDB content stays.
+                updated_base = self._default_database_row(old_base)
+            else:
+                updated_base = _database_row(old_base, new_row)
+            if updated_base != old_base:
+                self.base_state[addr_key] = updated_base
+                changed.add(addr_key)
+
+        if changed:
+            self._derive(changed)
+
     def _on_database_update(self) -> bool:
         """Handle external database changes."""
         try:
             new_rows = self._data_source.load_all_addresses()
         except Exception:
             return False
-        self.loaded_row_count = len(new_rows)
-
-        changed: set[int] = set()
-
-        for addr_key, new_row in new_rows.items():
-            old_base = self.base_state.get(addr_key)
-
-            # Update base layer
-            if old_base:
-                updated_base = replace(
-                    old_base,
-                    nickname=new_row.nickname,
-                    comment=new_row.comment,
-                    used=new_row.used,
-                    data_type=new_row.data_type,
-                    initial_value=new_row.initial_value,
-                    retentive=new_row.retentive,
-                    loaded_with_error=new_row.loaded_with_error,
-                )
-                if self._apply_external_base_row(addr_key, updated_base):
-                    changed.add(addr_key)
-
-        # Rows absent from the database are real deletions/clears. Reset the
-        # base layer back to the skeleton row so consumers cannot keep stale MDB
-        # content forever.
-        for addr_key in set(self.base_state) - set(new_rows):
-            old_base = self.base_state[addr_key]
-            updated_base = self._default_database_row(old_base)
-            if updated_base != old_base and self._apply_external_base_row(addr_key, updated_base):
-                changed.add(addr_key)
-
-        if changed:
-            self._derive(changed)
-
+        self._apply_database_rows(new_rows)
         return True
 
     # --- Data Loading ---
@@ -540,39 +533,17 @@ class AddressStore:
 
         Creates base skeleton, then hydrates with database values.
         """
-        # Create base skeleton
         self.base_state = self._create_base_skeleton()
 
-        # visible_state starts as copy of base_state references
-        self.visible_state = dict(self.base_state)
-
-        # Load from data source
         db_rows = self._data_source.load_all_addresses()
         self.loaded_row_count = len(db_rows)
-
-        # Hydrate base_state with loaded data
         for addr_key, db_row in db_rows.items():
             if addr_key in self.base_state:
-                # Create new immutable row with DB values
-                base = self.base_state[addr_key]
-                hydrated = replace(
-                    base,
-                    nickname=db_row.nickname,
-                    comment=db_row.comment,
-                    used=db_row.used,
-                    data_type=db_row.data_type,
-                    initial_value=db_row.initial_value,
-                    retentive=db_row.retentive,
-                    loaded_with_error=db_row.loaded_with_error,
-                )
-                self.base_state[addr_key] = hydrated
-                self.visible_state[addr_key] = hydrated
+                self.base_state[addr_key] = _database_row(self.base_state[addr_key], db_row)
 
-        # Rebuild nickname index
+        # No overrides yet: visible rows are the base rows.
+        self.visible_state = dict(self.base_state)
         self._rebuild_nickname_index()
-
-        # Mark X/SC/SD rows with invalid nicknames
-        self._mark_loaded_with_errors()
 
         # Validate all rows
         self._validate_all_rows()
@@ -585,87 +556,98 @@ class AddressStore:
             on_modified=self._on_database_update,
         )
 
+    def _matching_tag_key(self, addr_key: int, tag: BlockTag) -> int | None:
+        """Key of the row whose open/close tag pairs with *tag* on *addr_key*, as rows are now."""
+        if tag.tag_type not in ("open", "close"):
+            return None
+        keys = self._keys_by_type.get(self.visible_state[addr_key].memory_type)
+        if not keys:
+            return None
+        rows = [self.visible_state[key] for key in keys]
+        idx = self._row_position[addr_key] - self._row_position[keys[0]]
+        match_idx = find_paired_tag_index(rows, idx, tag)
+        return None if match_idx is None else keys[match_idx]
+
     def _apply_cascades(self, session: EditSession) -> None:
-        """Apply automatic syncs (T/TD, block tags) to pending changes."""
+        """Write what the caller's edits imply for rows tied to the edited ones.
 
-        def _sync_interleaved_pair(src_row: AddressRow, comment: str) -> None:
-            """Sync comment to the interleaved pair (e.g. T -> TD).
+        - Retentive set on a T/TD (CT/CTD) row is set on its pair too.
+        - A row whose block tag changed (old tag vs new tag, not its text) has
+          the matching open/close row's tag renamed or removed, and the T/TD
+          pair of each of the two follows (BlockService says how). A comment
+          whose tag stayed the same changes nothing else.
 
-            For block tags, applies _D suffix transformation:
-            - T/CT blocks use base name (e.g., "Pumps")
-            - TD/CTD blocks use "_D" suffix (e.g., "Pumps_D")
-            """
-            if src_row.memory_type not in INTERLEAVED_PAIRS:
+        What the caller set is read once, before any cascade writes a builder,
+        and a cascade never writes a field the caller set. Old tags come from
+        the visible rows: they do not change while a session is open.
+        """
+        caller_set = {key: builder.changes() for key, builder in session.pending.items()}
+        cascaded: dict[int, str] = {}  # comments written by cascades so far
+
+        def current_comment(addr_key: int) -> str:
+            return cascaded.get(addr_key, self.visible_state[addr_key].comment)
+
+        def write_comment(addr_key: int, comment: str | None) -> bool:
+            if comment is None or "comment" in caller_set.get(addr_key, ()):
+                return False
+            cascaded[addr_key] = comment
+            session.get_builder(addr_key).comment = comment
+            return True
+
+        def pair_key_of(row: AddressRow) -> int | None:
+            pair_type = INTERLEAVED_PAIRS.get(row.memory_type)
+            if pair_type is None:
+                return None
+            pair_key = get_addr_key(pair_type, row.address)
+            return pair_key if pair_key in self.visible_state else None
+
+        def sync_pair(row: AddressRow, old_tag: BlockTag, new_tag: BlockTag) -> None:
+            pair_key = pair_key_of(row)
+            if pair_key is None:
                 return
+            write_comment(
+                pair_key,
+                BlockService.pair_tag_comment(
+                    current_comment(pair_key),
+                    old_tag,
+                    new_tag,
+                    row.memory_type,
+                    self.visible_state[pair_key].memory_type,
+                ),
+            )
 
-            paired_type = INTERLEAVED_PAIRS[src_row.memory_type]
-            paired_key = get_addr_key(paired_type, src_row.address)
-
-            # Only sync if the pair hasn't been modified in this session
-            if paired_key in session.pending:
-                return
-
-            paired_row = self.visible_state.get(paired_key)
-            if paired_row:
-                # Use suffix-aware sync for block tags
-                synced = BlockService.apply_block_tag_for_interleaved_pair(
-                    comment,
-                    paired_row.comment,
-                    src_row.memory_type,
-                    paired_type,
-                )
-                if synced is not None:
-                    session.get_builder(paired_key).comment = synced
-
-        # Process snapshot of pending keys (cascades may add new keys to pending)
-        pending_keys = list(session.pending.keys())
-
-        for addr_key in pending_keys:
-            builder = session.pending[addr_key]
+        for addr_key, fields in caller_set.items():
             row = self.visible_state.get(addr_key)
-            if not row:
+            if row is None:
                 continue
 
-            # 1. Retentive sync for T/TD pairs
-            if row.memory_type in INTERLEAVED_PAIRS and builder.retentive is not None:
-                paired_type = INTERLEAVED_PAIRS[row.memory_type]
-                paired_key = get_addr_key(paired_type, row.address)
+            pair_key = pair_key_of(row)
+            if (
+                pair_key is not None
+                and "retentive" in fields
+                and "retentive" not in caller_set.get(pair_key, ())
+            ):
+                session.get_builder(pair_key).retentive = fields["retentive"]
 
-                if paired_key not in session.pending:
-                    session.get_builder(paired_key).retentive = builder.retentive
+            if "comment" not in fields:
+                continue
+            old_tag = parse_block_tag(row.comment)
+            new_tag = parse_block_tag(fields["comment"])
+            if same_block_tag(old_tag, new_tag):
+                continue
 
-            # 2. Comment cascades (Block tags and T/TD sync)
-            if builder.comment is not None:
-                new_comment = builder.comment
+            match_key = self._matching_tag_key(addr_key, old_tag)
+            if match_key is not None:
+                match_old = current_comment(match_key)
+                match_new = BlockService.matching_tag_comment(match_old, old_tag, new_tag)
+                if write_comment(match_key, match_new):
+                    sync_pair(
+                        self.visible_state[match_key],
+                        parse_block_tag(match_old),
+                        parse_block_tag(match_new),
+                    )
 
-                # Check for vertical block tag updates (Start/End tag consistency)
-                old_comment = session.comment_old_values.get(addr_key, row.comment)
-                old_tag = parse_block_tag(old_comment)
-                new_tag = parse_block_tag(new_comment)
-
-                if old_tag.name or new_tag.name:
-                    # Get unified view for searching paired tags
-                    view = self.get_unified_view()
-                    if view:
-                        key_to_idx = {r.addr_key: i for i, r in enumerate(view.rows)}
-                        row_idx = key_to_idx.get(addr_key)
-
-                        if row_idx is not None:
-                            result = BlockService.auto_update_matching_block_tag(
-                                view.rows, row_idx, old_tag, new_tag
-                            )
-                            if result:
-                                match_idx, match_comment = result
-                                match_row = view.rows[match_idx]
-
-                                # Update the vertical match (the closing tag)
-                                session.get_builder(match_row.addr_key).comment = match_comment
-
-                                # Sync the vertical match to *its* interleaved pair
-                                _sync_interleaved_pair(match_row, match_comment)
-
-                # Sync the current row to its interleaved pair
-                _sync_interleaved_pair(row, new_comment)
+            sync_pair(row, old_tag, new_tag)
 
     def _freeze_session(self, session: EditSession) -> set[int]:
         """Freeze session builders' values into user_overrides.
@@ -694,10 +676,11 @@ class AddressStore:
         """Commit pending changes from an edit session.
 
         This method handles all the steps to finalize an edit session:
-        1. Push undo frame (before changes)
-        2. Apply cascades (T/TD sync, block tags)
-        3. Freeze builders into user_overrides
-        4. Derive visible, index, validation and block colors, then notify
+        1. Apply cascades (T/TD sync, block tags)
+        2. Freeze builders into user_overrides, dropping values base already holds
+        3. If the overrides changed: push the undo frame (the overrides before),
+           clear redo, derive visible, index, validation and block colors, notify.
+           A session that changes nothing is not an undo step.
 
         If any step raises, the inputs (overrides and undo/redo stacks) are
         restored and derived state is rebuilt from them before re-raising.
@@ -706,27 +689,19 @@ class AddressStore:
         saved_undo = list(self.undo_stack)
         saved_redo = list(self.redo_stack)
         try:
-            # 1. Push undo frame BEFORE making changes
-            self.undo_stack.append(
-                UndoFrame(
-                    overrides=saved_overrides,
-                    description=description,
-                )
-            )
-            # Limit undo stack depth
+            self._apply_cascades(session)
+            affected_keys = self._freeze_session(session)
+            for key in affected_keys:
+                self._rebase_override(key)
+            if self.user_overrides == saved_overrides:
+                return
+
+            self.undo_stack.append(UndoFrame(overrides=saved_overrides, description=description))
             while len(self.undo_stack) > MAX_UNDO_DEPTH:
                 self.undo_stack.pop(0)
-
-            # Clear redo stack (new edit invalidates redo history)
+            # A new edit invalidates redo history
             self.redo_stack.clear()
 
-            # 2. Apply cascades (T/TD sync, block tag sync)
-            self._apply_cascades(session)
-
-            # 3. Freeze builders into user_overrides
-            affected_keys = self._freeze_session(session)
-
-            # 4. Derive and notify
             self._derive(affected_keys)
         except BaseException:
             touched = set(saved_overrides) | set(self.user_overrides) | set(session.pending)
@@ -786,16 +761,12 @@ class AddressStore:
         if not self.undo_stack:
             return False
 
-        # Save current state to redo
+        # The current state goes to redo under the description of the edit undone.
+        frame = self.undo_stack.pop()
         self.redo_stack.append(
-            UndoFrame(
-                overrides=dict(self.user_overrides),
-                description="",
-            )
+            UndoFrame(overrides=dict(self.user_overrides), description=frame.description)
         )
 
-        # Restore previous state
-        frame = self.undo_stack.pop()
         old_overrides = self.user_overrides
         self.user_overrides = frame.overrides
 
@@ -815,16 +786,12 @@ class AddressStore:
         if not self.redo_stack:
             return False
 
-        # Save current to undo
+        # The current state goes back to undo under the description of the edit redone.
+        frame = self.redo_stack.pop()
         self.undo_stack.append(
-            UndoFrame(
-                overrides=dict(self.user_overrides),
-                description="",
-            )
+            UndoFrame(overrides=dict(self.user_overrides), description=frame.description)
         )
 
-        # Restore redo state
-        frame = self.redo_stack.pop()
         old_overrides = self.user_overrides
         self.user_overrides = frame.overrides
 
@@ -1002,31 +969,51 @@ class AddressStore:
     def save_all_changes(self) -> int:
         """Save changes to data source.
 
+        CLICK writes SC_.mdb while it is connected, so for the database the
+        rows are read again first (as a file-monitor poll would): the rows
+        written then carry CLICK's current value for every field the user did
+        not change, and whether a row is inserted, updated or deleted is
+        decided from that read. A CSV file is rewritten whole.
+
         Returns:
             Number of changes saved
+
+        Raises:
+            RuntimeError: The data source is read-only, or rows have validation
+                errors. Nothing is written.
+            Exception: Whatever the data source raises reading or writing.
+                Overrides and undo history are kept.
         """
         if self._data_source.is_read_only:
             raise RuntimeError("Data source is read-only")
 
-        dirty_keys = self.get_dirty_keys()
-        if not dirty_keys:
+        if not self.user_overrides:
             return 0
 
-        dirty_rows = [self.visible_state[key] for key in dirty_keys]
+        writes_dirty_rows = self._data_source.supports_used_field
+        if writes_dirty_rows:
+            self._apply_database_rows(self._data_source.load_all_addresses())
 
-        # Save - for MDB pass only dirty rows, for CSV pass all (it rewrites entire file)
-        if self._data_source.supports_used_field:
-            # MDB: save only dirty rows
-            count = self._data_source.save_changes(dirty_rows)
-        else:
+        error_count = self.get_total_error_count()
+        if error_count:
+            rows = "1 row has" if error_count == 1 else f"{error_count} rows have"
+            raise RuntimeError(f"Cannot save: {rows} validation errors. Fix them first.")
+
+        dirty_keys = self.get_dirty_keys()
+        if not writes_dirty_rows:
             # CSV: needs all rows with content (rewrites entire file)
             count = self._data_source.save_changes(list(self.visible_state.values()))
+        elif dirty_keys:
+            count = self._data_source.save_changes([self.visible_state[key] for key in dirty_keys])
+        else:
+            count = 0  # the database already holds every edit
 
-        # After save: base_state = visible_state for saved rows
+        # What was written is now the base.
         for key in dirty_keys:
-            self.base_state[key] = self.visible_state[key]
+            self.base_state[key] = _flag_loaded_error(
+                replace(self.base_state[key], **self.user_overrides[key])
+            )
 
-        # Clear overrides
         affected_keys = set(self.user_overrides.keys())
         self.user_overrides.clear()
 
