@@ -251,7 +251,13 @@ def _open_proposal(ctx: DispatchContext, parts: list[str]) -> tuple[str, int]:
 
     Returns the reply and how many rungs the proposal changes.
     """
-    from ..services.rung_diff import BundleSources, compare_bundle, load_bundle, render_diff
+    from ..services.rung_diff import (
+        WORKSPACE_SOURCE,
+        BundleSources,
+        compare_bundle,
+        load_bundle,
+        render_diff,
+    )
 
     file_stem = None
     selection = None
@@ -330,6 +336,7 @@ def _open_proposal(ctx: DispatchContext, parts: list[str]) -> tuple[str, int]:
             before=BundleSources.round_trip(click_dir),
             after=BundleSources.workspace(source_dir, proposal_dir),
             selected=rungs,
+            source=WORKSPACE_SOURCE,
         )
         return diff.text, staged_rungs
 

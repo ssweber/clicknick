@@ -873,6 +873,9 @@ class RenderedDiff:
         return "".join(self.lines)
 
 
+WORKSPACE_SOURCE = "workspace"  # The diff's name for the workspace's own source
+
+
 def render_diff(
     change: ProgramChange,
     name: str,
@@ -881,13 +884,15 @@ def render_diff(
     after: BundleSources,
     selected: Iterable[int] | None = None,
     shown: Mapping[int, tuple[int, int]] | None = None,
+    source: str = "proposed",
 ) -> RenderedDiff:
     """Show *change* as the pyrung source of the rungs that differ.
 
     Each difference has ``CONTEXT_RUNGS`` unchanged rungs shown above and below
     it; *shown* (``Gap.opcode`` -> ``Gap.shown``) shows more of a run. With
     *selected*, only the blocks holding one of those proposed rungs are shown,
-    without unchanged rungs. Empty when nothing differs.
+    without unchanged rungs. *source* names where the proposal came from in the
+    ``+++`` header. Empty when nothing differs.
     """
     before_text = before.text(name)
     after_text = after.text(name)
@@ -954,7 +959,7 @@ def render_diff(
 
     if not any(line.startswith(("+", "-")) for line in body):
         return RenderedDiff()
-    header = (f"--- CLICK/{name}\n", f"+++ proposed/{name}\n")
+    header = (f"--- CLICK/{name}\n", f"+++ {source}/{name}\n")
     return RenderedDiff(
         (*header, *body),
         {number: index + len(header) for number, index in starts.items()},

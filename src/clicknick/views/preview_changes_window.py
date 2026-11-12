@@ -18,6 +18,7 @@ import json
 import os
 import tkinter as tk
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -37,6 +38,7 @@ from ..ladder.program import (
 from ..models.address_row import AddressRow
 from ..services.nickname_staging import NicknamePlan, plan_nicknames, stage_nicknames
 from ..services.rung_diff import (
+    WORKSPACE_SOURCE,
     BundleComparison,
     BundleSources,
     DifferenceKey,
@@ -87,7 +89,7 @@ _ICON_ONLY_IN_CLICK = "!"
 _CLICK_NEW = "New"
 _CLICK_MATCHES = "Up to date"
 _CLICK_ONLY = "Only in CLICK"
-_DESC_ONLY_IN_CLICK = "Not in this folder: delete it in CLICK, or untick to keep it"
+_DESC_ONLY_IN_CLICK = "Not in this folder: delete it in CLICK, or keep it"
 _DELETE_IN_CLICK = "Delete it in CLICK"
 
 # Row colours
@@ -106,6 +108,7 @@ _LEGACY_LABELS = {False: "old encoding", True: "unreadable"}
 # Diff pane text (GitHub Desktop's light theme); see the tags in _build_ui
 _DIFF_TEXT = "#24292e"
 _DIFF_MUTED = "#586069"
+_MARGIN = 5  # Pixels left of the +/- gutter, where the current difference's bar goes
 _DIFF_LINE_TAGS = {"+": "added", "-": "removed"}
 
 # The Copy switch: what a step copies for a program CLICK already has
@@ -306,6 +309,31 @@ _DIALOG_POLL_MS = 100
 _DIALOG_TIMEOUT_MS = 3000
 
 
+@dataclass(frozen=True)
+class ProposalSource:
+    """Where a window's proposal comes from, and so what of it starts out taken.
+
+    The workspace's own edits, and a folder opened to load into CLICK, are meant
+    to replace what CLICK has: every difference, the folder's nicknames, and
+    deleting the programs CLICK has that the proposal lacks. A copy of another
+    PLC is compared to bring some of it over, so its nicknames and those
+    deletions start out skipped. Differences always start out taken.
+    """
+
+    label: str  # "from <label>" in the title; the diff's +++ header
+    takes_nicknames: bool = True
+    deletes_only_in_click: bool = True
+
+    @classmethod
+    def of(cls, folder: Path, source_dir: Path | None) -> ProposalSource:
+        """The workspace's export when *source_dir* is given; otherwise a folder opened."""
+        return cls(WORKSPACE_SOURCE if source_dir is not None else folder.name)
+
+    @property
+    def title(self) -> str:
+        return f"Preview Changes — from {self.label}"
+
+
 class PreviewChangesWindow(tk.Toplevel):
     """Non-modal panel that walks the user through pasting ladder CSVs."""
 
@@ -437,8 +465,8 @@ class PreviewChangesWindow(tk.Toplevel):
     def _forget_choices(self) -> None:
         self._skipped.clear()
         self._step_through.clear()
-        self._kept_in_click.clear()
-        self._nicknames_skipped = False
+        self._flipped_in_click.clear()
+        self._nicknames_skipped = not self._source.takes_nicknames
         self._forget_progress()
 
     def _can_add_subroutine(self, idx: int | None) -> bool:
@@ -586,12 +614,16 @@ class PreviewChangesWindow(tk.Toplevel):
     def _skipped_of(self, name: str) -> frozenset[DifferenceKey]:
         return self._skipped.get(name, frozenset())
 
+    def _kept(self, name: str) -> bool:
+        """Whether a program only in CLICK is kept there, rather than deleted."""
+        return (name in self._flipped_in_click) == self._source.deletes_only_in_click
+
     def _all_skipped(self, name: str) -> bool:
         """Whether every difference of the program is skipped: nothing to paste."""
         if name == _NICKNAMES_NAME:
             return self._nicknames_skipped
         if name in self._only_in_click:
-            return name in self._kept_in_click
+            return self._kept(name)
         change = self._choosable(name)
         return change is not None and set(change.differences) <= self._skipped_of(name)
 
@@ -600,7 +632,7 @@ class PreviewChangesWindow(tk.Toplevel):
         if name == _NICKNAMES_NAME:
             return self._nicknames_skipped
         if name in self._only_in_click:
-            return name in self._kept_in_click
+            return self._kept(name)
         change = self._choosable(name)
         taken = self._skipped_of(name) | self._pasted.get(name, frozenset())
         return change is not None and set(change.differences) <= taken
@@ -733,7 +765,7 @@ class PreviewChangesWindow(tk.Toplevel):
         if name == _NICKNAMES_NAME:
             return self._nicknames_label()
         if name in self._only_in_click:
-            return f"{_CLICK_ONLY}, kept" if name in self._kept_in_click else _CLICK_ONLY
+            return f"{_CLICK_ONLY}, kept" if self._kept(name) else _CLICK_ONLY
         change = self._changes.get(name)
         if change is None:
             return ""
@@ -813,7 +845,7 @@ class PreviewChangesWindow(tk.Toplevel):
         if name in self._only_in_click:
             instead = (
                 "This folder does not have the program; CLICK keeps it as it is."
-                if name in self._kept_in_click
+                if self._kept(name)
                 else "This folder does not have the program; it is to be deleted in CLICK."
             )
         notes = [_legacy_note(change, instead=instead)]
@@ -825,7 +857,14 @@ class PreviewChangesWindow(tk.Toplevel):
         if change is not self._expanded_change:
             # What was expanded belongs to the difference it was expanded in
             self._expanded_change, self._expanded = change, {}
-        return note, render_diff(change, name, before=before, after=after, shown=self._expanded)
+        return note, render_diff(
+            change,
+            name,
+            before=before,
+            after=after,
+            shown=self._expanded,
+            source=self._source.label,
+        )
 
     def _scroll_to_view(self) -> None:
         """Bring the difference being looked at to the top of the pane."""
@@ -840,8 +879,8 @@ class PreviewChangesWindow(tk.Toplevel):
     def _mark_differences(self, diff: RenderedDiff) -> None:
         """Grey out the skipped differences of the program shown, and mark the current one.
 
-        The current difference's +/- gutter turns into a solid bar: what the
-        difference bar and the Take checkbox are about.
+        The current difference gets a solid bar in the margin left of its +/-
+        gutter: what the difference bar and the Take checkbox are about.
         """
         change = self._choosable(self._view_name)
         if change is None or self._view_name is None:
@@ -890,7 +929,7 @@ class PreviewChangesWindow(tk.Toplevel):
             return
         if self._view_name in self._only_in_click:
             # Deleted in CLICK, or kept, as a whole
-            kept = self._view_name in self._kept_in_click
+            kept = self._kept(self._view_name)
             self._bar_lbl.configure(text=_CLICK_ONLY)
             self._take_var.set(not kept)
             self._take_chk.configure(
@@ -964,6 +1003,7 @@ class PreviewChangesWindow(tk.Toplevel):
         self._shown_diff = diff
         # The Text widget numbers lines from 1, and the diff starts below the note
         self._diff_first_line = note.count("\n") + 2 if note else 1
+        self._text.tag_add("margin", "1.0", tk.END)
         self._mark_differences(diff)
         self._text.configure(state=tk.DISABLED)
         name = self._view_name
@@ -1070,7 +1110,7 @@ class PreviewChangesWindow(tk.Toplevel):
 
     def _only_in_click_prompt(self, name: str) -> str:
         """What to do with a program CLICK has and the folder does not."""
-        if name in self._kept_in_click:
+        if self._kept(name):
             return (
                 f"{name} is kept: CLICK keeps the program.\n"
                 f'Click "Next" to go on, or tick {_DELETE_IN_CLICK} to delete it there'
@@ -1192,7 +1232,7 @@ class PreviewChangesWindow(tk.Toplevel):
         """Keep a program only in CLICK, or delete it there after all."""
         if name in self._done:
             return
-        self._kept_in_click ^= {name}
+        self._flipped_in_click ^= {name}
         idx = self._current_idx
         if idx is not None and self._items[idx][0] == name:
             self._status_var.set(self._step_prompt(idx))
@@ -1276,13 +1316,13 @@ class PreviewChangesWindow(tk.Toplevel):
         self._copied = False
         self._sheet.deselect()
         self._update_highlights()
-        if any(name not in self._kept_in_click for name in self._only_in_click):
+        if any(not self._kept(name) for name in self._only_in_click):
             msg = "Every change has been made in CLICK!"
         elif any(self._matches_click(name) for name, *_ in self._items):
             msg = "Every changed program has been pasted!"
         else:
             msg = "All CSVs have been pasted!"
-        kept = sum(1 for name in self._only_in_click if name in self._kept_in_click)
+        kept = sum(1 for name in self._only_in_click if self._kept(name))
         if kept:
             msg += f"\n{kept} program(s) in CLICK that are not in this folder are kept"
         self._status_var.set(msg)
@@ -1340,7 +1380,7 @@ class PreviewChangesWindow(tk.Toplevel):
         """Whether CLICK's last save holds everything taken from the folder, and nothing more."""
         return (
             self._click_compared
-            and all(name in self._kept_in_click for name in self._only_in_click)
+            and all(self._kept(name) for name in self._only_in_click)
             and all(self._matches_click(name) or self._all_skipped(name) for name in self._programs)
             and (
                 self._nickname_path is None or self._nicknames_skipped or self._nicknames_in_click()
@@ -1885,11 +1925,9 @@ class PreviewChangesWindow(tk.Toplevel):
         # --- header ---
         header = ttk.Frame(main)
         header.pack(fill=tk.X, pady=(0, 5))
-        ttk.Label(
-            header,
-            text=f"Preview Changes — {self._folder.name}/",
-            font=("TkDefaultFont", 10, "bold"),
-        ).pack(side=tk.LEFT)
+        # Says where the proposal comes from (_show_source)
+        self._title_lbl = ttk.Label(header, font=("TkDefaultFont", 10, "bold"))
+        self._title_lbl.pack(side=tk.LEFT)
         self._progress_lbl = ttk.Label(header, text="")
         self._progress_lbl.pack(side=tk.RIGHT)
 
@@ -2054,8 +2092,11 @@ class PreviewChangesWindow(tk.Toplevel):
         self._text.tag_configure("note", foreground=_DIFF_MUTED, font=("TkDefaultFont", 9))
         # A skipped difference: configured last, so it draws over the line colours
         self._text.tag_configure("skipped", background="#f6f8fa", foreground="#959da5")
-        # The current difference: a solid bar down its gutter, above every other colour
-        self._text.tag_configure("current", background="#0969da", foreground="#ffffff")
+        # A column left of the +/- gutter, filled down the current difference
+        self._text.tag_configure("margin", lmargin1=_MARGIN, lmargin2=_MARGIN)
+        self._text.tag_configure(
+            "current", lmargin1=_MARGIN, lmargin2=_MARGIN, lmargincolor="#0969da"
+        )
         self._text.tag_raise("current")
         for gutter in ("added_gutter", "removed_gutter"):
             self._text.tag_bind(gutter, "<Button-1>", self._on_gutter)
@@ -2098,6 +2139,10 @@ class PreviewChangesWindow(tk.Toplevel):
             btn_frame, text=_STEP_THROUGH, command=self._on_step_through
         )
 
+    def _show_source(self) -> None:
+        self.title(self._source.title)
+        self._title_lbl.configure(text=self._source.title)
+
     def __init__(
         self,
         parent: tk.Widget,
@@ -2126,12 +2171,13 @@ class PreviewChangesWindow(tk.Toplevel):
         *open_staged_nicknames* opens the Address Editor on them to Sync.
         """
         super().__init__(parent)
-        self.title(f"Preview Changes — {folder.name}")
         self.geometry("900x720")
         self.minsize(660, 480)
 
         self._folder = folder
         self._source_dir = source_dir
+        # Where the proposal comes from, which sets what starts out taken
+        self._source = ProposalSource.of(folder, source_dir)
         self._get_mdb_path = get_mdb_path
         self._get_click_hwnd = get_click_hwnd
         # The program now in CLICK as CSVs: the generated workspace's csv/ folder
@@ -2162,7 +2208,7 @@ class PreviewChangesWindow(tk.Toplevel):
         # Programs to step through even though they have many steps (_copied_whole_for_steps)
         self._step_through: set[str] = set()
         # Programs only in CLICK to keep there; the others are deleted in CLICK
-        self._kept_in_click: set[str] = set()
+        self._flipped_in_click: set[str] = set()
         # The comparison those were made on, to carry them over to the next one
         self._basis: dict[str, ProgramChange] = {}
         # Programs whose difference has been shown
@@ -2172,7 +2218,7 @@ class PreviewChangesWindow(tk.Toplevel):
         # unreadable), whether they are skipped, and how they differ (_refresh_nicknames)
         self._nickname_rows: dict[int, AddressRow] | None = None
         self._nickname_error = ""
-        self._nicknames_skipped = False
+        self._nicknames_skipped = not self._source.takes_nicknames
         self._nickname_plans: tuple[NicknamePlan, NicknamePlan] | None = None
         # name -> how it differs from CLICK; absent when unknown (no workspace, unreadable)
         self._changes: dict[str, ProgramChange] = {}
@@ -2199,6 +2245,7 @@ class PreviewChangesWindow(tk.Toplevel):
         self._saved_program = SavedProgram()
 
         self._create_widgets()
+        self._show_source()
         self.reload(source_dir=source_dir, select=select)
         # The session of the project being pasted into; survives a brief disconnect
         self._project_session = self._saved_program.session
@@ -2216,9 +2263,22 @@ class PreviewChangesWindow(tk.Toplevel):
         *source_dir* and *select* are as for the constructor. Programs already
         marked done stay done unless their rungs changed, and skipped
         differences stay skipped. Rungs asked for by number replace the
-        program's choices.
+        program's choices. Shown as a different source (the workspace's export,
+        or the folder itself), the nicknames and the programs only in CLICK
+        start over from that source's defaults; skips and what was pasted stay,
+        as they are about what CLICK holds.
         """
         self._source_dir = source_dir
+        source = ProposalSource.of(self._folder, source_dir)
+        if source != self._source:
+            # A deletion marked done stays a deletion under the new default
+            deleted = {
+                name for name in self._done if name in self._only_in_click and not self._kept(name)
+            }
+            self._source = source
+            self._flipped_in_click = set() if source.deletes_only_in_click else deleted
+            self._nicknames_skipped = not source.takes_nicknames
+            self._show_source()
         self._selection = {select[0]: select[1]} if select and select[1] else {}
         if self._selection:
             # Rungs were asked for by number. This is not the user's choice, so it is not saved.

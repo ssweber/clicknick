@@ -197,9 +197,15 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 
 ### Preview Changes
 - The one window for getting ladder into CLICK (`views/preview_changes_window.py`; it was called Guided Paste):
-  **Ladder > Open in Preview Changes** opens it on any folder of ladder CSVs, the Workspace's **Preview Changes** /
+  **Ladder > Compare with > Folder** opens it on any folder of ladder CSVs, the Workspace's **Preview Changes** /
   `clicknick-cli rung apply` on the workspace's `csv_output/`. The app keeps one window per folder and reloads it
   when the folder is shown again
+- A window's `ProposalSource` says where its proposal comes from ("from workspace", "from <folder>") in the title
+  and the diff's `+++` header, and what starts out taken: differences always; the folder's nicknames, and deleting
+  programs only in CLICK, unless the source is a copy of another PLC (`takes_nicknames`, `deletes_only_in_click`).
+  The user's choices are kept as they differ from those (`_flipped_in_click`). A window shown as another source
+  resets only those two choices (a deletion marked done stays one); skips and what was pasted stay, as they are
+  about what CLICK holds
 - `services/rung_diff.py` is the one comparison of a CSV bundle with CLICK's last save (`csv/`): which programs
   differ, which rungs, and the diff text. Rungs are compared by `rung_fingerprint`; pyrung source is only how a
   difference is shown
@@ -225,7 +231,7 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   clicked **Step Through** for it (`_copied_whole_for_steps`; 100 counts the paste as chosen, `merged`). Every difference of a program locks while one of its steps is half done
 - A program only in CLICK (`only_in_click`) is a row like the others: taken, its step is deleting it in CLICK
   ("Next" marks it done; a CLICK save that still has it makes it a step again); unticking **Delete it in CLICK**
-  keeps it (`_kept_in_click`), and a kept program does not hold the window open
+  keeps it (`_kept`), and a kept program does not hold the window open
 - Any other folder's `nicknames.csv` is never written to CLICK's database directly: **Stage nicknames** stages
   the fields it sets as one edit in the store (`services/nickname_staging.py`; only the addresses it lists) and
   opens the Address Editor on Changed with **Sync and Close**. The row compares the file with the store's visible

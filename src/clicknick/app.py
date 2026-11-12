@@ -1846,10 +1846,10 @@ class ClickNickApp:
         if window is not None and create:
             window.after_idle(window.show)
 
-    def _open_preview_changes(self):
-        """Open a folder of ladder CSVs in Preview Changes."""
+    def _compare_with_folder(self):
+        """Compare CLICK's program with a folder of ladder CSVs, in Preview Changes."""
         folder = filedialog.askdirectory(
-            title="Open in Preview Changes — choose ladder CSV folder",
+            title="Compare with — choose a folder of ladder CSVs",
             parent=self.root,
         )
         if folder:
@@ -1924,9 +1924,9 @@ class ClickNickApp:
         ladder_menu.add_command(
             label="Load Ladder CSV to Clipboard...", command=self._load_ladder_csv
         )
-        ladder_menu.add_command(
-            label="Open in Preview Changes...", command=self._open_preview_changes
-        )
+        compare_menu = tk.Menu(ladder_menu, tearoff=0)
+        ladder_menu.add_cascade(label="Compare with", menu=compare_menu)
+        compare_menu.add_command(label="Folder...", command=self._compare_with_folder)
         ladder_menu.add_separator()
         ladder_menu.add_command(label="Save Clipboard to CSV...", command=self._save_clipboard_csv)
 
@@ -2210,15 +2210,15 @@ class ClickNickApp:
                 "ClickNick cannot read these rungs in CLICK:\n\n"
                 + _listed(unreadable)
                 + "\n\nThe workspace holds an empty rung in place of each. Paste them again "
-                "from your own copy of the program, or fix them in CLICK. Ladder > Open in "
-                "Preview Changes on that copy lists them in red."
+                "from your own copy of the program, or fix them in CLICK. Ladder > Compare with > "
+                "Folder on that copy lists them in red."
             )
         if copies:
             parts.append(
                 "Paste these programs into CLICK again from your own copy, or fix them in "
                 "CLICK:\n\n"
                 + _listed(copies)
-                + "\n\nLadder > Open in Preview Changes on that copy lists them in red."
+                + "\n\nLadder > Compare with > Folder on that copy lists them in red."
             )
         if legacy:
             parts.append(

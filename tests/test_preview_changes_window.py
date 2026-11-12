@@ -18,13 +18,15 @@ from clicknick.data.data_source import CsvDataSource
 from clicknick.ladder.program import STAND_IN_COMMENT, LegacyEncoding, empty_rung
 from clicknick.models.address_row import AddressRow
 from clicknick.services.rung_diff import (
+    WORKSPACE_SOURCE,
     BundleComparison,
     BundleSources,
+    DifferenceKey,
     ProgramChange,
     ProposedProgram,
     compare_rungs,
 )
-from clicknick.views.preview_changes_window import PreviewChangesWindow
+from clicknick.views.preview_changes_window import PreviewChangesWindow, ProposalSource
 
 MODULE = "clicknick.views.preview_changes_window"
 NAMES = ["subroutines/a.csv", "subroutines/b.csv", "main.csv"]
@@ -88,6 +90,9 @@ def _bare_window(folder_names: list[str] = NAMES):
     window = PreviewChangesWindow.__new__(PreviewChangesWindow)
     window._folder = Path("bundle")
     window._source_dir = None
+    window._source = ProposalSource("bundle")
+    window._title_lbl = Mock()
+    window.title = Mock()
     window._programs = {
         name: ProposedProgram(name, Path(name), RUNGS, len(RUNGS)) for name in folder_names
     }
@@ -100,7 +105,7 @@ def _bare_window(folder_names: list[str] = NAMES):
     window._pasted = {}
     window._partial = {}
     window._step_through = set()
-    window._kept_in_click = set()
+    window._flipped_in_click = set()
     window._step_through_btn = Mock()
     window._basis = {}
     window._viewed = set()
@@ -592,6 +597,7 @@ def _folder_window(tmp_path: Path, source_dir: Path | None = None):
     window = _bare_window([])
     window._folder = folder
     window._source_dir = source_dir
+    window._source = ProposalSource.of(folder, source_dir)
     window._get_saved_program = SavedProgram
     return window
 
@@ -978,7 +984,7 @@ def test_pane_shows_the_current_rows_difference_and_scrolls_to_its_step(monkeypa
             "note",
         ),
         ("--- CLICK/main.csv\n", "file_header"),
-        ("+++ proposed/main.csv\n", "file_header"),
+        ("+++ bundle/main.csv\n", "file_header"),
         (" R1  out(Y001)  # Y001\n", ""),
         ("+R2  out(Y005)  # Y005\n", "added"),
         (" R3  out(Y002)  # Y002\n", ""),
@@ -1133,6 +1139,93 @@ def test_a_reload_keeps_a_deletion_marked_done(monkeypatch) -> None:
 
     assert "subroutines/old.csv" in window._done
     assert not window._needs_paste("subroutines/old.csv")
+
+
+# ---------------------------------------------------------------------------
+# Where the proposal comes from
+# ---------------------------------------------------------------------------
+
+SISTER = ProposalSource("sister", takes_nicknames=False, deletes_only_in_click=False)
+
+
+def test_the_title_says_where_the_changes_come_from() -> None:
+    assert ProposalSource.of(Path("plcs/sister"), None).title == "Preview Changes — from sister"
+    assert (
+        ProposalSource.of(Path("ws/csv_output"), Path("ws/src/plc")).title
+        == "Preview Changes — from workspace"
+    )
+
+
+def test_another_plcs_programs_only_in_click_start_out_kept(monkeypatch) -> None:
+    window = _only_in_click_window(monkeypatch)
+    window._source = SISTER
+
+    assert window._kept("subroutines/old.csv")
+    assert window._click_label("subroutines/old.csv") == "Only in CLICK, kept"
+    window._view_name = "subroutines/old.csv"
+    window._on_take()  # Tick Delete it in CLICK
+    assert window._needs_paste("subroutines/old.csv")
+
+    window._on_take()  # Untick it again
+    _change(window, window.saved_after)
+    window.destroy.assert_called_once_with()  # Kept: nothing holds the window open
+
+
+def test_another_plcs_nicknames_start_out_skipped() -> None:
+    window = _bare_window()
+    window._source = SISTER
+
+    window._forget_choices()
+
+    assert window._nicknames_skipped
+
+
+def test_a_folder_shown_as_the_workspace_keeps_what_is_in_click(tmp_path: Path) -> None:
+    window = _folder_window(tmp_path)
+    window._start()
+    window._flipped_in_click.add("subroutines/old.csv")
+    window._nicknames_skipped = True
+    key = DifferenceKey((), ())
+    window._skipped = {"main.csv": frozenset({key})}
+    window._pasted = {"main.csv": frozenset({key})}
+    window._partial = {"main.csv": 1}
+    window._step_through = {"main.csv"}
+
+    window.reload(source_dir=tmp_path / "src" / "plc")
+
+    assert window._source == ProposalSource(WORKSPACE_SOURCE)
+    window.title.assert_called_with("Preview Changes — from workspace")
+    # The source's defaults start over...
+    assert window._flipped_in_click == set()
+    assert not window._nicknames_skipped
+    # ...and what was chosen and pasted of the programs stays
+    assert window._skipped == {"main.csv": frozenset({key})}
+    assert window._pasted == {"main.csv": frozenset({key})}
+    assert window._partial == {"main.csv": 1}
+    assert window._step_through == {"main.csv"}
+
+
+def test_a_deletion_marked_done_stays_one_under_another_plcs_defaults(monkeypatch) -> None:
+    window = _only_in_click_window(monkeypatch)
+    window._select_row(OLD)
+    window._on_action()  # Next: deleted
+    window._scan_folder = lambda: None
+    monkeypatch.setattr(ProposalSource, "of", classmethod(lambda cls, folder, source_dir: SISTER))
+
+    window.reload()
+
+    assert not window._kept("subroutines/old.csv")
+    assert "subroutines/old.csv" in window._done
+
+
+def test_another_plcs_window_says_what_click_keeps_when_done(monkeypatch) -> None:
+    window = _only_in_click_window(monkeypatch)
+    window._source = SISTER
+
+    window._all_done()
+
+    assert "1 program(s) in CLICK that are not in this folder are kept" in _status(window)
+    assert "Every change has been made in CLICK" not in _status(window)  # Nothing deleted
 
 
 class _Database:
@@ -1557,7 +1650,7 @@ def test_clicking_the_gutter_of_a_difference_skips_it(monkeypatch) -> None:
     assert _action(window) == "Next →"
 
 
-def test_current_difference_has_a_bar_down_its_gutter(monkeypatch) -> None:
+def test_current_difference_has_a_bar_beside_its_gutter(monkeypatch) -> None:
     # CLICK has Y002 only: r1 is the first difference, r3..4 the second
     window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
 
