@@ -994,12 +994,12 @@ class AddressStore:
         if writes_dirty_rows:
             self._apply_database_rows(self._data_source.load_all_addresses())
 
-        error_count = self.get_total_error_count()
+        dirty_keys = self.get_dirty_keys()
+        error_count = self.get_total_error_count() if dirty_keys else 0
         if error_count:
             rows = "1 row has" if error_count == 1 else f"{error_count} rows have"
             raise RuntimeError(f"Cannot save: {rows} validation errors. Fix them first.")
 
-        dirty_keys = self.get_dirty_keys()
         if not writes_dirty_rows:
             # CSV: needs all rows with content (rewrites entire file)
             count = self._data_source.save_changes(list(self.visible_state.values()))
