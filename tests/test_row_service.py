@@ -261,3 +261,162 @@ def test_clone_structure_nickname_index_updated(store):
     # Check reverse index has all cloned nicknames
     assert store.is_duplicate_nickname("Clone2", exclude_addr_key=999)
     assert store.is_duplicate_nickname("Clone3", exclude_addr_key=999)
+
+
+# Fill Down / Clone over interleaved types, block tags
+def _rows(store, *keys):
+    return [store.visible_state[k] for k in keys]
+
+
+def test_fill_down_targets_keep_only_the_source_memory_type(store):
+    rows = _rows(
+        store,
+        get_addr_key("T", 1),
+        get_addr_key("TD", 1),
+        get_addr_key("T", 2),
+        get_addr_key("TD", 2),
+    )
+
+    targets = RowService.fill_down_targets(rows)
+
+    assert [r.addr_key for r in targets] == [get_addr_key("T", 2)]
+
+
+def test_can_fill_down_ignores_other_type_rows_with_nicknames(store):
+    with store.edit_session("Setup") as session:
+        session.set_field(get_addr_key("T", 1), "nickname", "Delay1")
+        session.set_field(get_addr_key("TD", 1), "nickname", "DelayPreset")
+    rows = _rows(store, get_addr_key("T", 1), get_addr_key("TD", 1), get_addr_key("T", 2))
+
+    assert RowService.can_fill_down(rows) == (True, "")
+
+
+def test_can_fill_down_needs_a_target_of_the_source_type(store):
+    with store.edit_session("Setup") as session:
+        session.set_field(get_addr_key("T", 1), "nickname", "Delay1")
+    rows = _rows(store, get_addr_key("T", 1), get_addr_key("TD", 1))
+
+    can_fill, _ = RowService.can_fill_down(rows)
+
+    assert not can_fill
+
+
+def test_fill_down_does_not_copy_block_tags(store):
+    first, last = get_addr_key("DS", 1), get_addr_key("DS", 5)
+    with store.edit_session("Setup") as session:
+        session.set_field(first, "nickname", "Alarm1")
+        session.set_field(first, "comment", "<Alarms> first alarm")
+        session.set_field(last, "comment", "</Alarms>")
+    targets = [get_addr_key("DS", n) for n in (2, 3, 4)]
+
+    with store.edit_session("Fill down") as session:
+        RowService.fill_down(session, store, first, targets)
+
+    assert [store.visible_state[k].comment for k in targets] == ["first alarm"] * 3
+    assert store.visible_state[last].comment == "</Alarms>"
+    assert not store.has_errors()
+
+
+def test_clone_structure_does_not_copy_block_tags(store):
+    template = [get_addr_key("DS", 1), get_addr_key("DS", 2)]
+    with store.edit_session("Setup") as session:
+        session.set_field(template[0], "nickname", "Pump1")
+        session.set_field(template[0], "comment", "<Pumps>")
+        session.set_field(template[1], "nickname", "Pump1_Run")
+        session.set_field(template[1], "comment", "</Pumps>")
+    destination = [get_addr_key("DS", n) for n in (3, 4)]
+
+    with store.edit_session("Clone") as session:
+        RowService.clone_structure(session, store, template, destination, 1)
+
+    assert [store.visible_state[k].comment for k in destination] == ["", ""]
+    assert not store.has_errors()
+
+
+def _tag_block(store, keys, name="Blk"):
+    first, last = RowService.block_tag_keys(_rows(store, *keys))
+    with store.edit_session("Add block tag") as session:
+        session.set_field(first, "comment", f"<{name}>")
+        session.set_field(last, "comment", f"</{name}>")
+
+
+def _interleaved(*span):
+    """Display-order keys of a T/TD selection from span[0] to span[1], as (type, number)."""
+    order = [(m, n) for n in range(1, 20) for m in ("T", "TD")]
+    return [get_addr_key(m, n) for m, n in order[order.index(span[0]) : order.index(span[1]) + 1]]
+
+
+@pytest.mark.parametrize(
+    "span",
+    [(("T", 1), ("TD", 5)), (("TD", 1), ("T", 5)), (("T", 1), ("T", 5)), (("T", 11), ("TD", 15))],
+)
+def test_add_block_over_t_td_selection_writes_a_matched_pair(store, span):
+    _tag_block(store, _interleaved(*span))
+
+    first, last = span[0][1], span[1][1]
+    comment = lambda mem, n: store.visible_state[get_addr_key(mem, n)].comment  # noqa: E731
+    assert comment("T", first).startswith("<Blk")
+    assert comment("TD", first).startswith("<Blk_D")
+    assert comment("T", last) == "</Blk>"
+    assert comment("TD", last) == "</Blk_D>"
+    assert not store.has_errors()
+
+
+def test_fill_down_through_the_closing_row_keeps_its_tag(store):
+    first, last = get_addr_key("DS", 1), get_addr_key("DS", 5)
+    with store.edit_session("Setup") as session:
+        session.set_field(first, "nickname", "Alarm1")
+        session.set_field(first, "comment", "<Alarms> x")
+        session.set_field(last, "comment", "</Alarms>")
+    targets = [get_addr_key("DS", n) for n in (2, 3, 4, 5)]
+
+    with store.edit_session("Fill down") as session:
+        RowService.fill_down(session, store, first, targets)
+
+    assert store.visible_state[last].comment == "</Alarms>"
+    assert store.visible_state[first].comment == "<Alarms> x"
+    assert store.visible_state[get_addr_key("DS", 3)].comment == "x"
+    assert not store.has_errors()
+
+
+def test_clone_through_a_destination_with_a_tag_keeps_its_tag(store):
+    template = [get_addr_key("DS", 1), get_addr_key("DS", 2)]
+    with store.edit_session("Setup") as session:
+        session.set_field(template[0], "nickname", "Pump1")
+        session.set_field(template[0], "comment", "<Pumps> a")
+        session.set_field(template[1], "nickname", "Pump1_Run")
+        session.set_field(get_addr_key("DS", 4), "comment", "</Pumps>")
+    destination = [get_addr_key("DS", 3), get_addr_key("DS", 4)]
+
+    with store.edit_session("Clone") as session:
+        RowService.clone_structure(session, store, template, destination, 1)
+
+    assert store.visible_state[get_addr_key("DS", 4)].comment == "</Pumps>"
+    assert store.visible_state[get_addr_key("DS", 3)].comment == "a"
+    assert not store.has_errors()
+
+
+def test_comment_without_block_tag_closes_only_the_gap_it_leaves():
+    strip = RowService._comment_without_block_tag
+    assert strip("a <B> b") == "a b"
+    assert strip("<A> x") == "x"
+    assert strip("plain  text") == "plain  text"
+    assert strip("<A> line one\nline  two") == "line one\nline  two"
+    assert strip("a  b <B> c") == "a  b c"
+
+
+def test_comment_without_block_tag_removes_every_tag():
+    assert RowService._comment_without_block_tag("<A>y</A>") == "y"
+
+
+def test_fill_down_of_an_open_and_close_comment_leaves_no_stray_tag(store):
+    first = get_addr_key("DS", 1)
+    with store.edit_session("Setup") as session:
+        session.set_field(first, "nickname", "Alarm1")
+        session.set_field(first, "comment", "<A>y</A>")
+    targets = [get_addr_key("DS", n) for n in (2, 3)]
+
+    with store.edit_session("Fill down") as session:
+        RowService.fill_down(session, store, first, targets)
+
+    assert [store.visible_state[k].comment for k in targets] == ["y", "y"]

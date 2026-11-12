@@ -228,6 +228,11 @@ def _make_panel_stub(rows: list[DataViewRecord]) -> DataviewPanel:
     panel.on_force = None
     panel._suppress_notifications = False
     panel._is_dirty = False
+    panel._undo_stack = []
+    panel._redo_stack = []
+    panel._based_on = None
+    panel._saved_values = panel._row_values()
+    panel.load_error = None
     panel.sheet = FakeSheet()
     panel._update_status = lambda: None
     return panel
@@ -240,7 +245,6 @@ def _make_window_stub(
 ) -> DataviewEditorWindow:
     window = DataviewEditorWindow.__new__(DataviewEditorWindow)
     window.notebook = FakeNotebook(panels)
-    window._open_panels = {panel.file_path: panel for panel in panels}
     window._active_panel = panels[0] if panels else None
     window._pending_closed_panel = None
     window._modbus = FakeModbusService()
@@ -561,8 +565,8 @@ def test_export_writes_copy_without_rebinding_tab_path(monkeypatch, tmp_path):
 
     window = DataviewEditorWindow.__new__(DataviewEditorWindow)
     window.shared_data = SimpleNamespace(dataview_folder=tmp_path / "DataView")
-    window._open_panels = {source_path: panel}
     window._get_current_panel = lambda: panel
+    window._iter_open_panels = lambda: [panel]
     window._refresh_file_list = MagicMock()
     window._update_tab_title = MagicMock()
 
@@ -576,7 +580,6 @@ def test_export_writes_copy_without_rebinding_tab_path(monkeypatch, tmp_path):
     expected_export_path = export_dir / "source.cdv"
     assert panel.export_calls == [expected_export_path]
     assert panel.file_path == source_path
-    assert window._open_panels == {source_path: panel}
     assert panel.save_calls == 0
     assert window._update_tab_title.call_count == 0
 

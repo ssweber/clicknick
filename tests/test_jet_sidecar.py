@@ -322,8 +322,9 @@ def test_none_connects_through_existing_csv_flow(monkeypatch):
         _data=None,
         monitoring=False,
         _clear_connection_state=Mock(),
-        csv_path_var=Mock(),
         _load_workspace_pairing=Mock(),
+        _watch_connection=Mock(),
+        _hide_overlay=Mock(),
         nickname_manager=SimpleNamespace(
             has_database_backend=mdb_shared.has_database_backend, set_store=Mock()
         ),
@@ -342,8 +343,7 @@ def test_none_connects_through_existing_csv_flow(monkeypatch):
     monkeypatch.setattr(mdb_shared, "probe_database_connection", probe)
     app_module.ClickNickApp.connect_to_instance(view, 1, "CLICK", "project.ckp", 2)
     dialog.assert_called_once_with(view.root, "Address.csv", "project_Address.csv")
-    view.csv_path_var.set.assert_called_with("saved.csv")
-    view.load_csv.assert_called_once()
+    view.load_csv.assert_called_once_with("saved.csv")
     assert view._session is None
     probe.assert_not_called()
 
@@ -464,8 +464,9 @@ def test_switch_closes_old_session_before_loading_new_database(monkeypatch):
         monitoring=False,
         nickname_manager=Mock(),
         _clear_connection_state=Mock(),
-        csv_path_var=Mock(),
         _load_workspace_pairing=Mock(),
+        _watch_connection=Mock(),
+        _hide_overlay=Mock(),
         _load_instance_database=lambda *_args: events.append("load"),
     )
     view._close_data = lambda **kw: app_module.ClickNickApp._close_data(view, **kw)

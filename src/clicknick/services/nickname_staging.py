@@ -5,12 +5,13 @@ written to CLICK's database directly: they are staged in the AddressStore, so
 the Address Editor validates them and the user Syncs them like any other edit.
 
 Only the addresses the file lists are touched. An address it leaves out keeps
-what it has; one it lists with no nickname has its nickname cleared.
+what it has; one it lists with no nickname has its nickname cleared. Only the
+fields the file has a column for are set.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -91,21 +92,27 @@ class NicknamePlan:
 
 
 def plan_nicknames(
-    rows: Mapping[int, AddressRow], current: Mapping[int, AddressRow]
+    rows: Mapping[int, AddressRow],
+    current: Mapping[int, AddressRow],
+    *,
+    fields: Collection[str] = _FIELDS,
 ) -> NicknamePlan:
     """What staging *rows* (a nicknames.csv) would change in *current*.
 
     *current* is the store's visible rows (to see what is left to stage) or its
     base rows (to see what CLICK's database still lacks). Addresses the store
-    does not track are left out.
+    does not track are left out. Only *fields* are compared: pass the fields
+    the file has a column for (``CsvDataSource.fields``), so a column it lacks
+    leaves that field as it is.
     """
     changes: list[FieldChange] = []
+    compared = [field for field in _FIELDS if field in fields]
     for addr_key in sorted(rows):
         new = rows[addr_key]
         old = current.get(addr_key)
         if old is None:
             continue
-        for field in _FIELDS:
+        for field in compared:
             if field == "initial_value":
                 differs = initial_values_differ(old, new)
             else:

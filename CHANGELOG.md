@@ -52,11 +52,20 @@
 
 ### Fixed
 
+- In the Address Editor, Undo and Redo wait while you are typing in a cell, and Sync and closing the window keep what you typed.
+- Fill Down over a timer or counter selection numbers only the rows of the first row's type, and Fill Down and Clone no longer copy block tags into the new rows' comments (a row that already has its own block tag keeps it); after a Sync, check those comments in CLICK.
+- Add Block over a selection that includes both a timer's T and TD rows (or CT and CTD) tags matching pairs, and the Tag Browser's rename changes nicknames only, leaving comments as they are; after a Sync, check the timer or counter block comments in CLICK.
+- A cloned Address Editor tab shows block colors, errors and unsaved edits on every row, and opens at the saved scroll position.
 - CLICK v4 projects work: autocomplete fits its instruction dialogs, and Simulate and the workspace read its hardware and PLC name.
 - Check Program, Preview Changes and the simulation no longer show Windows' busy cursor while they start.
 - Unsaved-change tracking is reliable: Undo, Discard and edits update duplicate marks so Sync isn't blocked by a stale "Duplicate", rows stop showing as unsaved once CLICK saves the value, changes CLICK writes right after a Sync are picked up, and an edit that fails partway changes nothing.
 - Sort by nickname, block colors, the Dataview editor, the window title and Workspace details stay current after edits, CLICK saves, Sync, CSV loads and workspace changes, and the Dataview editor writes unchanged CDV files back byte-for-byte.
 - Loading a CSV over unsaved changes asks to save or discard first.
+- Closing a tab, the Dataview Editor or the data behind it offers every unsaved dataview for saving, untitled ones too (you pick their folder); a save that fails or is cancelled closes nothing, and a failed one says why.
+- Saving a dataview that CLICK (or another program) changed after its rows were read asks whether to save over it, reload it, or do neither. A reload that replaces unsaved edits can be undone with Ctrl+Z.
+- The Dataview Editor stores addresses added from the Nickname box or the Tag Browser as CLICK writes them (`X001`, `XD0u`), finds nicknames whatever their case, and refuses text that is neither a nickname nor an address. Dataviews saved by an earlier ClickNick may still hold `X1` or `XD0U`: open them in CLICK and check each row shows its address.
+- Ctrl+Z and Ctrl+Y in the Dataview Editor undo and redo row moves and edits without the table and the saved file disagreeing, undoing an address change keeps its New Value, and a folder or block added from the Tag Browser is one undo step.
+- The Dataview Editor no longer opens a .cdv file it cannot read, so it can't save a nearly empty file over it.
 - Program analysis and AI tag lookups use the same nicknames as the generated code, switching CLICK projects no longer freezes the window, and the "tags synced" count counts each tag once.
 - Opening another project in the same CLICK window no longer leaves its workspace unbuilt until ClickNick restarts, and Preview Changes now updates its comparison when CLICK's program changes.
 - Open Temporary Workspace and the Workspace status update as soon as a build finishes, instead of waiting for something else to refresh the window, such as opening the Simulator.
@@ -70,6 +79,23 @@
 - The nickname tooltip and the Tag Browser show Retentive and the initial value against the address's own default: a non-retentive counter shows Non-retentive, and a retentive DS or TD no longer shows "Initial Value = 0".
 - A paste that changes nothing is no longer an undo step.
 - The status bar names the edit Undo and Redo acted on.
+- A nickname CSV that Excel saved as "CSV UTF-8" loads its nicknames instead of loading empty.
+- A file that is not a nickname CSV, such as one without Address and Nickname columns, CLICK's own Address.csv, or a row whose Address is not a CLICK address, fails to load and names the line, instead of loading as an empty project that Save then overwrites.
+- In CSV mode, Save says so when the file cannot be written, such as while Excel holds it open, and keeps your edits, instead of reporting success, and refuses to overwrite a file that changed on disk into one ClickNick cannot read.
+- XD and YD nicknames in a CSV (`XD0u`, `XD8`) stay on their own addresses when loaded, imported or staged.
+- Nickname CSVs keep comments' leading and trailing spaces, read Retentive written as `1`/`0` or `True`/`False`, and end lines with CRLF, as CLICK's export does.
+- A Text initial value holding `,`, `"` or a space is quoted when ClickNick writes a CSV, and ClickNick reads it back unchanged; whether CLICK's import shows it unchanged is not yet checked (import such a CSV into CLICK and look at the Text address).
+- Import from CSV imports each row of a nested block once, under the innermost block, so unticking an inner block leaves its rows alone.
+- Import from CSV skips nicknames, comments or first-scan values when the file has no column for them, instead of clearing them, and accepts a file with no Nickname column.
+- Save Copy of CLICK's Address.csv keeps addresses that have only an initial value or Retentive set.
+- ClickNick reloads its data when the database or CSV is replaced by an older copy, such as a restored backup.
+- Closing ClickNick (the window's X or **File > Exit**) asks to save unsaved Address Editor and Dataview edits, and Cancel keeps it open (it discarded them).
+- Nicknames loaded from a CSV stay loaded, with their unsaved edits, when CLICK opens another project or saves under a new name (they were closed without asking).
+- A cancelled or failed CSV load leaves the loaded database as it was (the title said CSV, and the next project change in CLICK left no nicknames loaded).
+- After the connected CLICK window closes, ClickNick lists the other windows and waits for you to pick one while nicknames are loaded (it connected to the first one and closed the loaded CSV).
+- **Stop** in the main window turns off only autocomplete, until you click **Start** or pick a window: ClickNick still notices CLICK closing or opening another project (it kept the old project's editors, simulation and database).
+- A CSV that cannot be loaded shows why, such as a missing Nickname column (the status only said "CSV load failed").
+- Two CLICK windows with the same project name are listed with their PIDs, so either can be picked, and the window list and status no longer show a window or "Monitoring" that is not current.
 
 ## v0.23.4 - 2026-10-11
 

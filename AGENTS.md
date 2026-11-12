@@ -280,6 +280,18 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 
 ### Main Window Refresh
 - The window title and Workspace details are recomputed by `ClickNickApp._refresh_ui()`; never call it by hand
-- Assigning `_click`, `_data`, `_session` or the workspace pairing fields (`_ShownState` attributes), or
-  setting the CSV path, schedules one coalesced idle refresh. `ConnectionSession` events (sync count,
-  analysis progress, staged rungs) call `_request_ui_refresh()`
+- Assigning `_click`, `_data`, `_session` or the workspace pairing fields (`_ShownState` attributes)
+  schedules one coalesced idle refresh. `ConnectionSession` events (sync count, analysis progress,
+  staged rungs) call `_request_ui_refresh()`
+
+### Connection and Lifecycle
+- While a CLICK window is connected, `_monitor_task` checks every 100 ms whether it closed or shows
+  another project, and shows autocomplete popups while `monitoring` is on and data is loaded
+- `monitoring` is the user's choice: it starts on, **Stop** turns it off, and only **Start** or a window
+  the user picks turns it on again. A project change, the CSV fallback and an automatic connect keep it
+- When the window closes or changes project (a Save As included), database data closes without a
+  prompt; CSV data stays loaded. The CSV path (`_csv_path`) is read from the loaded CSV store
+- Refreshing the window list connects to the first window only when nothing is connected and no data is
+  loaded; otherwise the user picks. A connected window missing from the list is closed only when its
+  process is gone (the list skips titles without a project)
+- Closing ClickNick goes through `_close_data(prompt_save=True)`: Cancel or a failed save keeps it open
