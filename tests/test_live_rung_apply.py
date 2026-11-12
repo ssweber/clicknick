@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typing
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
 import pytest
 from laddercodec import Coil, Contact, Rung, write_csv
@@ -232,3 +232,41 @@ def test_failed_export_leaves_the_earlier_one_alone(tmp_path: Path) -> None:
 
     assert main.read_text(encoding="utf-8") == "earlier"
     assert stale.exists()
+
+
+def test_summary_names_rungs_in_an_old_encoding_and_rungs_that_cannot_be_read() -> None:
+    from clicknick.ladder.program import LegacyEncoding
+    from clicknick.services.rung_diff import compare_rungs
+
+    rungs = _rungs(["Y001", "Y002", "Y003"])
+    found = [
+        LegacyEncoding("main.csv", "Main Program", 1, "Math", "H70000", "it is stored..."),
+        LegacyEncoding("main.csv", "Main Program", 3, "Compare", "", "it is refused.", True),
+    ]
+
+    summary = rung_commands._describe_change(compare_rungs(rungs, rungs, found), new=False)
+
+    assert summary == (
+        "R1, R3; CLICK's R1 in an old encoding; CLICK's R3 unreadable; paste it whole"
+    )
+
+
+def test_a_program_click_holds_unreadable_is_never_no_change(project, tmp_path: Path) -> None:
+    """The proposal matches CLICK's text, but CLICK's rung 2 still has to be pasted."""
+    from clicknick.ladder.program import LegacyEncoding, write_legacy_encodings
+
+    ctx, propose, _staged = project
+    propose(CLICK)
+    found = LegacyEncoding("main.csv", "Main Program", 2, "Compare", "", "x", unreadable=True)
+    write_legacy_encodings(tmp_path / "csv", [found])
+
+    reply = dispatch(ctx, "rung apply")
+
+    assert "  main: R2; CLICK's R2 unreadable; paste it whole" in reply
+    assert "(no changes)" not in reply
+    selected = dispatch(ctx, "rung apply main --select r1")
+    # Rungs picked by number are not pasted alone either
+    assert "OK: paste window opened for main (R2; CLICK's R2 unreadable; paste it whole)" in (
+        selected
+    )
+    ctx.show_proposal.assert_called_with(ANY, ANY, "main.csv", None, True)

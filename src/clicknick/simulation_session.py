@@ -81,6 +81,8 @@ ECHO_SETTLE_MS = 500
 MODBUS_INFO_MS = 1000
 SAVE_DELAY_MS = 500
 MODBUS_POLL_S = 0.1
+#: A refusal to run lists this many rungs ClickNick cannot read and counts the rest.
+UNREADABLE_LISTED = 10
 
 
 SwitchPosition = Literal["stop", "step", "run"]
@@ -862,6 +864,33 @@ class SimulationSession:
             analysis.error_detail,
         )
 
+    def _fail_unreadable(self, csv_dir: Path) -> bool:
+        """Refuse to run a program that holds an empty rung for one ClickNick cannot read.
+
+        The simulation would run without that rung and look fine. A finding with
+        no rung number has no empty rung, since pyrung read that CSV itself.
+        """
+        from .ladder.program import describe_legacy_encoding, read_legacy_encodings
+
+        found = [
+            item
+            for item in read_legacy_encodings(csv_dir)
+            if item.unreadable and item.rung is not None
+        ]
+        if not found:
+            return False
+        lines = [f"  {describe_legacy_encoding(item)}" for item in found[:UNREADABLE_LISTED]]
+        if len(found) > UNREADABLE_LISTED:
+            lines.append(f"  ...and {len(found) - UNREADABLE_LISTED} more")
+        one = len({(item.file, item.rung) for item in found}) == 1
+        head = "this rung" if one else "these rungs"
+        without = "it" if one else "them"
+        self._fail(
+            f"ClickNick cannot read {head} in CLICK, so the simulation would run without "
+            f"{without}.\n" + "\n".join(lines) + f"\nPaste {without} again."
+        )
+        return True
+
     def _wait_for_analysis(self) -> None:
         """Wait for the conversion; every waiting path is bounded here."""
         if self._waited_ms >= ANALYSIS_TIMEOUT_MS:
@@ -1187,6 +1216,8 @@ class SimulationSession:
                 f"the generated project at {project_dir} has no run.py. "
                 "Save the project in Click Software, then retry."
             )
+            return
+        if self._fail_unreadable(project_dir / "csv"):
             return
 
         # Remembered so a failure can tell "the project was rewritten under the

@@ -372,6 +372,71 @@ def test_guidance_mentions_the_generated_workspace(tmp_path):
     assert "Open the generated workspace" in harness.messages()
 
 
+def _record_unreadable(project_dir: Path, *rungs: int | None, unreadable: bool = True) -> None:
+    from clicknick.ladder.program import LegacyEncoding, write_legacy_encodings
+
+    detail = "ClickNick cannot read this Compare."
+    csv_dir = project_dir / "csv"
+    csv_dir.mkdir(exist_ok=True)
+    found = [
+        LegacyEncoding(
+            "subroutines/Conf_Compare.csv", "Conf_Compare", rung, "Compare", "", detail, unreadable
+        )
+        for rung in rungs
+    ]
+    write_legacy_encodings(csv_dir, found)
+
+
+def test_program_with_a_rung_clicknick_cannot_read_does_not_run(ready):
+    _record_unreadable(ready.analysis.project_dir, 4)
+    ready.open()
+
+    assert ready.daps == []
+    assert ready.sim.status is SimStatus.FAILED
+    message = ready.messages("error")
+    assert "ClickNick cannot read this rung in CLICK" in message
+    assert "Conf_Compare rung 4, Compare: ClickNick cannot read this Compare." in message
+    assert message.endswith("Paste it again.")
+    assert "WriterError" not in message
+
+
+def test_several_unreadable_rungs_are_named_together(ready):
+    _record_unreadable(ready.analysis.project_dir, 4, 5)
+    ready.open()
+
+    message = ready.messages("error")
+    assert "Conf_Compare rung 4" in message
+    assert "Conf_Compare rung 5" in message
+    assert message.endswith("Paste them again.")
+
+
+def test_once_the_rung_is_pasted_again_the_simulation_runs(ready):
+    _record_unreadable(ready.analysis.project_dir, 4)
+    ready.open()
+    assert ready.daps == []
+
+    _record_unreadable(ready.analysis.project_dir)  # CLICK saved the pasted rung
+    ready.sim.restart()
+    ready.scheduler.run_ready()
+
+    assert ready.sim.status is SimStatus.READY
+
+
+def test_a_csv_laddercodec_cannot_read_back_does_not_stop_the_simulation(ready):
+    # pyrung read that CSV itself, so the simulation runs every rung of it
+    _record_unreadable(ready.analysis.project_dir, None)
+    ready.open()
+
+    assert ready.sim.status is SimStatus.READY
+
+
+def test_a_legacy_encoding_alone_does_not_stop_the_simulation(ready):
+    _record_unreadable(ready.analysis.project_dir, 4, unreadable=False)
+    ready.open()
+
+    assert ready.sim.status is SimStatus.READY
+
+
 def test_launch_starts_the_simulator_in_stop_with_a_modbus_server(ready):
     ready.open()
     _name, project_dir, kwargs = ready.dap.calls[0]

@@ -23,6 +23,12 @@
 - ClickNick warns when CLICK holds rungs an older ClickNick pasted in a form CLICK runs differently.
   - Preview Changes shows those programs in red until you paste them again.
   - `clicknick-cli program save` lists them.
+- ClickNick names each rung it cannot read from CLICK, such as a compare CLICK's own dialog refuses, and asks you to paste it again (the build stopped with `WriterError`).
+  - The workspace holds an empty rung in its place. The rest of the program builds.
+  - The Simulator refuses to start until you paste it again.
+  - Preview Changes shows the program in red and copies it only whole (it left the program out).
+  - Preview Changes refuses to copy it while the folder holds an empty rung. Paste that rung from your own copy of the program first.
+  - Saving the clipboard to CSV names the rung it cannot read (it showed `WriterError`).
 - Preview Changes' **New Subroutine** button opens CLICK's New Subroutine Program window with the name filled in, for any subroutine CLICK's last save doesn't show it already has.
 - **Tools > Repairs > Upgrade Project** rewrites comments in pyrung's old `profile=` form into the current keys and stages them on the Changed tab for you to review and Sync, as `clicknick-cli tag upgrade-project` does.
 - When the build stops on a comment in the old form, the Workspace status says to run **Tools > Repairs > Upgrade Project** (it said "Build failed").

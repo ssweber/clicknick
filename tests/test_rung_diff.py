@@ -8,7 +8,13 @@ from pathlib import Path
 
 from laddercodec import Coil, Contact, Rung, write_csv
 
-from clicknick.ladder.program import LegacyEncoding, write_legacy_encodings
+from clicknick.ladder.program import (
+    STAND_IN_COMMENT,
+    LegacyEncoding,
+    empty_rung,
+    unreadable_copy,
+    write_legacy_encodings,
+)
 from clicknick.services.rung_diff import (
     BundleComparison,
     BundleSources,
@@ -234,6 +240,199 @@ def test_legacy_rung_past_the_end_is_ignored() -> None:
 
     assert not change.differs
     assert change.legacy == ()
+
+
+def test_a_program_with_a_rung_program_save_cannot_read_is_pasted_whole(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from laddercodec.instructions import UnknownCondition
+    from laddercodec.model import Program
+
+    from clicknick.ladder.program import program_save
+
+    good = _rungs("Y001", "Y002", "Y003")
+    refused = Rung(
+        logical_rows=1,
+        conditions=[[UnknownCondition(raw=b"Compare"), *["-"] * 30]],
+        instructions=good[1].instructions,
+        comment=None,
+    )
+    scr = tmp_path / "scr"
+    scr.mkdir()
+    (scr / "Scr1.tmp").write_bytes(b"")
+    monkeypatch.setattr(
+        "clicknick.ladder.program.decode_program",
+        lambda _data: Program("Main Program", 1, [good[0], refused, good[2]]),
+    )
+    current = tmp_path / "current"
+    program_save(scr, current, index=True)
+    proposed = _bundle(tmp_path / "proposed", {"main.csv": good})
+
+    main = _compare(proposed, current).changes["main.csv"]
+
+    assert main.changed == (2,)
+    assert main.unreadable
+    assert main.steps() == ()
+    assert [(item.rung, item.instruction, item.unreadable) for item in main.legacy] == [
+        (2, "Compare", True)
+    ]
+
+
+_HEADER = "marker," + ",".join(chr(65 + i) for i in range(26)) + ",AA,AB,AC,AD,AE,AF\n"
+
+
+def _unreadable_csv(path: Path, *outputs: str) -> None:
+    """A ladder CSV whose AF tokens a strict read refuses and a lenient read drops."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = ["R," + ",".join(["-"] * 31) + f",{output}\n" for output in outputs]
+    path.write_text(_HEADER + "".join(rows), encoding="utf-8")
+
+
+def test_click_copy_that_cannot_be_read_is_a_whole_program_to_paste_again(
+    tmp_path: Path,
+) -> None:
+    current = _bundle(tmp_path / "current", {"main.csv": _rungs("Y001")})
+    _unreadable_csv(current / "subroutines" / "Fill.csv", "out(Y002)", "bogus(Y003)")
+    proposed = _bundle(
+        tmp_path / "proposed",
+        {"main.csv": _rungs("Y001"), "subroutines/Fill.csv": _rungs("Y002", "Y003")},
+    )
+
+    fill = _compare(proposed, current).changes["subroutines/Fill.csv"]
+
+    (finding,) = fill.legacy
+    assert finding.unreadable
+    assert finding.rung is None
+    assert finding.detail == (
+        "ClickNick cannot read CLICK's copy of this program. Unsupported AF instruction: 'bogus'"
+    )
+    assert fill.unreadable
+    assert fill.changed == (1, 2)
+    # The whole program is pasted, after all of CLICK's rungs are deleted
+    assert fill.steps() == ()
+
+
+_REFUSED_COMPARE = (
+    "R1,DH70==DS3920," + ",".join(["-"] * 30) + ",out(Y001)\n"
+    "#,Second rung\n"
+    "R2,DH70==DS3920," + ",".join(["-"] * 30) + ",out(Y002)\n"
+    "," + ",".join(["-"] * 31) + ",out(Y003)\n"
+)
+
+
+def test_click_copy_no_read_accepts_keeps_its_rung_count_from_the_text(
+    tmp_path: Path,
+) -> None:
+    """``DH70 == DS3920``, which CLICK's dialog refuses, fails the lenient read too."""
+    current = _bundle(tmp_path / "current", {"main.csv": _rungs("Y001")})
+    (current / "main.csv").write_text(_HEADER + _REFUSED_COMPARE, encoding="utf-8")
+    proposed = _bundle(tmp_path / "proposed", {"main.csv": _rungs("Y001", "Y002", "Y003")})
+
+    main = _compare(proposed, current).changes["main.csv"]
+
+    assert len(main.before) == 2
+    assert main.unreadable
+    assert "'DS3920'" in main.legacy[0].detail
+    assert main.differs
+    assert main.steps() == ()
+
+
+def test_a_read_back_finding_from_the_save_is_not_repeated(tmp_path: Path) -> None:
+    current = _bundle(tmp_path / "current", {"main.csv": _rungs("Y001")})
+    (current / "main.csv").write_text(_HEADER + _REFUSED_COMPARE, encoding="utf-8")
+    saved = unreadable_copy("main.csv", "Main Program", ValueError("Saved reason"))
+    write_legacy_encodings(current, [saved])
+    proposed = _bundle(tmp_path / "proposed", {"main.csv": _rungs("Y001")})
+
+    main = _compare(proposed, current).changes["main.csv"]
+
+    assert main.legacy == (saved,)
+
+
+# ---------------------------------------------------------------------------
+# A program with a rung ClickNick cannot read: whole or nothing
+# ---------------------------------------------------------------------------
+
+
+def _unreadable(rung: int) -> LegacyEncoding:
+    return LegacyEncoding("main.csv", "Main Program", rung, "Compare", "", "", unreadable=True)
+
+
+_STAND_IN = empty_rung(f"{STAND_IN_COMMENT}\nClickNick cannot read its Compare.")
+
+
+def test_edits_around_a_stand_in_give_no_step_that_could_delete_clicks_rung() -> None:
+    """The user edited X, deleted Y and the stand-in's comment.
+
+    Placed by the diff, the steps pasted the empty rung over rung 1 and deleted
+    rungs 3 to 4, CLICK's real rung among them.
+    """
+    before = [*_rungs("Y001", "Y002"), _STAND_IN]
+    after = [*_rungs("Y009"), empty_rung("")]
+
+    change = compare_rungs(before, after, [_unreadable(3)])
+
+    assert change.unreadable
+    assert change.steps() == ()
+    assert change.empty_rungs == (2,)
+
+
+def test_a_program_differing_only_by_its_stand_in_still_differs() -> None:
+    """The workspace flow with nothing edited: it is not up to date until the rung is pasted."""
+    before = [*_rungs("Y001"), _STAND_IN, *_rungs("Y003")]
+
+    change = compare_rungs(before, before, [_unreadable(2)])
+
+    assert change.differs
+    assert change.touches([1])
+    assert change.steps() == ()
+    assert change.empty_rungs == (2,)
+
+
+def test_the_users_own_copy_has_no_empty_rung() -> None:
+    before = [*_rungs("Y001"), _STAND_IN, *_rungs("Y003")]
+
+    change = compare_rungs(before, _rungs("Y001", "Y002", "Y003"), [_unreadable(2)])
+
+    assert change.changed == (2,)
+    assert change.empty_rungs == ()
+    assert change.steps() == ()
+
+
+def test_skipping_a_difference_cannot_leave_part_of_a_program_pasted() -> None:
+    """A skip would keep CLICK's empty rung in place of the rung it cannot read."""
+    before = [*_rungs("Y001"), _STAND_IN, *_rungs("Y003")]
+    after = _rungs("Y001", "Y002", "Y003", "Y004")
+    readable = compare_rungs(before, after)
+    change = compare_rungs(before, after, [_unreadable(2)])
+    skipped = set(change.differences)
+
+    assert change.steps(skipped=skipped) == ()
+    assert change.steps(pasted=skipped) == ()
+    assert change.merged(skipped) == tuple(after)
+    # Skips made before CLICK's copy could not be read do not carry over
+    assert carry_skipped(set(readable.differences), readable, change) == frozenset()
+    assert carry_skipped(skipped, change, change) == frozenset()
+
+
+def test_a_legacy_encoding_alone_still_steps_rung_by_rung() -> None:
+    before = _rungs("Y001", "Y002")
+    legacy = LegacyEncoding("main.csv", "Main Program", 2, "Math", "H70000", "it is stored...")
+
+    change = compare_rungs(before, before, [legacy])
+
+    assert not change.unreadable
+    assert change.steps() == (PasteStep((2,), over=2),)
+
+
+def test_click_only_copy_that_cannot_be_read_is_flagged(tmp_path: Path) -> None:
+    current = _bundle(tmp_path / "current", {"main.csv": _rungs("Y001")})
+    _unreadable_csv(current / "subroutines" / "Old.csv", "bogus(Y002)")
+    proposed = _bundle(tmp_path / "proposed", {"main.csv": _rungs("Y001")})
+
+    old = _compare(proposed, current).only_in_click["subroutines/Old.csv"]
+
+    assert [item.unreadable for item in old.legacy] == [True]
 
 
 # ---------------------------------------------------------------------------

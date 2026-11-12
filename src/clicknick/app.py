@@ -2173,25 +2173,56 @@ class ClickNickApp:
                 )
 
     def _report_legacy_encodings(self) -> None:
-        """Say once which programs CLICK holds in an old encoding, and offer Preview Changes.
+        """Say once which rungs CLICK holds in an old encoding or ClickNick cannot read.
 
-        Their text matches, so nothing else would show that CLICK runs them differently.
+        An old encoding's text matches, so nothing else would show that CLICK
+        runs it differently, and Preview Changes pastes it again. The workspace
+        holds an empty rung for each rung it cannot read, so those must come
+        from the user's own copy. So must a program whose CSV laddercodec cannot read.
         """
         from .ladder.program import describe_legacy_encoding
 
         found = self._session.legacy_encodings_to_report() if self._session else ()
         if not found:
             return
-        lines = [f"  {describe_legacy_encoding(item)}" for item in found[:_LEGACY_LISTED]]
-        if len(found) > _LEGACY_LISTED:
-            lines.append(f"  ...and {len(found) - _LEGACY_LISTED} more")
-        message = (
-            "CLICK holds these rungs in an old encoding, which an older ClickNick pasted. "
-            "CLICK runs them differently from how they read:\n\n"
-            + "\n".join(lines)
-            + "\n\nPaste them into CLICK again. Preview Changes lists them in red.\n\n"
-            "Open Preview Changes now?"
-        )
+
+        def _listed(items: list) -> str:
+            lines = [f"  {describe_legacy_encoding(item)}" for item in items[:_LEGACY_LISTED]]
+            if len(items) > _LEGACY_LISTED:
+                lines.append(f"  ...and {len(items) - _LEGACY_LISTED} more")
+            return "\n".join(lines)
+
+        legacy = [item for item in found if not item.unreadable]
+        unreadable = [item for item in found if item.unreadable and item.rung is not None]
+        copies = [item for item in found if item.unreadable and item.rung is None]
+        parts: list[str] = []
+        if unreadable:
+            parts.append(
+                "ClickNick cannot read these rungs in CLICK:\n\n"
+                + _listed(unreadable)
+                + "\n\nThe workspace holds an empty rung in place of each. Paste them again "
+                "from your own copy of the program, or fix them in CLICK. Ladder > Open in "
+                "Preview Changes on that copy lists them in red."
+            )
+        if copies:
+            parts.append(
+                "Paste these programs into CLICK again from your own copy, or fix them in "
+                "CLICK:\n\n"
+                + _listed(copies)
+                + "\n\nLadder > Open in Preview Changes on that copy lists them in red."
+            )
+        if legacy:
+            parts.append(
+                "CLICK holds these rungs in an old encoding, which an older ClickNick pasted. "
+                "CLICK runs them differently from how they read:\n\n"
+                + _listed(legacy)
+                + "\n\nPaste them into CLICK again. Preview Changes lists them in red."
+            )
+        message = "\n\n".join(parts)
+        if not legacy:
+            messagebox.showwarning("Paste Again", message, parent=self.root)
+            return
+        message += "\n\nOpen Preview Changes now?"
         if messagebox.askyesno("Paste Again", message, icon=messagebox.WARNING, parent=self.root):
             self._workspace_rung_apply()
 

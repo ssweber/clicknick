@@ -89,11 +89,13 @@ _BG_DONE = "#d4edda"
 _BG_CURRENT = "#cce5ff"
 _FG_MATCHES = "gray"
 _FG_ONLY_IN_CLICK = "#a94442"
-# CLICK holds some of the program's rungs in a legacy encoding
+# CLICK holds some of the program's rungs in a legacy encoding, or ClickNick cannot read them
 _BG_LEGACY = "#f8d7da"
 _FG_LEGACY = "#842029"
 # A note lists this many of a program's legacy-encoded rungs and counts the rest
 _LEGACY_LISTED = 5
+# The "vs CLICK" column's word for a legacy encoding (False) and for a rung it cannot read (True)
+_LEGACY_LABELS = {False: "old encoding", True: "unreadable"}
 
 # Diff pane text (GitHub Desktop's light theme); see the tags in _build_ui
 _DIFF_TEXT = "#24292e"
@@ -178,28 +180,79 @@ def _where_to_paste(step: PasteStep) -> str:
     return f"In CLICK, insert an empty rung {where} and paste over it (Ctrl+V)"
 
 
-def _legacy_note(change: ProgramChange) -> str:
-    """Say which of CLICK's rungs hold a legacy encoding and that they need pasting again."""
+def _fault(found: Sequence[LegacyEncoding]) -> str:
+    """What is wrong with CLICK's copy, to follow "CLICK's copy" in a sentence."""
+    if all(item.unreadable for item in found):
+        return "cannot be read"
+    if any(item.unreadable for item in found):
+        return "cannot be read or has an old encoding"
+    return "has an old encoding"
+
+
+def _finding(item: LegacyEncoding) -> str:
+    """``Math H70000: it is stored as ...``, or the detail alone when it names no instruction."""
+    what = " ".join(part for part in (item.instruction, item.token) if part)
+    return f"{what}: {item.detail}" if what else item.detail
+
+
+def _listed_rungs(rungs: Sequence[int]) -> str:
+    """``2, 5 to 7``: rung numbers with each run of them shortened."""
+    return ", ".join(
+        str(run[0]) if len(run) == 1 else f"{run[0]} to {run[-1]}" for run in paste_groups(rungs)
+    )
+
+
+def _legacy_note(change: ProgramChange, *, only_in_click: bool = False) -> str:
+    """Say which of CLICK's rungs hold a legacy encoding or cannot be read, and what to do.
+
+    A program only in CLICK is not pasted, so its note says to delete it instead.
+    """
     if not change.legacy:
         return ""
+    fault = _fault(change.legacy)
     rungs = sorted({item.rung for item in change.legacy if item.rung is not None})
-    if not rungs:
-        head = "CLICK's copy has an old encoding. Paste the whole program again."
+    if not rungs or any(item.rung is None for item in change.legacy):
+        head, again = f"CLICK's copy {fault}.", "Paste the whole program again."
     elif len(rungs) == 1:
-        head = f"CLICK's copy of rung {rungs[0]} has an old encoding. Paste it again."
+        head, again = f"CLICK's copy of rung {rungs[0]} {fault}.", "Paste it again."
     else:
-        listed = ", ".join(
-            str(run[0]) if len(run) == 1 else f"{run[0]} to {run[-1]}"
-            for run in paste_groups(rungs)
-        )
-        head = f"CLICK's copy of rungs {listed} has an old encoding. Paste them again."
+        head, again = f"CLICK's copy of rungs {_listed_rungs(rungs)} {fault}.", "Paste them again."
+    if change.unreadable:
+        again = "Paste the whole program again."
+    if only_in_click:
+        again = "This folder does not have the program. Delete it in CLICK if it is no longer used."
     lines = [
         f"  {describe_legacy_encoding(item, program=False)}"
         for item in change.legacy[:_LEGACY_LISTED]
     ]
     if len(change.legacy) > _LEGACY_LISTED:
         lines.append(f"  ...and {len(change.legacy) - _LEGACY_LISTED} more")
-    return "\n".join([head, *lines])
+    return "\n".join([f"{head} {again}", *lines])
+
+
+def _empty_refusal(name: str, change: ProgramChange) -> str:
+    """Why the program may not be copied yet, or nothing.
+
+    A program ClickNick cannot read all of in CLICK is pasted whole. An empty
+    rung in the folder may stand in for CLICK's rung, so that paste would empty it.
+    """
+    empty = change.empty_rungs
+    if not change.unreadable or not empty:
+        return ""
+    program = next((item.program for item in change.legacy if item.program), Path(name).stem)
+    if len(empty) == 1:
+        head = f"Rung {empty[0]} of {program} is empty in this folder."
+    else:
+        head = f"Rungs {_listed_rungs(empty)} of {program} are empty in this folder."
+    unread = sorted({item.rung for item in change.legacy if item.unreadable and item.rung})
+    if not unread:
+        what = "ClickNick cannot read CLICK's copy of the program."
+    elif len(unread) == 1:
+        what = f"CLICK's rung {unread[0]} cannot be read."
+    else:
+        what = f"CLICK's rungs {_listed_rungs(unread)} cannot be read."
+    rung = "those rungs" if len(empty) > 1 else "that rung"
+    return f"{head} {what} Paste {rung} from your own copy of the program first."
 
 
 def _change_label(change: ProgramChange) -> str:
@@ -210,7 +263,10 @@ def _change_label(change: ProgramChange) -> str:
     else:
         count, verb = (changed, "changed") if changed else (removed, "removed")
         label = f"{count} rung{'s' if count != 1 else ''} {verb}"
-    return f"{label}, old encoding" if change.legacy else label
+    if not change.legacy:
+        return label
+    kinds = {item.unreadable for item in change.legacy}
+    return f"{label}, {', '.join(_LEGACY_LABELS[kind] for kind in sorted(kinds))}"
 
 
 def _differences_of(change: ProgramChange) -> list[Opcode]:
@@ -352,7 +408,7 @@ class PreviewChangesWindow(tk.Toplevel):
         return idx is not None and idx < len(self._items) and self._items[idx][0] == _NICKNAMES_NAME
 
     def _has_legacy(self, name: str) -> bool:
-        """Whether CLICK holds some of the program's rungs in a legacy encoding."""
+        """Whether CLICK holds some of the program's rungs in a legacy encoding, or unreadable."""
         change = self._changes.get(name)
         return change is not None and bool(change.legacy)
 
@@ -367,21 +423,19 @@ class PreviewChangesWindow(tk.Toplevel):
         tag, i1, i2, _j1, _j2 = differences[step.block]
         if step.rungs:
             # A paste takes the place of CLICK's first rung of the difference, if any
-            numbers = range(i1 + 1, i1 + 2) if tag == "replace" else range(0)
+            numbers = range(i1 + 1, i1 + 2) if step.over is not None else range(0)
         else:
             # A delete takes what the paste before it did not
             numbers = range(i1 + 2 if tag == "replace" else i1 + 1, i2 + 1)
         return [item for item in change.legacy if item.rung is None or item.rung in numbers]
 
     def _legacy_line(self, name: str, step: PasteStep) -> str:
-        """Say that the step's rungs in CLICK hold an old encoding, or nothing."""
+        """Say that the step's rungs in CLICK hold an old encoding or cannot be read, or nothing."""
         stale = self._legacy_in_step(name, step)
         if not stale:
             return ""
-        found = " ".join(
-            dict.fromkeys(f"{item.instruction} {item.token}: {item.detail}" for item in stale)
-        )
-        line = f"\nCLICK's copy has an old encoding. {found}"
+        found = " ".join(dict.fromkeys(_finding(item) for item in stale))
+        line = f"\nCLICK's copy {_fault(stale)}. {found}"
         if not step.rungs:
             return line
         again = "it" if len({item.rung for item in stale}) == 1 else "them"
@@ -396,11 +450,17 @@ class PreviewChangesWindow(tk.Toplevel):
     # ------------------------------------------------------------------
 
     def _choosable(self, name: str | None) -> ProgramChange | None:
-        """The folder program's change, when it has differences to take or skip."""
+        """The folder program's change, when it has differences to take or skip.
+
+        A program ClickNick cannot read all of in CLICK has none to skip. It is
+        pasted whole, and a skip would keep CLICK's empty rung.
+        """
         if name is None or name in self._only_in_click:
             return None
         change = self._changes.get(name)
-        return change if change is not None and change.differences else None
+        if change is None or change.unreadable or not change.differences:
+            return None
+        return change
 
     def _skipped_of(self, name: str) -> frozenset[DifferenceKey]:
         return self._skipped.get(name, frozenset())
@@ -497,7 +557,9 @@ class PreviewChangesWindow(tk.Toplevel):
     def _whole_placement(self, name: str) -> str:
         """Say how a whole program goes into CLICK, given what CLICK has of it."""
         change = self._changes.get(name)
-        if change is None or not change.before or name in self._missing_in_click:
+        # A copy ClickNick cannot read may hold rungs even when none could be counted
+        has_rungs = change is not None and (change.before or change.unreadable)
+        if not has_rungs or name in self._missing_in_click:
             return "Paste into CLICK (Ctrl+V on ladder screen)"
         return (
             "In CLICK, select all of its rungs (Shift+Up/Down) and delete them, then paste (Ctrl+V)"
@@ -583,7 +645,7 @@ class PreviewChangesWindow(tk.Toplevel):
                 return f"{name} matches CLICK's last save.", RenderedDiff()
 
         before, after = self._click_sources(), self._proposed_sources()
-        notes = [_legacy_note(change)]
+        notes = [_legacy_note(change, only_in_click=name in self._only_in_click)]
         if not before.text(name) and not after.text(name):
             notes.append(
                 "pyrung could not show this program as text; each rung is listed by its instructions."
@@ -919,7 +981,11 @@ class PreviewChangesWindow(tk.Toplevel):
                 'Click "New Subroutine" to create it in CLICK, or "Copy" if it already exists'
             )
         change = self._changes.get(name)
-        if change is not None and change.before and name not in self._missing_in_click:
+        if (
+            change is not None
+            and (change.before or change.unreadable)
+            and name not in self._missing_in_click
+        ):
             skipped = self._skipped_in(name)
             if skipped:
                 program = self._programs.get(name)
@@ -940,6 +1006,8 @@ class PreviewChangesWindow(tk.Toplevel):
             prompt = f'{name}: {whole}.\nClick "{button}". {self._whole_placement(name)}'
             if change.legacy:
                 prompt += f"\n{_legacy_note(change)}"
+            if refusal := _empty_refusal(name, change):
+                prompt += f"\n{refusal}"
             return prompt
         return f'Click "Copy" to copy {name} to the clipboard'
 
@@ -1107,10 +1175,14 @@ class PreviewChangesWindow(tk.Toplevel):
         """
         name = self._items[idx][0]
         program = self._programs.get(name)
+        change = self._changes.get(name)
         group = step.rungs if step is not None else None
         try:
             if program is None or program.rungs is None:
                 raise ValueError(program.error if program else "it is not in this folder")
+            refusal = _empty_refusal(name, change) if change is not None else ""
+            if refusal:
+                raise ValueError(refusal)
             if group is None:
                 rungs = self._whole_program(name, program.rungs)
             else:

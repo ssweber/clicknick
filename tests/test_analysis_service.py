@@ -761,3 +761,42 @@ def test_regeneration_publishes_the_legacy_record_and_removes_it_after_a_clean_s
     _regenerate_persisted_project(scr, None, persist)
 
     assert not record.exists()
+
+
+def test_build_with_a_rung_laddercodec_cannot_read_publishes_the_rest(tmp_path, monkeypatch):
+    """The build used to stop on WriterError, so the workspace and its csv/ went stale."""
+    import typing
+
+    from laddercodec import Coil, Contact, Rung
+    from laddercodec.instructions import UnknownCondition
+    from laddercodec.model import Program
+
+    from clicknick.ladder.program import STAND_IN_COMMENT, read_legacy_encodings
+
+    coil = typing.get_type_hints(Contact)["type"].COIL_OUT
+
+    def _rung(output: str, first: object = "-") -> Rung:
+        conditions = [first, *["-"] * 30]
+        return Rung(1, [conditions], [Coil(coil, output)], None)
+
+    rungs = [_rung("C1"), _rung("C2", UnknownCondition(raw=b"Compare")), _rung("C3")]
+    monkeypatch.setattr(
+        "clicknick.ladder.program.decode_program",
+        lambda _data: Program("Main Program", 1, rungs),
+    )
+    monkeypatch.setattr("clicknick.services.analysis_service._channel_inputs", lambda _s: [])
+    scr = tmp_path / "scr"
+    scr.mkdir()
+    (scr / "Scr1.tmp").write_bytes(b"scr")
+    persist = tmp_path / "pyrung_project"
+    svc = AnalysisService()
+
+    assert svc.build(scr, None, persist_dir=persist)
+
+    assert svc.status is AnalysisStatus.READY
+    assert [(item.rung, item.unreadable) for item in read_legacy_encodings(persist / "csv")] == [
+        (2, True)
+    ]
+    main = (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8")
+    assert STAND_IN_COMMENT in main
+    assert "out(C3)" in main

@@ -310,3 +310,75 @@ def test_new_legacy_encodings_pop_up_and_offer_preview_changes(monkeypatch, answ
     app._session.legacy_encodings_to_report.return_value = ()
     app._report_legacy_encodings()
     ask.assert_not_called()
+
+
+def _popup_app(found):
+    app = ClickNickApp.__new__(ClickNickApp)
+    app.root = MagicMock()
+    app._ui_refresh_id = None
+    app._refresh_ui = MagicMock()
+    app._workspace_rung_apply = MagicMock()
+    app._session = SimpleNamespace(legacy_encodings_to_report=MagicMock(return_value=found))
+    return app
+
+
+def _unreadable(rung: int):
+    from clicknick.ladder.program import LegacyEncoding
+
+    detail = "ClickNick cannot read this Compare."
+    return LegacyEncoding(
+        "subroutines/Conf_Compare.csv", "Conf_Compare", rung, "Compare", "", detail, True
+    )
+
+
+def test_rungs_clicknick_cannot_read_pop_up_without_offering_the_workspace(monkeypatch) -> None:
+    app = _popup_app((_unreadable(4),))
+    warn, ask = MagicMock(), MagicMock()
+    monkeypatch.setattr("clicknick.app.messagebox.showwarning", warn)
+    monkeypatch.setattr("clicknick.app.messagebox.askyesno", ask)
+
+    app._report_legacy_encodings()
+
+    ask.assert_not_called()
+    assert warn.call_args.args[0] == "Paste Again"
+    message = warn.call_args.args[1]
+    assert message.startswith("ClickNick cannot read these rungs in CLICK:\n")
+    assert "  Conf_Compare rung 4, Compare: ClickNick cannot read this Compare." in message
+    assert "empty rung" in message
+    assert "old encoding" not in message
+    app._workspace_rung_apply.assert_not_called()
+
+
+def test_a_program_csv_laddercodec_cannot_read_pops_up_too(monkeypatch) -> None:
+    from clicknick.ladder.program import LegacyEncoding
+
+    copy = LegacyEncoding("main.csv", "Main Program", None, "", "", "Invalid marker 'X'", True)
+    app = _popup_app((copy,))
+    warn = MagicMock()
+    monkeypatch.setattr("clicknick.app.messagebox.showwarning", warn)
+
+    app._report_legacy_encodings()
+
+    message = warn.call_args.args[1]
+    assert message.startswith(
+        "Paste these programs into CLICK again from your own copy, or fix them in CLICK:\n\n"
+        "  Main Program: Invalid marker"
+    )
+    assert "empty rung" not in message
+
+
+def test_both_kinds_pop_up_together_and_offer_preview_changes(monkeypatch) -> None:
+    from clicknick.ladder.program import LegacyEncoding
+
+    legacy = LegacyEncoding("main.csv", "Main Program", 12, "Math", "H70000", "it is stored...")
+    app = _popup_app((legacy, _unreadable(4)))
+    ask = MagicMock(return_value=True)
+    monkeypatch.setattr("clicknick.app.messagebox.askyesno", ask)
+
+    app._report_legacy_encodings()
+
+    message = ask.call_args.args[1]
+    assert "Conf_Compare rung 4" in message
+    assert "Main Program rung 12, Math H70000" in message
+    assert message.endswith("Open Preview Changes now?")
+    app._workspace_rung_apply.assert_called_once_with()

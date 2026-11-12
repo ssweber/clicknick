@@ -216,7 +216,10 @@ def _program_name(project_dir: Path, stem: str) -> str:
 
 
 def _describe_change(change: ProgramChange, *, new: bool) -> str:
-    """Summarise a program's change: ``R3, R5..7; removes CLICK's R9``."""
+    """Summarise a program's change: ``R3, R5..7; removes CLICK's R9``.
+
+    A program ClickNick cannot read all of in CLICK is pasted whole, and the summary says so.
+    """
     from ..services.rung_diff import format_group, paste_groups
 
     if new:
@@ -231,11 +234,15 @@ def _describe_change(change: ProgramChange, *, new: bool) -> str:
         parts.append(_runs(change.changed))
     if change.removed:
         parts.append(f"removes CLICK's {_runs(change.removed)}")
-    stale = tuple(sorted({item.rung for item in change.legacy if item.rung is not None}))
-    if stale:
-        parts.append(f"CLICK's {_runs(stale)} in an old encoding")
-    elif change.legacy:
-        parts.append("CLICK's copy in an old encoding")
+    for unreadable, fault in ((False, "in an old encoding"), (True, "unreadable")):
+        found = [item for item in change.legacy if item.unreadable is unreadable]
+        stale = tuple(sorted({item.rung for item in found if item.rung is not None}))
+        if stale:
+            parts.append(f"CLICK's {_runs(stale)} {fault}")
+        elif found:
+            parts.append(f"CLICK's copy {fault}")
+    if change.unreadable:
+        parts.append("paste it whole")
     return "; ".join(parts)
 
 
@@ -311,6 +318,9 @@ def _open_proposal(ctx: DispatchContext, parts: list[str]) -> tuple[str, int]:
         if ctx.show_proposal is not None:
             ctx.show_proposal(proposal_dir, source_dir, None, None, False)
         return "(no changes)", 0
+    if change.unreadable:
+        # A program ClickNick cannot read all of in CLICK is pasted whole
+        rungs = None
 
     staged_rungs = len(rungs) if rungs else len(change.changed) + len(change.removed)
     if ctx.show_proposal is None:

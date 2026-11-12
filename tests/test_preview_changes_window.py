@@ -11,7 +11,7 @@ import pytest
 from laddercodec import Coil, Contact, Rung, write_csv
 
 from clicknick.connection_session import SavedProgram
-from clicknick.ladder.program import LegacyEncoding
+from clicknick.ladder.program import STAND_IN_COMMENT, LegacyEncoding, empty_rung
 from clicknick.services.rung_diff import (
     BundleComparison,
     BundleSources,
@@ -1393,3 +1393,184 @@ def test_skipped_workspace_edits_are_warned_of(monkeypatch, tmp_path: Path) -> N
     assert notice.startswith("1 skipped difference is an edit in the workspace source.")
     assert "kept only in backup/src/plc" in notice
     assert window._pasted_message().endswith("(skipped edits are in backup/src/plc)")
+
+
+# ---------------------------------------------------------------------------
+# Rungs ClickNick cannot read from CLICK
+# ---------------------------------------------------------------------------
+
+_REFUSED = "ClickNick cannot read this Compare."
+
+
+def _unreadable(rung: int | None, instruction: str = "Compare", detail: str = _REFUSED):
+    return LegacyEncoding("main.csv", "Main Program", rung, instruction, "", detail, True)
+
+
+_WHOLE = "In CLICK, select all of its rungs (Shift+Up/Down) and delete them, then paste (Ctrl+V)"
+
+
+def _red(window) -> set[int]:
+    window._sheet.reset_mock()
+    window._current_idx = None
+    window._update_highlights()
+    return {
+        call.kwargs["row"]
+        for call in window._sheet.highlight_cells.call_args_list
+        if call.kwargs.get("bg") == "#f8d7da"
+    }
+
+
+def test_rung_clicknick_cannot_read_is_red_and_the_program_pasted_whole(
+    monkeypatch, copies
+) -> None:
+    window = _on_main(monkeypatch, compare_rungs(RUNGS, RUNGS, [_unreadable(3)]))
+
+    assert window._needs_paste("main.csv")
+    assert _action(window) == "Copy"
+    assert _status(window).splitlines() == [
+        "main.csv: the whole program, 4 rungs, replaces what CLICK has.",
+        f'Click "Copy". {_WHOLE}',
+        "CLICK's copy of rung 3 cannot be read. Paste the whole program again.",
+        f"  rung 3, Compare: {_REFUSED}",
+    ]
+    assert window._click_label("main.csv") == "1 rung changed, unreadable"
+
+    window._on_action()
+
+    assert copies == [(RUNGS, 1)]
+    assert _red(window) == {MAIN}
+
+
+def test_no_difference_of_a_program_clicknick_cannot_read_can_be_skipped(
+    monkeypatch, copies
+) -> None:
+    """A skip would keep CLICK's empty rung in place of the rung it cannot read."""
+    click = [RUNGS[0], empty_rung(STAND_IN_COMMENT), *RUNGS[2:]]
+    proposed = [RUNGS[0], *_coils("Y009"), *RUNGS[2:]]
+    change = compare_rungs(click, proposed, [_unreadable(2)])
+    window = _on_main(monkeypatch, change)
+    window._programs["main.csv"] = ProposedProgram(
+        "main.csv", Path("main.csv"), tuple(proposed), len(proposed)
+    )
+
+    assert window._choosable("main.csv") is None
+    assert window._all_differences() == []
+    window._toggle("main.csv", 0)
+    # A skip carried over from before CLICK's copy could not be read changes nothing
+    window._skipped["main.csv"] = frozenset(change.differences)
+
+    assert window._skipped_in("main.csv") == 0
+    assert window._needs_paste("main.csv")
+    assert window._steps("main.csv") == []
+    window._status_var.set(window._step_prompt(MAIN))
+    assert _action(window) == "Copy"
+
+    window._on_action()
+
+    assert copies == [(tuple(proposed), 1)]
+
+
+def test_click_copy_that_cannot_be_read_pastes_the_whole_program(monkeypatch) -> None:
+    detail = "ClickNick cannot read CLICK's copy of this program. Invalid marker 'X'"
+    change = compare_rungs(RUNGS, RUNGS, [_unreadable(None, instruction="", detail=detail)])
+    window = _on_main(monkeypatch, change)
+
+    assert window._needs_paste("main.csv")
+    assert window._describe_view()[0].splitlines()[:2] == [
+        "CLICK's copy cannot be read. Paste the whole program again.",
+        f"  {detail}",
+    ]
+
+
+def test_label_names_both_faults_when_a_program_has_both(monkeypatch) -> None:
+    window = _on_main(monkeypatch, compare_rungs(RUNGS, RUNGS, [_legacy(2), _unreadable(3)]))
+
+    assert window._click_label("main.csv") == "2 rungs changed, old encoding, unreadable"
+    assert window._describe_view()[0].splitlines()[0] == (
+        "CLICK's copy of rungs 2 to 3 cannot be read or has an old encoding. "
+        "Paste the whole program again."
+    )
+
+
+def test_click_copy_no_read_accepts_is_deleted_whole_before_the_paste(monkeypatch, copies) -> None:
+    """Without CLICK's rungs, an "after the last rung" paste would leave them all in CLICK."""
+    detail = "CompareContact: 'DH70' (hex) and 'DS3920' (numeric) are not in one compare group"
+    change = compare_rungs([], RUNGS, [_unreadable(None, instruction="", detail=detail)])
+    window = _on_main(monkeypatch, change)
+
+    status = _status(window)
+    assert status.startswith("main.csv: the whole program, 4 rungs, replaces what CLICK has.")
+    assert "select all of its rungs (Shift+Up/Down) and delete them, then paste" in status
+    assert _action(window) == "Copy"
+
+    window._on_action()
+
+    assert copies == [(RUNGS, 1)]
+    assert "and delete them, then paste (Ctrl+V)" in _status(window)
+
+
+def test_a_program_only_in_click_that_cannot_be_read_is_one_to_delete(monkeypatch) -> None:
+    csv_dir = Path("workspace/csv")
+    finding = LegacyEncoding("subroutines/old.csv", "", None, "", "", "Invalid marker 'X'", True)
+    window = _window(
+        monkeypatch,
+        SavedProgram(object(), generation=1, csv_dir=csv_dir, note=""),
+        {csv_dir: _changes(dict.fromkeys(NAMES, True))},
+        only_in_click={"subroutines/old.csv": compare_rungs(_coils("Y009"), [], [finding])},
+    )
+    window._sheet.get_currently_selected.return_value = SimpleNamespace(row=len(NAMES))
+
+    window._on_cell_select(None)
+
+    note = window._describe_view()[0]
+    assert note.splitlines()[0] == (
+        "CLICK's copy cannot be read. This folder does not have the program. "
+        "Delete it in CLICK if it is no longer used."
+    )
+    assert "Paste" not in note
+
+
+def _stand_in_window(monkeypatch, click: list, proposed: list, rung: int):
+    """main.csv with CLICK's rung *rung* unreadable, and the folder holding *proposed*."""
+    window = _on_main(monkeypatch, compare_rungs(click, proposed, [_unreadable(rung)]))
+    window._programs["main.csv"] = ProposedProgram(
+        "main.csv", Path("main.csv"), tuple(proposed), len(proposed)
+    )
+    window._update_action_btn()
+    window._status_var.set(window._step_prompt(MAIN))
+    return window
+
+
+def test_edits_around_a_stand_in_cannot_delete_clicks_rung(monkeypatch, copies) -> None:
+    """The user edited rung 1, deleted rung 2, and deleted the stand-in's comment.
+
+    Placed by the diff, the steps pasted the empty rung over rung 1 and deleted
+    CLICK's real rung 3.
+    """
+    click = [*RUNGS[:2], empty_rung(STAND_IN_COMMENT)]
+    window = _stand_in_window(monkeypatch, click, [*_coils("Y009"), empty_rung("")], 3)
+    refusal = (
+        "Rung 2 of Main Program is empty in this folder. CLICK's rung 3 cannot be read. "
+        "Paste that rung from your own copy of the program first."
+    )
+
+    assert window._current_steps() == []
+    assert _status(window).endswith(refusal)
+
+    window._on_action()
+
+    assert copies == []
+    assert _status(window) == f"Error loading main.csv: {refusal}"
+
+
+def test_a_program_differing_only_by_its_stand_in_is_red_and_refused(monkeypatch) -> None:
+    """The workspace flow with nothing edited: CLICK's rung 2 still has to be pasted."""
+    click = [RUNGS[0], empty_rung(STAND_IN_COMMENT), *RUNGS[2:]]
+    window = _stand_in_window(monkeypatch, click, click, 2)
+
+    assert not window._matches_click("main.csv")
+    assert window._needs_paste("main.csv")
+    assert not window._settled()
+    assert window._click_label("main.csv") == "1 rung changed, unreadable"
+    assert "Rung 2 of Main Program is empty in this folder." in _status(window)
+    assert _red(window) == {MAIN}

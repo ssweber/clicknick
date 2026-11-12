@@ -523,12 +523,32 @@ def main() -> None:
                 f"\nProgram bundle: 1 main + {len(result.subroutine_csvs)} subroutine(s),"
                 f" {result.total_rungs} total rungs"
             )
-            if result.legacy_encodings:
+            legacy = [item for item in result.legacy_encodings if not item.unreadable]
+            unreadable = [
+                item
+                for item in result.legacy_encodings
+                if item.unreadable and item.rung is not None
+            ]
+            copies = [
+                item for item in result.legacy_encodings if item.unreadable and item.rung is None
+            ]
+            if legacy:
                 print(
                     "\nCLICK holds these rungs in an old encoding and runs them differently."
                     " Paste them into CLICK again:"
                 )
-                for item in result.legacy_encodings:
+                for item in legacy:
+                    print(f"  {describe_legacy_encoding(item)}")
+            if unreadable:
+                print(
+                    "\nClickNick cannot read these rungs, and their CSVs hold an empty rung"
+                    " in place of each. Paste them into CLICK again:"
+                )
+                for item in unreadable:
+                    print(f"  {describe_legacy_encoding(item)}")
+            if copies:
+                print("\nPaste these programs into CLICK again:")
+                for item in copies:
                     print(f"  {describe_legacy_encoding(item)}")
             return
 

@@ -24,10 +24,13 @@ from laddercodec import Rung, read_csv
 from ..ladder.program import (
     LegacyEncoding,
     count_csv_rungs,
+    empty_rung,
+    is_empty_rung,
     list_csv_folder,
     read_csv_comment,
     read_legacy_encodings,
     rung_fingerprint,
+    unreadable_copy,
 )
 
 _MAIN = "main.csv"
@@ -45,6 +48,8 @@ EXPAND_RUNGS = 3
 
 # One SequenceMatcher step: (tag, CLICK start, CLICK end, proposed start, proposed end)
 Opcode = tuple[str, int, int, int, int]
+# The comment on each rung put in for a CLICK copy that cannot be read, to keep its rung count
+_UNREAD_RUNG_COMMENT = "ClickNick cannot read this rung."
 
 
 # ---------------------------------------------------------------------------
@@ -134,15 +139,30 @@ class ProgramChange:
     before: tuple[Rung, ...] = ()
     after: tuple[Rung, ...] = ()
     opcodes: tuple[Opcode, ...] = ()
-    # CLICK's rungs held in a legacy encoding. Each counts as differing even
-    # when its text matches, so it is pasted again.
+    # CLICK's rungs held in a legacy encoding, or that ClickNick cannot read.
+    # Each counts as differing even when its text matches, so it is pasted again.
     legacy: tuple[LegacyEncoding, ...] = ()
     # One per difference (each opcode that is not "equal"), in order
     differences: tuple[DifferenceKey, ...] = ()
 
     @property
+    def unreadable(self) -> bool:
+        """Whether ClickNick cannot read some of CLICK's copy.
+
+        Such a program is pasted whole or not at all. Which proposed rung takes
+        the place of the one it cannot read is not known, so no step may keep
+        or delete that rung by its place in the diff.
+        """
+        return any(item.unreadable for item in self.legacy)
+
+    @property
     def differs(self) -> bool:
-        return any(tag != "equal" for tag, *_ in self.opcodes)
+        return self.unreadable or any(tag != "equal" for tag, *_ in self.opcodes)
+
+    @property
+    def empty_rungs(self) -> tuple[int, ...]:
+        """Proposed rung numbers that hold no instruction, such as a stand-in."""
+        return tuple(number for number, rung in enumerate(self.after, 1) if is_empty_rung(rung))
 
     @property
     def changed(self) -> tuple[int, ...]:
@@ -166,7 +186,7 @@ class ProgramChange:
 
     def touches(self, selected: Iterable[int]) -> bool:
         """Whether any of the *selected* proposed rungs is one to paste."""
-        return not set(selected).isdisjoint(self.changed)
+        return self.unreadable or not set(selected).isdisjoint(self.changed)
 
     def blocks_holding(self, rungs: Iterable[int]) -> frozenset[DifferenceKey]:
         """The differences that paste any of the proposed *rungs*."""
@@ -179,7 +199,13 @@ class ProgramChange:
         )
 
     def merged(self, skipped: Collection[DifferenceKey] = ()) -> tuple[Rung, ...]:
-        """The program CLICK ends up with: proposed, except where a difference is *skipped*."""
+        """The program CLICK ends up with: proposed, except where a difference is *skipped*.
+
+        A program ClickNick cannot read all of in CLICK is pasted as proposed.
+        Skipping would keep CLICK's empty rung in place of the one it cannot read.
+        """
+        if self.unreadable:
+            return self.after
         rungs: list[Rung] = []
         block = 0
         for tag, i1, i2, j1, j2 in self.opcodes:
@@ -199,7 +225,11 @@ class ProgramChange:
         A *skipped* difference is left as CLICK has it, and a *pasted* one is
         in CLICK already (not saved yet): neither has steps, and the rung
         numbers below them count CLICK's rungs or the pasted ones.
+
+        Empty when ClickNick cannot read some of CLICK's copy, which is pasted whole.
         """
+        if self.unreadable:
+            return ()
 
         def _size(opcode: Opcode, key: DifferenceKey | None) -> int:
             """How many rungs the opcode stands for in CLICK when its step comes."""
@@ -290,6 +320,9 @@ def carry_skipped(
     def _content(key: DifferenceKey) -> tuple[object, object]:
         return key.before, key.after
 
+    if new.unreadable:
+        # Nothing of a program pasted whole is skipped
+        return frozenset()
     old_count: dict[tuple[object, object], int] = {}
     for key in old.differences:
         old_count[_content(key)] = old_count.get(_content(key), 0) + 1
@@ -329,13 +362,38 @@ class BundleComparison:
     missing_in_click: frozenset[str] = frozenset()
 
 
+def _read_click_copy(
+    name: str, path: Path, legacy: Mapping[str, Sequence[LegacyEncoding]]
+) -> tuple[list[Rung], list[LegacyEncoding]]:
+    """CLICK's rungs of one program, and the findings that make some of them differ.
+
+    A copy that cannot be read gets a finding for the whole program, so it is
+    pasted again rather than left out. Its rungs are then whatever a lenient
+    read finds. When that fails too, an empty rung stands for each rung its
+    text holds. Either way the diff shows how many rungs CLICK has.
+    """
+    found = list(legacy.get(name.casefold(), ()))
+    try:
+        return read_csv(path), found
+    except Exception as exc:
+        finding = unreadable_copy(name, "", exc)
+    if not any(item.rung is None and item.unreadable for item in found):
+        found.append(finding)  # program_save may have found it already
+    try:
+        rungs = read_csv(path, strict=False)
+    except Exception:
+        rungs = [empty_rung(_UNREAD_RUNG_COMMENT) for _ in range(count_csv_rungs(path))]
+    return rungs, found
+
+
 def compare_bundle(programs: Iterable[ProposedProgram], current_dir: Path) -> BundleComparison:
     """Compare a loaded bundle with the program now in CLICK.
 
     *current_dir* holds the program now in CLICK, laid out like the bundle.
     Names are matched ignoring case. A bundle without ``main.csv`` is not a
     program and compares empty. CLICK's rungs that ``program_save`` found in a
-    legacy encoding count as changed.
+    legacy encoding, or cannot read, count as changed. So does every rung of
+    a CLICK copy that cannot be read now.
     """
     programs = list(programs)
     proposed_names = {program.name.casefold() for program in programs}
@@ -351,22 +409,18 @@ def compare_bundle(programs: Iterable[ProposedProgram], current_dir: Path) -> Bu
     for name, path in list_csv_folder(current_dir):
         current[name.casefold()] = path
         if name.casefold() not in proposed_names:
-            try:
-                rungs = read_csv(path)
-            except Exception:
-                rungs = []
-            only_in_click[name] = compare_rungs(rungs, [], legacy.get(name.casefold(), ()))
+            rungs, found = _read_click_copy(name, path, legacy)
+            only_in_click[name] = compare_rungs(rungs, [], found)
 
     changes: dict[str, ProgramChange] = {}
     for program in programs:
         if program.rungs is None:
             continue
         current_path = current.get(program.name.casefold())
-        try:
-            before = read_csv(current_path) if current_path is not None else []
-        except Exception:
-            continue  # CLICK's copy is unreadable: unknown
-        found = legacy.get(program.name.casefold(), ()) if current_path is not None else ()
+        if current_path is None:
+            changes[program.name] = compare_rungs([], program.rungs)
+            continue
+        before, found = _read_click_copy(program.name, current_path, legacy)
         changes[program.name] = compare_rungs(before, program.rungs, found)
     missing = frozenset(
         program.name for program in programs if program.name.casefold() not in current
