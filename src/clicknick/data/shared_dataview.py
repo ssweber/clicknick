@@ -14,7 +14,7 @@ from pyclickplc.addresses import (
     normalize_address as _normalize_address,
 )
 
-from .cdv_file import get_dataview_folder, list_cdv_files
+from .cdv_file import list_cdv_files
 
 if TYPE_CHECKING:
     from .address_store import AddressStore
@@ -24,7 +24,7 @@ class SharedDataviewData:
     """Model behind the Dataview Editor.
 
     - Looks up nicknames and comments live from the AddressStore
-    - Finds CDV files in the project's DataView folder
+    - Finds CDV files in the DataView folder ``get_folder`` gives now
 
     Window lifecycle belongs to DataSession; the editor window observes the
     store directly for nickname refreshes.
@@ -33,30 +33,25 @@ class SharedDataviewData:
     def __init__(
         self,
         address_store: AddressStore,
-        project_path: Path | None = None,
-        dataview_folder: Path | None = None,
+        get_folder: Callable[[], Path | None] = lambda: None,
         filter_func: Callable[[list[str], str], list[str]] | None = None,
     ):
         """Initialize the dataview model.
 
         Args:
             address_store: AddressStore for nickname lookups
-            project_path: Path to the CLICK project folder
-            dataview_folder: Explicit DataView folder override (e.g., CSV directory)
+            get_folder: The DataView folder to show now (the connected CLICK
+                window's, or the loaded CSV's folder), or None for none
             filter_func: Active filter strategy callback (candidates, search_text) -> filtered
         """
         self._store = address_store
-        self._dataview_folder: Path | None = dataview_folder
+        self._get_folder = get_folder
         self.filter_func = filter_func
-
-        # Find dataview folder from project if not explicitly provided
-        if self._dataview_folder is None and project_path:
-            self._dataview_folder = get_dataview_folder(project_path)
 
     @property
     def dataview_folder(self) -> Path | None:
-        """Get the DataView folder path."""
-        return self._dataview_folder
+        """The DataView folder to show now, or None."""
+        return self._get_folder()
 
     @property
     def address_store(self) -> AddressStore:
@@ -69,9 +64,10 @@ class SharedDataviewData:
         Returns:
             List of Path objects for each CDV file.
         """
-        if not self._dataview_folder:
+        folder = self.dataview_folder
+        if not folder:
             return []
-        return list_cdv_files(self._dataview_folder)
+        return list_cdv_files(folder)
 
     def lookup_nickname(self, address: str) -> tuple[str, str] | None:
         """Look up nickname and comment for an address.

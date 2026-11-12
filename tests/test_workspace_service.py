@@ -366,7 +366,7 @@ def test_scr_files_appearing_after_connect_start_the_build(tmp_path, monkeypatch
     monkeypatch.setattr(
         "clicknick.utils.mdb_shared.find_click_database", lambda **_kwargs: str(db_path)
     )
-    monkeypatch.setattr("clicknick.live.session.click_temp_dir", lambda _hwnd: tmp_path)
+    monkeypatch.setattr("clicknick.utils.click_temp.click_temp_dir", lambda _hwnd: tmp_path)
     session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
     session._start_analysis_thread = MagicMock()
     root = MagicMock()
@@ -391,7 +391,7 @@ def test_the_watcher_follows_the_folder_clicks_database_turns_up_in(tmp_path, mo
         "clicknick.utils.mdb_shared.find_click_database",
         lambda **_kwargs: database[0] if database else None,
     )
-    monkeypatch.setattr("clicknick.live.session.click_temp_dir", lambda _hwnd: guessed)
+    monkeypatch.setattr("clicknick.utils.click_temp.click_temp_dir", lambda _hwnd: guessed)
     session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
     session._start_analysis_thread = MagicMock()
     root = MagicMock()
@@ -420,7 +420,7 @@ def _saved_click_project(tmp_path, monkeypatch) -> Path:
     monkeypatch.setattr(
         "clicknick.utils.mdb_shared.find_click_database", lambda **_kwargs: str(db_path)
     )
-    monkeypatch.setattr("clicknick.live.session.click_temp_dir", lambda _hwnd: tmp_path)
+    monkeypatch.setattr("clicknick.utils.click_temp.click_temp_dir", lambda _hwnd: tmp_path)
     return db_path
 
 

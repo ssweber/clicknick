@@ -193,6 +193,18 @@ def test_a_cell_editor_that_will_not_commit_stops_the_close(answers) -> None:
     assert not editor.closed
 
 
+def test_a_dataview_cell_that_will_not_commit_stops_the_close(answers) -> None:
+    session = DataSession(FakeStore())
+    dataview = FakeWindow(session)
+    dataview.commits = False
+    session.register_dataview_window(dataview)
+
+    assert not session.close(None)
+
+    assert dataview.commit_calls == 1
+    assert not dataview.closed
+
+
 def test_every_open_cell_editor_is_committed_even_after_one_fails() -> None:
     session = DataSession(FakeStore())
     first, second = FakeWindow(session), FakeWindow(session)

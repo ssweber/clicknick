@@ -124,8 +124,8 @@ class ClickNickApp:
         click = getattr(self, "_click", None)
         if click is None:
             return None
-        from .live.session import click_temp_dir
         from .services.workspace_mirror import read_plc_name
+        from .utils.click_temp import click_temp_dir
 
         return read_plc_name(click_temp_dir(click.hwnd) / "Project.ini")
 
@@ -691,6 +691,19 @@ class ClickNickApp:
             return None
         return data.store._data_source.file_path
 
+    def _dataview_folder(self) -> Path | None:
+        """The DataView folder the Dataview Editor shows: the connected CLICK window's.
+
+        With no window connected, the loaded CSV's folder; otherwise none. Never
+        another ``CLICK (hwnd)`` folder: that one holds another project's .cdv files.
+        """
+        if self._click is not None:
+            from .data.cdv_file import click_dataview_folder
+
+            return click_dataview_folder(self._click.hwnd)
+        csv_path = self._csv_path
+        return Path(csv_path).parent if csv_path else None
+
     def _open_dataview_editor(self):
         """Open the Dataview Editor window, or focus if already open.
 
@@ -713,20 +726,12 @@ class ClickNickApp:
 
         try:
             from .data.shared_dataview import SharedDataviewData
-            from .utils.mdb_shared import get_project_path_from_hwnd
             from .views.dataview_editor.window import DataviewEditorWindow
-
-            project_path = get_project_path_from_hwnd(self._click.hwnd if self._click else None)
-
-            csv_fallback_folder = None
-            if project_path is None and self._csv_path:
-                csv_fallback_folder = Path(self._csv_path).parent
 
             if data.dataview is None:
                 data.dataview = SharedDataviewData(
                     data.store,
-                    project_path=project_path,
-                    dataview_folder=csv_fallback_folder,
+                    get_folder=self._dataview_folder,
                     filter_func=self._apply_active_filter,
                 )
 
@@ -985,9 +990,9 @@ class ClickNickApp:
         if plc_name:
             return plc_name
 
-        from .live.session import click_temp_dir
         from .models.name_validation import validate_click_name
         from .services.workspace_mirror import write_plc_name
+        from .utils.click_temp import click_temp_dir
 
         if self._session is None or self._click is None:
             self._update_status("Connect to a CLICK project first", "error")
@@ -1596,11 +1601,10 @@ class ClickNickApp:
 
         from tkinter import messagebox, scrolledtext
 
-        from .utils.mdb_shared import get_project_path_from_hwnd
+        from .data.cdv_file import click_dataview_folder
         from .utils.verification import run_verification
 
-        project_path = get_project_path_from_hwnd(self._click.hwnd if self._click else None)
-        result = run_verification(store, project_path)
+        result = run_verification(store, click_dataview_folder(self._click.hwnd))
 
         if result.passed:
             messagebox.showinfo(
@@ -1929,8 +1933,8 @@ class ClickNickApp:
         Changes shows as a copy of another PLC; Refresh copies them again, as
         long as that window still has the same project open.
         """
-        from .live.session import click_temp_dir
         from .services.click_snapshot import snapshot_click_program, snapshot_dir
+        from .utils.click_temp import click_temp_dir
         from .views.preview_changes_window import ProposalSource
 
         open_now = {
@@ -2114,7 +2118,8 @@ class ClickNickApp:
         window is connected; otherwise a ClickNick-owned fallback. A connected
         CLICK window always has a temp folder, even without ODBC/CSV access.
         """
-        from .live.session import click_temp_dir, fallback_dir
+        from .live.session import fallback_dir
+        from .utils.click_temp import click_temp_dir
 
         hwnd = self._click.hwnd if self._click else None
         if hwnd:
@@ -2641,47 +2646,76 @@ class ClickNickApp:
         self._show_monitoring_button()
 
     def _keeps_edits_for(self, old_filename: str, new_filename: str) -> bool:
-        """Ask whether unsaved edits on database data stay, for the project CLICK shows now.
+        """Ask whether unsaved edits stay, for the project CLICK shows now.
 
         CLICK's Save As keeps the window's temp folder, its database and its
         DataView folder, and so does opening another project in the same
         window; ClickNick cannot tell the two apart, so the user says. The
-        question covers address edits, text in a cell that will not commit and
-        Dataview edits. Nothing is saved here. False when there is nothing unsaved.
+        question covers address edits on database data, text in a cell that will
+        not commit, and Dataview edits (on CSV data too: the Dataview Editor
+        shows the window's DataView folder). CSV address edits belong to the CSV
+        file and are not asked about. Nothing is saved here. False when there is
+        nothing unsaved.
         """
         data = self._data
-        if data is None or not data.store.is_database:
+        if data is None:
             return False
         unsaved = []
-        # A cell that will not commit (CLICK has the focus) still holds an edit
-        committed = data.commit_open_cell_editors()
-        if not committed or data.store.has_unsaved_changes():
-            unsaved.append("address changes")
+        if data.store.is_database:
+            # A cell that will not commit (CLICK has the focus) still holds an edit
+            committed = data.commit_open_cell_editors()
+            if not committed or data.store.has_unsaved_changes():
+                unsaved.append("address changes")
         dataview = data.dataview_window
-        if dataview is not None and dataview.has_unsaved_changes():
-            unsaved.append("Dataview changes")
+        if dataview is not None:
+            committed = dataview.commit_open_cell_editor()
+            if not committed or dataview.has_unsaved_changes():
+                unsaved.append("Dataview changes")
         if not unsaved:
             return False
+        saves = "Sync and Save then write them" if data.store.is_database else "Save writes them"
         return messagebox.askyesno(
             "Project Changed",
             f"The CLICK window now shows {new_filename}. You have unsaved "
             f"{' and '.join(unsaved)} made in {old_filename}.\n\n"
             f"Keep them as unsaved changes for {new_filename}? Choose Yes after a Save As in "
-            f"CLICK: Sync and Save then write them to {new_filename}.\n\n"
+            f"CLICK: {saves} to {new_filename}.\n\n"
             "No discards them and saves nothing.",
             icon=messagebox.WARNING,
             parent=self.root,
         )
 
+    def _reopen_dataview_editor(self, *, kept: bool) -> None:
+        """After a project change, show the window's DataView folder as it is now.
+
+        The window keeps its ``CLICK (hwnd)`` folder. When the user kept the
+        edits (*kept*) the editor stays as it is, with its tabs and its Modbus
+        connection, and lists the folder again. Otherwise it shows the files of
+        the project CLICK had open: it is closed without saving and opened again
+        on the window's DataView folder.
+        """
+        data = self._data
+        dataview = data.dataview_window if data is not None else None
+        if dataview is None:
+            return
+        if kept:
+            dataview.refresh_file_list()
+            return
+        dataview.close_without_prompt()
+        self._open_dataview_editor()
+
     def _handle_project_change(self, current_title: str, new_filename: str) -> None:
         """The connected CLICK window shows another project: follow it.
 
-        Unsaved address and Dataview edits on database data are kept for the new
-        project or discarded, as the user says (``_keeps_edits_for``). Kept, the
-        data and its windows stay open, and the store's file monitor reads the
-        base from the database the window now holds. Otherwise database data
-        closes with nothing saved, and the new project's database is loaded.
-        CSV data stays loaded. Monitoring stays as it was.
+        Unsaved address edits on database data, and Dataview edits, are kept
+        for the new project or discarded, as the user says (``_keeps_edits_for``).
+        Kept, the data and its windows stay open, and the store's file monitor
+        reads the base from the database the window now holds. Otherwise
+        database data closes with nothing saved, and the new project's database
+        is loaded. CSV data stays loaded. A Dataview Editor that stays open
+        lists its folder again when the edits were kept, and is otherwise opened
+        again on the window's DataView folder (``_reopen_dataview_editor``).
+        Monitoring stays as it was.
         """
         click = self._click
         if click is None:
@@ -2708,8 +2742,9 @@ class ClickNickApp:
         self._click = click = replace(click, filename=new_filename)
         self._show_instances(current_title)
         self._load_workspace_pairing()
+        self._reopen_dataview_editor(kept=keep)
 
-        if keep:
+        if keep and self.using_database:
             self._open_connection_session(click)
             self._update_status(f"Kept unsaved changes for {new_filename}", "connected")
             self._on_data_ready()

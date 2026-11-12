@@ -35,6 +35,12 @@ class AddressEditor(EditorWindow, Protocol):
 
 
 class DataviewWindow(EditorWindow, Protocol):
+    def commit_open_cell_editor(self) -> bool:
+        """Make text typed in an open cell editor an edit; False if it would not commit."""
+        ...
+
+    def refresh_file_list(self) -> None: ...
+
     def has_unsaved_changes(self) -> bool: ...
 
     def save_all(self) -> bool: ...
@@ -106,6 +112,8 @@ class DataSession:
 
         # Editor windows are Tk Toplevels; the protocols only name what we call.
         window = self._dataview_window
+        if window is not None and not window.commit_open_cell_editor():
+            return False
         if window is not None and window.has_unsaved_changes():
             dataview_owner: Any = window
             answer = messagebox.askyesnocancel(

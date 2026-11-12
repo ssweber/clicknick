@@ -49,17 +49,6 @@ class DataviewEditorWindow(tk.Toplevel):
         self.geometry("800x600")
         self.minsize(800, 400)
 
-    def _refresh_file_list(self) -> None:
-        """Refresh the file list from the dataview folder."""
-        self.file_listbox.delete(0, tk.END)
-
-        files = self.shared_data.get_cdv_files()
-        for file_path in files:
-            self.file_listbox.insert(tk.END, file_path.stem)
-
-        # Store paths for lookup
-        self._file_paths = files
-
     def _get_current_panel(self) -> DataviewPanel | None:
         """Get the currently active panel."""
         try:
@@ -409,15 +398,38 @@ class DataviewEditorWindow(tk.Toplevel):
             lambda result, error: self._on_write_payload_complete(panel, result, error),
         )
 
+    def _commit_cell_editor(self, panel: DataviewPanel) -> bool:
+        """Commit the text typed in *panel*'s open cell editor; False, said, if it stays open.
+
+        tksheet commits nothing while the focus is outside ClickNick, so text typed
+        before switching to CLICK is still in the editor.
+        """
+        mt = panel.sheet.MT
+        if not mt.text_editor.open:
+            return True
+        mt.mouseclick_outside_editor_or_dropdown_all_canvases()
+        if mt.text_editor.open:
+            self.focus_force()
+            mt.mouseclick_outside_editor_or_dropdown_all_canvases()
+        if mt.text_editor.open:
+            messagebox.showwarning(
+                "Cell Being Edited",
+                "Finish the cell edit first (Enter to keep it, Esc to cancel).",
+                parent=self,
+            )
+            return False
+        return True
+
     def _write_checked(self) -> None:
         panel = self._get_current_panel()
-        if panel is None:
+        # A button click leaves the focus in the cell editor: write the value typed there
+        if panel is None or not self._commit_cell_editor(panel):
             return
         self._write_payload(panel.get_write_rows())
 
     def _write_all(self) -> None:
         panel = self._get_current_panel()
-        if panel is None:
+        if panel is None or not self._commit_cell_editor(panel):
             return
         self._write_payload(panel.get_write_all_rows())
 
@@ -574,7 +586,7 @@ class DataviewEditorWindow(tk.Toplevel):
             and self.shared_data.dataview_folder
             and new_path.parent == self.shared_data.dataview_folder
         ):
-            self._refresh_file_list()
+            self.refresh_file_list()
         return saved
 
     def _save_panel(self, panel: DataviewPanel) -> bool:
@@ -588,13 +600,13 @@ class DataviewEditorWindow(tk.Toplevel):
     def _save_current(self) -> None:
         """Save the current dataview."""
         panel = self._get_current_panel()
-        if panel is not None:
+        if panel is not None and self._commit_cell_editor(panel):
             self._save_panel(panel)
 
     def _export(self) -> None:
         """Export the current dataview to a new location."""
         panel = self._get_current_panel()
-        if not panel:
+        if not panel or not self._commit_cell_editor(panel):
             return
 
         initial_dir = self.shared_data.dataview_folder or Path.cwd()
@@ -642,7 +654,7 @@ class DataviewEditorWindow(tk.Toplevel):
             self.shared_data.dataview_folder
             and export_path.parent == self.shared_data.dataview_folder
         ):
-            self._refresh_file_list()
+            self.refresh_file_list()
 
     def _close_tab_at_index(self, tab_index: int) -> None:
         """Close the tab at the given index.
@@ -681,7 +693,9 @@ class DataviewEditorWindow(tk.Toplevel):
 
     def _on_close(self) -> None:
         """Handle window close."""
-        # Check for unsaved changes
+        # Text still in a cell editor is an edit; a cell that won't commit stops the close.
+        if not self.commit_open_cell_editor():
+            return
         if self.has_unsaved_changes():
             result = messagebox.askyesnocancel(
                 "Unsaved Changes",
@@ -920,7 +934,7 @@ class DataviewEditorWindow(tk.Toplevel):
         # View menu
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="View", menu=view_menu)
-        view_menu.add_command(label="Refresh File List", command=self._refresh_file_list)
+        view_menu.add_command(label="Refresh File List", command=self.refresh_file_list)
         view_menu.add_separator()
 
         # Tag Browser toggle (checkbutton)
@@ -978,7 +992,8 @@ class DataviewEditorWindow(tk.Toplevel):
             tab_id = self.notebook.tabs()[tab_index]
             panel = self.notebook.nametowidget(tab_id)
 
-            # Check for unsaved changes
+            if not self._commit_cell_editor(panel):
+                return False
             if panel.is_dirty:
                 result = messagebox.askyesnocancel(
                     "Unsaved Changes",
@@ -1135,7 +1150,7 @@ class DataviewEditorWindow(tk.Toplevel):
         ttk.Button(btn_frame, text="Open", command=self._open_selected, width=7).pack(
             side=tk.LEFT, padx=2
         )
-        ttk.Button(btn_frame, text="⟳", command=self._refresh_file_list, width=2).pack(
+        ttk.Button(btn_frame, text="⟳", command=self.refresh_file_list, width=2).pack(
             side=tk.LEFT, padx=2
         )
 
@@ -1321,7 +1336,7 @@ class DataviewEditorWindow(tk.Toplevel):
         self.shared_data.address_store.add_observer(self._on_address_store_changed)
 
         # Refresh file list
-        self._refresh_file_list()
+        self.refresh_file_list()
 
         # Show first-run popup
         self._show_dataview_editor_popup()
@@ -1334,6 +1349,17 @@ class DataviewEditorWindow(tk.Toplevel):
 
         self._update_modbus_controls()
         self._poll_simulation()
+
+    def refresh_file_list(self) -> None:
+        """Refresh the file list from the dataview folder."""
+        self.file_listbox.delete(0, tk.END)
+
+        files = self.shared_data.get_cdv_files()
+        for file_path in files:
+            self.file_listbox.insert(tk.END, file_path.stem)
+
+        # Store paths for lookup
+        self._file_paths = files
 
     def refresh_title(self) -> None:
         """Show the project CLICK has open now; the app calls this when it changes."""
@@ -1371,6 +1397,14 @@ class DataviewEditorWindow(tk.Toplevel):
         self._session.unregister_dataview_window(self)
         self.destroy()
 
+    def commit_open_cell_editor(self) -> bool:
+        """Commit the text typed in every tab's open cell editor, so it is an edit like any other.
+
+        Closing, saving and the app's project-change question call this first.
+        Returns False, after telling the user, when an editor is still open.
+        """
+        return all(self._commit_cell_editor(panel) for panel in self._iter_open_panels())
+
     def has_unsaved_changes(self) -> bool:
         """Check if any open dataviews have unsaved changes."""
         return any(panel.is_dirty for panel in self._iter_open_panels())
@@ -1380,7 +1414,10 @@ class DataviewEditorWindow(tk.Toplevel):
 
         Stops at the first one that is not saved (cancelled or failed; a failed
         save says why) and returns False, so a caller closing the window closes nothing.
+        Text still in a cell editor is saved too; a cell that won't commit saves nothing.
         """
+        if not self.commit_open_cell_editor():
+            return False
         for panel in self._iter_open_panels():
             if panel.is_dirty and not self._save_panel(panel):
                 return False
