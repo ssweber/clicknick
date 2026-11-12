@@ -15,6 +15,13 @@ class _Root:
         return "after-id"
 
 
+def _settle(watcher: ScrWatcher) -> None:
+    """One check sees the files change, the next two see them stay that way."""
+    watcher._check()
+    watcher._check()
+    watcher._check()
+
+
 def test_click_save_clears_synced_tags_and_staged_rungs(tmp_path) -> None:
     sync_updates: list[int] = []
     changed: list[bool] = []
@@ -29,7 +36,7 @@ def test_click_save_clears_synced_tags_and_staged_rungs(tmp_path) -> None:
     watcher._tk_root = _Root()
     (tmp_path / "Scr1.tmp").write_text("saved", encoding="utf-8")
 
-    watcher._check()
+    _settle(watcher)
 
     assert changed == [True]
     assert watcher.synced_pending == 0
@@ -49,7 +56,7 @@ def test_click_save_reports_cleared_rungs_without_pending_tags(tmp_path) -> None
     watcher._tk_root = _Root()
     (tmp_path / "Scr1.tmp").write_text("saved", encoding="utf-8")
 
-    watcher._check()
+    _settle(watcher)
 
     assert watcher.staged_rungs == 0
     assert sync_updates == [0]
@@ -84,7 +91,7 @@ def test_a_save_with_an_earlier_mtime_still_rebuilds(tmp_path) -> None:
     # A copied-back file or a clock step: CLICK's new save is older than the last.
     scr.write_text("saved again", encoding="utf-8")
     os.utime(scr, (1_000_000_000, 1_000_000_000))
-    watcher._check()
+    _settle(watcher)
 
     assert changed == [True]
 
@@ -98,7 +105,7 @@ def test_a_save_that_changes_only_the_size_rebuilds(tmp_path) -> None:
 
     scr.write_text("saved, longer", encoding="utf-8")
     os.utime(scr, ns=(stamp, stamp))
-    watcher._check()
+    _settle(watcher)
 
     assert changed == [True]
 
@@ -110,10 +117,111 @@ def test_a_save_that_deletes_a_subroutine_rebuilds(tmp_path) -> None:
     watcher = _watching(tmp_path, changed)
 
     (tmp_path / "Scr2.tmp").unlink()
+    _settle(watcher)
+
+    assert changed == [True]
+
+
+def test_a_save_caught_half_written_counts_once(tmp_path) -> None:
+    (tmp_path / "Scr1.tmp").write_text("main", encoding="utf-8")
+    changed: list[bool] = []
+    watcher = _watching(tmp_path, changed)
+
+    # A check lands while CLICK writes the save: Scr1 is new, Scr2 not there yet.
+    (tmp_path / "Scr1.tmp").write_text("main, saved", encoding="utf-8")
+    watcher._check()
+    (tmp_path / "Scr2.tmp").write_text("sub", encoding="utf-8")
+    watcher._check()
+    assert changed == []
     watcher._check()
     watcher._check()
 
     assert changed == [True]
+
+
+class _Clock:
+    """Records each check scheduled; ``tick`` runs the latest one."""
+
+    def __init__(self) -> None:
+        self.delays: list[int] = []
+        self._due = None
+
+    def after(self, delay, callback):
+        self.delays.append(delay)
+        self._due = callback
+        return "after-id"
+
+    def tick(self) -> None:
+        self._due()
+
+
+def test_a_save_counts_once_its_files_stop_changing_for_a_second(tmp_path) -> None:
+    (tmp_path / "Scr1.tmp").write_text("main", encoding="utf-8")
+    changed: list[bool] = []
+    watcher = ScrWatcher(tmp_path, lambda: changed.append(True))
+    clock = _Clock()
+    watcher.start(clock)
+
+    (tmp_path / "Scr1.tmp").write_text("main, saved", encoding="utf-8")
+    clock.tick()  # Seen 3 s in; CLICK is still writing
+    (tmp_path / "Scr2.tmp").write_text("sub", encoding="utf-8")
+    clock.tick()
+    clock.tick()  # The same half a second later
+    assert changed == []
+    clock.tick()  # And a second later: the save
+
+    assert changed == [True]
+    assert clock.delays == [3000, 500, 500, 500, 3000]
+    watcher.stop()
+
+
+def test_a_pause_between_two_writes_of_one_save_counts_once(tmp_path) -> None:
+    (tmp_path / "Scr1.tmp").write_text("main", encoding="utf-8")
+    changed: list[bool] = []
+    watcher = ScrWatcher(tmp_path, lambda: changed.append(True))
+    clock = _Clock()
+    watcher.start(clock)
+
+    (tmp_path / "Scr1.tmp").write_text("main, saved", encoding="utf-8")
+    clock.tick()  # Seen
+    clock.tick()  # Unchanged for one check: CLICK pauses
+    (tmp_path / "Scr2.tmp").write_text("sub", encoding="utf-8")
+    clock.tick()  # Changed again
+    clock.tick()
+    clock.tick()  # Quiet for two checks: the save
+
+    assert changed == [True]
+    assert clock.delays == [3000, 500, 500, 500, 500, 3000]
+    watcher.stop()
+
+
+def test_a_second_save_soon_after_counts_again(tmp_path) -> None:
+    (tmp_path / "Scr1.tmp").write_text("main", encoding="utf-8")
+    changed: list[bool] = []
+    watcher = _watching(tmp_path, changed)
+
+    (tmp_path / "Scr1.tmp").write_text("main, saved", encoding="utf-8")
+    _settle(watcher)
+    (tmp_path / "Scr1.tmp").write_text("main, saved again", encoding="utf-8")
+    _settle(watcher)
+
+    assert changed == [True, True]
+
+
+def test_files_put_back_before_they_settle_are_not_a_save(tmp_path) -> None:
+    scr = tmp_path / "Scr1.tmp"
+    scr.write_text("main", encoding="utf-8")
+    stamp = scr.stat().st_mtime_ns
+    changed: list[bool] = []
+    watcher = _watching(tmp_path, changed)
+
+    scr.write_text("temp", encoding="utf-8")
+    watcher._check()
+    scr.write_text("main", encoding="utf-8")
+    os.utime(scr, ns=(stamp, stamp))
+    _settle(watcher)
+
+    assert changed == []
 
 
 def test_no_scr_files_left_is_not_a_save(tmp_path) -> None:
@@ -122,7 +230,7 @@ def test_no_scr_files_left_is_not_a_save(tmp_path) -> None:
     watcher = _watching(tmp_path, changed)
 
     (tmp_path / "Scr1.tmp").unlink()
-    watcher._check()
+    _settle(watcher)
 
     assert changed == []
 
@@ -157,7 +265,7 @@ def test_watching_the_same_folder_spelled_another_way_keeps_a_save(tmp_path, spe
     # CLICK saves before the next check; analysis then finds the folder spelled another way.
     (folder / "Scr1.tmp").write_text("main, saved", encoding="utf-8")
     watcher.watch(same)
-    watcher._check()
+    _settle(watcher)
 
     assert changed == [True]
 
@@ -173,7 +281,7 @@ def test_watching_another_folder_starts_from_what_it_holds(tmp_path) -> None:
     watcher = _watching(first, changed)
 
     watcher.watch(second)
-    watcher._check()
+    _settle(watcher)
 
     assert changed == []
     assert watcher.folder == second

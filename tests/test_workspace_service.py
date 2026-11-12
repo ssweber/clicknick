@@ -11,6 +11,8 @@ import pytest
 
 from clicknick.app import ClickNickApp
 from clicknick.connection_session import ClickConnection, ConnectionSession
+from clicknick.live.dispatch import DispatchContext
+from clicknick.live.rung_commands import _get_project_dir
 from clicknick.services.analysis_service import AnalysisStatus
 from clicknick.services.project_workspace import record_generated_plc_source
 from clicknick.services.rung_diff import WORKSPACE_SOURCE
@@ -181,6 +183,7 @@ def test_connection_session_builds_into_configured_workspace(tmp_path, monkeypat
         db_path,
         persist_dir=workspace.resolve(),
         workspace_kind="persistent",
+        serves=session.analysis.mark_building.return_value,
     )
 
 
@@ -207,6 +210,7 @@ def test_connection_session_labels_click_folder_as_temporary(tmp_path, monkeypat
         db_path,
         persist_dir=scr_folder / "pyrung_project",
         workspace_kind="temporary",
+        serves=session.analysis.mark_building.return_value,
     )
 
 
@@ -348,6 +352,13 @@ def test_closed_session_drops_its_queued_build_and_tells_the_caller(tmp_path) ->
     assert results == [(False, "The project changed while converting; conversion was discarded.")]
 
 
+def _settle(watcher) -> None:
+    """The watcher counts a save once the files stay the same for two more checks."""
+    watcher._check()
+    watcher._check()
+    watcher._check()
+
+
 def test_scr_files_appearing_after_connect_start_the_build(tmp_path, monkeypatch) -> None:
     """CLICK may still be writing the project when the new session starts."""
     db_path = tmp_path / "SC_.mdb"
@@ -365,7 +376,7 @@ def test_scr_files_appearing_after_connect_start_the_build(tmp_path, monkeypatch
     assert session.analysis.status is AnalysisStatus.FAILED
 
     (tmp_path / "Scr1.tmp").write_text("ladder", encoding="utf-8")
-    session.scr_watcher._check()
+    _settle(session.scr_watcher)
     session._start_analysis_thread.assert_called_once_with(tmp_path, db_path)
     session.scr_watcher.stop()
 
@@ -397,7 +408,7 @@ def test_the_watcher_follows_the_folder_clicks_database_turns_up_in(tmp_path, mo
     assert session.synced_pending == 2
     session._start_analysis_thread.reset_mock()
     (found / "Scr2.tmp").write_text("saved", encoding="utf-8")
-    session.scr_watcher._check()
+    _settle(session.scr_watcher)
     session._start_analysis_thread.assert_called_once_with(found, found / "SC_.mdb")
     session.scr_watcher.stop()
 
@@ -423,7 +434,7 @@ def test_save_count_counts_only_the_saves_click_makes(tmp_path, monkeypatch) -> 
     assert session.saved_program().save_count == 0
 
     (tmp_path / "Scr2.tmp").write_text("saved", encoding="utf-8")
-    session.scr_watcher._check()
+    _settle(session.scr_watcher)
     assert session.saved_program().save_count == 1
 
     # A Sync with repairs rebuilds, as do Reload from CLICK and a workspace change.
@@ -433,7 +444,7 @@ def test_save_count_counts_only_the_saves_click_makes(tmp_path, monkeypatch) -> 
     session.simulation = None
     session.use_workspace(tmp_path / "Line1 Workspace")
     session.start_analysis(root)
-    session.scr_watcher._check()
+    _settle(session.scr_watcher)
     assert session.saved_program().save_count == 1
 
     # It is the same whatever the build is doing.
@@ -445,7 +456,7 @@ def test_save_count_counts_only_the_saves_click_makes(tmp_path, monkeypatch) -> 
     assert failed.csv_dir is None
 
     (tmp_path / "Scr1.tmp").write_text("saved again", encoding="utf-8")
-    session.scr_watcher._check()
+    _settle(session.scr_watcher)
     assert session.saved_program().save_count == 2
     session.scr_watcher.stop()
 
@@ -513,6 +524,77 @@ def test_saved_program_reports_what_can_be_compared(tmp_path) -> None:
     failed = session.saved_program()
     assert failed.csv_dir is None
     assert "main window" in failed.note
+
+
+@pytest.mark.parametrize("first_fails", [False, True])
+def test_a_save_during_a_build_reads_as_building_until_its_own_build(
+    tmp_path, monkeypatch, first_fails
+) -> None:
+    """The build of the files before the save publishes first: its csv/ is not that save's."""
+    from clicknick.services.analysis_service import AnalysisService
+
+    _saved_click_project(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "clicknick.services.program_check_selection.ProgramCheckSelection",
+        lambda _workspace: MagicMock(),
+    )
+    project = tmp_path / "pyrung_project"
+    (project / "csv").mkdir(parents=True)
+    first_running, release_first = threading.Event(), threading.Event()
+    builds: list[int] = []
+
+    def build_graph(*_args, on_project_generated, **_kwargs):
+        builds.append(len(builds) + 1)
+        if len(builds) == 1:
+            first_running.set()
+            assert release_first.wait(timeout=10)
+        on_project_generated(project, {})
+        if first_fails and len(builds) == 1:
+            raise ValueError("graph failed")
+        return MagicMock(), MagicMock(), project, {}
+
+    monkeypatch.setattr("clicknick.services.analysis_service._build_graph", build_graph)
+    readings = []
+    both_done = threading.Event()
+
+    def rung_apply_workspace():
+        try:
+            return _get_project_dir(DispatchContext(analysis=session.analysis))
+        except ValueError as exc:
+            return str(exc)
+
+    def finished() -> None:
+        readings.append(
+            (
+                session.saved_program(),
+                get_workspace_status(session.analysis).state,
+                rung_apply_workspace(),
+            )
+        )
+        if len(readings) == 2:
+            both_done.set()
+
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"), on_build_finished=finished)
+    session.analysis = AnalysisService()
+    session._start_analysis_thread(tmp_path, tmp_path / "SC_.mdb")
+    assert first_running.wait(timeout=10)
+
+    session._on_scr_changed()  # CLICK saves while the first build runs
+    release_first.set()
+    assert both_done.wait(timeout=10)
+
+    (pre_save, pre_save_state, pre_save_workspace), (saved, state, workspace) = readings
+    assert pre_save.save_count == 1
+    assert pre_save.building is True
+    assert pre_save.csv_dir is None
+    # Every reader of the analysis agrees: the workspace is not the save's yet.
+    assert pre_save_state is WorkspaceState.PREPARING
+    assert "being regenerated" in pre_save_workspace
+    assert saved.save_count == 1
+    assert saved.building is False
+    assert saved.csv_dir == project / "csv"
+    assert state is not WorkspaceState.PREPARING
+    assert workspace == project
 
 
 def test_a_rebuild_that_fails_before_publishing_has_nothing_to_compare(

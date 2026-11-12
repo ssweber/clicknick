@@ -49,8 +49,6 @@ class DispatchContext:
     store: AddressStore | None = None
     resolve_tag: Callable[[str], int | None] | None = None
     analysis: Any | None = None  # AnalysisService (avoid import for lightweight CLI)
-    # The connected CLICK window's folder (SC_.mdb, Scr*.tmp, Project.ini), or None.
-    scr_folder: Path | None = None
     annotation: AnnotationService = field(default_factory=AnnotationService)
     # (bundle folder, workspace source folder, program to select, its rungs to
     # paste, open a window if none shows the folder) -> Preview Changes

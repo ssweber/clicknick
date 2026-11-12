@@ -71,6 +71,9 @@ class _BuildRequest:
     callbacks: list[tuple[tk.Tk | None, Callable[[bool, str | None], None]]] = field(
         default_factory=list
     )
+    # What AnalysisService.mark_building returned for it: the build serves every
+    # request made up to this one.
+    serves: int = 0
 
 
 class ConnectionSession:
@@ -149,6 +152,7 @@ class ConnectionSession:
                     request.db_path,
                     persist_dir=persist,
                     workspace_kind="persistent" if persistent_workspace else "temporary",
+                    serves=request.serves,
                 )
                 if published:
                     try:
@@ -162,9 +166,10 @@ class ConnectionSession:
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
             traceback.print_exc()
-            # Failed before build() ran, so nothing else will end the "building" status.
+            # Failed before build() ran, so nothing else will end the "building" status
+            # (unless a build queued since will).
             if analysis.status is AnalysisStatus.BUILDING:
-                analysis.mark_failed(error, traceback.format_exc())
+                analysis.mark_failed(error, traceback.format_exc(), serves=request.serves)
 
         for root, on_complete in request.callbacks:
             if root is None:
@@ -201,13 +206,13 @@ class ConnectionSession:
         """
         analysis = self.analysis
         assert analysis is not None
-        analysis.mark_building()
+        serves = analysis.mark_building()
         with self._build_lock:
             pending = self._next_build
             callbacks = pending.callbacks if pending is not None else []
             if on_complete is not None:
                 callbacks.append((root, on_complete))
-            self._next_build = _BuildRequest(scr_folder, db_path, callbacks)
+            self._next_build = _BuildRequest(scr_folder, db_path, callbacks, serves)
             if self._build_running:
                 return
             self._build_running = True
@@ -312,6 +317,7 @@ class ConnectionSession:
             return SavedProgram(self, save_count=saves, note=reading)
         generation = analysis.generation
         status = analysis.status
+        # Also while a build queued after a save waits for the one before it to finish.
         if status is AnalysisStatus.BUILDING:
             return SavedProgram(self, generation, saves, building=True, note=reading)
         # A build that failed before publishing leaves the workspace of an earlier save.

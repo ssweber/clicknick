@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import codecs
 import enum
+import json
 import shutil
 import tempfile
 import threading
@@ -107,6 +108,32 @@ def _channel_inputs(scr_folder: Path) -> frozenset[str]:
         return read_channel_parameters(scr_folder / "Project.ini").inputs
     except FileNotFoundError:
         return frozenset()
+
+
+#: In a workspace's csv/: the analog input channels it was generated with.
+ANALOG_INPUTS_FILENAME = "analog_inputs.json"
+
+
+def _write_analog_inputs(csv_dir: Path, inputs: frozenset[str]) -> None:
+    text = json.dumps(sorted(inputs)) + "\n"
+    (csv_dir / ANALOG_INPUTS_FILENAME).write_text(text, encoding="utf-8")
+
+
+def read_analog_inputs(csv_dir: Path) -> frozenset[str]:
+    """The analog input channels the workspace holding *csv_dir* was generated with.
+
+    pyrung marks them ``external``; regenerating the workspace's code needs the same set.
+    """
+    path = csv_dir / ANALOG_INPUTS_FILENAME
+    try:
+        inputs = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise ValueError(
+            "the workspace has no record of its analog inputs; reload the workspace from CLICK"
+        ) from None
+    if not isinstance(inputs, list) or not all(isinstance(item, str) for item in inputs):
+        raise ValueError(f"{path} does not hold a list of addresses")
+    return frozenset(inputs)
 
 
 def _build_tag_addr_key_map(
@@ -275,9 +302,13 @@ def _regenerate_persisted_project(
     nickname_rows: Mapping[int, AddressRow] | None,
     persist_dir: Path,
     *,
+    analog_inputs: frozenset[str],
     workspace_kind: WorkspaceKind = "temporary",
 ) -> Path:
-    """Generate beside the workspace, then publish only a complete project."""
+    """Generate beside the workspace, then publish only a complete project.
+
+    *analog_inputs* are recorded in csv/: `tag apply` regenerates the code from csv/.
+    """
     from pyrung.click import ladder_to_pyrung_project
 
     from ..ladder.program import program_save
@@ -294,11 +325,12 @@ def _regenerate_persisted_project(
         persist_nickname_csv = None
         if nickname_rows is not None:
             persist_nickname_csv = _write_nicknames_csv(csv_persist, nickname_rows)
+        _write_analog_inputs(csv_persist, analog_inputs)
 
         ladder_to_pyrung_project(
             csv_persist,
             nickname_csv=persist_nickname_csv,
-            analog_inputs=_channel_inputs(scr_folder),
+            analog_inputs=analog_inputs,
             output_dir=staged_dir,
             index=True,
             workspace_kind=workspace_kind,
@@ -330,6 +362,8 @@ def _build_graph(
     from ..ladder.program import program_save
 
     nickname_rows = _read_nickname_rows(db_path) if db_path is not None else None
+    # One reading of Project.ini, like the nicknames, for the code and the workspace.
+    analog_inputs = _channel_inputs(scr_folder)
 
     with tempfile.TemporaryDirectory(prefix="clicknick_analysis_") as tmp:
         csv_dir = Path(tmp)
@@ -339,9 +373,7 @@ def _build_graph(
         if nickname_rows is not None:
             nickname_csv = _write_nicknames_csv(csv_dir, nickname_rows)
 
-        code = ladder_to_pyrung(
-            csv_dir, nickname_csv=nickname_csv, analog_inputs=_channel_inputs(scr_folder)
-        )
+        code = ladder_to_pyrung(csv_dir, nickname_csv=nickname_csv, analog_inputs=analog_inputs)
 
     # Generated source is useful for inspection and repair even when executing
     # it cannot construct a Program. Publish it independently of analysis.
@@ -351,6 +383,7 @@ def _build_graph(
             scr_folder,
             nickname_rows,
             persist_dir,
+            analog_inputs=analog_inputs,
             workspace_kind=workspace_kind,
         )
         if on_project_generated is not None:
@@ -394,6 +427,9 @@ class AnalysisService:
         self._lock = threading.Lock()
         self._generation = 0
         self._epoch = 0
+        # Build requests made (`mark_building`). A build that serves fewer than this
+        # leaves the status BUILDING: what it publishes is older than the latest request.
+        self._builds_asked = 0
 
     @property
     def is_available(self) -> bool:
@@ -453,13 +489,19 @@ class AnalysisService:
         """
         return self._project_tags
 
-    def mark_failed(self, reason: str, detail: str | None = None) -> None:
+    def mark_failed(
+        self, reason: str, detail: str | None = None, *, serves: int | None = None
+    ) -> None:
         """Record a failure the build thread never got to raise.
 
         Used for pre-flight bail-outs (no project database, no saved ladder
-        files) so views can say *why* instead of waiting forever.
+        files) so views can say *why* instead of waiting forever. A build that
+        *serves* fewer requests than were made leaves the status to the build
+        queued after it.
         """
         with self._lock:
+            if serves is not None and serves < self._builds_asked:
+                return
             self._epoch += 1
             self._project_is_current = False
             self._status = AnalysisStatus.FAILED
@@ -468,14 +510,19 @@ class AnalysisService:
             self._system_nickname_repairs = ()
             self._needs_comment_upgrade = False
 
-    def mark_building(self) -> None:
-        """Report a queued build, so nobody sees a stale status until its thread starts."""
+    def mark_building(self) -> int:
+        """Report a queued build, so nobody sees a stale status until its thread starts.
+
+        Returns the number of builds asked for so far; pass it to ``build(serves=)``.
+        """
         with self._lock:
+            self._builds_asked += 1
             self._status = AnalysisStatus.BUILDING
             self._error = None
             self._error_detail = None
             self._system_nickname_repairs = ()
             self._needs_comment_upgrade = False
+            return self._builds_asked
 
     @property
     def tag_to_addr_key(self) -> dict[str, int]:
@@ -559,11 +606,16 @@ class AnalysisService:
         db_path: Path | None,
         persist_dir: Path | None = None,
         workspace_kind: WorkspaceKind = "temporary",
+        *,
+        serves: int | None = None,
     ) -> bool:
         """Run the analysis pipeline and cache the result.
 
         Returns True if the result was published, False if an invalidate() or
-        newer build superseded it while it ran.
+        newer build superseded it while it ran. *serves* is what ``mark_building``
+        returned for the request this build serves (by default every request so
+        far); when more were asked for since, the status stays BUILDING for the
+        build that serves them.
 
         Called from a background thread; stores results for main-thread access.
         When *persist_dir* is given, the pyrung project is also written to disk.
@@ -579,6 +631,8 @@ class AnalysisService:
             self._generation += 1
             self._epoch += 1
             epoch = self._epoch
+            if serves is None:
+                serves = self._builds_asked
             self._project_is_current = False
             self._status = AnalysisStatus.BUILDING
             self._error = None
@@ -608,7 +662,7 @@ class AnalysisService:
             tag_to_key, key_to_tag = tag_maps or _build_tag_addr_key_map(nickname_rows)
         except Exception as exc:
             with self._lock:
-                if self._epoch == epoch:
+                if self._epoch == epoch and serves >= self._builds_asked:
                     self._status = AnalysisStatus.FAILED
                     self._error = f"{type(exc).__name__}: {exc}"
                     self._error_detail = traceback.format_exc()
@@ -629,7 +683,8 @@ class AnalysisService:
                 addr_key_to_tag=key_to_tag,
                 project_dir=project_dir,
             )
-            self._status = AnalysisStatus.READY
+            if serves >= self._builds_asked:
+                self._status = AnalysisStatus.READY
         return True
 
     def invalidate(self) -> None:

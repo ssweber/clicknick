@@ -119,6 +119,7 @@
 - `clicknick-cli tag apply` keeps a comment's text and block tag and changes only the annotations you changed in `tags.py` (it replaced the comment with them alone, such as `[uom=mm]`).
   - Comments that an earlier `tag apply` cut down to their annotations keep only the annotations in CLICK: put their text back by hand.
 - `clicknick-cli tag apply` no longer stages `[external]` on analog input channels you did not edit.
+- `clicknick-cli get`/`set` find tags by the names in the workspace, also when the analysis of a CLICK save failed.
 - `clicknick-cli` passes each argument as you typed it, so a value can hold quotes, backslashes or `;`, such as `set DS1 comment "Don't start"`.
   - A command given as one argument is split at spaces and at `;` outside quotes. A backslash there is kept as typed (`C:\temp`), except that `\"` and `\\` still escape inside double quotes.
   - An argument ending in `;` still ends a command.
@@ -128,6 +129,7 @@
 - Closing the project or the CLICK window while the simulation starts stops it instead of leaving it holding Modbus port 502, and a simulation that exits as it starts shows as failed instead of ready.
 - Switch settings on Unassigned I/O inputs survive opening the Simulator before the first build finishes, an analog input with a range gets its slider once the simulation starts, and the Simulator follows nickname edits after a CSV is loaded.
 - Preview Changes remembers what you pasted until CLICK saves it: running Preview Changes again, switching **Copy**, a Sync or a failed read of CLICK's program no longer has you paste the same rungs a second time, a program whose pasted rungs the new export changes or takes back is copied whole, and **Restart** asks first.
+- Preview Changes no longer forgets what you pasted when CLICK saves while it is still reading the save before.
 - A program or deletion marked done in Preview Changes that CLICK's next save shows still to do is a step again, also when that save changed nothing (it stayed done, and the window never closed).
 - A ladder CSV that Preview Changes cannot read is left out with a notice, so the window still closes once CLICK has saved the rest.
 - **Copy: Whole program** steps through a program when a difference you skipped keeps a rung CLICK holds in an old encoding, so the paste does not rewrite that rung from ClickNick's reading of it.

@@ -212,10 +212,19 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   never holds `csv/` from one save and `src/plc` from another
 - A build that fails before it publishes leaves `project_dir` an earlier save's (`project_is_current`
   is False), and Preview Changes then has nothing to compare with
-- `SavedProgram.save_count` is the one signal that CLICK saved: only the ScrWatcher bumps it. A Sync
-  rebuild, Reload from CLICK, a workspace change, a retry and a failed build leave it as it was
+- `SavedProgram.save_count` is the one signal that CLICK saved: only the ScrWatcher bumps it, once per save
+  (after a change to the Scr*.tmp files it checks every 500 ms and counts the save once two checks in a row
+  find them unchanged, about 1 s).
+  A Sync rebuild, Reload from CLICK, a workspace change, a retry and a failed build leave it as it was
+- `AnalysisService.status` reads BUILDING until a build that serves every request made so far
+  (`mark_building` returns the count, `build(serves=)` takes it) finishes. A build of the files before a save
+  that publishes while the save's build is queued leaves it BUILDING, so no reader (`saved_program()`,
+  `rung apply`, the Workspace status, the simulation) pairs a new save with the `csv/` of the save before
 - The generated code, persisted project and tag map all come from one nickname snapshot read from CLICK's
-  database, so tag names always match the code. ClickNick edits reach analysis on the next build after Sync
+  database, so tag names always match the code. ClickNick edits reach analysis on the next build after Sync.
+  `clicknick-cli` finds tags by the workspace's names (`project_tag_to_addr_key`)
+- `csv/analog_inputs.json` records the analog inputs a workspace was generated with; `tag apply` regenerates
+  its baseline `tags.py` with them, never from CLICK's Project.ini at the time it runs
 
 ### Preview Changes
 - The one window for getting ladder into CLICK (`views/preview_changes_window.py`; it was called Guided Paste):
