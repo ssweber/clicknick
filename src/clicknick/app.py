@@ -755,7 +755,9 @@ class ClickNickApp:
             ):
                 self._start_analysis_build()
 
-    def _open_address_editor(self, initial_filter: str | None = None):
+    def _open_address_editor(
+        self, initial_filter: str | None = None, *, close_after_sync: bool = False
+    ):
         """Open the Address Editor window.
 
         Multiple windows can be opened and they will share the same data.
@@ -764,6 +766,8 @@ class ClickNickApp:
         Args:
             initial_filter: If given (e.g. "changed"), the new window's first tab
                 is switched to that row filter once its data has loaded.
+            close_after_sync: The window is opened to Sync edits staged elsewhere;
+                its Sync button reads "Sync and Close".
         """
         # Check for a native or fallback database backend
         csv_path = self.csv_path_var.get()
@@ -786,6 +790,7 @@ class ClickNickApp:
                 analysis_service=self._session.analysis if self._session else None,
                 on_synced=self._on_editor_synced,
                 get_synced_pending=lambda: self._session.synced_pending if self._session else 0,
+                close_after_sync=close_after_sync,
             )
             if initial_filter:
                 window.apply_row_filter(initial_filter)
@@ -1829,6 +1834,10 @@ class ClickNickApp:
                 get_click_hwnd=lambda: self._click.hwnd if self._click else None,
                 get_saved_program=lambda: (
                     self._session.saved_program() if self._session else SavedProgram()
+                ),
+                get_project_store=lambda: self._get_store() if self.using_database else None,
+                open_staged_nicknames=lambda: self._open_address_editor(
+                    "changed", close_after_sync=True
                 ),
                 source_dir=source_dir,
                 select=select,

@@ -219,6 +219,14 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - Given the workspace source (`source_dir`), the diff shows that source through the exporter's `rung_sources.json`
   and there is no nicknames step (workspace tags go through `tag apply`). Any other folder is shown by converting
   its CSVs with pyrung
+- Under "Changed rungs" a program is still copied whole when its steps number `_MANY_STEPS` (6) or more, unless
+  it has `_SLOW_PASTE_RUNGS` (100) rungs, CLICK holds legacy-encoded rungs of it (a whole paste re-pastes skipped
+  rungs from ClickNick's reading), a step of it is done, its rungs were asked for by number, or the user
+  clicked **Step Through** for it (`_copied_whole_for_steps`; 100 counts the paste as chosen, `merged`). Every difference of a program locks while one of its steps is half done
+- Any other folder's `nicknames.csv` is never written to CLICK's database directly: **Stage nicknames** stages
+  the fields it sets as one edit in the store (`services/nickname_staging.py`; only the addresses it lists) and
+  opens the Address Editor on Changed with **Sync and Close**. The row compares the file with the store's visible
+  rows (left to stage) and base rows (not synced), is done once CLICK's database has them, and can be skipped
 
 ### Simulation
 - `ConnectionSession.simulation` (a `SimulationSession`) is the one home of the simulated PLC: the pyrung DAP

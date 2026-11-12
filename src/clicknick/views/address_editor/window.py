@@ -444,6 +444,8 @@ class AddressEditorWindow(tk.Toplevel):
             messagebox.showinfo(
                 save_label, f"Successfully {action_verb} {count} changes.", parent=self
             )
+            if self._close_after_sync:
+                self.close_without_prompt()
 
         except Exception as e:
             messagebox.showerror(f"{save_label} Error", str(e), parent=self)
@@ -1148,17 +1150,19 @@ class AddressEditorWindow(tk.Toplevel):
     def _update_save_ui_labels(self) -> None:
         """Update Save/Sync labels in UI based on data source type."""
         save_label = self._get_save_label()
+        # Opened to Sync something staged elsewhere: the button closes the window too
+        what = f"{save_label} and Close" if self._close_after_sync else f"{save_label} All"
 
         # Update menu item
         if hasattr(self, "_file_menu") and hasattr(self, "_save_menu_index"):
             try:
-                self._file_menu.entryconfig(self._save_menu_index, label=f"{save_label} All")
+                self._file_menu.entryconfig(self._save_menu_index, label=what)
             except Exception:
                 pass
 
         # Update button
         if hasattr(self, "save_btn"):
-            self.save_btn.configure(text=f"💾 {save_label} All")
+            self.save_btn.configure(text=f"💾 {what}")
 
     def _on_undo(self) -> None:
         """Handle Ctrl+Z - undo last change."""
@@ -1409,6 +1413,7 @@ class AddressEditorWindow(tk.Toplevel):
         analysis_service: object | None = None,
         on_synced: Callable[[set[int]], None] | None = None,
         get_synced_pending: Callable[[], int] = lambda: 0,
+        close_after_sync: bool = False,
     ):
         """Initialize the Address Editor window.
 
@@ -1419,6 +1424,8 @@ class AddressEditorWindow(tk.Toplevel):
             analysis_service: Optional AnalysisService for program-analysis filter prefixes.
             on_synced: Called with the saved addr_keys after a successful save.
             get_synced_pending: Count of tags synced to CLICK but not yet saved there.
+            close_after_sync: The window was opened to Sync edits staged elsewhere: its
+                Sync button reads "Sync and Close" and closes it after a successful Sync.
         """
         super().__init__(parent)
 
@@ -1428,6 +1435,7 @@ class AddressEditorWindow(tk.Toplevel):
         self._analysis_service = analysis_service
         self._on_synced = on_synced
         self._get_synced_pending = get_synced_pending
+        self._close_after_sync = close_after_sync
         self.title(self._get_window_title())
         self.geometry("1025x700")
 

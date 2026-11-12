@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import typing
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,9 +10,13 @@ from unittest.mock import Mock
 
 import pytest
 from laddercodec import Coil, Contact, Rung, write_csv
+from pyclickplc.addresses import get_addr_key
 
 from clicknick.connection_session import SavedProgram
+from clicknick.data.address_store import AddressStore
+from clicknick.data.data_source import CsvDataSource
 from clicknick.ladder.program import STAND_IN_COMMENT, LegacyEncoding, empty_rung
+from clicknick.models.address_row import AddressRow
 from clicknick.services.rung_diff import (
     BundleComparison,
     BundleSources,
@@ -94,11 +99,19 @@ def _bare_window(folder_names: list[str] = NAMES):
     window._skipped = {}
     window._pasted = {}
     window._partial = {}
+    window._step_through = set()
+    window._step_through_btn = Mock()
     window._basis = {}
     window._viewed = set()
     window._view_block = 0
     window._selection = {}
     window._nickname_path = None
+    window._nickname_rows = None
+    window._nickname_error = ""
+    window._nicknames_skipped = False
+    window._nickname_plans = None
+    window._get_project_store = lambda: None
+    window._open_staged_nicknames = Mock()
     window._changes = {}
     window._only_in_click = {}
     window._missing_in_click = frozenset()
@@ -751,15 +764,110 @@ def test_new_rungs_go_over_an_empty_rung(monkeypatch, copies) -> None:
     assert "insert an empty rung after the last rung and paste over it" in _status(window)
 
 
-def test_program_with_many_steps_suggests_copying_it_whole(monkeypatch) -> None:
+def _seven_steps() -> ProgramChange:
     proposed = _coils(*(f"Y{n:03d}" for n in range(1, 14)))
-    click = proposed[1::2]  # Every other rung is new: seven steps
-    window = _on_main(monkeypatch, compare_rungs(click, proposed))
+    return compare_rungs(proposed[1::2], proposed)  # Every other rung is new: seven steps
 
-    assert 'With 7 steps, switching Copy to "Whole program" may be quicker' in _status(window)
+
+def test_program_with_many_steps_is_copied_whole(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _seven_steps())
+
+    assert window._current_step() is None
+    assert "would take 7 steps, so it is copied whole" in _status(window)
+    window._step_through_btn.pack.assert_called()
+    window._on_action()  # Copy: the folder's whole program
+    assert copies[-1] == (RUNGS, 1)
 
     few = _on_main(monkeypatch, _rungs_differ(1, 3))
-    assert "may be quicker" not in _status(few)
+    assert few._current_step() is not None
+    assert "copied whole" not in _status(few)
+    few._step_through_btn.pack_forget.assert_called()
+
+
+def test_step_through_keeps_a_program_with_many_steps_rung_by_rung(monkeypatch) -> None:
+    window = _on_main(monkeypatch, _seven_steps())
+
+    window._on_step_through()
+
+    assert "main.csv, step 1 of 7" in _status(window)
+    assert window._copied_whole_for_steps("main.csv") == 0
+
+
+def test_skipping_below_six_steps_goes_back_to_stepping(monkeypatch) -> None:
+    window = _on_main(monkeypatch, _seven_steps())
+
+    window._toggle("main.csv", 0)
+
+    assert "main.csv, step 1 of 6" not in _status(window)  # Still six: whole
+    window._toggle("main.csv", 1)
+    assert "main.csv, step 1 of 5" in _status(window)
+
+
+# ---------------------------------------------------------------------------
+# Rungs CLICK holds in a legacy encoding
+# ---------------------------------------------------------------------------
+
+
+def _legacy(rung: int | None, file: str = "main.csv") -> LegacyEncoding:
+    detail = "it is stored as 16-bit and CLICK runs it as 4464."
+    return LegacyEncoding(file, "Main Program", rung, "Math", "H70000", detail)
+
+
+def test_a_click_save_that_makes_a_program_whole_starts_its_copy_over(monkeypatch, copies) -> None:
+    session, first, second = object(), Path("workspace/csv1"), Path("workspace/csv2")
+    base = _changes(dict.fromkeys(NAMES, False))
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=first, note=""),
+        {
+            first: {**base, "main.csv": _rungs_differ(1, 3)},
+            second: {**base, "main.csv": _seven_steps()},
+        },
+    )
+    window._on_action()  # Copy step 1 of 2
+    assert window._copied
+
+    _change(window, SavedProgram(session, generation=2, csv_dir=second, note=""))
+
+    assert not window._copied  # What was copied was step 1, not the whole program
+    assert _action(window) == "Copy"
+    assert "so it is copied whole" in _status(window)
+
+
+def test_rungs_asked_for_by_number_are_stepped_through(monkeypatch) -> None:
+    window = _on_main(monkeypatch, _seven_steps())
+    window._selection = {"main.csv": list(range(1, 14))}
+
+    window._carry_choices()
+
+    assert window._copied_whole_for_steps("main.csv") == 0
+    assert len(window._steps("main.csv")) == 7
+
+
+def test_a_whole_paste_counts_the_rungs_skipping_keeps(monkeypatch) -> None:
+    proposed = _coils(*(f"Y{n:03d}" for n in range(1, 14)))
+    extra = _coils(*(f"C{n}" for n in range(1, 96)))
+    change = compare_rungs([*proposed[1::2], *extra], proposed)
+    window = _on_main(monkeypatch, change)
+    assert window._copied_whole_for_steps("main.csv") == 8
+
+    window._toggle("main.csv", len(change.differences) - 1)  # CLICK keeps its 95 extra rungs
+
+    assert window._copied_whole_for_steps("main.csv") == 0
+
+
+@pytest.mark.parametrize("why", ["slow paste", "old encoding"])
+def test_many_steps_stay_rung_by_rung(monkeypatch, why: str) -> None:
+    change = _seven_steps()
+    if why == "old encoding":
+        change = dataclasses.replace(change, legacy=(_legacy(2),))
+    window = _on_main(monkeypatch, change)
+    if why == "slow paste":
+        program = window._programs["main.csv"]
+        rungs = tuple(_coils(*(f"C{n}" for n in range(1, 101))))
+        window._programs["main.csv"] = dataclasses.replace(program, rungs=rungs, rung_count=100)
+
+    assert window._copied_whole_for_steps("main.csv") == 0
 
 
 def test_unreadable_program_is_not_copied(monkeypatch, copies) -> None:
@@ -911,7 +1019,8 @@ def test_pane_explains_rows_with_nothing_to_show(monkeypatch) -> None:
 
     assert _shown("subroutines/a.csv") == "subroutines/a.csv matches CLICK's last save."
     assert _shown("subroutines/b.csv") == "subroutines/b.csv could not be read: bad row 3"
-    assert "no rungs" in _shown("nicknames.csv")
+    window._nickname_rows = {}
+    assert "Connect to the CLICK project" in _shown("nicknames.csv")
 
     window._changes = {}
     window._saved_program = SavedProgram(note="Connect to CLICK to see which programs changed")
@@ -936,14 +1045,158 @@ def test_clicking_a_program_only_in_click_shows_what_click_has(monkeypatch) -> N
     assert "Pasting cannot remove it" in _status(window)
 
 
-def test_plain_folder_starts_with_the_nicknames_import(tmp_path: Path) -> None:
+class _Database:
+    """CLICK's database as an AddressStore data source."""
+
+    supports_used_field = True
+    is_database = True
+    is_read_only = False
+    file_path = "SC_.mdb"
+
+    def load_all_addresses(self) -> dict[int, AddressRow]:
+        return {get_addr_key("X", 1): AddressRow("X", 1, nickname="Start")}
+
+    def save_changes(self, rows: list[AddressRow]) -> int:
+        return len(rows)
+
+
+def _project_store() -> AddressStore:
+    """CLICK's database names X001 Start, and nothing else."""
+    store = AddressStore(_Database())
+    store.load_initial_data()
+    return store
+
+
+def _nicknames_window(tmp_path: Path, store: AddressStore | None):
+    """A folder whose nicknames.csv renames X001 to Start_PB and names X003 Jog."""
     window = _folder_window(tmp_path)
+    CsvDataSource(str(window._folder / "nicknames.csv")).save_changes(
+        [AddressRow("X", 1, nickname="Start_PB"), AddressRow("X", 3, nickname="Jog")]
+    )
+    window._get_project_store = lambda: store
+    window.winfo_exists = lambda: True
+    window.after = Mock()
+    return window
+
+
+def _label(window, name: str = "nicknames.csv") -> str:
+    row = next(idx for idx, (item, *_) in enumerate(window._items) if item == name)
+    calls = [c for c in window._sheet.set_cell_data.call_args_list if c.args[:2] == (row, 3)]
+    return calls[-1].args[2]
+
+
+def test_plain_folder_starts_with_its_nicknames(tmp_path: Path) -> None:
+    window = _nicknames_window(tmp_path, _project_store())
 
     window._start()
 
     assert [name for name, *_ in window._items] == ["nicknames.csv", "main.csv"]
     assert window._items[1][2] == 2
-    assert _action(window) == "Import"
+    assert _action(window) == "Stage nicknames"
+    assert _label(window) == "1 new, 1 renamed"
+    assert "Sync before pasting" in _status(window)
+
+
+def test_nicknames_wait_for_clicks_database(tmp_path: Path) -> None:
+    window = _nicknames_window(tmp_path, None)
+    window._start()
+    assert _label(window) == "needs CLICK's database"
+
+    window._on_action()
+
+    assert "Connect to the CLICK project" in _status(window)
+    window._open_staged_nicknames.assert_not_called()
+
+
+def test_staging_opens_the_address_editor_and_leaves_click_alone(tmp_path: Path) -> None:
+    store = _project_store()
+    window = _nicknames_window(tmp_path, store)
+    window._start()
+
+    window._on_action()  # Stage nicknames
+
+    x1, x3 = get_addr_key("X", 1), get_addr_key("X", 3)
+    assert (store.visible_state[x1].nickname, store.visible_state[x3].nickname) == (
+        "Start_PB",
+        "Jog",
+    )
+    assert store.base_state[x1].nickname == "Start"  # Only Sync writes CLICK's database
+    window._open_staged_nicknames.assert_called_once_with()
+    assert _label(window) == "1 new, 1 renamed, staged"
+    assert _action(window) == "Next →"
+
+    window._on_action()  # Next: on to the programs, the nicknames not done until synced
+    assert window._items[window._current_idx][0] == "main.csv"
+    assert "nicknames.csv" not in window._done
+
+
+def test_staged_nicknames_reopen_the_address_editor(tmp_path: Path) -> None:
+    store = _project_store()
+    window = _nicknames_window(tmp_path, store)
+    window._start()
+    window._on_action()  # Stage
+    window._start(select="nicknames.csv", keep_done=True)
+    assert _action(window) == "Open Address Editor"
+
+    window._on_action()
+
+    assert window._open_staged_nicknames.call_count == 2
+    assert len(store.undo_stack) == 1  # Staged once
+
+
+def test_syncing_the_nicknames_moves_on(tmp_path: Path) -> None:
+    store = _project_store()
+    window = _nicknames_window(tmp_path, store)
+    window._start()
+    window._on_action()  # Stage
+
+    store.save_all_changes()  # Sync and Close in the Address Editor
+    window._watch_saved_program()
+
+    assert _label(window) == "Up to date"
+    assert window._items[window._current_idx][0] == "main.csv"
+
+
+def test_skipped_nicknames_are_not_staged(tmp_path: Path) -> None:
+    store = _project_store()
+    window = _nicknames_window(tmp_path, store)
+    window._start()
+    window._view_name = "nicknames.csv"
+
+    window._on_take()
+
+    assert window._nicknames_skipped
+    assert _label(window) == "1 new, 1 renamed, skipped"
+    assert _action(window) == "Next →"
+    window._on_action()
+    assert not store.has_unsaved_changes()
+    assert window._items[window._current_idx][0] == "main.csv"
+
+
+def test_window_closes_once_click_has_the_programs_and_the_nicknames(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        f"{MODULE}.compare_bundle",
+        lambda _programs, _csv_dir: BundleComparison(
+            compared=True, changes={"main.csv": ProgramChange()}
+        ),
+    )
+    store = _project_store()
+    window = _nicknames_window(tmp_path, store)
+    program = SavedProgram(object(), generation=1, csv_dir=Path("csv"), note="")
+    window._get_saved_program = lambda: program
+    window._start()
+    window._project_session = program.session
+    window._on_action()  # Stage
+    window._watch_saved_program()
+    window.destroy.assert_not_called()  # Staged is not in CLICK
+
+    store.save_all_changes()
+    window._watch_saved_program()
+
+    window.destroy.assert_called_once_with()
+    window._on_pasted.assert_called_once()
 
 
 def test_workspace_proposal_leaves_nicknames_to_the_address_editor(tmp_path: Path) -> None:
@@ -1012,16 +1265,6 @@ def test_no_notice_while_the_folder_still_holds_what_was_read(tmp_path: Path) ->
 
     window._notice_lbl.pack.assert_not_called()
     window._notice_lbl.pack_forget.assert_called()
-
-
-# ---------------------------------------------------------------------------
-# Rungs CLICK holds in a legacy encoding
-# ---------------------------------------------------------------------------
-
-
-def _legacy(rung: int | None, file: str = "main.csv") -> LegacyEncoding:
-    detail = "it is stored as 16-bit and CLICK runs it as 4464."
-    return LegacyEncoding(file, "Main Program", rung, "Math", "H70000", detail)
 
 
 def _legacy_click_copy(*rungs: int | None) -> ProgramChange:
@@ -1220,8 +1463,25 @@ def test_clicking_the_gutter_of_a_difference_skips_it(monkeypatch) -> None:
     window._on_gutter(SimpleNamespace(x=3, y=70))
 
     assert window._all_skipped("main.csv")
-    window._text.tag_add.assert_called_with("skipped", "5.0", "6.0")
+    window._text.tag_add.assert_any_call("skipped", "5.0", "6.0")
     assert _action(window) == "Next →"
+
+
+def test_current_difference_has_a_bar_down_its_gutter(monkeypatch) -> None:
+    # CLICK has Y002 only: r1 is the first difference, r3..4 the second
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+
+    def _marked() -> list[str]:
+        return [c.args[1] for c in window._text.tag_add.call_args_list if c.args[0] == "current"]
+
+    # The note and two header lines are above r1, on line 4
+    assert _marked() == ["4.0"]
+
+    window._text.tag_add.reset_mock()
+    window._on_difference_key(1)
+
+    # Then R2 matching CLICK, and r3..4 below it
+    assert _marked() == ["6.0", "7.0"]
 
 
 def test_program_with_every_difference_skipped_is_left_as_click_has_it(monkeypatch, copies) -> None:
@@ -1574,3 +1834,54 @@ def test_a_program_differing_only_by_its_stand_in_is_red_and_refused(monkeypatch
     assert window._click_label("main.csv") == "1 rung changed, unreadable"
     assert "Rung 2 of Main Program is empty in this folder." in _status(window)
     assert _red(window) == {MAIN}
+
+
+def test_differences_lock_while_a_step_is_half_done(monkeypatch, copies) -> None:
+    """Taking a difference above a half-done one would renumber the delete left to do."""
+    click = _coils("Y005", "Y009", "Y002", "Y006", "Y007", "Y008", "Y004")
+    window = _on_main(monkeypatch, compare_rungs(click, _coils("Y001", "Y002", "Y003", "Y004")))
+    window._toggle("main.csv", 0)  # Skip Y005 -> Y001
+    window._on_action()  # Copy rung 3 (Y003)
+    window._on_action()  # Next: pasted over rung 4, rungs 5 to 6 left to delete
+    assert window._partial == {"main.csv": 1}
+    prompt = _status(window)
+
+    window._toggle("main.csv", 0)  # Take it again: refused
+
+    assert window._skipped_of("main.csv") == {window._changes["main.csv"].differences[0]}
+    assert "under way" in _status(window)
+    assert window._locked("main.csv", 1)
+    assert _status(window) != prompt
+    window._on_action()  # Next: the deletes are done, and with them the program
+
+    assert not window._partial
+    assert "main.csv" in window._done
+
+
+def test_nicknames_can_be_skipped_without_clicks_database(tmp_path: Path) -> None:
+    window = _nicknames_window(tmp_path, None)
+    window._start()
+    window._view_name = "nicknames.csv"
+    window._update_difference_bar()
+    window._take_chk.configure.assert_called_with(text="Take these nicknames", state="normal")
+
+    window._on_take()
+    window._on_action()  # Next
+
+    assert window._items[window._current_idx][0] == "main.csv"
+    assert not window._needs_paste("nicknames.csv")
+
+
+def test_discarding_staged_nicknames_asks_to_stage_them_again(tmp_path: Path) -> None:
+    store = _project_store()
+    window = _nicknames_window(tmp_path, store)
+    window._start()
+    window._on_action()  # Stage
+    assert _action(window) == "Next →"
+
+    store.discard_all_changes()  # Discard in the Address Editor
+    window._watch_saved_program()
+
+    assert _action(window) == "Stage nicknames"
+    assert "Sync before pasting" in _status(window)
+    assert _label(window) == "1 new, 1 renamed"
