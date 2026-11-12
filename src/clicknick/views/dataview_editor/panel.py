@@ -808,6 +808,19 @@ class DataviewPanel(ttk.Frame):
         # Stop monitoring when panel is destroyed
         self.bind("<Destroy>", self._on_destroy)
 
+    def _rebase_frames(self, old: Stamp | None, new: Stamp | None) -> None:
+        """Undo/Redo steps from file version ``old`` now come from ``new``.
+
+        For a save, and for a reload that read the same rows: the file then holds nothing
+        those steps have not read. Steps from any other version keep theirs.
+        """
+
+        def rebase(frames: list[_UndoFrame]) -> list[_UndoFrame]:
+            return [f._replace(based_on=new) if f.based_on == old else f for f in frames]
+
+        self._undo_stack = rebase(self._undo_stack)
+        self._redo_stack = rebase(self._redo_stack)
+
     def _restore(self, frame: _UndoFrame) -> None:
         """Put the rows back as a frame holds them and redraw the whole sheet from them."""
         self.rows = [dataclasses.replace(row) for row in frame.rows]
@@ -865,6 +878,8 @@ class DataviewPanel(ttk.Frame):
         self.load_error = None
         if [(r.address, r.data_type, r.new_value) for r in before.rows] != self._row_values():
             self._push_undo(before)
+        else:
+            self._rebase_frames(before.based_on, stamp)
         self._write_checks = [False] * len(self.rows)
         self._live_values.clear()
         self._populate_sheet()
@@ -918,11 +933,8 @@ class DataviewPanel(ttk.Frame):
             self._show_save_error(f"Could not save '{self.name}': {e}")
             return False
         stamp = self._stamp(path)
+        self._rebase_frames(self._based_on, stamp)
         self._mark_read(stamp)
-        # The file now holds this panel's own write, so saving any undo or redo
-        # step later writes over nothing this panel has not read.
-        self._undo_stack = [frame._replace(based_on=stamp) for frame in self._undo_stack]
-        self._redo_stack = [frame._replace(based_on=stamp) for frame in self._redo_stack]
         self._update_status()
         return True
 

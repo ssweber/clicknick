@@ -520,6 +520,46 @@ def test_saving_rows_undone_past_an_own_save_does_not_ask(tk_root, dialogs, tmp_
         panel.destroy()
 
 
+def test_saving_rows_undone_past_a_reload_and_an_own_save_asks_first(tk_root, dialogs, tmp_path):
+    path = _copy(tmp_path)
+    panel = DataviewPanel(tk_root, file_path=path, address_normalizer=normalize_address)
+    try:
+        _click_writes(path)
+        dialogs.yes_no.append(True)  # reload
+        panel._check_file_modified()
+        panel.add_address("DS4321")
+        assert panel.save()
+        saved = path.read_bytes()  # CLICK's change and the edit
+
+        assert panel.undo() and panel.undo()  # the edit, then the reload
+        dialogs.yes_no_cancel.append(None)
+        assert panel.save() is False
+        assert len(dialogs.shown) == 2 and "changed by another program" in dialogs.shown[1]
+        assert path.read_bytes() == saved
+    finally:
+        panel.destroy()
+
+
+def test_a_reload_of_the_same_rows_does_not_make_older_steps_ask(tk_root, dialogs, tmp_path):
+    path = _copy(tmp_path)
+    panel = DataviewPanel(tk_root, file_path=path, address_normalizer=normalize_address)
+    try:
+        panel.add_address("DS4321")
+        assert panel.save()
+        mtime = os.path.getmtime(path) + 10
+        path.write_bytes(path.read_bytes())  # CLICK writes the same rows again
+        os.utime(path, (mtime, mtime))
+        dialogs.yes_no.append(True)  # reload
+        panel._check_file_modified()
+
+        assert panel.undo()
+        assert panel.save() is True
+        assert len(dialogs.shown) == 1, "only the reload prompt"
+        assert "DS4321" not in [row.address for row in DataViewFile.load(path).rows]
+    finally:
+        panel.destroy()
+
+
 @pytest.mark.parametrize("reload", [True, False], ids=["reload", "don't reload"])
 def test_after_a_file_prompt_the_sheet_has_the_focus(tk_root, dialogs, tmp_path, reload):
     path = _copy(tmp_path)
