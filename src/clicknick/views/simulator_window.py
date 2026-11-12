@@ -1388,7 +1388,9 @@ class SimulatorWindow(tk.Toplevel):
         if len(name) > PLC_DATA_NAME_MAX:
             name = name[: PLC_DATA_NAME_MAX - 1] + "\N{HORIZONTAL ELLIPSIS}"
         self._plc_data_btn.configure(text=f"PLC Data: {name}" if name else "PLC Data...")
-        self._restart_btn.configure(state="normal" if sim.enabled else "disabled")
+        self._restart_btn.configure(
+            state="normal" if sim.enabled and not sim.writing else "disabled"
+        )
 
         count = len(sim.forces)
         self._forces_btn.configure(text=f"Forces ({count})" if count else "Forces")

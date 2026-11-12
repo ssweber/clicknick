@@ -152,6 +152,7 @@ class ConsolePanel(ttk.Frame):
     def _set_busy(self, busy: bool) -> None:
         # A command's output arrives in this panel, so it stays put until done.
         self._pop_btn.configure(state="disabled" if busy else "normal")
+        self._simulation.set_console_busy(busy)
         if busy:
             self._busy_tick = 0
             self._console_input.set_busy(True)

@@ -1407,7 +1407,7 @@ def test_a_write_moves_onto_the_new_name_only_what_a_rename_would_carry_away(rea
     assert ready.sim.to_tag("Y001") == "MotorRun"
     assert ready.sim.notice == (
         "Kept under new names: Motor -> MotorRun (Y001), "
-        "the link on X002 from Motor -> link on X002 from MotorRun."
+        "the link on X002 now comes from MotorRun (was Motor)."
     )
 
 
@@ -1591,10 +1591,8 @@ def test_internal_forces_whose_name_moves_are_listed_before_the_write_and_releas
     _rebuild(ready, {"C1": "Auto", "DS1": "Spare", "DS5": "Speed"})
 
     change = ready.sim.program_change
-    notice = (
-        "Writing releases 1 force: Speed (DS1 -> DS5). Kept under new names: Mode -> Auto (C1)."
-    )
-    assert notice in change.text, "listed before the user writes"
+    notice = "1 force: Speed (now on DS5, was DS1). Kept under new names: Mode -> Auto (C1)."
+    assert f"Writing releases {notice}" in change.text, "listed before the user writes"
     mark = len(ready.dap.calls)
 
     ready.sim.write_program()
@@ -1609,7 +1607,7 @@ def test_internal_forces_whose_name_moves_are_listed_before_the_write_and_releas
     ]
     assert ready.dap.forces == {"Level": 7, "Auto": True}, "pyrung carried Level"
     assert ready.sim.forces == {"DS2": 7, "C1": True}
-    assert notice in (ready.sim.notice or "")
+    assert ready.sim.notice == f"Released {notice}"
 
 
 def test_a_write_is_refused_while_a_rung_clicknick_cannot_read_is_in_the_workspace(ready):
@@ -2355,3 +2353,79 @@ def test_stop_and_write_clears_non_retentive_values_and_keeps_the_force(on_pyrun
     assert (dap.tag("Ret"), dap.tag("NonRet"), dap.tag("Light")) == (7, 1, True)
     assert dict(dap._adapter._runner.forces) == {"Light": True}
     assert dap.mode == "run"
+
+
+def test_a_link_that_lands_where_a_followed_name_went_is_dropped(ready):
+    """Start moves from X001 to X002, which has its own cut: Start's link wins."""
+    _name(ready, "X001", "Start")
+    _name(ready, "Y001", "Motor")
+    ready.open()
+    ready.sim.link("X001", BenchLink("Y001"))
+    ready.dap.bench["X002"] = {"enable": None, "enabled": True}  # `unlink X002` in the Console
+    ready.dap.links_revision += 1
+    _frame(ready)
+    _rebuild(ready, {"X001": "Begin", "X002": "Start"})
+    assert "The cut on X002 is dropped: Start now feeds X002." in ready.sim.program_change.text
+    mark = len(ready.dap.calls)
+
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+
+    assert _calls_since(ready.dap, mark) == [
+        ("restore_link", "X002"),
+        ("reload",),
+        ("set_mode", "stop", None),
+    ]
+    assert ready.dap.bench == {"Start": {"enable": "Motor", "enabled": True, "trigger": None,
+                                         "response": {}}}  # fmt: skip
+    assert ready.sim.bench_links == {"X002": BenchLink("Y001")}
+    assert "The cut on X002 is dropped" in (ready.sim.notice or "")
+
+
+def test_a_write_pyrung_never_answers_sends_nothing_by_name(ready):
+    from clicknick.services.dap_service import DapUnavailableError
+
+    _name(ready, "C1", "Run")
+    ready.open()
+    ready.sim.force("C1", True)
+    ready.dap.frame(forces={"Run": True})
+    ready.scheduler.run_ready()
+    _rebuild(ready, {"C1": "Spare", "C2": "Run"})
+    ready.dap.reload_error = DapUnavailableError("evaluate: no response from simulation")
+    mark = len(ready.dap.calls)
+
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+
+    assert _calls_since(ready.dap, mark) == [("unforce", "Run"), ("reload",)], (
+        "`force Run` would land on C2 if pyrung did load the new program"
+    )
+    assert "which program the simulation runs is unknown" in ready.messages("error")
+    assert ready.sim.program_change.actions[-1] == "restart"
+
+
+def test_no_write_while_a_console_command_runs(ready):
+    ready.open()
+    _rebuild(ready)
+    ready.sim.set_console_busy(True)
+    assert ready.sim.program_change.actions == ()
+    mark = len(ready.dap.calls)
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+    assert ready.dap.calls[mark:] == []
+    assert "while a Console command runs" in ready.messages("error")
+
+    ready.sim.set_console_busy(False)
+    assert ready.sim.program_change.actions == ("write",)
+
+
+def test_no_restart_while_the_program_is_written(ready):
+    jobs = _queued(ready)
+    ready.open()
+    _run_jobs(ready, jobs)
+    _rebuild(ready)
+    ready.sim.write_program()
+    ready.sim.restart()
+    ready.scheduler.run_ready()
+    assert len(ready.daps) == 1
+    assert "Cannot restart while the program is being written." in ready.messages("error")

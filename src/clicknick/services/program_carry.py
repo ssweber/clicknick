@@ -11,8 +11,10 @@ The rule:
 
 - A bench link (or cut) follows each of its names, feedback and enable, while
   the new program still has it. A name that is gone stays on its address,
-  under the address's new name (every program has every CLICK address, so no
-  link is released). A name that now sits on another address is noted.
+  under the address's new name. A name that now sits on another address is
+  noted.
+- Two links that land on one feedback: the one that followed its name wins
+  and the other is dropped (released), with a note.
 - A force stays on its address, under the address's new name when its name
   is gone (a pure rename, an unnamed address gaining a nickname included).
 - A force whose name now sits on another address stays on its address too
@@ -59,13 +61,13 @@ class CarryPlan:
     """Each listed entry, by its name in the running program.
 
     *forces* maps an old tag name to its new name, or None to release it;
-    *links* an old feedback name to its new names. The notes say why a force
-    is released, an entry renamed or a link moved with its names, in listing
-    order.
+    *links* an old feedback name to its new names, or None to drop it. The
+    notes say why a force is released, an entry renamed, a link moved with its
+    names or dropped, in listing order.
     """
 
     forces: Mapping[str, str | None] = field(default_factory=dict)
-    links: Mapping[str, LinkTarget] = field(default_factory=dict)
+    links: Mapping[str, LinkTarget | None] = field(default_factory=dict)
     released: tuple[str, ...] = ()
     renamed: tuple[str, ...] = ()
     moved: tuple[str, ...] = ()
@@ -74,21 +76,28 @@ class CarryPlan:
         """The plan as pyrung's reload takes it: ``{"forces": ..., "links": ...}``."""
         return {
             "forces": dict(self.forces),
-            "links": {fb: target.as_dap() for fb, target in self.links.items()},
+            "links": {
+                fb: None if target is None else target.as_dap() for fb, target in self.links.items()
+            },
         }
 
-    @property
-    def notice(self) -> str:
-        """What the write changes, for the notice before and after it ("" when nothing)."""
+    def describe(self, *, written: bool) -> str:
+        """What the write does (before it) or did (*written*); "" when nothing."""
         parts: list[str] = []
         if self.released:
             count = len(self.released)
             forces = "force" if count == 1 else "forces"
-            parts.append(f"Writing releases {count} {forces}: {', '.join(self.released)}.")
+            verb = "Released" if written else "Writing releases"
+            parts.append(f"{verb} {count} {forces}: {', '.join(self.released)}.")
         if self.renamed:
             parts.append(f"Kept under new names: {', '.join(self.renamed)}.")
         parts.extend(f"{note[0].upper()}{note[1:]}." for note in self.moved)
         return " ".join(parts)
+
+    @property
+    def notice(self) -> str:
+        """What the write would do, listed before the user writes."""
+        return self.describe(written=False)
 
 
 class _Program:
@@ -130,7 +139,7 @@ def _force(
     if where == address:
         return name, ""
     if where is not None and not _hardware(address, analog):
-        return None, f"{name} ({address} -> {where})"
+        return None, f"{name} (now on {where}, was {address})"
     moved = new.name(address)
     shown = "" if address in (name, moved) else f" ({address})"
     return moved, f"{name} -> {moved}{shown}"
@@ -141,8 +150,8 @@ def _link_name(name: str, address: str, new: _Program) -> str:
     return name if new.address(name) is not None else new.name(address)
 
 
-def _link_text(feedback: str, enable: str | None) -> str:
-    return f"cut on {feedback}" if enable is None else f"link on {feedback} from {enable}"
+def _kind(enable: str | None) -> str:
+    return "cut" if enable is None else "link"
 
 
 def plan_carry(
@@ -171,8 +180,9 @@ def plan_carry(
         elif note:
             renamed.append(note)
 
-    carried_links: dict[str, LinkTarget] = {}
-    moved: list[str] = []
+    carried_links: dict[str, LinkTarget | None] = {}
+    notes: dict[str, tuple[list[str], list[str]]] = {}  # feedback -> (renamed, moved)
+    followed: dict[str, str] = {}  # new feedback -> the old feedback name that followed to it
     for feedback, enable in links.items():
         feedback_at = before.address(feedback)
         enable_at = None if enable is None else before.address(enable)
@@ -184,19 +194,36 @@ def plan_carry(
             None if enable is None or enable_at is None else _link_name(enable, enable_at, after)
         )
         carried_links[feedback] = LinkTarget(new_feedback, new_enable)
-        if (new_feedback, new_enable) != (feedback, enable):
-            renamed.append(
-                f"the {_link_text(feedback, enable)} -> {_link_text(new_feedback, new_enable)}"
-            )
+        kind = _kind(enable)
+        names, places = notes[feedback] = ([], [])
+        if new_feedback == feedback and after.address(feedback) is not None:
+            followed[new_feedback] = feedback
+        if new_feedback != feedback:
+            names.append(f"the {kind} on {feedback} is now on {new_feedback}")
+        if new_enable != enable:
+            names.append(f"the link on {feedback} now comes from {new_enable} (was {enable})")
         # A name followed to another address: the link now runs between other points.
         now = after.address(feedback) if new_feedback == feedback else feedback_at
         if now != feedback_at:
-            moved.append(
-                f"the link on {feedback} now feeds {feedback} on {now} (was {feedback_at})"
-            )
+            places.append(f"the {kind} on {feedback} now feeds {now} (was {feedback_at})")
         now = after.address(enable) if enable is not None and new_enable == enable else enable_at
         if now != enable_at:
-            moved.append(f"the link on {feedback} now follows {enable} on {now} (was {enable_at})")
+            places.append(f"the link on {feedback} now follows {enable} on {now} (was {enable_at})")
+
+    # A link that stayed on its address can land where another followed its name:
+    # the one that followed wins, and the other is dropped.
+    moved: list[str] = []
+    for feedback, (names, places) in notes.items():
+        target = carried_links[feedback]
+        winner = None if target is None else followed.get(target.feedback)
+        if target is not None and winner is not None and winner != feedback:
+            carried_links[feedback] = None
+            where = after.address(target.feedback)
+            kind = _kind(links[feedback])
+            moved.append(f"the {kind} on {feedback} is dropped: {winner} now feeds {where}")
+            continue
+        renamed.extend(names)
+        moved.extend(places)
     return CarryPlan(
         carried_forces, carried_links, tuple(released_forces), tuple(renamed), tuple(moved)
     )

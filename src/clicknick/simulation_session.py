@@ -410,6 +410,8 @@ class SimulationSession:
         self._writing = False
         self._write_error: str | None = None
         self._shown_change: ProgramChange | None = None
+        # A Console command in flight: it could land between a write's listing and its reload.
+        self._console_busy = False
         # The notice that a write or Restart was refused, until one goes through.
         self._refusal: str | None = None
         # A launch whose process died before the session adopted it.
@@ -899,8 +901,8 @@ class SimulationSession:
         return True
 
     def _write_actions(self) -> tuple[ProgramAction, ...]:
-        if self._writing:
-            return ()  # one write at a time
+        if self._writing or self._console_busy:
+            return ()  # one write at a time, and not under a Console command
         actions: tuple[ProgramAction, ...] = (
             ("run_time_edit", "stop_and_write") if self.switch_position == "run" else ("write",)
         )
@@ -1648,6 +1650,9 @@ class SimulationSession:
 
         if not self._enabled or self._closed:
             return
+        if self._writing:
+            self._message("Cannot restart while the program is being written.", "error")
+            return
         if self._dap is not None:
             analysis = self._get_analysis()
             if analysis is not None and analysis.status is AnalysisStatus.BUILDING:
@@ -1677,6 +1682,12 @@ class SimulationSession:
     def writing(self) -> bool:
         """True from a write's request until pyrung answers; the Console waits meanwhile."""
         return self._writing
+
+    def set_console_busy(self, busy: bool) -> None:
+        """The Console has a command in flight (or not); no write is offered meanwhile."""
+        if busy != self._console_busy:
+            self._console_busy = busy
+            self._emit("desired")
 
     def _adopt_listing(self, listing: _Listing) -> None:
         """What pyrung had set when the write paused it, by address: the user's choices now."""
@@ -1747,20 +1758,23 @@ class SimulationSession:
         self._fetch_links(dap, token, sync=True)
         self._check_program()
 
-    def _on_write_failed(self, token: int, text: str, listing: _Listing | None) -> None:
+    def _on_write_failed(
+        self, token: int, text: str, listing: _Listing | None, *, known: bool = True
+    ) -> None:
+        """A write that failed; not *known*: pyrung never answered, so which program runs is not."""
         dap = self._dap
         if token != self._token or dap is None:
             return
         self._writing = False
+        if not known:
+            text = f"{text}; which program the simulation runs is unknown"
         self._write_error = text
         if listing is not None:
             self._adopt_listing(listing)
         else:
             self._forces_baseline = None
-        self._message(
-            f"Writing the program failed: {text}. The simulation still runs the previous one.",
-            "error",
-        )
+        still = "still runs the previous one" if known else "may run either one"
+        self._message(f"Writing the program failed: {text}. The simulation {still}.", "error")
         self._links_synced = False
         self._links_refetch = False
         self._fetch_links(dap, token, sync=True)
@@ -1796,6 +1810,9 @@ class SimulationSession:
             return
         if self._writing:
             self._message("The program is being written to the simulation.", "error")
+            return
+        if self._console_busy:
+            self._message("Cannot write the program while a Console command runs.", "error")
             return
         reason = self._write_refusal()
         if reason is not None:
@@ -1868,7 +1885,7 @@ class SimulationSession:
             links_out = {
                 fb: new
                 for fb, new in plan.links.items()
-                if (new.feedback, new.enable) != (fb, enables[fb])
+                if new is None or (new.feedback, new.enable) != (fb, enables[fb])
             }
             error: str | None = None
             summary = ""
@@ -1880,6 +1897,14 @@ class SimulationSession:
                 summary = dap.reload()
             except Exception as exc:
                 error = str(exc)
+                if _unavailable(exc):
+                    # No answer: which program runs, and so which names apply, is
+                    # unknown. Nothing is sent by name; Restart starts over.
+                    unanswered_error = error
+                    self._post(
+                        lambda: self._on_write_failed(token, unanswered_error, None, known=False)
+                    )
+                    return
 
             if error is None and (how == "stop" or position == "stop"):
                 # A reload leaves STOP for RUN. Stop and Write goes through STOP, and a
@@ -1894,9 +1919,12 @@ class SimulationSession:
             refused_forces: set[str] = set()
             refused_links: set[str] = set()
             for fb, new in links_out.items():
-                feedback, enable = (
-                    (fb, enables[fb]) if error is not None else (new.feedback, new.enable)
-                )
+                if error is not None:
+                    feedback, enable = fb, enables[fb]
+                elif new is not None:
+                    feedback, enable = new.feedback, new.enable
+                else:
+                    continue  # dropped
                 link = _bench_link(rows[fb], enable)
                 what = f"the bench link on {feedback}"
                 reason = refusal(what, partial(_send_link, dap, feedback, link))
@@ -1941,7 +1969,7 @@ class SimulationSession:
             links: dict[str, BenchLink] = {}
             for fb, row in rows.items():
                 new = plan.links[fb] if error is None else LinkTarget(fb, enables[fb])
-                if fb in refused_links:
+                if new is None or fb in refused_links:
                     continue
                 address = address_of(new.feedback, names)
                 enable = None if new.enable is None else address_of(new.enable, names)
@@ -1952,7 +1980,7 @@ class SimulationSession:
                 links,
                 listed.get("bench") is not False,
                 tuple(problems),
-                plan.notice if error is None else "",
+                plan.describe(written=True) if error is None else "",
             )
             if error is not None:
                 failure = error

@@ -311,25 +311,31 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - One check says whether the workspace's program can run (`_workspace_problem`: converted, current, a
   `run.py`, no rung ClickNick cannot read). Start, a write and Restart all use it; a write or Restart it
   refuses leaves the simulation running and sets a notice saying why
-- A write (`_write_program`) is one job on the action worker, and the Console refuses commands until it is
-  answered. It pauses, reads pyrung's force and link listing (the truth, whatever the Console did since the
-  last frame), and `plan_carry` (`services/program_carry.py`) decides each entry's name in the new program:
-  a bench link follows its names while they exist (noted when one now sits on another address), else stays on
-  the address under its new name; a force stays on its address under the new name on a pure rename (an unnamed
-  address gaining a nickname included); a force whose name now sits on another address stays only on X, Y or an
-  analog channel's DF and is released on internal memory. The offer lists all this before the user writes. Only the
-  entries whose name changes are unforced or restored before the reload and sent again after it (pyrung
-  carries the rest by name); a planned pyrung reload that takes `CarryPlan.as_dap()` replaces those calls. The
-  listing, placed as planned, is adopted by address. A write answered after another build started keeps the
-  old names and offers the change again. pyrung's reload leaves STOP for RUN, so a Write in STOP sends STOP
-  again, and the switch shows the position it had until the write is answered
-- A reload that fails puts back what it released, keeps the old program and adds **Restart** to the offer.
+- A write (`_write_program`) is one job on the action worker. The Console refuses commands until it is
+  answered, no write is offered while a Console command runs (`set_console_busy`), and Restart waits for it.
+  An agent on `pyrung live` can still change forces and links while a write runs. The write pauses, reads
+  pyrung's force and link listing (the truth, whatever the Console did since the last frame), and
+  `plan_carry` (`services/program_carry.py`) decides each entry's name in the new program:
+  - a bench link follows its names while they exist (noted when one now sits on another address), else stays
+    on the address under its new name; when two land on one feedback, the one that followed its name wins and
+    the other is dropped
+  - a force stays on its address under the new name on a pure rename (an unnamed address gaining a nickname
+    included); a force whose name now sits on another address stays only on X, Y or an analog channel's DF and
+    is released on internal memory
+- The offer lists releases, drops and moves before the user writes. Only the entries whose name changes are
+  unforced or restored before the reload and sent again after it (pyrung carries the rest by name); a planned
+  pyrung reload that takes `CarryPlan.as_dap()` replaces those calls. The listing, placed as planned, is
+  adopted by address. A write answered after another build started keeps the old names and offers the change
+  again. pyrung's reload leaves STOP for RUN, so a Write in STOP sends STOP again, and the switch shows the
+  position it had until the write is answered
+- A reload that fails puts back what it released, keeps the old program and adds **Restart** to the offer. A
+  reload pyrung never answers sends nothing by name (which program runs is unknown) and offers Restart.
   Restart (also on the toolbar) relaunches on what the workspace holds now, from power-on values or the PLC
   data file, with the same desired state and switch position; so do Start, a PLC data file change, and a
   simulation that failed to start once a later build converts (`_follow_program`). A workspace move
   relaunches without the check (`relaunch`), waiting out the build
-- `_reapply` (after a launch) sends every entry even when one goes unanswered; an unanswered entry stays set and is reported,
-  and an unanswered link listing is asked again on the next frame
+- `_reapply` (after a launch) sends every entry even when one goes unanswered; an unanswered entry stays set
+  and is reported, and an unanswered link listing is asked again on the next frame
 - A failed DAP request undoes the user's action only when the simulation that was asked refused it: not when it
   has since stopped or restarted (token check) or never answered (`DapUnavailableError`)
 

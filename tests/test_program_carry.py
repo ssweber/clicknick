@@ -27,8 +27,8 @@ OLD = _maps({"X001": "Start", "Y001": "Motor", "C1": "Mode", "DS1": "Speed", "DF
         ({}, "Mode", "C1", "Mode -> C1"),
         ({"C2": "Auto"}, "C2", "Auto", "C2 -> Auto"),
         # Its name now sits on another address: released.
-        ({"DS1": "Spare", "DS5": "Speed"}, "Speed", None, "Speed (DS1 -> DS5)"),
-        ({"DS5": "Speed"}, "Speed", None, "Speed (DS1 -> DS5)"),
+        ({"DS1": "Spare", "DS5": "Speed"}, "Speed", None, "Speed (now on DS5, was DS1)"),
+        ({"DS5": "Speed"}, "Speed", None, "Speed (now on DS5, was DS1)"),
         # Hardware stays on its address, under the address's new name.
         ({"X001": "StartPB", "X005": "Start"}, "Start", "StartPB", "Start -> StartPB (X001)"),
         ({}, "Motor", "Y001", "Motor -> Y001"),
@@ -52,7 +52,7 @@ def test_an_internal_df_is_not_hardware_unless_an_analog_channel_has_it():
     new = _maps({"DF1": "Probe", "DF2": "Temp"})
     plan = plan_carry(OLD, new, {"Temp": 20.5}, {})
     assert plan.forces == {"Temp": None}
-    assert plan.released == ("Temp (DF1 -> DF2)",)
+    assert plan.released == ("Temp (now on DF2, was DF1)",)
     plan = plan_carry(OLD, new, {"Temp": 20.5}, {}, analog=("DF1",))
     assert plan.forces == {"Temp": "Probe"}
 
@@ -83,9 +83,9 @@ def test_links(new, feedback, enable, target):
         ({"X001": "Start", "Y005": "Motor"}, "Start", "Motor",
          ("the link on Start now follows Motor on Y005 (was Y001)",)),
         ({"X005": "Start", "Y001": "Motor"}, "Start", "Motor",
-         ("the link on Start now feeds Start on X005 (was X001)",)),
+         ("the link on Start now feeds X005 (was X001)",)),
         ({"X005": "Start"}, "Start", None,
-         ("the link on Start now feeds Start on X005 (was X001)",)),
+         ("the cut on Start now feeds X005 (was X001)",)),
         # A rename, or both names where they were: nothing moved.
         ({"X001": "Start", "Y001": "Run"}, "Start", "Motor", ()),
         ({"X001": "Start", "Y001": "Motor"}, "Start", "Motor", ()),
@@ -120,14 +120,45 @@ def test_the_notice_lists_releases_renames_then_moves():
         {"X002": "Start", "X003": "Motor"},
     )
     assert plan.notice == (
-        "Writing releases 2 forces: Mode (C1 -> C2), Speed (DS1 -> DS5). "
+        "Writing releases 2 forces: Mode (now on C2, was C1), Speed (now on DS5, was DS1). "
         "Kept under new names: Start -> Begin (X001), "
-        "the link on X002 from Start -> link on X002 from Begin. "
+        "the link on X002 now comes from Begin (was Start). "
         "The link on X003 now follows Motor on Y005 (was Y001)."
     )
+    assert plan.describe(written=True).startswith("Released 2 forces: Mode (now on C2")
     assert CarryPlan().notice == ""
     one = plan_carry(OLD, _maps({"DS5": "Speed"}), {"Speed": 4}, {})
-    assert one.notice == "Writing releases 1 force: Speed (DS1 -> DS5)."
+    assert one.notice == "Writing releases 1 force: Speed (now on DS5, was DS1)."
+    assert one.describe(written=True) == "Released 1 force: Speed (now on DS5, was DS1)."
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "links", "kept", "dropped", "note"),
+    [
+        # Start moves from X001 to X002, which has its own cut: Start's link wins.
+        ({"X001": "Start", "Y001": "Motor"}, {"X002": "Start", "Y001": "Motor"},
+         {"Start": "Motor", "X002": None}, ("Start", LinkTarget("Start", "Motor")), "X002",
+         "the cut on X002 is dropped: Start now feeds X002"),
+        # The same on internal bits: Run moves from C1 to C2, C2 has a link from C5.
+        ({"C1": "Run", "C5": "Aux"}, {"C2": "Run", "C5": "Aux"},
+         {"Run": "Aux", "C2": "Aux"}, ("Run", LinkTarget("Run", "Aux")), "C2",
+         "the link on C2 is dropped: Run now feeds C2"),
+        # Listed the other way round, the followed link still wins.
+        ({"X001": "Start", "Y001": "Motor"}, {"X002": "Start", "Y001": "Motor"},
+         {"X002": None, "Start": "Motor"}, ("Start", LinkTarget("Start", "Motor")), "X002",
+         "the cut on X002 is dropped: Start now feeds X002"),
+    ],
+)  # fmt: skip
+def test_two_links_on_one_new_feedback_keep_the_one_that_followed_its_name(
+    old, new, links, kept, dropped, note
+):
+    plan = plan_carry(_maps(old), _maps(new), {}, links)
+    assert plan.links[kept[0]] == kept[1]
+    assert plan.links[dropped] is None
+    assert note in plan.moved
+    about = [t for t in plan.moved + plan.renamed if t.split(" ", 3)[3].startswith(dropped + " ")]
+    assert about == [note], "no note says the dropped link was kept"
+    assert plan.as_dap()["links"][dropped] is None
 
 
 def test_address_of():
