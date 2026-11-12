@@ -1691,6 +1691,13 @@ class SimulationSession:
         """True from a write's request until pyrung answers; the Console waits meanwhile."""
         return self._writing
 
+    def _end_console_command(self, finish: Callable[[], None] | None) -> None:
+        self._console_commands -= 1
+        if not self._console_commands:
+            self._emit("desired")
+        if finish is not None:
+            finish()
+
     def run_console_command(self, run: Callable[[], Any], done: Callable[[Any], None]) -> None:
         """Run a Console command: *run* on a worker thread, then *done* with its result.
 
@@ -1712,13 +1719,6 @@ class SimulationSession:
                 self._post(partial(self._end_console_command, finish))
 
         self._run_background(worker, "console-cmd")
-
-    def _end_console_command(self, finish: Callable[[], None] | None) -> None:
-        self._console_commands -= 1
-        if not self._console_commands:
-            self._emit("desired")
-        if finish is not None:
-            finish()
 
     def _adopt_listing(self, listing: _Listing) -> None:
         """What pyrung had set when the write paused it, by address: the user's choices now."""
@@ -1808,9 +1808,7 @@ class SimulationSession:
             return
         self._writing = False
         if not known:
-            text = (
-                f"{text}; which program the simulation runs is unknown, and it may be paused"
-            )
+            text = f"{text}; which program the simulation runs is unknown, and it may be paused"
             if released:
                 text = f"{text}. Released before the reload: {', '.join(released)}"
             # Frames may show it paused; Restart starts in the position the user had.
@@ -1820,8 +1818,8 @@ class SimulationSession:
             self._adopt_listing(listing)
         else:
             self._forces_baseline = None
-        still = "still runs the previous one" if known else "may run either one"
-        self._message(f"Writing the program failed: {text}. The simulation {still}.", "error")
+        still = " The simulation still runs the previous one." if known else ""
+        self._message(f"Writing the program failed: {text}.{still}", "error")
         self._links_synced = False
         self._links_refetch = False
         self._fetch_links(dap, token, sync=True)
