@@ -100,6 +100,7 @@ def _bare_window(folder_names: list[str] = NAMES):
     window._pasted = {}
     window._partial = {}
     window._step_through = set()
+    window._kept_in_click = set()
     window._step_through_btn = Mock()
     window._basis = {}
     window._viewed = set()
@@ -158,14 +159,19 @@ def _window(
     changes_by_dir: dict[Path, dict[str, ProgramChange]],
     missing: frozenset[str] = frozenset(),
     only_in_click: dict[str, ProgramChange] | None = None,
+    only_in_click_by_dir: dict[Path, dict[str, ProgramChange]] | None = None,
 ):
-    """A window without Tk widgets, comparing against canned results per CSV folder."""
+    """A window without Tk widgets, comparing against canned results per CSV folder.
+
+    *only_in_click_by_dir* gives a folder its own programs only in CLICK; the
+    rest have *only_in_click*.
+    """
     monkeypatch.setattr(
         f"{MODULE}.compare_bundle",
         lambda _programs, csv_dir: BundleComparison(
             compared=True,
             changes=changes_by_dir[csv_dir],
-            only_in_click=only_in_click or {},
+            only_in_click=(only_in_click_by_dir or {}).get(csv_dir, only_in_click or {}),
             missing_in_click=missing,
         ),
     )
@@ -1027,22 +1033,106 @@ def test_pane_explains_rows_with_nothing_to_show(monkeypatch) -> None:
     assert _shown("main.csv") == "Connect to CLICK to see which programs changed"
 
 
-def test_clicking_a_program_only_in_click_shows_what_click_has(monkeypatch) -> None:
-    csv_dir = Path("workspace/csv")
+def _only_in_click_window(monkeypatch, *, saved_after: bool = False):
+    """main.csv and the subroutines differ; CLICK also has subroutines/old.csv.
+
+    With *saved_after*, a CLICK save (generation 2) makes the folder's programs match.
+    """
+    session, before, after = object(), Path("before/csv"), Path("after/csv")
     window = _window(
         monkeypatch,
-        SavedProgram(object(), generation=1, csv_dir=csv_dir, note=""),
-        {csv_dir: _changes(dict.fromkeys(NAMES, True))},
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {
+            before: _changes(dict.fromkeys(NAMES, True)),
+            after: _changes(dict.fromkeys(NAMES, False)),
+        },
         only_in_click={"subroutines/old.csv": compare_rungs(_coils("Y009"), [])},
     )
-    current = window._current_idx
-    window._sheet.get_currently_selected.return_value = SimpleNamespace(row=len(NAMES))
+    window.saved_after = SavedProgram(session, generation=2, csv_dir=after, note="")
+    return window
+
+
+OLD = len(NAMES)  # The row of subroutines/old.csv, after the folder's own
+
+
+def test_clicking_a_program_only_in_click_makes_its_deletion_the_step(monkeypatch) -> None:
+    window = _only_in_click_window(monkeypatch)
+    window._sheet.get_currently_selected.return_value = SimpleNamespace(row=OLD)
 
     window._on_cell_select(None)
 
-    assert window._current_idx == current  # Reading it does not make it a step
+    assert window._current_idx == OLD
     assert _inserted(window)[-1] == ("-R1  out(Y009)  # Y009\n", "removed")
-    assert "Pasting cannot remove it" in _status(window)
+    assert 'Delete the subroutine old in CLICK, then click "Next"' in _status(window)
+    assert _action(window) == "Next →"
+    window._take_chk.configure.assert_called_with(text="Delete it in CLICK", state="normal")
+
+    window._on_action()  # Next: deleted
+
+    assert "subroutines/old.csv" in window._done
+
+
+def test_a_program_kept_in_click_does_not_hold_the_window_open(monkeypatch) -> None:
+    window = _only_in_click_window(monkeypatch)
+    window._view_name = "subroutines/old.csv"
+    assert window._needs_paste("subroutines/old.csv")
+
+    window._on_take()  # Untick Delete it in CLICK
+
+    assert not window._needs_paste("subroutines/old.csv")
+    assert window._click_label("subroutines/old.csv") == "Only in CLICK, kept"
+    _change(window, window.saved_after)
+    window.destroy.assert_called_once_with()
+
+
+def test_a_deletion_click_saved_without_is_to_do_again(monkeypatch) -> None:
+    window = _only_in_click_window(monkeypatch)
+    window._select_row(OLD)
+    window._on_action()  # Next, though it was not deleted
+    assert "subroutines/old.csv" in window._done
+
+    _change(window, window.saved_after)
+
+    window.destroy.assert_not_called()  # CLICK still has it
+    assert "subroutines/old.csv" not in window._done
+    assert window._items[window._current_idx][0] == "subroutines/old.csv"
+
+
+@pytest.mark.parametrize("deleted", ["subroutines/old.csv", "subroutines/older.csv"])
+def test_a_click_save_that_deletes_the_current_row_moves_on(monkeypatch, deleted) -> None:
+    session, before, after = object(), Path("before/csv"), Path("after/csv")
+    olds = {
+        "subroutines/old.csv": compare_rungs(_coils("Y009"), []),
+        "subroutines/older.csv": compare_rungs(_coils("Y008"), []),
+    }
+    left = {name: change for name, change in olds.items() if name != deleted}
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {before: _changes(dict.fromkeys(NAMES, True)), after: _changes(dict.fromkeys(NAMES, True))},
+        only_in_click_by_dir={before: olds, after: left},
+    )
+    window._select_row(next(i for i, (name, *_) in enumerate(window._items) if name == deleted))
+
+    # Deleted in CLICK and saved, before "Next"; the folder's programs are still to do
+    _change(window, SavedProgram(session, generation=2, csv_dir=after, note=""))
+
+    window.destroy.assert_not_called()
+    assert deleted not in [name for name, *_ in window._items]
+    assert window._items[window._current_idx][0] in NAMES  # On to the folder's programs
+    assert Path(deleted).stem not in _status(window)
+
+
+def test_a_reload_keeps_a_deletion_marked_done(monkeypatch) -> None:
+    window = _only_in_click_window(monkeypatch)
+    window._select_row(OLD)
+    window._on_action()  # Next: deleted
+    window._scan_folder = lambda: None  # The folder is read again, as it was
+
+    window._start(keep_done=True)
+
+    assert "subroutines/old.csv" in window._done
+    assert not window._needs_paste("subroutines/old.csv")
 
 
 class _Database:
@@ -1784,10 +1874,17 @@ def test_a_program_only_in_click_that_cannot_be_read_is_one_to_delete(monkeypatc
 
     note = window._describe_view()[0]
     assert note.splitlines()[0] == (
-        "CLICK's copy cannot be read. This folder does not have the program. "
-        "Delete it in CLICK if it is no longer used."
+        "CLICK's copy cannot be read. "
+        "This folder does not have the program; it is to be deleted in CLICK."
     )
     assert "Paste" not in note
+
+    window._on_take()  # Untick Delete it in CLICK
+
+    assert window._describe_view()[0].splitlines()[0] == (
+        "CLICK's copy cannot be read. "
+        "This folder does not have the program; CLICK keeps it as it is."
+    )
 
 
 def _stand_in_window(monkeypatch, click: list, proposed: list, rung: int):

@@ -223,6 +223,9 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   it has `_SLOW_PASTE_RUNGS` (100) rungs, CLICK holds legacy-encoded rungs of it (a whole paste re-pastes skipped
   rungs from ClickNick's reading), a step of it is done, its rungs were asked for by number, or the user
   clicked **Step Through** for it (`_copied_whole_for_steps`; 100 counts the paste as chosen, `merged`). Every difference of a program locks while one of its steps is half done
+- A program only in CLICK (`only_in_click`) is a row like the others: taken, its step is deleting it in CLICK
+  ("Next" marks it done; a CLICK save that still has it makes it a step again); unticking **Delete it in CLICK**
+  keeps it (`_kept_in_click`), and a kept program does not hold the window open
 - Any other folder's `nicknames.csv` is never written to CLICK's database directly: **Stage nicknames** stages
   the fields it sets as one edit in the store (`services/nickname_staging.py`; only the addresses it lists) and
   opens the Address Editor on Changed with **Sync and Close**. The row compares the file with the store's visible

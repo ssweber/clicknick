@@ -87,7 +87,8 @@ _ICON_ONLY_IN_CLICK = "!"
 _CLICK_NEW = "New"
 _CLICK_MATCHES = "Up to date"
 _CLICK_ONLY = "Only in CLICK"
-_DESC_ONLY_IN_CLICK = "Not in this folder; delete it in CLICK if it is no longer used"
+_DESC_ONLY_IN_CLICK = "Not in this folder: delete it in CLICK, or untick to keep it"
+_DELETE_IN_CLICK = "Delete it in CLICK"
 
 # Row colours
 _BG_DONE = "#d4edda"
@@ -214,10 +215,11 @@ def _listed_rungs(rungs: Sequence[int]) -> str:
     )
 
 
-def _legacy_note(change: ProgramChange, *, only_in_click: bool = False) -> str:
+def _legacy_note(change: ProgramChange, *, instead: str = "") -> str:
     """Say which of CLICK's rungs hold a legacy encoding or cannot be read, and what to do.
 
-    A program only in CLICK is not pasted, so its note says to delete it instead.
+    A program only in CLICK is not pasted, so its note says *instead* (what
+    happens to it) in place of pasting again.
     """
     if not change.legacy:
         return ""
@@ -231,8 +233,8 @@ def _legacy_note(change: ProgramChange, *, only_in_click: bool = False) -> str:
         head, again = f"CLICK's copy of rungs {_listed_rungs(rungs)} {fault}.", "Paste them again."
     if change.unreadable:
         again = "Paste the whole program again."
-    if only_in_click:
-        again = "This folder does not have the program. Delete it in CLICK if it is no longer used."
+    if instead:
+        again = instead
     lines = [
         f"  {describe_legacy_encoding(item, program=False)}"
         for item in change.legacy[:_LEGACY_LISTED]
@@ -435,6 +437,7 @@ class PreviewChangesWindow(tk.Toplevel):
     def _forget_choices(self) -> None:
         self._skipped.clear()
         self._step_through.clear()
+        self._kept_in_click.clear()
         self._nicknames_skipped = False
         self._forget_progress()
 
@@ -587,6 +590,8 @@ class PreviewChangesWindow(tk.Toplevel):
         """Whether every difference of the program is skipped: nothing to paste."""
         if name == _NICKNAMES_NAME:
             return self._nicknames_skipped
+        if name in self._only_in_click:
+            return name in self._kept_in_click
         change = self._choosable(name)
         return change is not None and set(change.differences) <= self._skipped_of(name)
 
@@ -594,6 +599,8 @@ class PreviewChangesWindow(tk.Toplevel):
         """Whether every difference not pasted yet is skipped: nothing left to paste."""
         if name == _NICKNAMES_NAME:
             return self._nicknames_skipped
+        if name in self._only_in_click:
+            return name in self._kept_in_click
         change = self._choosable(name)
         taken = self._skipped_of(name) | self._pasted.get(name, frozenset())
         return change is not None and set(change.differences) <= taken
@@ -726,7 +733,7 @@ class PreviewChangesWindow(tk.Toplevel):
         if name == _NICKNAMES_NAME:
             return self._nicknames_label()
         if name in self._only_in_click:
-            return _CLICK_ONLY
+            return f"{_CLICK_ONLY}, kept" if name in self._kept_in_click else _CLICK_ONLY
         change = self._changes.get(name)
         if change is None:
             return ""
@@ -742,9 +749,7 @@ class PreviewChangesWindow(tk.Toplevel):
         todo = [
             name
             for name, *_ in self._items
-            if not self._matches_click(name)
-            and name not in self._only_in_click
-            and not self._all_skipped(name)
+            if not self._matches_click(name) and not self._all_skipped(name)
         ]
         done_n = sum(1 for name in todo if name in self._done)
         text = f"{done_n} of {len(todo)} done"
@@ -804,7 +809,14 @@ class PreviewChangesWindow(tk.Toplevel):
                 return f"{name} matches CLICK's last save.", RenderedDiff()
 
         before, after = self._click_sources(), self._proposed_sources()
-        notes = [_legacy_note(change, only_in_click=name in self._only_in_click)]
+        instead = ""
+        if name in self._only_in_click:
+            instead = (
+                "This folder does not have the program; CLICK keeps it as it is."
+                if name in self._kept_in_click
+                else "This folder does not have the program; it is to be deleted in CLICK."
+            )
+        notes = [_legacy_note(change, instead=instead)]
         if not before.text(name) and not after.text(name):
             notes.append(
                 "pyrung could not show this program as text; each rung is listed by its instructions."
@@ -875,6 +887,17 @@ class PreviewChangesWindow(tk.Toplevel):
             self._detail_lbl.configure(
                 text="Skipped: CLICK keeps its nicknames" if self._nicknames_skipped else ""
             )
+            return
+        if self._view_name in self._only_in_click:
+            # Deleted in CLICK, or kept, as a whole
+            kept = self._view_name in self._kept_in_click
+            self._bar_lbl.configure(text=_CLICK_ONLY)
+            self._take_var.set(not kept)
+            self._take_chk.configure(
+                text=_DELETE_IN_CLICK,
+                state="disabled" if self._view_name in self._done else "normal",
+            )
+            self._detail_lbl.configure(text="Kept: CLICK keeps the program" if kept else "")
             return
         self._take_chk.configure(text="Take this difference")
         change = self._choosable(self._view_name)
@@ -984,14 +1007,14 @@ class PreviewChangesWindow(tk.Toplevel):
                 self._dehighlight_row(idx)
                 self._highlight_row(idx, fg=_FG_MATCHES)
                 self._sheet.set_cell_data(idx, COL_STATUS, _ICON_MATCHES)
-            elif name in self._only_in_click:
-                self._dehighlight_row(idx)
-                self._highlight_row(idx, fg=_FG_ONLY_IN_CLICK)
-                self._sheet.set_cell_data(idx, COL_STATUS, _ICON_ONLY_IN_CLICK)
             elif self._all_skipped(name):
                 self._dehighlight_row(idx)
                 self._highlight_row(idx, fg=_FG_MATCHES)
                 self._sheet.set_cell_data(idx, COL_STATUS, _ICON_SKIPPED)
+            elif name in self._only_in_click:
+                self._dehighlight_row(idx)
+                self._highlight_row(idx, fg=_FG_ONLY_IN_CLICK)
+                self._sheet.set_cell_data(idx, COL_STATUS, _ICON_ONLY_IN_CLICK)
             elif self._has_legacy(name):
                 self._dehighlight_row(idx)
                 self._highlight_row(idx, _BG_LEGACY, _FG_LEGACY)
@@ -1028,7 +1051,12 @@ class PreviewChangesWindow(tk.Toplevel):
 
         step = self._current_step()
         name = self._items[self._current_idx][0]
-        if self._copied or self._nothing_to_copy(step) or self._rest_skipped(name):
+        if (
+            self._copied
+            or self._nothing_to_copy(step)
+            or self._rest_skipped(name)
+            or name in self._only_in_click  # Deleted in CLICK; nothing to copy
+        ):
             self._action_btn.configure(state="normal", text="Next →")
         elif self._is_nickname_step(self._current_idx):
             text = _OPEN_EDITOR if self._nicknames_staged() else _STAGE
@@ -1040,6 +1068,21 @@ class PreviewChangesWindow(tk.Toplevel):
             label = f"Copy, {skipped} skipped" if skipped else "Copy"
             self._action_btn.configure(state="normal", text=label)
 
+    def _only_in_click_prompt(self, name: str) -> str:
+        """What to do with a program CLICK has and the folder does not."""
+        if name in self._kept_in_click:
+            return (
+                f"{name} is kept: CLICK keeps the program.\n"
+                f'Click "Next" to go on, or tick {_DELETE_IN_CLICK} to delete it there'
+            )
+        stem = Path(name).stem
+        what = "main program" if name == "main.csv" else f"subroutine {stem}"
+        return (
+            f"{name} is in CLICK but not in this folder.\n"
+            f'Delete the {what} in CLICK, then click "Next". To keep it, untick '
+            f"{_DELETE_IN_CLICK}"
+        )
+
     def _step_prompt(self, idx: int) -> str:
         """Say what the current step of the row does."""
         name, _path, rung_count, _ = self._items[idx]
@@ -1050,6 +1093,8 @@ class PreviewChangesWindow(tk.Toplevel):
                     'Click "Next" to go on, or tick Take these nicknames to stage them'
                 )
             return self._nicknames_prompt()
+        if name in self._only_in_click:
+            return self._only_in_click_prompt(name)
         if self._rest_skipped(name):
             which = "Every difference" if self._all_skipped(name) else "What is left"
             return (
@@ -1143,6 +1188,18 @@ class PreviewChangesWindow(tk.Toplevel):
             return prompt
         return f'Click "Copy" to copy {name} to the clipboard'
 
+    def _toggle_kept(self, name: str) -> None:
+        """Keep a program only in CLICK, or delete it there after all."""
+        if name in self._done:
+            return
+        self._kept_in_click ^= {name}
+        idx = self._current_idx
+        if idx is not None and self._items[idx][0] == name:
+            self._status_var.set(self._step_prompt(idx))
+        self._update_highlights()
+        self._update_action_btn()
+        self._show_diff(keep_scroll=True)
+
     def _toggle_nicknames(self) -> None:
         """Take the folder's nicknames, or leave CLICK's as they are."""
         self._nicknames_skipped = not self._nicknames_skipped
@@ -1180,10 +1237,7 @@ class PreviewChangesWindow(tk.Toplevel):
 
     def _needs_paste(self, name: str) -> bool:
         return (
-            name not in self._done
-            and not self._matches_click(name)
-            and name not in self._only_in_click
-            and not self._all_skipped(name)
+            name not in self._done and not self._matches_click(name) and not self._all_skipped(name)
         )
 
     def _follow_in_sheet(self, idx: int) -> None:
@@ -1222,15 +1276,15 @@ class PreviewChangesWindow(tk.Toplevel):
         self._copied = False
         self._sheet.deselect()
         self._update_highlights()
-        if any(self._matches_click(name) for name, *_ in self._items):
+        if any(name not in self._kept_in_click for name in self._only_in_click):
+            msg = "Every change has been made in CLICK!"
+        elif any(self._matches_click(name) for name, *_ in self._items):
             msg = "Every changed program has been pasted!"
         else:
             msg = "All CSVs have been pasted!"
-        if self._only_in_click:
-            msg += (
-                f"\n{len(self._only_in_click)} program(s) in CLICK are not in this folder;"
-                " delete them in CLICK if they are no longer used"
-            )
+        kept = sum(1 for name in self._only_in_click if name in self._kept_in_click)
+        if kept:
+            msg += f"\n{kept} program(s) in CLICK that are not in this folder are kept"
         self._status_var.set(msg)
         self._update_action_btn()
 
@@ -1286,7 +1340,7 @@ class PreviewChangesWindow(tk.Toplevel):
         """Whether CLICK's last save holds everything taken from the folder, and nothing more."""
         return (
             self._click_compared
-            and not self._only_in_click
+            and all(name in self._kept_in_click for name in self._only_in_click)
             and all(self._matches_click(name) or self._all_skipped(name) for name in self._programs)
             and (
                 self._nickname_path is None or self._nicknames_skipped or self._nicknames_in_click()
@@ -1395,9 +1449,11 @@ class PreviewChangesWindow(tk.Toplevel):
                 return
 
     def _on_take(self) -> None:
-        """Handle the Take checkbox: of the difference shown, or of the nicknames."""
+        """Handle the Take checkbox: of the difference shown, the nicknames, or a deletion."""
         if self._view_name == _NICKNAMES_NAME:
             self._toggle_nicknames()
+        elif self._view_name in self._only_in_click:
+            self._toggle_kept(self._view_name)
         elif self._view_name is not None:
             self._toggle(self._view_name, self._view_block)
 
@@ -1584,14 +1640,19 @@ class PreviewChangesWindow(tk.Toplevel):
         others. Skipped differences stay skipped either way.
         """
         previous = self._programs
+        previous_only_in_click = set(self._only_in_click)
         self._scan_folder()
         if keep_done:
             self._done = {
                 name
                 for name in self._done
-                if name in previous
-                and name in self._programs
-                and previous[name].rungs == self._programs[name].rungs
+                if (
+                    name in previous
+                    and name in self._programs
+                    and previous[name].rungs == self._programs[name].rungs
+                )
+                # A deletion marked done stays done while the folder still lacks it
+                or (name in previous_only_in_click and name not in self._programs)
             }
         else:
             self._done.clear()
@@ -1599,6 +1660,7 @@ class PreviewChangesWindow(tk.Toplevel):
         self._current_idx = None
         self._copied = False
         self._compare_with_click()
+        self._done -= previous_only_in_click - set(self._only_in_click)
         self._populate_sheet()
         wanted = None if select is None else select.casefold()
         for idx, (name, *_) in enumerate(self._items):
@@ -1657,11 +1719,18 @@ class PreviewChangesWindow(tk.Toplevel):
             return
 
         old_steps = self._current_steps()
+        current = self._items[self._current_idx][0] if self._current_idx is not None else None
         # Something was known to be left to do; an unread program is not that
         was_pending = self._click_compared and not self._settled()
         self._compare_with_click()
+        # The rows only in CLICK may have changed: find the current row again by name
+        self._current_idx = next(
+            (idx for idx, (name, *_) in enumerate(self._items) if name == current), None
+        )
         if not new_project and self._close_if_settled(was_pending):
             return
+        # A program marked deleted that CLICK's save still has was not deleted
+        self._done -= set(self._only_in_click)
         self._populate_sheet()
         steps = self._current_steps()
         row = self._items[self._current_idx][0] if self._current_idx is not None else None
@@ -1703,12 +1772,7 @@ class PreviewChangesWindow(tk.Toplevel):
         row = selected.row
         if 0 <= row < len(self._items):
             name = self._items[row][0]
-            if name in self._only_in_click:
-                self._status_var.set(
-                    f"{name} is in CLICK but not in this folder. Pasting cannot remove it;\n"
-                    "delete it in CLICK if it is no longer used"
-                )
-            if name in self._only_in_click or name in self._done:
+            if name in self._done:
                 # Not a step, but its difference can still be read
                 self._view_name, self._view_block = name, 0
                 self._show_diff()
@@ -1740,7 +1804,7 @@ class PreviewChangesWindow(tk.Toplevel):
                 self._done.add(name)
             self._advance_to_next()
             return
-        if not self._copied and not self._nothing_to_copy(step):
+        if not self._copied and not self._nothing_to_copy(step) and name not in self._only_in_click:
             # "Copy" or "Stage nicknames" — perform the action
             self._perform_action(idx)
             return
@@ -2097,6 +2161,8 @@ class PreviewChangesWindow(tk.Toplevel):
         self._partial: dict[str, int] = {}
         # Programs to step through even though they have many steps (_copied_whole_for_steps)
         self._step_through: set[str] = set()
+        # Programs only in CLICK to keep there; the others are deleted in CLICK
+        self._kept_in_click: set[str] = set()
         # The comparison those were made on, to carry them over to the next one
         self._basis: dict[str, ProgramChange] = {}
         # Programs whose difference has been shown
