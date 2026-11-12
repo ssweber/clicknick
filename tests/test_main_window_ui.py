@@ -216,7 +216,6 @@ def test_ui_refresh_sets_title_and_workspace_details(tmp_path: Path) -> None:
         simulation=None,
     )
     app._data = None
-    app.csv_path_var = MagicMock(get=MagicMock(return_value=""))
     app.root = MagicMock()
 
     app._refresh_ui()

@@ -79,6 +79,13 @@
 - Import from CSV skips nicknames, comments or first-scan values when the file has no column for them, instead of clearing them, and accepts a file with no Nickname column.
 - Save Copy of CLICK's Address.csv keeps addresses that have only an initial value or Retentive set.
 - ClickNick reloads its data when the database or CSV is replaced by an older copy, such as a restored backup.
+- Closing ClickNick (the window's X or **File > Exit**) asks to save unsaved Address Editor and Dataview edits, and Cancel keeps it open (it discarded them).
+- Nicknames loaded from a CSV stay loaded, with their unsaved edits, when CLICK opens another project or saves under a new name (they were closed without asking).
+- A cancelled or failed CSV load leaves the loaded database as it was (the title said CSV, and the next project change in CLICK left no nicknames loaded).
+- After the connected CLICK window closes, ClickNick lists the other windows and waits for you to pick one while nicknames are loaded (it connected to the first one and closed the loaded CSV).
+- **Stop** in the main window turns off only autocomplete, until you click **Start** or pick a window: ClickNick still notices CLICK closing or opening another project (it kept the old project's editors, simulation and database).
+- A CSV that cannot be loaded shows why, such as a missing Nickname column (the status only said "CSV load failed").
+- Two CLICK windows with the same project name are listed with their PIDs, so either can be picked, and the window list and status no longer show a window or "Monitoring" that is not current.
 
 ## v0.23.4 - 2026-10-11
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from collections import Counter
 from ctypes import windll
 from dataclasses import replace
 from pathlib import Path
@@ -175,12 +176,12 @@ class ClickNickApp:
         if self._click is None:
             return "ClickNick"
 
-        if self.csv_path_var.get():
-            source = "CSV"
+        if self._data is None:
+            source = ""
         elif self.using_database:
             source = "DB"
         else:
-            source = ""
+            source = "CSV"
         title = f"ClickNick - {self._click.filename}"
         if source:
             title += f" - {source}"
@@ -266,7 +267,7 @@ class ClickNickApp:
     def _request_ui_refresh(self) -> None:
         """Schedule one _refresh_ui for when Tk is idle; repeated requests coalesce.
 
-        Assigning any _ShownState attribute (or the CSV path) requests this, so
+        Assigning any _ShownState attribute requests this, so
         a code path that changes what the window shows needs no refresh call.
         Other inputs (sync count, analysis progress, staged rungs) are
         ConnectionSession events, and their handlers request it.
@@ -276,8 +277,6 @@ class ClickNickApp:
 
     def _setup_variables(self):
         """Initialize Tkinter variables."""
-        self.csv_path_var = tk.StringVar()
-        self.csv_path_var.trace_add("write", lambda *_: self._request_ui_refresh())
         self.status_var = tk.StringVar(value="Not connected")
         self.selected_instance_var = tk.StringVar()  # Add this line
         try:
@@ -338,19 +337,27 @@ class ClickNickApp:
             font=bold_font,
         )
 
-    def _on_instance_selected(self, event=None):
-        """Handle instance selection from combobox."""
-        selected_text = self.selected_instance_var.get()
-        if not selected_text:
-            return
+    def _instance_labels(self) -> list[str]:
+        """The combobox's label for each CLICK window: its filename, with the PID where
+        two windows show the same filename."""
+        counts = Counter(instance.filename for instance in self.click_instances)
+        return [
+            f"{instance.filename} (PID {instance.pid})"
+            if counts[instance.filename] > 1
+            else instance.filename
+            for instance in self.click_instances
+        ]
 
-        # Find the matching instance
-        for instance in self.click_instances:
-            if instance.filename == selected_text:
-                self.connect_to_instance(
-                    instance.pid, instance.title, instance.filename, instance.hwnd
-                )
-                break
+    def _on_instance_selected(self, event=None):
+        """Connect to the CLICK window picked in the combobox."""
+        labels = self._instance_labels()
+        selected_text = self.selected_instance_var.get()
+        if selected_text not in labels:
+            return
+        instance = self.click_instances[labels.index(selected_text)]
+        self.connect_to_instance(
+            instance.pid, instance.title, instance.filename, instance.hwnd, user_picked=True
+        )
 
     def _create_click_instances_section(self, parent):
         """Create the Click.exe instances section."""
@@ -372,7 +379,9 @@ class ClickNickApp:
             selection_frame, text="⟳", width=3, command=self.refresh_click_instances
         )
         self.start_button = ttk.Button(
-            selection_frame, text="▶ Start", command=self.toggle_monitoring
+            selection_frame,
+            text="⏹ Stop" if self.monitoring else "▶ Start",
+            command=self.toggle_monitoring,
         )
 
         # Bind combobox selection to auto-connect
@@ -661,6 +670,14 @@ class ClickNickApp:
         if simulation is not None:
             simulation.turn_on()
 
+    @property
+    def _csv_path(self) -> str | None:
+        """The file the loaded CSV data comes from (None for database data or none)."""
+        data = self._data
+        if data is None or data.store.is_database:
+            return None
+        return data.store._data_source.file_path
+
     def _open_dataview_editor(self):
         """Open the Dataview Editor window, or focus if already open.
 
@@ -689,12 +706,8 @@ class ClickNickApp:
             project_path = get_project_path_from_hwnd(self._click.hwnd if self._click else None)
 
             csv_fallback_folder = None
-            if project_path is None:
-                csv_path = self.csv_path_var.get()
-                if csv_path:
-                    from pathlib import Path
-
-                    csv_fallback_folder = Path(csv_path).parent
+            if project_path is None and self._csv_path:
+                csv_fallback_folder = Path(self._csv_path).parent
 
             if data.dataview is None:
                 data.dataview = SharedDataviewData(
@@ -772,8 +785,7 @@ class ClickNickApp:
                 its Sync button reads "Sync and Close".
         """
         # Check for a native or fallback database backend
-        csv_path = self.csv_path_var.get()
-        if not csv_path and not self.nickname_manager.has_database_backend():
+        if self._data is None and not self.nickname_manager.has_database_backend():
             self._show_odbc_warning()
             return
 
@@ -2104,9 +2116,13 @@ class ClickNickApp:
         # Initialize settings first
         self.settings = AppSettings()
 
-        # Initialize monitoring state early (before any UI creation)
-        self.monitoring = False
+        # Autocomplete popups on or off: only the user's Start/Stop, or a window
+        # the user picks, changes it. The connection watch (_monitor_task) runs
+        # whenever a CLICK window is connected, whatever this says.
+        self.monitoring = True
         self.monitor_task_id = None
+        self._watch_running = False
+        self._status_after_id = None
 
         # Pending idle refresh of the title and Workspace details (_request_ui_refresh)
         self._ui_refresh_id = None
@@ -2190,6 +2206,22 @@ class ClickNickApp:
 
         # Create UI components
         self._create_widgets()
+
+    def _select_connected_instance(self) -> None:
+        """Select the connected CLICK window in the combobox (nothing when none is)."""
+        click = self._click
+        label = ""
+        if click is not None:
+            for instance, text in zip(self.click_instances, self._instance_labels(), strict=True):
+                if instance.hwnd == click.hwnd:
+                    label = text
+                    break
+        self.selected_instance_var.set(label)
+
+    def _show_instances(self) -> None:
+        """List the CLICK windows in the combobox and select the connected one."""
+        self.instances_combobox["values"] = self._instance_labels()
+        self._select_connected_instance()
 
     @property
     def using_database(self) -> bool:
@@ -2353,114 +2385,71 @@ class ClickNickApp:
         self._click = None
         self._reset_workspace_pairing()
 
-    def refresh_click_instances(self):
-        """Refresh the list of running Click.exe instances."""
-        # Remember currently selected instance
-        previously_selected = self.selected_instance_var.get()
+    def _cancel_monitoring_status(self) -> None:
+        if self._status_after_id is not None:
+            self.root.after_cancel(self._status_after_id)
+            self._status_after_id = None
 
-        # Clear current data
-        self.click_instances = []
-        self.instances_combobox["values"] = ()
+    def _hide_overlay(self) -> None:
+        if self.overlay is not None:
+            self.overlay.withdraw()
+            self.overlay = None
+
+    def _handle_window_closed(self):
+        """Handle when connected window is no longer available."""
+        self._update_status("⚠ Connected ClickPLC window closed", "error")
+        self._cancel_monitoring_status()
+        self._hide_overlay()
+
+        if self._session is not None:
+            self._session.close()
+            self._session = None
+        # Database data belongs to the closed project; CSV data stays usable.
+        if self.using_database:
+            self._close_data(prompt_save=False)
+
+        self._clear_connection_state()
         self.selected_instance_var.set("")
 
+        self.root.after(2000, self.refresh_click_instances)
+
+    def refresh_click_instances(self):
+        """List the running CLICK windows.
+
+        Connects to the first one only when no window is connected and no data
+        is loaded: connecting replaces the loaded data, so otherwise the user
+        picks. The list leaves out windows whose title shows no project, so a
+        connected window missing from it is closed only if its process is gone.
+        """
         try:
-            # Get all Click.exe instances from detector
             click_instances = self.detector.get_click_instances()
-
-            if not click_instances:
-                self._clear_connection_state()
-                self._update_status("⚠ No ClickPLC windows", "error")
-                self.start_button.state(["disabled"])  # Disable when no instances
-                return
-
-            # Update instance data
-            self.click_instances = click_instances
-            filenames = [instance.filename for instance in click_instances]
-            self.instances_combobox["values"] = filenames
-            self.start_button.state(["!disabled"])  # Enable when instances found
-
-            # Try to restore previous selection
-            if previously_selected in filenames:
-                self.selected_instance_var.set(previously_selected)
-            elif filenames:
-                # If previous selection not found, select first item
-                self.selected_instance_var.set(filenames[0])
-                # Auto-connect to first instance
-                self._on_instance_selected()
-
         except Exception as e:
             print(f"Error refreshing Click instances: {e}")
+            self.click_instances = []
+            self._show_instances()
             self._update_status(f"⚠ Error: {e!s}", "error")
-            self.start_button.state(["disabled"])  # Disable on error
+            self.start_button.state(["disabled"])
+            return
 
-    def load_csv(self):
-        """Load nicknames from CSV file."""
-        self._connection_probe_token = None
-        csv_path = self.csv_path_var.get()
-        if not csv_path:
-            self._update_status("⚠ No CSV file selected", "error")
-            return False
+        self.click_instances = click_instances
+        click = self._click
+        if (
+            click is not None
+            and all(instance.hwnd != click.hwnd for instance in click_instances)
+            and not self.detector.check_window_exists(click.pid)
+        ):
+            self._handle_window_closed()
+        self._show_instances()
 
-        try:
-            from .data.data_source import CsvDataSource
+        if not click_instances:
+            self._update_status("⚠ No ClickPLC windows", "error")
+            self.start_button.state(["disabled"])
+            return
+        self.start_button.state(["!disabled"])
 
-            data_source = CsvDataSource(csv_path)
-            store = AddressStore(data_source)
-            store.load_initial_data()
-            if not self._open_data(store):
-                self._update_status("CSV load cancelled", "status")
-                return False
-
-            self._update_status("✓ CSV loaded", "connected")
-            has_live_connection = self._click is not None and self.detector.check_window_exists(
-                self._click.pid
-            )
-            if has_live_connection:
-                self.start_monitoring()
-            else:
-                if self.monitoring:
-                    self.stop_monitoring(update_status=False)
-                if self._click is not None:
-                    self._clear_connection_state()
-                    self.selected_instance_var.set("")
-            return True
-        except Exception as e:
-            print(f"Error loading CSV: {e}")
-            self._update_status("⚠ CSV load failed", "error")
-            return False
-
-    def browse_and_load_csv(self):
-        """Browse for and load CSV file from menu."""
-        filepath = filedialog.askopenfilename(
-            title="Select Nickname CSV",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-        )
-        if filepath:
-            self.csv_path_var.set(filepath)
-            self.load_csv()
-
-    def load_from_database(self):
-        """Start monitoring after AddressStore is loaded."""
-        if self._click is None:
-            self._update_status("⚠ Not connected", "error")
-            return False
-
-        # Check whether a database backend can be attempted
-        if not self.nickname_manager.has_database_backend():
-            self._update_status("⏹ Stopped - Use File → Load Nicknames... to Start", "status")
-            if not self._odbc_warning_shown:
-                self._show_odbc_warning()
-                self._odbc_warning_shown = True
-            return False
-
-        if self._get_store() is None:
-            self._update_status("⚠ DB load failed", "error")
-            return False
-
-        self._update_status("✓ DB loaded", "connected")
-
-        self.start_monitoring()
-        return True
+        if self._click is None and self._data is None:
+            first = click_instances[0]
+            self.connect_to_instance(first.pid, first.title, first.filename, first.hwnd)
 
     def _connect_csv_fallback(self, filename, hwnd):
         """Offer CSV loading after a failed connection or an explicit CSV selection."""
@@ -2471,10 +2460,9 @@ class ClickNickApp:
             dialog = CsvFallbackDialog(self.root, fallback_csv, default_name)
             saved_path = dialog.show()
             if saved_path:
-                self.csv_path_var.set(saved_path)
-                self.load_csv()
+                self.load_csv(saved_path)
                 return
-        self._update_status("Stopped - Use File > Load Nicknames...", "error")
+        self._update_status("No nicknames loaded - use File → Load Nicknames...", "error")
         if not self._odbc_warning_shown:
             self._show_odbc_warning()
             self._odbc_warning_shown = True
@@ -2534,41 +2522,6 @@ class ClickNickApp:
 
         self.root.after(100, finish)
 
-    def connect_to_instance(self, pid, title, filename, hwnd):
-        """Connect to a specific Click.exe instance."""
-        from .utils.mdb_shared import get_database_backend
-
-        self._connection_probe_token = None
-
-        # Close the current data first: its save prompts are the only step the
-        # user can cancel, so nothing irreversible happens before them.
-        if not self._close_data(prompt_save=True):
-            if self._session is not None:
-                self.selected_instance_var.set(self._session.click.filename)
-            return
-        if self._session is not None:
-            self._session.close()
-            self._session = None
-
-        # Stop monitoring if currently active
-        if self.monitoring:
-            self.stop_monitoring()
-
-        # Reset connection state
-        self._clear_connection_state()
-
-        # Clear CSV path when switching instances
-        self.csv_path_var.set("")
-
-        # Store the new connection FIRST (including hwnd to avoid lookup issues)
-        self._click = ClickConnection(pid, hwnd, filename)
-        self._load_workspace_pairing()
-
-        if get_database_backend() == "none":
-            self._connect_csv_fallback(filename, hwnd)
-            return
-        self._load_instance_database(pid, filename, hwnd)
-
     def _handle_popup_window(self, window_id, window_class, edit_control):
         """Handle the detected popup window by showing or updating the nickname popup."""
         try:
@@ -2596,49 +2549,45 @@ class ClickNickApp:
         """Extract filename from window title using centralized parser."""
         return ClickWindowDetector.parse_click_filename(title)
 
-    def _handle_window_closed(self):
-        """Handle when connected window is no longer available."""
-        self._update_status("⚠ Connected ClickPLC window closed", "error")
-        self.stop_monitoring(update_status=False)
+    def _show_monitoring_button(self) -> None:
+        self.start_button.configure(text="⏹ Stop" if self.monitoring else "▶ Start")
 
-        if self._session is not None:
-            self._session.close()
-            self._session = None
-        # Database data belongs to the closed project; CSV data stays usable.
-        if self.using_database:
-            self._close_data(prompt_save=False)
+    def _update_status_monitoring(self):
+        """Update Status and Button to reflect Monitoring"""
+        self._cancel_monitoring_status()
+        if not self.monitoring or self._click is None:
+            return
+        self._update_status(
+            f"⚡ Monitoring {self._click.filename if self._click else ''}", "connected"
+        )
+        self._show_monitoring_button()
 
-        self._clear_connection_state()
-        self.selected_instance_var.set("")
+    def _handle_project_change(self, current_title: str, new_filename: str) -> None:
+        """The connected CLICK window shows another project: follow it.
 
-        self.root.after(2000, self.refresh_click_instances)
-
-    def _handle_project_change(self, current_title: str, new_filename: str) -> bool:
-        """Handle Click project filename change. Returns False if monitoring stopped."""
+        Database data closes without a prompt, as when the window closes (a
+        Save As included); CSV data stays loaded. With no data loaded, the
+        new project's database is loaded. Monitoring stays as it was.
+        """
         click = self._click
         if click is None:
-            return False
-        has_open_windows = (self._data is not None and self._data.has_open_windows) or (
-            self._session is not None and self._session.simulator is not None
-        )
-        if has_open_windows:
-            from tkinter import messagebox
-
+            return
+        closing = []
+        if self.using_database and self._data.has_open_windows:
+            closing.append("Editor windows")
+        if self._session is not None and self._session.simulator is not None:
+            closing.append("the Simulator" if closing else "The Simulator")
+        if closing:
             messagebox.showinfo(
                 "Project Changed",
-                "The Click project was changed. Editor windows will now close.",
+                f"The Click project was changed. {' and '.join(closing)} will now close.",
             )
 
         if self._session is not None:
             self._session.close()
             self._session = None
-        self._close_data(prompt_save=False)
-
-        csv_unloaded = False
-        if self.csv_path_var.get():
-            self.csv_path_var.set("")
-            self._update_status("⚠ CSV unloaded - filename changed", "error")
-            csv_unloaded = True
+        if self.using_database:
+            self._close_data(prompt_save=False)
 
         self.click_instances = [
             replace(inst, title=current_title, filename=new_filename)
@@ -2646,23 +2595,16 @@ class ClickNickApp:
             else inst
             for inst in self.click_instances
         ]
-
-        self.instances_combobox["values"] = [inst.filename for inst in self.click_instances]
         self._click = click = replace(click, filename=new_filename)
-        self.selected_instance_var.set(new_filename)
+        self._show_instances()
         self._load_workspace_pairing()
 
-        if csv_unloaded:
-            self.stop_monitoring(update_status=False)
-            return False
-
-        if self.nickname_manager.has_database_backend():
+        if self._data is None and self.nickname_manager.has_database_backend():
             # Same off-thread load as connecting, with a token so a result for
             # a project that changed again is dropped.
             self._load_instance_database(click.pid, click.filename, click.hwnd)
-        else:
-            self._update_status(f"⚡ Monitoring {new_filename}", "connected")
-        return True
+        elif self.monitoring:
+            self._update_status_monitoring()
 
     def _handle_popup_detection(self) -> None:
         """Check for Click.exe child popups and show/hide overlay accordingly."""
@@ -2676,26 +2618,151 @@ class ClickNickApp:
             self.overlay.withdraw()
 
     def _monitor_task(self):
-        """Monitor task that runs every 100ms using after."""
-        if not self.monitoring:
-            return
+        """Every 100 ms while a CLICK window is connected: notice it closing or
+        changing project and, while monitoring is on, its instruction popups.
 
-        click = self._click
-        if click is None or not self.detector.check_window_exists(click.pid):
-            self._handle_window_closed()
-            return
-
-        current_title = self.detector.get_window_title(click.hwnd)
-        new_filename = self._parse_filename_from_title(current_title)
-
-        if new_filename and new_filename != click.filename:
-            if not self._handle_project_change(current_title, new_filename):
+        Stop turns off only the popups; the watch ends when the connection does.
+        Popups need loaded data.
+        """
+        self.monitor_task_id = None
+        try:
+            click = self._click
+            if click is None:
+                return
+            if not self.detector.check_window_exists(click.pid):
+                self._handle_window_closed()
                 return
 
-        if not (self.overlay and self.overlay.is_active()):
-            self._handle_popup_detection()
+            current_title = self.detector.get_window_title(click.hwnd)
+            new_filename = self._parse_filename_from_title(current_title)
+            if new_filename and new_filename != click.filename:
+                self._handle_project_change(current_title, new_filename)
 
-        self.monitor_task_id = self.root.after(100, self._monitor_task)
+            if self.monitoring and self._data is not None:
+                if not (self.overlay and self.overlay.is_active()):
+                    self._handle_popup_detection()
+            else:
+                self._hide_overlay()
+        finally:
+            if self._click is None:
+                self._watch_running = False
+            else:
+                self.monitor_task_id = self.root.after(100, self._monitor_task)
+
+    def _watch_connection(self) -> None:
+        """Start the connection watch (_monitor_task) unless it is running already."""
+        if self._watch_running or self._click is None:
+            return
+        self._watch_running = True
+        self._monitor_task()
+
+    def _on_data_ready(self) -> None:
+        """Data for the connected window is loaded: watch the window, and while
+        monitoring is on say so a second later (after the load's own status)."""
+        self._watch_connection()
+        if self.monitoring:
+            self._cancel_monitoring_status()
+            self._status_after_id = self.root.after(1000, self._update_status_monitoring)
+
+    def load_csv(self, csv_path: str) -> bool:
+        """Load nicknames from the CSV file at *csv_path*."""
+        self._connection_probe_token = None
+        try:
+            from .data.data_source import CsvDataSource
+
+            data_source = CsvDataSource(csv_path)
+            store = AddressStore(data_source)
+            store.load_initial_data()
+            if not self._open_data(store):
+                self._update_status("CSV load cancelled", "status")
+                return False
+
+            self._update_status("✓ CSV loaded", "connected")
+            has_live_connection = self._click is not None and self.detector.check_window_exists(
+                self._click.pid
+            )
+            if has_live_connection:
+                self._on_data_ready()
+            else:
+                self._hide_overlay()
+                if self._click is not None:
+                    self._clear_connection_state()
+                    self.selected_instance_var.set("")
+            return True
+        except Exception as e:
+            print(f"Error loading CSV: {e}")
+            self._update_status("⚠ CSV load failed", "error")
+            messagebox.showerror("CSV Load Failed", str(e), parent=self.root)
+            return False
+
+    def browse_and_load_csv(self):
+        """Browse for and load CSV file from menu."""
+        filepath = filedialog.askopenfilename(
+            title="Select Nickname CSV",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+        if filepath:
+            self.load_csv(filepath)
+
+    def load_from_database(self):
+        """Report the loaded database and watch its window."""
+        if self._click is None:
+            self._update_status("⚠ Not connected", "error")
+            return False
+
+        # Check whether a database backend can be attempted
+        if not self.nickname_manager.has_database_backend():
+            self._update_status("No nicknames loaded - use File → Load Nicknames...", "status")
+            if not self._odbc_warning_shown:
+                self._show_odbc_warning()
+                self._odbc_warning_shown = True
+            return False
+
+        if self._get_store() is None:
+            self._update_status("⚠ DB load failed", "error")
+            return False
+
+        self._update_status("✓ DB loaded", "connected")
+
+        self._on_data_ready()
+        return True
+
+    def connect_to_instance(self, pid, title, filename, hwnd, *, user_picked: bool = False):
+        """Connect to a specific Click.exe instance.
+
+        A window the user picked turns monitoring on; an automatic connect
+        leaves it as it is.
+        """
+        from .utils.mdb_shared import get_database_backend
+
+        self._connection_probe_token = None
+
+        # Close the current data first: its save prompts are the only step the
+        # user can cancel, so nothing irreversible happens before them.
+        if not self._close_data(prompt_save=True):
+            self._select_connected_instance()
+            return
+        if self._session is not None:
+            self._session.close()
+            self._session = None
+
+        self._hide_overlay()
+        if user_picked:
+            self.monitoring = True
+            self._show_monitoring_button()
+
+        # Reset connection state
+        self._clear_connection_state()
+
+        # Store the new connection FIRST (including hwnd to avoid lookup issues)
+        self._click = ClickConnection(pid, hwnd, filename)
+        self._load_workspace_pairing()
+
+        if get_database_backend() == "none":
+            self._connect_csv_fallback(filename, hwnd)
+        else:
+            self._load_instance_database(pid, filename, hwnd)
+        self._watch_connection()
 
     def _start_monitoring_internal(self) -> bool:
         """Internal method to start monitoring without status updates.
@@ -2705,64 +2772,33 @@ class ClickNickApp:
             self._update_status("⚠ Not connected to ClickPLC window", "error")
             return False
 
-        # One monitor loop only: starting again would schedule a second loop.
-        if self.monitoring:
-            return True
-
-        # Start monitoring using after
         try:
             self.monitoring = True
-            self._monitor_task()
+            self._watch_connection()
             return True
         except Exception as e:
             self._update_status(f"⚠ Monitoring failed: {str(e)}", "error")
             return False
 
-    def _update_status_monitoring(self):
-        """Update Status and Button to reflect Monitoring"""
-        self._update_status(
-            f"⚡ Monitoring {self._click.filename if self._click else ''}", "connected"
-        )
-        self.start_button.configure(text="⏹ Stop")
-
-    def start_monitoring(self):
-        """Start monitoring with delayed status update."""
-        if self._start_monitoring_internal():
-            # Only schedule status update if successful
-            self.root.after(1000, lambda: self._update_status_monitoring())
-
     def button_start_monitoring(self):
         """Start monitoring with immediate status update."""
         if self._start_monitoring_internal():
-            # Only update UI if successful
             self._update_status_monitoring()
 
-    def stop_monitoring(self, update_status=True):
-        """Stop monitoring."""
+    def stop_monitoring(self):
+        """Turn off popup detection; the connection watch keeps running."""
         self.monitoring = False
-
-        # Cancel scheduled task if it exists
-        if self.monitor_task_id:
-            self.root.after_cancel(self.monitor_task_id)
-            self.monitor_task_id = None
-
-        # Destroy overlay if it exists
-        if self.overlay:
-            self.overlay.withdraw()
-            self.overlay = None
-
-        if update_status:
-            self._update_status("⏹ Stopped", "status")
-        self.start_button.configure(text="▶ Start")
+        self._cancel_monitoring_status()
+        self._hide_overlay()
+        self._update_status("⏹ Stopped", "status")
+        self._show_monitoring_button()
 
     def toggle_monitoring(self):
         """Start or stop monitoring."""
         if self.monitoring:
             self.stop_monitoring()
         else:
-            # Only update button if start was successful
-            if self.button_start_monitoring():
-                self.start_button.configure(text="⏹ Stop")
+            self.button_start_monitoring()
 
     def open_url(self, url):
         """Open URL in default browser."""
@@ -2774,19 +2810,21 @@ class ClickNickApp:
             self._update_status(f"⚠ Could not open browser: {e}", "error")
 
     def on_closing(self):
-        """Handle application shutdown."""
+        """Close ClickNick (window X, File > Exit), after offering to save unsaved
+        Address Editor and Dataview edits. Cancel, or a failed save, keeps it open."""
+        if not self._close_data(prompt_save=True):
+            return
         self._connection_probe_token = None
-        if self.monitoring:
-            self.stop_monitoring()
+        self._cancel_monitoring_status()
+        if self.monitor_task_id is not None:
+            self.root.after_cancel(self.monitor_task_id)
+            self.monitor_task_id = None
         if self.overlay is not None:
             self.overlay.destroy()
             self.overlay = None
         if self._session is not None:
             self._session.close()
             self._session = None
-        if self._data is not None:
-            self._data.force_close()
-            self._data = None
         live_server = getattr(self, "_live_server", None)
         if live_server is not None:
             live_server.stop()
