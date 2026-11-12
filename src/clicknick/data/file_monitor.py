@@ -39,14 +39,16 @@ class FileMonitor:
         """
         self._file_path = file_path
         self._on_modified = on_modified
+        # The file's mtime and size when it was last read; any change to either reloads
         self._last_mtime: float = 0.0
+        self._last_size: int = 0
         self._after_id: str | None = None
         self._active = False
         self._tk_root: Scheduler | None = None
 
-        # Capture initial mtime if file exists
         if self._file_path and os.path.exists(self._file_path):
-            self._last_mtime = os.path.getmtime(self._file_path)
+            stat = os.stat(self._file_path)
+            self._last_mtime, self._last_size = stat.st_mtime, stat.st_size
 
     @property
     def file_path(self) -> str | None:
@@ -97,11 +99,12 @@ class FileMonitor:
 
         try:
             if self._file_path and os.path.exists(self._file_path):
-                current_mtime = os.path.getmtime(self._file_path)
-                if current_mtime > self._last_mtime:
+                # Not only a later mtime: a restored backup is older than the file it replaces
+                stat = os.stat(self._file_path)
+                if (stat.st_mtime, stat.st_size) != (self._last_mtime, self._last_size):
                     consumed = self._on_modified()
                     if consumed is not False:
-                        self._last_mtime = current_mtime
+                        self._last_mtime, self._last_size = stat.st_mtime, stat.st_size
         except Exception:
             # File might be locked during write, skip this check
             pass

@@ -62,16 +62,16 @@ class TestReadMdbCsv:
         csv_path = tmp_path / "Address.csv"
         csv_path.write_text(
             "AddrKey,MemoryType,Address,DataType,Nickname,Use,InitialValue,Retentive,Comment\n"
-            "100663297,DS,1,1,,0,123,0,\n"
-            "100663298,DS,2,1,,0,0,1,\n"
-            "100663299,DS,3,1,,1,0,0,\n",
+            "33554433,C,1,0,,0,1,0,\n"
+            "33554434,C,2,0,,0,0,1,\n"
+            "33554435,C,3,0,,1,0,0,\n",
             encoding="utf-8",
         )
 
         rows = read_mdb_csv(str(csv_path))
 
         assert sorted((r.address, r.initial_value, r.retentive) for r in rows.values()) == [
-            (1, "123", False),
+            (1, "1", False),
             (2, "0", True),
         ]
 
