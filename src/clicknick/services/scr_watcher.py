@@ -24,7 +24,9 @@ class ScrWatcher:
 
     Uses the same tkinter.after() polling as FileMonitor. Any change to the
     set of Scr*.tmp files, or to one file's mtime or size, counts as a save,
-    including an earlier mtime (a copied-back file or a clock step).
+    including an earlier mtime (a copied-back file or a clock step). It fires
+    once the files have stayed the same for one interval, so a save caught
+    half written is one save, not two.
     """
 
     def _snapshot(self) -> frozenset[tuple[str, int, int]]:
@@ -51,6 +53,8 @@ class ScrWatcher:
         self._synced_keys: set[int] = set()
         self._staged_rungs: int = 0
         self._last_snapshot = self._snapshot()
+        # A change seen at the last check, not counted until it holds for one more.
+        self._settling: frozenset[tuple[str, int, int]] | None = None
         self._after_id: str | None = None
         self._active = False
         self._tk_root: Scheduler | None = None
@@ -76,6 +80,7 @@ class ScrWatcher:
         if _resolved(scr_folder) != _resolved(self._folder):
             self._folder = scr_folder
             self._last_snapshot = self._snapshot()
+            self._settling = None
 
     def record_sync(self, addr_keys: Iterable[int]) -> None:
         before = len(self._synced_keys)
@@ -113,8 +118,13 @@ class ScrWatcher:
         try:
             current = self._snapshot()
             # No Scr*.tmp left is not a save: there is nothing to read.
-            if current and current != self._last_snapshot:
+            if not current or current == self._last_snapshot:
+                self._settling = None
+            elif current != self._settling:
+                self._settling = current  # CLICK may still be writing
+            else:
                 self._last_snapshot = current
+                self._settling = None
                 self._on_changed()
                 self._synced_keys.clear()
                 self._staged_rungs = 0

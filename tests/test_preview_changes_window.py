@@ -2445,6 +2445,22 @@ def test_a_save_before_the_first_comparison_checks_what_was_done(monkeypatch, co
     assert _action(window) == "Copy r1"
 
 
+def test_a_reading_with_nothing_connected_is_not_a_save(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, _without(1, 3, 4), RUNGS)
+    _save(window, _without(1, 3, 4))
+    window._on_action()  # Copy r1
+    window._on_action()  # Next: r1 is in CLICK, not saved
+    saved = window.current
+
+    _change(window, SavedProgram())  # No session for a moment
+    assert window._pasted
+    assert window._done_unchecked is False
+    _change(window, saved)
+
+    assert _action(window) == "Copy r3..4"
+    assert "step 2 of 2" in _status(window)
+
+
 def test_a_failed_build_keeps_what_was_pasted(monkeypatch, copies) -> None:
     window = _exported(monkeypatch, _without(1, 3, 4), RUNGS)
     window._on_action()  # Copy r1

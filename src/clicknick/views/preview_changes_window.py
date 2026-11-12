@@ -546,8 +546,10 @@ class PreviewChangesWindow(tk.Toplevel):
 
         Only CLICK's saves count (save_count): the workspace is also rebuilt
         after a Sync or a Reload, and a build may fail, with CLICK holding the
-        pastes all the while.
+        pastes all the while. A reading with nothing connected counts nothing.
         """
+        if program.session is None:
+            return
         if self._save_count is not None and program.save_count != self._save_count:
             self._pasted.clear()
             self._partial.clear()

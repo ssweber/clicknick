@@ -71,6 +71,8 @@ class _BuildRequest:
     callbacks: list[tuple[tk.Tk | None, Callable[[bool, str | None], None]]] = field(
         default_factory=list
     )
+    # The number of requests made when this one was, so the build serves them all.
+    serves: int = 0
 
 
 class ConnectionSession:
@@ -110,6 +112,10 @@ class ConnectionSession:
         self._build_lock = threading.Lock()
         self._build_running = False
         self._next_build: _BuildRequest | None = None
+        # Requests made, and of them those a finished build served. Between a build
+        # publishing and its follow-up starting, the status reads as built.
+        self._builds_asked = 0
+        self._builds_served = 0
         self._closed = False
 
     @property
@@ -166,6 +172,8 @@ class ConnectionSession:
             if analysis.status is AnalysisStatus.BUILDING:
                 analysis.mark_failed(error, traceback.format_exc())
 
+        with self._build_lock:
+            self._builds_served = request.serves
         for root, on_complete in request.callbacks:
             if root is None:
                 on_complete(error is None, error)
@@ -207,7 +215,8 @@ class ConnectionSession:
             callbacks = pending.callbacks if pending is not None else []
             if on_complete is not None:
                 callbacks.append((root, on_complete))
-            self._next_build = _BuildRequest(scr_folder, db_path, callbacks)
+            self._builds_asked += 1
+            self._next_build = _BuildRequest(scr_folder, db_path, callbacks, self._builds_asked)
             if self._build_running:
                 return
             self._build_running = True
@@ -312,7 +321,10 @@ class ConnectionSession:
             return SavedProgram(self, save_count=saves, note=reading)
         generation = analysis.generation
         status = analysis.status
-        if status is AnalysisStatus.BUILDING:
+        with self._build_lock:
+            # A save queues a build while one runs: what that one publishes is older.
+            queued = self._builds_served < self._builds_asked
+        if status is AnalysisStatus.BUILDING or queued:
             return SavedProgram(self, generation, saves, building=True, note=reading)
         # A build that failed before publishing leaves the workspace of an earlier save.
         project_dir = analysis.project_dir if analysis.project_is_current else None
