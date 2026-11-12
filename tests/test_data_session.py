@@ -191,3 +191,15 @@ def test_a_cell_editor_that_will_not_commit_stops_the_close(answers) -> None:
     assert not session.close(None)
 
     assert not editor.closed
+
+
+def test_every_open_cell_editor_is_committed_even_after_one_fails() -> None:
+    session = DataSession(FakeStore())
+    first, second = FakeWindow(session), FakeWindow(session)
+    first.commits = False
+    session.register_editor(first)
+    session.register_editor(second)
+
+    assert not session.commit_open_cell_editors()
+
+    assert (first.commit_calls, second.commit_calls) == (1, 1)

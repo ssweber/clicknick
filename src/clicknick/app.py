@@ -210,7 +210,12 @@ class ClickNickApp:
         if self._data is not None:
             dataview = self._data.dataview_window
             for window in (*self._data.editors, *([dataview] if dataview else [])):
-                window.refresh_title()
+                # A window being destroyed may still be registered
+                try:
+                    if window.winfo_exists():
+                        window.refresh_title()
+                except tk.TclError:
+                    pass
         if not hasattr(self, "workspace_status_var"):
             return
 
@@ -1124,6 +1129,17 @@ class ClickNickApp:
         if config is not None:
             self._set_pending_workspace_config(config)
 
+    def _earlier_save_build_error(self) -> str | None:
+        """The build's error when it failed and the workspace is an earlier save's, else None."""
+        from .services.analysis_service import AnalysisStatus
+
+        analysis = self._session.analysis if self._session else None
+        if analysis is None or analysis.status is not AnalysisStatus.FAILED:
+            return None
+        if analysis.project_is_current:
+            return None
+        return analysis.error or "The build failed."
+
     def _apply_workspace_mirror_setup(self) -> None:
         """Make the selected durable directory the active project workspace."""
         dialog_parent = getattr(self, "_mirror_setup_window", None) or self.root
@@ -1147,6 +1163,15 @@ class ClickNickApp:
             )
             return
         mirror_path = config.workspace_path.resolve()
+        build_error = self._earlier_save_build_error()
+        if build_error is not None and self._workspace_source_dir() is not None:
+            messagebox.showerror(
+                "Setup Workspace",
+                "The workspace could not be built from CLICK's last save, so ClickNick "
+                "will not copy an earlier save's workspace.\n\n" + build_error,
+                parent=dialog_parent,
+            )
+            return
 
         try:
             mirror_is_nonempty = mirror_path.exists() and any(mirror_path.iterdir())
@@ -1694,12 +1719,12 @@ class ClickNickApp:
                 parent=self.root,
             )
             return
-        if analysis.status is AnalysisStatus.FAILED and not analysis.project_is_current:
-            # project_dir, if any, is then an earlier save's workspace
+        build_error = self._earlier_save_build_error()
+        if build_error is not None:
             messagebox.showerror(
                 "Export Workspace",
                 "The workspace could not be built from CLICK's last save, so there is "
-                "nothing current to export.\n\n" + (analysis.error or "The build failed."),
+                "nothing current to export.\n\n" + build_error,
                 parent=self.root,
             )
             return
@@ -2612,25 +2637,34 @@ class ClickNickApp:
         self._show_monitoring_button()
 
     def _keeps_edits_for(self, old_filename: str, new_filename: str) -> bool:
-        """Ask whether unsaved database edits stay, for the project CLICK shows now.
+        """Ask whether unsaved edits on database data stay, for the project CLICK shows now.
 
-        CLICK's Save As keeps the window's temp folder and its database, and so
-        does opening another project in the same window; ClickNick cannot tell
-        the two apart, so the user says. False when there are no unsaved edits.
+        CLICK's Save As keeps the window's temp folder, its database and its
+        DataView folder, and so does opening another project in the same
+        window; ClickNick cannot tell the two apart, so the user says. The
+        question covers address edits, text in a cell that will not commit and
+        Dataview edits. Nothing is saved here. False when there is nothing unsaved.
         """
         data = self._data
         if data is None or not data.store.is_database:
             return False
-        data.commit_open_cell_editors()
-        if not data.store.has_unsaved_changes():
+        unsaved = []
+        # A cell that will not commit (CLICK has the focus) still holds an edit
+        committed = data.commit_open_cell_editors()
+        if not committed or data.store.has_unsaved_changes():
+            unsaved.append("address changes")
+        dataview = data.dataview_window
+        if dataview is not None and dataview.has_unsaved_changes():
+            unsaved.append("Dataview changes")
+        if not unsaved:
             return False
         return messagebox.askyesno(
             "Project Changed",
-            f"The CLICK window now shows {new_filename}. You have unsaved address changes "
-            f"made in {old_filename}.\n\n"
+            f"The CLICK window now shows {new_filename}. You have unsaved "
+            f"{' and '.join(unsaved)} made in {old_filename}.\n\n"
             f"Keep them as unsaved changes for {new_filename}? Choose Yes after a Save As in "
-            f"CLICK: Sync then writes them to {new_filename}.\n\n"
-            "No discards them.",
+            f"CLICK: Sync and Save then write them to {new_filename}.\n\n"
+            "No discards them and saves nothing.",
             icon=messagebox.WARNING,
             parent=self.root,
         )
@@ -2638,12 +2672,12 @@ class ClickNickApp:
     def _handle_project_change(self, current_title: str, new_filename: str) -> None:
         """The connected CLICK window shows another project: follow it.
 
-        Unsaved database edits are kept for the new project or discarded, as
-        the user says (``_keeps_edits_for``). Kept, the data and its windows stay
-        open, and the store's file monitor reads the base from the database the
-        window now holds. Otherwise database data closes, after offering to save
-        unsaved Dataview edits, and the new project's database is loaded. CSV
-        data stays loaded. Monitoring stays as it was.
+        Unsaved address and Dataview edits on database data are kept for the new
+        project or discarded, as the user says (``_keeps_edits_for``). Kept, the
+        data and its windows stay open, and the store's file monitor reads the
+        base from the database the window now holds. Otherwise database data
+        closes with nothing saved, and the new project's database is loaded.
+        CSV data stays loaded. Monitoring stays as it was.
         """
         click = self._click
         if click is None:
@@ -2665,7 +2699,6 @@ class ClickNickApp:
             self._session.close()
             self._session = None
         if closes_data:
-            self._data.offer_dataview_save()
             self._close_data(prompt_save=False)
 
         self._click = click = replace(click, filename=new_filename)

@@ -311,27 +311,48 @@ def test_project_change_counts_text_still_in_a_cell_editor(monkeypatch):
     assert app._data.store is store
 
 
-@pytest.mark.parametrize("save", [True, False], ids=["save", "dont-save"])
-def test_project_change_offers_to_save_dataview_edits(monkeypatch, save):
-    app, prompts = _app(monkeypatch, yes_no=save)
-    app._data = DataSession(FakeStore(is_database=True))
+@pytest.mark.parametrize("keep", [True, False], ids=["keep", "discard"])
+def test_project_change_asks_one_question_about_dataview_edits(monkeypatch, keep):
+    """After File > Open the window's DataView folder holds the other project's
+    .cdv files: Dataview edits are kept or discarded, never saved over them."""
+    monkeypatch.setattr(
+        "clicknick.connection_session.ConnectionSession",
+        lambda _click, **_kw: MagicMock(simulator=None, synced_pending=0),
+    )
+    app, prompts = _app(monkeypatch, yes_no=keep)
+    store = FakeStore(is_database=True)
+    app._data = DataSession(store)
     dataview = FakeDataview()
     app._data.register_dataview_window(dataview)
 
     app._handle_project_change("CLICK Programming Software - Other.ckp", "Other.ckp")
 
-    assert prompts == [
-        ("Project Changed",),
-        (
-            "askyesno",
-            "Unsaved Changes",
-            "You have unsaved changes in Dataview Editor. Save before closing?",
-        ),
-    ]
-    assert dataview.saved is save
-    assert dataview.closed
-    assert app._data is None
-    app._load_instance_database.assert_called_once_with("111", "Other.ckp", 222)
+    (question, *notices) = prompts
+    assert question[:2] == ("askyesno", "Project Changed")
+    assert "Dataview" in question[2]
+    assert not dataview.saved
+    if keep:
+        assert notices == []
+        assert not dataview.closed
+        assert app._data.store is store
+        app._load_instance_database.assert_not_called()
+    else:
+        assert notices == [("Project Changed",)]
+        assert dataview.closed
+        assert app._data is None
+        app._load_instance_database.assert_called_once_with("111", "Other.ckp", 222)
+
+
+def test_project_change_asks_when_a_cell_editor_will_not_commit(monkeypatch):
+    """CLICK has the focus, so the open cell editor cannot commit: its text
+    still counts as an unsaved change and is not dropped without a word."""
+    app, prompts = _app(monkeypatch, yes_no=False)
+    editor = _open(app, FakeStore(is_database=True))
+    editor.commit_open_cell_editor = lambda: False
+
+    app._handle_project_change("CLICK Programming Software - Other.ckp", "Other.ckp")
+
+    assert prompts[0][:2] == ("askyesno", "Project Changed")
 
 
 # -- The window list always shows the connected window --------------------------------------------
@@ -740,6 +761,9 @@ def test_after_keep_open_editors_follow_the_new_project_and_its_build(monkeypatc
         def refresh_title(self) -> None:
             self.titles.append(self._get_click_filename())
 
+        def winfo_exists(self) -> bool:
+            return True
+
     monkeypatch.setattr(
         "clicknick.views.address_editor.window.AddressEditorWindow", FakeAddressEditor
     )
@@ -762,3 +786,24 @@ def test_after_keep_open_editors_follow_the_new_project_and_its_build(monkeypatc
     assert app._data.editors == (editor,)
     assert editor.titles == ["Renamed.ckp"]
     assert editor.get_analysis_service() is new_session.analysis
+
+
+def test_the_refresh_skips_editor_windows_that_are_gone(monkeypatch):
+    import tkinter as tk
+
+    class GoneEditor(FakeEditor):
+        def winfo_exists(self) -> bool:
+            return False
+
+        def refresh_title(self) -> None:
+            raise tk.TclError("application has been destroyed")
+
+    app, _prompts = _app(monkeypatch)
+    app.root.title = MagicMock()
+    app._data = DataSession(FakeStore(is_database=True))
+    app._data.register_editor(GoneEditor())
+    app._session = SimpleNamespace(synced_pending=0)
+
+    app._refresh_ui()
+
+    app.root.title.assert_called_once_with("ClickNick - Main.ckp - DB")

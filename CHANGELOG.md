@@ -81,7 +81,7 @@
 - Choosing an existing workspace whose `src/plc` holds edits copies them to `backup/src/plc` before the next build regenerates it; `clicknick-cli restore` puts them back.
 - Workspace setup no longer switches when both the current and the chosen workspace's `src/plc` hold edits; it names both folders so you can paste or discard one first.
 - A chosen workspace whose `src/plc` edits were kept shows as edited instead of Clean.
-- **Export Workspace** after a failed build says why instead of exporting the workspace of an earlier save.
+- **Export Workspace** and Workspace setup after a failed build say why instead of using the workspace of an earlier save.
 - "N tags synced - Save in CLICK" no longer drops to 0 when the workspace rebuilds, such as after a Sync with repairs, opening the Simulator or setting up a workspace, and opening the Simulator during a build no longer starts a second one.
 - A workspace `AGENTS.md` or `README.md` that is not UTF-8 no longer makes every build fail and leave the workspace without `csv/`.
 - A workspace `AGENTS.md` or `README.md` with a UTF-8 BOM gets pyrung's pointer under its title.
@@ -118,7 +118,7 @@
 - A CSV that cannot be loaded shows why, such as a missing Nickname column (the status only said "CSV load failed").
 - Two CLICK windows with the same project name are listed with their PIDs, so either can be picked, and the window list and status no longer show a window or "Monitoring" that is not current.
 - The window list always shows the connected CLICK window, also after ClickNick connects by itself or CLICK opens another project (it could be empty while the status said "Monitoring").
-- When CLICK saves under a new name or opens another project while you have unsaved database changes, ClickNick asks whether to keep them for the new project, which Sync then writes, or discard them (it discarded them), and offers to save unsaved Dataview edits before it closes the Dataview Editor.
+- When CLICK saves under a new name or opens another project while you have unsaved address or Dataview changes, ClickNick asks whether to keep them for the new project, where Sync and Save then write them, or discard them (it discarded them).
 - **Load Ladder CSV to Clipboard** copies for the connected CLICK window and asks you to connect first (it used the first CLICK window it found).
 - ClickNick deletes its copies of CLICK windows that have closed, made by **Compare with > Other CLICK window**, when it starts and when the window list is refreshed.
 - `clicknick-cli tag apply` keeps a comment's text and block tag and changes only the annotations you changed in `tags.py` (it replaced the comment with them alone, such as `[uom=mm]`).
