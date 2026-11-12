@@ -309,6 +309,14 @@ _DIALOG_POLL_MS = 100
 _DIALOG_TIMEOUT_MS = 3000
 
 
+def _click_programs(comparison: BundleComparison) -> dict[str, object]:
+    """What CLICK's last save holds of each program compared, by name ignoring case."""
+    return {
+        name.casefold(): (change.before, change.legacy)
+        for name, change in (*comparison.changes.items(), *comparison.only_in_click.items())
+    }
+
+
 @dataclass(frozen=True)
 class ProposalSource:
     """Where a window's proposal comes from, and so what of it starts out taken.
@@ -464,11 +472,16 @@ class PreviewChangesWindow(tk.Toplevel):
         self._only_in_click = comparison.only_in_click
         self._missing_in_click = comparison.missing_in_click
         self._click_compared = comparison.compared
-        # Each build of the workspace follows a CLICK save
-        previous = self._compared_generation
+        previous = self._last_save
         if comparison.compared:
-            self._compared_generation = program.generation
-        saved = comparison.compared and previous not in (None, program.generation)
+            self._last_save = _click_programs(comparison)
+        # The workspace is also rebuilt without a CLICK save (after a Sync, say),
+        # so a save is told by CLICK's programs changing
+        saved = (
+            comparison.compared
+            and previous is not None
+            and any(previous[name] != self._last_save[name] for name in previous.keys() & self._last_save.keys())
+        )
         self._carry_choices(saved=saved)
         self._items = [
             *self._folder_items,
@@ -1379,7 +1392,7 @@ class PreviewChangesWindow(tk.Toplevel):
                     "To step through them instead, save in CLICK first"
                 )
             return prompt
-        return f'Click "Copy" to copy {name} to the clipboard'
+        return f'Click "Copy" to copy {name} to the clipboard. {self._whole_placement(name)}'
 
     def _stepped_line(self, name: str) -> str:
         """Say why the program is stepped through under "Whole program", or nothing."""
@@ -1945,7 +1958,7 @@ class PreviewChangesWindow(tk.Toplevel):
             self._viewed.clear()
             self._current_idx = None
             self._copied = False
-            self._compared_generation = None
+            self._last_save = None
         elif program.building and self._changes:
             # CLICK saved: keep the rows until the new CSVs are ready.
             self._saved_program = program
@@ -2484,8 +2497,8 @@ class PreviewChangesWindow(tk.Toplevel):
         self._before_sources: BundleSources | None = None
         self._after_sources: BundleSources | None = None
         self._saved_program = SavedProgram()
-        # The generation of CLICK's save last compared with: a later one means CLICK saved
-        self._compared_generation: int | None = None
+        # CLICK's programs as last compared (_click_programs): a change means CLICK saved
+        self._last_save: dict[str, object] | None = None
 
         self._create_widgets()
         self._show_source()
