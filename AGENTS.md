@@ -195,10 +195,11 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - The generated code, persisted project and tag map all come from one nickname snapshot read from CLICK's
   database, so tag names always match the code. ClickNick edits reach analysis on the next build after Sync
 
-### Guided Paste
-- The one window for getting ladder into CLICK (`views/guided_paste_window.py`): **Ladder > Open in Guided Paste**
-  opens it on any folder of ladder CSVs, **Preview Changes** / `clicknick-cli rung apply` on the workspace's
-  `csv_output/`. The app keeps one window per folder and reloads it when the folder is shown again
+### Preview Changes
+- The one window for getting ladder into CLICK (`views/preview_changes_window.py`; it was called Guided Paste):
+  **Ladder > Open in Preview Changes** opens it on any folder of ladder CSVs, the Workspace's **Preview Changes** /
+  `clicknick-cli rung apply` on the workspace's `csv_output/`. The app keeps one window per folder and reloads it
+  when the folder is shown again
 - `services/rung_diff.py` is the one comparison of a CSV bundle with CLICK's last save (`csv/`): which programs
   differ, which rungs, and the diff text. Rungs are compared by `rung_fingerprint`; pyrung source is only how a
   difference is shown
@@ -206,6 +207,10 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   below it. `ProgramChange.steps` turns a program's differences into steps on that basis, worked from the top
   so each step's rung numbers are the ones CLICK shows: paste over one rung, paste over a new empty rung, or
   delete rungs. The Copy switch's **Whole program** clears the program in CLICK and pastes it in one piece
+- Each difference (one non-equal opcode, `DifferenceKey`) can be taken or skipped; skipped means CLICK keeps its
+  rungs there. Steps are numbered from what CLICK holds given the skips (`steps(skipped, pasted)`), and **Whole
+  program** copies `merged(skipped)`. A difference locks once its step is done ("Next"), not when copied. Choices
+  live only as long as the window; `carry_skipped` moves them onto the comparison after a CLICK save
 - The folder is read once (`load_bundle`) and compared and copied from memory: a CLICK save regenerates the
   workspace and deletes `csv_output/`, and the window must still know whether what it pasted landed
 - It closes itself when a CLICK save holds everything it was pasting. After a save that leaves work to do it

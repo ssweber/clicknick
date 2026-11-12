@@ -108,8 +108,7 @@ In a workspace, you can:
 - Add automated tests alongside the ladder program.
 - Keep notes, test fixtures, source history, and other project-specific files.
 - Use normal software tools such as diffs, Git, editors, and coding agents.
-- Edit generated ladder source and use **Preview Changes** to review the proposed CLICK rungs.
-- Copy approved rung changes into CLICK through the guided paste workflow.
+- Edit generated ladder source and use **Preview Changes** to review the proposed CLICK rungs, take or skip each difference, and paste the ones you take into CLICK step by step.
 - Use **Reload from CLICK** to discard workspace changes and return to the saved CLICK program.
 
 ![ClickNick Preview Changes showing a proposed ladder rung edit](https://github.com/user-attachments/assets/78fc0d24-22d9-4f8d-8fa9-6b6e1507b891)
@@ -118,7 +117,7 @@ ClickNick preserves a recovery snapshot before regeneration replaces generated s
 
 ## How pyrung fits in
 
-ClickNick is built on [pyrung](https://pyrung.com/pyrung/), the engine that runs your ladder as Python. That's what makes Check Program, the Console, and `why` / `how` possible, and it's what lets you run pytest, a diff, or a coding agent against the workspace. Edits go back the other way: Preview Changes shows the rung diff, Guided Paste puts the rungs on the clipboard, you paste and save in CLICK. [How it fits.](https://pyrung.com/overview/)
+ClickNick is built on [pyrung](https://pyrung.com/pyrung/), the engine that runs your ladder as Python. That's what makes Check Program, the Console, and `why` / `how` possible, and it's what lets you run pytest, a diff, or a coding agent against the workspace. Edits go back the other way: Preview Changes shows the rung diff and puts the rungs you take on the clipboard, you paste and save in CLICK. [How it fits.](https://pyrung.com/overview/)
 
 ## Feature details
 

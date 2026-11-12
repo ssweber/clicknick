@@ -14,7 +14,7 @@ def test_all_action_icon_resources_are_packaged_pngs() -> None:
         "data_view",
         "check_program",
         "console",
-        "rung_apply",
+        "preview_changes",
         "reload_from_click",
     }
     for filename in ACTION_ICON_FILES.values():

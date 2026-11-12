@@ -1,10 +1,15 @@
-"""Guided paste panel: walk a folder of ladder CSVs into Click, with the rung diff.
+"""Preview Changes: walk a folder of ladder CSVs into Click, with the rung diff.
 
 The one window for getting ladder into CLICK. The Ladder menu opens it on any
-folder of CSVs; Preview Changes (``clicknick-cli rung apply``) opens it on the
-workspace's ``csv_output/``. Each row is a program; the pane below shows how the
+folder of CSVs; the Workspace's Preview Changes button (``clicknick-cli rung
+apply``) opens it on the workspace's ``csv_output/``. Each row is a program; the
+pane below shows how the
 selected one differs from CLICK's last save, and the step copies either the
 whole program or just the rungs that differ.
+
+Each difference can be taken or skipped; a skipped one is left as CLICK has
+it. The choices, and how far each program's steps have got, belong to the
+program, so rows and differences can be looked at in any order.
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox, ttk
 
+from laddercodec import Rung
 from tksheet import Sheet
 
 from ..connection_session import SavedProgram
@@ -30,10 +36,13 @@ from ..ladder.program import (
 from ..services.rung_diff import (
     BundleComparison,
     BundleSources,
+    DifferenceKey,
+    Opcode,
     PasteStep,
     ProgramChange,
     ProposedProgram,
     RenderedDiff,
+    carry_skipped,
     compare_bundle,
     format_group,
     load_bundle,
@@ -41,6 +50,7 @@ from ..services.rung_diff import (
     render_diff,
 )
 from ..utils.win32_utils import WIN32
+from ..widgets.tooltip import bind_tooltip
 
 # Column layout
 COL_STATUS = 0
@@ -60,6 +70,10 @@ _MANY_STEPS = 6
 _ICON_DONE = "✓"  # ✓
 _ICON_CURRENT = "▶"  # ▶
 _ICON_PENDING = "○"  # ○
+# A program whose difference has not been shown yet
+_ICON_UNREVIEWED = "●"
+# Every difference skipped: CLICK keeps what it has
+_ICON_SKIPPED = "–"
 
 _ICON_MATCHES = "="
 _ICON_ONLY_IN_CLICK = "!"
@@ -97,13 +111,16 @@ _NICKNAMES_NAME = "nicknames.csv"
 _WATCH_INTERVAL_MS = 1000
 
 _FIRST_TIME_TIPS = (
-    "Guided Paste\n\n"
+    "Preview Changes\n\n"
     "Each step copies rungs to the clipboard: a whole program, or just the rungs that "
     "differ when CLICK already has it (the Copy switch chooses). The pane under the list "
     "shows the difference. Work down each program in order: a step's rung numbers are "
     "the ones CLICK shows once the steps before it are done. "
     "Paste into CLICK with Ctrl+V, then wait until the rungs appear before doing anything "
     "else: a big paste can take a while, and CLICK may look frozen until it finishes.\n\n"
+    "To leave a difference out, untick Take this difference above the pane, or click its "
+    "+/- gutter: CLICK keeps what it has there. Alt+Down and Alt+Up (or F7 and Shift+F7) "
+    "go through every difference, program by program.\n\n"
     "Subroutines come before main. Create each one in CLICK (New Subroutine does this "
     "for you), then paste into it."
 )
@@ -129,7 +146,7 @@ def _read_copy_whole() -> bool:
 
 
 def _save_copy_whole(whole: bool) -> None:
-    """Remember the user's Copy switch choice for the next Guided Paste window."""
+    """Remember the user's Copy switch choice for the next Preview Changes window."""
     path = _preferences_path()
     staging = path.with_suffix(".json.staging")
     try:
@@ -155,8 +172,6 @@ def _where_to_paste(step: PasteStep) -> str:
     CLICK pastes over the selected rung: that rung is replaced by the first
     pasted rung and the rest go in below it.
     """
-    if not step.placed:
-        return "Paste it in CLICK (Ctrl+V) over the rung it replaces, or over a new empty rung"
     if step.over is not None:
         return f"In CLICK, select rung {step.over} and paste over it (Ctrl+V)"
     where = "after the last rung" if step.above is None else f"above rung {step.above}"
@@ -198,6 +213,19 @@ def _change_label(change: ProgramChange) -> str:
     return f"{label}, old encoding" if change.legacy else label
 
 
+def _differences_of(change: ProgramChange) -> list[Opcode]:
+    """The program's differences, in ``ProgramChange.differences`` order."""
+    return [opcode for opcode in change.opcodes if opcode[0] != "equal"]
+
+
+def _what_skipping_keeps(opcode: Opcode) -> str:
+    """Say what a skipped difference leaves in CLICK."""
+    _tag, i1, i2, _j1, _j2 = opcode
+    if i1 == i2:
+        return "Skipped: not added"
+    return f"Skipped: CLICK keeps its {_rungs_in_click(range(i1 + 1, i2 + 1))}"
+
+
 # CLICK's Ctrl+U dialog, and its subroutine name box
 _NEW_SUB_TITLE = "New Subroutine Program"
 _NEW_SUB_NAME_CONTROL = "Edit1"
@@ -208,7 +236,7 @@ _DIALOG_POLL_MS = 100
 _DIALOG_TIMEOUT_MS = 3000
 
 
-class GuidedPasteWindow(tk.Toplevel):
+class PreviewChangesWindow(tk.Toplevel):
     """Non-modal panel that walks the user through pasting ladder CSVs."""
 
     # ------------------------------------------------------------------
@@ -243,6 +271,33 @@ class GuidedPasteWindow(tk.Toplevel):
             else BundleSources.workspace(self._source_dir, self._folder)
         )
 
+    def _carry_choices(self) -> None:
+        """Bring each program's choices and progress over to the new comparison.
+
+        A program not compared now keeps them for when it is. Skips follow the
+        differences they were made on. What was pasted stays pasted while the
+        program compares as before; once it does not (CLICK saved, or the
+        folder was exported again), the comparison shows what is left.
+        """
+        for name, basis in list(self._basis.items()):
+            change = self._changes.get(name)
+            if change is None:
+                continue
+            skipped = carry_skipped(self._skipped.get(name, ()), basis, change)
+            self._skipped[name] = skipped
+            if change != basis:
+                self._pasted.pop(name, None)
+                self._partial.pop(name, None)
+            self._basis[name] = change
+        for name, rungs in list(self._selection.items()):
+            change = self._changes.get(name)
+            if change is None:
+                continue  # Applied once there is a comparison to pick from
+            del self._selection[name]
+            if name not in self._missing_in_click:
+                self._skipped[name] = frozenset(change.differences) - change.blocks_holding(rungs)
+                self._basis[name] = change
+
     def _compare_with_click(self) -> None:
         """Compare the folder with the program now in CLICK; rebuild the rows.
 
@@ -262,6 +317,7 @@ class GuidedPasteWindow(tk.Toplevel):
         self._only_in_click = comparison.only_in_click
         self._missing_in_click = comparison.missing_in_click
         self._click_compared = comparison.compared
+        self._carry_choices()
         self._items = [
             *self._folder_items,
             *(
@@ -269,6 +325,15 @@ class GuidedPasteWindow(tk.Toplevel):
                 for name, change in comparison.only_in_click.items()
             ),
         ]
+
+    def _forget_progress(self) -> None:
+        self._pasted.clear()
+        self._partial.clear()
+        self._basis = {name: self._basis[name] for name in self._skipped if name in self._basis}
+
+    def _forget_choices(self) -> None:
+        self._skipped.clear()
+        self._forget_progress()
 
     def _can_add_subroutine(self, idx: int | None) -> bool:
         """Whether the row is a subroutine CLICK may not have yet.
@@ -294,9 +359,9 @@ class GuidedPasteWindow(tk.Toplevel):
     def _legacy_in_step(self, name: str, step: PasteStep) -> list[LegacyEncoding]:
         """CLICK's rungs in a legacy encoding that *step* pastes over or deletes."""
         change = self._changes.get(name)
-        if change is None or not change.legacy or not step.placed:
+        if change is None or not change.legacy:
             return []
-        differences = [opcode for opcode in change.opcodes if opcode[0] != "equal"]
+        differences = _differences_of(change)
         if step.block >= len(differences):
             return []
         tag, i1, i2, _j1, _j2 = differences[step.block]
@@ -326,28 +391,94 @@ class GuidedPasteWindow(tk.Toplevel):
         change = self._changes.get(name)
         return change is not None and not change.differs
 
+    # ------------------------------------------------------------------
+    # Taking and skipping differences
+    # ------------------------------------------------------------------
+
+    def _choosable(self, name: str | None) -> ProgramChange | None:
+        """The folder program's change, when it has differences to take or skip."""
+        if name is None or name in self._only_in_click:
+            return None
+        change = self._changes.get(name)
+        return change if change is not None and change.differences else None
+
+    def _skipped_of(self, name: str) -> frozenset[DifferenceKey]:
+        return self._skipped.get(name, frozenset())
+
+    def _all_skipped(self, name: str) -> bool:
+        """Whether every difference of the program is skipped: nothing to paste."""
+        change = self._choosable(name)
+        return change is not None and set(change.differences) <= self._skipped_of(name)
+
     def _needs_paste(self, name: str) -> bool:
         return (
             name not in self._done
             and not self._matches_click(name)
             and name not in self._only_in_click
+            and not self._all_skipped(name)
         )
 
+    def _rest_skipped(self, name: str) -> bool:
+        """Whether every difference not pasted yet is skipped: nothing left to paste."""
+        change = self._choosable(name)
+        taken = self._skipped_of(name) | self._pasted.get(name, frozenset())
+        return change is not None and set(change.differences) <= taken
+
+    def _skipped_in(self, name: str) -> int:
+        """How many of the program's differences are skipped."""
+        change = self._choosable(name)
+        return 0 if change is None else len(self._skipped_of(name) & set(change.differences))
+
+    def _skipped_count(self) -> int:
+        return sum(self._skipped_in(name) for name, *_ in self._folder_items)
+
+    def _program_steps(
+        self, name: str, *, pasted: frozenset[DifferenceKey] = frozenset()
+    ) -> list[PasteStep]:
+        if self._copy_whole_var.get():
+            return []
+        change = self._changes.get(name)
+        if change is None or name in self._missing_in_click:
+            return []
+        return list(change.steps(self._skipped_of(name), pasted))
+
+    # ------------------------------------------------------------------
+    # Steps
+    # ------------------------------------------------------------------
+
     def _steps(self, name: str) -> list[PasteStep]:
-        """What to do in CLICK, one difference at a time, for a program CLICK has.
+        """What is left to do in CLICK, one difference at a time, for a program CLICK has.
 
         Empty when the whole program is pasted instead: the Copy switch says so,
         CLICK lacks it, what CLICK has is unknown, or nothing of it differs.
         """
-        if self._copy_whole_var.get():
-            return []
-        selected = self._selection.get(name)
-        if selected:
-            return [PasteStep(tuple(group), placed=False) for group in paste_groups(selected)]
-        change = self._changes.get(name)
-        if change is None or name in self._missing_in_click:
-            return []
-        return list(change.steps)
+        return self._program_steps(name, pasted=self._pasted.get(name, frozenset()))
+
+    def _locked(self, name: str, block: int) -> bool:
+        """Whether the difference is in CLICK already: pasted, or its step begun."""
+        change = self._choosable(name)
+        if change is None or name in self._done:
+            return True
+        if change.differences[block] in self._pasted.get(name, ()):
+            return True
+        steps = self._steps(name)
+        return bool(self._partial.get(name)) and bool(steps) and steps[0].block == block
+
+    def _all_differences(self) -> list[tuple[str, int]]:
+        """Every difference that can be taken or skipped, program by program."""
+        return [
+            (name, block)
+            for name, *_ in self._folder_items
+            if (change := self._choosable(name)) is not None
+            for block in range(len(change.differences))
+        ]
+
+    def _viewed_difference(self, differences: list[tuple[str, int]]) -> int | None:
+        """Where the difference being looked at stands in *differences*, if it is one."""
+        if self._view_name is None:
+            return None
+        here = (self._view_name, self._view_block)
+        return differences.index(here) if here in differences else None
 
     def _current_steps(self) -> list[PasteStep]:
         if self._current_idx is None:
@@ -356,8 +487,12 @@ class GuidedPasteWindow(tk.Toplevel):
 
     def _current_step(self) -> PasteStep | None:
         """The current row's step; None when the whole program is copied in one."""
-        steps = self._current_steps()
-        return steps[self._step_idx] if self._step_idx < len(steps) else None
+        if self._current_idx is None:
+            return None
+        name = self._items[self._current_idx][0]
+        steps = self._steps(name)
+        partial = self._partial.get(name, 0)
+        return steps[partial] if partial < len(steps) else None
 
     def _whole_placement(self, name: str) -> str:
         """Say how a whole program goes into CLICK, given what CLICK has of it."""
@@ -376,21 +511,28 @@ class GuidedPasteWindow(tk.Toplevel):
             return ""
         if not change.differs:
             return _CLICK_MATCHES
-        if name in self._missing_in_click:
-            return _CLICK_NEW
-        return _change_label(change)
+        label = _CLICK_NEW if name in self._missing_in_click else _change_label(change)
+        skipped = self._skipped_in(name)
+        if self._all_skipped(name):
+            return f"{label}, all skipped"
+        return f"{label}, {skipped} skipped" if skipped else label
 
     def _update_progress_text(self) -> None:
         todo = [
             name
             for name, *_ in self._items
-            if not self._matches_click(name) and name not in self._only_in_click
+            if not self._matches_click(name)
+            and name not in self._only_in_click
+            and not self._all_skipped(name)
         ]
         done_n = sum(1 for name in todo if name in self._done)
         text = f"{done_n} of {len(todo)} done"
         matching = sum(1 for name, *_ in self._items if self._matches_click(name))
         if matching:
             text += f" · {matching} up to date in CLICK"
+        skipped = self._skipped_count()
+        if skipped:
+            text += f" · {skipped} difference{'s' if skipped != 1 else ''} skipped"
         if self._only_in_click:
             text += f" · {len(self._only_in_click)} only in CLICK"
         self._progress_lbl.configure(text=text)
@@ -452,27 +594,73 @@ class GuidedPasteWindow(tk.Toplevel):
             self._expanded_change, self._expanded = change, {}
         return note, render_diff(change, name, before=before, after=after, shown=self._expanded)
 
-    def _scroll_to_step(self) -> None:
-        """Bring the difference the current step works on to the top of the pane."""
-        line = None
-        current = self._items[self._current_idx][0] if self._current_idx is not None else None
-        step = self._current_step() if current == self._view_name else None
-        if step is not None and step.placed and step.block < len(self._shown_diff.blocks):
-            line = self._shown_diff.blocks[step.block]
-        elif step is not None:
-            starts = (self._shown_diff.starts.get(number) for number in step.rungs)
-            line = next((start for start in starts if start is not None), None)
-        if line is None:
+    def _scroll_to_view(self) -> None:
+        """Bring the difference being looked at to the top of the pane."""
+        blocks = self._shown_diff.blocks
+        if self._view_block >= len(blocks):
             self._text.yview_moveto(0)
+            return
+        # Lines never wrap, so a line's share of the text is its scroll position
+        total = int(self._text.index("end-1c").split(".")[0])
+        self._text.yview_moveto((blocks[self._view_block] + self._diff_first_line - 1) / total)
+
+    def _mark_skipped(self, diff: RenderedDiff) -> None:
+        """Grey out the skipped differences of the program shown."""
+        change = self._choosable(self._view_name)
+        if change is None or self._view_name is None:
+            return
+        skipped = self._skipped_of(self._view_name)
+        for block, key in enumerate(change.differences):
+            if key in skipped and block < len(diff.changed):
+                start, end = diff.changed[block]
+                first = self._diff_first_line
+                self._text.tag_add("skipped", f"{start + first}.0", f"{end + first}.0")
+
+    def _update_difference_bar(self) -> None:
+        """Say which difference is being looked at, and whether it is taken."""
+        differences = self._all_differences()
+        here = self._viewed_difference(differences)
+        unreviewed = sum(
+            1
+            for name, *_ in self._folder_items
+            if self._choosable(name) and name not in self._viewed
+        )
+        self._review_lbl.configure(
+            text=f"{unreviewed} program{'s' if unreviewed != 1 else ''} not reviewed yet"
+            if unreviewed
+            else ""
+        )
+        moving = "normal" if differences else "disabled"
+        self._prev_btn.configure(state=moving)
+        self._next_btn.configure(state=moving)
+        change = self._choosable(self._view_name)
+        if change is None or self._view_name is None or here is None:
+            count = len(differences)
+            self._bar_lbl.configure(
+                text=f"{count} difference{'s' if count != 1 else ''}" if count else "No differences"
+            )
+            self._take_var.set(False)
+            self._take_chk.configure(state="disabled")
+            self._detail_lbl.configure(text="")
+            return
+        self._bar_lbl.configure(text=f"Difference {here + 1} of {len(differences)}")
+        key = change.differences[self._view_block]
+        skipped = key in self._skipped_of(self._view_name)
+        locked = self._locked(self._view_name, self._view_block)
+        self._take_var.set(not skipped)
+        self._take_chk.configure(state="disabled" if locked else "normal")
+        if skipped:
+            detail = _what_skipping_keeps(_differences_of(change)[self._view_block])
+        elif locked and self._view_name not in self._done:
+            detail = "Pasted"
         else:
-            # Lines never wrap, so a line's share of the text is its scroll position
-            total = int(self._text.index("end-1c").split(".")[0])
-            self._text.yview_moveto((line + self._diff_first_line - 1) / total)
+            detail = ""
+        self._detail_lbl.configure(text=detail)
 
     def _show_diff(self, *, keep_scroll: bool = False) -> None:
         """Show how the viewed row's program differs from CLICK.
 
-        Scrolls to the current step's difference, or with *keep_scroll* stays
+        Scrolls to the difference being looked at, or with *keep_scroll* stays
         where the pane was.
         """
         top_line = int(self._text.index("@0,0").split(".")[0]) if keep_scroll else 0
@@ -504,25 +692,20 @@ class GuidedPasteWindow(tk.Toplevel):
                 self._text.insert(tk.END, line[start:end], (tag, f"{tag}_word"))
                 column = end
             self._text.insert(tk.END, line[column:], tag)
-        self._text.configure(state=tk.DISABLED)
         self._shown_diff = diff
         # The Text widget numbers lines from 1, and the diff starts below the note
         self._diff_first_line = note.count("\n") + 2 if note else 1
+        self._mark_skipped(diff)
+        self._text.configure(state=tk.DISABLED)
+        name = self._view_name
+        if name is not None and diff.lines and self._choosable(name) is not None:
+            self._viewed.add(name)
+        self._update_difference_bar()
         if keep_scroll:
             total = int(self._text.index("end-1c").split(".")[0])
             self._text.yview_moveto((top_line - 1) / total)
         else:
-            self._scroll_to_step()
-
-    def _on_expand(self, event: tk.Event) -> None:
-        """Show more of the unchanged rungs behind the clicked separator arrow."""
-        position = self._text.index(f"@{event.x},{event.y}")
-        gap = self._shown_diff.gaps.get(int(position.split(".")[0]) - self._diff_first_line)
-        arrow = self._text.get(position)
-        if gap is None or arrow not in gap.arrows:
-            return
-        self._expanded[gap.opcode] = gap.expand(arrow)
-        self._show_diff(keep_scroll=True)
+            self._scroll_to_view()
 
     # ------------------------------------------------------------------
     # Row highlighting
@@ -536,8 +719,15 @@ class GuidedPasteWindow(tk.Toplevel):
         for col in range(_NUM_COLS):
             self._sheet.dehighlight_cells(row=idx, column=col)
 
+    def _pending_icon(self, name: str) -> str:
+        """A program still to paste: hollow once its difference has been shown."""
+        if self._choosable(name) is not None and name not in self._viewed:
+            return _ICON_UNREVIEWED
+        return _ICON_PENDING
+
     def _update_highlights(self) -> None:
         for idx, (name, *_) in enumerate(self._items):
+            self._sheet.set_cell_data(idx, COL_CLICK, self._click_label(name))
             if name in self._done:
                 self._highlight_row(idx, _BG_DONE)
                 self._sheet.set_cell_data(idx, COL_STATUS, _ICON_DONE)
@@ -552,13 +742,17 @@ class GuidedPasteWindow(tk.Toplevel):
                 self._dehighlight_row(idx)
                 self._highlight_row(idx, fg=_FG_ONLY_IN_CLICK)
                 self._sheet.set_cell_data(idx, COL_STATUS, _ICON_ONLY_IN_CLICK)
+            elif self._all_skipped(name):
+                self._dehighlight_row(idx)
+                self._highlight_row(idx, fg=_FG_MATCHES)
+                self._sheet.set_cell_data(idx, COL_STATUS, _ICON_SKIPPED)
             elif self._has_legacy(name):
                 self._dehighlight_row(idx)
                 self._highlight_row(idx, _BG_LEGACY, _FG_LEGACY)
-                self._sheet.set_cell_data(idx, COL_STATUS, _ICON_PENDING)
+                self._sheet.set_cell_data(idx, COL_STATUS, self._pending_icon(name))
             else:
                 self._dehighlight_row(idx)
-                self._sheet.set_cell_data(idx, COL_STATUS, _ICON_PENDING)
+                self._sheet.set_cell_data(idx, COL_STATUS, self._pending_icon(name))
         self._sheet.set_refresh_timer()
         self._update_progress_text()
 
@@ -580,12 +774,16 @@ class GuidedPasteWindow(tk.Toplevel):
             return
 
         step = self._current_step()
-        if self._copied or self._nothing_to_copy(step):
+        name = self._items[self._current_idx][0]
+        if self._copied or self._nothing_to_copy(step) or self._rest_skipped(name):
             self._action_btn.configure(state="normal", text="Next →")
         elif self._is_nickname_step(self._current_idx):
             self._action_btn.configure(state="normal", text="Import")
+        elif step is not None:
+            self._action_btn.configure(state="normal", text=f"Copy {format_group(step.rungs)}")
         else:
-            label = f"Copy {format_group(step.rungs)}" if step else "Copy"
+            skipped = self._skipped_in(name)
+            label = f"Copy, {skipped} skipped" if skipped else "Copy"
             self._action_btn.configure(state="normal", text=label)
 
     # ------------------------------------------------------------------
@@ -593,12 +791,24 @@ class GuidedPasteWindow(tk.Toplevel):
     # ------------------------------------------------------------------
 
     def _settled(self) -> bool:
-        """Whether CLICK's last save holds everything the folder does, and nothing more."""
+        """Whether CLICK's last save holds everything taken from the folder, and nothing more."""
         return (
             self._click_compared
             and not self._only_in_click
-            and all(self._matches_click(name) for name in self._programs)
+            and all(self._matches_click(name) or self._all_skipped(name) for name in self._programs)
             and (self._nickname_path is None or _NICKNAMES_NAME in self._done)
+        )
+
+    def _skipped_edits_line(self) -> str:
+        """Warn that a CLICK save leaves skipped workspace edits only in the backup."""
+        skipped = self._skipped_count()
+        if self._source_dir is None or not skipped:
+            return ""
+        what = "difference is an edit" if skipped == 1 else "differences are edits"
+        return (
+            f"{skipped} skipped {what} in the workspace source. When CLICK saves, the "
+            "workspace goes back to CLICK's version and skipped edits are kept only in "
+            "backup/src/plc."
         )
 
     def _update_notice(self) -> None:
@@ -606,33 +816,234 @@ class GuidedPasteWindow(tk.Toplevel):
 
         A CLICK save, or Reload from CLICK, regenerates the workspace: its
         ``csv_output/`` is removed and ``src/plc`` goes back to what CLICK has.
+        That is also where skipped workspace edits go, so the notice warns of it.
         """
         gone = bool(self._programs) and not any(
             program.path.is_file() for program in self._programs.values()
         )
-        if not gone or self._settled():
+        lines: list[str] = []
+        if gone and not self._settled():
+            if self._source_dir is None:
+                lines.append(
+                    "This folder's CSVs are gone. The window still holds them as read at "
+                    f"{self._read_at} and can keep pasting them."
+                )
+            else:
+                lines.append(
+                    "CLICK was saved before all of this was pasted, so the workspace is back to "
+                    f"CLICK's version. This window still holds the proposal exported at "
+                    f"{self._read_at} and can keep pasting it.\n"
+                    "The edited source is kept in backup/src/plc: run clicknick-cli restore, "
+                    "then Preview Changes, to work on it again."
+                )
+        elif skipped := self._skipped_edits_line():
+            lines.append(skipped)
+        if not lines:
             self._notice_lbl.pack_forget()
             return
-        if self._source_dir is None:
-            text = (
-                "This folder's CSVs are gone. The window still holds them as read at "
-                f"{self._read_at} and can keep pasting them."
-            )
-        else:
-            text = (
-                "CLICK was saved before all of this was pasted, so the workspace is back to "
-                f"CLICK's version. This window still holds the proposal exported at "
-                f"{self._read_at} and can keep pasting it.\n"
-                "The edited source is kept in backup/src/plc: run clicknick-cli restore, "
-                "then Preview Changes, to work on it again."
-            )
-        self._notice_lbl.configure(text=text)
+        self._notice_lbl.configure(text="\n".join(lines))
         self._notice_lbl.pack(fill=tk.X, pady=(0, 5), after=self._opts)
+
+    def _whole_program(self, name: str, rungs: tuple[Rung, ...]) -> list[Rung]:
+        """The program to paste whole: the folder's, except where a difference is skipped."""
+        change = self._choosable(name)
+        if change is None or not self._skipped_in(name):
+            return list(rungs)
+        return list(change.merged(self._skipped_of(name)))
+
+    def _step_prompt(self, idx: int) -> str:
+        """Say what the current step of the row does."""
+        name, _path, rung_count, _ = self._items[idx]
+        if self._is_nickname_step(idx):
+            return 'Click "Import" to import nicknames into the Click database'
+        if self._rest_skipped(name):
+            which = "Every difference" if self._all_skipped(name) else "What is left"
+            return (
+                f"{which} of {name} is skipped: CLICK keeps what it has.\n"
+                'Click "Next" to go on, or tick Take this difference to paste one'
+            )
+        step = self._current_step()
+        if step is not None:
+            total = len(self._program_steps(name))
+            # Steps of pasted differences, and of the difference begun, are behind
+            partial = self._partial.get(name, 0)
+            number = total - len(self._current_steps()) + partial + 1
+            head = f"{name}, step {number} of {total}"
+            label = format_group(step.rungs)
+            if not step.rungs:
+                old = _rungs_in_click(step.delete)
+                legacy = self._legacy_line(name, step)
+                # After a paste of fresh copies of old-encoded rungs, the rungs left to delete
+                # are CLICK's old copies. The program still has those rungs.
+                after_paste = bool(legacy) and partial > 0
+                if after_paste:
+                    what = (
+                        "CLICK's old copy of this rung is"
+                        if len(step.delete) == 1
+                        else "CLICK's old copies of these rungs are"
+                    )
+                    what = f"{what} now below the pasted ones, at {old}"
+                else:
+                    verb = "is" if len(step.delete) == 1 else "are"
+                    what = f"{old} {verb} not in the program any more"
+                if len(step.delete) == 1:
+                    action = 'Delete it in CLICK, then click "Next"'
+                else:
+                    action = (
+                        'Select them in CLICK (Shift+Up/Down) and delete them, then click "Next"'
+                    )
+                return f"{head}: {what}.\n{action}{legacy}"
+            if step.over is not None:
+                what = f"{label} replaces rung {step.over}"
+            else:
+                what = f"{label} is new"
+            prompt = f'{head}: {what}.\nClick "Copy {label}". {_where_to_paste(step)}'
+            prompt += self._legacy_line(name, step)
+            if number == 1 and total >= _MANY_STEPS:
+                prompt += (
+                    f'\nWith {total} steps, switching Copy to "{_COPY_WHOLE}" may be quicker: '
+                    "delete all its rungs in CLICK and paste once"
+                )
+            return prompt
+        if self._matches_click(name):
+            return (
+                f"{name} already matches CLICK's last save.\n"
+                'Click "Copy" to copy it to the clipboard anyway'
+            )
+        if self._can_add_subroutine(idx):
+            where = (
+                "is not in CLICK's last save" if self._click_compared else "may not be in CLICK yet"
+            )
+            return (
+                f"{name} {where}.\n"
+                'Click "New Subroutine" to create it in CLICK, or "Copy" if it already exists'
+            )
+        change = self._changes.get(name)
+        if change is not None and change.before and name not in self._missing_in_click:
+            skipped = self._skipped_in(name)
+            if skipped:
+                program = self._programs.get(name)
+                count = (
+                    len(self._whole_program(name, program.rungs))
+                    if program and program.rungs
+                    else 0
+                )
+                kept = "difference" if skipped == 1 else "differences"
+                whole = (
+                    f"the whole program as you chose it, {count} rungs, with {skipped} skipped "
+                    f"{kept} left as CLICK has them, replaces what CLICK has"
+                )
+                button = f"Copy, {skipped} skipped"
+            else:
+                whole = f"the whole program, {rung_count} rungs, replaces what CLICK has"
+                button = "Copy"
+            prompt = f'{name}: {whole}.\nClick "{button}". {self._whole_placement(name)}'
+            if change.legacy:
+                prompt += f"\n{_legacy_note(change)}"
+            return prompt
+        return f'Click "Copy" to copy {name} to the clipboard'
+
+    def _toggle(self, name: str, block: int) -> None:
+        """Take a difference that was skipped, or skip one that was taken."""
+        change = self._choosable(name)
+        if change is None or block >= len(change.differences):
+            return
+        self._view_name, self._view_block = name, block
+        if self._locked(name, block):
+            self._status_var.set(
+                "That difference is pasted into CLICK already; it can no longer be skipped"
+            )
+            self._show_diff(keep_scroll=True)
+            return
+        self._skipped[name] = self._skipped_of(name) ^ {change.differences[block]}
+        self._basis[name] = change
+        idx = self._current_idx
+        if idx is not None and self._items[idx][0] == name:
+            self._copied = False  # The clipboard holds what was chosen before
+            self._status_var.set(self._step_prompt(idx))
+        self._update_notice()
+        self._update_highlights()
+        self._update_action_btn()
+        self._show_diff(keep_scroll=True)
+
+    def _follow_in_sheet(self, idx: int) -> None:
+        """Move the sheet's own selection to the row and bring it into view.
+
+        A cell the user clicked in that row stays the selected one.
+        """
+        selected = self._sheet.get_currently_selected()
+        if not selected or selected.row != idx:
+            self._sheet.select_cell(idx, COL_FILE, run_binding_func=False)
+        self._sheet.see(idx, COL_FILE, keep_xscroll=True)
+
+    def _select_row(self, idx: int, *, block: int | None = None) -> None:
+        """Make the row the current one, showing difference *block* or its step's.
+
+        The program's steps carry on from where they got to.
+        """
+        if idx < 0 or idx >= len(self._items):
+            return
+        name = self._items[idx][0]
+        if name in self._done:
+            return
+        self._current_idx = idx
+        self._copied = False
+        self._view_name = name
+        step = self._current_step()
+        self._view_block = block if block is not None else step.block if step is not None else 0
+        self._follow_in_sheet(idx)
+        self._update_highlights()
+        self._update_action_btn()
+        self._status_var.set(self._step_prompt(idx))
+        self._show_diff()
+
+    def _go_to_difference(self, offset: int) -> None:
+        """Show the next (+1) or previous (-1) difference, crossing into other programs."""
+        differences = self._all_differences()
+        if not differences:
+            return
+        here = self._viewed_difference(differences)
+        if here is not None:
+            position = (here + offset) % len(differences)
+        else:
+            position = 0 if offset > 0 else len(differences) - 1
+        name, block = differences[position]
+        idx = next(index for index, (item, *_) in enumerate(self._items) if item == name)
+        if name in self._done or idx == self._current_idx:
+            # Not a step any more, or already the current row: only the view moves
+            self._view_name, self._view_block = name, block
+            self._show_diff()
+        else:
+            self._select_row(idx, block=block)
+
+    def _on_gutter(self, event: tk.Event) -> None:
+        """Take or skip the difference whose +/- gutter was clicked."""
+        position = self._text.index(f"@{event.x},{event.y}")
+        line = int(position.split(".")[0]) - self._diff_first_line
+        for block, (start, end) in enumerate(self._shown_diff.changed):
+            if start <= line < end and self._view_name is not None:
+                self._toggle(self._view_name, block)
+                return
+
+    def _on_take(self) -> None:
+        """Handle the Take this difference checkbox."""
+        if self._view_name is not None:
+            self._toggle(self._view_name, self._view_block)
+
+    def _on_expand(self, event: tk.Event) -> None:
+        """Show more of the unchanged rungs behind the clicked separator arrow."""
+        position = self._text.index(f"@{event.x},{event.y}")
+        gap = self._shown_diff.gaps.get(int(position.split(".")[0]) - self._diff_first_line)
+        arrow = self._text.get(position)
+        if gap is None or arrow not in gap.arrows:
+            return
+        self._expanded[gap.opcode] = gap.expand(arrow)
+        self._show_diff(keep_scroll=True)
 
     def _populate_sheet(self) -> None:
         data = []
         for name, _path, rungs, desc in self._items:
-            icon = _ICON_DONE if name in self._done else _ICON_PENDING
+            icon = _ICON_DONE if name in self._done else self._pending_icon(name)
             rung_str = "" if name == _NICKNAMES_NAME else str(rungs)
             data.append([icon, name, rung_str, self._click_label(name), desc])
         self._sheet.set_sheet_data(data)
@@ -700,9 +1111,15 @@ class GuidedPasteWindow(tk.Toplevel):
         try:
             if program is None or program.rungs is None:
                 raise ValueError(program.error if program else "it is not in this folder")
-            rungs = list(program.rungs)
-            if group is not None:
-                rungs = [rungs[number - 1] for number in group if 1 <= number <= len(rungs)]
+            if group is None:
+                rungs = self._whole_program(name, program.rungs)
+            else:
+                # A step's rung numbers are the folder's
+                rungs = [
+                    program.rungs[number - 1]
+                    for number in group
+                    if 1 <= number <= len(program.rungs)
+                ]
             if not rungs:
                 raise ValueError("there are no rungs to copy")
             click_hwnd = self._get_click_hwnd()
@@ -818,109 +1235,6 @@ class GuidedPasteWindow(tk.Toplevel):
         else:
             self._copy_rungs(idx, self._current_step())
 
-    def _step_prompt(self, idx: int) -> str:
-        """Say what the current step of the row does."""
-        name, _path, rung_count, _ = self._items[idx]
-        if self._is_nickname_step(idx):
-            return 'Click "Import" to import nicknames into the Click database'
-        step = self._current_step()
-        if step is not None:
-            head = f"{name}, step {self._step_idx + 1} of {len(self._current_steps())}"
-            label = format_group(step.rungs)
-            if not step.rungs:
-                old = _rungs_in_click(step.delete)
-                legacy = self._legacy_line(name, step)
-                steps = self._current_steps()
-                # After a paste of fresh copies of old-encoded rungs, the rungs left to delete
-                # are CLICK's old copies. The program still has those rungs.
-                after_paste = (
-                    bool(legacy)
-                    and self._step_idx > 0
-                    and steps[self._step_idx - 1].block == step.block
-                )
-                if after_paste:
-                    what = (
-                        "CLICK's old copy of this rung is"
-                        if len(step.delete) == 1
-                        else "CLICK's old copies of these rungs are"
-                    )
-                    what = f"{what} now below the pasted ones, at {old}"
-                else:
-                    verb = "is" if len(step.delete) == 1 else "are"
-                    what = f"{old} {verb} not in the program any more"
-                if len(step.delete) == 1:
-                    action = 'Delete it in CLICK, then click "Next"'
-                else:
-                    action = (
-                        'Select them in CLICK (Shift+Up/Down) and delete them, then click "Next"'
-                    )
-                return f"{head}: {what}.\n{action}{legacy}"
-            if not step.placed:
-                what = f"{label} was asked for by number"
-            elif step.over is not None:
-                what = f"{label} replaces rung {step.over}"
-            else:
-                what = f"{label} is new"
-            prompt = f'{head}: {what}.\nClick "Copy {label}". {_where_to_paste(step)}'
-            prompt += self._legacy_line(name, step)
-            steps = len(self._current_steps())
-            if self._step_idx == 0 and steps >= _MANY_STEPS:
-                prompt += (
-                    f'\nWith {steps} steps, switching Copy to "{_COPY_WHOLE}" may be quicker: '
-                    "delete all its rungs in CLICK and paste once"
-                )
-            return prompt
-        if self._matches_click(name):
-            return (
-                f"{name} already matches CLICK's last save.\n"
-                'Click "Copy" to copy it to the clipboard anyway'
-            )
-        if self._can_add_subroutine(idx):
-            where = (
-                "is not in CLICK's last save" if self._click_compared else "may not be in CLICK yet"
-            )
-            return (
-                f"{name} {where}.\n"
-                'Click "New Subroutine" to create it in CLICK, or "Copy" if it already exists'
-            )
-        change = self._changes.get(name)
-        if change is not None and change.before and name not in self._missing_in_click:
-            prompt = (
-                f"{name}: the whole program, {rung_count} rungs, replaces what CLICK has.\n"
-                f'Click "Copy". {self._whole_placement(name)}'
-            )
-            if change.legacy:
-                prompt += f"\n{_legacy_note(change)}"
-            return prompt
-        return f'Click "Copy" to copy {name} to the clipboard'
-
-    def _follow_in_sheet(self, idx: int) -> None:
-        """Move the sheet's own selection to the row and bring it into view.
-
-        A cell the user clicked in that row stays the selected one.
-        """
-        selected = self._sheet.get_currently_selected()
-        if not selected or selected.row != idx:
-            self._sheet.select_cell(idx, COL_FILE, run_binding_func=False)
-        self._sheet.see(idx, COL_FILE, keep_xscroll=True)
-
-    def _select_row(self, idx: int) -> None:
-        if idx < 0 or idx >= len(self._items):
-            return
-        name = self._items[idx][0]
-        if name in self._done:
-            return
-        if idx != self._current_idx or self._step_idx >= len(self._steps(name)):
-            self._step_idx = 0
-        self._current_idx = idx
-        self._copied = False
-        self._view_name = name
-        self._follow_in_sheet(idx)
-        self._update_highlights()
-        self._update_action_btn()
-        self._status_var.set(self._step_prompt(idx))
-        self._show_diff()
-
     # ------------------------------------------------------------------
     # Navigation
     # ------------------------------------------------------------------
@@ -949,7 +1263,8 @@ class GuidedPasteWindow(tk.Toplevel):
         """Read the folder, compare it with CLICK, and begin at *select* or the first step.
 
         With *keep_done*, programs marked done stay done if the folder still
-        holds the same rungs for them.
+        holds the same rungs for them, and so does what was pasted of the
+        others. Skipped differences stay skipped either way.
         """
         previous = self._programs
         self._scan_folder()
@@ -963,9 +1278,9 @@ class GuidedPasteWindow(tk.Toplevel):
             }
         else:
             self._done.clear()
+            self._forget_progress()
         self._current_idx = None
         self._copied = False
-        self._step_idx = 0
         self._compare_with_click()
         self._populate_sheet()
         wanted = None if select is None else select.casefold()
@@ -974,6 +1289,20 @@ class GuidedPasteWindow(tk.Toplevel):
                 self._select_row(idx)
                 return
         self._advance_to_first_pending()
+
+    def _pasted_message(self) -> str:
+        """Say what the window did, as it closes on a CLICK save holding all of it."""
+        skipped = self._skipped_count()
+        if not skipped:
+            return "CLICK saved everything from Preview Changes"
+        message = (
+            f"CLICK saved everything taken from Preview Changes; {skipped} skipped "
+            f"difference{'s' if skipped != 1 else ''} left as CLICK has "
+            f"{'it' if skipped == 1 else 'them'}"
+        )
+        if self._source_dir is not None:
+            message += " (skipped edits are in backup/src/plc)"
+        return message
 
     # ------------------------------------------------------------------
     # Following the program in CLICK
@@ -989,11 +1318,12 @@ class GuidedPasteWindow(tk.Toplevel):
         if program.session is not None:
             self._project_session = program.session
         if new_project:
-            # What was pasted went into the other project.
+            # What was pasted, and what was chosen, was about the other project.
             self._done.clear()
+            self._forget_choices()
+            self._viewed.clear()
             self._current_idx = None
             self._copied = False
-            self._step_idx = 0
         elif program.building and self._changes:
             # CLICK saved: keep the rows until the new CSVs are ready.
             self._saved_program = program
@@ -1007,14 +1337,13 @@ class GuidedPasteWindow(tk.Toplevel):
         if was_pending and self._settled() and not new_project:
             # CLICK saved the last of it: nothing is left for this window to do.
             if self._on_pasted is not None:
-                self._on_pasted()
+                self._on_pasted(self._pasted_message())
             self.destroy()
             return
         self._populate_sheet()
         steps = self._current_steps()
         if steps and steps != old_steps:
             # CLICK took some of the row's rungs: step through what is left.
-            self._step_idx = 0
             self._copied = False
         if self._copied:
             return  # Mid-paste: the row stays current until "Next"
@@ -1050,38 +1379,68 @@ class GuidedPasteWindow(tk.Toplevel):
                 )
             if name in self._only_in_click or name in self._done:
                 # Not a step, but its difference can still be read
-                self._view_name = name
+                self._view_name, self._view_block = name, 0
                 self._show_diff()
             else:
                 self._select_row(row)
+
+    def _finish_step(self, name: str, step: PasteStep) -> None:
+        """Record that *step* is done in CLICK: the next of its difference, or the difference."""
+        change = self._changes[name]
+        steps = self._steps(name)
+        partial = self._partial.get(name, 0)
+        self._basis[name] = change
+        if partial + 1 < len(steps) and steps[partial + 1].block == step.block:
+            self._partial[name] = partial + 1
+            return
+        self._pasted[name] = self._pasted.get(name, frozenset()) | {change.differences[step.block]}
+        self._partial.pop(name, None)
 
     def _on_action(self) -> None:
         """Handle the main action button (Copy/Import or Next)."""
         idx = self._current_idx
         if idx is None:
             return
-        if not self._copied and not self._nothing_to_copy(self._current_step()):
+        name = self._items[idx][0]
+        step = self._current_step()
+        if self._rest_skipped(name):
+            # "Next" — CLICK keeps what it has; a program partly pasted is done
+            if self._pasted.get(name):
+                self._done.add(name)
+            self._advance_to_next()
+            return
+        if not self._copied and not self._nothing_to_copy(step):
             # "Copy" or "Import" — perform the action
             self._perform_action(idx)
-        elif self._step_idx + 1 < len(self._current_steps()):
-            # "Next" — the row's next step
-            self._step_idx += 1
-            self._copied = False
-            self._update_action_btn()
-            self._status_var.set(self._step_prompt(idx))
-            self._scroll_to_step()
-        else:
-            # "Next" — mark done and advance
-            self._done.add(self._items[idx][0])
-            self._advance_to_next()
+            return
+        if step is not None:
+            self._finish_step(name, step)
+            next_step = self._current_step()
+            if next_step is not None:
+                # "Next" — the row's next step
+                self._copied = False
+                self._view_name, self._view_block = name, next_step.block
+                self._update_action_btn()
+                self._status_var.set(self._step_prompt(idx))
+                self._show_diff()
+                return
+        # "Next" — mark done and advance
+        self._done.add(name)
+        self._advance_to_next()
 
     def _on_copy_mode(self) -> None:
-        """Handle the Copy switch: remember it, and start the current row's step over."""
+        """Handle the Copy switch: remember it, and start the current row's steps over."""
         _save_copy_whole(self._copy_whole_var.get())
         idx = self._current_idx
         if idx is not None:
-            self._step_idx = 0
+            name = self._items[idx][0]
+            self._pasted.pop(name, None)
+            self._partial.pop(name, None)
             self._select_row(idx)
+
+    def _on_difference_key(self, offset: int) -> str:
+        self._go_to_difference(offset)
+        return "break"
 
     def _on_skip(self) -> None:
         if self._current_idx is None:
@@ -1123,7 +1482,7 @@ class GuidedPasteWindow(tk.Toplevel):
         header.pack(fill=tk.X, pady=(0, 5))
         ttk.Label(
             header,
-            text=f"Guided Paste — {self._folder.name}/",
+            text=f"Preview Changes — {self._folder.name}/",
             font=("TkDefaultFont", 10, "bold"),
         ).pack(side=tk.LEFT)
         self._progress_lbl = ttk.Label(header, text="")
@@ -1217,9 +1576,42 @@ class GuidedPasteWindow(tk.Toplevel):
 
         self._sheet.extra_bindings("cell_select", self._on_cell_select)
 
-        # --- rung diff of the selected row ---
-        diff_frame = tk.Frame(panes, relief=tk.SUNKEN, borderwidth=2)
-        panes.add(diff_frame, weight=3)
+        # --- rung diff of the selected row, under the difference bar ---
+        diff_pane = ttk.Frame(panes)
+        panes.add(diff_pane, weight=3)
+        bar = ttk.Frame(diff_pane)
+        bar.pack(fill=tk.X, pady=(0, 3))
+        self._prev_btn = ttk.Button(
+            bar, text="◀", width=3, command=lambda: self._go_to_difference(-1)
+        )
+        self._prev_btn.pack(side=tk.LEFT)
+        self._bar_lbl = ttk.Label(bar, text="", width=20, anchor="center")
+        self._bar_lbl.pack(side=tk.LEFT, padx=3)
+        self._next_btn = ttk.Button(
+            bar, text="▶", width=3, command=lambda: self._go_to_difference(1)
+        )
+        self._next_btn.pack(side=tk.LEFT)
+        bind_tooltip(self._prev_btn, "Previous difference (Alt+Up, Shift+F7)")
+        bind_tooltip(self._next_btn, "Next difference (Alt+Down, F7)")
+        self._take_var = tk.BooleanVar(value=False)
+        self._take_chk = ttk.Checkbutton(
+            bar, text="Take this difference", variable=self._take_var, command=self._on_take
+        )
+        self._take_chk.pack(side=tk.LEFT, padx=(12, 0))
+        self._detail_lbl = ttk.Label(bar, text="", foreground=_DIFF_MUTED)
+        self._detail_lbl.pack(side=tk.LEFT, padx=(8, 0))
+        self._review_lbl = ttk.Label(bar, text="", foreground=_DIFF_MUTED)
+        self._review_lbl.pack(side=tk.RIGHT)
+        for sequence, offset in (
+            ("<Alt-Down>", 1),
+            ("<Alt-Up>", -1),
+            ("<F7>", 1),
+            ("<Shift-F7>", -1),
+        ):
+            self.bind(sequence, lambda _e, offset=offset: self._on_difference_key(offset))
+
+        diff_frame = tk.Frame(diff_pane, relief=tk.SUNKEN, borderwidth=2)
+        diff_frame.pack(fill=tk.BOTH, expand=True)
 
         self._text = tk.Text(
             diff_frame,
@@ -1255,6 +1647,12 @@ class GuidedPasteWindow(tk.Toplevel):
             "file_header", foreground=_DIFF_MUTED, font=("Consolas", 10, "bold")
         )
         self._text.tag_configure("note", foreground=_DIFF_MUTED, font=("TkDefaultFont", 9))
+        # A skipped difference: configured last, so it draws over the line colours
+        self._text.tag_configure("skipped", background="#f6f8fa", foreground="#959da5")
+        for gutter in ("added_gutter", "removed_gutter"):
+            self._text.tag_bind(gutter, "<Button-1>", self._on_gutter)
+            self._text.tag_bind(gutter, "<Enter>", lambda _e: self._text.configure(cursor="hand2"))
+            self._text.tag_bind(gutter, "<Leave>", lambda _e: self._text.configure(cursor="xterm"))
 
         # --- buttons (frame packed above, before the panes) ---
         ttk.Button(btn_frame, text="⟳ Restart", command=self._on_restart, width=10).pack(
@@ -1297,18 +1695,19 @@ class GuidedPasteWindow(tk.Toplevel):
         get_saved_program: Callable[[], SavedProgram],
         source_dir: Path | None = None,
         select: tuple[str, list[int] | None] | None = None,
-        on_pasted: Callable[[], None] | None = None,
+        on_pasted: Callable[[str], None] | None = None,
     ):
         """Open on *folder*.
 
         *source_dir* is the workspace ``src/plc`` the folder was just exported
         from: the diff then shows that source as written, and nicknames are left
         to the Address Editor. *select* starts on one program, optionally with
-        the rungs of it to paste instead of the ones that differ. *on_pasted* is
-        called when a CLICK save holds everything and the window closes itself.
+        the rungs of it to paste: the differences holding them are taken and
+        the others skipped. *on_pasted* is called with a status message when a
+        CLICK save holds everything taken and the window closes itself.
         """
         super().__init__(parent)
-        self.title(f"Guided Paste — {folder.name}")
+        self.title(f"Preview Changes — {folder.name}")
         self.geometry("900x720")
         self.minsize(660, 480)
 
@@ -1330,10 +1729,19 @@ class GuidedPasteWindow(tk.Toplevel):
         self._done: set[str] = set()
         self._current_idx: int | None = None
         self._copied: bool = False
-        # Which of the current row's runs of rungs is being pasted
-        self._step_idx = 0
-        # Program name -> the rungs asked for, in place of the ones that differ
+        # Program name -> the rungs asked for by number: once compared, the
+        # differences holding them are taken and the others skipped
         self._selection: dict[str, list[int]] = {}
+        # Per program, for this window only. Skipped differences stay as CLICK
+        # has them; pasted ones are in CLICK, not saved yet; partial counts the
+        # steps done of the difference begun (a paste, then the rungs to delete).
+        self._skipped: dict[str, frozenset[DifferenceKey]] = {}
+        self._pasted: dict[str, frozenset[DifferenceKey]] = {}
+        self._partial: dict[str, int] = {}
+        # The comparison those were made on, to carry them over to the next one
+        self._basis: dict[str, ProgramChange] = {}
+        # Programs whose difference has been shown
+        self._viewed: set[str] = set()
         self._nickname_path: Path | None = None
         # name -> how it differs from CLICK; absent when unknown (no workspace, unreadable)
         self._changes: dict[str, ProgramChange] = {}
@@ -1344,8 +1752,10 @@ class GuidedPasteWindow(tk.Toplevel):
         self._click_compared = False
         self._adding_subroutine = False
         self._compare_note = ""
-        # The row whose difference the pane shows: the current step, or a row clicked to read
+        # The row whose difference the pane shows (the current step, or a row clicked
+        # to read), and which of its differences is being looked at
         self._view_name: str | None = None
+        self._view_block = 0
         self._shown_diff = RenderedDiff()
         self._diff_first_line = 1
         # Unchanged rungs shown behind each separator (render_diff's *shown*), for the
@@ -1373,7 +1783,9 @@ class GuidedPasteWindow(tk.Toplevel):
         """Read the folder again: it was exported or opened again.
 
         *source_dir* and *select* are as for the constructor. Programs already
-        marked done stay done unless their rungs changed.
+        marked done stay done unless their rungs changed, and skipped
+        differences stay skipped. Rungs asked for by number replace the
+        program's choices.
         """
         self._source_dir = source_dir
         self._selection = {select[0]: select[1]} if select and select[1] else {}

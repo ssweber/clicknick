@@ -1,6 +1,6 @@
 """Rung-by-rung comparison of a proposed ladder bundle with the program in CLICK.
 
-One comparison serves Guided Paste (which programs to paste, and which of their
+One comparison serves Preview Changes (which programs to paste, and which of their
 rungs) and ``clicknick-cli rung apply`` (what to report). A bundle is laid out
 like ``program_save`` output, ``main.csv`` + ``subroutines/*.csv``, and its
 programs are named like ``list_csv_folder`` names them.
@@ -15,7 +15,7 @@ import ast
 import difflib
 import json
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -87,13 +87,30 @@ def load_bundle(folder: Path) -> list[ProposedProgram]:
 
 
 @dataclass(frozen=True)
+class DifferenceKey:
+    """Names one difference of a program by what it holds, not where it is.
+
+    It stays the same when CLICK saves or the proposal is read again, so a
+    choice made about a difference outlives the comparison it was made in.
+    """
+
+    # CLICK's rungs and the proposed rungs of the difference, as compared
+    before: tuple[tuple[tuple[str, ...], ...], ...]
+    after: tuple[tuple[tuple[str, ...], ...], ...]
+    # Earlier differences of the program holding the same rungs, so the same
+    # change made in two places is two differences
+    occurrence: int = 0
+
+
+@dataclass(frozen=True)
 class PasteStep:
     """One thing to do in CLICK to turn its program into the proposed one.
 
     Steps run from the top of the program: by the time one is reached,
-    everything above it already matches, so its rung numbers are the ones CLICK
-    shows. CLICK pastes over the selected rung: that rung is replaced by the
-    first pasted rung and the rest go in below it.
+    everything above it is as it will be (pasted, or skipped and left as CLICK
+    has it), so its rung numbers are the ones CLICK shows. CLICK pastes over
+    the selected rung: that rung is replaced by the first pasted rung and the
+    rest go in below it.
     """
 
     # Proposed rung numbers to copy; empty when the step only deletes
@@ -107,8 +124,6 @@ class PasteStep:
     delete: tuple[int, ...] = ()
     # Which difference of the program the step belongs to, counting from 0
     block: int = 0
-    # False when the rungs were picked by number: where they go is not known
-    placed: bool = True
 
 
 @dataclass(frozen=True)
@@ -122,6 +137,8 @@ class ProgramChange:
     # CLICK's rungs held in a legacy encoding. Each counts as differing even
     # when its text matches, so it is pasted again.
     legacy: tuple[LegacyEncoding, ...] = ()
+    # One per difference (each opcode that is not "equal"), in order
+    differences: tuple[DifferenceKey, ...] = ()
 
     @property
     def differs(self) -> bool:
@@ -151,25 +168,74 @@ class ProgramChange:
         """Whether any of the *selected* proposed rungs is one to paste."""
         return not set(selected).isdisjoint(self.changed)
 
-    @property
-    def steps(self) -> tuple[PasteStep, ...]:
-        """What to do in CLICK, from the top of the program down."""
-        steps: list[PasteStep] = []
+    def blocks_holding(self, rungs: Iterable[int]) -> frozenset[DifferenceKey]:
+        """The differences that paste any of the proposed *rungs*."""
+        wanted = set(rungs)
         differences = (opcode for opcode in self.opcodes if opcode[0] != "equal")
-        for block, (tag, i1, i2, j1, j2) in enumerate(differences):
+        return frozenset(
+            key
+            for key, (_tag, _i1, _i2, j1, j2) in zip(self.differences, differences, strict=True)
+            if not wanted.isdisjoint(range(j1 + 1, j2 + 1))
+        )
+
+    def merged(self, skipped: Collection[DifferenceKey] = ()) -> tuple[Rung, ...]:
+        """The program CLICK ends up with: proposed, except where a difference is *skipped*."""
+        rungs: list[Rung] = []
+        block = 0
+        for tag, i1, i2, j1, j2 in self.opcodes:
+            if tag != "equal":
+                block += 1
+                if self.differences[block - 1] in skipped:
+                    rungs.extend(self.before[i1:i2])
+                    continue
+            rungs.extend(self.after[j1:j2])
+        return tuple(rungs)
+
+    def steps(
+        self, skipped: Collection[DifferenceKey] = (), pasted: Collection[DifferenceKey] = ()
+    ) -> tuple[PasteStep, ...]:
+        """What to do in CLICK, from the top of the program down.
+
+        A *skipped* difference is left as CLICK has it, and a *pasted* one is
+        in CLICK already (not saved yet): neither has steps, and the rung
+        numbers below them count CLICK's rungs or the pasted ones.
+        """
+
+        def _size(opcode: Opcode, key: DifferenceKey | None) -> int:
+            """How many rungs the opcode stands for in CLICK when its step comes."""
+            _tag, i1, i2, j1, j2 = opcode
+            return j2 - j1 if key is not None and key in pasted else i2 - i1
+
+        keys = iter(self.differences)
+        plan = [(opcode, None if opcode[0] == "equal" else next(keys)) for opcode in self.opcodes]
+        steps: list[PasteStep] = []
+        # CLICK's rungs above the current opcode, as they stand when its step comes
+        at = 0
+        block = -1
+        for index, ((tag, i1, i2, j1, j2), key) in enumerate(plan):
+            if key is None:
+                at += i2 - i1
+                continue
+            block += 1
+            if key in skipped or key in pasted:
+                at += _size((tag, i1, i2, j1, j2), key)
+                continue
             rungs = tuple(range(j1 + 1, j2 + 1))
             if tag == "insert":
-                # CLICK's rung i1+1 stands at j1+1 by now, if there is one
-                above = j1 + 1 if i1 < len(self.before) else None
-                steps.append(PasteStep(rungs, above=above, block=block))
-                continue
-            leftover = i2 - i1
-            if tag == "replace":
-                steps.append(PasteStep(rungs, over=j1 + 1, block=block))
-                leftover -= 1  # The paste took the place of the first of CLICK's rungs
-            if leftover:
-                # They now stand right below what was pasted
-                steps.append(PasteStep(delete=tuple(range(j2 + 1, j2 + 1 + leftover)), block=block))
+                below = sum(_size(opcode, later) for opcode, later in plan[index + 1 :])
+                steps.append(PasteStep(rungs, above=at + 1 if below else None, block=block))
+            else:
+                leftover = i2 - i1
+                if tag == "replace":
+                    steps.append(PasteStep(rungs, over=at + 1, block=block))
+                    leftover -= 1  # The paste took the place of the first of CLICK's rungs
+                if leftover:
+                    # They now stand right below what was pasted
+                    first = at + len(rungs) + 1
+                    steps.append(
+                        PasteStep(delete=tuple(range(first, first + leftover)), block=block)
+                    )
+            at += j2 - j1
         return tuple(steps)
 
 
@@ -183,8 +249,10 @@ def compare_rungs(
     a legacy encoding) equals no proposed rung, and with no rung number it
     stands for the whole program. A finding numbered past CLICK's last rung is ignored.
     """
-    before_keys: list[object] = [rung_fingerprint(rung) for rung in before]
-    after_keys: list[object] = [rung_fingerprint(rung) for rung in after]
+    before_prints = [rung_fingerprint(rung) for rung in before]
+    after_prints = [rung_fingerprint(rung) for rung in after]
+    before_keys: list[object] = list(before_prints)
+    after_keys: list[object] = list(after_prints)
     legacy = [item for item in legacy if item.rung is None or 1 <= item.rung <= len(before)]
     stale = {item.rung - 1 for item in legacy if item.rung is not None}
     if any(item.rung is None for item in legacy):
@@ -196,7 +264,54 @@ def compare_rungs(
     else:
         matcher = difflib.SequenceMatcher(a=before_keys, b=after_keys, autojunk=False)
         opcodes = matcher.get_opcodes()
-    return ProgramChange(tuple(before), tuple(after), tuple(opcodes), tuple(legacy))
+    differences: list[DifferenceKey] = []
+    seen: dict[tuple[object, object], int] = {}
+    for tag, i1, i2, j1, j2 in opcodes:
+        if tag == "equal":
+            continue
+        content = (tuple(before_prints[i1:i2]), tuple(after_prints[j1:j2]))
+        occurrence = seen[content] = seen.get(content, -1) + 1
+        differences.append(DifferenceKey(*content, occurrence))
+    return ProgramChange(
+        tuple(before), tuple(after), tuple(opcodes), tuple(legacy), tuple(differences)
+    )
+
+
+def carry_skipped(
+    skipped: Collection[DifferenceKey], old: ProgramChange, new: ProgramChange
+) -> frozenset[DifferenceKey]:
+    """The differences of *new* that are the ones *skipped* in *old*.
+
+    A difference keeps its key when CLICK saves, except that the same change in
+    several places is numbered by occurrence: once some of those were pasted,
+    the ones left are taken to be the skipped ones.
+    """
+
+    def _content(key: DifferenceKey) -> tuple[object, object]:
+        return key.before, key.after
+
+    old_count: dict[tuple[object, object], int] = {}
+    for key in old.differences:
+        old_count[_content(key)] = old_count.get(_content(key), 0) + 1
+    skipped_count: dict[tuple[object, object], int] = {}
+    for key in skipped:
+        skipped_count[_content(key)] = skipped_count.get(_content(key), 0) + 1
+    new_count: dict[tuple[object, object], int] = {}
+    for key in new.differences:
+        new_count[_content(key)] = new_count.get(_content(key), 0) + 1
+
+    carried: set[DifferenceKey] = set()
+    for key in new.differences:
+        content = _content(key)
+        if content not in skipped_count:
+            continue
+        if new_count[content] >= old_count.get(content, 0):
+            # None of them went: each is where it was
+            if key in skipped:
+                carried.add(key)
+        elif key.occurrence < skipped_count[content]:
+            carried.add(key)
+    return frozenset(carried)
 
 
 @dataclass(frozen=True)
@@ -690,6 +805,9 @@ class RenderedDiff:
     # the program's differences (``PasteStep.block``) unless rungs were selected.
     # A block starts with the unchanged rungs shown above it.
     blocks: tuple[int, ...] = ()
+    # Lines (start, end) of each difference shown, in *blocks* order, without
+    # the unchanged rungs shown above it: what a click in the gutter picks
+    changed: tuple[tuple[int, int], ...] = ()
     # Index in *lines* -> column ranges of the words that changed on that line
     # (columns count the line's prefix). Lines without an entry changed whole.
     words: Mapping[int, Spans] = field(default_factory=dict)
@@ -727,6 +845,7 @@ def render_diff(
     body: list[str] = []
     starts: dict[int, int] = {}
     blocks: list[int] = []
+    changed: list[tuple[int, int]] = []
     words: dict[int, Spans] = {}
     gaps: dict[int, Gap] = {}
     # Where the unchanged rungs shown above the next difference start
@@ -769,11 +888,13 @@ def render_diff(
         blocks.append(start)
         old = _render_rungs(change.before, range(i1 + 1, i2 + 1), before_text, before_chunks)
         new = _render_rungs(change.after, after_range, after_text, after_chunks)
+        first = len(body)
         for prefix, line, spans in _diff_lines(old, new):
             if spans:
                 # Shifted past the prefix
                 words[len(body)] = tuple((begin + 1, end + 1) for begin, end in spans)
             body.append(f"{prefix}{line}\n")
+        changed.append((first, len(body)))
         if tag != "delete":
             starts.update(dict.fromkeys(after_range, start))
 
@@ -784,6 +905,7 @@ def render_diff(
         (*header, *body),
         {number: index + len(header) for number, index in starts.items()},
         tuple(index + len(header) for index in blocks),
+        tuple((start + len(header), end + len(header)) for start, end in changed),
         {index + len(header): spans for index, spans in words.items()},
         {index + len(header): gap for index, gap in gaps.items()},
     )

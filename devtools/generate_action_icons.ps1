@@ -71,6 +71,8 @@ function Add-RoundedRectangle($graphics, $pen, [float] $x, [float] $y, [float] $
 $blue = "#3B8ED0"
 $green = "#2E9638"
 $orange = "#E87500"
+$red = "#CF222E"
+$grey = "#586069"
 
 # Address Editor: address book with contact silhouette.
 $canvas = New-IconCanvas
@@ -128,19 +130,21 @@ $tileBrush.Dispose()
 $tilePath.Dispose()
 Save-Icon $bitmap $graphics "console"
 
-# Rung Apply: upload/apply arrow.
+# Preview Changes: a page with a green plus above a red minus, as in a diff.
 $canvas = New-IconCanvas
 $bitmap = $canvas[0]
 $graphics = $canvas[1]
-$pen = New-IconPen $orange 2.1
-$graphics.DrawLine($pen, (Convert-Point 12 16), (Convert-Point 12 4))
-$graphics.DrawLine($pen, (Convert-Point 12 4), (Convert-Point 7.5 8.5))
-$graphics.DrawLine($pen, (Convert-Point 12 4), (Convert-Point 16.5 8.5))
-$graphics.DrawLine($pen, (Convert-Point 5 15), (Convert-Point 5 20))
-$graphics.DrawLine($pen, (Convert-Point 5 20), (Convert-Point 19 20))
-$graphics.DrawLine($pen, (Convert-Point 19 20), (Convert-Point 19 15))
+$pen = New-IconPen $grey
+Add-RoundedRectangle $graphics $pen 4 2.5 16 19 2
 $pen.Dispose()
-Save-Icon $bitmap $graphics "rung_apply"
+$pen = New-IconPen $green 2.1
+$graphics.DrawLine($pen, (Convert-Point 8.5 9), (Convert-Point 15.5 9))
+$graphics.DrawLine($pen, (Convert-Point 12 5.5), (Convert-Point 12 12.5))
+$pen.Dispose()
+$pen = New-IconPen $red 2.1
+$graphics.DrawLine($pen, (Convert-Point 8.5 17), (Convert-Point 15.5 17))
+$pen.Dispose()
+Save-Icon $bitmap $graphics "preview_changes"
 
 # Reload from CLICK: two conventional clockwise refresh arcs.
 $canvas = New-IconCanvas

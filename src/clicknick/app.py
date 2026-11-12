@@ -541,7 +541,7 @@ class ClickNickApp:
             if self._session is not None:
                 self._session.record_rung_stage(0)
             # The edits were thrown away: so is the window offering to paste them.
-            for window in self._guided_paste_windows.values():
+            for window in self._preview_changes_windows.values():
                 if window.winfo_exists() and window.shows_workspace_proposal:
                     window.destroy()
             self._update_status("Workspace reloaded from CLICK", "connected")
@@ -1432,7 +1432,7 @@ class ClickNickApp:
         ttk.Button(
             workspace,
             text="Preview Changes",
-            image=self._action_icons.get("rung_apply"),
+            image=self._action_icons.get("preview_changes"),
             compound=tk.LEFT,
             command=self._workspace_rung_apply,
         ).pack(fill=tk.X, pady=(0, 8))
@@ -1794,7 +1794,7 @@ class ClickNickApp:
             "connected",
         )
 
-    def _show_guided_paste(
+    def _show_preview_changes(
         self,
         folder: Path,
         source_dir: Path | None = None,
@@ -1802,27 +1802,27 @@ class ClickNickApp:
         rungs: list[int] | None = None,
         create: bool = True,
     ) -> None:
-        """Show *folder* in Guided Paste: one window per folder, reloaded when shown again.
+        """Show *folder* in Preview Changes: one window per folder, reloaded when shown again.
 
         Preview Changes (``rung apply``) passes the workspace source the folder
         was exported from, and may name a program to start on and the rungs of
         it to paste. With *create* off, only a window already showing the folder
         is brought up to date.
         """
-        from .views.guided_paste_window import GuidedPasteWindow
+        from .views.preview_changes_window import PreviewChangesWindow
 
-        self._guided_paste_windows = {
+        self._preview_changes_windows = {
             path: window
-            for path, window in self._guided_paste_windows.items()
+            for path, window in self._preview_changes_windows.items()
             if window.winfo_exists()
         }
         select = (program, rungs) if program else None
         key = folder.resolve()
-        window = self._guided_paste_windows.get(key)
+        window = self._preview_changes_windows.get(key)
         if window is not None:
             window.reload(source_dir=source_dir, select=select)
         elif create:
-            window = self._guided_paste_windows[key] = GuidedPasteWindow(
+            window = self._preview_changes_windows[key] = PreviewChangesWindow(
                 self.root,
                 folder,
                 get_mdb_path=self._live_mdb_path,
@@ -1832,21 +1832,19 @@ class ClickNickApp:
                 ),
                 source_dir=source_dir,
                 select=select,
-                on_pasted=lambda: self._update_status(
-                    "CLICK saved everything from Guided Paste", "connected"
-                ),
+                on_pasted=lambda message: self._update_status(message, "connected"),
             )
         if window is not None and create:
             window.after_idle(window.show)
 
-    def _open_guided_paste(self):
-        """Open a folder of ladder CSVs in the guided paste panel."""
+    def _open_preview_changes(self):
+        """Open a folder of ladder CSVs in Preview Changes."""
         folder = filedialog.askdirectory(
-            title="Open in Guided Paste — choose ladder CSV folder",
+            title="Open in Preview Changes — choose ladder CSV folder",
             parent=self.root,
         )
         if folder:
-            self._show_guided_paste(Path(folder))
+            self._show_preview_changes(Path(folder))
 
     def _create_menu_bar(self):
         """Create the application menu bar."""
@@ -1917,7 +1915,9 @@ class ClickNickApp:
         ladder_menu.add_command(
             label="Load Ladder CSV to Clipboard...", command=self._load_ladder_csv
         )
-        ladder_menu.add_command(label="Open in Guided Paste...", command=self._open_guided_paste)
+        ladder_menu.add_command(
+            label="Open in Preview Changes...", command=self._open_preview_changes
+        )
         ladder_menu.add_separator()
         ladder_menu.add_command(label="Save Clipboard to CSV...", command=self._save_clipboard_csv)
 
@@ -2035,8 +2035,8 @@ class ClickNickApp:
         # The loaded address data (CSV or database) and the windows bound to it.
         self._data = None
 
-        # Open Guided Paste windows by the folder each shows
-        self._guided_paste_windows = {}
+        # Open Preview Changes windows by the folder each shows
+        self._preview_changes_windows = {}
 
         # Live editing server: lets `clicknick-cli` push edits into this
         # running instance. Holds getters (not snapshots) so it always targets
@@ -2051,7 +2051,7 @@ class ClickNickApp:
             lambda: self._click.project_name if self._click else None,
             lambda: self._session.analysis if self._session else None,
             get_workspace_dir=self._workspace_source_dir,
-            show_proposal=self._show_guided_paste,
+            show_proposal=self._show_preview_changes,
             get_mdb_path=self._live_mdb_path,
             get_synced_pending=lambda: self._session.synced_pending if self._session else 0,
             get_staged_rungs=lambda: self._session.staged_rungs if self._session else 0,

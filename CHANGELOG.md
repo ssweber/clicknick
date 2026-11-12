@@ -16,13 +16,14 @@
 - Right-click a Simulator point to ask **Why**, **How** or **Show simplified logic** in the Console, where panel actions also echo as the matching commands, and double-click an output to force it.
 - Feedback links let an output drive an input on the Simulator, like a contactor's aux contact or a limit switch: drag one to add it for the session, cut it to simulate a failed sensor, or save it to the input's comment for the program.
 - Copying rungs that use CLICK v4 instructions is refused when the CLICK window is older, instead of letting CLICK silently change them on paste.
-- Guided Paste marks which programs differ from CLICK's last save, steps through only those, and lists subroutines CLICK has that the folder doesn't.
-- Guided Paste shows the selected program's rung diff against CLICK's last save and steps through just the rungs that differ, saying which rung to paste over or delete in CLICK, or copies whole programs when you switch **Copy** to **Whole program**.
-- Guided Paste's rung diff highlights only the lines and words that changed, like GitHub Desktop, with one unchanged rung on each side of a difference and separators whose arrows show more.
+- Preview Changes marks which programs differ from CLICK's last save, steps through only those, and lists subroutines CLICK has that the folder doesn't.
+- Preview Changes shows the selected program's rung diff against CLICK's last save and steps through just the rungs that differ, saying which rung to paste over or delete in CLICK, or copies whole programs when you switch **Copy** to **Whole program**.
+- Preview Changes' rung diff highlights only the lines and words that changed, like GitHub Desktop, with one unchanged rung on each side of a difference and separators whose arrows show more.
+- Preview Changes lets you take or skip each difference: untick **Take this difference** or click its +/- gutter and CLICK keeps its rungs there, the steps are numbered around it, **Whole program** copies the program as you chose it, and ◀ ▶ (Alt+Up/Down or F7/Shift+F7) go through every difference across programs.
 - ClickNick warns when CLICK holds rungs an older ClickNick pasted in a form CLICK runs differently.
-  - Guided Paste shows those programs in red until you paste them again.
+  - Preview Changes shows those programs in red until you paste them again.
   - `clicknick-cli program save` lists them.
-- Guided Paste's **New Subroutine** button opens CLICK's New Subroutine Program window with the name filled in, for any subroutine CLICK's last save doesn't show it already has.
+- Preview Changes' **New Subroutine** button opens CLICK's New Subroutine Program window with the name filled in, for any subroutine CLICK's last save doesn't show it already has.
 - **Tools > Repairs > Upgrade Project** rewrites comments in pyrung's old `profile=` form into the current keys and stages them on the Changed tab for you to review and Sync, as `clicknick-cli tag upgrade-project` does.
 - When the build stops on a comment in the old form, the Workspace status says to run **Tools > Repairs > Upgrade Project** (it said "Build failed").
 
@@ -34,9 +35,9 @@
 - The Simulator's link dialog and the annotation dialog offer every pyrung response (on/off delay, flasher, timed, toggle, ramp and approach), each with its own fields.
 - `tag set-physical` takes one option per key, such as `--flasher-on 8ms --flasher-off 8ms` or `--toggle` (it took `--profile`).
 - Sync and Discard clear the undo history.
-- Guided Paste steps through subroutines before `main.csv`, so they exist in CLICK before main's Call instructions are pasted.
-- **Preview Changes** and `clicknick-cli rung apply` open Guided Paste on the workspace's proposed ladder (they opened one preview window per changed file), so new subroutines, rungs and subroutines an edit removes, and what CLICK has saved since are all shown in one place.
-- Guided Paste closes once a CLICK save holds everything it was pasting, and after a save that came too early it stays open, says so, and can keep pasting.
+- Preview Changes steps through subroutines before `main.csv`, so they exist in CLICK before main's Call instructions are pasted.
+- **Preview Changes** and Guided Paste are one window, Preview Changes: the button and `clicknick-cli rung apply` open it on the workspace's whole proposed ladder (they opened one preview window per changed file), so new subroutines, rungs and subroutines an edit removes, and what CLICK has saved since are all shown in one place, and **Ladder > Open in Guided Paste** is now **Open in Preview Changes**.
+- Preview Changes closes once a CLICK save holds everything it was pasting, and after a save that came too early it stays open, says so, and can keep pasting.
 
 ### Fixed
 
@@ -46,7 +47,7 @@
 - Sort by nickname, block colors, the Dataview editor, the window title and Workspace details stay current after edits, CLICK saves, Sync, CSV loads and workspace changes, and the Dataview editor writes unchanged CDV files back byte-for-byte.
 - Loading a CSV over unsaved changes asks to save or discard first.
 - Program analysis and AI tag lookups use the same nicknames as the generated code, switching CLICK projects no longer freezes the window, and the "tags synced" count counts each tag once.
-- Opening another project in the same CLICK window no longer leaves its workspace unbuilt until ClickNick restarts, and Guided Paste now updates its comparison when CLICK's program changes.
+- Opening another project in the same CLICK window no longer leaves its workspace unbuilt until ClickNick restarts, and Preview Changes now updates its comparison when CLICK's program changes.
 - Open Temporary Workspace and the Workspace status update as soon as a build finishes, instead of waiting for something else to refresh the window, such as opening the Simulator.
 
 ## v0.23.4 - 2026-10-11

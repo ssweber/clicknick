@@ -50,7 +50,7 @@ class DispatchContext:
     analysis: Any | None = None  # AnalysisService (avoid import for lightweight CLI)
     annotation: AnnotationService = field(default_factory=AnnotationService)
     # (bundle folder, workspace source folder, program to select, its rungs to
-    # paste, open a window if none shows the folder) -> Guided Paste
+    # paste, open a window if none shows the folder) -> Preview Changes
     show_proposal: Callable[[Path, Path, str | None, list[int] | None, bool], None] | None = None
     show_address_editor: Callable[[str], None] | None = None
     show_save_prompt: Callable[[str, str], None] | None = None
@@ -322,7 +322,7 @@ tags:
 
 rungs:
   rung list [file]
-  rung apply [file] [--select r3,r7]  -> stage and open Guided Paste
+  rung apply [file] [--select r3,r7]  -> stage and open Preview Changes
 
 workflow:
   prompt-save"""

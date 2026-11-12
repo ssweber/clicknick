@@ -15,6 +15,7 @@ from clicknick.services.rung_diff import (
     Gap,
     PasteStep,
     RenderedDiff,
+    carry_skipped,
     compare_bundle,
     compare_rungs,
     format_group,
@@ -207,7 +208,7 @@ def test_rung_click_holds_in_a_legacy_encoding_differs_though_its_text_matches(
     assert main.differs
     assert main.changed == (2,)
     assert main.removed == ()
-    assert main.steps == (PasteStep((2,), over=2),)
+    assert main.steps() == (PasteStep((2,), over=2),)
     assert main.legacy == (_legacy("main.csv", 2),)
     assert comparison.changes["subroutines/Fill.csv"].changed == (1,)
 
@@ -223,7 +224,7 @@ def test_legacy_encoding_without_a_rung_number_stands_for_the_whole_program() ->
 
     assert change.changed == (1, 2)
     # Pasting both over rung 1 leaves CLICK's old rung 2 below them
-    assert change.steps == (PasteStep((1, 2), over=1), PasteStep(delete=(3,)))
+    assert change.steps() == (PasteStep((1, 2), over=1), PasteStep(delete=(3,)))
 
 
 def test_legacy_rung_past_the_end_is_ignored() -> None:
@@ -287,7 +288,7 @@ def test_steps_number_rungs_as_click_shows_them_working_down() -> None:
         _commented("A", "B", "C", "D", "E", "F"), _commented("A", "N1", "N2", "B", "X", "E")
     )
 
-    assert change.steps == (
+    assert change.steps() == (
         # New rungs 2..3 go in above CLICK's rung 2 (B)
         PasteStep(rungs=(2, 3), above=2, block=0),
         # With those in, C stands at 5: rung 5 is pasted over it, leaving D at 6
@@ -299,14 +300,134 @@ def test_steps_number_rungs_as_click_shows_them_working_down() -> None:
 
 
 def test_new_rungs_at_the_bottom_have_no_rung_to_go_above() -> None:
-    assert compare_rungs(_commented("A"), _commented("A", "B")).steps == (
+    assert compare_rungs(_commented("A"), _commented("A", "B")).steps() == (
         PasteStep(rungs=(2,), above=None, block=0),
     )
-    assert compare_rungs([], _commented("A")).steps == (PasteStep(rungs=(1,), above=None, block=0),)
+    assert compare_rungs([], _commented("A")).steps() == (
+        PasteStep(rungs=(1,), above=None, block=0),
+    )
 
 
 def test_same_rungs_need_no_steps() -> None:
-    assert compare_rungs(_commented("A", "B"), _commented("A", "B")).steps == ()
+    assert compare_rungs(_commented("A", "B"), _commented("A", "B")).steps() == ()
+
+
+# ---------------------------------------------------------------------------
+# Taking some differences and skipping others
+# ---------------------------------------------------------------------------
+
+# CLICK:    A  B  C  D  E  F
+# proposed: A  N1 N2 B  X  E  (N1, N2 new; C, D -> X; F dropped)
+_CLICK_LABELS = ("A", "B", "C", "D", "E", "F")
+_PROPOSED_LABELS = ("A", "N1", "N2", "B", "X", "E")
+
+
+def _three_differences():
+    return compare_rungs(_commented(*_CLICK_LABELS), _commented(*_PROPOSED_LABELS))
+
+
+def test_skipped_difference_is_left_as_click_has_it_and_rungs_below_count_it() -> None:
+    change = _three_differences()
+    new_rungs, _replaced, _dropped = change.differences
+
+    assert change.steps(skipped={new_rungs}) == (
+        # Without N1, N2, C still stands at 3
+        PasteStep(rungs=(5,), over=3, block=1),
+        PasteStep(delete=(4,), block=1),
+        # A B X E F: F stands at 5
+        PasteStep(delete=(5,), block=2),
+    )
+
+
+def test_skipping_a_difference_leaves_the_ones_above_it_alone() -> None:
+    change = _three_differences()
+    _new_rungs, replaced, _dropped = change.differences
+
+    assert change.steps(skipped={replaced}) == (
+        PasteStep(rungs=(2, 3), above=2, block=0),
+        # A N1 N2 B C D E F: F stands at 8
+        PasteStep(delete=(8,), block=2),
+    )
+
+
+def test_pasted_difference_has_no_steps_and_its_rungs_count_as_in_click() -> None:
+    change = _three_differences()
+    new_rungs, _replaced, _dropped = change.differences
+
+    assert change.steps(pasted={new_rungs}) == change.steps()[1:]
+
+
+def test_a_difference_pasted_out_of_order_counts_only_for_the_rungs_below_it() -> None:
+    change = _three_differences()
+    new_rungs, replaced, dropped = change.differences
+
+    # X was pasted before N1, N2: N1, N2 still go above B, and F stands at 7
+    assert change.steps(pasted={replaced}) == (
+        PasteStep(rungs=(2, 3), above=2, block=0),
+        PasteStep(delete=(7,), block=2),
+    )
+    assert change.steps(skipped={new_rungs, dropped}, pasted={replaced}) == ()
+
+
+def test_new_rung_and_removal_each_skipped_in_turn() -> None:
+    # CLICK: A B C; proposed: A N B (N new; C dropped)
+    change = compare_rungs(_commented("A", "B", "C"), _commented("A", "N", "B"))
+    new_rung, dropped = change.differences
+
+    assert change.steps(skipped={dropped}) == (PasteStep(rungs=(2,), above=2, block=0),)
+    assert change.steps(skipped={new_rung}) == (PasteStep(delete=(3,), block=1),)
+
+
+def test_same_change_in_two_places_is_two_differences() -> None:
+    change = compare_rungs(_commented("A", "X", "B", "X"), _commented("A", "Y", "B", "Y"))
+    first, second = change.differences
+
+    assert first != second
+    assert (first.occurrence, second.occurrence) == (0, 1)
+    assert change.steps(skipped={first}) == (PasteStep(rungs=(4,), over=4, block=1),)
+
+
+def test_differences_holding_rungs_asked_for_by_number() -> None:
+    change = _three_differences()
+    new_rungs, replaced, _dropped = change.differences
+
+    assert change.blocks_holding([3]) == {new_rungs}
+    assert change.blocks_holding([1, 5, 6]) == {replaced}
+    # A removal pastes nothing, so no rung number holds it
+    assert change.blocks_holding([1, 4, 6]) == frozenset()
+
+
+def test_merged_program_keeps_click_rungs_where_skipped() -> None:
+    change = _three_differences()
+    new_rungs, _replaced, dropped = change.differences
+
+    merged = change.merged(skipped={new_rungs, dropped})
+
+    assert [rung.comment for rung in merged] == ["A", "B", "X", "E", "F"]
+    assert change.merged() == change.after
+
+
+def test_skips_outlive_a_click_save_of_the_differences_taken() -> None:
+    old = _three_differences()
+    new_rungs, replaced, dropped = old.differences
+    # CLICK pasted and saved the new rungs, skipping the rest
+    new = compare_rungs(_commented("A", "N1", "N2", *_CLICK_LABELS[1:]), old.after)
+
+    assert new.differences == (replaced, dropped)
+    assert carry_skipped({replaced, dropped}, old, new) == {replaced, dropped}
+    assert carry_skipped({replaced}, old, new) == {replaced}
+
+
+def test_skip_of_a_repeated_change_outlives_pasting_the_other() -> None:
+    old = compare_rungs(_commented("A", "X", "B", "X"), _commented("A", "Y", "B", "Y"))
+    first, second = old.differences
+    # The first was pasted and CLICK saved: what is left is the skipped one
+    new = compare_rungs(_commented("A", "Y", "B", "X"), old.after)
+
+    assert carry_skipped({second}, old, new) == set(new.differences)
+    # Nothing saved yet: each keeps its own choice
+    assert carry_skipped({second}, old, old) == {second}
+    assert carry_skipped({first}, old, old) == {first}
 
 
 def test_diff_records_where_each_difference_starts() -> None:
@@ -317,7 +438,7 @@ def test_diff_records_where_each_difference_starts() -> None:
     assert diff.lines[2:] == ("-R1  # A\n", "+R1  # A1\n", " R2  # B\n", " R3  # C\n", "-R4  # D\n")
     # The second difference starts with the unchanged rung shown above it
     assert diff.blocks == (2, 5)
-    assert [step.block for step in change.steps] == [0, 1]
+    assert [step.block for step in change.steps()] == [0, 1]
 
 
 def test_paste_groups_are_contiguous_runs() -> None:

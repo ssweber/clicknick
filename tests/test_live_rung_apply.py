@@ -1,4 +1,4 @@
-"""``rung apply``: what it reports and what it hands to Guided Paste."""
+"""``rung apply``: what it reports and what it hands to Preview Changes."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def project(tmp_path: Path, monkeypatch):
     """A workspace whose export writes whatever ``propose`` was given.
 
     Returns ``(context, propose, staged)``: the dispatch context with a mock
-    Guided Paste, a function setting the next export, and the staged counts.
+    Preview Changes, a function setting the next export, and the staged counts.
     """
     _write_bundle(tmp_path / "csv", CLICK)
     source = tmp_path / "src" / "plc"
@@ -85,7 +85,9 @@ def project(tmp_path: Path, monkeypatch):
     return ctx, proposal.update, staged
 
 
-def test_reports_every_program_that_differs_and_opens_guided_paste(project, tmp_path: Path) -> None:
+def test_reports_every_program_that_differs_and_opens_preview_changes(
+    project, tmp_path: Path
+) -> None:
     ctx, propose, staged = project
     propose(
         {
@@ -96,7 +98,7 @@ def test_reports_every_program_that_differs_and_opens_guided_paste(project, tmp_
 
     reply = dispatch(ctx, "rung apply")
 
-    # In the order Guided Paste walks them: subroutines before main
+    # In the order Preview Changes walks them: subroutines before main
     assert "changed files:\n  rinse_cycle: new, 1 rung\n  main: R2\n" in reply
     assert "only in CLICK (delete there if no longer used): Fill" in reply
     assert staged == [2]
@@ -128,7 +130,7 @@ def test_removed_rungs_are_reported_and_counted(project) -> None:
     assert staged == [1]
 
 
-def test_one_file_opens_guided_paste_on_that_program(project, tmp_path: Path) -> None:
+def test_one_file_opens_preview_changes_on_that_program(project, tmp_path: Path) -> None:
     ctx, propose, staged = project
     propose({**CLICK, "main.csv": ["Y001", "Y005", "Y006", "Y002"]})
 
