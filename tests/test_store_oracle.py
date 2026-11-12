@@ -222,10 +222,35 @@ def _assert_cascade_rules(
             )
 
 
+def _tied_keys(store: AddressStore, key: int) -> list[int]:
+    """Rows a cascade from *key* may write: its T/TD (CT/CTD) pair and rows of
+    its memory type holding a tag of the same block (its open/close match among them)."""
+    row = store.visible_state[key]
+    tied = []
+    if row.memory_type in INTERLEAVED_PAIRS:
+        tied.append(get_addr_key(INTERLEAVED_PAIRS[row.memory_type], row.address))
+    name = parse_block_tag(row.comment).name
+    if name is not None:
+        tied += [
+            other
+            for other in KEYS
+            if other != key
+            and store.visible_state[other].memory_type == row.memory_type
+            and parse_block_tag(store.visible_state[other].comment).name == name
+        ]
+    return tied
+
+
 def _random_edit(rng: random.Random, store: AddressStore) -> str:
     edits = []
     caller_set: dict[tuple[int, str], object] = {}
     before = {key: store.visible_state[key] for key in KEYS}
+
+    def set_field(session, key: int, name: str, value) -> None:
+        session.set_field(key, name, value)
+        caller_set[(key, name)] = value
+        edits.append(f"{key}.{name}={value!r}")
+
     with store.edit_session("random edit") as session:
         for _ in range(rng.randint(1, 3)):
             key = rng.choice(KEYS)
@@ -240,18 +265,64 @@ def _random_edit(rng: random.Random, store: AddressStore) -> str:
                     "retentive",
                 )
             )
-            value = rng.choice(FIELD_VALUES[name])
-            session.set_field(key, name, value)
-            caller_set[(key, name)] = value
-            edits.append(f"{key}.{name}={value!r}")
+            set_field(session, key, name, rng.choice(FIELD_VALUES[name]))
+            tied = _tied_keys(store, key)
+            if name in ("comment", "retentive") and tied and rng.random() < 0.5:
+                # The same edit sets a row a cascade from this one would write
+                # (paste over both rows, Discard row changes on both).
+                set_field(session, rng.choice(tied), name, rng.choice(FIELD_VALUES[name]))
     step = "edit " + ", ".join(edits)
     _assert_cascade_rules(before, store, caller_set, step)
     return step
 
 
+def _fix_errors(store: AddressStore) -> str | None:
+    """Put each row in error back as the database has it, or empty it if the
+    database's row is in error too, as a user does before Sync. Returns the step."""
+    caller_set: dict[tuple[int, str], object] = {}
+    before = {key: store.visible_state[key] for key in KEYS}
+    for _ in range(3):
+        in_error = [key for key in KEYS if store.visible_state[key].has_reportable_error]
+        if not in_error:
+            break
+        with store.edit_session("fix errors") as session:
+            for key in in_error:
+                base = store.base_state[key]
+                fixes = {"nickname": base.nickname, "comment": base.comment}
+                if not store.is_dirty(key):
+                    fixes = {"nickname": "", "comment": ""}
+                for name, value in fixes.items():
+                    session.set_field(key, name, value)
+                    caller_set[(key, name)] = value
+    if not caller_set:
+        return None
+    step = f"fix errors on {sorted({key for key, _ in caller_set})}"
+    _assert_cascade_rules(before, store, caller_set, step)
+    return step
+
+
 def _random_click_change(
-    rng: random.Random, store: AddressStore, source: Source
+    rng: random.Random, store: AddressStore, source: Source, *, beside_edits: bool = False
 ) -> tuple[int, str, str]:
+    """CLICK writes one field. *beside_edits*: mostly a field the user did not set
+    on a row they edited, which Sync must not put back."""
+    beside = [
+        (key, name)
+        for key, values in store.user_overrides.items()
+        for name in ("nickname", "comment")
+        if name not in values
+    ]
+    if beside_edits and beside and rng.random() < 0.8:
+        key, name = rng.choice(sorted(beside))
+        # Comments mostly: a new nickname often collides and Sync refuses.
+        if name == "nickname" and rng.random() < 0.5:
+            value = rng.choice(NICKNAMES)
+        else:
+            value = rng.choice(["changed in CLICK", "note", ""])
+        current = source.rows.get(key) or _row(key)
+        source.rows[key] = replace(current, **{name: value})
+        return key, name, value
+
     pending = [
         (key, name)
         for key, values in store.user_overrides.items()
@@ -334,7 +405,10 @@ def test_incremental_state_matches_full_rebuild(seed: int) -> None:
             step = f"CLICK writes {key}.{name}={value!r}"
         elif op == "stale":
             # CLICK writes between two polls and the user syncs before the next one.
-            key, name, value = _random_click_change(rng, store, source)
+            if fixed := _fix_errors(store):
+                history.append(fixed)
+                _assert_matches_rebuild(store, source, " -> ".join(history))
+            key, name, value = _random_click_change(rng, store, source, beside_edits=True)
             user_has_field = name in store.user_overrides.get(key, {})
             _save(store)
             if not user_has_field:
