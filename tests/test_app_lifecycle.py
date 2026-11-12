@@ -56,8 +56,9 @@ class FakeDataview(FakeEditor):
     def has_unsaved_changes(self) -> bool:
         return True
 
-    def save_all(self) -> None:
+    def save_all(self) -> bool:
         self.saved = True
+        return True
 
 
 class FakeRoot:
