@@ -100,7 +100,7 @@ class NicknameManager:
         if self._nickname_cache is None:
             nicknames = self._build_nickname_cache()
             if self.settings is not None and self.settings.sort_by_nickname:
-                nicknames.sort(key=lambda x: x.nickname)
+                nicknames.sort(key=lambda x: x.nickname.casefold())
             self._nickname_cache = nicknames
             self._generate_abbreviation_tags()
         return self._nickname_cache
@@ -114,33 +114,42 @@ class NicknameManager:
         """Check if nicknames data is loaded."""
         return len(self.nicknames) > 0
 
-    def get_address_for_nickname(self, nickname: str) -> str | None:
+    def _find(self, nickname: str, address_types: list[str] | None) -> Nickname | None:
+        """The first row with this nickname, among the given address types when set."""
+        for nickname_obj in self.nicknames:
+            if nickname_obj.nickname != nickname:
+                continue
+            if address_types is None or nickname_obj.address_type in address_types:
+                return nickname_obj
+        return None
+
+    def get_address_for_nickname(
+        self, nickname: str, address_types: list[str] | None = None
+    ) -> str | None:
         """Get the address for a given nickname.
 
         Args:
             nickname: The exact nickname to look up
+            address_types: Only rows of these types count (the types the dropdown listed)
 
         Returns:
             The corresponding address or None if not found
         """
-        for nickname_obj in self.nicknames:
-            if nickname_obj.nickname == nickname:
-                return nickname_obj.address
-        return None
+        found = self._find(nickname, address_types)
+        return found.address if found else None
 
-    def get_nickname_details(self, nickname: str) -> str:
+    def get_nickname_details(self, nickname: str, address_types: list[str] | None = None) -> str:
         """Get detailed information for a given nickname.
 
         Args:
             nickname: The exact nickname to look up
+            address_types: Only rows of these types count (the types the dropdown listed)
 
         Returns:
             Detailed string with address, data type, initial value, and comment
         """
-        for nickname_obj in self.nicknames:
-            if nickname_obj.nickname == nickname:
-                return nickname_obj.details()
-        return ""
+        found = self._find(nickname, address_types)
+        return found.details() if found else ""
 
     def get_filtered_nicknames(self, address_types: list[str], search_text: str = "") -> list[str]:
         """Get filtered list of nickname strings using current app settings.
@@ -167,6 +176,7 @@ class NicknameManager:
 
         # Filter by address type and exclusions
         filtered_objects = []
+        seen: set[str] = set()
         for nickname_obj in self.nicknames:
             # Check if address type matches
             if nickname_obj.address_type not in address_types:
@@ -183,6 +193,11 @@ class NicknameManager:
             if any(excluded_term in nickname_lower for excluded_term in excluded_terms):
                 continue
 
+            # A repeated nickname (during unsaved edits) is listed once: picking
+            # it inserts the first row's address, so the first is the one shown
+            if nickname_obj.nickname in seen:
+                continue
+            seen.add(nickname_obj.nickname)
             filtered_objects.append(nickname_obj)
 
         # Apply search filtering if search text provided

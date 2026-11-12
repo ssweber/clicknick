@@ -11,24 +11,11 @@ from ..widgets.nickname_combobox import NicknameCombobox
 class Overlay(tk.Toplevel):
     """Overlay for nickname selection."""
 
-    def _get_search_text(self):
-        """Extract the actual search text, accounting for any selection"""
-        current_text = self.combobox.get()
-        if self.combobox.selection_present():
-            sel_start = self.combobox.index("sel.first")
-            return current_text[:sel_start]
-        else:
-            return current_text
-
-    def _input_search_text(self):
-        """Input only user-entered search text in the combobox."""
-        current_text = self._get_search_text()
-        if self.combobox.selection_callback:
-            self.combobox.selection_callback(current_text)
-
     def _insert_text_to_field(self, text):
         """Insert the string into the current field."""
-        if not self.target_window_id or not self.target_edit_control:
+        if not text or not self.target_window_id or not self.target_edit_control:
+            # Empty text is never sent: CLICK's Address Picker accepts an Enter with an
+            # empty field, and activating CLICK would pull its dialog back.
             return
 
         try:
@@ -75,7 +62,7 @@ class Overlay(tk.Toplevel):
             return
 
         if nickname and self.nickname_manager:
-            details = self.nickname_manager.get_nickname_details(nickname)
+            details = self.nickname_manager.get_nickname_details(nickname, self.allowed_types)
             if details:
                 # Get position above the combobox
                 x = self.winfo_rootx()
@@ -94,9 +81,7 @@ class Overlay(tk.Toplevel):
         Otherwise pass on the text, in CLICK's display form when it is an
         address ("c1" -> "C1", "x1" -> "X001").
         """
-        self.combobox.finalizing = True
-
-        address = self.nickname_manager.get_address_for_nickname(nickname)
+        address = self.nickname_manager.get_address_for_nickname(nickname, self.allowed_types)
         if not address:
             address = normalize_address(nickname) or nickname
         self._insert_text_to_field(address)
@@ -113,6 +98,7 @@ class Overlay(tk.Toplevel):
         self.combobox.set_data_provider(self._provide_filtered_data)
         self.combobox.set_item_navigation_callback(self._on_nickname_navigation)
         self.combobox.set_selection_callback(self._on_nickname_selected)
+        self.combobox.set_cancel_callback(self.dismiss)
 
     def _focus_within_overlay(self) -> bool:
         """Check if focus is on the overlay, its combobox dropdown, or the tooltip.
@@ -126,16 +112,13 @@ class Overlay(tk.Toplevel):
         return focus_path == overlay_path or focus_path.startswith(f"{overlay_path}.")
 
     def _on_focus_out(self, event):
-        """Handle focus-out event to input current text and withdraw the popup."""
+        """Handle focus-out: hide the overlay and leave CLICK's field as it was."""
         try:
             # If focus moved to one of your widgets or the tooltip, don't withdraw
             if self._focus_within_overlay():
                 return
 
-            # Input current text before withdrawing
-            if not self.combobox.finalizing:
-                self._input_search_text()
-
+            # Typed text is not sent: only Enter, Tab or a pick reaches CLICK.
             # Small delay to allow for potential click actions to complete
             self._debounce_retrigger = True
 
@@ -175,7 +158,7 @@ class Overlay(tk.Toplevel):
         self.allowed_types = []
 
         self._debounce_retrigger = False
-        self.combobox.finalizing = False
+        self._dismissed = False
 
         self._setup_bindings()
 
@@ -240,6 +223,7 @@ class Overlay(tk.Toplevel):
             or window_class == "frmDataView"
         ):
             self._debounce_retrigger = False
+            self._dismissed = False
             if self.debounce_after_id:
                 self.after_cancel(self.debounce_after_id)
                 self.debounce_after_id = None
@@ -294,12 +278,32 @@ class Overlay(tk.Toplevel):
             self.withdraw()
             return False
 
+    def dismiss(self):
+        """Esc: hide the overlay and keep it hidden for this control.
+
+        It shows again for another control, or once CLICK's field has text.
+        """
+        self._dismissed = True
+        self.withdraw()
+
+    def _stay_dismissed(self) -> bool:
+        """True while the overlay is dismissed for the target control and its field is empty."""
+        if not self._dismissed:
+            return False
+        try:
+            field_text = WIN32.get_control_text(self.target_window_id, self.target_edit_control)
+        except Exception:
+            field_text = ""
+        if field_text:
+            self._dismissed = False
+        return self._dismissed
+
     def show_combobox(self, allowed_types):
         """Show the combobox popup with filtered nicknames."""
         if not self.combobox or not allowed_types or self._debounce_retrigger:
             return
-
-        self.combobox.finalizing = False
+        if self._stay_dismissed():
+            return
 
         # Store allowed types for the data provider
         self.allowed_types = allowed_types
@@ -313,7 +317,11 @@ class Overlay(tk.Toplevel):
             return
 
     def withdraw(self):
-        """Override withdraw to cancel any pending after calls and hide tooltip"""
+        """Override withdraw to cancel the pending hide and hide the tooltip.
+
+        The debounce reset is left to run: it is what lets the overlay show again
+        for the same control after a focus-out.
+        """
         # Hide the tooltip
         if hasattr(self, "tooltip"):
             self.tooltip.hide_tooltip()
@@ -322,10 +330,6 @@ class Overlay(tk.Toplevel):
         if hasattr(self, "focus_out_after_id") and self.focus_out_after_id:
             self.after_cancel(self.focus_out_after_id)
             self.focus_out_after_id = None
-
-        if hasattr(self, "debounce_after_id") and self.debounce_after_id:
-            self.after_cancel(self.debounce_after_id)
-            self.debounce_after_id = None
 
         # Call the parent class's withdraw method
         super().withdraw()

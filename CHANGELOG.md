@@ -52,6 +52,10 @@
 
 ### Fixed
 
+- The overlay sends nothing to CLICK when you press Esc or click away, so an empty or half-typed name no longer lands in CLICK's field, Enter on an empty overlay just closes it and leaves the Address Picker open, and Esc keeps the overlay hidden for that field until you move to another one or type in it.
+- The overlay comes back when you click into the same empty field again after clicking away.
+- Multi-word overlay searches list matches in list order instead of a random one, and a one-letter search lists only names containing that letter.
+- A nickname used twice is listed once in the overlay with its first address, sorting by nickname ignores case, and the overlay's tooltip is read from a row of the types the field accepts.
 - In the Address Editor, Undo and Redo wait while you are typing in a cell, and Sync and closing the window keep what you typed.
 - Fill Down over a timer or counter selection numbers only the rows of the first row's type, and Fill Down and Clone no longer copy block tags into the new rows' comments (a row that already has its own block tag keeps it); after a Sync, check those comments in CLICK.
 - Add Block over a selection that includes both a timer's T and TD rows (or CT and CTD) tags matching pairs, and the Tag Browser's rename changes nicknames only, leaving comments as they are; after a Sync, check the timer or counter block comments in CLICK.
