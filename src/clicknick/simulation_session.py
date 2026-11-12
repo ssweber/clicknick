@@ -247,6 +247,13 @@ def _command_value(value: PlcValue) -> str:
     return str(value)
 
 
+def _unavailable(exc: BaseException) -> bool:
+    """True when the simulation never answered (stopped, died or hung) rather than refused."""
+    from .services.dap_service import DapUnavailableError
+
+    return isinstance(exc, DapUnavailableError)
+
+
 def _send_link(dap: Any, feedback: str, link: BenchLink) -> None:
     """Send one bench link to the simulation: a cut, or a link with its response."""
     if link.cut:
@@ -311,7 +318,11 @@ class SimulationSession:
         self._error_detail: str | None = None
         self._dap: Any | None = None
         self._token = 0
+        # The analysis generation the simulation was last started on, and its tag names.
         self._launch_generation = -1
+        self._program_names: tuple[Mapping[str, int], Mapping[int, str]] | None = None
+        # A launch whose process died before the session adopted it.
+        self._died_token: int | None = None
         self._waited_ms = 0
         self._analysis_after_id: Any | None = None
         self._watch_after_id: Any | None = None
@@ -357,7 +368,7 @@ class SimulationSession:
         # Hardware
         self._layout: PanelLayout | None = None
         self._layout_error: str | None = None
-        self._layout_key: tuple[float | None, int | None] | None = None
+        self._layout_key: tuple[float | None, tuple[int, Any] | None] | None = None
 
     # ------------------------------------------------------------------
     # Listeners and thread hand-off
@@ -406,16 +417,21 @@ class SimulationSession:
 
         self._analog_echo_ids[address] = self._scheduler.after(ECHO_SETTLE_MS, echo)
 
-    def _post(self, callback: Callable[[], None]) -> None:
-        """Run *callback* on the UI thread (callable from any thread)."""
+    def _post(self, callback: Callable[[], None]) -> bool:
+        """Run *callback* on the UI thread (callable from any thread). False if it never will."""
         if self._closed:
-            return
+            return False
         try:
             self._scheduler.after(0, callback)
         except Exception:
-            pass  # the UI is gone
+            return False  # the UI is gone
+        return True
 
-    def _report_action_error(self, text: str, on_error: Callable[[str], None] | None) -> None:
+    def _report_action_error(
+        self, token: int, text: str, on_error: Callable[[str], None] | None
+    ) -> None:
+        if token != self._token:
+            return  # that simulation is gone; the next one gets the user's settings anyway
         self._message(text, "error")
         if on_error is not None:
             on_error(text)
@@ -426,14 +442,20 @@ class SimulationSession:
         what: str,
         on_error: Callable[[str], None] | None = None,
     ) -> None:
-        """Run *job* on the ordered action worker; report a failure as a message."""
+        """Run *job* on the ordered action worker; report a failure as a message.
+
+        *on_error* undoes the action, so it runs only when the simulation that
+        was asked refused it: not when it stopped, restarted or never answered.
+        """
+        token = self._token
 
         def run() -> None:
             try:
                 job()
             except Exception as exc:
                 text = f"{what} failed: {exc}"
-                self._post(lambda: self._report_action_error(text, on_error))
+                undo = None if _unavailable(exc) else on_error
+                self._post(lambda: self._report_action_error(token, text, undo))
 
         self._run_serial(run)
 
@@ -668,13 +690,26 @@ class SimulationSession:
     def plc_data_path(self) -> Path | None:
         return self._plc_data_path
 
+    def _tag_maps(self) -> tuple[Mapping[str, int], Mapping[int, str]]:
+        """Tag names of the program the simulation was started on.
+
+        A CLICK save can rename tags before the simulation restarts on it, so
+        frames and commands go by the names of the program that runs. While
+        nothing runs, the current analysis's names.
+        """
+        if self._program_names is not None:
+            return self._program_names
+        analysis = self._get_analysis()
+        if analysis is None:
+            return {}, {}
+        return analysis.tag_to_addr_key, analysis.addr_key_to_tag
+
     def to_tag(self, address: str) -> str:
         """The running program's tag name for a CLICK *address* (the address if unnamed)."""
-        analysis = self._get_analysis()
         normalized = normalize_address(address)
-        if analysis is None or normalized is None:
+        if normalized is None:
             return address
-        tag = analysis.addr_key_to_tag.get(get_addr_key(*parse_address(normalized)))
+        tag = self._tag_maps()[1].get(get_addr_key(*parse_address(normalized)))
         return tag or normalized
 
     def link_countdown(self, address: str) -> int | None:
@@ -686,11 +721,35 @@ class SimulationSession:
         address = normalize_address(key)
         if address is not None:
             return address
-        analysis = self._get_analysis()
-        addr_key = analysis.tag_to_addr_key.get(key) if analysis is not None else None
+        addr_key = self._tag_maps()[0].get(key)
         if addr_key is None:
             return key
         return format_address_display(*parse_addr_key(addr_key))
+
+    def _addressed(self, values: Mapping[str, Any]) -> dict[str, Any]:
+        """*values* keyed by pyrung tag name, re-keyed by CLICK address; tags without one dropped."""
+        found: dict[str, Any] = {}
+        for key, value in values.items():
+            address = self.to_address(key)
+            if normalize_address(address) == address:
+                found[address] = value
+        return found
+
+    def _program_current(self) -> bool:
+        """False while the analysis is ahead of the program that runs.
+
+        A rebuild is under way, or done and the simulation about to restart on
+        it. pyrung may reload the new files on its own meanwhile, so what the
+        simulation reports then says nothing about what the user chose.
+        """
+        from .services.analysis_service import AnalysisStatus
+
+        analysis = self._get_analysis()
+        return (
+            analysis is not None
+            and analysis.status is not AnalysisStatus.BUILDING
+            and analysis.generation == self._launch_generation
+        )
 
     def _save_now(self) -> None:
         self._save_after_id = None
@@ -745,14 +804,43 @@ class SimulationSession:
         if self._closed or not self._enabled:
             return
         self.refresh_layout()
+        reload_data = False
         if self.is_ready and self._plc_data_path is not None:
             mtime = _mtime(self._plc_data_path)
             if mtime is not None and (self._plc_data_mtime is None or mtime > self._plc_data_mtime):
                 self._plc_data_mtime = mtime
                 self._message("PLC data file changed. Reloading...")
                 self._adopt_snapshot(self._plc_data_path)
-                self.restart()
+                reload_data = True
+        if not self._follow_program() and reload_data:
+            self.restart()
         self._watch_after_id = self._scheduler.after(WATCH_MS, self._watch_tick)
+
+    def _follow_program(self) -> bool:
+        """Start again on a program CLICK saved since the simulation was started. True if it did.
+
+        Each build of the analysis is a new generation. Once one is done, a
+        running simulation restarts on it, with the user's switches, forces and
+        bench links (kept by address); one that failed tries the new program.
+        """
+        from .services.analysis_service import AnalysisStatus
+
+        if self._status not in (SimStatus.READY, SimStatus.FAILED):
+            return False  # starting or waiting: it reads the analysis itself
+        analysis = self._get_analysis()
+        if (
+            analysis is None
+            or analysis.status is AnalysisStatus.BUILDING
+            or analysis.generation == self._launch_generation
+        ):
+            return False
+        if self._dap is not None and analysis.status is AnalysisStatus.READY:
+            self._set_notice(
+                "The simulation restarted on CLICK's last save. "
+                "Switches, forces and bench links carried over."
+            )
+        self.restart()
+        return True
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -816,6 +904,7 @@ class SimulationSession:
         self._links_pending = {}
         self._links_revision_seen = None
         self._links_synced = False
+        self._program_names = None
         dap = self._dap
         self._dap = None
         if dap is not None:
@@ -950,7 +1039,9 @@ class SimulationSession:
         self._emit("desired")
         self._schedule_save()
 
-    def _drop_failed_forces(self, failed: list[str]) -> None:
+    def _drop_failed_forces(self, token: int, failed: list[str]) -> None:
+        if token != self._token:
+            return  # refused by a simulation that is gone; the next one tries again
         forces = {a: v for a, v in self._state.forces.items() if a not in failed}
         self._update_state(forces=forces)
         self._message(f"Could not restore forces on {', '.join(failed)}; released them.", "error")
@@ -965,7 +1056,9 @@ class SimulationSession:
         patches.update(self._state.analog)
         return patches
 
-    def _drop_failed_links(self, failed: list[tuple[str, str]]) -> None:
+    def _drop_failed_links(self, token: int, failed: list[tuple[str, str]]) -> None:
+        if token != self._token:
+            return
         links = dict(self._state.links)
         for address, _reason in failed:
             links.pop(address, None)
@@ -1000,11 +1093,14 @@ class SimulationSession:
             self._links_synced = True
             revision = body.get("revision")
             self._links_revision_seen = revision if isinstance(revision, int) else None
-        if self._links_synced:
+        if self._links_synced and self._program_current():
+            # Kept by address; a link on a tag with no CLICK address is not the user's.
             adopted = {
                 row.feedback: BenchLink(row.enable, row.trigger, row.response, row.enabled)
                 for row in rows
                 if row.source == "bench"
+                and normalize_address(row.feedback) == row.feedback
+                and (row.enable is None or normalize_address(row.enable) == row.enable)
             }
             bench = body.get("bench") is not False
             if adopted != dict(self._state.links) or bench != self._state.bench_wiring:
@@ -1037,6 +1133,8 @@ class SimulationSession:
         patches = self._input_patches()
         token = self._token
 
+        # A refusal drops the entry. A simulation that stopped or never answered
+        # refused nothing: the job ends there and the entries stay.
         def job() -> None:
             failed_links: list[tuple[str, str]] = []
             for address, link in links.items():
@@ -1045,9 +1143,11 @@ class SimulationSession:
                     if not link.enabled:
                         dap.set_links(enabled={address: False})
                 except Exception as exc:
+                    if _unavailable(exc):
+                        raise
                     failed_links.append((address, str(exc)))
             if failed_links:
-                self._post(lambda: self._drop_failed_links(failed_links))
+                self._post(lambda: self._drop_failed_links(token, failed_links))
             if not bench_wiring:
                 dap.set_links(bench=False)
             self._fetch_links(dap, token, sync=True)
@@ -1056,10 +1156,12 @@ class SimulationSession:
             for address, value in forces.items():
                 try:
                     dap.force(address, value)
-                except Exception:
+                except Exception as exc:
+                    if _unavailable(exc):
+                        raise
                     failed.append(address)
             if failed:
-                self._post(lambda: self._drop_failed_forces(failed))
+                self._post(lambda: self._drop_failed_forces(token, failed))
             if position != "stop":
                 dap.set_mode("run", patches=patches)
                 if position == "run":
@@ -1091,6 +1193,11 @@ class SimulationSession:
         if token != self._token or self._closed or not self._enabled:
             self._run_background(dap.terminate, "sim-dap-stop")
             return
+        if token == self._died_token or getattr(dap.state, "value", dap.state) == "error":
+            # The process exited after answering launch, before this ran.
+            self._run_background(dap.terminate, "sim-dap-stop")
+            self._report_died(getattr(dap, "stderr_text", "") or None)
+            return
         self._dap = dap
         self._forces_baseline = None
         self._modbus_info = {}
@@ -1101,10 +1208,15 @@ class SimulationSession:
         self._modbus_info_after_id = self._scheduler.after(0, self._poll_modbus_info)
 
     def _on_dap_died(self, token: int) -> None:
-        dap = self._dap
-        if token != self._token or dap is None:
+        if token != self._token:
             return
-        detail = getattr(dap, "stderr_text", "") or None
+        dap = self._dap
+        if dap is None:
+            self._died_token = token  # still starting: _on_launched reports it
+            return
+        self._report_died(getattr(dap, "stderr_text", "") or None)
+
+    def _report_died(self, detail: str | None) -> None:
         self._stop_dap()
         self._status = SimStatus.FAILED
         self._error = "the simulation stopped unexpectedly."
@@ -1121,7 +1233,7 @@ class SimulationSession:
         """
         baseline = self._forces_baseline
         self._forces_baseline = actual
-        if baseline is None:
+        if baseline is None or not self._program_current():
             return
         missing = object()
         added = {a: v for a, v in actual.items() if baseline.get(a, missing) != v}
@@ -1145,7 +1257,7 @@ class SimulationSession:
         self._desired_position = self.switch_position
         if dap.speed is not None:
             self._speed = dap.speed
-        self._adopt_forces({self.to_address(k): v for k, v in dap.forces.items()})
+        self._adopt_forces(self._addressed(dap.forces))
         self._links_pending = {self.to_address(k): ms for k, ms in dap.links_pending.items()}
         revision = dap.links_revision
         if revision != self._links_revision_seen and self._links_synced:
@@ -1193,6 +1305,10 @@ class SimulationSession:
         if analysis.status is AnalysisStatus.BUILDING:
             self._wait_for_analysis()
             return
+        # Remembered so a failure can tell "the project was rewritten under the
+        # launch" from "this project genuinely does not run", and so the next
+        # CLICK save (a new generation) starts the simulation again.
+        self._launch_generation = analysis.generation
         # A cached graph may still serve open editors, but simulation must use
         # a successful conversion of the current CLICK program.
         if analysis.status is AnalysisStatus.FAILED:
@@ -1220,9 +1336,7 @@ class SimulationSession:
         if self._fail_unreadable(project_dir / "csv"):
             return
 
-        # Remembered so a failure can tell "the project was rewritten under the
-        # launch" from "this project genuinely does not run".
-        self._launch_generation = analysis.generation
+        self._program_names = (analysis.tag_to_addr_key, analysis.addr_key_to_tag)
         self._token += 1
         token = self._token
         self._set_status(SimStatus.STARTING)
@@ -1251,7 +1365,8 @@ class SimulationSession:
             except Exception as exc:
                 self._post(lambda error=exc: self._on_launch_failed(token, error))
                 return
-            self._post(lambda: self._on_launched(token, dap))
+            if not self._post(lambda: self._on_launched(token, dap)):
+                dap.terminate()  # closed while it started: nobody else will stop it
 
         self._run_background(launch, "sim-dap-launch")
 
@@ -1551,13 +1666,21 @@ class SimulationSession:
     ) -> None:
         """Record the bench links the user chose, then send *job* to the simulation."""
         previous = dict(self._state.links)
+        changed = [a for a in previous.keys() | links.keys() if previous.get(a) != links.get(a)]
         self._update_state(links=links)
         dap = self._dap
         if dap is None:
             return  # applied when the simulation (re)starts
 
         def undo(text: str) -> None:
-            self._update_state(links=previous)
+            # Only this change: links chosen since then stay.
+            restored = dict(self._state.links)
+            for address in changed:
+                if address in previous:
+                    restored[address] = previous[address]
+                else:
+                    restored.pop(address, None)
+            self._update_state(links=restored)
             if on_error is not None:
                 on_error(text)
 
@@ -1753,6 +1876,25 @@ class SimulationSession:
             if tag in tag_to_key and not tag.startswith(MODULE_STATUS_PREFIX)
         )
 
+    def _restore_when_known(self) -> None:
+        """Trim the remembered settings to the hardware, once it is fully known.
+
+        Inputs the program uses with no card to provide them (Unassigned I/O)
+        are known only from the analysis; until one is available, settings on
+        them would look like settings on missing hardware.
+        """
+        layout = self._layout
+        analysis = self._get_analysis()
+        if (
+            self._restore_pending
+            and layout is not None
+            and self._layout_error is None
+            and layout.has_cpu
+            and analysis is not None
+            and analysis.is_available
+        ):
+            self._apply_restore(layout)
+
     def _apply_restore(self, layout: PanelLayout) -> None:
         self._restore_pending = False
         result: RestoreResult = restore_state(
@@ -1779,8 +1921,9 @@ class SimulationSession:
         """Re-read the hardware when Project.ini or the program changed."""
         path = self._get_project_ini()
         analysis = self._get_analysis()
-        generation = analysis.generation if analysis is not None else None
-        key = (_mtime(path), generation)
+        # The generation moves when a build starts; the status when it ends.
+        program = (analysis.generation, analysis.status) if analysis is not None else None
+        key = (_mtime(path), program)
         if not force and key == self._layout_key:
             return
         self._layout_key = key
@@ -1798,8 +1941,7 @@ class SimulationSession:
         changed = layout != self._layout or error != self._layout_error
         self._layout = layout
         self._layout_error = error
-        if self._restore_pending and error is None and layout.has_cpu:
-            self._apply_restore(layout)
+        self._restore_when_known()
         if changed:
             self._emit("layout")
 
@@ -1826,18 +1968,21 @@ class SimulationSession:
             except (OSError, ValueError) as exc:
                 self._message(f"Simulator settings could not be read: {exc}", "error")
                 loaded = SimulatorState()
-            for address, reason in loaded.unread_links:
+            for key in loaded.unread_forces:
                 self._message(
-                    f"Could not restore the bench link on {address}: {reason}. Dropped it.",
+                    f"Could not restore the force on {key}: it is not a CLICK address. Dropped it.",
                     "error",
                 )
-            loaded = replace(loaded, unread_links=())
+            for key, reason in loaded.unread_links:
+                self._message(
+                    f"Could not restore the bench link on {key}: {reason}. Dropped it.", "error"
+                )
+            loaded = replace(loaded, unread_links=(), unread_forces=())
             self._state = loaded
             self._restore_pending = True
             self._restored_forces = len(loaded.forces)
             self._restored_links = len(loaded.links)
-            if self._layout is not None and self._layout_error is None and self._layout.has_cpu:
-                self._apply_restore(self._layout)
+            self._restore_when_known()
             self._emit("desired")
         if state_file.notice:
             self._set_notice(state_file.notice)

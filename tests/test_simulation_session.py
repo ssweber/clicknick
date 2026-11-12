@@ -88,7 +88,8 @@ class FakeDap:
         self.known_tags = frozenset()
         self.tag_hints: dict = {}
         self.stderr_text = ""
-        self.info = {"running": True, "host": "127.0.0.1", "port": 502, "clients": 1, "error": None}
+        self.state = "running"
+        self.info ={"running": True, "host": "127.0.0.1", "port": 502, "clients": 1, "error": None}
         self.links_revision = 0
         self.links_pending: dict[str, int] = {}
         self.project: dict[str, str] = {}  # program links: feedback -> enable
@@ -1379,9 +1380,11 @@ def _queued(harness: Harness) -> list:
 
 
 def _run_jobs(harness: Harness, jobs: list) -> None:
-    while jobs:
-        jobs.pop(0)()
     harness.scheduler.run_ready()
+    while jobs:
+        while jobs:
+            jobs.pop(0)()
+        harness.scheduler.run_ready()
 
 
 def test_stopping_while_settings_are_restored_keeps_them(ready, tmp_path):
@@ -1423,6 +1426,23 @@ def test_a_force_sent_to_a_simulation_that_restarted_is_kept(ready):
     assert ready.sim.bench_links == {"X002": ON_DELAY_LINK}
     assert ("force", "Y001", True) in ready.dap.calls
     assert ready.messages("error") == ""
+
+
+def test_a_force_the_simulation_never_answered_is_kept(ready):
+    from clicknick.services.dap_service import DapUnavailableError
+
+    ready.open()
+    errors: list[str] = []
+
+    def hung(tag, value):
+        raise DapUnavailableError("pyrungForce: no response from simulation")
+
+    ready.dap.force = hung
+    ready.sim.force("Y001", True, on_error=errors.append)
+    ready.scheduler.run_ready()
+    assert ready.sim.forces == {"Y001": True}, "only a refusal undoes it"
+    assert errors == []
+    assert "no response from simulation" in ready.messages("error")
 
 
 def test_a_refused_link_undoes_only_itself(ready):

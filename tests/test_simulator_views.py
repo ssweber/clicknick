@@ -829,3 +829,62 @@ def test_double_clicking_an_output_forces_it_the_other_way_then_releases(simulat
     ready.sim._values = {"Y001": True}
     win._flip_output("Y001")
     assert ready.sim.forces == {"Y001": False}
+
+
+def test_an_analog_input_gets_its_slider_once_the_simulation_gives_its_range(simulator, ready):
+    win = simulator(ready)
+    assert "scale" not in win._analog_in["DF1"]
+
+    # The simulation's first frame carries the tag hints.
+    ready.dap.tag_hints = {"DF1": {"min": 0.0, "max": 100.0, "rangeDefault": False}}
+    ready.dap.frame(scan_id=1)
+    ready.scheduler.run_ready()
+
+    assert "scale" in win._analog_in["DF1"]
+
+
+class _ObservedStore:
+    def __init__(self, nickname: str) -> None:
+        self.visible_state = {get_addr_key("X", 1): SimpleNamespace(nickname=nickname, comment="")}
+        self.observers: list = []
+
+    def add_observer(self, callback) -> None:
+        self.observers.append(callback)
+
+    def remove_observer(self, callback) -> None:
+        self.observers.remove(callback)
+
+
+def test_the_simulator_follows_the_address_data_the_app_holds_now(tk_root, monkeypatch, ready):
+    from clicknick.views.console_panel import ConsolePanel
+    from clicknick.views.simulator_window import SimulatorWindow
+
+    monkeypatch.setattr(ConsolePanel, "_start_background", lambda _self, _t, *, name: None)
+    first, second = _ObservedStore("Start_PB"), _ObservedStore("Old")
+    current = [first]
+    win = SimulatorWindow(
+        tk_root,
+        simulation=ready.sim,
+        get_store=lambda: current[0],
+        get_analysis=lambda: ready.analysis,
+        open_dataview=lambda: None,
+    )
+    try:
+        assert len(first.observers) == 1
+        current[0] = second  # a CSV was loaded: the app holds another store
+        win.after_cancel(win._tick_after_id)
+        win._tick()
+
+        assert first.observers == []
+        assert len(second.observers) == 1
+        second.visible_state[get_addr_key("X", 1)] = SimpleNamespace(nickname="Renamed", comment="")
+        second.observers[0](second, {get_addr_key("X", 1)})
+        texts = [
+            win._canvas.itemcget(item, "text")
+            for item in win._canvas.find_all()
+            if win._canvas.type(item) == "text"
+        ]
+        assert "Renamed" in texts
+    finally:
+        win._on_close()
+    assert second.observers == []

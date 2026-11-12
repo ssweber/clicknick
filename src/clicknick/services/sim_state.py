@@ -62,6 +62,8 @@ class SimulatorState:
     links: Mapping[str, BenchLink] = field(default_factory=dict)
     #: Links the file holds but ClickNick can't read, with the reason. They are not saved back.
     unread_links: tuple[tuple[str, str], ...] = ()
+    #: Forces the file holds on something that is not a CLICK address. Not saved back.
+    unread_forces: tuple[str, ...] = ()
     bench_wiring: bool = True
     run_hint_seen: bool = False
     modbus_port: int = DEFAULT_MODBUS_PORT
@@ -143,9 +145,12 @@ def _parse_link(value: object) -> BenchLink | None:
     enabled = value.get("enabled", True) is not False
     if value.get("cut") is True:
         return BenchLink(None, enabled=enabled)
-    enable = _address(value.get("enable"))
-    if enable is None:
+    raw_enable = value.get("enable")
+    if raw_enable is None:
         return None
+    enable = _address(raw_enable)
+    if enable is None:
+        raise ValueError(f"its enable {raw_enable} is not a CLICK address")
     trigger = value.get("trigger")
     found = response_of(
         {
@@ -192,16 +197,22 @@ def _parse(data: Mapping[str, object]) -> SimulatorState:
         and not isinstance(value, bool)
         and (address := _address(key))
     }
-    forces = {
-        address: value
-        for key, value in table("forces").items()
-        if isinstance(value, bool | int | float | str) and (address := _address(key))
-    }
+    forces: dict[str, PlcValue] = {}
+    unread_forces: list[str] = []
+    for key, value in table("forces").items():
+        if not isinstance(value, bool | int | float | str):
+            continue
+        address = _address(key)
+        if address is None:
+            unread_forces.append(key)
+        else:
+            forces[address] = value
     links: dict[str, BenchLink] = {}
     unread_links: list[tuple[str, str]] = []
     for key, value in table("links").items():
         address = _address(key)
         if address is None:
+            unread_links.append((key, "it is not a CLICK address"))
             continue
         try:
             link = _parse_link(value)
@@ -221,6 +232,7 @@ def _parse(data: Mapping[str, object]) -> SimulatorState:
         forces=forces,
         links=links,
         unread_links=tuple(unread_links),
+        unread_forces=tuple(unread_forces),
         bench_wiring=data.get("bench_wiring") is not False,
         run_hint_seen=data.get("run_hint_seen") is True,
         modbus_port=port,
