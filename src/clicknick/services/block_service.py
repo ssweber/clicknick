@@ -224,13 +224,14 @@ class BlockService:
         """The T/TD (CT/CTD) pair's comment after the source row's tag went from old to new.
 
         The pair's block name carries the _D suffix on TD/CTD. A pair without a
-        tag gets the new one appended; a pair holding the old block's tag has it
-        renamed in place, re-coloured or removed; a pair holding some other
+        tag gets the new one appended when the tag was added or renamed (a colour
+        or kind change alone leaves it alone); a pair holding the old block's tag
+        has it renamed in place, re-coloured or removed; a pair holding some other
         block's tag is left alone.
         """
         pair_tag = parse_block_tag(pair_comment)
         if pair_tag.name is None:
-            if new_tag.name is None:
+            if new_tag.name is None or new_tag.name == old_tag.name:
                 return None
             new_name = _transform_block_name_for_pair(new_tag.name, source_type, pair_type)
             return add_block_tag(

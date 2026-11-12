@@ -38,9 +38,20 @@ def key(memory_type: str, address: int) -> int:
     return get_addr_key(memory_type, address)
 
 
-def make_store(comments: dict[tuple[str, int], str], *, with_view: bool = True) -> AddressStore:
+def make_store(
+    comments: dict[tuple[str, int], str],
+    *,
+    with_view: bool = True,
+    retentive: dict[tuple[str, int], bool] | None = None,
+) -> AddressStore:
+    retentive = retentive or {}
     rows = {
-        key(mem, addr): AddressRow(memory_type=mem, address=addr, comment=comment)
+        key(mem, addr): AddressRow(
+            memory_type=mem,
+            address=addr,
+            comment=comment,
+            retentive=retentive.get((mem, addr), False),
+        )
         for (mem, addr), comment in comments.items()
     }
     store = AddressStore(Source(rows))
@@ -155,6 +166,29 @@ class TestRenameInPlace:
 
         assert comment(store, "TD", 1) == 'note <Pumps_D bg="Blue">'
         assert comment(store, "T", 3) == "</Pumps>"
+
+    @pytest.mark.parametrize("new_open", ['<Pumps bg="Red">', "<Pumps />"])
+    def test_colour_or_kind_change_leaves_an_untagged_pair_alone(self, new_open):
+        store = make_store(
+            {("T", 1): "<Pumps>", ("T", 5): "</Pumps>", ("TD", 1): "preset", ("TD", 5): "last"}
+        )
+
+        edit(store, ("T", 1, "comment", new_open))
+
+        assert comment(store, "TD", 1) == "preset"
+        assert comment(store, "TD", 5) == "last"
+        assert store.get_dirty_keys() <= {key("T", 1), key("T", 5)}
+
+    def test_renaming_tags_an_untagged_pair(self):
+        store = make_store(
+            {("T", 1): "<Pumps>", ("T", 5): "</Pumps>", ("TD", 1): "preset", ("TD", 5): "last"}
+        )
+
+        edit(store, ("T", 1, "comment", "<Tanks>"))
+
+        assert comment(store, "T", 5) == "</Tanks>"
+        assert comment(store, "TD", 1) == "preset <Tanks_D>"
+        assert comment(store, "TD", 5) == "last </Tanks_D>"
 
     def test_deleting_the_open_tag_removes_the_close_tag_and_its_separator(self):
         store = make_store(
@@ -313,6 +347,23 @@ class TestWhatStillSyncs:
         edit(store, ("CTD", 2, "comment", "<Counts_D />"))
 
         assert comment(store, "CT", 2) == "<Counts />"
+
+    def test_setting_the_retentive_a_row_has_leaves_its_pair_alone(self):
+        """Discard row changes on T1 sets the value T1 already has; TD1's own value stays."""
+        store = make_store({("T", 1): "a", ("TD", 1): "b"}, retentive={("TD", 1): True})
+        base = store.base_state[key("T", 1)]
+
+        edit(
+            store,
+            ("T", 1, "nickname", base.nickname),
+            ("T", 1, "comment", base.comment),
+            ("T", 1, "initial_value", base.initial_value),
+            ("T", 1, "retentive", base.retentive),
+        )
+
+        assert store.visible_state[key("TD", 1)].retentive is True
+        assert not store.has_unsaved_changes()
+        assert not store.can_undo()
 
     def test_retentive_mirrors_from_td_to_t(self):
         store = make_store({})

@@ -571,7 +571,8 @@ class AddressStore:
     def _apply_cascades(self, session: EditSession) -> None:
         """Write what the caller's edits imply for rows tied to the edited ones.
 
-        - Retentive set on a T/TD (CT/CTD) row is set on its pair too.
+        - Retentive changed on a T/TD (CT/CTD) row is set on its pair too; setting
+          the value the row already has changes nothing on the pair.
         - A row whose block tag changed (old tag vs new tag, not its text) has
           the matching open/close row's tag renamed or removed, and the T/TD
           pair of each of the two follows (BlockService says how). A comment
@@ -625,6 +626,7 @@ class AddressStore:
             if (
                 pair_key is not None
                 and "retentive" in fields
+                and fields["retentive"] != row.retentive
                 and "retentive" not in caller_set.get(pair_key, ())
             ):
                 session.get_builder(pair_key).retentive = fields["retentive"]
