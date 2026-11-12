@@ -1928,7 +1928,7 @@ class SimulatorWindow(tk.Toplevel):
 
     def _pop_out_console(self) -> None:
         """Move the console to its own window, transcript and history included."""
-        if self._console.busy:
+        if self._console.running_here:  # its output arrives in this panel
             return
         self._hide_console()
         self._console.close()

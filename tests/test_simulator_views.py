@@ -156,6 +156,22 @@ def test_a_busy_console_stays_where_it_is(simulator, ready):
     assert str(win._console._pop_btn.cget("state")) == "normal"
 
 
+def test_a_command_from_a_closed_pane_does_not_stop_pop_out(simulator, ready):
+    win = simulator(ready)
+    started: list = []
+    ready.sim._run_background = lambda target, _name: started.append(target)
+    ready.sim.run_console_command(lambda: None, lambda _result: None)
+    ready.scheduler.run_ready()
+    assert win._console.busy and not win._console.running_here
+    assert str(win._console._pop_btn.cget("state")) == "normal"
+
+    win._pop_out_console()
+
+    assert win._console_window is not None
+    started.pop()()
+    ready.scheduler.run_ready()
+
+
 def test_a_failed_conversion_shows_in_the_console_and_offers_retry(simulator, tmp_path):
     svc = AnalysisService()
     svc.mark_failed("pyrung conversion crashed", "Traceback...\nValueError: boom")

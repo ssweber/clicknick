@@ -140,13 +140,13 @@ class ConsolePanel(ttk.Frame):
         """Show the session's Console command state: busy, with Stop, while one runs.
 
         The command may come from a panel that has since closed; Stop still
-        cancels it, through this panel's own connection.
+        cancels it, through this panel's own connection. Only a command this panel
+        sent writes its output here, so only that one keeps Pop out off.
         """
         busy = self.busy
         if busy == (self._busy_tick >= 0):
             return
-        # A command's output arrives in this panel, so it stays put until done.
-        self._pop_btn.configure(state="disabled" if busy else "normal")
+        self._pop_btn.configure(state="disabled" if self.running_here else "normal")
         if busy:
             self._cancel_requested = False
             self._busy_tick = 0
@@ -224,6 +224,7 @@ class ConsolePanel(ttk.Frame):
             return results
 
         def _done(results: list[tuple[bool, str]]) -> None:
+            self._sent_here = False
             if self._destroyed:
                 return  # closed meanwhile; the session still counted the command
             for ok, text in results:
@@ -245,6 +246,7 @@ class ConsolePanel(ttk.Frame):
 
         # The session runs it and says when it ends (a "desired" event), even if
         # this panel closes first; the panel shows busy from that.
+        self._sent_here = True
         self._simulation.run_console_command(_worker, _done)
 
     # ------------------------------------------------------------------
@@ -436,6 +438,7 @@ class ConsolePanel(ttk.Frame):
         self._copy_flash_after_id: str | None = None
         self._busy_tick: int = -1
         self._cancel_requested = False
+        self._sent_here = False  # the running command was sent from this panel
         self._destroyed = False
         self._completer = ConsoleCompleter()
 
@@ -450,6 +453,11 @@ class ConsolePanel(ttk.Frame):
     def busy(self) -> bool:
         """A Console command is in flight, from this panel or one that closed."""
         return self._simulation.console_busy
+
+    @property
+    def running_here(self) -> bool:
+        """The running Console command was sent from this panel: its output arrives here."""
+        return self.busy and self._sent_here
 
     def focus_input(self) -> None:
         self._console_input.focus_set()
