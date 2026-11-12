@@ -196,15 +196,42 @@ def _generated(root: Path, main: str) -> Path:
     return root
 
 
-def _choose_existing_workspace(source: Path, mirror: Path) -> None:
-    """What Workspace setup does when the user picks an existing workspace."""
-    source_was_modified = plc_source_is_modified(source)
-    sync_workspace_to_mirror(source, mirror)
-    if not source_was_modified:
-        record_generated_plc_source(mirror)
+def _choose_existing_workspace(monkeypatch, source: Path, mirror: Path) -> MagicMock:
+    """Pick *mirror* in Workspace setup while *source* is the active workspace.
+
+    Returns the mocked messagebox.showerror.
+    """
+    monkeypatch.setattr(
+        "clicknick.services.workspace_mirror.remember_project_sidecar", MagicMock()
+    )
+    monkeypatch.setattr("clicknick.app.messagebox.askokcancel", MagicMock(return_value=True))
+    showerror = MagicMock()
+    monkeypatch.setattr("clicknick.app.messagebox.showerror", showerror)
+
+    app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
+    app.root = MagicMock()
+    app._session = MagicMock()
+    app._workspace_config = None
+    app._workspace_matches = []
+    app._pending_workspace_config = ProjectWorkspaceConfig("Line1", mirror)
+    app._workspace_mirror_error = None
+    app._mirror_setup_window = None
+    app._ensure_plc_name_for_workspace = MagicMock(return_value="Line1")
+    app._workspace_source_dir = MagicMock(return_value=source)
+    app._update_status = MagicMock()
+    app._start_analysis_build = MagicMock()
+    app.mirror_project_selection_var = MagicMock()
+    app.mirror_location_selection_var = MagicMock()
+    app.workspace_setup_action_var = MagicMock()
+
+    app._apply_workspace_mirror_setup()
+    return showerror
 
 
-def test_choosing_an_existing_workspace_keeps_its_edited_source(tmp_path: Path) -> None:
+def test_choosing_an_existing_workspace_keeps_its_edited_source(
+    monkeypatch, tmp_path: Path
+) -> None:
     durable = tmp_path / "Line1 Workspace"
     _publish_generated_project(_generated(tmp_path / "g0", "generated A\n"), durable)
     (durable / "src" / "plc" / "main.py").write_text("unpasted edits\n", encoding="utf-8")
@@ -212,9 +239,10 @@ def test_choosing_an_existing_workspace_keeps_its_edited_source(tmp_path: Path) 
     temporary = tmp_path / "pyrung_project"
     _publish_generated_project(_generated(tmp_path / "g1", "generated B\n"), temporary)
 
-    _choose_existing_workspace(temporary, durable)
+    showerror = _choose_existing_workspace(monkeypatch, temporary, durable)
 
-    assert (durable / "src" / "plc" / "main.py").read_text(encoding="utf-8") == ("unpasted edits\n")
+    showerror.assert_not_called()
+    assert (durable / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "unpasted edits\n"
     # The build that follows regenerates src/plc; the edits stay in the backup.
     _publish_generated_project(_generated(tmp_path / "g2", "generated B\n"), durable)
     backup = durable / "backup" / "src" / "plc"
@@ -222,18 +250,55 @@ def test_choosing_an_existing_workspace_keeps_its_edited_source(tmp_path: Path) 
     assert (backup / "user_module.py").read_text(encoding="utf-8") == "helper\n"
 
 
-def test_choosing_an_unedited_workspace_takes_the_active_source(tmp_path: Path) -> None:
+def test_choosing_an_unedited_workspace_takes_the_active_source(
+    monkeypatch, tmp_path: Path
+) -> None:
     durable = tmp_path / "Line1 Workspace"
     _publish_generated_project(_generated(tmp_path / "g0", "generated A\n"), durable)
     temporary = tmp_path / "pyrung_project"
     _publish_generated_project(_generated(tmp_path / "g1", "generated B\n"), temporary)
     (temporary / "src" / "plc" / "main.py").write_text("agent edits\n", encoding="utf-8")
 
-    _choose_existing_workspace(temporary, durable)
+    showerror = _choose_existing_workspace(monkeypatch, temporary, durable)
 
+    showerror.assert_not_called()
     assert (durable / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "agent edits\n"
     assert not (durable / "backup" / "src" / "plc").exists()
     assert plc_source_is_modified(durable)
+
+
+def test_choosing_an_edited_workspace_while_the_active_one_is_edited_changes_nothing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    durable = tmp_path / "Line1 Workspace"
+    _publish_generated_project(_generated(tmp_path / "g0", "generated A\n"), durable)
+    (durable / "src" / "plc" / "main.py").write_text("durable edits\n", encoding="utf-8")
+    temporary = tmp_path / "pyrung_project"
+    _publish_generated_project(_generated(tmp_path / "g1", "generated B\n"), temporary)
+    (temporary / "src" / "plc" / "main.py").write_text("temporary edits\n", encoding="utf-8")
+    before = sorted(path.relative_to(durable) for path in durable.rglob("*"))
+
+    showerror = _choose_existing_workspace(monkeypatch, temporary, durable)
+
+    message = showerror.call_args.args[1]
+    assert str(durable.resolve() / "src" / "plc") in message
+    assert str(temporary.resolve() / "src" / "plc") in message
+    assert "Paste or discard" in message
+    assert sorted(path.relative_to(durable) for path in durable.rglob("*")) == before
+    assert (durable / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "durable edits\n"
+    assert plc_source_is_modified(durable)
+
+
+def test_sync_says_when_it_kept_the_mirrors_edited_source(tmp_path: Path) -> None:
+    source = _write_workspace(tmp_path / "active", main="proposal\n")
+    record_generated_plc_source(source)
+    clean = _write_workspace(tmp_path / "Clean Workspace")
+    record_generated_plc_source(clean)
+    edited = _write_workspace(tmp_path / "Edited Workspace", main="edits\n")
+
+    assert not sync_workspace_to_mirror(source, clean).kept_source
+    assert sync_workspace_to_mirror(source, edited).kept_source
+    assert sync_workspace_to_mirror(source, tmp_path / "New Workspace").kept_source is False
 
 
 @pytest.mark.parametrize("content", ["[]", "null", '"sidecars"', "[1, 2]"])
@@ -253,6 +318,7 @@ def test_sync_removes_the_mirrors_legacy_record_once_the_workspace_has_none(
     tmp_path: Path,
 ) -> None:
     source = _write_workspace(tmp_path / "active")
+    record_generated_plc_source(source)
     record = Path("csv") / "legacy_encodings.json"
     (source / record).write_text("[]", encoding="utf-8")
     mirror = tmp_path / "Example Workspace"

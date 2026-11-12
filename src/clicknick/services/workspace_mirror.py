@@ -14,7 +14,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..models.name_validation import validate_click_name
-from .project_workspace import PLC_PACKAGE_PATH, backup_modified_plc_source
+from .project_workspace import (
+    PLC_PACKAGE_PATH,
+    backup_plc_source,
+    plc_source_is_modified,
+)
 
 SIDECAR_NAME = ".clicknick.toml"
 
@@ -63,6 +67,9 @@ class ProjectWorkspaceConfig:
 class MirrorSyncResult:
     copied_files: int
     mirror_path: Path
+    # The mirror's edited src/plc was kept (and backed up), not replaced: it is
+    # not the clean result of a generation.
+    kept_source: bool = False
 
 
 @dataclass(frozen=True)
@@ -353,6 +360,8 @@ def sync_workspace_to_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
     active workspace has none. A mirror whose ``src/plc`` holds work beyond its
     last generation keeps it: that tree is snapshotted to the mirror's
     ``backup/src/plc`` and left in place, and the next build regenerates it.
+    When the active workspace's ``src/plc`` holds edits too, nothing changes and
+    ValueError says so: one of the two would be left behind.
     """
     source = _normalized(source)
     mirror = _normalized(mirror)
@@ -361,11 +370,16 @@ def sync_workspace_to_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
     if not (source / PLC_PACKAGE_PATH).is_dir():
         raise ValueError(f"active workspace source not found: {source / PLC_PACKAGE_PATH}")
     validate_mirror_destination(source, mirror)
+    keep_mirror_source = plc_source_is_modified(mirror)
+    if keep_mirror_source and plc_source_is_modified(source):
+        raise ValueError(
+            "Both workspaces hold edits to src/plc that are not in CLICK:\n\n"
+            f"{source / PLC_PACKAGE_PATH}\n{mirror / PLC_PACKAGE_PATH}\n\n"
+            "Paste or discard the edits in one of them first."
+        )
     mirror.mkdir(parents=True, exist_ok=True)
-
-    # The caller may record the mirror's source as freshly generated, so its
-    # edits must be in the backup before anything else happens.
-    keep_mirror_source = backup_modified_plc_source(mirror) is not None
+    if keep_mirror_source:
+        backup_plc_source(mirror)
 
     copied = 0
     owned_roots = set(MIRROR_OWNED_DIRS)
@@ -396,7 +410,7 @@ def sync_workspace_to_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
             continue
         copied += _copy_file(path, mirror / relative, overwrite=False)
 
-    return MirrorSyncResult(copied, mirror)
+    return MirrorSyncResult(copied, mirror, kept_source=keep_mirror_source)
 
 
 def _latest_mtime(root: Path) -> dt.datetime | None:
