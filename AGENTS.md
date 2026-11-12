@@ -314,7 +314,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - A write (`_write_program`) is one job on the action worker. The Console refuses commands until it is
   answered, no write is offered while a Console command runs, and Restart waits for it. Console commands run
   through `run_console_command`, which counts them in flight until each one returns, so closing the pane
-  mid-command does not hold writes back.
+  mid-command does not hold writes back. Every pane shows busy, with Stop, from that count (`console_busy`),
+  and the offer says a Console command holds the write.
   An agent on `pyrung live` can still change forces and links while a write runs. The write pauses, reads
   pyrung's force and link listing (the truth, whatever the Console did since the last frame), and
   `plan_carry` (`services/program_carry.py`) decides each entry's name in the new program:
@@ -333,7 +334,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - A reload that fails puts back what it released, keeps the old program and adds **Restart** to the offer. A
   reload pyrung never answers sends nothing by name (which program runs is unknown) and offers Restart; its
   notice says the simulation may be paused and names what was released, and the switch position stays the
-  user's (`_position_held`) so Restart starts in it, until the user moves the switch.
+  user's (`_position_held`) so Restart starts in it and the write offered is for it, until the user moves
+  the switch.
   Restart (also on the toolbar) relaunches on what the workspace holds now, from power-on values or the PLC
   data file, with the same desired state and switch position; so do Start, a PLC data file change, and a
   simulation that failed to start once a later build converts (`_follow_program`). A workspace move

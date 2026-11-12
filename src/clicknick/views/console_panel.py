@@ -88,21 +88,6 @@ class ConsolePanel(ttk.Frame):
         self.clipboard_append(text)
         self._flash_copy_button()
 
-    # ------------------------------------------------------------------
-    # Simulation events (the SimulationSession owns the DAP)
-    # ------------------------------------------------------------------
-
-    def _on_simulation_event(self, event: SimEvent) -> None:
-        if self._destroyed:
-            return
-        if event.kind == "desired":
-            self._show_busy()
-        elif event.kind == "message":
-            self._append_output(event.text.rstrip("\n") + "\n", event.level)
-        elif event.kind == "echo":
-            # What the user just did on the panel, as the command that does it.
-            self._append_output(f"# {event.text}\n", "echo")
-
     def _schedule_ui(self, callback: Callable[[], None]) -> None:
         if self._destroyed:
             return
@@ -177,6 +162,21 @@ class ConsolePanel(ttk.Frame):
             self._send_btn.configure(
                 text="Send", state="normal", command=self._console_input.submit
             )
+
+    # ------------------------------------------------------------------
+    # Simulation events (the SimulationSession owns the DAP)
+    # ------------------------------------------------------------------
+
+    def _on_simulation_event(self, event: SimEvent) -> None:
+        if self._destroyed:
+            return
+        if event.kind == "desired":
+            self._show_busy()
+        elif event.kind == "message":
+            self._append_output(event.text.rstrip("\n") + "\n", event.level)
+        elif event.kind == "echo":
+            # What the user just did on the panel, as the command that does it.
+            self._append_output(f"# {event.text}\n", "echo")
 
     # ------------------------------------------------------------------
     # Command dispatch via pyrung live

@@ -906,6 +906,11 @@ class SimulationSession:
         self.restart()
         return True
 
+    @property
+    def _write_position(self) -> SwitchPosition:
+        """The position a write goes back to: the user's while it is held, else the switch."""
+        return self._desired_position if self._position_held else self.switch_position
+
     def _write_actions(self) -> tuple[ProgramAction, ...]:
         if self._writing or self._console_commands:
             return ()  # one write at a time, and not under a Console command
@@ -2054,11 +2059,6 @@ class SimulationSession:
             self._post(lambda: self._on_written(token, summary, target, source, listing))
 
         self._run_serial(job)
-
-    @property
-    def _write_position(self) -> SwitchPosition:
-        """The position a write goes back to: the user's while it is held, else the switch."""
-        return self._desired_position if self._position_held else self.switch_position
 
     def run_time_edit(self) -> None:
         """Write the workspace's program while in RUN, keeping every value, timer and force."""
