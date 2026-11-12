@@ -281,13 +281,13 @@ class Overlay(tk.Toplevel):
     def dismiss(self):
         """Esc: hide the overlay and keep it hidden for this control.
 
-        It shows again for another control, or once CLICK's field has text.
+        It shows again for another control.
         """
         self._dismissed = True
         self.withdraw()
 
     def _stay_dismissed(self) -> bool:
-        """True while the overlay is dismissed for the target control and its field is empty."""
+        """True while the overlay is dismissed for the target control."""
         if not self._dismissed:
             return False
         try:

@@ -52,7 +52,7 @@
 
 ### Fixed
 
-- The overlay sends nothing to CLICK when you press Esc or click away, so an empty or half-typed name no longer lands in CLICK's field, Enter on an empty overlay just closes it and leaves the Address Picker open, and Esc keeps the overlay hidden for that field until you move to another one or type in it.
+- The overlay sends nothing to CLICK when you press Esc or click away, so an empty or half-typed name no longer lands in CLICK's field, Enter on an empty overlay just closes it and leaves the Address Picker open, and Esc keeps the overlay hidden for that field until you move to another field.
 - The overlay comes back when you click into the same empty field again after clicking away.
 - Multi-word overlay searches list matches in list order instead of a random one, and a one-letter search lists only names containing that letter.
 - A nickname used twice is listed once in the overlay with its first address, sorting by nickname ignores case, and the overlay's tooltip is read from a row of the types the field accepts.
