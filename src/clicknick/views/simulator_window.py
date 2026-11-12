@@ -125,6 +125,14 @@ def _value_text(value: object) -> str:
     return "" if value is None else str(value)
 
 
+def _slider_range(hint: dict[str, Any]) -> tuple[float, float] | None:
+    """The slider's range for an analog input's pyrung hint, or None when it gets none."""
+    low, high = hint.get("min"), hint.get("max")
+    if hint.get("rangeDefault", True) or low is None or high is None or not high > low:
+        return None
+    return low, high
+
+
 class SimulatorWindow(tk.Toplevel):
     """Draws the hardware panel and turns clicks into SimulationSession calls."""
 
@@ -922,10 +930,10 @@ class SimulatorWindow(tk.Toplevel):
             "badge": badge,
             "pending": pending,
         }
-        hint = self._simulation.tag_hints.get(address, {})
-        low, high = hint.get("min"), hint.get("max")
-        ranged = not hint.get("rangeDefault", True) and low is not None and high is not None
-        if ranged and high > low:
+        span = _slider_range(self._simulation.tag_hints.get(address, {}))
+        self._drawn_ranges[address] = span
+        if span is not None:
+            low, high = span
             scale = ttk.Scale(
                 c, from_=low, to=high, orient=tk.HORIZONTAL, length=self._card_w - 96,
                 command=lambda value, a=address: self._on_slider(a, value),
@@ -1390,6 +1398,7 @@ class SimulatorWindow(tk.Toplevel):
         c.delete("all")
         for table in (self._inputs, self._outputs, self._analog_in, self._analog_out):
             table.clear()
+        self._drawn_ranges.clear()
         self._cpu_leds.clear()
         self._mode_labels.clear()
         self._mode_knob = None
@@ -1546,10 +1555,19 @@ class SimulatorWindow(tk.Toplevel):
     # Session and store events
     # ------------------------------------------------------------------
 
+    def _sliders_changed(self) -> bool:
+        """True when the simulation's ranges no longer match the analog sliders drawn."""
+        hints = self._simulation.tag_hints
+        return any(
+            _slider_range(hints.get(address, {})) != span
+            for address, span in self._drawn_ranges.items()
+        )
+
     def _on_simulation_event(self, event: SimEvent) -> None:
         if self._destroyed:
             return
-        if event.kind == "layout":
+        # Ranges come with the simulation's first frame, after the panel is drawn.
+        if event.kind == "layout" or (event.kind == "frame" and self._sliders_changed()):
             self._redraw()
             return
         if event.kind == "message" and event.level == "error":
@@ -1560,10 +1578,23 @@ class SimulatorWindow(tk.Toplevel):
         if not self._destroyed:
             self._redraw()
 
+    def _follow_store(self) -> None:
+        """Observe the address data the app holds now (loading a CSV replaces it)."""
+        store = self._get_store()
+        if store is self._observed_store:
+            return
+        if self._observed_store is not None:
+            self._observed_store.remove_observer(self._on_store_changed)
+        self._observed_store = store
+        if store is not None:
+            store.add_observer(self._on_store_changed)
+        self._redraw()
+
     def _tick(self) -> None:
         self._tick_after_id = None
         if self._destroyed:
             return
+        self._follow_store()
         self._blink = not self._blink
         self._refresh_cpu()
         self._tick_after_id = self.after(TICK_MS, self._tick)
@@ -1804,6 +1835,8 @@ class SimulatorWindow(tk.Toplevel):
         self._inputs: dict[str, dict[str, Any]] = {}
         self._outputs: dict[str, dict[str, Any]] = {}
         self._analog_in: dict[str, dict[str, Any]] = {}
+        # Each analog input's slider range as drawn (None: no slider).
+        self._drawn_ranges: dict[str, tuple[float, float] | None] = {}
         self._analog_out: dict[str, dict[str, Any]] = {}
         self._cpu_leds: dict[str, int] = {}
         self._mode_labels: dict[str, int] = {}

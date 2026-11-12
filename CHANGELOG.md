@@ -122,6 +122,10 @@
   - A command given as one argument is split at spaces and at `;` outside quotes. A backslash there is kept as typed (`C:\temp`), except that `\"` and `\\` still escape inside double quotes.
   - An argument ending in `;` still ends a command.
 - `clicknick-cli prompt-save` answers at once while ClickNick shows the reminder, instead of holding every other command until the dialog is closed.
+- Saving in CLICK while the simulation is on restarts it on the saved program, from power-on values (or your PLC data file), back in the same mode with your switches, forces and bench links, and the Simulator says so (it kept running the old program). A save that does not convert stops the simulation, and the Simulator says why; it starts again on the next save that converts.
+- The simulation's forces and bench links stay on their addresses when you rename their tags, and turning it off or restarting it while it restores them no longer deletes them; a saved force or link that is not on a CLICK address is reported instead of dropped without a word.
+- Closing the project or the CLICK window while the simulation starts stops it instead of leaving it holding Modbus port 502, and a simulation that exits as it starts shows as failed instead of ready.
+- Switch settings on Unassigned I/O inputs survive opening the Simulator before the first build finishes, an analog input with a range gets its slider once the simulation starts, and the Simulator follows nickname edits after a CSV is loaded.
 
 ## v0.23.4 - 2026-10-11
 

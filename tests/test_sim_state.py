@@ -167,7 +167,24 @@ def test_malformed_links_are_skipped(tmp_path):
         "X002": BenchLink("Y001", response=response(on_delay="2s")),
         "X006": BenchLink(None),
     }
-    assert state.unread_links == (("X004", "it has no response"),)
+    # A link on something that is not an address is reported, as one ClickNick can't read.
+    assert state.unread_links == (
+        ("X003", "its enable nowhere is not a CLICK address"),
+        ("X004", "it has no response"),
+    )
+
+
+def test_forces_and_links_not_on_an_address_are_reported(tmp_path):
+    path = tmp_path / "state.toml"
+    path.write_text(
+        "[forces]\nStart = true\nY001 = true\n[links]\nProx = {enable = 'Y001', on_delay = '1s'}\n",
+        encoding="utf-8",
+    )
+    state = load_state(path)
+    assert state.forces == {"Y001": True}
+    assert state.unread_forces == ("Start",)
+    assert state.links == {}
+    assert state.unread_links == (("Prox", "it is not a CLICK address"),)
 
 
 def test_an_older_profile_link_is_read_through_pyrungs_upgrade(tmp_path):

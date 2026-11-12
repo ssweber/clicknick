@@ -23,6 +23,10 @@ class DapRequestError(RuntimeError):
     """The adapter refused a request, or never answered it."""
 
 
+class DapUnavailableError(DapRequestError):
+    """The adapter never answered: it is not running, died, or did not reply in time."""
+
+
 class SimState(enum.Enum):
     IDLE = "idle"
     LAUNCHING = "launching"
@@ -281,10 +285,10 @@ class DapService:
     ) -> dict[str, Any]:
         """Send a request and return its body, raising DapRequestError on failure."""
         if self._proc is None:
-            raise DapRequestError(f"{command}: simulation is not running")
+            raise DapUnavailableError(f"{command}: simulation is not running")
         resp = self._send_and_wait(command, arguments, timeout)
         if resp is None:
-            raise DapRequestError(f"{command}: no response from simulation")
+            raise DapUnavailableError(f"{command}: no response from simulation")
         if not resp.get("success"):
             raise DapRequestError(resp.get("message") or f"{command} failed")
         return resp.get("body") or {}
@@ -565,7 +569,16 @@ class DapService:
             detail = f"{error_msg}\n{stderr}" if stderr else error_msg
             raise RuntimeError(f"DAP launch failed: {detail}")
 
-        self._send_and_wait("configurationDone")
+        # The adapter always answers this; no answer means it died or hung after launch.
+        resp = self._send_and_wait("configurationDone")
+        if resp is None or not resp.get("success"):
+            stderr = self._drain_stderr()
+            self._kill()
+            raise RuntimeError(
+                f"DAP configurationDone failed\n{stderr}"
+                if stderr
+                else "DAP configurationDone failed"
+            )
 
     def terminate(self) -> None:
         """Shut down the DAP subprocess."""
