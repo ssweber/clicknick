@@ -298,6 +298,34 @@ class TestAnalysisStatus:
         assert svc.error is None
         assert svc.is_available
 
+    @pytest.mark.parametrize("fails", [False, True])
+    def test_a_build_asked_for_since_keeps_it_building(self, monkeypatch, tmp_path, fails):
+        """A save queues a build while one runs: the one running publishes the save before."""
+        svc = AnalysisService()
+        outcomes = iter([fails, False])
+
+        def _graph(*_args, **_kwargs):
+            if next(outcomes):
+                raise ValueError("bad rung")
+            return MagicMock(), MagicMock(), tmp_path, {}
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _graph)
+        first = svc.mark_building()
+        second = svc.mark_building()  # CLICK saved while the first build runs
+
+        if fails:
+            with pytest.raises(ValueError):
+                svc.build(tmp_path, None, serves=first)
+        else:
+            assert svc.build(tmp_path, None, serves=first)
+        assert svc.status is AnalysisStatus.BUILDING
+        assert svc.error is None
+        svc.mark_failed("selection unreadable", serves=first)
+        assert svc.status is AnalysisStatus.BUILDING
+
+        assert svc.build(tmp_path, None, serves=second)
+        assert svc.status is AnalysisStatus.READY
+
     def test_failed_rebuild_keeps_previous_result(self, monkeypatch, tmp_path):
         """A failed rebuild must not take working analysis away from open windows."""
         svc = AnalysisService()
@@ -906,7 +934,7 @@ def test_failed_regeneration_keeps_dirty_source_in_place(tmp_path, monkeypatch):
     monkeypatch.setattr("pyrung.click.ladder_to_pyrung_project", fail_generation)
 
     with pytest.raises(RuntimeError, match="conversion failed"):
-        _regenerate_persisted_project(tmp_path, None, persist)
+        _regenerate_persisted_project(tmp_path, None, persist, analog_inputs=frozenset())
 
     assert active.read_text(encoding="utf-8") == "unfinished work\n"
     assert not (persist / "backup" / "src" / "plc").exists()
@@ -943,19 +971,18 @@ def test_regeneration_publishes_the_legacy_record_and_removes_it_after_a_clean_s
     monkeypatch.setattr("clicknick.ladder.program.decode_program", decode_program)
     monkeypatch.setattr("clicknick.ladder.program.write_csv", lambda *_a, **_k: None)
     monkeypatch.setattr("pyrung.click.ladder_to_pyrung_project", generate)
-    monkeypatch.setattr("clicknick.services.analysis_service._channel_inputs", lambda _s: [])
     scr = tmp_path / "scr"
     scr.mkdir()
     (scr / "Scr1.tmp").write_bytes(b"scr")
     persist = tmp_path / "pyrung_project"
 
-    _regenerate_persisted_project(scr, None, persist)
+    _regenerate_persisted_project(scr, None, persist, analog_inputs=frozenset())
 
     record = persist / "csv" / LEGACY_ENCODINGS_FILE
     assert [item.rung for item in read_legacy_encodings(persist / "csv")] == [1]
 
     stale[0] = False  # CLICK saved a clean copy
-    _regenerate_persisted_project(scr, None, persist)
+    _regenerate_persisted_project(scr, None, persist, analog_inputs=frozenset())
 
     assert not record.exists()
 

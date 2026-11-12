@@ -11,6 +11,8 @@ import pytest
 
 from clicknick.app import ClickNickApp
 from clicknick.connection_session import ClickConnection, ConnectionSession
+from clicknick.live.dispatch import DispatchContext
+from clicknick.live.rung_commands import _get_project_dir
 from clicknick.services.analysis_service import AnalysisStatus
 from clicknick.services.project_workspace import record_generated_plc_source
 from clicknick.services.rung_diff import WORKSPACE_SOURCE
@@ -181,6 +183,7 @@ def test_connection_session_builds_into_configured_workspace(tmp_path, monkeypat
         db_path,
         persist_dir=workspace.resolve(),
         workspace_kind="persistent",
+        serves=session.analysis.mark_building.return_value,
     )
 
 
@@ -207,6 +210,7 @@ def test_connection_session_labels_click_folder_as_temporary(tmp_path, monkeypat
         db_path,
         persist_dir=scr_folder / "pyrung_project",
         workspace_kind="temporary",
+        serves=session.analysis.mark_building.return_value,
     )
 
 
@@ -552,8 +556,20 @@ def test_a_save_during_a_build_reads_as_building_until_its_own_build(
     readings = []
     both_done = threading.Event()
 
+    def rung_apply_workspace():
+        try:
+            return _get_project_dir(DispatchContext(analysis=session.analysis))
+        except ValueError as exc:
+            return str(exc)
+
     def finished() -> None:
-        readings.append(session.saved_program())
+        readings.append(
+            (
+                session.saved_program(),
+                get_workspace_status(session.analysis).state,
+                rung_apply_workspace(),
+            )
+        )
         if len(readings) == 2:
             both_done.set()
 
@@ -566,13 +582,18 @@ def test_a_save_during_a_build_reads_as_building_until_its_own_build(
     release_first.set()
     assert both_done.wait(timeout=10)
 
-    pre_save, saved = readings
+    (pre_save, pre_save_state, pre_save_workspace), (saved, state, workspace) = readings
     assert pre_save.save_count == 1
     assert pre_save.building is True
     assert pre_save.csv_dir is None
+    # Every reader of the analysis agrees: the workspace is not the save's yet.
+    assert pre_save_state is WorkspaceState.PREPARING
+    assert "being regenerated" in pre_save_workspace
     assert saved.save_count == 1
     assert saved.building is False
     assert saved.csv_dir == project / "csv"
+    assert state is not WorkspaceState.PREPARING
+    assert workspace == project
 
 
 def test_a_rebuild_that_fails_before_publishing_has_nothing_to_compare(

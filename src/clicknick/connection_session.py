@@ -71,7 +71,8 @@ class _BuildRequest:
     callbacks: list[tuple[tk.Tk | None, Callable[[bool, str | None], None]]] = field(
         default_factory=list
     )
-    # The number of requests made when this one was, so the build serves them all.
+    # What AnalysisService.mark_building returned for it: the build serves every
+    # request made up to this one.
     serves: int = 0
 
 
@@ -112,10 +113,6 @@ class ConnectionSession:
         self._build_lock = threading.Lock()
         self._build_running = False
         self._next_build: _BuildRequest | None = None
-        # Requests made, and of them those a finished build served. Between a build
-        # publishing and its follow-up starting, the status reads as built.
-        self._builds_asked = 0
-        self._builds_served = 0
         self._closed = False
 
     @property
@@ -155,6 +152,7 @@ class ConnectionSession:
                     request.db_path,
                     persist_dir=persist,
                     workspace_kind="persistent" if persistent_workspace else "temporary",
+                    serves=request.serves,
                 )
                 if published:
                     try:
@@ -168,12 +166,11 @@ class ConnectionSession:
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
             traceback.print_exc()
-            # Failed before build() ran, so nothing else will end the "building" status.
+            # Failed before build() ran, so nothing else will end the "building" status
+            # (unless a build queued since will).
             if analysis.status is AnalysisStatus.BUILDING:
-                analysis.mark_failed(error, traceback.format_exc())
+                analysis.mark_failed(error, traceback.format_exc(), serves=request.serves)
 
-        with self._build_lock:
-            self._builds_served = request.serves
         for root, on_complete in request.callbacks:
             if root is None:
                 on_complete(error is None, error)
@@ -209,14 +206,13 @@ class ConnectionSession:
         """
         analysis = self.analysis
         assert analysis is not None
-        analysis.mark_building()
+        serves = analysis.mark_building()
         with self._build_lock:
             pending = self._next_build
             callbacks = pending.callbacks if pending is not None else []
             if on_complete is not None:
                 callbacks.append((root, on_complete))
-            self._builds_asked += 1
-            self._next_build = _BuildRequest(scr_folder, db_path, callbacks, self._builds_asked)
+            self._next_build = _BuildRequest(scr_folder, db_path, callbacks, serves)
             if self._build_running:
                 return
             self._build_running = True
@@ -321,10 +317,8 @@ class ConnectionSession:
             return SavedProgram(self, save_count=saves, note=reading)
         generation = analysis.generation
         status = analysis.status
-        with self._build_lock:
-            # A save queues a build while one runs: what that one publishes is older.
-            queued = self._builds_served < self._builds_asked
-        if status is AnalysisStatus.BUILDING or queued:
+        # Also while a build queued after a save waits for the one before it to finish.
+        if status is AnalysisStatus.BUILDING:
             return SavedProgram(self, generation, saves, building=True, note=reading)
         # A build that failed before publishing leaves the workspace of an earlier save.
         project_dir = analysis.project_dir if analysis.project_is_current else None

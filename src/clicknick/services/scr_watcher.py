@@ -10,6 +10,8 @@ if TYPE_CHECKING:
     from ..utils.scheduling import Scheduler
 
 SCR_WATCH_INTERVAL_MS = 3000
+# After a change, checks this often until the files stop changing.
+SCR_SETTLE_MS = 500
 
 
 def _resolved(path: Path) -> Path:
@@ -24,9 +26,9 @@ class ScrWatcher:
 
     Uses the same tkinter.after() polling as FileMonitor. Any change to the
     set of Scr*.tmp files, or to one file's mtime or size, counts as a save,
-    including an earlier mtime (a copied-back file or a clock step). It fires
-    once the files have stayed the same for one interval, so a save caught
-    half written is one save, not two.
+    including an earlier mtime (a copied-back file or a clock step). After a
+    change it checks again every SCR_SETTLE_MS and fires once the files stay
+    the same for one of those, so a save caught half written is one save, not two.
     """
 
     def _snapshot(self) -> frozenset[tuple[str, int, int]]:
@@ -94,7 +96,8 @@ class ScrWatcher:
 
     def _schedule(self) -> None:
         if self._active and self._tk_root:
-            self._after_id = self._tk_root.after(SCR_WATCH_INTERVAL_MS, self._check)
+            delay = SCR_WATCH_INTERVAL_MS if self._settling is None else SCR_SETTLE_MS
+            self._after_id = self._tk_root.after(delay, self._check)
 
     def start(self, tk_root: Scheduler) -> None:
         if self._active:

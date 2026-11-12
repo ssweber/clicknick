@@ -33,11 +33,19 @@ def test_channel_inputs_reach_analysis_and_generated_workspace(tmp_path, monkeyp
         bundle.write(destination)
 
     monkeypatch.setattr("clicknick.ladder.program.program_save", save)
+    read: list[object] = []
+
+    def channel_inputs(scr_folder):
+        read.append(scr_folder)
+        return _channel_inputs(scr_folder)
+
+    monkeypatch.setattr("clicknick.services.analysis_service._channel_inputs", channel_inputs)
     (tmp_path / "Project.ini").write_text(
         "[SystemConfig]\nItem1=192\n[CPUBuild]\nAD1=DF1,10,0\nDA1=DF5,10,0\n",
         encoding="utf-8",
     )
     graph, _program, project, _nicknames = _build_graph(tmp_path, None, tmp_path / "workspace")
+    assert read == [tmp_path]  # One reading for the analysis and the workspace
     assert graph.tags["DF1"].external
     assert not graph.tags["DF10"].external
     namespace = {}
@@ -49,7 +57,8 @@ def test_channel_inputs_reach_analysis_and_generated_workspace(tmp_path, monkeyp
     assert read_analog_inputs(project / "csv") == {"DF1"}
 
 
-def test_a_workspace_generated_without_analog_inputs_records_none(tmp_path, monkeypatch):
+@pytest.mark.parametrize("inputs", [frozenset(), frozenset({"DF1", "DF2"})])
+def test_a_generated_workspace_records_its_analog_inputs(tmp_path, monkeypatch, inputs):
     def save(_source, destination, *, index):
         (destination / "main.csv").write_text("", encoding="utf-8")
 
@@ -59,6 +68,8 @@ def test_a_workspace_generated_without_analog_inputs_records_none(tmp_path, monk
         lambda _csv, *, output_dir, **_kwargs: (output_dir / "src" / "plc").mkdir(parents=True),
     )
 
-    project = _regenerate_persisted_project(tmp_path, None, tmp_path / "workspace")
+    project = _regenerate_persisted_project(
+        tmp_path, None, tmp_path / "workspace", analog_inputs=inputs
+    )
 
-    assert read_analog_inputs(project / "csv") == frozenset()
+    assert read_analog_inputs(project / "csv") == inputs

@@ -138,6 +138,41 @@ def test_a_save_caught_half_written_counts_once(tmp_path) -> None:
     assert changed == [True]
 
 
+class _Clock:
+    """Records each check scheduled; ``tick`` runs the latest one."""
+
+    def __init__(self) -> None:
+        self.delays: list[int] = []
+        self._due = None
+
+    def after(self, delay, callback):
+        self.delays.append(delay)
+        self._due = callback
+        return "after-id"
+
+    def tick(self) -> None:
+        self._due()
+
+
+def test_a_save_counts_once_its_files_stop_changing_for_half_a_second(tmp_path) -> None:
+    (tmp_path / "Scr1.tmp").write_text("main", encoding="utf-8")
+    changed: list[bool] = []
+    watcher = ScrWatcher(tmp_path, lambda: changed.append(True))
+    clock = _Clock()
+    watcher.start(clock)
+
+    (tmp_path / "Scr1.tmp").write_text("main, saved", encoding="utf-8")
+    clock.tick()  # Seen 3 s in; CLICK is still writing
+    (tmp_path / "Scr2.tmp").write_text("sub", encoding="utf-8")
+    clock.tick()
+    assert changed == []
+    clock.tick()  # The same half a second later: the save
+
+    assert changed == [True]
+    assert clock.delays == [3000, 500, 500, 3000]
+    watcher.stop()
+
+
 def test_a_second_save_soon_after_counts_again(tmp_path) -> None:
     (tmp_path / "Scr1.tmp").write_text("main", encoding="utf-8")
     changed: list[bool] = []
