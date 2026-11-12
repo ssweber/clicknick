@@ -152,7 +152,6 @@ class ConsolePanel(ttk.Frame):
     def _set_busy(self, busy: bool) -> None:
         # A command's output arrives in this panel, so it stays put until done.
         self._pop_btn.configure(state="disabled" if busy else "normal")
-        self._simulation.set_console_busy(busy)
         if busy:
             self._busy_tick = 0
             self._console_input.set_busy(True)
@@ -215,6 +214,8 @@ class ConsolePanel(ttk.Frame):
             return results
 
         def _done(results: list[tuple[bool, str]]) -> None:
+            if self._destroyed:
+                return  # closed meanwhile; the session still counted the command
             for ok, text in results:
                 if not text:
                     continue
@@ -227,14 +228,14 @@ class ConsolePanel(ttk.Frame):
             self._cancel_requested = False
             self._set_busy(False)
 
-        def _worker() -> None:
+        def _worker() -> list[tuple[bool, str]]:
             try:
-                results = _run()
+                return _run()
             except Exception as exc:  # never leave the console stuck busy
-                results = [(False, f"Console error: {exc}")]
-            self._schedule_ui(lambda: _done(results))
+                return [(False, f"Console error: {exc}")]
 
-        self._start_background(_worker, name="console-cmd")
+        # The session runs it, so the command ends there even if this panel closes first.
+        self._simulation.run_console_command(_worker, _done)
 
     # ------------------------------------------------------------------
     # Header actions

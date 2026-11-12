@@ -138,15 +138,15 @@ def test_the_notice_lists_releases_renames_then_moves():
         # Start moves from X001 to X002, which has its own cut: Start's link wins.
         ({"X001": "Start", "Y001": "Motor"}, {"X002": "Start", "Y001": "Motor"},
          {"Start": "Motor", "X002": None}, ("Start", LinkTarget("Start", "Motor")), "X002",
-         "the cut on X002 is dropped: Start now feeds X002"),
+         "the cut on X002 is dropped for the link on Start"),
         # The same on internal bits: Run moves from C1 to C2, C2 has a link from C5.
         ({"C1": "Run", "C5": "Aux"}, {"C2": "Run", "C5": "Aux"},
          {"Run": "Aux", "C2": "Aux"}, ("Run", LinkTarget("Run", "Aux")), "C2",
-         "the link on C2 is dropped: Run now feeds C2"),
+         "the link on C2 is dropped for the link on Run"),
         # Listed the other way round, the followed link still wins.
         ({"X001": "Start", "Y001": "Motor"}, {"X002": "Start", "Y001": "Motor"},
          {"X002": None, "Start": "Motor"}, ("Start", LinkTarget("Start", "Motor")), "X002",
-         "the cut on X002 is dropped: Start now feeds X002"),
+         "the cut on X002 is dropped for the link on Start"),
     ],
 )  # fmt: skip
 def test_two_links_on_one_new_feedback_keep_the_one_that_followed_its_name(

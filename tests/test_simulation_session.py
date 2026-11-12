@@ -2365,7 +2365,7 @@ def test_a_link_that_lands_where_a_followed_name_went_is_dropped(ready):
     ready.dap.links_revision += 1
     _frame(ready)
     _rebuild(ready, {"X001": "Begin", "X002": "Start"})
-    assert "The cut on X002 is dropped: Start now feeds X002." in ready.sim.program_change.text
+    assert "The cut on X002 is dropped for the link on Start." in ready.sim.program_change.text
     mark = len(ready.dap.calls)
 
     ready.sim.write_program()
@@ -2404,19 +2404,126 @@ def test_a_write_pyrung_never_answers_sends_nothing_by_name(ready):
     assert ready.sim.program_change.actions[-1] == "restart"
 
 
+def _console_command(ready, run=lambda: "done"):
+    """Start a Console command; returns (finish it, what its done callback got)."""
+    started: list = []
+    got: list = []
+    ready.sim._run_background = lambda target, _name: started.append(target)
+    ready.sim.run_console_command(run, got.append)
+    [worker] = started
+
+    def finish() -> None:
+        try:
+            worker()
+        finally:
+            ready.scheduler.run_ready()
+
+    return finish, got
+
+
 def test_no_write_while_a_console_command_runs(ready):
     ready.open()
     _rebuild(ready)
-    ready.sim.set_console_busy(True)
+    finish, got = _console_command(ready)
     assert ready.sim.program_change.actions == ()
     mark = len(ready.dap.calls)
     ready.sim.write_program()
+    ready.sim.reload()
     ready.scheduler.run_ready()
     assert ready.dap.calls[mark:] == []
     assert "while a Console command runs" in ready.messages("error")
 
-    ready.sim.set_console_busy(False)
+    finish()
+    assert got == ["done"]
     assert ready.sim.program_change.actions == ("write",)
+    ready.sim.reload()
+    ready.scheduler.run_ready()
+    assert ("reload",) in ready.dap.calls[mark:]
+
+
+def test_with_no_console_command_in_flight_nothing_is_busy(ready):
+    ready.open()
+    _rebuild(ready)
+    assert ready.sim.program_change.actions == ("write",)
+
+    first, _ = _console_command(ready)
+    second, _ = _console_command(ready)
+    first()
+    assert ready.sim.program_change.actions == (), "the second command is still in flight"
+    second()
+    assert ready.sim.program_change.actions == ("write",)
+
+
+def test_a_console_command_that_raises_still_ends(ready):
+    ready.open()
+    _rebuild(ready)
+
+    def boom():
+        raise RuntimeError("boom")
+
+    finish, got = _console_command(ready, boom)
+    with pytest.raises(RuntimeError):
+        finish()
+    assert got == []
+    assert ready.sim.program_change.actions == ("write",)
+
+
+def test_a_write_pyrung_never_answers_keeps_the_switch_position_for_restart(ready):
+    from clicknick.services.dap_service import DapUnavailableError
+
+    _name(ready, "C1", "Run")
+    ready.open()
+    ready.sim.force("C1", True)
+    ready.sim.set_switch_position("run")
+    ready.dap.frame(mode="run", running=True, forces={"Run": True})
+    ready.scheduler.run_ready()
+    _rebuild(ready, {"C1": "Spare", "C2": "Run"})
+    ready.dap.reload_error = DapUnavailableError("evaluate: no response from simulation")
+
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+    # The write paused it and never sent continue: frames show it stepping.
+    ready.dap.frame(mode="run", running=False, forces={})
+    ready.scheduler.run_ready()
+
+    assert ready.sim.switch_position == "step"
+    text = ready.sim.program_change.text
+    assert "it may be paused" in text
+    assert "Released before the reload: the force on Run" in text
+    assert ready.sim.program_change.actions[-1] == "restart"
+
+    ready.sim.restart()
+    ready.scheduler.run_ready()
+    assert len(ready.daps) == 2
+    assert [call[:2] for call in ready.dap.calls[1:]] == [
+        ("force", "C1"),
+        ("set_mode", "run"),
+        ("continue",),
+    ], "Restart starts in RUN, where the user had it, with the force on C1"
+
+
+def test_moving_the_switch_after_an_unanswered_write_follows_frames_again(ready):
+    from clicknick.services.dap_service import DapUnavailableError
+
+    ready.open()
+    ready.sim.set_switch_position("run")
+    ready.dap.frame(mode="run", running=True)
+    ready.scheduler.run_ready()
+    _rebuild(ready)
+    ready.dap.reload_error = DapUnavailableError("evaluate: no response from simulation")
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+    ready.dap.frame(mode="run", running=False)
+    ready.scheduler.run_ready()
+
+    ready.sim.set_switch_position("stop")
+    ready.dap.frame(mode="stop", running=False)
+    ready.scheduler.run_ready()
+    ready.dap.frame(mode="run", running=False)  # the Console stepped it
+    ready.scheduler.run_ready()
+    ready.sim.restart()
+    ready.scheduler.run_ready()
+    assert [call[:2] for call in ready.dap.calls[1:]] == [("set_mode", "run")]
 
 
 def test_no_restart_while_the_program_is_written(ready):

@@ -312,7 +312,9 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   `run.py`, no rung ClickNick cannot read). Start, a write and Restart all use it; a write or Restart it
   refuses leaves the simulation running and sets a notice saying why
 - A write (`_write_program`) is one job on the action worker. The Console refuses commands until it is
-  answered, no write is offered while a Console command runs (`set_console_busy`), and Restart waits for it.
+  answered, no write is offered while a Console command runs, and Restart waits for it. Console commands run
+  through `run_console_command`, which counts them in flight until each one returns, so closing the pane
+  mid-command does not hold writes back.
   An agent on `pyrung live` can still change forces and links while a write runs. The write pauses, reads
   pyrung's force and link listing (the truth, whatever the Console did since the last frame), and
   `plan_carry` (`services/program_carry.py`) decides each entry's name in the new program:
@@ -329,7 +331,9 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   again. pyrung's reload leaves STOP for RUN, so a Write in STOP sends STOP again, and the switch shows the
   position it had until the write is answered
 - A reload that fails puts back what it released, keeps the old program and adds **Restart** to the offer. A
-  reload pyrung never answers sends nothing by name (which program runs is unknown) and offers Restart.
+  reload pyrung never answers sends nothing by name (which program runs is unknown) and offers Restart; its
+  notice says the simulation may be paused and names what was released, and the switch position stays the
+  user's (`_position_held`) so Restart starts in it, until the user moves the switch.
   Restart (also on the toolbar) relaunches on what the workspace holds now, from power-on values or the PLC
   data file, with the same desired state and switch position; so do Start, a PLC data file change, and a
   simulation that failed to start once a later build converts (`_follow_program`). A workspace move

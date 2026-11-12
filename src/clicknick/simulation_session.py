@@ -410,8 +410,10 @@ class SimulationSession:
         self._writing = False
         self._write_error: str | None = None
         self._shown_change: ProgramChange | None = None
-        # A Console command in flight: it could land between a write's listing and its reload.
-        self._console_busy = False
+        # Console commands in flight (run_console_command): one could land between a
+        # write's listing and its reload. Counted here, so closing the panel that sent
+        # one does not leave the count set.
+        self._console_commands = 0
         # The notice that a write or Restart was refused, until one goes through.
         self._refusal: str | None = None
         # A launch whose process died before the session adopted it.
@@ -448,6 +450,10 @@ class SimulationSession:
         self._pressed: set[str] = set()
         self._speed = 1.0
         self._desired_position: SwitchPosition = "stop"
+        # After a write pyrung never answered, the simulation may be left paused: the
+        # position the user had stays the one a Restart starts in, until the user
+        # moves the switch or a write goes through.
+        self._position_held = False
         self._forces_baseline: dict[str, PlcValue] | None = None
         self._analog_queued: set[str] = set()
         # Links as the simulation reports them (project + bench). Until the
@@ -901,7 +907,7 @@ class SimulationSession:
         return True
 
     def _write_actions(self) -> tuple[ProgramAction, ...]:
-        if self._writing or self._console_busy:
+        if self._writing or self._console_commands:
             return ()  # one write at a time, and not under a Console command
         actions: tuple[ProgramAction, ...] = (
             ("run_time_edit", "stop_and_write") if self.switch_position == "run" else ("write",)
@@ -1081,6 +1087,7 @@ class SimulationSession:
         self._source_changed = False
         self._writing = False
         self._write_error = None
+        self._position_held = False
         dap = self._dap
         self._dap = None
         if dap is not None:
@@ -1524,7 +1531,8 @@ class SimulationSession:
             return
         # Anyone can drive (the Console, an agent through `pyrung live`), and
         # the last command wins: mode, pacing and forces follow the frames.
-        self._desired_position = self.switch_position
+        if not self._position_held:
+            self._desired_position = self.switch_position
         self._adopt_forces(self._addressed(dap.forces))
         revision = dap.links_revision
         if self._links_refetch or (self._links_synced and revision != self._links_revision_seen):
@@ -1683,11 +1691,34 @@ class SimulationSession:
         """True from a write's request until pyrung answers; the Console waits meanwhile."""
         return self._writing
 
-    def set_console_busy(self, busy: bool) -> None:
-        """The Console has a command in flight (or not); no write is offered meanwhile."""
-        if busy != self._console_busy:
-            self._console_busy = busy
+    def run_console_command(self, run: Callable[[], Any], done: Callable[[Any], None]) -> None:
+        """Run a Console command: *run* on a worker thread, then *done* with its result.
+
+        The command is in flight from now until *run* returns, whether or not the
+        panel that sent it is still open, and no write is offered meanwhile.
+        *done* runs on the UI thread, after the count is taken down; it is not
+        called when *run* raises.
+        """
+        self._console_commands += 1
+        if self._console_commands == 1:
             self._emit("desired")
+
+        def worker() -> None:
+            finish: Callable[[], None] | None = None
+            try:
+                result = run()
+                finish = partial(done, result)
+            finally:
+                self._post(partial(self._end_console_command, finish))
+
+        self._run_background(worker, "console-cmd")
+
+    def _end_console_command(self, finish: Callable[[], None] | None) -> None:
+        self._console_commands -= 1
+        if not self._console_commands:
+            self._emit("desired")
+        if finish is not None:
+            finish()
 
     def _adopt_listing(self, listing: _Listing) -> None:
         """What pyrung had set when the write paused it, by address: the user's choices now."""
@@ -1724,6 +1755,7 @@ class SimulationSession:
             return  # replaced meanwhile: the new process has its own names
         self._writing = False
         self._write_error = None
+        self._position_held = False
         self._clear_refusal()
         # By address, where the write placed them, before the names switch.
         self._adopt_listing(listing)
@@ -1759,15 +1791,30 @@ class SimulationSession:
         self._check_program()
 
     def _on_write_failed(
-        self, token: int, text: str, listing: _Listing | None, *, known: bool = True
+        self,
+        token: int,
+        text: str,
+        listing: _Listing | None,
+        *,
+        known: bool = True,
+        released: tuple[str, ...] = (),
     ) -> None:
-        """A write that failed; not *known*: pyrung never answered, so which program runs is not."""
+        """A write that failed; not *known*: pyrung never answered, so which program runs is not.
+
+        *released* names what the write released before the reload it sent.
+        """
         dap = self._dap
         if token != self._token or dap is None:
             return
         self._writing = False
         if not known:
-            text = f"{text}; which program the simulation runs is unknown"
+            text = (
+                f"{text}; which program the simulation runs is unknown, and it may be paused"
+            )
+            if released:
+                text = f"{text}. Released before the reload: {', '.join(released)}"
+            # Frames may show it paused; Restart starts in the position the user had.
+            self._position_held = True
         self._write_error = text
         if listing is not None:
             self._adopt_listing(listing)
@@ -1811,7 +1858,7 @@ class SimulationSession:
         if self._writing:
             self._message("The program is being written to the simulation.", "error")
             return
-        if self._console_busy:
+        if self._console_commands:
             self._message("Cannot write the program while a Console command runs.", "error")
             return
         reason = self._write_refusal()
@@ -1889,10 +1936,13 @@ class SimulationSession:
             }
             error: str | None = None
             summary = ""
+            released: list[str] = []
             try:
                 for name in forces_out:
+                    released.append(f"the force on {name}")
                     dap.unforce(name)
                 for name in links_out:
+                    released.append(f"the bench link on {name}")
                     _restore_link(dap, name)
                 summary = dap.reload()
             except Exception as exc:
@@ -1902,7 +1952,14 @@ class SimulationSession:
                     # unknown. Nothing is sent by name; Restart starts over.
                     unanswered_error = error
                     self._post(
-                        lambda: self._on_write_failed(token, unanswered_error, None, known=False)
+                        partial(
+                            self._on_write_failed,
+                            token,
+                            unanswered_error,
+                            None,
+                            known=False,
+                            released=tuple(released),
+                        )
                     )
                     return
 
@@ -2428,6 +2485,7 @@ class SimulationSession:
         if not self._state.run_hint_seen:
             self._update_state(run_hint_seen=True)
         self._desired_position = position
+        self._position_held = False
         if position == "stop":
             self._submit(lambda: dap.set_mode("stop"), "Switching to STOP")
             self._echo("mode stop")

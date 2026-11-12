@@ -218,9 +218,8 @@ def plan_carry(
         winner = None if target is None else followed.get(target.feedback)
         if target is not None and winner is not None and winner != feedback:
             carried_links[feedback] = None
-            where = after.address(target.feedback)
             kind = _kind(links[feedback])
-            moved.append(f"the {kind} on {feedback} is dropped: {winner} now feeds {where}")
+            moved.append(f"the {kind} on {feedback} is dropped for the link on {winner}")
             continue
         renamed.extend(names)
         moved.extend(places)

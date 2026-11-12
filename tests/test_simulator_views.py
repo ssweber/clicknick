@@ -990,3 +990,27 @@ def test_the_console_waits_while_the_program_is_written(simulator, ready):
     while jobs:
         jobs.pop(0)()
     assert ready.dap.calls.count(("reload",)) == 1
+
+
+def test_closing_the_simulator_mid_command_does_not_hold_writes_back(simulator, ready):
+    win = simulator(ready)
+    _rebuilt(ready)
+    started: list = []
+    ready.sim._run_background = lambda target, _name: started.append(target)
+    win._console._send = lambda command, **_kw: (True, f"{command}: done")
+
+    win._console._submit_command_text("run 10s")
+    assert win._console.busy
+    assert ready.sim.program_change.actions == ()
+    win._on_close()  # the command is still in flight
+
+    started.pop()()
+    ready.scheduler.run_ready()
+    assert ready.sim.program_change.actions == ("write",)
+
+    again = simulator(ready, turn_on=False)
+    assert not again._console.busy
+    again._console._submit_command_text("reload")
+    ready.scheduler.run_ready()
+    assert ("reload",) in ready.dap.calls
+    assert "while a Console command runs" not in _output(again._console)
