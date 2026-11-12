@@ -277,6 +277,15 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   `linksRevision` changes (the Console can edit them too). "Save to project" writes the link into the feedback's
   comment through the store (Simulator window, `services/link_annotation.py`); after Sync and a rebuild, pyrung
   drops the bench copy because the program declares the same link
+- Desired state (switches, forces, bench links) is keyed by CLICK address and never holds a tag name. pyrung
+  reports tag names; they are mapped with the names of the program the simulation was launched on
+  (`_tag_maps`), so a rename in CLICK does not move them, and `load_state` reports entries that are not addresses
+- A new analysis generation (a CLICK save, Reload from CLICK) restarts a running simulation on the rebuilt
+  workspace once the build is done, with the same desired state and switch position, and sets a notice
+  (`_follow_program`, on the 2 s watch tick). Until then frames are shown but not adopted
+  (`_program_current`): pyrung's autoreload may already have swapped in the new program
+- A failed DAP request undoes the user's action only when the simulation that was asked refused it: not when it
+  has since stopped or restarted (token check) or never answered (`DapUnavailableError`)
 
 ### Main Window Refresh
 - The window title and Workspace details are recomputed by `ClickNickApp._refresh_ui()`; never call it by hand

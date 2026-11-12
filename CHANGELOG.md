@@ -96,6 +96,10 @@
 - **Stop** in the main window turns off only autocomplete, until you click **Start** or pick a window: ClickNick still notices CLICK closing or opening another project (it kept the old project's editors, simulation and database).
 - A CSV that cannot be loaded shows why, such as a missing Nickname column (the status only said "CSV load failed").
 - Two CLICK windows with the same project name are listed with their PIDs, so either can be picked, and the window list and status no longer show a window or "Monitoring" that is not current.
+- Saving in CLICK while the simulation is on restarts it on the saved program, back in the same mode with your switches, forces and bench links, and the Simulator says so (it kept running the old program).
+- The simulation's forces and bench links stay on their addresses when you rename their tags, and turning it off or restarting it while it restores them no longer deletes them; a saved force or link that is not on a CLICK address is reported instead of dropped without a word.
+- Closing the project or the CLICK window while the simulation starts stops it instead of leaving it holding Modbus port 502, and a simulation that exits as it starts shows as failed instead of ready.
+- Switch settings on Unassigned I/O inputs survive opening the Simulator before the first build finishes, an analog input with a range gets its slider once the simulation starts, and the Simulator follows nickname edits after a CSV is loaded.
 
 ## v0.23.4 - 2026-10-11
 

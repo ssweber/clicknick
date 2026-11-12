@@ -89,7 +89,7 @@ class FakeDap:
         self.tag_hints: dict = {}
         self.stderr_text = ""
         self.state = "running"
-        self.info ={"running": True, "host": "127.0.0.1", "port": 502, "clients": 1, "error": None}
+        self.info = {"running": True, "host": "127.0.0.1", "port": 502, "clients": 1, "error": None}
         self.links_revision = 0
         self.links_pending: dict[str, int] = {}
         self.project: dict[str, str] = {}  # program links: feedback -> enable

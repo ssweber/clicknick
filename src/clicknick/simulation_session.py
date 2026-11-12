@@ -799,23 +799,6 @@ class SimulationSession:
         self._schedule_save()
         self._set_notice(f"Loaded PLC data from {path.name}; switches set from snapshot.")
 
-    def _watch_tick(self) -> None:
-        self._watch_after_id = None
-        if self._closed or not self._enabled:
-            return
-        self.refresh_layout()
-        reload_data = False
-        if self.is_ready and self._plc_data_path is not None:
-            mtime = _mtime(self._plc_data_path)
-            if mtime is not None and (self._plc_data_mtime is None or mtime > self._plc_data_mtime):
-                self._plc_data_mtime = mtime
-                self._message("PLC data file changed. Reloading...")
-                self._adopt_snapshot(self._plc_data_path)
-                reload_data = True
-        if not self._follow_program() and reload_data:
-            self.restart()
-        self._watch_after_id = self._scheduler.after(WATCH_MS, self._watch_tick)
-
     def _follow_program(self) -> bool:
         """Start again on a program CLICK saved since the simulation was started. True if it did.
 
@@ -841,6 +824,23 @@ class SimulationSession:
             )
         self.restart()
         return True
+
+    def _watch_tick(self) -> None:
+        self._watch_after_id = None
+        if self._closed or not self._enabled:
+            return
+        self.refresh_layout()
+        reload_data = False
+        if self.is_ready and self._plc_data_path is not None:
+            mtime = _mtime(self._plc_data_path)
+            if mtime is not None and (self._plc_data_mtime is None or mtime > self._plc_data_mtime):
+                self._plc_data_mtime = mtime
+                self._message("PLC data file changed. Reloading...")
+                self._adopt_snapshot(self._plc_data_path)
+                reload_data = True
+        if not self._follow_program() and reload_data:
+            self.restart()
+        self._watch_after_id = self._scheduler.after(WATCH_MS, self._watch_tick)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -1189,6 +1189,14 @@ class SimulationSession:
 
         self._run_background(job, "sim-modbus-info")
 
+    def _report_died(self, detail: str | None) -> None:
+        self._stop_dap()
+        self._status = SimStatus.FAILED
+        self._error = "the simulation stopped unexpectedly."
+        self._error_detail = detail
+        self._message("Simulation stopped unexpectedly.", "error")
+        self._emit("status")
+
     def _on_launched(self, token: int, dap: Any) -> None:
         if token != self._token or self._closed or not self._enabled:
             self._run_background(dap.terminate, "sim-dap-stop")
@@ -1215,14 +1223,6 @@ class SimulationSession:
             self._died_token = token  # still starting: _on_launched reports it
             return
         self._report_died(getattr(dap, "stderr_text", "") or None)
-
-    def _report_died(self, detail: str | None) -> None:
-        self._stop_dap()
-        self._status = SimStatus.FAILED
-        self._error = "the simulation stopped unexpectedly."
-        self._error_detail = detail
-        self._message("Simulation stopped unexpectedly.", "error")
-        self._emit("status")
 
     def _adopt_forces(self, actual: dict[str, PlcValue]) -> None:
         """Follow forces changed elsewhere (the Console, `pyrung live`).
@@ -1876,25 +1876,6 @@ class SimulationSession:
             if tag in tag_to_key and not tag.startswith(MODULE_STATUS_PREFIX)
         )
 
-    def _restore_when_known(self) -> None:
-        """Trim the remembered settings to the hardware, once it is fully known.
-
-        Inputs the program uses with no card to provide them (Unassigned I/O)
-        are known only from the analysis; until one is available, settings on
-        them would look like settings on missing hardware.
-        """
-        layout = self._layout
-        analysis = self._get_analysis()
-        if (
-            self._restore_pending
-            and layout is not None
-            and self._layout_error is None
-            and layout.has_cpu
-            and analysis is not None
-            and analysis.is_available
-        ):
-            self._apply_restore(layout)
-
     def _apply_restore(self, layout: PanelLayout) -> None:
         self._restore_pending = False
         result: RestoreResult = restore_state(
@@ -1916,6 +1897,25 @@ class SimulationSession:
         if changed:
             self._emit("desired")
             self._schedule_save()
+
+    def _restore_when_known(self) -> None:
+        """Trim the remembered settings to the hardware, once it is fully known.
+
+        Inputs the program uses with no card to provide them (Unassigned I/O)
+        are known only from the analysis; until one is available, settings on
+        them would look like settings on missing hardware.
+        """
+        layout = self._layout
+        analysis = self._get_analysis()
+        if (
+            self._restore_pending
+            and layout is not None
+            and self._layout_error is None
+            and layout.has_cpu
+            and analysis is not None
+            and analysis.is_available
+        ):
+            self._apply_restore(layout)
 
     def refresh_layout(self, *, force: bool = False) -> None:
         """Re-read the hardware when Project.ini or the program changed."""
