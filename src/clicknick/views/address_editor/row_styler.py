@@ -195,24 +195,19 @@ class AddressRowStyler:
     # --- Internal Methods ---
 
     def _apply_highlights(self) -> None:
-        """Apply all highlight_cells calls for displayed rows."""
-        displayed = self._get_displayed_rows()
-
-        for data_idx in displayed:
+        """Apply all highlight_cells calls, for every row (a filter change restyles nothing)."""
+        for data_idx in range(len(self._get_rows())):
             self._apply_row_highlights(data_idx)
 
     def _compute_target_notes(self) -> dict[tuple[int, int], CellNote]:
-        """Compute what notes should exist for displayed rows.
+        """Compute what notes should exist for every row.
 
         Returns:
             Dict mapping (row, col) -> CellNote
         """
         target: dict[tuple[int, int], CellNote] = {}
-        displayed = self._get_displayed_rows()
-
         rows = self._get_rows()
-        for data_idx in displayed:
-            row = rows[data_idx]
+        for data_idx, row in enumerate(rows):
             addr_key = row.addr_key
 
             # Nickname note (error and/or dirty)
@@ -266,7 +261,7 @@ class AddressRowStyler:
         return target
 
     def _update_notes(self) -> None:
-        """Update all cell notes for displayed rows."""
+        """Update all cell notes."""
         # Clear all existing notes first
         self.sheet.cell_notes.clear()
 

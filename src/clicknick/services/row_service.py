@@ -9,6 +9,10 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from pyclickplc.addresses import get_addr_key
+from pyclickplc.banks import INTERLEAVED_PAIRS
+from pyclickplc.blocks import strip_block_tag
+
 if TYPE_CHECKING:
     from ..data.address_store import AddressStore
     from ..data.edit_session import EditSession
@@ -31,7 +35,9 @@ class RowService:
         Validation rules:
         - At least 2 rows required
         - First row must have a non-empty nickname containing a number
-        - All subsequent rows must have empty nicknames
+        - At least one other selected row has the first row's memory type
+        - All such rows must have empty nicknames (rows of other memory types,
+          such as the TD rows between T rows, are left alone)
 
         Args:
             rows: List of AddressRow objects to validate (in order)
@@ -53,12 +59,52 @@ class RowService:
         if not re.search(r"\d+", first_row.nickname):
             return False, "First nickname must contain a number"
 
-        # Check that all other rows have empty nicknames
-        for row in rows[1:]:
+        targets = RowService.fill_down_targets(rows)
+        if not targets:
+            return False, "Select more rows of the same memory type"
+
+        # Check that all rows to fill have empty nicknames
+        for row in targets:
             if row.nickname:
                 return False, "Other selected rows must be empty"
 
         return True, ""
+
+    @staticmethod
+    def _comment_without_block_tag(comment: str) -> str:
+        """The comment's own text: a block tag names one block, so a copy drops it."""
+        stripped = strip_block_tag(comment)
+        return stripped.strip() if stripped != comment else comment
+
+    @staticmethod
+    def fill_down_targets(rows: list[AddressRow]) -> list[AddressRow]:
+        """Rows below the first that Fill Down writes: the first row's memory type only.
+
+        A T/TD or CT/CTD selection holds both types; only the source row's
+        type is numbered.
+        """
+        if not rows:
+            return []
+        memory_type = rows[0].memory_type
+        return [row for row in rows[1:] if row.memory_type == memory_type]
+
+    @staticmethod
+    def block_tag_keys(rows: list[AddressRow]) -> tuple[int, int]:
+        """Address keys that get the opening and closing tags of a block over `rows`.
+
+        `rows` are in address order. When the selection holds both rows of an
+        interleaved pair (T and TD, CT and CTD), the tags go on the T/CT row at
+        the first and last address and the store's pair cascade writes the
+        matching `_D` tags. Otherwise they are the first and last rows.
+        """
+        types = {r.memory_type for r in rows}
+
+        def tag_key(row: AddressRow) -> int:
+            if row.is_interleaved_secondary and INTERLEAVED_PAIRS[row.memory_type] in types:
+                return get_addr_key(INTERLEAVED_PAIRS[row.memory_type], row.address)
+            return row.addr_key
+
+        return tag_key(rows[0]), tag_key(rows[-1])
 
     @staticmethod
     def can_clone_structure(rows: list[AddressRow]) -> tuple[bool, str]:
@@ -227,7 +273,8 @@ class RowService:
             template.append(
                 {
                     "nickname": row.nickname,
-                    "comment": row.comment,
+                    # A block tag names one block; a copy would duplicate it
+                    "comment": RowService._comment_without_block_tag(row.comment),
                     "initial_value": row.initial_value,
                     "retentive": row.retentive,
                 }

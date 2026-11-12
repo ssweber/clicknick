@@ -33,6 +33,7 @@ from ...widgets.new_tab_dialog import ask_new_tab
 from ..nav_window.window import NavWindow
 from .jump_sidebar import COMBINED_TYPES, JumpSidebar
 from .panel import AddressPanel
+from .panel_constants import COL_NICKNAME
 from .tab_state import TabState
 from .view_builder import build_unified_view
 
@@ -177,8 +178,17 @@ class AddressEditorWindow(tk.Toplevel):
         if not can_fill:
             return False, [], reason
 
-        # Return display indices of rows to fill (excludes first row)
-        return True, selected[1:], ""
+        # Return display indices of rows to fill: below the first row, same memory type
+        source_type = rows[0].memory_type
+        return (
+            True,
+            [
+                idx
+                for idx, row in zip(selected[1:], rows[1:], strict=True)
+                if row.memory_type == source_type
+            ],
+            "",
+        )
 
     def _update_fill_down_button_state(self) -> None:
         """Update the Fill Down button state."""
@@ -415,8 +425,19 @@ class AddressEditorWindow(tk.Toplevel):
         """
         return "Sync" if self._is_using_mdb() else "Save"
 
+    def _cell_editor_is_open(self) -> bool:
+        """True while a cell editor is open in any tab."""
+        return any(panel.sheet.MT.text_editor.open for panel, *_ in self._tabs.values())
+
+    def _commit_open_cell_editor(self) -> None:
+        """Commit the text typed in an open cell editor, so it is an edit like any other."""
+        for panel, *_ in self._tabs.values():
+            if panel.sheet.MT.text_editor.open:
+                panel.sheet.MT.mouseclick_outside_editor_or_dropdown_all_canvases()
+
     def _save_all(self) -> None:
         """Save all changes to database."""
+        self._commit_open_cell_editor()
         save_label = self._get_save_label()
         action_verb = "synced" if self._is_using_mdb() else "saved"
 
@@ -668,20 +689,12 @@ class AddressEditorWindow(tk.Toplevel):
 
         block_name, color = dialog.result
 
-        # Map display rows to actual rows
-        first_display_idx = selected_display_rows[0]
-        last_display_idx = selected_display_rows[-1]
-
-        if first_display_idx >= len(panel._displayed_rows):
-            return
-        if last_display_idx >= len(panel._displayed_rows):
-            return
-
-        first_row_idx = panel._displayed_rows[first_display_idx]
-        last_row_idx = panel._displayed_rows[last_display_idx]
-
-        first_row = panel.rows[first_row_idx]
-        last_row = panel.rows[last_row_idx]
+        # Tag rows: the T/CT row when the selection interleaves T/TD or CT/CTD,
+        # so the store's pair cascade writes the matching _D tags
+        first_key, last_key = RowService.block_tag_keys(selected_rows)
+        visible = self._store.visible_state
+        first_row = visible[first_key]
+        last_row = visible[last_key]
 
         # Helper to append tag to comment
         def make_new_comment(current: str, tag: str) -> str:
@@ -692,11 +705,11 @@ class AddressEditorWindow(tk.Toplevel):
         # - Interleaved pair sync (T1→TD1)
         # - Validation, block colors, observer notification
         with self._store.edit_session("Add block tag") as session:
-            if first_row_idx == last_row_idx:
+            if first_key == last_key:
                 # Single row - self-closing tag
                 tag = format_block_tag(block_name, "self-closing", color)
                 new_comment = make_new_comment(first_row.comment, tag)
-                session.set_field(first_row.addr_key, "comment", new_comment)
+                session.set_field(first_key, "comment", new_comment)
             else:
                 # Range - opening and closing tags
                 open_comment = make_new_comment(
@@ -705,8 +718,8 @@ class AddressEditorWindow(tk.Toplevel):
                 close_comment = make_new_comment(
                     last_row.comment, format_block_tag(block_name, "close")
                 )
-                session.set_field(first_row.addr_key, "comment", open_comment)
-                session.set_field(last_row.addr_key, "comment", close_comment)
+                session.set_field(first_key, "comment", open_comment)
+                session.set_field(last_key, "comment", close_comment)
 
         self._update_status()
 
@@ -846,7 +859,11 @@ class AddressEditorWindow(tk.Toplevel):
 
         # Use the direct regex replacement method
         replacements_made = panel.sheet.regex_replace_all_direct(
-            pattern, replacement, selection_only=False, visible_rows_only=False
+            pattern,
+            replacement,
+            selection_only=False,
+            visible_rows_only=False,
+            columns={COL_NICKNAME},
         )
 
         # Clear filter and switch to "Show: Changed"
@@ -976,11 +993,11 @@ class AddressEditorWindow(tk.Toplevel):
             # Select the new tab
             self.notebook.select(panel)
 
-            # Apply state to panel (filters, column visibility)
-            self._apply_state_to_panel(panel, state)
-
             # Initialize panel with unified view data
             panel.initialize_from_view(unified_view.rows)
+
+            # Apply state to panel (filters, column visibility, scroll) to the built view
+            self._apply_state_to_panel(panel, state)
 
             # Bind selection events for Add Block button
             self._bind_panel_selection(panel)
@@ -1130,6 +1147,7 @@ class AddressEditorWindow(tk.Toplevel):
 
     def _on_closing(self) -> None:
         """Handle window close - prompt to save if needed."""
+        self._commit_open_cell_editor()
         if self._has_unsaved_changes():
             save_label = self._get_save_label()
             result = messagebox.askyesnocancel(
@@ -1165,14 +1183,18 @@ class AddressEditorWindow(tk.Toplevel):
             self.save_btn.configure(text=f"💾 {what}")
 
     def _on_undo(self) -> None:
-        """Handle Ctrl+Z - undo last change."""
+        """Handle Ctrl+Z - undo last change (not while a cell is being edited)."""
+        if self._cell_editor_is_open():
+            return
         if self._store.undo():
             desc = self._store.get_redo_description()
             self.status_var.set(f"Undid: {desc}" if desc else "Undone")
             self._update_status()
 
     def _on_redo(self) -> None:
-        """Handle Ctrl+Y - redo last undone change."""
+        """Handle Ctrl+Y - redo last undone change (not while a cell is being edited)."""
+        if self._cell_editor_is_open():
+            return
         if self._store.redo():
             desc = self._store.get_undo_description()
             self.status_var.set(f"Redid: {desc}" if desc else "Redone")
