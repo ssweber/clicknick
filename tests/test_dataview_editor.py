@@ -772,28 +772,48 @@ def test_a_cell_that_will_not_commit_is_reported(monkeypatch):
     assert warnings == ["Cell Being Edited"]
 
 
-def _typed(editor, dialogs, tk_root, tmp_path) -> tuple[DataviewEditorWindow, DataviewPanel, Path]:
-    """A shown editor on DataView1.cdv with `x1` typed into row 5's address, not committed.
+def _typed(
+    editor,
+    tk_root,
+    tmp_path,
+    monkeypatch,
+    *,
+    focused: bool = True,
+    row: int = 5,
+    column: int = COL_ADDRESS,
+    text: str = "x1",
+) -> tuple[DataviewEditorWindow, DataviewPanel, Path]:
+    """An editor on DataView1.cdv with *text* typed into a cell, not committed.
 
-    tksheet commits nothing on FocusOut, so this is the state after switching to CLICK.
+    tksheet commits nothing while the focus is outside ClickNick, so text typed
+    before switching to CLICK is still in the editor. Where the focus is is
+    stubbed: *focused* puts it in the cell editor, otherwise outside ClickNick.
+    The window stays hidden and never takes the focus.
     """
     path = _copy(tmp_path)
     window = editor()
-    window.deiconify()
+    monkeypatch.setattr(window, "focus_force", lambda: None)
     window._open_dataview(path)
     tk_root.update()
     (panel,) = window._iter_open_panels()
-    panel.sheet.select_cell(5, COL_ADDRESS)
+    panel.set_modbus_columns_visible(True)  # New Value is a Modbus column
+    tk_root.update()
+    panel.sheet.select_cell(row, column)
     panel.sheet.open_cell()
     tk_root.update()
-    panel.sheet.set_text_editor_value("x1")
-    assert panel.sheet.MT.text_editor.open
+    panel.sheet.set_text_editor_value(text)
+    table = panel.sheet.MT
+    monkeypatch.setattr(table, "focus_get", lambda: table.text_editor.tktext if focused else None)
+    assert table.text_editor.open
     assert not window.has_unsaved_changes()
     return window, panel, path
 
 
-def test_text_typed_in_a_real_cell_is_committed(editor, dialogs, tk_root, tmp_path):
-    window, panel, _path = _typed(editor, dialogs, tk_root, tmp_path)
+_FINISH = "Finish the cell edit first (Enter to keep it, Esc to cancel)."
+
+
+def test_text_typed_in_a_real_cell_is_committed(editor, dialogs, tk_root, tmp_path, monkeypatch):
+    window, panel, _path = _typed(editor, tk_root, tmp_path, monkeypatch)
 
     assert window.commit_open_cell_editor()
 
@@ -803,8 +823,10 @@ def test_text_typed_in_a_real_cell_is_committed(editor, dialogs, tk_root, tmp_pa
     assert dialogs.errors == []
 
 
-def test_closing_the_window_asks_about_text_still_in_a_cell(editor, dialogs, tk_root, tmp_path):
-    window, panel, _path = _typed(editor, dialogs, tk_root, tmp_path)
+def test_closing_the_window_asks_about_text_still_in_a_cell(
+    editor, dialogs, tk_root, tmp_path, monkeypatch
+):
+    window, panel, _path = _typed(editor, tk_root, tmp_path, monkeypatch)
     dialogs.yes_no_cancel.append(None)  # Cancel
 
     window._on_close()
@@ -814,8 +836,10 @@ def test_closing_the_window_asks_about_text_still_in_a_cell(editor, dialogs, tk_
     assert panel.rows[5].address == "X001"
 
 
-def test_closing_a_tab_asks_about_text_still_in_its_cell(editor, dialogs, tk_root, tmp_path):
-    window, panel, _path = _typed(editor, dialogs, tk_root, tmp_path)
+def test_closing_a_tab_asks_about_text_still_in_its_cell(
+    editor, dialogs, tk_root, tmp_path, monkeypatch
+):
+    window, panel, _path = _typed(editor, tk_root, tmp_path, monkeypatch)
     dialogs.yes_no_cancel.append(None)  # Cancel
 
     window._close_current_tab()
@@ -824,8 +848,8 @@ def test_closing_a_tab_asks_about_text_still_in_its_cell(editor, dialogs, tk_roo
     assert window._iter_open_panels() == [panel]
 
 
-def test_save_writes_text_still_in_a_cell(editor, dialogs, tk_root, tmp_path):
-    window, panel, path = _typed(editor, dialogs, tk_root, tmp_path)
+def test_save_writes_text_still_in_a_cell(editor, dialogs, tk_root, tmp_path, monkeypatch):
+    window, panel, path = _typed(editor, tk_root, tmp_path, monkeypatch)
 
     window._save_current()
 
@@ -833,8 +857,8 @@ def test_save_writes_text_still_in_a_cell(editor, dialogs, tk_root, tmp_path):
     assert not panel.is_dirty
 
 
-def test_save_all_writes_text_still_in_a_cell(editor, dialogs, tk_root, tmp_path):
-    window, panel, path = _typed(editor, dialogs, tk_root, tmp_path)
+def test_save_all_writes_text_still_in_a_cell(editor, dialogs, tk_root, tmp_path, monkeypatch):
+    window, panel, path = _typed(editor, tk_root, tmp_path, monkeypatch)
 
     assert window.save_all()
 
@@ -842,13 +866,106 @@ def test_save_all_writes_text_still_in_a_cell(editor, dialogs, tk_root, tmp_path
     assert not panel.is_dirty
 
 
-def test_closing_the_data_asks_about_text_still_in_a_dataview_cell(
-    editor, dialogs, tk_root, tmp_path
+def test_export_writes_text_still_in_a_cell(editor, dialogs, tk_root, tmp_path, monkeypatch):
+    window, _panel, _path = _typed(editor, tk_root, tmp_path, monkeypatch)
+    export_dir = tmp_path / "export"
+    export_dir.mkdir()
+    dialogs.folders.append(str(export_dir))
+
+    window._export()
+
+    assert DataViewFile.load(export_dir / "DataView1.cdv").rows[5].address == "X001"
+
+
+def test_write_all_writes_the_value_still_in_a_cell(
+    editor, dialogs, tk_root, tmp_path, monkeypatch
 ):
-    window, _panel, _path = _typed(editor, dialogs, tk_root, tmp_path)
+    """Clicking Write All leaves the focus in the cell editor: the typed value is written."""
+    from clicknick.views.dataview_editor.panel import COL_NEW_VALUE
+
+    window, _panel, _path = _typed(
+        editor, tk_root, tmp_path, monkeypatch, row=28, column=COL_NEW_VALUE, text="100"
+    )
+    written = []
+    monkeypatch.setattr(window, "_write_payload", written.append)
+
+    window._write_all()
+
+    assert written == [[("DS1", 100)]]
+
+
+def test_closing_the_data_asks_about_text_still_in_a_dataview_cell(
+    editor, dialogs, tk_root, tmp_path, monkeypatch
+):
+    window, _panel, _path = _typed(editor, tk_root, tmp_path, monkeypatch)
     dialogs.yes_no_cancel.append(None)  # Cancel
 
     assert not window._session.close(prompt_save=True)
 
     assert dialogs.shown == ["You have unsaved changes in Dataview Editor. Save before closing?"]
     assert _exists(window)
+
+
+# -- A cell that will not commit stops the action ---------------------------
+
+
+def test_save_writes_nothing_while_a_cell_will_not_commit(
+    editor, dialogs, tk_root, tmp_path, monkeypatch
+):
+    window, panel, path = _typed(editor, tk_root, tmp_path, monkeypatch, focused=False)
+    before = path.read_bytes()
+
+    window._save_current()
+
+    assert dialogs.errors == [_FINISH]
+    assert path.read_bytes() == before
+    assert panel.sheet.MT.text_editor.open
+
+
+def test_export_writes_nothing_while_a_cell_will_not_commit(
+    editor, dialogs, tk_root, tmp_path, monkeypatch
+):
+    window, _panel, _path = _typed(editor, tk_root, tmp_path, monkeypatch, focused=False)
+    dialogs.folders.append(str(tmp_path))
+
+    window._export()
+
+    assert dialogs.errors == [_FINISH]
+    assert dialogs.folders == [str(tmp_path)], "no folder was asked for"
+
+
+def test_a_tab_stays_open_while_its_cell_will_not_commit(
+    editor, dialogs, tk_root, tmp_path, monkeypatch
+):
+    window, panel, _path = _typed(editor, tk_root, tmp_path, monkeypatch, focused=False)
+
+    window._close_current_tab()
+
+    assert dialogs.errors == [_FINISH]
+    assert dialogs.shown == []
+    assert window._iter_open_panels() == [panel]
+
+
+def test_write_all_writes_nothing_while_a_cell_will_not_commit(
+    editor, dialogs, tk_root, tmp_path, monkeypatch
+):
+    from clicknick.views.dataview_editor.panel import COL_NEW_VALUE
+
+    window, _panel, _path = _typed(
+        editor,
+        tk_root,
+        tmp_path,
+        monkeypatch,
+        focused=False,
+        row=28,
+        column=COL_NEW_VALUE,
+        text="100",
+    )
+    written = []
+    monkeypatch.setattr(window, "_write_payload", written.append)
+
+    window._write_all()
+    window._write_checked()
+
+    assert written == []
+    assert dialogs.errors == [_FINISH, _FINISH]

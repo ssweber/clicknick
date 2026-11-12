@@ -398,15 +398,38 @@ class DataviewEditorWindow(tk.Toplevel):
             lambda result, error: self._on_write_payload_complete(panel, result, error),
         )
 
+    def _commit_cell_editor(self, panel: DataviewPanel) -> bool:
+        """Commit the text typed in *panel*'s open cell editor; False, said, if it stays open.
+
+        tksheet commits nothing while the focus is outside ClickNick, so text typed
+        before switching to CLICK is still in the editor.
+        """
+        mt = panel.sheet.MT
+        if not mt.text_editor.open:
+            return True
+        mt.mouseclick_outside_editor_or_dropdown_all_canvases()
+        if mt.text_editor.open:
+            self.focus_force()
+            mt.mouseclick_outside_editor_or_dropdown_all_canvases()
+        if mt.text_editor.open:
+            messagebox.showwarning(
+                "Cell Being Edited",
+                "Finish the cell edit first (Enter to keep it, Esc to cancel).",
+                parent=self,
+            )
+            return False
+        return True
+
     def _write_checked(self) -> None:
         panel = self._get_current_panel()
-        if panel is None:
+        # A button click leaves the focus in the cell editor: write the value typed there
+        if panel is None or not self._commit_cell_editor(panel):
             return
         self._write_payload(panel.get_write_rows())
 
     def _write_all(self) -> None:
         panel = self._get_current_panel()
-        if panel is None:
+        if panel is None or not self._commit_cell_editor(panel):
             return
         self._write_payload(panel.get_write_all_rows())
 
@@ -573,28 +596,6 @@ class DataviewEditorWindow(tk.Toplevel):
         saved = panel.save()
         self._update_tab_title(panel)
         return saved
-
-    def _commit_cell_editor(self, panel: DataviewPanel) -> bool:
-        """Commit the text typed in *panel*'s open cell editor; False, said, if it stays open.
-
-        tksheet commits nothing on FocusOut, or while the application has no
-        focus, so text typed before switching to CLICK is still in the editor.
-        """
-        mt = panel.sheet.MT
-        if not mt.text_editor.open:
-            return True
-        mt.mouseclick_outside_editor_or_dropdown_all_canvases()
-        if mt.text_editor.open:
-            self.focus_force()
-            mt.mouseclick_outside_editor_or_dropdown_all_canvases()
-        if mt.text_editor.open:
-            messagebox.showwarning(
-                "Cell Being Edited",
-                "Finish the cell edit first (Enter to keep it, Esc to cancel).",
-                parent=self,
-            )
-            return False
-        return True
 
     def _save_current(self) -> None:
         """Save the current dataview."""
