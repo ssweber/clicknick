@@ -171,9 +171,10 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - Use `session.set_field(addr_key, field, value)` to accumulate changes
 - Multiple changes batched into single undo frame (e.g., fill-down 500 rows = 1 undo)
 - Cascades (T/TD|CT/CTD sync, block tag sync) happen automatically within the session
-  (`AddressStore._apply_cascades`): Retentive mirrors across the pair; a row whose block tag changed (old tag vs
-  new tag, not its text) has the matching open/close tag and the pairs' `_D` tags renamed in place or removed
-  (`BlockService`). "The caller set this field" is read before any cascade runs, and a cascade never writes it
+  (`AddressStore._apply_cascades`): a Retentive change mirrors across the pair; a row whose block tag changed
+  (old tag vs new tag, not its text) has the matching open/close tag and the pairs' `_D` tags renamed in place,
+  removed, or (on an untagged pair, when the tag was added or renamed) appended (`BlockService`). "The caller
+  set this field" is read before any cascade runs, and a cascade never writes it
 - A body that raises commits nothing
 
 ### Dirty State Detection
@@ -181,16 +182,18 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - `_derive` first drops override fields the base already holds, so a field is dirty exactly when it is in
   its row's override; nothing stores a separate dirty marker
 
-### Undo/Redo
-- Tracks user intent (overlay layer) only, not database state
-- Max 50 undo frames (configurable via `MAX_UNDO_DEPTH`)
-- A successful Sync/Save, or a Discard, clears Undo/Redo (frames hold override snapshots, not old values);
-  a CLICK save does not
+### Sync
 - `save_all_changes` refuses (raises) while rows have validation errors, for every caller. For the database it
   reads SC_.mdb first (CLICK writes it while connected), so the rows written carry CLICK's current values in
   the fields the user did not change
 - `loaded_with_error` (CLICK's own X/SC/SD names exempt from our nickname rules) is set on every base row by one
   helper, `_flag_loaded_error`, on load, reload and Sync alike
+
+### Undo/Redo
+- Tracks user intent (overlay layer) only, not database state
+- Max 50 undo frames (configurable via `MAX_UNDO_DEPTH`)
+- A successful Sync/Save, or a Discard, clears Undo/Redo (frames hold override snapshots, not old values);
+  a CLICK save does not
 - An unsaved field that the database now matches stops being an edit (`_rebase_override`, run by `_derive`)
 - Keyboard: Ctrl+Z (undo), Ctrl+Y (redo)
 

@@ -66,8 +66,8 @@ def _value_differs(base_row: AddressRow, field: str, value: str | bool) -> bool:
 def _flag_loaded_error(row: AddressRow) -> AddressRow:
     """Set loaded_with_error on a base row: an X/SC/SD nickname CLICK holds that breaks our rules.
 
-    CLICK writes system nicknames (`_IO1_Module_Error`, reserved words on SC/SD)
-    that ClickNick would refuse from the user; the flag exempts them while the
+    CLICK writes system nicknames (such as `log` on SC, a reserved word) that
+    ClickNick would refuse from the user; the flag exempts them while the
     nickname stays as the database has it. Every base row passes through here
     (load, reload, Sync), so the flag is the same whichever way the row arrived.
     It depends on the row alone; duplicates are reported by validation.
@@ -719,14 +719,16 @@ class AddressStore:
     def edit_session(self, description: str = "") -> Generator[EditSession, None, None]:
         """Context manager for making changes with undo support.
 
-        All modifications should happen within an edit_session. On exit:
-        1. Pushes undo frame (before changes)
-        2. Applies cascades (T/TD sync, block tags)
-        3. Freezes builders into user_overrides
-        4. Recomputes visible_state
-        5. Validates affected rows
-        6. Updates block colors
-        7. Notifies observers
+        All modifications should happen within an edit_session. On a clean exit
+        (see _commit_session):
+        1. Applies cascades (T/TD sync, block tags)
+        2. Freezes builders into user_overrides, dropping values base already holds
+        3. If the overrides changed: pushes the undo frame (the overrides before),
+           clears redo, then derives visible rows, validation and block colors and
+           notifies observers. A session that changes nothing is not an undo step
+           and notifies no one.
+
+        A body that raises commits nothing.
 
         Args:
             description: Human-readable description for undo menu

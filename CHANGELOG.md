@@ -61,9 +61,15 @@
 - Opening another project in the same CLICK window no longer leaves its workspace unbuilt until ClickNick restarts, and Preview Changes now updates its comparison when CLICK's program changes.
 - Open Temporary Workspace and the Workspace status update as soon as a build finishes, instead of waiting for something else to refresh the window, such as opening the Simulator.
 - Editing a timer or counter comment's text no longer deletes the block tag on its TD/CTD (or T/CT) row, renaming a block renames the matching tags where they are without adding spaces or moving text, and a rename never overwrites a tag you set in the same edit.
+  - After Sync, CLICK's Address Picker shows each renamed tag with the rest of its comment as it was, such as `</Tanks> last` on the close row.
+- Changing only a timer or counter block's colour no longer adds a half block tag to a TD/CTD row that has none, and Discard row changes on a T or CT row no longer changes its TD/CTD row's Retentive.
 - Answering Yes to "Save before closing?" with duplicate or invalid nicknames now refuses and closes nothing, as Sync does, instead of writing them to CLICK.
-- Sync keeps what CLICK changed in its database since ClickNick last read it, and a system nickname CLICK wrote (SC, SD, X) no longer turns into an error that blocks Sync after a CLICK save or a Sync.
-- The nickname tooltip shows Retentive and the initial value against the address's own default (a retentive DS showed "Initial Value = 0"), a paste that changes nothing is no longer an undo step, and the status bar names the edit Undo and Redo acted on.
+- Sync keeps what CLICK changed in its database since ClickNick last read it.
+  - Change a comment in CLICK, then rename that address in ClickNick and Sync right away: CLICK keeps its new comment.
+- A system nickname CLICK wrote (SC, SD, X) no longer turns into an error that blocks Sync after a CLICK save or a Sync.
+- The nickname tooltip and the Tag Browser show Retentive and the initial value against the address's own default: a non-retentive counter shows Non-retentive, and a retentive DS or TD no longer shows "Initial Value = 0".
+- A paste that changes nothing is no longer an undo step.
+- The status bar names the edit Undo and Redo acted on.
 
 ## v0.23.4 - 2026-10-11
 
