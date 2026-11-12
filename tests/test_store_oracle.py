@@ -280,12 +280,13 @@ def _random_edit(rng: random.Random, store: AddressStore) -> str:
 def _fix_errors(store: AddressStore) -> str | None:
     """Put each row in error back as the database has it, or empty it if the
     database's row is in error too, as a user does before Sync. Returns the step."""
-    caller_set: dict[tuple[int, str], object] = {}
-    before = {key: store.visible_state[key] for key in KEYS}
+    fixed: set[int] = set()
     for _ in range(3):
         in_error = [key for key in KEYS if store.visible_state[key].has_reportable_error]
         if not in_error:
             break
+        caller_set: dict[tuple[int, str], object] = {}
+        before = {key: store.visible_state[key] for key in KEYS}
         with store.edit_session("fix errors") as session:
             for key in in_error:
                 base = store.base_state[key]
@@ -295,11 +296,9 @@ def _fix_errors(store: AddressStore) -> str | None:
                 for name, value in fixes.items():
                     session.set_field(key, name, value)
                     caller_set[(key, name)] = value
-    if not caller_set:
-        return None
-    step = f"fix errors on {sorted({key for key, _ in caller_set})}"
-    _assert_cascade_rules(before, store, caller_set, step)
-    return step
+        fixed.update(in_error)
+        _assert_cascade_rules(before, store, caller_set, f"fix errors on {in_error}")
+    return f"fix errors on {sorted(fixed)}" if fixed else None
 
 
 def _random_click_change(
