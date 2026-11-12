@@ -834,26 +834,30 @@ class DataviewPanel(ttk.Frame):
         return stamp is not None and stamp != self._file_stamp
 
     def _reload_file(self) -> None:
-        """Reload the file from disk."""
+        """Reload the file from disk, as an undo step: Ctrl+Z brings the replaced rows back."""
         if not self.file_path or not self.file_path.exists():
             return
 
+        before = self._snapshot()
         try:
             self._file = DataViewFile.load(self.file_path)
         except Exception as e:
             self.status_label.config(text=f"Error reloading: {e}")
             return
         self.load_error = None
+        if [(r.address, r.data_type, r.new_value) for r in before[0]] != self._row_values():
+            self._push_undo(before)
         self._write_checks = [False] * len(self.rows)
         self._live_values.clear()
-        self._undo_stack.clear()
-        self._redo_stack.clear()
         self._populate_sheet()
         self._mark_saved()
         self._update_status()
 
         # What was loaded, so it does not prompt again
         self._file_stamp = self._stamp(self.file_path)
+        if self.on_modified:
+            self.on_modified()
+        self._notify_addresses_changed()
 
     def _confirm_overwrite(self, path: Path) -> bool:
         """Ask before saving over a change another program made; True to save."""
@@ -865,7 +869,7 @@ class DataviewPanel(ttk.Frame):
                 f"'{path.name}' was changed by another program, such as CLICK, "
                 "since ClickNick loaded it.\n\n"
                 "Yes: save this dataview over it.\n"
-                "No: reload it and drop this dataview's unsaved edits.\n"
+                "No: reload it (Ctrl+Z brings your edits back).\n"
                 "Cancel: do neither.",
                 parent=self,
             )
@@ -873,6 +877,11 @@ class DataviewPanel(ttk.Frame):
             self._reload_prompt_shown = False
         if answer is False:
             self._reload_file()
+            return False
+        # This change has been asked about; the monitor does not ask again. A save
+        # that then fails, or Cancel, still asks before the next save.
+        self._file_stamp = self._stamp(path)
+        self._unloaded_change = True
         return bool(answer)
 
     def _save_to(self, path: Path) -> bool:
@@ -978,7 +987,7 @@ class DataviewPanel(ttk.Frame):
             f"'{self.name}' has been modified by another program.\n\nDo you want to reload it?"
         )
         if self._is_dirty:
-            message += " Reloading drops this dataview's unsaved edits."
+            message += " It replaces your unsaved edits; Ctrl+Z brings them back."
         if messagebox.askyesno("Reload", message, parent=self):
             self._reload_file()
         else:

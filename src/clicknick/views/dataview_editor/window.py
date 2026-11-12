@@ -627,6 +627,15 @@ class DataviewEditorWindow(tk.Toplevel):
             self._update_tab_title(panel)
             return
 
+        other = self._panel_for_path(export_path)
+        if other is not None:
+            messagebox.showerror(
+                "Export DataView",
+                f"'{export_path.name}' is open in another tab. Close that tab first.",
+                parent=self,
+            )
+            return
+
         if export_path.exists():
             result = messagebox.askyesno(
                 "File Exists",

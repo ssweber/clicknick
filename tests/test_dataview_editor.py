@@ -362,12 +362,17 @@ def test_saving_over_a_change_click_made_between_checks_asks_first(
             assert not panel.is_dirty
         else:
             assert path.read_bytes() == clicks
-        if answer is False:  # Reload: CLICK's rows, the edit dropped
+        if answer is False:  # Reload: CLICK's rows; Ctrl+Z brings the edit back
             assert [row.address for row in panel.rows if not row.is_empty] == on_disk
             assert panel.rows[0].new_value is True
             assert not panel.is_dirty
+            assert panel.undo()
+            assert "DS1" in [row.address for row in panel.rows]
+            assert panel.is_dirty
         if answer is None:  # Cancel: the edit stays, unsaved
             assert panel.is_dirty
+            panel._check_file_modified()
+            assert len(dialogs.shown) == 1, "the monitor does not ask about the same change"
     finally:
         panel.destroy()
 
@@ -381,7 +386,7 @@ def test_saving_after_declining_a_reload_asks_first(tk_root, dialogs, tmp_path):
 
         dialogs.yes_no.append(False)  # don't reload
         panel._check_file_modified()
-        assert "drops this dataview's unsaved edits" in dialogs.shown[0]
+        assert "Ctrl+Z brings them back" in dialogs.shown[0]
 
         dialogs.yes_no_cancel.append(None)
         assert panel.save() is False
@@ -389,6 +394,50 @@ def test_saving_after_declining_a_reload_asks_first(tk_root, dialogs, tmp_path):
         assert path.read_bytes() == clicks
     finally:
         panel.destroy()
+
+
+def test_a_reload_over_unsaved_edits_can_be_undone(tk_root, dialogs, tmp_path):
+    path = _copy(tmp_path)
+    changed: list[DataviewPanel] = []
+    panel = DataviewPanel(
+        tk_root,
+        file_path=path,
+        address_normalizer=normalize_address,
+        on_addresses_changed=changed.append,
+    )
+    try:
+        panel.add_address("DS1")
+        _click_writes(path)
+        changed.clear()
+
+        dialogs.yes_no.append(True)
+        panel._check_file_modified()
+        assert "Ctrl+Z brings them back" in dialogs.shown[0]
+        assert panel.rows[0].new_value is True and not panel.is_dirty
+        assert changed == [panel], "the poll list follows the reloaded rows"
+
+        assert panel.undo()
+        assert "DS1" in [row.address for row in panel.rows]
+        assert panel.is_dirty
+    finally:
+        panel.destroy()
+
+
+def test_export_onto_a_file_open_in_another_tab_is_refused(editor, dialogs, tmp_path):
+    window = editor()
+    path = _copy(tmp_path)
+    original = path.read_bytes()
+    window._open_dataview(path)
+    dialogs.new_names.append("DataView1")
+    window._new_dataview()
+    window._get_current_panel().add_address("DS1")
+
+    dialogs.folders.append(str(path.parent))
+    dialogs.yes_no.append(True)  # would overwrite, if asked
+    window._export()
+
+    assert len(dialogs.errors) == 1 and "open in another tab" in dialogs.errors[0]
+    assert path.read_bytes() == original
 
 
 def test_an_older_copy_put_back_is_offered_for_reload(tk_root, dialogs, tmp_path):

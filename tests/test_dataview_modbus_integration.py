@@ -565,6 +565,7 @@ def test_export_writes_copy_without_rebinding_tab_path(monkeypatch, tmp_path):
     window = DataviewEditorWindow.__new__(DataviewEditorWindow)
     window.shared_data = SimpleNamespace(dataview_folder=tmp_path / "DataView")
     window._get_current_panel = lambda: panel
+    window._iter_open_panels = lambda: [panel]
     window._refresh_file_list = MagicMock()
     window._update_tab_title = MagicMock()
 
