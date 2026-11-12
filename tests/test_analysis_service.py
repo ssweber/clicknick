@@ -483,6 +483,7 @@ class TestBuildValidation:
             svc.build(tmp_path, None, persist_dir=tmp_path)
 
         assert svc.project_tag_to_addr_key["Fill"] == ds2
+        assert svc.project_addr_key_to_tag[ds2] == "Fill"
         assert svc.tag_to_addr_key["Fill"] == ds1, "the graph's names stay the last good build's"
         assert svc.project_is_current
 

@@ -55,6 +55,24 @@ def test_a_launch_whose_configuration_done_goes_unanswered_fails(tmp_path, no_su
     assert "killed" in no_subprocess
 
 
+def test_the_program_is_launched_without_autoreload(tmp_path, no_subprocess):
+    """The simulation runs the program ClickNick launched until it launches another."""
+    (tmp_path / "run.py").write_text("x", encoding="utf-8")
+    dap = _Scripted({})
+    sent: dict = {}
+    scripted = dap._send_and_wait
+
+    def record(command, arguments=None, timeout=10.0):
+        sent[command] = arguments
+        return scripted(command, arguments, timeout)
+
+    dap._send_and_wait = record
+    dap.launch(tmp_path)
+
+    assert sent["launch"]["program"] == str(tmp_path / "run.py")
+    assert not sent["launch"].get("autoReload")
+
+
 def test_requests_to_a_simulation_that_is_gone_are_unavailable_not_refused():
     dap = _Scripted({})
     with pytest.raises(DapUnavailableError, match="not running"):

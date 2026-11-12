@@ -45,6 +45,7 @@ from .services.physical_response import (
     response_label,
     response_tokens,
 )
+from .services.program_carry import CarryPlan, LinkTarget, address_of, plan_carry
 from .services.sim_hardware import (
     MODULE_STATUS_PREFIX,
     PanelLayout,
@@ -66,6 +67,7 @@ from .services.sim_state import (
 if TYPE_CHECKING:
     from .services.analysis_service import AnalysisService
     from .services.dap_service import DapService
+    from .services.project_workspace import PlcSourceWatch
 
 PlcValue = bool | int | float | str
 
@@ -84,9 +86,6 @@ SAVE_DELAY_MS = 500
 MODBUS_POLL_S = 0.1
 #: A refusal to run lists this many rungs ClickNick cannot read and counts the rest.
 UNREADABLE_LISTED = 10
-RESTARTED_NOTICE = (
-    "The simulation restarted on CLICK's last save. Switches, forces and bench links carried over."
-)
 
 
 SwitchPosition = Literal["stop", "step", "run"]
@@ -142,6 +141,26 @@ class SimEvent:
     kind: EventKind
     text: str = ""
     level: MessageLevel = "output"
+
+
+ChangeCause = Literal["save", "rebuilt", "source", "unconverted"]
+#: How a changed program reaches the simulation, as when writing to a CLICK:
+#: ``run_time_edit`` and ``stop_and_write`` in RUN, ``write`` otherwise, and
+#: ``restart`` (a new process) once a write failed.
+ProgramAction = Literal["run_time_edit", "stop_and_write", "write", "restart"]
+
+
+@dataclass(frozen=True)
+class ProgramChange:
+    """A program the simulation does not run: CLICK saved one, or the workspace source changed.
+
+    Nothing reaches the simulation until the user writes it (*actions*). A
+    save that could not be converted offers nothing to write.
+    """
+
+    cause: ChangeCause
+    text: str
+    actions: tuple[ProgramAction, ...] = ()
 
 
 LinkSource = Literal["project", "bench"]
@@ -267,6 +286,58 @@ def _send_link(dap: Any, feedback: str, link: BenchLink) -> None:
     dap.link(feedback, link.enable, trigger=link.trigger, response=link.response)
 
 
+def _watch_source(project_dir: Path) -> PlcSourceWatch | None:
+    """What *project_dir*'s ``src/plc`` holds now, to tell later whether it changed."""
+    from .services.project_workspace import PlcSourceWatch
+
+    try:
+        return PlcSourceWatch(project_dir)
+    except OSError:
+        return None
+
+
+def _link_enable(row: Mapping[str, Any]) -> str | None:
+    """The enable tag of a bench row of pyrung's link listing; None for a cut."""
+    enable = row.get("enable")
+    return None if row.get("cut") or enable is None else str(enable)
+
+
+def _bench_link(row: Mapping[str, Any], enable: str | None) -> BenchLink:
+    """A bench row of pyrung's link listing as the user's link, driven from *enable*."""
+    enabled = row.get("enabled", True) is not False
+    return BenchLink(enable, row.get("trigger"), response_from_dap(row), enabled)
+
+
+def _restore_link(dap: Any, feedback: str) -> None:
+    """Drop the bench change on *feedback*; one already gone is done, as asked."""
+    try:
+        dap.restore_link(feedback)
+    except Exception as exc:
+        if "has no bench change" not in str(exc):
+            raise
+
+
+@dataclass(frozen=True)
+class _Listing:
+    """What pyrung had forced and linked when a write paused it, by address, once placed."""
+
+    forces: Mapping[str, PlcValue]
+    links: Mapping[str, BenchLink]
+    bench_wiring: bool
+    problems: tuple[str, ...] = ()
+    #: What the write released or renamed (``CarryPlan.notice``).
+    carried: str = ""
+
+
+@dataclass(frozen=True)
+class _WriteTarget:
+    """The program a write loads: the build it came from and the names it was generated with."""
+
+    generation: int
+    names: tuple[Mapping[str, int], Mapping[int, str]]
+    saves: int | None
+
+
 def _mtime(path: Path | None) -> float | None:
     if path is None:
         return None
@@ -295,8 +366,11 @@ class SimulationSession:
         run_serial: Callable[[Callable[[], None]], None] | None = None,
         send_command: Callable[[str, str], tuple[bool, str]] = _default_send_command,
         app_data_root: Path | None = None,
+        get_save_count: Callable[[], int] | None = None,
     ) -> None:
         self._send_command = send_command
+        # How many times CLICK saved, to tell a save from a rebuild (Reload from CLICK, a Sync).
+        self._get_save_count = get_save_count
         self._scheduler = scheduler
         self._get_analysis = get_analysis
         self._get_project_ini = get_project_ini
@@ -322,15 +396,24 @@ class SimulationSession:
         self._error_detail: str | None = None
         self._dap: Any | None = None
         self._token = 0
-        # The analysis generation the simulation was last started on, and its tag names.
-        self._launch_generation = -1
+        # The program the simulation runs: the analysis generation it came from, the
+        # CLICK save count then, its tag names, its folder and what its source held.
+        # Set at launch and by a write; pyrung never loads files on its own (autoreload
+        # is off).
+        self._program_generation = -1
+        self._program_saves: int | None = None
         self._program_names: tuple[Mapping[str, int], Mapping[int, str]] | None = None
+        self._program_dir: Path | None = None
+        self._program_source: PlcSourceWatch | None = None
+        self._source_changed = False
+        # A write (pyrung reload) asked for and not answered yet, and why the last failed.
+        self._writing = False
+        self._write_error: str | None = None
+        self._shown_change: ProgramChange | None = None
+        # The notice that a write or Restart was refused, until one goes through.
+        self._refusal: str | None = None
         # A launch whose process died before the session adopted it.
         self._died_token: int | None = None
-        # Restarting on a CLICK save: say so once it is ready. The notice that a save
-        # which did not convert stopped it, until it runs again.
-        self._restart_notice = False
-        self._stopped_by_save: str | None = None
         self._waited_ms = 0
         self._analysis_after_id: Any | None = None
         self._watch_after_id: Any | None = None
@@ -371,8 +454,7 @@ class SimulationSession:
         self._link_rows: tuple[WiredLink, ...] | None = None
         self._links_revision_seen: int | None = None
         self._links_synced = False
-        # Read the links again on the next frame: a listing failed, or showed
-        # links missing while the program was rebuilt.
+        # Read the links again on the next frame: the listing went unanswered.
         self._links_refetch = False
         self._restored_links = 0
 
@@ -702,18 +784,20 @@ class SimulationSession:
         return self._plc_data_path
 
     def _tag_maps(self) -> tuple[Mapping[str, int], Mapping[int, str]]:
-        """Tag names of the program the simulation was started on.
+        """Tag names of the program the simulation runs.
 
-        A CLICK save can rename tags before the simulation restarts on it, so
-        frames and commands go by the names of the program that runs. While
-        nothing runs, the current analysis's names.
+        The names its workspace was generated with (``project_tag_to_addr_key``),
+        taken when it was launched or written: the process runs that program
+        until either happens again, so frames and commands go by its names even
+        after a CLICK save renamed tags. While nothing runs, the names of the
+        workspace a launch would read.
         """
         if self._program_names is not None:
             return self._program_names
         analysis = self._get_analysis()
         if analysis is None:
             return {}, {}
-        return analysis.tag_to_addr_key, analysis.addr_key_to_tag
+        return analysis.project_tag_to_addr_key, analysis.project_addr_key_to_tag
 
     def to_tag(self, address: str) -> str:
         """The running program's tag name for a CLICK *address* (the address if unnamed)."""
@@ -745,22 +829,6 @@ class SimulationSession:
             if normalize_address(address) == address:
                 found[address] = value
         return found
-
-    def _program_current(self) -> bool:
-        """False while the analysis is ahead of the program that runs.
-
-        A rebuild is under way, or done and the simulation about to restart on
-        it. pyrung may reload the new files on its own meanwhile, so what the
-        simulation reports then says nothing about what the user chose.
-        """
-        from .services.analysis_service import AnalysisStatus
-
-        analysis = self._get_analysis()
-        return (
-            analysis is not None
-            and analysis.status is not AnalysisStatus.BUILDING
-            and analysis.generation == self._launch_generation
-        )
 
     def _save_now(self) -> None:
         self._save_after_id = None
@@ -810,45 +878,119 @@ class SimulationSession:
         self._schedule_save()
         self._set_notice(f"Loaded PLC data from {path.name}; switches set from snapshot.")
 
-    def _clear_restart_notice(self) -> None:
-        """Drop the restart notice, pending or shown: that restart did not happen."""
-        self._restart_notice = False
-        if self._notice == RESTARTED_NOTICE:
-            self.dismiss_notice()
-
     def _follow_program(self) -> bool:
-        """Start again on a program CLICK saved since the simulation was started. True if it did.
+        """Start a simulation that could not start on a program CLICK saved since. True if it did.
 
-        Each build of the analysis is a new generation. Once one is done, a
-        running simulation restarts on it, with the user's switches, forces and
-        bench links (kept by address); one that failed tries the new program.
-        A build that failed stops it: pyrung may already have loaded files of it.
+        A running simulation never changes program by itself: it offers
+        :attr:`program_change` until the user writes the new one.
         """
         from .services.analysis_service import AnalysisStatus
 
-        if self._status not in (SimStatus.READY, SimStatus.FAILED):
-            return False  # starting or waiting: it reads the analysis itself
+        if self._status is not SimStatus.FAILED or self._dap is not None:
+            return False
         analysis = self._get_analysis()
         if (
             analysis is None
             or analysis.status is AnalysisStatus.BUILDING
-            or analysis.generation == self._launch_generation
+            or analysis.generation == self._program_generation
         ):
             return False
-        # Running, or stopped by an earlier save that did not convert.
-        followed = self._dap is not None or self._stopped_by_save is not None
-        converted = analysis.status is AnalysisStatus.READY
-        self._clear_restart_notice()
-        self._restart_notice = converted and followed
         self.restart()
-        if followed and analysis.status is AnalysisStatus.FAILED:
-            reason = analysis.error or "Program conversion failed."
-            self._stopped_by_save = (
-                f"The simulation stopped: CLICK's last save could not be converted ({reason}). "
-                "It starts again on the next save that converts."
-            )
-            self._set_notice(self._stopped_by_save)
         return True
+
+    def _write_actions(self) -> tuple[ProgramAction, ...]:
+        if self._writing:
+            return ()  # one write at a time
+        actions: tuple[ProgramAction, ...] = (
+            ("run_time_edit", "stop_and_write") if self.switch_position == "run" else ("write",)
+        )
+        return (*actions, "restart") if self._write_error else actions
+
+    def _save_count(self) -> int | None:
+        return None if self._get_save_count is None else self._get_save_count()
+
+    def _analog_channels(self) -> frozenset[str]:
+        """The DF registers of the configured analog channels: hardware, like X and Y."""
+        layout = self._layout
+        if layout is None:
+            return frozenset()
+        kinds = ("analog_in", "analog_out")
+        return frozenset(a for kind in kinds for a in layout.addresses(kind))
+
+    def _carry_plan(self, analysis: AnalysisService) -> CarryPlan:
+        """What writing *analysis*'s program would do with the forces and links the last frame showed."""
+        old = self._tag_maps()
+        dap = self._dap
+        forces = dict(dap.forces) if dap is not None else {}
+        links = {
+            self.to_tag(row.feedback): None if row.enable is None else self.to_tag(row.enable)
+            for row in self._link_rows or ()
+            if row.source == "bench"
+        }
+        new = (analysis.project_tag_to_addr_key, analysis.project_addr_key_to_tag)
+        return plan_carry(old, new, forces, links, self._analog_channels())
+
+    @property
+    def program_change(self) -> ProgramChange | None:
+        """A program CLICK saved or the workspace holds that the simulation does not run yet."""
+        from .services.analysis_service import AnalysisStatus
+
+        analysis = self._get_analysis()
+        if not self.is_ready or analysis is None:
+            return None
+        new_build = analysis.generation != self._program_generation
+        if not new_build and not self._source_changed:
+            return None
+        tail = (
+            f" Writing it failed: {self._write_error}. Restart runs what the workspace holds "
+            "now (CLICK's last save and any edits) in a new simulation, from power-on values "
+            "(or the PLC data file)."
+            if self._write_error
+            else ""
+        )
+        carry = self._carry_plan(analysis).notice
+        if carry:
+            tail = f" {carry}{tail}"  # listed before the user writes
+        if new_build:
+            if analysis.status is AnalysisStatus.FAILED:
+                reason = analysis.error or "Program conversion failed."
+                return ProgramChange(
+                    "unconverted",
+                    f"CLICK's last save could not be converted ({reason}). "
+                    "The simulation still runs the previous program.",
+                )
+            if analysis.status is not AnalysisStatus.READY:
+                return None  # still building
+            saves = self._save_count()
+            if saves is not None and saves == self._program_saves:
+                return ProgramChange(
+                    "rebuilt",
+                    "The workspace was rebuilt from CLICK's last save (Reload from CLICK or a "
+                    "Sync). The simulation runs the previous program until you write it." + tail,
+                    self._write_actions(),
+                )
+            return ProgramChange(
+                "save",
+                "CLICK saved a new program. The simulation runs the previous one until you "
+                "write it." + tail,
+                self._write_actions(),
+            )
+        return ProgramChange(
+            "source",
+            "The workspace's ladder source changed. The simulation runs the program it "
+            "started with until you write it." + tail,
+            self._write_actions(),
+        )
+
+    def _check_program(self) -> None:
+        """Notice an edit to the workspace source, and tell listeners when the offer changes."""
+        watch = self._program_source
+        if watch is not None and self.is_ready and not self._writing:
+            self._source_changed = watch.changed()
+        change = self.program_change
+        if change != self._shown_change:
+            self._shown_change = change
+            self._emit("desired")
 
     def _watch_tick(self) -> None:
         self._watch_after_id = None
@@ -865,6 +1007,7 @@ class SimulationSession:
                 reload_data = True
         if not self._follow_program() and reload_data:
             self.restart()
+        self._check_program()
         self._watch_after_id = self._scheduler.after(WATCH_MS, self._watch_tick)
 
     # ------------------------------------------------------------------
@@ -931,6 +1074,11 @@ class SimulationSession:
         self._links_synced = False
         self._links_refetch = False
         self._program_names = None
+        self._program_dir = None
+        self._program_source = None
+        self._source_changed = False
+        self._writing = False
+        self._write_error = None
         dap = self._dap
         self._dap = None
         if dap is not None:
@@ -947,8 +1095,6 @@ class SimulationSession:
             self._cancel(getattr(self, name))
             setattr(self, name, None)
         self._waited_ms = 0
-        self._restart_notice = False
-        self._stopped_by_save = None
         self._flush_save()
         if self._status is not SimStatus.IDLE:
             self._set_status(SimStatus.IDLE)
@@ -962,28 +1108,32 @@ class SimulationSession:
         self._shutdown()
 
     def _fail(self, reason: str, detail: str | None = None) -> None:
-        self._clear_restart_notice()
         self._status = SimStatus.FAILED
         self._error = reason
         self._error_detail = detail
         self._message(f"Cannot start simulation: {reason}", "error")
         self._emit("status")
 
-    def _fail_analysis(self, analysis: AnalysisService) -> None:
+    @staticmethod
+    def _analysis_failure(analysis: AnalysisService) -> tuple[str, str | None]:
         guidance = (
             "Open the generated workspace to inspect and edit the source. "
             if analysis.project_dir is not None
             else ""
         )
-        self._fail(
+        return (
             "pyrung could not build this CLICK program for simulation.\n"
             f"{analysis.error or 'Program conversion failed.'}\n"
             f"{guidance}Nickname editing is still available.",
             analysis.error_detail,
         )
 
-    def _fail_unreadable(self, csv_dir: Path) -> bool:
-        """Refuse to run a program that holds an empty rung for one ClickNick cannot read.
+    def _fail_analysis(self, analysis: AnalysisService) -> None:
+        self._fail(*self._analysis_failure(analysis))
+
+    @staticmethod
+    def _unreadable_reason(csv_dir: Path) -> str | None:
+        """Why a program holding an empty rung for one ClickNick cannot read must not run.
 
         The simulation would run without that rung and look fine. A finding with
         no rung number has no empty rung, since pyrung read that CSV itself.
@@ -996,18 +1146,67 @@ class SimulationSession:
             if item.unreadable and item.rung is not None
         ]
         if not found:
-            return False
+            return None
         lines = [f"  {describe_legacy_encoding(item)}" for item in found[:UNREADABLE_LISTED]]
         if len(found) > UNREADABLE_LISTED:
             lines.append(f"  ...and {len(found) - UNREADABLE_LISTED} more")
         one = len({(item.file, item.rung) for item in found}) == 1
         head = "this rung" if one else "these rungs"
         without = "it" if one else "them"
-        self._fail(
+        return (
             f"ClickNick cannot read {head} in CLICK, so the simulation would run without "
             f"{without}.\n" + "\n".join(lines) + f"\nPaste {without} again."
         )
-        return True
+
+    def _workspace_problem(self, analysis: AnalysisService | None) -> tuple[str, str | None] | None:
+        """Why the workspace's program cannot run now (reason, detail), or None.
+
+        The one check before a launch, a write and a Restart: a conversion that
+        succeeded, a workspace that holds it, a ``run.py``, and no rung ClickNick
+        cannot read. A build under way is the caller's to wait out or refuse.
+        """
+        from .services.analysis_service import AnalysisStatus
+
+        if analysis is None:
+            return (
+                "program analysis has not started. Connect to a Click project, "
+                "then save it in Click Software.",
+                None,
+            )
+        if analysis.status is AnalysisStatus.FAILED:
+            return self._analysis_failure(analysis)
+        if not analysis.is_available or not analysis.project_is_current:
+            return "program analysis has not finished.", None
+        project_dir = analysis.project_dir
+        if project_dir is None:
+            return (
+                "no pyrung project folder was generated. "
+                "Save the project in Click Software, then retry.",
+                None,
+            )
+        # A rebuild empties this folder before regenerating it, so the
+        # directory can exist with run.py not yet written.
+        if not (project_dir / "run.py").is_file():
+            return (
+                f"the generated project at {project_dir} has no run.py. "
+                "Save the project in Click Software, then retry.",
+                None,
+            )
+        unreadable = self._unreadable_reason(project_dir / "csv")
+        return None if unreadable is None else (unreadable, None)
+
+    def _refuse(self, text: str) -> None:
+        """Say why a write or Restart did not happen; the simulation runs on as it was."""
+        self._refusal = text
+        self._notice = text
+        self._message(text, "error")
+        self._emit("desired")
+
+    def _clear_refusal(self) -> None:
+        if self._refusal is not None and self._notice == self._refusal:
+            self._notice = None
+            self._emit("desired")
+        self._refusal = None
 
     def _wait_for_analysis(self) -> None:
         """Wait for the conversion; every waiting path is bounded here."""
@@ -1049,7 +1248,7 @@ class SimulationSession:
         analysis = self._get_analysis()
         if analysis is not None and (
             analysis.status is AnalysisStatus.BUILDING
-            or analysis.generation != self._launch_generation
+            or analysis.generation != self._program_generation
         ):
             # The launch read files on disk while a rebuild rewrote them, which
             # yields partial imports or a missing run.py. The generation check
@@ -1057,7 +1256,6 @@ class SimulationSession:
             # than reporting the rubble as a real failure.
             self._wait_for_analysis()
             return
-        self._clear_restart_notice()
         self._status = SimStatus.FAILED
         self._error = f"the simulation backend failed to start: {exc}"
         self._error_detail = None
@@ -1132,13 +1330,6 @@ class SimulationSession:
                 and normalize_address(row.feedback) == row.feedback
                 and (row.enable is None or normalize_address(row.enable) == row.enable)
             }
-            if not self._program_current():
-                # As with forces: a missing link may be lost to a reload under new
-                # names, so it stays until the program is current and is read again.
-                kept = {a: link for a, link in self._state.links.items() if a not in adopted}
-                if kept:
-                    adopted.update(kept)
-                    self._links_refetch = True
             bench = body.get("bench") is not False
             if adopted != dict(self._state.links) or bench != self._state.bench_wiring:
                 self._update_state(links=adopted, bench_wiring=bench)
@@ -1168,7 +1359,11 @@ class SimulationSession:
         self._run_serial(job)
 
     def _reapply(self, dap: Any) -> None:
-        """Bring a fresh simulation back to the switches, values, forces and links the user chose."""
+        """Bring a fresh simulation back to the switches, values, forces and links the user chose.
+
+        Only after a launch: a write keeps the process and places what pyrung
+        had set itself (:meth:`_write_program`).
+        """
         forces = dict(self._state.forces)
         links = dict(self._state.links)
         bench_wiring = self._state.bench_wiring
@@ -1253,7 +1448,6 @@ class SimulationSession:
         self._run_background(job, "sim-modbus-info")
 
     def _report_died(self, detail: str | None) -> None:
-        self._clear_restart_notice()
         self._stop_dap()
         self._status = SimStatus.FAILED
         self._error = "the simulation stopped unexpectedly."
@@ -1261,7 +1455,7 @@ class SimulationSession:
         self._message("Simulation stopped unexpectedly.", "error")
         self._emit("status")
 
-    def _on_launched(self, token: int, dap: Any) -> None:
+    def _on_launched(self, token: int, dap: Any, source: PlcSourceWatch | None) -> None:
         if token != self._token or self._closed or not self._enabled:
             self._run_background(dap.terminate, "sim-dap-stop")
             return
@@ -1271,17 +1465,14 @@ class SimulationSession:
             self._report_died(getattr(dap, "stderr_text", "") or None)
             return
         self._dap = dap
+        self._program_source = source
         self._forces_baseline = None
         self._modbus_info = {}
         # Confirm success in the transcript; a "Retrying..." line should not trail off.
         self._message("OK - simulation ready.", "progress")
         self._set_status(SimStatus.READY)
-        stopped, self._stopped_by_save = self._stopped_by_save, None
-        if self._restart_notice:
-            self._restart_notice = False
-            self._set_notice(RESTARTED_NOTICE)
-        elif stopped is not None and self._notice == stopped:
-            self.dismiss_notice()
+        self._clear_refusal()
+        self._check_program()
         self._reapply(dap)
         self._modbus_info_after_id = self._scheduler.after(0, self._poll_modbus_info)
 
@@ -1308,12 +1499,6 @@ class SimulationSession:
         missing = object()
         added = {a: v for a, v in actual.items() if baseline.get(a, missing) != v}
         removed = [a for a in baseline if a not in actual]
-        if removed and not self._program_current():
-            # pyrung may have reloaded the rebuilt program and lost forces on renamed
-            # tags. A release waits in the baseline until the program is current again;
-            # a force set meanwhile is someone's command and is kept.
-            self._forces_baseline = {**actual, **{a: baseline[a] for a in removed}}
-            removed = []
         if not added and not removed:
             return
         forces = dict(self._state.forces)
@@ -1328,18 +1513,19 @@ class SimulationSession:
         dap = self._dap
         if token != self._token or dap is None:
             return
+        if dap.speed is not None:
+            self._speed = dap.speed
+        self._links_pending = {self.to_address(k): ms for k, ms in dap.links_pending.items()}
+        if self._writing:
+            # Paused for a write; its answer says when the names change.
+            self._emit("frame")
+            return
         # Anyone can drive (the Console, an agent through `pyrung live`), and
         # the last command wins: mode, pacing and forces follow the frames.
         self._desired_position = self.switch_position
-        if dap.speed is not None:
-            self._speed = dap.speed
         self._adopt_forces(self._addressed(dap.forces))
-        self._links_pending = {self.to_address(k): ms for k, ms in dap.links_pending.items()}
         revision = dap.links_revision
-        # Unsynced: the listing after the launch went unanswered. Links kept
-        # through a rebuild are checked once the program is current.
-        refetch = self._links_refetch and (not self._links_synced or self._program_current())
-        if refetch or (self._links_synced and revision != self._links_revision_seen):
+        if self._links_refetch or (self._links_synced and revision != self._links_revision_seen):
             self._links_refetch = False
             if self._links_synced:
                 self._links_revision_seen = revision
@@ -1374,50 +1560,33 @@ class SimulationSession:
         self._analysis_after_id = None
 
         analysis = self._get_analysis()
-        if analysis is None:
-            self._fail(
-                "program analysis has not started. Connect to a Click project, "
-                "then save it in Click Software."
-            )
-            return
-        # A build rewrites the generated project in place, so while one is
-        # running the folder on disk is rubble regardless of what the previous
-        # result still advertises. Wait it out before touching any of it.
-        if analysis.status is AnalysisStatus.BUILDING:
-            self._wait_for_analysis()
-            return
-        # Remembered so a failure can tell "the project was rewritten under the
-        # launch" from "this project genuinely does not run", and so the next
-        # CLICK save (a new generation) starts the simulation again.
-        self._launch_generation = analysis.generation
+        if analysis is not None:
+            # A build rewrites the generated project in place, so while one is
+            # running the folder on disk is rubble regardless of what the previous
+            # result still advertises. Wait it out before touching any of it.
+            if analysis.status is AnalysisStatus.BUILDING:
+                self._wait_for_analysis()
+                return
+            # Remembered so a failure can tell "the project was rewritten under the
+            # launch" from "this project genuinely does not run", and so the next
+            # CLICK save (a new generation) is offered.
+            self._program_generation = analysis.generation
+            self._program_saves = self._save_count()
+            if analysis.status is not AnalysisStatus.FAILED and not analysis.is_available:
+                self._wait_for_analysis()
+                return
         # A cached graph may still serve open editors, but simulation must use
         # a successful conversion of the current CLICK program.
-        if analysis.status is AnalysisStatus.FAILED:
-            self._fail_analysis(analysis)
+        problem = self._workspace_problem(analysis)
+        if problem is not None:
+            self._fail(*problem)
             return
-        if not analysis.is_available:
-            self._wait_for_analysis()
-            return
-
+        assert analysis is not None and analysis.project_dir is not None
         project_dir = analysis.project_dir
-        if project_dir is None:
-            self._fail(
-                "no pyrung project folder was generated. "
-                "Save the project in Click Software, then retry."
-            )
-            return
-        # A rebuild empties this folder before regenerating it, so the
-        # directory can exist with run.py not yet written.
-        if not (project_dir / "run.py").is_file():
-            self._fail(
-                f"the generated project at {project_dir} has no run.py. "
-                "Save the project in Click Software, then retry."
-            )
-            return
-        if self._fail_unreadable(project_dir / "csv"):
-            return
 
-        self._program_names = (analysis.tag_to_addr_key, analysis.addr_key_to_tag)
+        # The process runs this program, under these names, until it is replaced or written.
+        self._program_names = (analysis.project_tag_to_addr_key, analysis.project_addr_key_to_tag)
+        self._program_dir = project_dir
         self._token += 1
         token = self._token
         self._set_status(SimStatus.STARTING)
@@ -1428,6 +1597,8 @@ class SimulationSession:
         speed = self._speed
 
         def launch() -> None:
+            # Read before pyrung imports it: an edit made while it starts still shows.
+            source = _watch_source(project_dir)
             dap = self._dap_factory(
                 on_state=lambda state, error: self._on_dap_state_bg(token, state, error),
                 on_scan=lambda _scan: self._on_frame_bg(token),
@@ -1446,7 +1617,7 @@ class SimulationSession:
             except Exception as exc:
                 self._post(lambda error=exc: self._on_launch_failed(token, error))
                 return
-            if not self._post(lambda: self._on_launched(token, dap)):
+            if not self._post(lambda: self._on_launched(token, dap, source)):
                 dap.terminate()  # closed while it started: nobody else will stop it
 
         self._run_background(launch, "sim-dap-launch")
@@ -1466,10 +1637,353 @@ class SimulationSession:
             self.turn_on()
 
     def restart(self) -> None:
-        """Relaunch if the simulation is on (e.g. the workspace or PLC data changed)."""
+        """Start over on what the workspace holds now (CLICK's last save and any edits).
+
+        The new process starts from power-on values (or the PLC data file), with
+        the user's mode, switches, forces and bench links, kept by address. A
+        running simulation is never stopped for a workspace that cannot start:
+        Restart then says why and the simulation runs on.
+        """
+        from .services.analysis_service import AnalysisStatus
+
+        if not self._enabled or self._closed:
+            return
+        if self._dap is not None:
+            analysis = self._get_analysis()
+            if analysis is not None and analysis.status is AnalysisStatus.BUILDING:
+                reason = "CLICK's save is still being converted. Restart once it is done."
+            else:
+                problem = self._workspace_problem(analysis)
+                reason = None if problem is None else problem[0]
+            if reason is not None:
+                self._refuse(
+                    f"Cannot restart the simulation: {reason}\n"
+                    "The simulation still runs the previous program."
+                )
+                return
+        self.relaunch()
+
+    def relaunch(self) -> None:
+        """Launch again if the simulation is on, waiting out a build (the workspace moved)."""
         if self._enabled and not self._closed:
             self._waited_ms = 0
             self.start()
+
+    # ------------------------------------------------------------------
+    # Writing a changed program, as to a CLICK
+    # ------------------------------------------------------------------
+
+    @property
+    def writing(self) -> bool:
+        """True from a write's request until pyrung answers; the Console waits meanwhile."""
+        return self._writing
+
+    def _adopt_listing(self, listing: _Listing) -> None:
+        """What pyrung had set when the write paused it, by address: the user's choices now."""
+        state = self._state
+        if (
+            dict(listing.forces) != dict(state.forces)
+            or dict(listing.links) != dict(state.links)
+            or listing.bench_wiring != state.bench_wiring
+        ):
+            self._update_state(
+                forces=dict(listing.forces),
+                links=dict(listing.links),
+                bench_wiring=listing.bench_wiring,
+            )
+        # Frames from here on are compared with it, by address.
+        self._forces_baseline = dict(listing.forces)
+        if listing.problems:
+            self._message(
+                "Restoring simulator settings failed: " + "; ".join(listing.problems), "error"
+            )
+
+    def _on_written(
+        self,
+        token: int,
+        summary: str,
+        target: _WriteTarget,
+        source: PlcSourceWatch | None,
+        listing: _Listing,
+    ) -> None:
+        from .services.analysis_service import AnalysisStatus
+
+        dap = self._dap
+        if token != self._token or dap is None:
+            return  # replaced meanwhile: the new process has its own names
+        self._writing = False
+        self._write_error = None
+        self._clear_refusal()
+        # By address, where the write placed them, before the names switch.
+        self._adopt_listing(listing)
+        if summary:
+            self._message(summary)
+        analysis = self._get_analysis()
+        if (
+            analysis is None
+            or analysis.generation != target.generation
+            or analysis.status is AnalysisStatus.BUILDING
+        ):
+            # A build rewrote the workspace during the reload: which files pyrung
+            # read is unknown, so the names stay and the change is offered again.
+            self._message(
+                "CLICK's program changed while it was written. Write it again once it "
+                "is converted.",
+                "error",
+            )
+        else:
+            self._program_names = target.names
+            self._program_generation = target.generation
+            self._program_saves = target.saves
+            self._program_source = source
+            self._source_changed = False
+            self._message("OK - the simulation runs the new program.", "progress")
+            if listing.carried:
+                self._set_notice(listing.carried)
+        # Read the links back with the names that now apply (a reload drops a bench
+        # link the program now declares).
+        self._links_synced = False
+        self._links_refetch = False
+        self._fetch_links(dap, token, sync=True)
+        self._check_program()
+
+    def _on_write_failed(self, token: int, text: str, listing: _Listing | None) -> None:
+        dap = self._dap
+        if token != self._token or dap is None:
+            return
+        self._writing = False
+        self._write_error = text
+        if listing is not None:
+            self._adopt_listing(listing)
+        else:
+            self._forces_baseline = None
+        self._message(
+            f"Writing the program failed: {text}. The simulation still runs the previous one.",
+            "error",
+        )
+        self._links_synced = False
+        self._links_refetch = False
+        self._fetch_links(dap, token, sync=True)
+        self._check_program()
+
+    def _write_refusal(self) -> str | None:
+        """Why the workspace's program cannot be written to the running simulation, or None."""
+        from .services.analysis_service import AnalysisStatus
+
+        analysis = self._get_analysis()
+        if analysis is not None and analysis.status is AnalysisStatus.BUILDING:
+            return "CLICK's save is still being converted. Write it once it is done."
+        problem = self._workspace_problem(analysis)
+        if problem is not None:
+            return problem[0]
+        assert analysis is not None
+        if analysis.project_dir != self._program_dir:
+            return "the workspace is in another folder now. Restart runs it from there."
+        return None
+
+    def _write_program(self, how: Literal["keep", "stop"], *, echo: bool = True) -> None:
+        """Reload the workspace's program in the running process (no relaunch).
+
+        One job on the action worker, which the Console waits for: pause (in RUN),
+        read what pyrung has forced and linked, plan where each entry goes
+        (:func:`plan_carry`), reload, and go back to the mode it was in. pyrung's
+        listing, placed as planned, becomes the user's forces and links. A reload
+        that fails leaves the old program running and offers Restart.
+        """
+        dap = self._dap
+        if not self.is_ready or dap is None:
+            self._message("Cannot write the program: the simulation is not running.", "error")
+            return
+        if self._writing:
+            self._message("The program is being written to the simulation.", "error")
+            return
+        reason = self._write_refusal()
+        if reason is not None:
+            self._refuse(
+                f"Cannot write the program: {reason}\n"
+                "The simulation still runs the previous program."
+            )
+            return
+        analysis = self._get_analysis()
+        assert analysis is not None and self._program_dir is not None
+        old_names = self._tag_maps()
+        old = (dict(old_names[0]), dict(old_names[1]))
+        target = _WriteTarget(
+            analysis.generation,
+            (dict(analysis.project_tag_to_addr_key), dict(analysis.project_addr_key_to_tag)),
+            self._save_count(),
+        )
+        analog = self._analog_channels()
+        project_dir = self._program_dir
+        position = self._desired_position
+        patches = self._input_patches()
+        token = self._token
+        self._writing = True
+        self._message("Writing the program to the simulation...", "progress")
+        if echo:
+            self._echo("reload")
+        self._emit("desired")
+
+        def job() -> None:
+            source = _watch_source(project_dir)
+            unanswered: list[str] = []
+            problems: list[str] = []
+
+            def refusal(what: str, request: Callable[[], object]) -> str | None:
+                """Send *request*; why the simulation refused it, or None. No answer is noted."""
+                try:
+                    request()
+                except Exception as exc:
+                    if not _unavailable(exc):
+                        return str(exc)
+                    if what not in unanswered:
+                        unanswered.append(what)
+                return None
+
+            try:
+                if position == "run":
+                    dap.pause()
+                forced = dict(dap.list_forces())
+                listed = dict(dap.list_links())
+            except Exception as exc:
+                text = str(exc)
+                if position == "run":
+                    refusal("the switch position", dap.continue_)
+                self._post(lambda: self._on_write_failed(token, text, None))
+                return
+
+            # pyrung's listing, not ClickNick's copy, is what was set (the Console may
+            # have changed it).
+            rows = {
+                str(row.get("feedback", "")): row
+                for row in listed.get("links") or ()
+                if isinstance(row, Mapping) and row.get("source") == "bench"
+            }
+            enables = {name: _link_enable(row) for name, row in rows.items()}
+            plan = plan_carry(old, target.names, forced, enables, analog)
+            # The entries whose name changes or that are released. pyrung carries the
+            # rest by name, with their timing. pyrung's planned reload hook (the plan's
+            # as_dap() sent with the reload) replaces the releases and re-sends here.
+            forces_out = {name: new for name, new in plan.forces.items() if new != name}
+            links_out = {
+                fb: new
+                for fb, new in plan.links.items()
+                if (new.feedback, new.enable) != (fb, enables[fb])
+            }
+            error: str | None = None
+            summary = ""
+            try:
+                for name in forces_out:
+                    dap.unforce(name)
+                for name in links_out:
+                    _restore_link(dap, name)
+                summary = dap.reload()
+            except Exception as exc:
+                error = str(exc)
+
+            if error is None and (how == "stop" or position == "stop"):
+                # A reload leaves STOP for RUN. Stop and Write goes through STOP, and a
+                # Write in STOP stays there, so the next RUN clears non-retentive values.
+                reason = refusal("STOP", partial(dap.set_mode, "stop"))
+                if reason is not None:
+                    problems.append(f"STOP: {reason}")
+
+            # Sent again under their new names after a reload, or their old ones after a
+            # failure (the old program still runs). Released forces go back only then.
+            names = target.names if error is None else old
+            refused_forces: set[str] = set()
+            refused_links: set[str] = set()
+            for fb, new in links_out.items():
+                feedback, enable = (
+                    (fb, enables[fb]) if error is not None else (new.feedback, new.enable)
+                )
+                link = _bench_link(rows[fb], enable)
+                what = f"the bench link on {feedback}"
+                reason = refusal(what, partial(_send_link, dap, feedback, link))
+                if reason is None and not link.enabled:
+                    reason = refusal(what, partial(dap.set_links, enabled={feedback: False}))
+                if reason is not None:
+                    refused_links.add(fb)
+                    problems.append(f"{what}: {reason}")
+            for name, new in forces_out.items():
+                tag = name if error is not None else new
+                if tag is None:
+                    continue  # released
+                what = f"the force on {tag}"
+                reason = refusal(what, partial(dap.force, tag, forced[name]))
+                if reason is not None:
+                    refused_forces.add(name)
+                    problems.append(f"{what}: {reason}")
+
+            reason = None
+            if error is None and how == "stop":
+                # Launched with keepForcesOnRun, so forces survive STOP -> RUN.
+                reason = refusal(
+                    "the switch position", partial(dap.set_mode, "run", patches=patches)
+                )
+            elif error is None and position != "stop" and patches:
+                # A renamed input lost its value under the old name.
+                reason = refusal("the switch position", partial(dap.patch, patches))
+            if reason is None and position == "run":
+                reason = refusal("the switch position", dap.continue_)
+            if reason is not None:
+                problems.append(f"the switch position: {reason}")
+            if unanswered:
+                problems.append(f"no answer for {', '.join(unanswered)}; they stay set")
+
+            # What is set now, by CLICK address: the user's forces and links.
+            forces: dict[str, PlcValue] = {}
+            for name, value in forced.items():
+                tag = plan.forces[name] if error is None else name
+                address = None if tag is None or name in refused_forces else address_of(tag, names)
+                if address is not None:
+                    forces[address] = value
+            links: dict[str, BenchLink] = {}
+            for fb, row in rows.items():
+                new = plan.links[fb] if error is None else LinkTarget(fb, enables[fb])
+                if fb in refused_links:
+                    continue
+                address = address_of(new.feedback, names)
+                enable = None if new.enable is None else address_of(new.enable, names)
+                if address is not None and (new.enable is None or enable is not None):
+                    links[address] = _bench_link(row, enable)
+            listing = _Listing(
+                forces,
+                links,
+                listed.get("bench") is not False,
+                tuple(problems),
+                plan.notice if error is None else "",
+            )
+            if error is not None:
+                failure = error
+                self._post(lambda: self._on_write_failed(token, failure, listing))
+                return
+            self._post(lambda: self._on_written(token, summary, target, source, listing))
+
+        self._run_serial(job)
+
+    def run_time_edit(self) -> None:
+        """Write the workspace's program while in RUN, keeping every value, timer and force."""
+        if self.switch_position == "run":
+            self._write_program("keep")
+
+    def stop_and_write(self) -> None:
+        """Go to STOP, write the workspace's program and RUN again.
+
+        pyrung's STOP -> RUN keeps retentive values and forces and clears the
+        rest, as a CLICK does after a write in STOP.
+        """
+        if self.switch_position == "run":
+            self._write_program("stop")
+
+    def write_program(self) -> None:
+        """Write the workspace's program in STOP or while stepping; values and mode stay."""
+        if self.switch_position != "run":
+            self._write_program("keep")
+
+    def reload(self) -> None:
+        """What a Console ``reload`` does: RUN Time Edit in RUN, Write otherwise."""
+        self._write_program("keep", echo=False)
 
     def close(self) -> None:
         """Stop everything and save. The session is unusable afterwards."""
@@ -1865,6 +2379,8 @@ class SimulationSession:
         STOP: mode stop. STEP: mode run, not scanning on its own (scans only
         advance on Step, the Console or an agent). RUN: mode run, free-running.
         """
+        if self._writing:
+            return self._desired_position  # a reload passes through RUN mode, paused
         if self.mode != "run":
             return "stop"
         return "run" if self.running else "step"

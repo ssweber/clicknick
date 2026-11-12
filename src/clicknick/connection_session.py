@@ -241,6 +241,7 @@ class ConnectionSession:
                 get_project_ini=lambda: self.project_ini,
                 session_name=f"clicknick-{self.click.filename}-{self.click.hwnd}",
                 on_retry_analysis=on_retry_analysis,
+                get_save_count=lambda: self._save_count,
             )
             self.simulation.set_state_location(self._simulation_key(), self.workspace_dir)
         return self.simulation
@@ -267,7 +268,7 @@ class ConnectionSession:
             self.analysis.invalidate()
         if self.simulation is not None:
             self.simulation.set_state_location(self._simulation_key(), self.workspace_dir)
-            self.simulation.restart()
+            self.simulation.relaunch()
 
     def _analysis_paths(self) -> tuple[Path, Path] | None:
         """Resolve the saved CLICK inputs needed to regenerate the workspace."""

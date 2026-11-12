@@ -174,10 +174,32 @@ class ConsolePanel(ttk.Frame):
     def _submit_command_text(self, command: str) -> None:
         """Called by ConsoleInput when the user submits a command."""
         self._append_output(f">>> {command}\n", "prompt")
+        if self._simulation.writing:
+            # The write reads what pyrung has forced and linked; a command now would race it.
+            self._append_output(
+                "Writing the program to the simulation... Send it again once it is written.\n",
+                "error",
+            )
+            return
+        subs = [s.strip() for s in command.split(";") if s.strip()]
+        verbs = [sub.split(None, 1)[0].lower() for sub in subs]
+        # The program changes only when ClickNick writes it, so it knows which names apply.
+        if "autoreload" in verbs:
+            self._append_output(
+                "autoreload stays off in ClickNick: when the program changes, the Simulator "
+                "offers to write it.\n",
+                "error",
+            )
+            return
+        if "reload" in verbs:
+            if [sub.lower() for sub in subs] == ["reload"]:
+                # RUN Time Edit in RUN, Write otherwise; a refusal comes back as a message.
+                self._simulation.reload()
+            else:
+                self._append_output("Send reload on its own.\n", "error")
+            return
         self._cancel_requested = False
         self._set_busy(True)
-
-        subs = [s.strip() for s in command.split(";") if s.strip()]
 
         def _on_progress(text: str) -> None:
             self._schedule_ui(lambda: self._append_output(text, "progress"))
@@ -237,7 +259,7 @@ class ConsolePanel(ttk.Frame):
         if not tags:
             analysis = self._get_analysis()
             if analysis is not None and analysis.is_available:
-                tags = set(analysis.tag_to_addr_key.keys())
+                tags = set(analysis.project_tag_to_addr_key)
         if not tags:
             return []
         candidates = sorted(tags)

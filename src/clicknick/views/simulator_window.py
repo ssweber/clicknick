@@ -45,7 +45,13 @@ if TYPE_CHECKING:
     from ..data.address_store import AddressStore
     from ..services.analysis_service import AnalysisService
     from ..services.sim_hardware import Card, PanelLayout
-    from ..simulation_session import SimEvent, SimulationSession, SwitchPosition, WiredLink
+    from ..simulation_session import (
+        ProgramAction,
+        SimEvent,
+        SimulationSession,
+        SwitchPosition,
+        WiredLink,
+    )
 
 CARD_W = 184
 CARD_GAP = 12
@@ -455,6 +461,16 @@ class SimulatorWindow(tk.Toplevel):
         if port is not None:
             self._simulation.set_modbus_port(port)
 
+    def _program_action(self, action: ProgramAction) -> tuple[str, Callable[[], None]]:
+        """The label and command for one way of writing a changed program (CLICK's words)."""
+        sim = self._simulation
+        return {
+            "run_time_edit": ("RUN Time Edit", sim.run_time_edit),
+            "stop_and_write": ("Stop and Write", sim.stop_and_write),
+            "write": ("Write", sim.write_program),
+            "restart": ("Restart", sim.restart),
+        }[action]
+
     def _refresh_banners(self) -> None:
         sim = self._simulation
         messages: list[tuple[str, list[tuple[str, Callable[[], None]]]]] = []
@@ -505,6 +521,9 @@ class SimulatorWindow(tk.Toplevel):
                     ],
                 )
             )
+        change = sim.program_change
+        if change is not None:
+            messages.append((change.text, [self._program_action(a) for a in change.actions]))
         if sim.notice:
             messages.append((sim.notice, [("Dismiss", sim.dismiss_notice)]))
         if self._note:
@@ -1369,6 +1388,7 @@ class SimulatorWindow(tk.Toplevel):
         if len(name) > PLC_DATA_NAME_MAX:
             name = name[: PLC_DATA_NAME_MAX - 1] + "\N{HORIZONTAL ELLIPSIS}"
         self._plc_data_btn.configure(text=f"PLC Data: {name}" if name else "PLC Data...")
+        self._restart_btn.configure(state="normal" if sim.enabled else "disabled")
 
         count = len(sim.forces)
         self._forces_btn.configure(text=f"Forces ({count})" if count else "Forces")
@@ -1678,6 +1698,15 @@ class SimulatorWindow(tk.Toplevel):
         console_btn = ttk.Button(bar, text="Console", command=self._toggle_console)
         console_btn.pack(side=tk.RIGHT)
         bind_tooltip(console_btn, "Show or hide the command console (Ctrl+`)")
+        self._restart_btn = ttk.Button(bar, text="Restart", command=self._simulation.restart)
+        self._restart_btn.pack(side=tk.RIGHT, padx=(0, 4))
+        bind_tooltip(
+            self._restart_btn,
+            "Start over: a new simulation of what the workspace holds now\n"
+            "(CLICK's last save and any edits), from power-on values (or the\n"
+            "PLC data file), back in the same mode with your switches, forces\n"
+            "and bench links.",
+        )
         ttk.Button(bar, text="Dataview", command=self._open_dataview).pack(
             side=tk.RIGHT, padx=(0, 4)
         )
@@ -1689,7 +1718,8 @@ class SimulatorWindow(tk.Toplevel):
             "Start from the PLC's live values: a CSV saved in CLICK with\n"
             "PLC > Read Data from PLC > All > Save (not the nickname CSV).\n"
             "Switches and analog values take the file's values, and the\n"
-            "simulation reloads whenever the file changes.",
+            "simulation starts over whenever the file changes, on what the\n"
+            "workspace holds now (CLICK's last save and any edits).",
         )
         self._forces_btn = ttk.Menubutton(bar, text="Forces")
         self._forces_menu = tk.Menu(

@@ -11,9 +11,11 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from pyclickplc.addresses import format_address_display, normalize_address, parse_addr_key
 from pyrung.core import PHYSICAL_KEYS
 
 from clicknick.services.analysis_service import AnalysisResult, AnalysisService, AnalysisStatus
+from clicknick.services.dap_service import DapRequestError
 from clicknick.services.physical_response import response
 from clicknick.services.sim_hardware import build_panel_layout
 from clicknick.services.sim_state import BenchLink, SimulatorState, load_state, save_state
@@ -72,8 +74,17 @@ def _dap_fields(values):
 
 
 class FakeDap:
+    """A small model of pyrung's adapter.
+
+    Like pyrung, it keys forces and bench links by tag name: an address is
+    resolved with the names of the program it runs (*program_names*, read at
+    launch and at each reload), and a reload carries them over by name.
+    """
+
     def __init__(self, **callbacks) -> None:
         self.callbacks = callbacks
+        self.program_names = dict  # () -> {address: tag}: what the workspace on disk names
+        self.names: dict[str, str] = {}
         self.calls: list[tuple] = []
         self.launch_error: Exception | None = None
         self.launch_hook = None
@@ -96,9 +107,16 @@ class FakeDap:
         self.bench: dict[str, dict] = {}
         self.bench_on = True
         self.refuse_links: dict[str, str] = {}
+        self.reload_error: Exception | None = None
+
+    def _tag(self, tag):
+        """The name pyrung keys *tag* by: an address goes by the running program's name."""
+        address = normalize_address(tag) if isinstance(tag, str) else None
+        return tag if address is None else self.names.get(address, address)
 
     def launch(self, project_dir, **kwargs):
         self.calls.append(("launch", project_dir, kwargs))
+        self.names = dict(self.program_names())
         if self.launch_hook is not None:
             self.launch_hook()
         if self.launch_error is not None:
@@ -106,6 +124,14 @@ class FakeDap:
 
     def terminate(self):
         self.calls.append(("terminate",))
+
+    def reload(self):
+        self.calls.append(("reload",))
+        if self.reload_error is not None:
+            raise self.reload_error
+        self.names = dict(self.program_names())  # forces and links stay on their names
+        self.links_revision += 1
+        return "Reloaded at scan 7 (3 tag(s))"
 
     def set_mode(self, mode, patches=None, forces=None):
         self.calls.append(("set_mode", mode, patches, forces))
@@ -129,9 +155,14 @@ class FakeDap:
         self.calls.append(("force", tag, value))
         if tag == "BAD1":
             raise RuntimeError("unknown tag: BAD1")
+        self.forces = {**self.forces, self._tag(tag): value}
 
     def unforce(self, tag):
         self.calls.append(("unforce", tag))
+        self.forces = {k: v for k, v in self.forces.items() if k != self._tag(tag)}
+
+    def list_forces(self):
+        return dict(self.forces)
 
     def clear_forces(self):
         self.calls.append(("clear_forces",))
@@ -144,13 +175,15 @@ class FakeDap:
         self.calls.append(("link", feedback, enable, {"trigger": trigger, "response": response}))
         if feedback in self.refuse_links:
             raise RuntimeError(f"cannot link {feedback}: {self.refuse_links[feedback]}")
-        self.bench[feedback] = {
-            "enable": enable, "enabled": True, "trigger": trigger, "response": dict(response),
+        self.bench[self._tag(feedback)] = {
+            "enable": self._tag(enable), "enabled": True, "trigger": trigger,
+            "response": dict(response),
         }  # fmt: skip
         self.links_revision += 1
 
     def unlink(self, feedback):
         self.calls.append(("unlink", feedback))
+        feedback = self._tag(feedback)
         if feedback in self.project:
             self.bench[feedback] = {"enable": None, "enabled": True}
         elif self.bench.pop(feedback, None) is None:
@@ -159,7 +192,8 @@ class FakeDap:
 
     def restore_link(self, feedback):
         self.calls.append(("restore_link", feedback))
-        self.bench.pop(feedback, None)
+        if self.bench.pop(self._tag(feedback), None) is None:
+            raise DapRequestError(f"{self._tag(feedback)} has no bench change")  # as pyrung
         self.links_revision += 1
 
     def set_links(self, *, bench=None, enabled=None):
@@ -167,7 +201,7 @@ class FakeDap:
         if bench is not None:
             self.bench_on = bench
         for feedback, on in (enabled or {}).items():
-            self.bench[feedback]["enabled"] = on
+            self.bench[self._tag(feedback)]["enabled"] = on
         self.links_revision += 1
 
     def list_links(self):
@@ -220,17 +254,28 @@ class FakeModbus:
         self.disconnected = True
 
 
+def _publish(svc: AnalysisService, result: AnalysisResult) -> None:
+    """A build that converted: the graph and the workspace share one snapshot of names."""
+    svc._result = result
+    svc._project_tags = result.tag_to_addr_key
+    svc._project_keys = result.addr_key_to_tag
+    svc._project_is_current = True
+    svc._status = AnalysisStatus.READY
+
+
 def _ready_analysis(project_dir: Path, *, generation: int = 1) -> AnalysisService:
     (project_dir / "run.py").write_text("x", encoding="utf-8")
     svc = AnalysisService()
-    svc._result = AnalysisResult(
-        graph=SimpleNamespace(tag_roles={}),
-        program=MagicMock(),
-        project_dir=project_dir,
-        tag_to_addr_key={},
-        addr_key_to_tag={},
+    _publish(
+        svc,
+        AnalysisResult(
+            graph=SimpleNamespace(tag_roles={}),
+            program=MagicMock(),
+            project_dir=project_dir,
+            tag_to_addr_key={},
+            addr_key_to_tag={},
+        ),
     )
-    svc._status = AnalysisStatus.READY
     svc._generation = generation
     return svc
 
@@ -261,6 +306,7 @@ class Harness:
 
         def dap_factory(**callbacks):
             dap = FakeDap(**callbacks)
+            dap.program_names = self.workspace_names
             if self.next_launch_error is not None:
                 dap.launch_error = self.next_launch_error
             dap.launch_hook = self.launch_hook
@@ -278,6 +324,7 @@ class Harness:
 
         self.next_launch_error: Exception | None = None
         self.launch_hook = None
+        self.saves = 0
         self.snapshot: dict = {}
         self.sim = SimulationSession(
             scheduler=self.scheduler,
@@ -293,8 +340,18 @@ class Harness:
             run_serial=lambda job: job(),
             send_command=send_command,
             app_data_root=tmp_path / "app",
+            get_save_count=lambda: self.saves,
         )
         self.sim.add_listener(self.events.append)
+
+    def workspace_names(self) -> dict[str, str]:
+        """Address -> tag name, as the workspace's files name them."""
+        if self.analysis is None:
+            return {}
+        return {
+            format_address_display(*parse_addr_key(key)): tag
+            for key, tag in self.analysis.project_addr_key_to_tag.items()
+        }
 
     @property
     def dap(self) -> FakeDap:
@@ -1129,23 +1186,32 @@ def test_frames_carry_link_countdowns_by_address(ready):
 # ----------------------------------------------------------------------
 
 
-def _rebuild(harness: Harness, renames: dict[str, str] | None = None) -> None:
-    """A CLICK save rebuilt the analysis: a new tag map (with *renames* by address)."""
+def _rebuild(
+    harness: Harness, renames: dict[str, str] | None = None, *, saved: bool = True
+) -> None:
+    """A CLICK save rebuilt the analysis: a new tag map (with *renames* by address).
+
+    Not *saved*: a rebuild without a save (Reload from CLICK, a Sync).
+    """
+    if saved:
+        harness.saves += 1
     from pyclickplc.addresses import get_addr_key, parse_address
 
     old = harness.analysis._result
     key_to_tag = dict(old.addr_key_to_tag)
     for address, tag in (renames or {}).items():
         key_to_tag[get_addr_key(*parse_address(address))] = tag
-    harness.analysis._result = AnalysisResult(
-        graph=old.graph,
-        program=old.program,
-        project_dir=old.project_dir,
-        tag_to_addr_key={tag: key for key, tag in key_to_tag.items()},
-        addr_key_to_tag=key_to_tag,
+    _publish(
+        harness.analysis,
+        AnalysisResult(
+            graph=old.graph,
+            program=old.program,
+            project_dir=old.project_dir,
+            tag_to_addr_key={tag: key for key, tag in key_to_tag.items()},
+            addr_key_to_tag=key_to_tag,
+        ),
     )
     harness.analysis._generation += 1
-    harness.analysis._status = AnalysisStatus.READY
 
 
 def _bench_by_name(dap: FakeDap, names: dict[str, str]) -> None:
@@ -1229,71 +1295,335 @@ def test_saved_forces_and_links_not_on_an_address_are_reported(ready, tmp_path):
     assert "Could not restore the bench link on Prox: it is not a CLICK address." in errors
 
 
-def test_a_click_save_restarts_the_simulation_with_the_users_settings(ready):
-    from clicknick.simulation_session import WATCH_MS
-
+def _running_with_settings(ready) -> None:
+    """In RUN with a switch on, a force and a bench link, all acknowledged by frames."""
     ready.open()
     ready.sim.toggle_switch("X001")
     ready.sim.force("Y001", True)
     ready.sim.link("X002", ON_DELAY_LINK)
     ready.sim.set_switch_position("run")
-    ready.dap.frame(mode="run", running=True)
+    ready.dap.frame(mode="run", running=True, forces={"Y001": True})
     ready.scheduler.run_ready()
+
+
+def _calls_since(dap: FakeDap, mark: int) -> list[tuple]:
+    return [call[:3] for call in dap.calls[mark:]]
+
+
+def test_a_click_save_is_only_offered_until_the_user_writes_it(ready):
+    from clicknick.simulation_session import WATCH_MS
+
+    _running_with_settings(ready)
+    mark = len(ready.dap.calls)
+    ready.events.clear()
 
     _rebuild(ready)
     ready.scheduler.fire(WATCH_MS)
-
-    assert len(ready.daps) == 2
-    assert ("terminate",) in ready.daps[0].calls
-    calls = [call for call in ready.dap.calls if call[0] != "launch"]
-    assert calls[0][:3] == ("link", "X002", "Y001")
-    assert calls[1:] == [
-        ("force", "Y001", True),
-        ("set_mode", "run", {"X001": True}, None),
-        ("continue",),
-    ]
-    assert ready.sim.is_ready
-    assert ready.sim.notice is not None and "restarted" in ready.sim.notice
-    assert ready.sim.notice in ready.messages("progress")
-
     ready.scheduler.fire(WATCH_MS)
-    assert len(ready.daps) == 2, "one restart per save"
+
+    assert len(ready.daps) == 1
+    assert ready.dap.calls[mark:] == [], "nothing reaches the simulation"
+    change = ready.sim.program_change
+    assert change is not None and change.cause == "save"
+    assert "CLICK saved a new program" in change.text
+    assert change.actions == ("run_time_edit", "stop_and_write")
+    assert [e.kind for e in ready.events].count("desired") == 1, "offered once"
+
+    ready.dap.frame(mode="stop", running=False)
+    ready.scheduler.run_ready()
+    assert ready.sim.program_change.actions == ("write",), "in STOP there is one way to write"
 
 
-def test_the_simulation_waits_for_the_build_before_restarting(ready):
+def test_a_save_is_offered_once_its_build_is_done(ready):
     from clicknick.simulation_session import WATCH_MS
 
     ready.open()
+    ready.saves += 1
     ready.analysis._generation += 1
     ready.analysis._status = AnalysisStatus.BUILDING
     ready.scheduler.fire(WATCH_MS)
-    assert len(ready.daps) == 1
+    assert ready.sim.program_change is None
 
     ready.analysis._status = AnalysisStatus.READY
     ready.scheduler.fire(WATCH_MS)
-    assert len(ready.daps) == 2
+    assert ready.sim.program_change.cause == "save"
+    assert len(ready.daps) == 1
 
 
-def test_frames_while_the_program_is_rebuilt_do_not_change_the_users_forces(ready):
-    from clicknick.simulation_session import WATCH_MS
+def test_run_time_edit_reloads_in_place_and_keeps_running(ready):
+    _running_with_settings(ready)
+    _rebuild(ready)
+    mark = len(ready.dap.calls)
 
-    _named_and_running(ready)
-    _rebuild(ready, {"X001": "StartPB"})
-    # pyrung reloaded the new files on its own and could not force the old name again.
-    ready.dap.forces = {}
-    ready.dap.bench = {}
-    ready.dap.links_revision += 1
-    _frame(ready)
-    _frame(ready)
-    assert ready.sim.forces == {"X001": True}
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert len(ready.daps) == 1 and ("terminate",) not in ready.dap.calls, "no relaunch"
+    # pyrung carries the force and the link by name, timing included: nothing moves.
+    assert _calls_since(ready.dap, mark) == [
+        ("pause",),
+        ("reload",),
+        ("patch", {"X001": True}),
+        ("continue",),
+    ]
+    assert ready.sim.program_change is None
+    assert "Reloaded at scan 7" in ready.messages()
+    assert ready.sim.forces == {"Y001": True}
     assert ready.sim.bench_links == {"X002": ON_DELAY_LINK}
+    assert _echoes(ready)[-1] == "reload"
 
-    ready.scheduler.fire(WATCH_MS)
-    assert ("force", "X001", True) in ready.dap.calls
-    assert ready.dap.calls[1][:3] == ("link", "X002", "Y001")
-    ready.dap.forces = {"StartPB": True}
-    _frame(ready)
-    assert ready.sim.forces == {"X001": True}
+
+def _motor_running(ready) -> None:
+    """Y001 named Motor, in RUN with a force on it and a bench link it enables."""
+    _name(ready, "Y001", "Motor")
+    _running_with_settings(ready)
+    ready.dap.frame(forces={"Motor": True})  # pyrung lists forces by tag name
+    ready.scheduler.run_ready()
+    assert ready.sim.forces == {"Y001": True}
+
+
+def test_a_write_moves_onto_the_new_name_only_what_a_rename_would_carry_away(ready):
+    _motor_running(ready)
+    _rebuild(ready, {"Y001": "MotorRun"})
+    mark = len(ready.dap.calls)
+
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert _calls_since(ready.dap, mark) == [
+        ("pause",),
+        ("unforce", "Motor"),
+        ("restore_link", "X002"),  # its enable, Y001, was Motor
+        ("reload",),
+        ("link", "X002", "MotorRun"),
+        ("force", "MotorRun", True),
+        ("patch", {"X001": True}),
+        ("continue",),
+    ]
+    assert ready.dap.forces == {"MotorRun": True}
+    assert ready.dap.bench["X002"]["enable"] == "MotorRun"
+    assert ready.sim.forces == {"Y001": True}
+    assert ready.sim.bench_links == {"X002": ON_DELAY_LINK}
+    assert ready.sim.to_tag("Y001") == "MotorRun"
+    assert ready.sim.notice == (
+        "Kept under new names: Motor -> MotorRun (Y001), "
+        "the link on X002 from Motor -> link on X002 from MotorRun."
+    )
+
+
+def test_stop_and_write_goes_through_stop_to_run_in_the_same_process(ready):
+    _running_with_settings(ready)
+    _rebuild(ready)
+    mark = len(ready.dap.calls)
+
+    ready.sim.stop_and_write()
+    ready.scheduler.run_ready()
+
+    assert len(ready.daps) == 1 and ("terminate",) not in ready.dap.calls, "no relaunch"
+    assert _calls_since(ready.dap, mark) == [
+        ("pause",),
+        ("reload",),
+        ("set_mode", "stop", None),
+        ("set_mode", "run", {"X001": True}),
+        ("continue",),
+    ]
+    assert ready.sim.program_change is None
+    assert ready.dap.forces == {"Y001": True}, "kept through STOP -> RUN (keepForcesOnRun)"
+
+
+def test_write_in_stop_reloads_and_stays_in_stop(ready):
+    ready.open()
+    ready.sim.toggle_switch("X001")
+    ready.sim.force("Y001", True)
+    _rebuild(ready)
+    assert ready.sim.program_change.actions == ("write",)
+    mark = len(ready.dap.calls)
+
+    ready.sim.run_time_edit()  # offered only in RUN
+    ready.scheduler.run_ready()
+    ready.sim.stop_and_write()
+    ready.scheduler.run_ready()
+    assert ready.dap.calls[mark:] == []
+
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+    assert _calls_since(ready.dap, mark) == [
+        ("reload",),
+        ("set_mode", "stop", None),  # pyrung's reload leaves it in RUN
+    ]
+    assert len(ready.daps) == 1
+    assert ready.sim.program_change is None
+    assert ready.sim.forces == {"Y001": True}
+
+
+def test_write_while_stepping_keeps_the_values_and_stays_stepping(ready):
+    ready.open()
+    ready.sim.toggle_switch("X001")
+    ready.sim.set_switch_position("step")
+    ready.dap.frame(mode="run", running=False)
+    ready.scheduler.run_ready()
+    _rebuild(ready)
+    assert ready.sim.program_change.actions == ("write",)
+    mark = len(ready.dap.calls)
+
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+
+    assert _calls_since(ready.dap, mark) == [("reload",), ("patch", {"X001": True})]
+    assert ready.sim.switch_position == "step"
+
+
+def test_a_console_reload_writes_for_the_mode_it_is_in(ready):
+    ready.open()
+    _rebuild(ready)
+    mark = len(ready.dap.calls)
+    ready.sim.reload()
+    ready.scheduler.run_ready()
+    assert _calls_since(ready.dap, mark) == [("reload",), ("set_mode", "stop", None)]
+
+    ready.sim.set_switch_position("run")
+    ready.dap.frame(mode="run", running=True)
+    ready.scheduler.run_ready()
+    mark = len(ready.dap.calls)
+    ready.sim.reload()
+    ready.scheduler.run_ready()
+    assert _calls_since(ready.dap, mark)[:2] == [("pause",), ("reload",)]
+    assert ready.dap.calls[-1] == ("continue",)
+
+
+def test_frames_name_tags_as_the_written_program_does_from_its_answer_on(ready, tmp_path):
+    """X001 Start renamed StartPB and X005 named Start: `Start` means X001 until it is written."""
+    _name(ready, "X001", "Start")
+    ready.sim.set_state_location("Line1", None)
+    ready.open()
+    ready.dap.frame(forces={})
+    ready.scheduler.run_ready()
+    _rebuild(ready, {"X001": "StartPB", "X005": "Start"})
+
+    ready.dap.frame(forces={"Start": True})  # `force Start 1` in the Console
+    ready.scheduler.run_ready()
+    assert ready.sim.forces == {"X001": True}, "the running program's Start is X001"
+    assert ready.sim.to_tag("X001") == "Start"
+    ready.scheduler.fire(SAVE_DELAY_MS)
+    assert dict(load_state(tmp_path / "app" / "Line1.toml").forces) == {"X001": True}
+
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+    assert ("force", "StartPB", True) in ready.dap.calls, "X001's force, under its new name"
+    assert ready.dap.forces == {"StartPB": True}, "not on X005, the new Start"
+    assert ready.sim.to_tag("X001") == "StartPB"
+    ready.dap.frame(forces={"StartPB": True})
+    ready.scheduler.run_ready()
+    ready.dap.frame(forces={"StartPB": True, "Start": True})  # `force Start 1` again
+    ready.scheduler.run_ready()
+    assert ready.sim.forces == {"X001": True, "X005": True}
+
+
+class _GoneAfterTerminate(FakeDap):
+    """Like DapService: once terminated, every request fails."""
+
+    gone = False
+
+    def terminate(self):
+        super().terminate()
+        self.gone = True
+
+    def _check(self, name: str) -> None:
+        if self.gone:
+            raise RuntimeError(f"{name}: simulation is not running")
+
+    def force(self, tag, value):
+        self._check("pyrungForce")
+        return super().force(tag, value)
+
+    def link(self, feedback, enable, **kwargs):
+        self._check("pyrungLink")
+        return super().link(feedback, enable, **kwargs)
+
+    def unlink(self, feedback):
+        self._check("pyrungUnlink")
+        return super().unlink(feedback)
+
+    def set_links(self, **kwargs):
+        self._check("pyrungSetLinks")
+        return super().set_links(**kwargs)
+
+    def list_links(self):
+        self._check("pyrungListLinks")
+        return super().list_links()
+
+
+def _queued(harness: Harness) -> list:
+    """Hold the ordered action worker's jobs until the test runs them."""
+    jobs: list = []
+    harness.sim._run_serial = jobs.append
+    original = harness.sim._dap_factory
+
+    def factory(**callbacks):
+        original(**callbacks)
+        dap = _GoneAfterTerminate(**callbacks)
+        dap.program_names = harness.workspace_names
+        dap.launch_hook = harness.launch_hook
+        harness.daps[-1] = dap
+        return dap
+
+    harness.sim._dap_factory = factory
+    return jobs
+
+
+def _run_jobs(harness: Harness, jobs: list) -> None:
+    harness.scheduler.run_ready()
+    while jobs:
+        while jobs:
+            jobs.pop(0)()
+        harness.scheduler.run_ready()
+
+
+def test_internal_forces_whose_name_moves_are_listed_before_the_write_and_released(ready):
+    _name(ready, "C1", "Mode")
+    _name(ready, "DS1", "Speed")
+    _name(ready, "DS2", "Level")
+    ready.open()
+    for address, value in (("C1", True), ("DS1", 5), ("DS2", 7)):
+        ready.sim.force(address, value)
+    ready.dap.frame(forces={"Mode": True, "Speed": 5, "Level": 7})
+    ready.scheduler.run_ready()
+    _rebuild(ready, {"C1": "Auto", "DS1": "Spare", "DS5": "Speed"})
+
+    change = ready.sim.program_change
+    released = "Writing releases 2 forces: Mode (gone), Speed (DS1 -> DS5)."
+    assert released in change.text, "listed before the user writes"
+    mark = len(ready.dap.calls)
+
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+
+    assert _calls_since(ready.dap, mark) == [
+        ("unforce", "Mode"),
+        ("unforce", "Speed"),
+        ("reload",),
+        ("set_mode", "stop", None),
+    ]
+    assert ready.dap.forces == {"Level": 7}, "Level keeps DS2: pyrung carried it"
+    assert ready.sim.forces == {"DS2": 7}
+    assert released in (ready.sim.notice or "")
+
+
+def test_a_write_is_refused_while_a_rung_clicknick_cannot_read_is_in_the_workspace(ready):
+    _running_with_settings(ready)
+    _rebuild(ready)
+    _record_unreadable(ready.analysis.project_dir, 4)
+    mark = len(ready.dap.calls)
+
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert ready.dap.calls[mark:] == [], "the old program runs on"
+    notice = ready.sim.notice or ""
+    assert notice.startswith("Cannot write the program: ClickNick cannot read this rung")
+    assert "Conf_Compare rung 4" in notice
+    assert notice.endswith("The simulation still runs the previous program.")
+    assert not ready.sim.writing
 
 
 def _save_that_does_not_convert(ready, monkeypatch, tmp_path) -> None:
@@ -1308,47 +1638,284 @@ def _save_that_does_not_convert(ready, monkeypatch, tmp_path) -> None:
         ready.analysis.build(tmp_path / "scr", None)
 
 
-def test_a_save_that_does_not_convert_stops_the_simulation_until_one_does(
-    ready, monkeypatch, tmp_path
-):
+def test_a_console_reload_of_a_save_that_did_not_convert_is_refused(ready, monkeypatch, tmp_path):
     from clicknick.simulation_session import WATCH_MS
 
     ready.open()
     _save_that_does_not_convert(ready, monkeypatch, tmp_path)
     ready.scheduler.fire(WATCH_MS)
-    assert ready.sim.status is SimStatus.FAILED
-    assert ("terminate",) in ready.dap.calls
-    assert ready.messages("error").count("TypeError: boom") == 1
-    notice = ready.sim.notice
-    assert notice is not None
-    assert "TypeError: boom" in notice and "next save that converts" in notice
+    mark = len(ready.dap.calls)
 
-    ready.scheduler.fire(WATCH_MS)
-    assert ready.messages("error").count("TypeError: boom") == 1, "reported once"
+    ready.sim.reload()
+    ready.scheduler.run_ready()
 
-    _rebuild(ready)  # the next save converts
-    ready.scheduler.fire(WATCH_MS)
-    assert len(ready.daps) == 2
+    assert ready.dap.calls[mark:] == []
+    assert "Cannot write the program" in ready.messages("error")
+    assert "TypeError: boom" in (ready.sim.notice or "")
+
+
+def test_restart_refuses_a_workspace_that_cannot_start_and_keeps_the_simulation(ready):
+    _running_with_settings(ready)
+    _rebuild(ready)
+    _record_unreadable(ready.analysis.project_dir, 4)
+
+    ready.sim.restart()
+    ready.scheduler.run_ready()
+
+    assert len(ready.daps) == 1 and ("terminate",) not in ready.dap.calls
     assert ready.sim.is_ready
-    assert ready.sim.notice is not None and "restarted" in ready.sim.notice
+    assert "Cannot restart the simulation: ClickNick cannot read" in ready.messages("error")
+
+    ready.analysis._status = AnalysisStatus.BUILDING
+    ready.sim.restart()
+    ready.scheduler.run_ready()
+    assert len(ready.daps) == 1
+    assert "still being converted" in (ready.sim.notice or "")
+
+    ready.analysis._status = AnalysisStatus.FAILED  # the save did not convert
+    ready.analysis._error = "TypeError: boom"
+    ready.sim.restart()
+    ready.scheduler.run_ready()
+    assert len(ready.daps) == 1 and ready.sim.is_ready
+    assert "TypeError: boom" in (ready.sim.notice or "")
 
 
-def test_a_restart_that_fails_does_not_say_it_restarted(ready):
+def test_a_console_force_the_last_frame_did_not_show_is_kept(ready):
+    _running_with_settings(ready)
+    _rebuild(ready)
+    ready.dap.forces = {**ready.dap.forces, "C1": True}  # `force C1 1`, before any frame
+
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert ready.dap.forces == {"Y001": True, "C1": True}
+    assert ready.sim.forces == {"Y001": True, "C1": True}
+
+
+def test_a_console_unforce_the_last_frame_did_not_show_is_not_forced_again(ready):
+    _motor_running(ready)
+    _rebuild(ready, {"Y001": "MotorRun"})
+    ready.dap.forces = {}  # `unforce Motor`, before any frame
+    mark = len(ready.dap.calls)
+
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert not any(call[0] == "force" for call in ready.dap.calls[mark:])
+    assert ready.dap.forces == {}
+    assert ready.sim.forces == {}
+
+
+def test_a_bench_link_follows_its_enable_name_to_its_new_address(ready):
+    _name(ready, "Y001", "Motor")
+    ready.open()
+    ready.sim.link("X002", ON_DELAY_LINK)
+    _frame(ready)
+    _rebuild(ready, {"Y001": "MotorRun", "Y002": "Motor"})
+    mark = len(ready.dap.calls)
+
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+
+    assert _calls_since(ready.dap, mark) == [("reload",), ("set_mode", "stop", None)]
+    assert ready.dap.bench["X002"]["enable"] == "Motor"
+    assert ready.sim.bench_links == {"X002": BenchLink("Y002", response=response(on_delay="1s"))}
+
+
+def test_restoring_a_bench_change_already_gone_counts_as_done():
+    from clicknick.simulation_session import _restore_link
+
+    dap = FakeDap()
+    _restore_link(dap, "X002")  # pyrung: "X002 has no bench change"
+    dap.restore_link = MagicMock(side_effect=DapRequestError("simulation is not running"))
+    with pytest.raises(DapRequestError):
+        _restore_link(dap, "X002")
+
+
+def test_a_save_during_the_write_keeps_the_old_names_and_offers_it_again(ready):
+    _name(ready, "X001", "Start")
+    _running_with_settings(ready)
+    _rebuild(ready, {"X001": "StartPB"})
+
+    ready.sim.run_time_edit()
+    _rebuild(ready)  # CLICK saved again before pyrung's answer was handled
+    ready.scheduler.run_ready()
+
+    assert "changed while it was written" in ready.messages("error")
+    assert ready.sim.to_tag("X001") == "Start"
+    change = ready.sim.program_change
+    assert change is not None and change.cause == "save"
+    assert change.actions == ("run_time_edit", "stop_and_write")
+
+
+def test_writes_that_cannot_start_say_why(ready):
+    ready.sim.reload()
+    assert "Cannot write the program: the simulation is not running." in ready.messages("error")
+
+    jobs = _queued(ready)
+    ready.open()
+    _run_jobs(ready, jobs)
+    _rebuild(ready)
+    ready.sim.write_program()
+    ready.sim.reload()
+    assert "The program is being written to the simulation." in ready.messages("error")
+    _run_jobs(ready, jobs)
+    assert ready.dap.calls.count(("reload",)) == 1
+
+
+def test_only_writes_from_the_simulator_echo_reload(ready):
+    ready.open()
+    _rebuild(ready)
+    ready.sim.reload()  # the Console's own `reload`
+    ready.scheduler.run_ready()
+    assert "reload" not in _echoes(ready)
+
+    _rebuild(ready)
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+    assert _echoes(ready)[-1] == "reload"
+
+
+def test_while_writing_there_is_nothing_to_click_and_the_switch_stays(ready):
+    jobs = _queued(ready)
+    ready.open()
+    _run_jobs(ready, jobs)
+    ready.sim.set_switch_position("run")
+    _run_jobs(ready, jobs)
+    ready.dap.frame(mode="run", running=True)
+    ready.scheduler.run_ready()
+    _rebuild(ready)
+
+    ready.sim.run_time_edit()
+    assert ready.sim.writing
+    assert ready.sim.program_change.actions == ()
+    ready.dap.frame(mode="run", running=False)  # paused for the reload
+    ready.scheduler.run_ready()
+    assert ready.sim.switch_position == "run", "no STEP in between"
+
+    _run_jobs(ready, jobs)
+    assert not ready.sim.writing
+    assert ready.sim.program_change is None
+
+
+def test_a_rebuild_without_a_save_is_offered_as_a_rebuild(ready):
+    ready.open()
+    _rebuild(ready, saved=False)  # Reload from CLICK, or a Sync
+    change = ready.sim.program_change
+    assert change.cause == "rebuilt"
+    assert "rebuilt from CLICK's last save (Reload from CLICK or a Sync)" in change.text
+    assert change.actions == ("write",)
+
+
+def test_a_failed_write_puts_back_what_it_released_and_offers_a_restart(ready):
+    _name(ready, "X001", "Start")
+    _motor_running(ready)
+    _rebuild(ready, {"X001": "StartPB", "Y001": "MotorRun"})
+    ready.dap.reload_error = DapRequestError("Reload failed: invalid syntax (main.py, line 3)")
+
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert len(ready.daps) == 1
+    assert ready.dap.calls[-1] == ("continue",), "back to RUN on the old program"
+    after = _calls_since(ready.dap, ready.dap.calls.index(("reload",)))
+    assert ("link", "X002", "Motor") in after and ("force", "Motor", True) in after
+    assert ready.dap.forces == {"Motor": True}
+    assert ready.dap.bench["X002"]["enable"] == "Motor"
+    assert ready.sim.forces == {"Y001": True}
+    assert ready.sim.bench_links == {"X002": ON_DELAY_LINK}
+    assert "invalid syntax" in ready.messages("error")
+    assert ready.sim.to_tag("X001") == "Start"
+    change = ready.sim.program_change
+    assert change.cause == "save" and "invalid syntax" in change.text
+    assert change.actions == ("run_time_edit", "stop_and_write", "restart")
+
+    ready.sim.restart()
+    ready.scheduler.run_ready()
+    assert len(ready.daps) == 2
+    assert ready.sim.program_change is None
+    assert ready.sim.to_tag("X001") == "StartPB"
+
+
+def test_a_save_that_does_not_convert_keeps_the_old_program_running(ready, monkeypatch, tmp_path):
     from clicknick.simulation_session import WATCH_MS
 
     ready.open()
-    _rebuild(ready)
+    _save_that_does_not_convert(ready, monkeypatch, tmp_path)
     ready.scheduler.fire(WATCH_MS)
-    assert ready.sim.notice is not None and "restarted" in ready.sim.notice
 
-    _rebuild(ready)
-    ready.next_launch_error = RuntimeError("DAP launch failed: boom")
+    assert ready.sim.is_ready
+    assert ("terminate",) not in ready.dap.calls
+    change = ready.sim.program_change
+    assert change is not None and change.cause == "unconverted"
+    assert "TypeError: boom" in change.text and change.actions == ()
+
+    _rebuild(ready)  # the next save converts
     ready.scheduler.fire(WATCH_MS)
-    assert ready.sim.status is SimStatus.FAILED
-    assert ready.sim.notice is None
+    assert ready.sim.program_change.cause == "save"
+    assert len(ready.daps) == 1
 
 
-def test_console_forces_and_links_made_while_click_saves_survive_the_restart(ready):
+def test_restart_starts_over_with_the_users_settings(ready, tmp_path):
+    _running_with_settings(ready)
+    ready.snapshot = {"X001": True}
+    data = tmp_path / "line1_data.csv"
+    data.write_text("x", encoding="utf-8")
+    ready.sim.set_plc_data_path(data)
+    ready.scheduler.run_ready()
+    ready.dap.frame(mode="run", running=True, forces={"Y001": True})
+    ready.scheduler.run_ready()
+    _rebuild(ready)
+    launches = len(ready.daps)
+
+    ready.sim.restart()
+    ready.scheduler.run_ready()
+
+    assert len(ready.daps) == launches + 1, "one relaunch"
+    assert ("terminate",) in ready.daps[-2].calls
+    launch = ready.dap.calls[0]
+    assert launch[0] == "launch" and launch[2]["snapshot_path"] == data
+    calls = [call[:3] for call in ready.dap.calls[1:]]
+    assert calls == [
+        ("link", "X002", "Y001"),
+        ("force", "Y001", True),
+        ("set_mode", "run", {"X001": True}),
+        ("continue",),
+    ]
+    assert ready.sim.program_change is None, "it runs the newer program"
+
+
+def test_console_releases_while_click_saves_are_kept(ready):
+    """`unforce Y001` and `restore X002` in the Console while CLICK's save builds."""
+    from clicknick.simulation_session import WATCH_MS
+
+    ready.open()
+    ready.sim.force("Y001", True)
+    ready.sim.link("X002", ON_DELAY_LINK)
+    ready.dap.frame(forces={"Y001": True})
+    ready.scheduler.run_ready()
+    ready.analysis._generation += 1
+    ready.analysis._status = AnalysisStatus.BUILDING
+
+    ready.dap.restore_link("X002")
+    ready.dap.frame(forces={})
+    ready.scheduler.run_ready()
+    assert ready.sim.forces == {}
+    assert ready.sim.bench_links == {}
+
+    ready.analysis._status = AnalysisStatus.READY
+    ready.scheduler.fire(WATCH_MS)
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+    after = ready.dap.calls[ready.dap.calls.index(("reload",)) :]
+    assert not any(call[0] in ("force", "link") for call in after)
+    ready.sim.restart()
+    ready.scheduler.run_ready()
+    assert len(ready.daps) == 2
+    assert not any(call[0] in ("force", "link") for call in ready.dap.calls)
+
+
+def test_console_forces_and_links_made_while_click_saves_are_kept(ready):
     from clicknick.simulation_session import WATCH_MS
 
     ready.open()
@@ -1366,11 +1933,12 @@ def test_console_forces_and_links_made_while_click_saves_survive_the_restart(rea
 
     ready.analysis._status = AnalysisStatus.READY
     ready.scheduler.fire(WATCH_MS)
-    assert len(ready.daps) == 2
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
     assert ready.sim.forces == {"Y001": True, "C1": True}
     assert "X002" in ready.sim.bench_links
-    assert ("force", "C1", True) in ready.dap.calls
-    assert any(call[:3] == ("link", "X002", "Y001") for call in ready.dap.calls)
+    assert ready.dap.forces == {"Y001": True, "C1": True}, "pyrung carried them"
+    assert "X002" in ready.dap.bench
 
 
 def test_console_changes_while_a_build_fails_to_start_are_followed(ready):
@@ -1388,14 +1956,80 @@ def test_console_changes_while_a_build_fails_to_start_are_followed(ready):
     ready.dap.links_revision += 1
     ready.dap.frame(forces={"C1": True})
     ready.scheduler.run_ready()
-    assert ready.sim.forces == {"Y001": True, "C1": True}, "a release waits for the build"
+    assert ready.sim.forces == {"C1": True}
+    assert ready.sim.bench_links == {}
 
     ready.analysis.mark_failed("no saved ladder files")  # failed before build() ran
     ready.scheduler.fire(WATCH_MS)
     assert len(ready.daps) == 1
-    _frame(ready)
     assert ready.sim.forces == {"C1": True}
-    assert ready.sim.bench_links == {}
+
+
+def _plc_source(ready) -> Path:
+    main = ready.analysis.project_dir / "src" / "plc" / "main.py"
+    main.parent.mkdir(parents=True, exist_ok=True)
+    main.write_text("rung = 1\n", encoding="utf-8")
+    return main
+
+
+def _edit(path: Path, text: str) -> None:
+    import os
+
+    path.write_text(text, encoding="utf-8")
+    info = path.stat()
+    os.utime(path, ns=(info.st_atime_ns, info.st_mtime_ns + 2_000_000_000))
+
+
+def test_an_edit_to_the_workspace_source_is_offered_until_written(ready):
+    from clicknick.simulation_session import WATCH_MS
+
+    main = _plc_source(ready)
+    ready.open()
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.sim.program_change is None
+
+    _edit(main, "rung = 2\n")
+    ready.scheduler.fire(WATCH_MS)
+    change = ready.sim.program_change
+    assert change is not None and change.cause == "source"
+    assert "The workspace's ladder source changed" in change.text
+    assert change.actions == ("write",)
+    assert len(ready.daps) == 1 and ("reload",) not in ready.dap.calls
+
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.sim.program_change is None
+    assert len(ready.daps) == 1
+
+
+def test_a_source_edit_undone_is_not_offered(ready):
+    from clicknick.simulation_session import WATCH_MS
+
+    main = _plc_source(ready)
+    ready.open()
+    _edit(main, "rung = 2\n")
+    ready.scheduler.fire(WATCH_MS)
+    _edit(main, "rung = 1\n")
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.sim.program_change is None
+
+
+def test_a_click_save_that_rewrites_the_source_is_offered_as_a_save(ready):
+    from clicknick.simulation_session import WATCH_MS
+
+    main = _plc_source(ready)
+    ready.open()
+    ready.saves += 1
+    ready.analysis._generation += 1
+    ready.analysis._status = AnalysisStatus.BUILDING
+    _edit(main, "rung = 3\n")  # the build publishes the new source
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.sim.program_change is None, "still building"
+
+    _publish(ready.analysis, ready.analysis._result)
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.sim.program_change.cause == "save"
 
 
 def test_a_restore_request_that_goes_unanswered_does_not_stop_the_rest(ready):
@@ -1454,65 +2088,6 @@ def test_closing_while_the_simulation_starts_terminates_it(ready):
     ready.sim.turn_on()
     ready.scheduler.run_ready()
     assert ("terminate",) in ready.dap.calls
-
-
-class _GoneAfterTerminate(FakeDap):
-    """Like DapService: once terminated, every request fails."""
-
-    gone = False
-
-    def terminate(self):
-        super().terminate()
-        self.gone = True
-
-    def _check(self, name: str) -> None:
-        if self.gone:
-            raise RuntimeError(f"{name}: simulation is not running")
-
-    def force(self, tag, value):
-        self._check("pyrungForce")
-        return super().force(tag, value)
-
-    def link(self, feedback, enable, **kwargs):
-        self._check("pyrungLink")
-        return super().link(feedback, enable, **kwargs)
-
-    def unlink(self, feedback):
-        self._check("pyrungUnlink")
-        return super().unlink(feedback)
-
-    def set_links(self, **kwargs):
-        self._check("pyrungSetLinks")
-        return super().set_links(**kwargs)
-
-    def list_links(self):
-        self._check("pyrungListLinks")
-        return super().list_links()
-
-
-def _queued(harness: Harness) -> list:
-    """Hold the ordered action worker's jobs until the test runs them."""
-    jobs: list = []
-    harness.sim._run_serial = jobs.append
-    original = harness.sim._dap_factory
-
-    def factory(**callbacks):
-        original(**callbacks)
-        dap = _GoneAfterTerminate(**callbacks)
-        dap.launch_hook = harness.launch_hook
-        harness.daps[-1] = dap
-        return dap
-
-    harness.sim._dap_factory = factory
-    return jobs
-
-
-def _run_jobs(harness: Harness, jobs: list) -> None:
-    harness.scheduler.run_ready()
-    while jobs:
-        while jobs:
-            jobs.pop(0)()
-        harness.scheduler.run_ready()
 
 
 def test_stopping_while_settings_are_restored_keeps_them(ready, tmp_path):
@@ -1632,3 +2207,147 @@ def test_a_simulation_that_dies_as_it_starts_is_reported(ready):
     assert ready.sim.error_detail == "Traceback: crashed"
     assert ("terminate",) in ready.dap.calls
     assert "stopped unexpectedly" in ready.messages("error")
+
+
+# ----------------------------------------------------------------------
+# Values through a write, on pyrung's own adapter (in process)
+# ----------------------------------------------------------------------
+
+_VALUES_PROGRAM = """\
+import warnings
+warnings.simplefilter("ignore")
+from pyrung.core import Bool, Int, PLC, Program, Rung, calc, out
+start = Bool("Start")
+light = Bool("Light")
+ret = Int("Ret", retentive=True)
+nonret = Int("NonRet", retentive=False)
+with Program(strict=False) as prog:
+    with Rung(start):
+        out(light)
+    with Rung():
+        calc(ret + 1, ret)
+    with Rung():
+        calc(nonret + 1, nonret)
+runner = PLC(prog, dt=0.010)
+"""
+
+
+def _adapter_dap_class():
+    """A DapService that talks to pyrung's DAPAdapter in process, scanning only when told."""
+    import io
+
+    adapter_module = pytest.importorskip("pyrung.dap.adapter")
+    from pyrung.dap.protocol import read_message
+
+    from clicknick.services.dap_service import DapService
+
+    class AdapterDap(DapService):
+        def launch(self, project_dir, **_kwargs):
+            self._out = io.BytesIO()
+            self._adapter = adapter_module.DAPAdapter(in_stream=io.BytesIO(), out_stream=self._out)
+            self._proc = object()  # requests go to the adapter
+            arguments = {
+                "program": str(project_dir / "run.py"),
+                "startMode": "stop",
+                "keepForcesOnRun": True,
+            }
+            assert self._send_and_wait("launch", arguments)["success"]
+            assert self._send_and_wait("configurationDone")["success"]
+
+        def terminate(self):
+            self._proc = None
+
+        def _send_and_wait(self, command, arguments=None, timeout=10.0):
+            self._seq += 1
+            self._adapter.handle_request(
+                {"seq": self._seq, "type": "request", "command": command,
+                 "arguments": arguments or {}}
+            )  # fmt: skip
+            reader = io.BytesIO(self._out.getvalue())
+            self._out.seek(0)
+            self._out.truncate(0)
+            responses = []
+            while (message := read_message(reader)) is not None:
+                if message.get("type") == "response":
+                    responses.append(message)
+            return responses[-1] if responses else None
+
+        # RUN free-runs only as a flag; the test scans.
+        def continue_(self):
+            self._running = True
+
+        def pause(self):
+            self._running = False
+
+        def scan(self, count: int = 1) -> None:
+            for _ in range(count):
+                assert self._send_and_wait("pyrungStepScan")["success"]
+
+        def frame(self) -> None:
+            runner = self._adapter._runner
+            self._mode = str(getattr(runner.mode, "value", runner.mode))
+            self._forces = dict(runner.forces)
+            self._on_frame()
+
+        def tag(self, name):
+            return self._adapter._runner.current_state.tags.get(name)
+
+    return AdapterDap
+
+
+@pytest.fixture()
+def on_pyrung(tmp_path):
+    """The harness, with the simulation on pyrung's adapter running a counting program."""
+    dap_class = _adapter_dap_class()
+    project = tmp_path / "project"
+    project.mkdir()
+    harness = Harness(tmp_path, _ready_analysis(project))
+    (project / "run.py").write_text(_VALUES_PROGRAM, encoding="utf-8")
+    for address, tag in (("X001", "Start"), ("Y001", "Light"), ("DS1", "Ret"), ("DS2", "NonRet")):
+        _name(harness, address, tag)
+
+    def factory(**callbacks):
+        dap = dap_class(**callbacks)
+        harness.daps.append(dap)
+        return dap
+
+    harness.sim._dap_factory = factory
+    harness.open()
+    dap = harness.dap
+    dap.frame()  # the baseline frames are compared with
+    harness.scheduler.run_ready()
+    harness.sim.set_switch_position("run")
+    harness.scheduler.run_ready()
+    dap.scan(5)
+    dap.force("Light", True)  # `force Light 1` in the Console
+    dap.scan(1)
+    dap.frame()
+    harness.scheduler.run_ready()
+    assert harness.sim.switch_position == "run"
+    assert harness.sim.forces == {"Y001": True}
+    assert (dap.tag("Ret"), dap.tag("NonRet")) == (6, 6)
+    return harness
+
+
+def test_run_time_edit_keeps_every_value_and_the_force(on_pyrung):
+    dap = on_pyrung.dap
+    _rebuild(on_pyrung)
+    on_pyrung.sim.run_time_edit()
+    on_pyrung.scheduler.run_ready()
+    dap.scan(1)
+
+    assert (dap.tag("Ret"), dap.tag("NonRet"), dap.tag("Light")) == (7, 7, True)
+    assert dict(dap._adapter._runner.forces) == {"Light": True}
+    assert on_pyrung.sim.program_change is None
+
+
+def test_stop_and_write_clears_non_retentive_values_and_keeps_the_force(on_pyrung):
+    dap = on_pyrung.dap
+    _rebuild(on_pyrung)
+    on_pyrung.sim.stop_and_write()
+    on_pyrung.scheduler.run_ready()
+    dap.scan(1)
+
+    assert (dap.tag("Ret"), dap.tag("NonRet"), dap.tag("Light")) == (7, 1, True)
+    assert dict(dap._adapter._runner.forces) == {"Light": True}
+    assert dap.mode == "run"

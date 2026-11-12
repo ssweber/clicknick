@@ -888,3 +888,103 @@ def test_the_simulator_follows_the_address_data_the_app_holds_now(tk_root, monke
     finally:
         win._on_close()
     assert second.observers == []
+
+
+def _rebuilt(harness) -> None:
+    from test_simulation_session import _rebuild
+
+    from clicknick.simulation_session import WATCH_MS
+
+    _rebuild(harness)
+    harness.scheduler.fire(WATCH_MS)
+
+
+def test_a_changed_program_is_offered_with_clicks_ways_of_writing_it(simulator, ready):
+    win = simulator(ready)
+    _rebuilt(ready)
+    [labels] = [labels for text, labels in win._banner_key if "CLICK saved" in text]
+    assert labels == ("Write",)
+
+    ready.sim.set_switch_position("run")
+    ready.dap.frame(mode="run", running=True)
+    ready.scheduler.run_ready()
+    [labels] = [labels for text, labels in win._banner_key if "CLICK saved" in text]
+    assert labels == ("RUN Time Edit", "Stop and Write")
+
+    [row] = [
+        row
+        for row in win._banner.winfo_children()
+        if "CLICK saved" in str(row.winfo_children()[0].cget("text"))
+    ]
+    [button] = [
+        b
+        for b in row.winfo_children()
+        if b.winfo_class() == "TButton" and b.cget("text") == "RUN Time Edit"
+    ]
+    button.invoke()
+    ready.scheduler.run_ready()
+    assert ("reload",) in ready.dap.calls
+    assert not any("CLICK saved" in text for text, _labels in win._banner_key)
+    assert len(ready.daps) == 1
+
+
+def test_restart_starts_the_simulation_over(simulator, ready):
+    win = simulator(ready)
+    assert str(win._restart_btn.cget("state")) == "normal"
+    win._restart_btn.invoke()
+    ready.scheduler.run_ready()
+    assert len(ready.daps) == 2
+    assert ("terminate",) in ready.daps[0].calls
+
+    ready.sim.turn_off()
+    win._refresh_toolbar()
+    assert str(win._restart_btn.cget("state")) == "disabled"
+
+
+def test_a_console_reload_writes_the_program_and_autoreload_is_refused(simulator, ready):
+    win = simulator(ready)
+    _rebuilt(ready)
+    sent: list[str] = []
+    win._console._send = lambda command, **_kw: (sent.append(command), (True, ""))[1]
+
+    win._console._submit_command_text("autoreload")
+    assert "autoreload stays off" in _output(win._console)
+    win._console._submit_command_text("reload; continue")
+    assert "Send reload on its own." in _output(win._console)
+    assert sent == [] and ("reload",) not in ready.dap.calls
+
+    win._console._submit_command_text("reload")
+    ready.scheduler.run_ready()
+    assert ("reload",) in ready.dap.calls
+    assert ready.sim.program_change is None
+    assert sent == []
+
+
+def test_the_console_waits_while_the_program_is_written(simulator, ready):
+    from test_simulation_session import _record_unreadable
+
+    win = simulator(ready)
+    _rebuilt(ready)
+    sent: list[str] = []
+    win._console._send = lambda command, **_kw: (sent.append(command), (True, ""))[1]
+    jobs: list = []
+    ready.sim._run_serial = jobs.append
+
+    win._console._submit_command_text("reload")
+    assert ready.sim.writing
+    win._console._submit_command_text("force C1 1")
+    assert "Send it again once it is written." in _output(win._console)
+    assert sent == []
+
+    while jobs:
+        jobs.pop(0)()
+    ready.scheduler.run_ready()
+    assert not ready.sim.writing
+
+    _rebuilt(ready)
+    _record_unreadable(ready.analysis.project_dir, 4)
+    win._console._submit_command_text("reload")
+    assert "Cannot write the program: ClickNick cannot read this rung" in _output(win._console)
+    while jobs:
+        jobs.pop(0)()
+    assert ready.dap.calls.count(("reload",)) == 1

@@ -567,7 +567,7 @@ def test_switching_workspace_moves_and_restarts_the_simulation(tmp_path, monkeyp
 
     session.analysis.invalidate.assert_called_once_with()
     session.simulation.set_state_location.assert_called_once_with("Line1", workspace.resolve())
-    session.simulation.restart.assert_called_once_with()
+    session.simulation.relaunch.assert_called_once_with()
     assert session.workspace_dir == workspace.resolve()
 
 
