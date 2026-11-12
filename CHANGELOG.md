@@ -96,6 +96,9 @@
 - **Stop** in the main window turns off only autocomplete, until you click **Start** or pick a window: ClickNick still notices CLICK closing or opening another project (it kept the old project's editors, simulation and database).
 - A CSV that cannot be loaded shows why, such as a missing Nickname column (the status only said "CSV load failed").
 - Two CLICK windows with the same project name are listed with their PIDs, so either can be picked, and the window list and status no longer show a window or "Monitoring" that is not current.
+- `clicknick-cli tag apply` changes only the annotations you changed in `tags.py` and keeps the rest of the comment, its text and block tag (it replaced the comment with the annotations alone, such as `[uom=mm]`), and no longer stages `[external]` on analog input channels you did not edit.
+- `clicknick-cli` passes each argument as you typed it, so a value can hold quotes, backslashes, `#` or `;` (`set DS1 comment "Don't start"`); a command given as one argument is still split at spaces and `;` outside quotes, and keeps its backslashes.
+- `clicknick-cli prompt-save` answers at once while ClickNick shows the reminder, instead of holding every other command until the dialog is closed.
 
 ## v0.23.4 - 2026-10-11
 

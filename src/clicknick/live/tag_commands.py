@@ -6,7 +6,7 @@ All commands accept a pyrung tag name (preferred) or CLICK display address.
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import fields, replace
 from typing import TYPE_CHECKING
 
 from pyrung.click.tag_map import TagMeta, format_tag_meta
@@ -362,7 +362,7 @@ def _export_nicknames(tags_source: str, out_csv) -> None:
     mapping.to_nickname_file(out_csv, blocks=ns.get("blocks"))  # type: ignore[attr-defined]
 
 
-def _load_export_rows(project_dir):
+def _load_export_rows(project_dir, *, analog_inputs: frozenset[str]):
     """Return (baseline_rows, current_rows): addr_key -> AddressRow.
 
     ``baseline`` is the pristine tags module reconstructed from the persisted ladder
@@ -370,7 +370,8 @@ def _load_export_rows(project_dir):
     the tags.py on disk (with edits). Diffing the two exports cancels every
     systematic round-trip artifact (``[external]`` inference, bank-default
     retentive/initial on unnamed slots, hex padding, system addresses), leaving
-    only the agent's genuine edits.
+    only the agent's genuine edits. *analog_inputs* are the analog input channels
+    the workspace was generated with: pyrung marks them ``external``.
     """
     import tempfile
     from pathlib import Path
@@ -379,7 +380,9 @@ def _load_export_rows(project_dir):
     from ..services.project_workspace import plc_source_dir
     from .rung_commands import _get_before_files
 
-    baseline_src = _get_before_files(project_dir).get("src/plc/tags.py")
+    baseline_src = _get_before_files(project_dir, analog_inputs=analog_inputs).get(
+        "src/plc/tags.py"
+    )
     if not baseline_src:
         raise ValueError("could not reconstruct baseline tags.py from persisted CSVs")
     current_src = (plc_source_dir(project_dir) / "tags.py").read_text(encoding="utf-8")
@@ -395,6 +398,41 @@ def _load_export_rows(project_dir):
         )
 
 
+def _merge_meta(visible: TagMeta, base: TagMeta, cur: TagMeta) -> TagMeta:
+    """Take each annotation key tags.py changed; keep the others as the store holds them."""
+    changed = {
+        f.name: getattr(cur, f.name)
+        for f in fields(TagMeta)
+        if getattr(cur, f.name) != getattr(base, f.name)
+    }
+    return replace(visible, **changed)
+
+
+def _merge_comment(display_address: str, visible: str, base: str, cur: str) -> str:
+    """Carry what tags.py changed in a comment into the comment the store holds.
+
+    tags.py holds only part of a comment (generated code leaves out the block tag
+    and the text), so the comment is split into block tag, annotations and text,
+    and only the parts that differ between the two exports are taken.
+    """
+    decompose = AnnotationService.decompose_comment
+    visible_block, visible_meta, visible_text = decompose(visible)
+    base_block, base_meta, base_text = decompose(base)
+    cur_block, cur_meta, cur_text = decompose(cur)
+    meta = _merge_meta(visible_meta or TagMeta(), base_meta or TagMeta(), cur_meta or TagMeta())
+    errors = AnnotationService.validate_meta(meta)
+    if errors:
+        raise ValueError(
+            f"{display_address}: tags.py annotations do not fit the comment "
+            f"{visible!r}: {'; '.join(errors)}"
+        )
+    return AnnotationService.recompose_comment(
+        cur_block if cur_block != base_block else visible_block,
+        meta,
+        cur_text if cur_text != base_text else visible_text,
+    )
+
+
 def _compute_tag_changes(base_rows, cur_rows, store) -> list[tuple[int, str, str | bool]]:
     """Diff current-export against baseline-export into store field edits.
 
@@ -402,16 +440,17 @@ def _compute_tag_changes(base_rows, cur_rows, store) -> list[tuple[int, str, str
     agent's edits land. A row present in ``cur`` but absent from ``base`` is a
     brand-new tag on a previously-empty slot; it's compared against a synthesized
     default (using ``is_default_initial_value`` + ``DEFAULT_RETENTIVE``) so only
-    genuinely-set fields count. (Removals — a nickname dropped from tags.py — are
-    not cleared: this is the additive add/annotate flow, not a full replace.)
+    genuinely-set fields count. A changed comment is merged into the store's
+    comment part by part (``_merge_comment``). (Removals — a nickname dropped from
+    tags.py — are not cleared: this is the additive add/annotate flow, not a full
+    replace.)
     """
-    from dataclasses import replace
-
     from pyclickplc.banks import DEFAULT_RETENTIVE
 
     changes: list[tuple[int, str, str | bool]] = []
     for addr_key, cur in cur_rows.items():
-        if store.get_visible_row(addr_key) is None:
+        visible = store.get_visible_row(addr_key)
+        if visible is None:
             continue  # not tracked by the store (hidden/unsupported slot)
         base = base_rows.get(addr_key)
         if base is None:
@@ -425,7 +464,11 @@ def _compute_tag_changes(base_rows, cur_rows, store) -> list[tuple[int, str, str
         if cur.nickname != base.nickname:
             changes.append((addr_key, "nickname", cur.nickname))
         if cur.comment != base.comment:
-            changes.append((addr_key, "comment", cur.comment))
+            comment = _merge_comment(
+                visible.display_address, visible.comment, base.comment, cur.comment
+            )
+            if comment != visible.comment:
+                changes.append((addr_key, "comment", comment))
         if initial_values_differ(base, cur):
             changes.append((addr_key, "initial_value", cur.initial_value))
         if cur.retentive != base.retentive:
@@ -440,13 +483,15 @@ def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
     them so only real edits survive, lands them as one batched staged change,
     and pops the Address Editor filtered to "Changed" for review + Sync.
     """
+    from ..services.analysis_service import _channel_inputs
     from .rung_commands import _get_project_dir
 
     assert ctx.store is not None
     store = ctx.store
 
     project_dir = _get_project_dir(ctx)
-    base_rows, cur_rows = _load_export_rows(project_dir)
+    analog_inputs = _channel_inputs(ctx.scr_folder) if ctx.scr_folder else frozenset()
+    base_rows, cur_rows = _load_export_rows(project_dir, analog_inputs=analog_inputs)
     changes = _compute_tag_changes(base_rows, cur_rows, store)
 
     if not changes:

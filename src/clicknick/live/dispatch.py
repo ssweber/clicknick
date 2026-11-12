@@ -17,7 +17,8 @@ Grammar (one command per connection)::
     rung <subcommand> ...              -> program listing / apply
     prompt-save                        -> pop a save reminder dialog in the GUI
 ``<field>`` is one of: nickname, comment, initial_value, retentive.
-Values may be quoted (shlex), e.g. ``set DS1 comment "Main motor run"``.
+Values may be quoted, e.g. ``set DS1 comment "Main motor run"``; a backslash is
+an ordinary character (``split_words``).
 ``<ID>`` is a pyrung tag name (preferred) or CLICK display address (``DS1``, ``C100``).
 """
 
@@ -48,6 +49,8 @@ class DispatchContext:
     store: AddressStore | None = None
     resolve_tag: Callable[[str], int | None] | None = None
     analysis: Any | None = None  # AnalysisService (avoid import for lightweight CLI)
+    # The connected CLICK window's folder (SC_.mdb, Scr*.tmp, Project.ini), or None.
+    scr_folder: Path | None = None
     annotation: AnnotationService = field(default_factory=AnnotationService)
     # (bundle folder, workspace source folder, program to select, its rungs to
     # paste, open a window if none shows the folder) -> Preview Changes
@@ -59,6 +62,40 @@ class DispatchContext:
     staged_rungs: int = 0
     project_saved: bool | None = None
     pyrung_live_available: bool = False
+
+
+def _lexer(text: str, punctuation_chars: str = "") -> shlex.shlex:
+    lexer = shlex.shlex(text, posix=True, punctuation_chars=punctuation_chars)
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    # Windows paths: a backslash is kept, never an escape.
+    lexer.escape = ""
+    return lexer
+
+
+def split_words(command: str) -> list[str]:
+    """Split one command into its words.
+
+    Single or double quotes group words, and a backslash is an ordinary
+    character. ``quote_words`` writes words back so this returns them unchanged.
+    """
+    return list(_lexer(command))
+
+
+def split_commands(text: str) -> list[list[str]]:
+    """Split a command line into commands at each ``;`` outside quotes."""
+    commands: list[list[str]] = [[]]
+    for word in _lexer(text, punctuation_chars=";"):
+        if word and not word.strip(";"):
+            commands.append([])
+        else:
+            commands[-1].append(word)
+    return [words for words in commands if words]
+
+
+def quote_words(words: list[str]) -> str:
+    """Join *words* into one command that ``split_words`` reads back unchanged."""
+    return " ".join(shlex.quote(word) for word in words)
 
 
 def _parse_bool(value: str) -> bool:
@@ -340,7 +377,7 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
     Runs on the Tk main thread. Raises on bad input; the caller turns
     exceptions into ``ERROR: ...`` replies.
     """
-    parts = shlex.split(command)
+    parts = split_words(command)
     if not parts:
         raise ValueError("empty command")
 

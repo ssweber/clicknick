@@ -46,7 +46,10 @@ Usage::
     # Pick a specific session
     clicknick-cli -s MyProject get DS1
 
-Commands may be chained with ``;``::
+Each argument is one word, as the shell passed it. A command given as one
+argument is split into words at spaces outside quotes; a backslash stays as
+it is. Commands may be chained with ``;``, given as its own argument or inside
+that one argument::
 
     clicknick-cli "set C1 nickname Pump ; set C2 nickname Valve"
 
@@ -60,7 +63,28 @@ import argparse
 import sys
 
 from .client import send_command
+from .dispatch import quote_words, split_commands
 from .session import find_sessions, workspace_for_port_file
+
+
+def _commands(argv: list[str], parser: argparse.ArgumentParser) -> list[list[str]]:
+    """Return the words of each command in *argv*.
+
+    One argument is a command line of its own (``"set DS1 comment 'a b'"``);
+    more are the words the shell already split, with ``;`` alone between commands.
+    """
+    if len(argv) == 1:
+        try:
+            return split_commands(argv[0])
+        except ValueError as exc:
+            parser.error(f"cannot read {argv[0]!r}: {exc}")
+    commands: list[list[str]] = [[]]
+    for word in argv:
+        if word and not word.strip(";"):
+            commands.append([])
+        else:
+            commands[-1].append(word)
+    return [words for words in commands if words]
 
 
 def main() -> None:
@@ -110,8 +134,7 @@ def main() -> None:
         print(_format_help())
         return
 
-    raw = " ".join(args.command)
-    commands = [c.strip() for c in raw.split(";") if c.strip()]
+    commands = [quote_words(words) for words in _commands(args.command, parser)]
     all_ok = True
     for command in commands:
         try:

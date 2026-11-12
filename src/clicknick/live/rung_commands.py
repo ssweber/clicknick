@@ -72,8 +72,12 @@ def _all_file_stems(project_dir: Path) -> list[str]:
     return stems
 
 
-def _get_before_files(project_dir: Path) -> dict[str, str]:
-    """Generate the 'before' state by round-tripping ladder CSVs through pyrung."""
+def _get_before_files(project_dir: Path, *, analog_inputs: frozenset[str]) -> dict[str, str]:
+    """Generate the 'before' state by round-tripping ladder CSVs through pyrung.
+
+    *analog_inputs* must be the channels the workspace was generated with, or the
+    regenerated tags differ from the workspace's in their ``external`` flags.
+    """
     from pyrung.click import ladder_to_pyrung_project
 
     csv_dir = project_dir / "csv"
@@ -81,7 +85,9 @@ def _get_before_files(project_dir: Path) -> dict[str, str]:
         raise ValueError("workspace ladder CSV is missing; reload the workspace from CLICK")
 
     nickname_csv = csv_dir / "nicknames.csv" if (csv_dir / "nicknames.csv").exists() else None
-    return ladder_to_pyrung_project(csv_dir, nickname_csv=nickname_csv, index=True)
+    return ladder_to_pyrung_project(
+        csv_dir, nickname_csv=nickname_csv, analog_inputs=analog_inputs, index=True
+    )
 
 
 def _parse_rung_selection(selection: str) -> list[int]:
