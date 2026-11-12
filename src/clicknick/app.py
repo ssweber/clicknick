@@ -2462,7 +2462,7 @@ class ClickNickApp:
             if saved_path:
                 self.load_csv(saved_path)
                 return
-        self._update_status("Stopped - Use File > Load Nicknames...", "error")
+        self._update_status("No nicknames loaded - use File → Load Nicknames...", "error")
         if not self._odbc_warning_shown:
             self._show_odbc_warning()
             self._odbc_warning_shown = True
@@ -2712,7 +2712,7 @@ class ClickNickApp:
 
         # Check whether a database backend can be attempted
         if not self.nickname_manager.has_database_backend():
-            self._update_status("⏹ Stopped - Use File → Load Nicknames... to Start", "status")
+            self._update_status("No nicknames loaded - use File → Load Nicknames...", "status")
             if not self._odbc_warning_shown:
                 self._show_odbc_warning()
                 self._odbc_warning_shown = True

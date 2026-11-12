@@ -512,6 +512,21 @@ def test_stop_sticks_through_the_csv_fallback(monkeypatch):
     _assert_stopped(app)
 
 
+def test_no_csv_chosen_says_nothing_is_loaded_without_saying_stopped(monkeypatch):
+    app, _prompts = _app(monkeypatch)
+    app.monitoring = True
+    app._odbc_warning_shown = True
+    app._show_main_window = MagicMock()
+    monkeypatch.setattr("clicknick.app.find_fallback_csv", lambda _hwnd: None)
+
+    app._connect_csv_fallback("Main.ckp", 222)
+
+    app._update_status.assert_called_once_with(
+        "No nicknames loaded - use File → Load Nicknames...", "error"
+    )
+    assert app.monitoring is True
+
+
 def test_stop_sticks_when_a_refresh_connects_after_the_window_closed(monkeypatch):
     monkeypatch.setattr("clicknick.utils.mdb_shared.get_database_backend", lambda: "odbc")
     app, _prompts = _stopped_app(monkeypatch)
