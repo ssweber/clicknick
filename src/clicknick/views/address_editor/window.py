@@ -452,10 +452,13 @@ class AddressEditorWindow(tk.Toplevel):
             if self._on_synced is not None:
                 self._on_synced(synced_keys)
 
-            self.status_var.set(f"{action_verb.capitalize()} {count} changes")
-            messagebox.showinfo(
-                save_label, f"Successfully {action_verb} {count} changes.", parent=self
-            )
+            if count:
+                self.status_var.set(f"{action_verb.capitalize()} {count} changes")
+                message = f"Successfully {action_verb} {count} changes."
+            else:
+                self.status_var.set("Nothing to write")
+                message = "CLICK already had these changes; nothing to write."
+            messagebox.showinfo(save_label, message, parent=self)
             if self._close_after_sync:
                 self.close_without_prompt()
 

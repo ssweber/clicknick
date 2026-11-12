@@ -1,4 +1,4 @@
-"""An Address Editor opened to Sync staged edits closes itself after the Sync."""
+"""Address Editor Sync: what it reports and whether it closes afterwards."""
 
 from __future__ import annotations
 
@@ -105,3 +105,24 @@ def test_sync_counts_only_the_rows_it_wrote() -> None:
 
     window._on_synced.assert_called_once_with({c2})
     window.status_var.set.assert_called_once_with("Synced 1 changes")
+
+
+def test_a_sync_click_already_holds_says_so() -> None:
+    c1 = get_addr_key("C", 1)
+    database = _ClickDatabase()
+    store = AddressStore(database)
+    store.load_initial_data()
+    with store.edit_session("Rename") as session:
+        session.set_field(c1, "nickname", "Typed")
+    database.rows[c1] = AddressRow(memory_type="C", address=1, nickname="Typed")
+    window = _editor(close_after_sync=False)
+    window._store = store
+    import clicknick.views.address_editor.window as module
+
+    window._save_all()
+
+    window._on_synced.assert_called_once_with(set())
+    module.messagebox.showinfo.assert_called_once_with(
+        "Sync", "CLICK already had these changes; nothing to write.", parent=window
+    )
+    assert not store.has_unsaved_changes()

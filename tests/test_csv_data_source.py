@@ -179,6 +179,20 @@ class TestCsvModeStore:
         store.save_all_changes()
         assert '"Stop"' in path.read_text(encoding="utf-8")
 
+    def test_save_reports_the_edited_rows_not_every_row_in_the_file(self, tmp_path):
+        path = _write(
+            tmp_path / "names.csv",
+            f'{HEADER}\nX001,BIT,"Start",0,No,""\nX002,BIT,"Stop",0,No,""\nX003,BIT,"Jog",0,No,""\n',
+        )
+        store = AddressStore(CsvDataSource(str(path)))
+        store.load_initial_data()
+        key = get_addr_key("X", 2)
+        with store.edit_session("Rename") as session:
+            session.set_field(key, "nickname", "Halt")
+
+        assert store.save_all_changes() == {key}
+        assert '"Halt"' in path.read_text(encoding="utf-8")
+
     def test_a_save_that_cannot_write_the_file_fails_and_keeps_the_edits(self, tmp_path):
         """As when Excel holds the file open: Save must not report success."""
         path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
