@@ -147,7 +147,12 @@ class ConnectionSession:
                     workspace_kind="persistent" if persistent_workspace else "temporary",
                 )
                 if published:
-                    selection.sync(persist)
+                    try:
+                        selection.sync(persist)
+                    except Exception:
+                        # The workspace is published. A pyproject.toml that cannot be
+                        # read is reported when the checks run (Check Program).
+                        traceback.print_exc()
             if not published:
                 error = "The project changed while converting; conversion was discarded."
         except Exception as exc:

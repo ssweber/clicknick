@@ -609,6 +609,30 @@ def test_analysis_builds_run_one_at_a_time_and_coalesce(tmp_path) -> None:
     assert sorted(results) == [("a", True, None), ("b", True, None), ("c", True, None)]
 
 
+def test_a_malformed_pyproject_does_not_fail_a_published_build(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "Line1 Workspace"
+    workspace.mkdir()
+    (workspace / "pyproject.toml").write_text("[tool.pyrung\nbroken = ", encoding="utf-8")
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"), workspace_dir=workspace)
+    session.analysis = MagicMock()
+    session.analysis.build.return_value = True
+    monkeypatch.setattr("clicknick.connection_session.threading.Thread", _InlineThread)
+    callback = MagicMock()
+
+    session._start_analysis_thread(tmp_path, tmp_path / "db", on_complete=callback)
+
+    callback.assert_called_once_with(True, None)
+    session.analysis.mark_failed.assert_not_called()
+
+
+class _InlineThread:
+    def __init__(self, *, target, daemon):
+        self.target = target
+
+    def start(self):
+        self.target()
+
+
 def test_superseded_build_reports_failure_and_skips_selection_sync(tmp_path, monkeypatch) -> None:
     session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
     session.analysis = MagicMock()
