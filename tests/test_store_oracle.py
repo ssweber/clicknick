@@ -96,11 +96,12 @@ class Source:
 
     def save_changes(self, rows) -> int:
         for row in rows:
-            # The database keeps content only, as SC_.mdb does.
+            # The database keeps content, used and data type only, as SC_.mdb does.
             self.rows[row.addr_key] = _row(
                 row.addr_key,
                 **{name: getattr(row, name) for name in CONTENT_FIELDS},
                 used=row.used,
+                data_type=row.data_type,
             )
         return len(rows)
 
