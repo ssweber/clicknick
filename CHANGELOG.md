@@ -70,12 +70,12 @@
 - Opening another project in the same CLICK window no longer leaves its workspace unbuilt until ClickNick restarts, and Preview Changes now updates its comparison when CLICK's program changes.
 - Open Temporary Workspace and the Workspace status update as soon as a build finishes, instead of waiting for something else to refresh the window, such as opening the Simulator.
 - Choosing an existing workspace whose `src/plc` holds edits copies them to `backup/src/plc` before the next build regenerates it; `clicknick-cli restore` puts them back.
-- Workspace setup refuses to switch when both the current workspace's `src/plc` and the chosen one's hold edits, and names both folders, so paste or discard one first.
+- Workspace setup no longer switches when both the current and the chosen workspace's `src/plc` hold edits; it names both folders so you can paste or discard one first.
 - "N tags synced - Save in CLICK" no longer drops to 0 when the workspace rebuilds, such as after a Sync with repairs, opening the Simulator or setting up a workspace, and opening the Simulator during a build no longer starts a second one.
 - A workspace `AGENTS.md` or `README.md` that is not UTF-8 no longer makes every build fail and leave the workspace without `csv/`.
 - A workspace `AGENTS.md` or `README.md` with a UTF-8 BOM gets pyrung's pointer under its title.
 - A workspace `pyproject.toml` ClickNick cannot read no longer reports a finished **Reload from CLICK** as failed.
-- A build that cannot finish writing the workspace, such as when a file in it is open in Excel, leaves `csv/` and `src/plc` both from the save before.
+- A build that cannot finish writing the workspace, such as when a file in it is open in Excel, still fails but leaves `csv/` and `src/plc` both from the save before.
 - After a CLICK save whose build fails before the workspace is written, Preview Changes says it could not read CLICK's program instead of comparing with the save before.
 - A CLICK save is noticed when its files get an older timestamp (a copied-back project, a clock change) and when it only deletes a subroutine.
 - A broken `%LOCALAPPDATA%\ClickNick\project-sidecars.json` no longer stops ClickNick connecting to CLICK.

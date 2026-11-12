@@ -12,6 +12,13 @@ if TYPE_CHECKING:
 SCR_WATCH_INTERVAL_MS = 3000
 
 
+def _resolved(path: Path) -> Path:
+    try:
+        return path.resolve()
+    except OSError:
+        return path
+
+
 class ScrWatcher:
     """Monitors a folder's Scr*.tmp files and fires a callback on change.
 
@@ -61,8 +68,12 @@ class ScrWatcher:
         return self._folder
 
     def watch(self, scr_folder: Path) -> None:
-        """Watch another folder from now on, keeping the synced and staged counts."""
-        if scr_folder != self._folder:
+        """Watch another folder from now on, keeping the synced and staged counts.
+
+        The same folder spelled another way (a short 8.3 name, `..`) keeps its
+        snapshot, so a save CLICK made since the last check still counts.
+        """
+        if _resolved(scr_folder) != _resolved(self._folder):
             self._folder = scr_folder
             self._last_snapshot = self._snapshot()
 
