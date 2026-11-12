@@ -432,7 +432,7 @@ class TestBuildValidation:
 
         def build_then_switch(*_args, on_project_generated, **_kwargs):
             svc.invalidate()
-            on_project_generated(tmp_path)
+            on_project_generated(tmp_path, {})
             raise ValueError("old project failed")
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", build_then_switch)
@@ -441,6 +441,73 @@ class TestBuildValidation:
 
         assert svc.status is AnalysisStatus.IDLE
         assert svc.project_dir is None
+        assert not svc.project_is_current
+        assert svc.project_tag_to_addr_key == {}
+
+    def test_a_rebuild_failing_after_publishing_names_tags_as_the_workspace_does(
+        self, monkeypatch, tmp_path
+    ):
+        """Nicknames swapped in CLICK: the workspace on disk already uses the new names."""
+        ds1, ds2 = get_addr_key("DS", 1), get_addr_key("DS", 2)
+
+        def rows(first: str, second: str) -> dict[int, AddressRow]:
+            return {
+                ds1: AddressRow(memory_type="DS", address=1, nickname=first),
+                ds2: AddressRow(memory_type="DS", address=2, nickname=second),
+            }
+
+        def build_graph(names: dict[int, AddressRow], fails: bool):
+            def build(*_args, on_project_generated, **_kwargs):
+                on_project_generated(tmp_path, names)
+                if fails:
+                    raise ValueError("graph failed")
+                return MagicMock(), MagicMock(), tmp_path, names
+
+            return build
+
+        svc = AnalysisService()
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            build_graph(rows("Fill", "Drain"), fails=False),
+        )
+        svc.build(tmp_path, None, persist_dir=tmp_path)
+        assert svc.project_tag_to_addr_key["Fill"] == ds1
+        assert svc.project_is_current
+
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            build_graph(rows("Drain", "Fill"), fails=True),
+        )
+        with pytest.raises(ValueError):
+            svc.build(tmp_path, None, persist_dir=tmp_path)
+
+        assert svc.project_tag_to_addr_key["Fill"] == ds2
+        assert svc.tag_to_addr_key["Fill"] == ds1, "the graph's names stay the last good build's"
+        assert svc.project_is_current
+
+    def test_a_rebuild_failing_before_publishing_leaves_an_older_workspace(
+        self, monkeypatch, tmp_path
+    ):
+        svc = AnalysisService()
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
+        )
+        svc.build(tmp_path, None, persist_dir=tmp_path)
+
+        def _boom(*_args, **_kwargs):
+            raise RuntimeError("conversion broke")
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _boom)
+        with pytest.raises(RuntimeError):
+            svc.build(tmp_path, None, persist_dir=tmp_path)
+
+        assert svc.project_dir == tmp_path
+        assert not svc.project_is_current
+
+        svc.mark_building()
+        svc.mark_failed("No saved ladder files")
+        assert not svc.project_is_current
 
 
 class TestGeneration:

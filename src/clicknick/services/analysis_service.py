@@ -309,7 +309,7 @@ def _build_graph(
     persist_dir: Path | None = None,
     *,
     workspace_kind: WorkspaceKind = "temporary",
-    on_project_generated: Callable[[Path], None] | None = None,
+    on_project_generated: Callable[[Path, Mapping[int, AddressRow]], None] | None = None,
 ) -> tuple[ProgramGraph, Program, Path | None, dict[int, AddressRow]]:
     """Run the full pipeline: Scr*.tmp -> CSV -> pyrung code -> exec -> graph.
 
@@ -350,7 +350,7 @@ def _build_graph(
             workspace_kind=workspace_kind,
         )
         if on_project_generated is not None:
-            on_project_generated(project_dir)
+            on_project_generated(project_dir, nickname_rows or {})
 
     namespace: dict[str, object] = {}
     exec(compile(code, "<analysis>", "exec"), namespace)  # noqa: S102
@@ -373,6 +373,11 @@ class AnalysisService:
         self.check_selection: ProgramCheckSelection | None = None
         self._result: AnalysisResult | None = None
         self._project_dir: Path | None = None
+        # Tag names of the project in _project_dir, and whether the latest build
+        # wrote it. A rebuild that fails after publishing leaves both newer than
+        # _result; one that fails before leaves _project_dir an older save's.
+        self._project_tags: dict[str, int] = {}
+        self._project_is_current = False
         # Written from the build thread, read from the UI thread. Plain
         # attribute assignment is atomic enough; there is no read-modify-write.
         self._status = AnalysisStatus.IDLE
@@ -425,6 +430,25 @@ class AnalysisService:
         """True when the build failed on a comment in an old annotation form."""
         return self._needs_comment_upgrade
 
+    @property
+    def project_is_current(self) -> bool:
+        """True when ``project_dir`` holds what the latest build read from CLICK.
+
+        False after a build failed before it published: ``project_dir`` is then
+        the workspace of an earlier save.
+        """
+        return self._project_is_current
+
+    @property
+    def project_tag_to_addr_key(self) -> dict[str, int]:
+        """Tag name -> addr_key for the tag names in ``project_dir``'s source.
+
+        The same as ``tag_to_addr_key`` unless a rebuild failed after publishing
+        the workspace; the graph and ``tag_to_addr_key`` then stay the previous
+        build's, while the workspace on disk already uses the new names.
+        """
+        return self._project_tags
+
     def mark_failed(self, reason: str, detail: str | None = None) -> None:
         """Record a failure the build thread never got to raise.
 
@@ -433,6 +457,7 @@ class AnalysisService:
         """
         with self._lock:
             self._epoch += 1
+            self._project_is_current = False
             self._status = AnalysisStatus.FAILED
             self._error = reason
             self._error_detail = detail
@@ -550,16 +575,23 @@ class AnalysisService:
             self._generation += 1
             self._epoch += 1
             epoch = self._epoch
+            self._project_is_current = False
             self._status = AnalysisStatus.BUILDING
             self._error = None
             self._error_detail = None
             self._system_nickname_repairs = ()
             self._needs_comment_upgrade = False
 
-        def _project_generated(project_dir: Path) -> None:
+        tag_maps: tuple[dict[str, int], dict[int, str]] | None = None
+
+        def _project_generated(project_dir: Path, nickname_rows: Mapping[int, AddressRow]) -> None:
+            nonlocal tag_maps
+            tag_maps = _build_tag_addr_key_map(nickname_rows)
             with self._lock:
                 if self._epoch == epoch:
                     self._project_dir = project_dir
+                    self._project_tags = tag_maps[0]
+                    self._project_is_current = True
 
         try:
             graph, program, project_dir, nickname_rows = _build_graph(
@@ -569,7 +601,7 @@ class AnalysisService:
                 workspace_kind=workspace_kind,
                 on_project_generated=_project_generated,
             )
-            tag_to_key, key_to_tag = _build_tag_addr_key_map(nickname_rows)
+            tag_to_key, key_to_tag = tag_maps or _build_tag_addr_key_map(nickname_rows)
         except Exception as exc:
             with self._lock:
                 if self._epoch == epoch:
@@ -584,6 +616,8 @@ class AnalysisService:
             if self._epoch != epoch:
                 return False
             self._project_dir = project_dir
+            self._project_tags = tag_to_key
+            self._project_is_current = True
             self._result = AnalysisResult(
                 graph=graph,
                 program=program,
@@ -599,6 +633,8 @@ class AnalysisService:
             self._epoch += 1
             self._result = None
             self._project_dir = None
+            self._project_tags = {}
+            self._project_is_current = False
             self._status = AnalysisStatus.IDLE
             self._error = None
             self._error_detail = None

@@ -7,6 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call
 
+import pytest
+
 from clicknick.app import ClickNickApp
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.services.analysis_service import AnalysisStatus
@@ -33,6 +35,7 @@ def _analysis(
         system_nickname_repairs=system_nickname_repairs,
         needs_comment_upgrade=needs_comment_upgrade,
         is_available=status is AnalysisStatus.READY,
+        project_is_current=project_dir is not None,
     )
 
 
@@ -441,6 +444,47 @@ def test_saved_program_reports_what_can_be_compared(tmp_path) -> None:
     failed = session.saved_program()
     assert failed.csv_dir is None
     assert "main window" in failed.note
+
+
+def test_a_rebuild_that_fails_before_publishing_has_nothing_to_compare(
+    tmp_path, monkeypatch
+) -> None:
+    """Preview Changes must not compare with the save before the one that failed."""
+    from clicknick.services.analysis_service import AnalysisService
+
+    project = tmp_path / "pyrung_project"
+    (project / "csv").mkdir(parents=True)
+
+    def publishes(fails: bool):
+        def build_graph(*_args, on_project_generated, **_kwargs):
+            on_project_generated(project, {})
+            if fails:
+                raise ValueError("graph failed")
+            return MagicMock(), MagicMock(), project, {}
+
+        return build_graph
+
+    def fails_before_publishing(*_args, **_kwargs):
+        raise ValueError("pyrung cannot convert this rung")
+
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    session.analysis = AnalysisService()
+    monkeypatch.setattr("clicknick.services.analysis_service._build_graph", publishes(False))
+    session.analysis.build(tmp_path, None, persist_dir=project)
+    assert session.saved_program().csv_dir == project / "csv"
+
+    monkeypatch.setattr("clicknick.services.analysis_service._build_graph", fails_before_publishing)
+    with pytest.raises(ValueError):
+        session.analysis.build(tmp_path, None, persist_dir=project)
+    failed = session.saved_program()
+    assert failed.csv_dir is None
+    assert "main window" in failed.note
+
+    # Failing after the workspace was published still compares with this save.
+    monkeypatch.setattr("clicknick.services.analysis_service._build_graph", publishes(True))
+    with pytest.raises(ValueError):
+        session.analysis.build(tmp_path, None, persist_dir=project)
+    assert session.saved_program().csv_dir == project / "csv"
 
 
 def test_switching_workspace_moves_and_restarts_the_simulation(tmp_path, monkeypatch) -> None:

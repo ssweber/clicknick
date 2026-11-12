@@ -308,7 +308,8 @@ class ConnectionSession:
         status = analysis.status
         if status is AnalysisStatus.BUILDING:
             return SavedProgram(self, generation, building=True, note=reading)
-        project_dir = analysis.project_dir
+        # A build that failed before publishing leaves the workspace of an earlier save.
+        project_dir = analysis.project_dir if analysis.project_is_current else None
         csv_dir = project_dir / "csv" if project_dir is not None else None
         if csv_dir is not None and csv_dir.is_dir():
             return SavedProgram(self, generation, csv_dir=csv_dir, note="")
