@@ -446,8 +446,8 @@ class AddressEditorWindow(tk.Toplevel):
             return
 
         try:
-            synced_keys = self._store.get_dirty_keys()
-            count = self._store.save_all_changes()
+            synced_keys = self._store.save_all_changes()
+            count = len(synced_keys)
 
             if self._on_synced is not None:
                 self._on_synced(synced_keys)

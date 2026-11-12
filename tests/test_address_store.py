@@ -1224,7 +1224,7 @@ class TestSaveRefusesErrors:
         with store.edit_session("Rename") as session:
             session.set_field(c1, "nickname", "Pump")
 
-        assert store.save_all_changes() == 1
+        assert store.save_all_changes() == {c1}
         assert [row.addr_key for row in source.saved[0]] == [c1]
 
 
@@ -1302,7 +1302,7 @@ class TestSyncAgainstALiveDatabase:
         # CLICK changes the comment; the store has not polled yet.
         source.rows[x1] = replace(source.rows[x1], comment="from CLICK")
 
-        assert store.save_all_changes() == 1
+        assert store.save_all_changes() == {x1}
 
         (written,) = source.saved[0]
         assert (written.nickname, written.comment) == ("StartButton", "from CLICK")
@@ -1332,7 +1332,7 @@ class TestSyncAgainstALiveDatabase:
             session.set_field(c2, "nickname", "Other")
         source.rows[c1] = AddressRow(memory_type="C", address=1, nickname="Typed")
 
-        assert store.save_all_changes() == 1
+        assert store.save_all_changes() == {c2}
         assert [row.addr_key for row in source.saved[0]] == [c2]
 
     def test_a_failed_read_writes_nothing(self):

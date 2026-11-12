@@ -970,17 +970,19 @@ class AddressStore:
 
     # --- Save/Discard ---
 
-    def save_all_changes(self) -> int:
+    def save_all_changes(self) -> set[int]:
         """Save changes to data source.
 
         CLICK writes SC_.mdb while it is connected, so for the database the
         rows are read again first (as a file-monitor poll would): the rows
         written then carry CLICK's current value for every field the user did
         not change, and whether a row is inserted, updated or deleted is
-        decided from that read. A CSV file is rewritten whole.
+        decided from that read. An edit the database already holds is not
+        written. A CSV file is rewritten whole.
 
         Returns:
-            Number of changes saved
+            The addr_keys of the edited rows written: for the database, the
+            ones still edits after the fresh read
 
         Raises:
             RuntimeError: The data source is read-only, or rows have validation
@@ -992,7 +994,7 @@ class AddressStore:
             raise RuntimeError("Data source is read-only")
 
         if not self.user_overrides:
-            return 0
+            return set()
 
         writes_dirty_rows = self._data_source.supports_used_field
         if writes_dirty_rows:
@@ -1006,11 +1008,9 @@ class AddressStore:
 
         if not writes_dirty_rows:
             # CSV: needs all rows with content (rewrites entire file)
-            count = self._data_source.save_changes(list(self.visible_state.values()))
+            self._data_source.save_changes(list(self.visible_state.values()))
         elif dirty_keys:
-            count = self._data_source.save_changes([self.visible_state[key] for key in dirty_keys])
-        else:
-            count = 0  # the database already holds every edit
+            self._data_source.save_changes([self.visible_state[key] for key in dirty_keys])
 
         # What was written is now the base.
         for key in dirty_keys:
@@ -1031,7 +1031,7 @@ class AddressStore:
         # matches) and still picks up anything CLICK wrote in the meantime.
         self._derive(affected_keys)
 
-        return count
+        return dirty_keys
 
     def discard_all_changes(self) -> None:
         """Discard all unsaved changes.

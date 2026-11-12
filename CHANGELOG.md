@@ -81,6 +81,7 @@
 - Choosing an existing workspace whose `src/plc` holds edits copies them to `backup/src/plc` before the next build regenerates it; `clicknick-cli restore` puts them back.
 - Workspace setup no longer switches when both the current and the chosen workspace's `src/plc` hold edits; it names both folders so you can paste or discard one first.
 - "N tags synced - Save in CLICK" no longer drops to 0 when the workspace rebuilds, such as after a Sync with repairs, opening the Simulator or setting up a workspace, and opening the Simulator during a build no longer starts a second one.
+- Sync counts only the rows it wrote, so an edit CLICK's database already held no longer adds to "N tags synced", and Save to a CSV file counts the rows you changed (it counted every row in the file).
 - A workspace `AGENTS.md` or `README.md` that is not UTF-8 no longer makes every build fail and leave the workspace without `csv/`.
 - A workspace `AGENTS.md` or `README.md` with a UTF-8 BOM gets pyrung's pointer under its title.
 - A workspace `pyproject.toml` ClickNick cannot read no longer reports a finished **Reload from CLICK** as failed.

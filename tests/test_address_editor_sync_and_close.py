@@ -5,7 +5,10 @@ from __future__ import annotations
 from unittest.mock import Mock
 
 import pytest
+from pyclickplc.addresses import get_addr_key
 
+from clicknick.data.address_store import AddressStore
+from clicknick.models.address_row import AddressRow
 from clicknick.views.address_editor.window import AddressEditorWindow
 
 MODULE = "clicknick.views.address_editor.window"
@@ -17,8 +20,7 @@ def _editor(*, close_after_sync: bool) -> AddressEditorWindow:
     window._store = Mock(is_database=True)
     window._store.has_errors.return_value = False
     window._store.has_unsaved_changes.return_value = True
-    window._store.get_dirty_keys.return_value = {1}
-    window._store.save_all_changes.return_value = 1
+    window._store.save_all_changes.return_value = {1}
     window._close_after_sync = close_after_sync
     window._tabs = {}
     window._on_synced = Mock()
@@ -64,3 +66,42 @@ def test_a_failed_sync_leaves_the_window_open() -> None:
     window._save_all()
 
     window.close_without_prompt.assert_not_called()
+
+
+class _ClickDatabase:
+    """SC_.mdb, which CLICK writes too without the store being told."""
+
+    supports_used_field = True
+    file_path = "live.mdb"
+    is_read_only = False
+    is_database = True
+
+    def __init__(self) -> None:
+        self.rows: dict[int, AddressRow] = {}
+
+    def load_all_addresses(self) -> dict[int, AddressRow]:
+        return dict(self.rows)
+
+    def save_changes(self, rows) -> int:
+        for row in rows:
+            self.rows[row.addr_key] = row
+        return len(rows)
+
+
+def test_sync_counts_only_the_rows_it_wrote() -> None:
+    c1, c2 = get_addr_key("C", 1), get_addr_key("C", 2)
+    database = _ClickDatabase()
+    store = AddressStore(database)
+    store.load_initial_data()
+    with store.edit_session("Rename") as session:
+        session.set_field(c1, "nickname", "Typed")
+        session.set_field(c2, "nickname", "Other")
+    # CLICK saves C1 with the same nickname before the Sync.
+    database.rows[c1] = AddressRow(memory_type="C", address=1, nickname="Typed")
+    window = _editor(close_after_sync=False)
+    window._store = store
+
+    window._save_all()
+
+    window._on_synced.assert_called_once_with({c2})
+    window.status_var.set.assert_called_once_with("Synced 1 changes")
