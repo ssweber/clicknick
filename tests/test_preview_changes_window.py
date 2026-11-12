@@ -22,6 +22,7 @@ from clicknick.services.rung_diff import (
     BundleComparison,
     BundleSources,
     DifferenceKey,
+    PasteStep,
     ProgramChange,
     ProposedProgram,
     compare_rungs,
@@ -106,6 +107,8 @@ def _bare_window(folder_names: list[str] = NAMES):
     window._skipped = {}
     window._pasted = {}
     window._partial = {}
+    window._unplaced = set()
+    window._compared_generation = None
     window._step_through = set()
     window._flipped_in_click = set()
     window._step_through_btn = Mock()
@@ -116,6 +119,7 @@ def _bare_window(folder_names: list[str] = NAMES):
     window._nickname_path = None
     window._nickname_rows = None
     window._nickname_error = ""
+    window._nickname_fields = frozenset()
     window._nicknames_skipped = False
     window._nickname_plans = None
     window._get_project_store = lambda: None
@@ -617,10 +621,10 @@ def test_rungs_asked_for_by_number_do_not_change_the_remembered_switch(tmp_path:
     assert _read_copy_whole() is True
 
 
-def test_switching_copy_mode_starts_the_rows_step_over(monkeypatch, copies) -> None:
+def test_switching_copy_mode_keeps_what_was_pasted(monkeypatch, copies) -> None:
     window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
     window._on_action()  # Copy r1
-    window._on_action()  # Next
+    window._on_action()  # Next: r1 is in CLICK
     window._on_action()  # Copy r3..4, not yet pasted
     assert _action(window) == "Next →"
 
@@ -628,9 +632,24 @@ def test_switching_copy_mode_starts_the_rows_step_over(monkeypatch, copies) -> N
     assert window._copied is False
     assert _action(window) == "Copy"
 
+    # The steps go on from what CLICK holds: r1 is not pasted again
     _switch_copy(window, whole=False)
-    assert _action(window) == "Copy r1"
+    assert _action(window) == "Copy r3..4"
+    assert "step 2 of 2" in _status(window)
     assert window._done == set()
+
+
+def test_switching_copy_mode_keeps_a_step_half_done(monkeypatch, copies) -> None:
+    click = _coils("Y001", "Y007", "Y008", "Y009")
+    window = _on_main(monkeypatch, compare_rungs(click, RUNGS))
+    window._on_action()  # Copy r2..4
+    window._on_action()  # Next: pasted over rung 2; CLICK's rungs 5 to 6 are left to delete
+
+    _switch_copy(window, whole=True)
+    _switch_copy(window, whole=False)
+
+    assert window._current_step() == PasteStep(delete=(5, 6))
+    assert "step 2 of 2: rungs 5 to 6 are not in the program any more" in _status(window)
 
 
 def test_whole_program_switch_stays_on_for_the_next_row(monkeypatch, copies) -> None:
@@ -852,7 +871,7 @@ def test_rungs_asked_for_by_number_are_stepped_through(monkeypatch) -> None:
     window = _on_main(monkeypatch, _seven_steps())
     window._selection = {"main.csv": list(range(1, 14))}
 
-    window._carry_choices()
+    window._carry_choices(saved=False)
 
     assert window._copied_whole_for_steps("main.csv") == 0
     assert len(window._steps("main.csv")) == 7
@@ -1032,7 +1051,10 @@ def test_pane_explains_rows_with_nothing_to_show(monkeypatch) -> None:
         return note
 
     assert _shown("subroutines/a.csv") == "subroutines/a.csv matches CLICK's last save."
-    assert _shown("subroutines/b.csv") == "subroutines/b.csv could not be read: bad row 3"
+    assert _shown("subroutines/b.csv") == (
+        "subroutines/b.csv could not be read: bad row 3\n"
+        "It is left out: CLICK keeps what it has of it."
+    )
     window._nickname_rows = {}
     assert "Connect to the CLICK project" in _shown("nicknames.csv")
 
