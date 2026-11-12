@@ -631,3 +631,42 @@ def test_interleaved_pair_sync_ct_ctd(store):
     # CTD1 should have the block tag with _D suffix
     ctd1_row = store.visible_state[ctd1_key]
     assert "<Counters_D>" in ctd1_row.comment
+
+
+# =============================================================================
+# Tag text helpers: the tag changes where it is, the rest of the comment stays
+# =============================================================================
+
+
+@pytest.mark.parametrize(
+    ("comment", "renamed"),
+    [
+        ("</Pumps> end", "</Tanks> end"),
+        ("Level < 5 > alarm <Pumps bg='Red'>", "Level < 5 > alarm <Tanks bg='Red'>"),
+        ("<Pumps bg='Pumps'/>", "<Tanks bg='Pumps'/>"),
+        ("no tag", "no tag"),
+    ],
+)
+def test_rename_block_tag_changes_only_the_name(comment, renamed):
+    from clicknick.services.block_service import rename_block_tag
+
+    assert rename_block_tag(comment, "Tanks") == renamed
+
+
+@pytest.mark.parametrize(
+    ("comment", "removed"),
+    [
+        ("<Pumps> text", "text"),
+        ("text </Pumps>", "text"),
+        ("a <Pumps /> b", "a b"),
+        ("<Pumps>  two", " two"),
+        ("<Pumps>", ""),
+        ("x < 5 > y", "x < 5 > y"),
+    ],
+)
+def test_remove_block_tag_takes_one_separator_with_it(comment, removed):
+    from clicknick.services.block_service import add_block_tag, remove_block_tag
+
+    assert remove_block_tag(comment) == removed
+    if removed and "<Pumps" in comment and comment.endswith(">"):
+        assert remove_block_tag(add_block_tag(removed, "<Pumps>")) == removed

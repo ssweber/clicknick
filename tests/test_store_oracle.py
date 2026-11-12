@@ -75,6 +75,11 @@ FIELD_VALUES = {
 }
 
 
+def _row(addr_key: int, **fields) -> AddressRow:
+    memory_type, address = parse_addr_key(addr_key)
+    return AddressRow(memory_type=memory_type, address=address, **fields)
+
+
 class Source:
     """Data source whose rows the test (as CLICK) and Sync both write."""
 
@@ -98,11 +103,6 @@ class Source:
                 used=row.used,
             )
         return len(rows)
-
-
-def _row(addr_key: int, **fields) -> AddressRow:
-    memory_type, address = parse_addr_key(addr_key)
-    return AddressRow(memory_type=memory_type, address=address, **fields)
 
 
 def _differs(row: AddressRow, base: AddressRow, name: str) -> bool:
@@ -185,7 +185,9 @@ def _assert_cascade_rules(
 ) -> None:
     """Rows the caller set hold what was set; other rows change only as cascades may."""
     for (key, name), value in caller_set.items():
-        assert not _differs(replace(before[key], **{name: value}), store.visible_state[key], name), (
+        assert not _differs(
+            replace(before[key], **{name: value}), store.visible_state[key], name
+        ), (
             step,
             key,
             name,
@@ -228,7 +230,15 @@ def _random_edit(rng: random.Random, store: AddressStore) -> str:
         for _ in range(rng.randint(1, 3)):
             key = rng.choice(KEYS)
             name = rng.choice(
-                ("nickname", "nickname", "comment", "comment", "comment", "initial_value", "retentive")
+                (
+                    "nickname",
+                    "nickname",
+                    "comment",
+                    "comment",
+                    "comment",
+                    "initial_value",
+                    "retentive",
+                )
             )
             value = rng.choice(FIELD_VALUES[name])
             session.set_field(key, name, value)
@@ -239,7 +249,9 @@ def _random_edit(rng: random.Random, store: AddressStore) -> str:
     return step
 
 
-def _random_click_change(rng: random.Random, store: AddressStore, source: Source) -> tuple[int, str, str]:
+def _random_click_change(
+    rng: random.Random, store: AddressStore, source: Source
+) -> tuple[int, str, str]:
     pending = [
         (key, name)
         for key, values in store.user_overrides.items()

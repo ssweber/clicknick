@@ -103,7 +103,9 @@ Edits flow through an edit session that accumulates changes atomically:
 1. **View** opens `AddressStore.edit_session(description)`
 2. **Service** accumulates changes via `session.set_field(addr_key, field, value)`
 3. Session uses `MutableRowBuilder` to accumulate changes per row
-4. **On clean exit:** pushes undo frame → applies cascades → freezes builders into overrides → `_derive()` → notifies
+4. **On clean exit:** applies cascades → freezes builders into overrides → if the overrides changed, pushes the
+   undo frame (the overrides before) and clears redo → `_derive()` → notifies. A session that changes nothing
+   is not an undo step
 5. **On an exception:** nothing is committed (all-or-nothing); a failure inside the commit restores the inputs
 6. **All Views** receive changed `addr_keys` and refresh only those rows
 
@@ -141,7 +143,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 **Core data tests:**
 - `test_address_store.py` - Store operations, undo/redo, base+overlay merging, cascades, derived-state regressions
 - `test_store_oracle.py` - Random edit/undo/redo/discard/Sync/CLICK-write sequences; kept state must equal a
-  full rebuild from the same inputs
+  full rebuild from the same inputs, and each edit must follow the cascade rules
+- `test_store_cascades.py` - Block tag and Retentive cascades: T/TD and CT/CTD pairs, open/close renames in place
 - `test_store_boundaries.py` - Source-level rules: only the store writes its layers, no tkinter in data/services
 - `test_data_session.py` - Window lifecycle and save prompts when data is closed or replaced
 - `test_mutable_row_builder.py` - Builder pattern, `changes()` output
@@ -168,6 +171,9 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - Use `session.set_field(addr_key, field, value)` to accumulate changes
 - Multiple changes batched into single undo frame (e.g., fill-down 500 rows = 1 undo)
 - Cascades (T/TD|CT/CTD sync, block tag sync) happen automatically within the session
+  (`AddressStore._apply_cascades`): Retentive mirrors across the pair; a row whose block tag changed (old tag vs
+  new tag, not its text) has the matching open/close tag and the pairs' `_D` tags renamed in place or removed
+  (`BlockService`). "The caller set this field" is read before any cascade runs, and a cascade never writes it
 - A body that raises commits nothing
 
 ### Dirty State Detection
@@ -180,6 +186,11 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - Max 50 undo frames (configurable via `MAX_UNDO_DEPTH`)
 - A successful Sync/Save, or a Discard, clears Undo/Redo (frames hold override snapshots, not old values);
   a CLICK save does not
+- `save_all_changes` refuses (raises) while rows have validation errors, for every caller. For the database it
+  reads SC_.mdb first (CLICK writes it while connected), so the rows written carry CLICK's current values in
+  the fields the user did not change
+- `loaded_with_error` (CLICK's own X/SC/SD names exempt from our nickname rules) is set on every base row by one
+  helper, `_flag_loaded_error`, on load, reload and Sync alike
 - An unsaved field that the database now matches stops being an edit (`_rebase_override`, run by `_derive`)
 - Keyboard: Ctrl+Z (undo), Ctrl+Y (redo)
 
