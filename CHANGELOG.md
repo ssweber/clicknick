@@ -60,6 +60,13 @@
 - Program analysis and AI tag lookups use the same nicknames as the generated code, switching CLICK projects no longer freezes the window, and the "tags synced" count counts each tag once.
 - Opening another project in the same CLICK window no longer leaves its workspace unbuilt until ClickNick restarts, and Preview Changes now updates its comparison when CLICK's program changes.
 - Open Temporary Workspace and the Workspace status update as soon as a build finishes, instead of waiting for something else to refresh the window, such as opening the Simulator.
+- Closing ClickNick (the window's X or **File > Exit**) asks to save unsaved Address Editor and Dataview edits, and Cancel keeps it open (it discarded them).
+- Nicknames loaded from a CSV stay loaded, with their unsaved edits, when CLICK opens another project or saves under a new name (they were closed without asking).
+- A cancelled or failed CSV load leaves the loaded database as it was (the title said CSV, and the next project change in CLICK left no nicknames loaded).
+- After the connected CLICK window closes, ClickNick lists the other windows and waits for you to pick one while nicknames are loaded (it connected to the first one and closed the loaded CSV).
+- **Stop** in the main window turns off only autocomplete, until you click **Start** or pick a window: ClickNick still notices CLICK closing or opening another project (it kept the old project's editors, simulation and database).
+- A CSV that cannot be loaded shows why, such as a missing Nickname column (the status only said "CSV load failed").
+- Two CLICK windows with the same project name are listed with their PIDs, so either can be picked, and the window list and status no longer show a window or "Monitoring" that is not current.
 
 ## v0.23.4 - 2026-10-11
 

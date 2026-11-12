@@ -62,10 +62,12 @@ def _make_app_stub() -> ClickNickApp:
     app._session = None
     app._data = None
     app._update_status = MagicMock()
-    app.start_monitoring = MagicMock()
-    app.stop_monitoring = MagicMock()
+    app._on_data_ready = MagicMock()
+    app.overlay = None
+    app._status_after_id = None
     app.root = MagicMock()
     app.monitoring = False
+    app._watch_running = False
     app.nickname_manager = SimpleNamespace(set_store=MagicMock())
     app.selected_instance_var = FakeVar("MyProject.ckp")
     app._click = ClickConnection("111", 222, "MyProject.ckp")
@@ -81,15 +83,14 @@ def _patch_csv_loading(monkeypatch) -> None:
 def test_load_csv_with_stale_connection_skips_monitoring_and_clears_connection(monkeypatch):
     _patch_csv_loading(monkeypatch)
     app = _make_app_stub()
-    app.csv_path_var = FakeVar("C:/tmp/NicknameExport.csv")
     app.selected_instance_var = FakeVar("OldProject.ckp")
     app._click = ClickConnection("1234", 5678, "OldProject.ckp")
     app.detector = SimpleNamespace(check_window_exists=lambda _pid: False)
 
-    result = app.load_csv()
+    result = app.load_csv("C:/tmp/NicknameExport.csv")
 
     assert result is True
-    assert app.start_monitoring.call_count == 0
+    assert app._on_data_ready.call_count == 0
     assert app._click is None
     assert app.selected_instance_var.get() == ""
     assert isinstance(app._data.store, FakeAddressStore)
@@ -110,14 +111,13 @@ def test_load_csv_over_unsaved_edits_prompts_and_closes_old_windows(monkeypatch,
         "tkinter.messagebox.askyesnocancel", lambda *args, **kwargs: prompts.append(args) or answer
     )
     app = _make_app_stub()
-    app.csv_path_var = FakeVar("C:/tmp/Other.csv")
     app.detector = SimpleNamespace(check_window_exists=lambda _pid: True)
     old_store = FakeAddressStore(is_database=True, unsaved=True)
     app._data = DataSession(old_store)
     editor = FakeEditor()
     app._data.register_editor(editor)
 
-    result = app.load_csv()
+    result = app.load_csv("C:/tmp/Other.csv")
 
     assert len(prompts) == 1
     assert result is replaced
@@ -143,7 +143,6 @@ def test_handle_window_closed_keeps_csv_data():
 
     app._handle_window_closed()
 
-    app.stop_monitoring.assert_called_once_with(update_status=False)
     session.close.assert_called_once()
     assert app._session is None
     assert app._data.store is store
@@ -191,14 +190,13 @@ def test_project_change_loads_new_database_off_the_ui_thread(monkeypatch):
     monkeypatch.setattr("clicknick.app.AddressStore", no_sync_store)
     app = _make_app_stub()
     app._data = DataSession(FakeAddressStore(is_database=True))
-    app.csv_path_var = FakeVar("")
     app.click_instances = []
     app.instances_combobox = {}
     app._load_workspace_pairing = MagicMock()
     app._load_instance_database = MagicMock()
     app.nickname_manager.has_database_backend = lambda: True
 
-    assert app._handle_project_change("CLICK - Next.ckp", "Next.ckp")
+    app._handle_project_change("CLICK - Next.ckp", "Next.ckp")
 
     app._load_instance_database.assert_called_once_with("111", "Next.ckp", 222)
     assert app._click == ClickConnection("111", 222, "Next.ckp")

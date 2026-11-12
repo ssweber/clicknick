@@ -133,7 +133,12 @@ class AboutDialog:
                 self.window.clipboard_clear()
                 self.window.clipboard_append(system_info_display)
             copy_btn.config(text="Copied")
-            self.window.after(2000, lambda: copy_btn.config(text="Copy System Info"))
+
+            def reset_label():
+                if copy_btn.winfo_exists():
+                    copy_btn.config(text="Copy System Info")
+
+            self.window.after(2000, reset_label)
 
         copy_btn = ttk.Button(main_frame, text="Copy System Info", command=copy_system_info)
         copy_btn.pack(pady=(0, 15))
