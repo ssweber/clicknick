@@ -2654,6 +2654,7 @@ def test_a_plc_data_change_during_a_write_relaunches_once_the_write_is_answered(
 
     _data_file_saved_again(ready, data)
     assert len(ready.daps) == daps, "never in the middle of a write"
+    assert "PLC data file changed. Reloading once the program is written." in ready.messages()
     assert "Cannot restart" not in ready.messages("error")
 
     _run_jobs(ready, jobs)
@@ -2691,6 +2692,67 @@ def test_a_plc_data_change_during_a_write_relaunches_once_if_it_already_relaunch
     assert len(ready.daps) == daps + 1
     assert ready.dap.calls[0][2]["snapshot_path"] == data
 
+
+def test_a_plc_data_change_during_a_write_that_a_build_overtakes_relaunches_after_the_build(
+    ready, tmp_path
+):
+    from clicknick.simulation_session import WATCH_MS
+
+    jobs, data = _writing_with_plc_data(ready, tmp_path)
+    daps = len(ready.daps)
+    _data_file_saved_again(ready, data)
+    ready.analysis._status = AnalysisStatus.BUILDING  # CLICK saved before the write's answer
+    _run_jobs(ready, jobs)
+    ready.scheduler.fire(WATCH_MS)
+    assert len(ready.daps) == daps, "no launch on a workspace being rebuilt"
+    assert "still being converted" not in ready.messages("error")
+
+    _rebuild(ready)
+    ready.scheduler.fire(WATCH_MS)
+    assert len(ready.daps) == daps + 1
+    assert ready.dap.calls[0][2]["snapshot_path"] == data
+    _run_jobs(ready, jobs)
+    ready.scheduler.fire(WATCH_MS)
+    assert len(ready.daps) == daps + 1, "relaunched once"
+
+
+def test_a_plc_data_change_the_simulation_died_after_relaunches_once_with_the_build(
+    ready, tmp_path
+):
+    from clicknick.simulation_session import WATCH_MS
+
+    jobs, data = _writing_with_plc_data(ready, tmp_path)
+    daps = len(ready.daps)
+    _data_file_saved_again(ready, data)
+    ready.analysis._status = AnalysisStatus.BUILDING
+    _run_jobs(ready, jobs)
+    ready.dap.callbacks["on_state"](SimpleNamespace(value="error"), None)
+    ready.scheduler.run_ready()
+    assert ready.sim.status is SimStatus.FAILED
+
+    _rebuild(ready)  # _follow_program starts the simulation on it
+    ready.scheduler.fire(WATCH_MS)
+    _run_jobs(ready, jobs)
+    ready.scheduler.fire(WATCH_MS)
+    assert len(ready.daps) == daps + 1
+    assert ready.dap.calls[0][2]["snapshot_path"] == data
+
+
+def test_a_modbus_port_change_during_a_write_relaunches_on_it_once_answered(ready):
+    jobs = _queued(ready)
+    ready.open()
+    _run_jobs(ready, jobs)
+    _rebuild(ready)
+    ready.sim.write_program()
+    daps = len(ready.daps)
+
+    ready.sim.set_modbus_port(5020)
+    assert len(ready.daps) == daps
+    assert "Cannot restart" not in ready.messages("error")
+
+    _run_jobs(ready, jobs)
+    assert len(ready.daps) == daps + 1
+    assert ready.dap.calls[0][2]["modbus"]["port"] == 5020
 
 def test_a_plc_data_change_during_a_console_command_relaunches_at_once(ready, tmp_path):
     ready.open()
