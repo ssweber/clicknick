@@ -504,6 +504,17 @@ class AnalysisService:
         """addr_key -> tag name for ``project_dir``'s source (see ``project_tag_to_addr_key``)."""
         return self._project_keys
 
+    def _record_failure(self, reason: str, detail: str | None) -> None:
+        """Show *reason* as the latest request's outcome; the caller holds ``_lock``."""
+        self._failed_request = None
+        self._epoch += 1
+        self._project_is_current = False
+        self._status = AnalysisStatus.FAILED
+        self._error = reason
+        self._error_detail = detail
+        self._system_nickname_repairs = ()
+        self._needs_comment_upgrade = False
+
     def mark_failed(
         self, reason: str, detail: str | None = None, *, serves: int | None = None
     ) -> None:
@@ -527,17 +538,6 @@ class AnalysisService:
             elif self._failed_request is not None:
                 reason, detail = self._failed_request
             self._record_failure(reason, detail)
-
-    def _record_failure(self, reason: str, detail: str | None) -> None:
-        """Show *reason* as the latest request's outcome; the caller holds ``_lock``."""
-        self._failed_request = None
-        self._epoch += 1
-        self._project_is_current = False
-        self._status = AnalysisStatus.FAILED
-        self._error = reason
-        self._error_detail = detail
-        self._system_nickname_repairs = ()
-        self._needs_comment_upgrade = False
 
     def mark_building(self) -> int:
         """Report a queued build, so nobody sees a stale status until its thread starts.

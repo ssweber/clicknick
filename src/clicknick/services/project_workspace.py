@@ -39,7 +39,9 @@ class WorkspaceBusyError(ValueError):
     """A build is regenerating the workspace *where* (a folder, or words naming it)."""
 
     def __init__(self, where: Path | str) -> None:
-        super().__init__(f"ClickNick is regenerating {where} from CLICK; try again when it finishes")
+        super().__init__(
+            f"ClickNick is regenerating {where} from CLICK; try again when it finishes"
+        )
 
 
 @contextmanager
