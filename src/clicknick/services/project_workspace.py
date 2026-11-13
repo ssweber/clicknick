@@ -245,10 +245,19 @@ def plc_backup_time(project_dir: Path) -> dt.datetime | None:
 
 
 def _record_backup_time(project_dir: Path, when: dt.datetime) -> None:
+    """Record *when*; a backup is in place either way, so a failure here never fails it."""
     path = project_dir / PLC_BACKUP_TIME_PATH
     staging = path.with_suffix(f"{path.suffix}.staging")
-    staging.write_text(when.isoformat(timespec="seconds") + "\n", encoding="utf-8")
-    staging.replace(path)
+    try:
+        staging.write_text(when.isoformat(timespec="seconds") + "\n", encoding="utf-8")
+        staging.replace(path)
+    except OSError:
+        # The time of the backup before would misname this one: its files' time stands in.
+        for leftover in (staging, path):
+            try:
+                leftover.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def older_plc_backups(project_dir: Path) -> list[str]:

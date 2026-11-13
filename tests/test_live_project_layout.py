@@ -240,6 +240,24 @@ def test_restore_takes_an_older_backup_by_name(tmp_path: Path, monkeypatch):
         restore_plc_source(tmp_path, "20261112-080000")
 
 
+def test_a_backup_whose_time_cannot_be_written_is_still_made(tmp_path: Path, monkeypatch):
+    times = _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0).astimezone())
+    _back_up(tmp_path, "edits A\n")
+    (tmp_path / "backup" / "backup-time.txt.staging").mkdir()  # the write fails
+
+    _back_up(tmp_path, "edits B\n")
+
+    assert (tmp_path / "backup" / "src" / "plc" / "main.py").read_text(
+        encoding="utf-8"
+    ) == "edits B\n"
+    assert older_plc_backups(tmp_path) == ["20261112-090000"]
+    newest_file = tmp_path / "backup" / "src" / "plc" / "main.py"
+    assert plc_backup_time(tmp_path) != times[0]
+    assert plc_backup_time(tmp_path) == (
+        dt.datetime.fromtimestamp(newest_file.stat().st_mtime).astimezone()
+    )
+
+
 def test_a_failed_backup_leaves_the_newest_backup_in_place(tmp_path: Path, monkeypatch):
     _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0).astimezone())
     _back_up(tmp_path, "edits A\n")
