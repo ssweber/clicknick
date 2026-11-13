@@ -81,6 +81,7 @@ class _Run:
         self.began: Tree | None = None  # src/plc as the operation began
         self.kept_before: dict[str, Tree] = {}  # the backups as a failing operation began
         self.pending: Tree | None = None  # edited src/plc as the operation began
+        self.restoring = False  # the operation being checked is a restore
         self.newest_at: dict[Tree, int] = {}  # last step a tree was the newest backup
         self.clock = dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC)
         monkeypatch.setattr(project_workspace, "_now", self._now)
@@ -238,6 +239,7 @@ class _Run:
             return self.edit()
         name = self.rng.choice(names) if older else None
         self._begin()
+        self.restoring = True
         with self.monkeypatch.context() as patch:
             # The copy of the chosen backup into src/plc, or the backup of the edits.
             copies_into = (self.source, plc_backup_dir(self.project))
@@ -261,13 +263,17 @@ class _Run:
         if self.pending is not None:
             # The edits are the newest backup now, or src/plc holds them as the
             # backup it restored (which keeps the step it was last the newest at).
-            restored = self.pending == source and self.pending in kept.values()
+            # Only a restore may leave them as an older backup: a backup promotes it.
+            restored = (
+                self.restoring and self.pending == source and self.pending in kept.values()
+            )
             assert self.pending == newest or restored, (
                 f"edits {sorted(self.pending)} were not backed up",
                 history,
             )
             self.tracked.add(self.pending)
             self.pending = None
+        self.restoring = False
         self.tracked.update(kept.values())
         if newest is not None:
             self.newest_at[newest] = self.step
