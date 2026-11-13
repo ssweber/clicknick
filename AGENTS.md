@@ -314,8 +314,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - pyrung's autoreload is off: as on a CLICK, a changed program reaches the simulation only when the user writes
   it. A new analysis generation (a CLICK save; "rebuilt" when the save count did not move, as after Reload
   from CLICK or a Sync) or an edit to the workspace's `src/plc` (`PlcSourceWatch`, on the 2 s watch tick) is
-  offered as `program_change`: in RUN, **RUN Time Edit** (pause, reload, continue: values, timers and forces
-  stay) or **Stop and Write** (reload, STOP, RUN again in the same process: pyrung keeps retentive values and
+  offered as `program_change`: in RUN, **RUN Time Edit** (reload, continue: values, timers and forces stay)
+  or **Stop and Write** (reload, STOP, RUN again in the same process: pyrung keeps retentive values and
   forces, clears the rest); in STOP or while stepping, **Write** (values and mode stay). A Console `reload`
   writes for the current mode. The Console pane refuses `autoreload`; an agent on `pyrung live` can still
   reload, or change forces while a write runs. A build that fails is a notice; the old program keeps running
@@ -327,24 +327,33 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   through `run_console_command`, which counts them in flight until each one returns, so closing the pane
   mid-command does not hold writes back. Every pane shows busy, with Stop, from that count (`console_busy`),
   and the offer says a Console command holds the write.
-  An agent on `pyrung live` can still change forces and links while a write runs. The write pauses, reads
-  pyrung's force and link listing (the truth, whatever the Console did since the last frame), and
-  `plan_carry` (`services/program_carry.py`) decides each entry's name in the new program:
+  An agent on `pyrung live` can still change forces and links while a write runs. The write reads pyrung's
+  force and link listing (the truth, whatever the Console did since the last frame), `plan_carry`
+  (`services/program_carry.py`) decides each entry's name in the new program, and one `pyrungReload`
+  (`DapService.planned_reload`, pyrung 0.16) takes the plan (`CarryPlan.as_dap()`). pyrung pauses a running
+  continue first, keeps the mode, and places each entry; an entry the plan leaves out (one the Console added
+  after the listing) keeps its name:
   - a bench link follows its names while they exist (noted when one now sits on another address), else stays
     on the address under its new name; when two land on one feedback, the one that followed its name wins and
     the other is dropped
   - a force stays on its address under the new name on a pure rename (an unnamed address gaining a nickname
     included); a force whose name now sits on another address stays only on X, Y or an analog channel's DF and
     is released on internal memory
-- The offer lists releases, drops and moves before the user writes. Only the entries whose name changes are
-  unforced or restored before the reload and sent again after it (pyrung carries the rest by name); a planned
-  pyrung reload that takes `CarryPlan.as_dap()` replaces those calls. The listing, placed as planned, is
-  adopted by address. A write answered after another build started keeps the old names and offers the change
-  again. pyrung's reload leaves STOP for RUN, so a Write in STOP sends STOP again, and the switch shows the
-  position it had until the write is answered
-- A reload that fails puts back what it released, keeps the old program and adds **Restart** to the offer. A
-  reload pyrung never answers sends nothing by name (which program runs is unknown) and offers Restart; its
-  notice says the simulation may be paused and names what was released, and the switch position stays the
+  - a link the program declares and runs (`declared`) stays on its address: when the address has another name
+    in the new program, its coil carries on there. A bench link or declared link that moves keeps its coil's
+    state, so a timer part way through carries on
+- The offer lists releases, drops and moves before the user writes. After the reload, pyrung's report
+  (`carried`) is the truth: the entries it placed are adopted by address, and the notice
+  (`CarryPlan.written`) keeps the plan's notes for the entries placed as planned and says why pyrung could
+  not keep any other (a drop that loses nothing, such as a link the program now declares, is not listed).
+  A write answered after another build started keeps the old names and offers the change again. The switch
+  shows the position it had until the write is answered
+- A reload that fails changes nothing in pyrung: the old program keeps running with its forces and links (a
+  RUN Time Edit sends continue again, since pyrung may have paused), and **Restart** is added to the offer.
+  A pyrung without `pyrungReload` refuses the write the same way, with a notice that it needs pyrung 0.16.0;
+  nothing falls back to releasing and re-sending entries around a plain reload. A reload pyrung never
+  answers sends nothing by name (which program runs is unknown) and offers Restart; its notice says the
+  simulation may be paused and names what the plan releases, and the switch position stays the
   user's (`_position_held`) so Restart starts in it and the write offered is for it, until the user moves
   the switch.
   Restart (also on the toolbar) relaunches on what the workspace holds now, from power-on values or the PLC

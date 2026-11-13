@@ -138,8 +138,15 @@ class FakeDap:
 
         def report(tag, kind, to, *, planned, **fields):
             reason = self.reload_drops.get(tag)
-            entry = {"tag": tag, "kind": kind, "to": None if reason else to, "planned": planned,
-                     "released": to is None and not reason, "dropped": bool(reason), **fields}
+            entry = {
+                "tag": tag,
+                "kind": kind,
+                "to": None if reason else to,
+                "planned": planned,
+                "released": to is None and not reason,
+                "dropped": bool(reason),
+                **fields,
+            }
             if reason:
                 entry["reason"], entry["detail"] = reason
             carried.append(entry)
@@ -2717,7 +2724,7 @@ _LINK_PROGRAM = """\
 import warnings
 warnings.simplefilter("ignore")
 from pyrung.core import Bool, PLC, Physical, Program, Rung, out
-cmd = Bool("Cmd")
+cmd = Bool({enable!r})
 fb = {feedback}
 with Program(strict=False) as prog:
     with Rung(cmd):
@@ -2728,12 +2735,12 @@ runner = PLC(prog, dt=0.010)
 """
 
 
-def _link_program(name: str, *, declared: bool) -> str:
+def _link_program(name: str, *, declared: bool, enable: str = "Cmd") -> str:
     if declared:
-        feedback = f"Bool({name!r}, physical=Physical({name!r}, timed='100ms'), link='Cmd')"
+        feedback = f"Bool({name!r}, physical=Physical({name!r}, timed='100ms'), link={enable!r})"
     else:
         feedback = f"Bool({name!r})"
-    return _LINK_PROGRAM.format(feedback=feedback)
+    return _LINK_PROGRAM.format(feedback=feedback, enable=enable)
 
 
 def _timing_on_pyrung(tmp_path, *, declared: bool):
@@ -2769,13 +2776,17 @@ def _timing_on_pyrung(tmp_path, *, declared: bool):
     return harness, count
 
 
-@pytest.mark.parametrize("declared", [False, True], ids=["bench link", "program's link"])
-def test_renaming_a_linked_input_while_it_times_keeps_its_timing(tmp_path, declared):
+@pytest.mark.parametrize(
+    ("declared", "enable"),
+    [(False, "Cmd"), (False, "Go"), (True, "Cmd"), (True, "Go")],
+    ids=["bench link", "bench link and its enable", "program's link", "program's link and enable"],
+)
+def test_renaming_a_linked_input_while_it_times_keeps_its_timing(tmp_path, declared, enable):
     harness, count = _timing_on_pyrung(tmp_path, declared=declared)
     dap = harness.dap
     run = harness.analysis.project_dir / "run.py"
-    run.write_text(_link_program("ProxSensor", declared=declared), encoding="utf-8")
-    _rebuild(harness, {"X002": "ProxSensor"})
+    run.write_text(_link_program("ProxSensor", declared=declared, enable=enable), encoding="utf-8")
+    _rebuild(harness, {"X001": enable, "X002": "ProxSensor"})
 
     harness.sim.run_time_edit()
     harness.scheduler.run_ready()
@@ -2783,7 +2794,18 @@ def test_renaming_a_linked_input_while_it_times_keeps_its_timing(tmp_path, decla
 
     assert harness.sim.program_change is None
     assert dap.tag("__tmd_on__ProxSensor") == count + 10, "one 10 ms scan on, not from 0"
-    assert dict(dap._adapter._runner.forces) == {"Cmd": True}
-    if not declared:
-        assert list(dap._adapter._bench_links) == ["ProxSensor"]
-        assert harness.sim.notice == "Kept under new names: the link on Prox is now on ProxSensor."
+    assert dict(dap._adapter._runner.forces) == {enable: True}, "X001's force, on its new name"
+    assert harness.sim.forces == {"X001": True}
+    if declared:
+        return
+    assert list(dap._adapter._bench_links) == ["ProxSensor"]
+    assert dap._adapter._bench_links["ProxSensor"].coupling.en_name == enable
+    assert harness.sim.bench_links == {"X002": BenchLink("X001", response=response(timed="100ms"))}
+    renamed = ["the link on Prox is now on ProxSensor"]
+    if enable != "Cmd":
+        renamed = [
+            f"Cmd -> {enable} (X001)",
+            *renamed,
+            f"the link on Prox now comes from {enable} (was Cmd)",
+        ]
+    assert harness.sim.notice == f"Kept under new names: {', '.join(renamed)}."

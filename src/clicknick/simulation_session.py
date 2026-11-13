@@ -1727,7 +1727,7 @@ class SimulationSession:
         self._run_background(worker, "console-cmd")
 
     def _adopt_listing(self, listing: _Listing) -> None:
-        """What pyrung had set when the write paused it, by address: the user's choices now."""
+        """What pyrung holds after a write (or held, if it failed), by address: the user's choices."""
         state = self._state
         if (
             dict(listing.forces) != dict(state.forces)
@@ -1846,6 +1846,28 @@ class SimulationSession:
             return "the workspace is in another folder now. Restart runs it from there."
         return None
 
+    @staticmethod
+    def _listing_as_set(
+        forced: Mapping[str, PlcValue],
+        rows: Mapping[str, Mapping[str, Any]],
+        bench_wiring: bool,
+        names: tuple[Mapping[str, int], Mapping[int, str]],
+    ) -> _Listing:
+        """pyrung's listing by CLICK address, read with the names of the program it runs."""
+        forces: dict[str, PlcValue] = {}
+        for name, value in forced.items():
+            address = address_of(name, names)
+            if address is not None:
+                forces[address] = value
+        links: dict[str, BenchLink] = {}
+        for fb, row in rows.items():
+            address = address_of(fb, names)
+            enable = _link_enable(row)
+            enable_at = None if enable is None else address_of(enable, names)
+            if address is not None and (enable is None or enable_at is not None):
+                links[address] = _bench_link(row, enable_at)
+        return _Listing(forces, links, bench_wiring)
+
     def _write_program(self, how: Literal["keep", "stop"], *, echo: bool = True) -> None:
         """Reload the workspace's program in the running process (no relaunch).
 
@@ -1942,7 +1964,11 @@ class SimulationSession:
                     # unknown. Nothing is sent by name; Restart starts over.
                     released = tuple(
                         [f"the force on {name}" for name, new in plan.forces.items() if new is None]
-                        + [f"the bench link on {fb}" for fb, new in plan.links.items() if new is None]
+                        + [
+                            f"the bench link on {fb}"
+                            for fb, new in plan.links.items()
+                            if new is None
+                        ]
                     )
                     self._post(
                         partial(
@@ -2001,35 +2027,11 @@ class SimulationSession:
                     enable_at = None if enable is None else address_of(str(enable), names)
                     if enable is None or enable_at is not None:
                         links[address] = _bench_link(rows[tag], enable_at)
-            listing = _Listing(
-                forces, links, bench_wiring, tuple(problems), plan.written(carried)
-            )
+            listing = _Listing(forces, links, bench_wiring, tuple(problems), plan.written(carried))
             summary = str(body.get("result") or "")
             self._post(lambda: self._on_written(token, summary, target, source, listing))
 
         self._run_serial(job)
-
-    @staticmethod
-    def _listing_as_set(
-        forced: Mapping[str, PlcValue],
-        rows: Mapping[str, Mapping[str, Any]],
-        bench_wiring: bool,
-        names: tuple[Mapping[str, int], Mapping[int, str]],
-    ) -> _Listing:
-        """pyrung's listing by CLICK address, read with the names of the program it runs."""
-        forces: dict[str, PlcValue] = {}
-        for name, value in forced.items():
-            address = address_of(name, names)
-            if address is not None:
-                forces[address] = value
-        links: dict[str, BenchLink] = {}
-        for fb, row in rows.items():
-            address = address_of(fb, names)
-            enable = _link_enable(row)
-            enable_at = None if enable is None else address_of(enable, names)
-            if address is not None and (enable is None or enable_at is not None):
-                links[address] = _bench_link(row, enable_at)
-        return _Listing(forces, links, bench_wiring)
 
     def run_time_edit(self) -> None:
         """Write the workspace's program while in RUN, keeping every value, timer and force."""
@@ -2449,7 +2451,7 @@ class SimulationSession:
         advance on Step, the Console or an agent). RUN: mode run, free-running.
         """
         if self._writing:
-            return self._desired_position  # a reload passes through RUN mode, paused
+            return self._desired_position  # a reload pauses scanning; Stop and Write passes STOP
         if self.mode != "run":
             return "stop"
         return "run" if self.running else "step"

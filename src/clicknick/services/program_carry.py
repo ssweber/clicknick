@@ -160,6 +160,19 @@ class CarryPlan:
         """What the write would do, listed before the user writes; "" when nothing."""
         return _render(self.notes, written=False)
 
+    def _as_planned(self, note: CarryNote, entry: Mapping[str, Any] | None) -> bool:
+        """Whether pyrung did with the entry what the plan asked."""
+        if entry is None or entry.get("dropped"):
+            return False
+        to = entry.get("to")
+        if note.kind == "force":
+            target = self.forces.get(note.name)
+            return bool(entry.get("released")) if target is None else to == target
+        link = self.links.get(note.name)
+        if link is None:
+            return bool(entry.get("released"))
+        return to == link.feedback and entry.get("enable") == link.enable
+
     def written(self, carried: Iterable[Mapping[str, Any]]) -> str:
         """What the write did, from pyrung's ``carried`` report; "" when nothing.
 
@@ -173,23 +186,12 @@ class CarryPlan:
             if entry.get("kind") in ("force", "link", "cut")
         }
         done = [
-            note for note in self.notes if self._as_planned(note, outcome.get((note.kind, note.name)))
+            note
+            for note in self.notes
+            if self._as_planned(note, outcome.get((note.kind, note.name)))
         ]
         drops = [line for entry in entries if (line := _drop_line(entry))]
         return " ".join(part for part in (_render(done, written=True), *drops) if part)
-
-    def _as_planned(self, note: CarryNote, entry: Mapping[str, Any] | None) -> bool:
-        """Whether pyrung did with the entry what the plan asked."""
-        if entry is None or entry.get("dropped"):
-            return False
-        to = entry.get("to")
-        if note.kind == "force":
-            target = self.forces.get(note.name)
-            return bool(entry.get("released")) if target is None else to == target
-        link = self.links.get(note.name)
-        if link is None:
-            return bool(entry.get("released"))
-        return to == link.feedback and entry.get("enable") == link.enable
 
 
 class _Program:
