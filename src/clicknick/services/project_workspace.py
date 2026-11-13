@@ -102,6 +102,14 @@ def _source_fingerprint(source: Path) -> dict[str, str]:
     return fingerprint
 
 
+def _file_digest(path: Path) -> str | None:
+    """*path*'s content hash; None when it cannot be read."""
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
 def _source_stamp(source: Path) -> tuple[tuple[str, int, int], ...]:
     """Each meaningful file's path, size and modification time: cheap, and moved by any edit."""
     if not source.is_dir():
@@ -130,13 +138,36 @@ class PlcSourceWatch:
 
     def __init__(self, project_dir: Path) -> None:
         self._source = plc_source_dir(project_dir)
+        self._run_py = project_dir / "run.py"
         self._stamp = _source_stamp(self._source)
         self._fingerprint: dict[str, str] | None
         try:
             self._fingerprint = _source_fingerprint(self._source)
         except OSError:
             self._fingerprint = None  # unreadable: never reported as changed
+        self._run_digest = _file_digest(self._run_py)
         self._changed = False
+
+    def same(self) -> bool:
+        """True only when ``src/plc`` and ``run.py`` were read at the start and now, and match.
+
+        What pyrung runs. A file that could not be read either time is not proof
+        of the same program, unlike :meth:`changed`, which then reports no change.
+        """
+        if self._fingerprint is None or self._run_digest is None:
+            return False
+        if _file_digest(self._run_py) != self._run_digest:
+            return False
+        stamp = _source_stamp(self._source)
+        if stamp == self._stamp:
+            return not self._changed  # as last read
+        try:
+            current = _source_fingerprint(self._source)
+        except OSError:
+            return False
+        self._stamp = stamp
+        self._changed = current != self._fingerprint
+        return not self._changed
 
     def changed(self) -> bool:
         stamp = _source_stamp(self._source)

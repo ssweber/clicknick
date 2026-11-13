@@ -56,3 +56,44 @@ def test_a_new_or_removed_file_counts(tmp_path):
     assert not watch.changed()
     main.unlink()
     assert watch.changed()
+
+
+def _unreadable(_source):
+    raise PermissionError("being written")
+
+
+def test_same_holds_only_for_what_was_read_both_times(tmp_path, monkeypatch):
+    from clicknick.services import project_workspace
+
+    main = _source(tmp_path)
+    run_py = tmp_path / "run.py"
+    run_py.write_text("run\n", encoding="utf-8")
+    watch = PlcSourceWatch(tmp_path)
+    assert watch.same()
+
+    main.write_text("rung = 1\n", encoding="utf-8")  # rewritten the same
+    _later(main)
+    assert watch.same()
+
+    real = project_workspace._source_fingerprint
+    _later(main)
+    monkeypatch.setattr(project_workspace, "_source_fingerprint", _unreadable)
+    assert not watch.same(), "a file that cannot be read now is no proof"
+    monkeypatch.setattr(project_workspace, "_source_fingerprint", real)
+    assert watch.same()
+
+    run_py.write_text("edited\n", encoding="utf-8")
+    assert not watch.same(), "pyrung runs run.py too"
+
+
+def test_same_is_never_proven_by_a_watch_that_could_not_read(tmp_path, monkeypatch):
+    from clicknick.services import project_workspace
+
+    _source(tmp_path)
+    (tmp_path / "run.py").write_text("run\n", encoding="utf-8")
+    monkeypatch.setattr(project_workspace, "_source_fingerprint", _unreadable)
+    watch = PlcSourceWatch(tmp_path)
+    monkeypatch.undo()
+    assert not watch.changed(), "an edit check reports nothing"
+    assert not watch.same()
+    assert not PlcSourceWatch(tmp_path / "missing").same(), "no run.py"

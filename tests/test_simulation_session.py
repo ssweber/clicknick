@@ -1800,8 +1800,8 @@ def test_a_save_during_the_write_keeps_the_old_names_and_offers_it_again(ready):
     assert change.actions == ("run_time_edit", "stop_and_write")
 
 
-def test_a_build_of_the_program_written_is_not_offered_again(ready):
-    """A save counted twice, or a Reload from CLICK after it: one write answers both."""
+def test_a_build_of_the_program_running_is_not_offered(ready):
+    """A Sync or Reload from CLICK, or a save counted twice, that leaves the program as it was."""
     from clicknick.simulation_session import WATCH_MS
 
     _name(ready, "X001", "Start")
@@ -1814,61 +1814,82 @@ def test_a_build_of_the_program_written_is_not_offered_again(ready):
     ready.events.clear()
 
     _rebuild(ready, same_program=True)
+    ready.scheduler.fire(WATCH_MS)
     assert ready.sim.program_change is None, "the simulation runs this program already"
-    ready.scheduler.fire(WATCH_MS)
     _rebuild(ready, saved=False, same_program=True)
-    ready.scheduler.fire(WATCH_MS)
+    ready.dap.frame(mode="run", running=True)  # a frame decides before the views read it
+    ready.scheduler.run_ready()
     assert ready.sim.program_change is None
     assert "desired" not in [e.kind for e in ready.events], "nothing was offered"
 
     _rebuild(ready)  # a save with another rung
+    ready.scheduler.fire(WATCH_MS)
     change = ready.sim.program_change
     assert change is not None and change.cause == "save"
     assert change.actions == ("run_time_edit", "stop_and_write")
 
 
 def test_a_build_with_new_names_only_is_offered(ready):
-    _name(ready, "X001", "Start")
-    ready.open()
-    _rebuild(ready, {"X001": "StartPB"}, same_program=True)
-    assert ready.sim.program_change.cause == "save"
-
-
-def test_a_build_of_the_same_program_during_the_write_lets_the_write_stand(ready):
-    _name(ready, "X001", "Start")
-    _running_with_settings(ready)
-    _rebuild(ready, {"X001": "StartPB"})
-
-    ready.sim.run_time_edit()
-    _rebuild(ready, same_program=True)  # the same save built again before the answer
-    ready.scheduler.run_ready()
-
-    assert "changed while it was written" not in ready.messages("error")
-    assert "OK - the simulation runs the new program." in ready.messages()
-    assert ready.sim.to_tag("X001") == "StartPB"
-    assert ready.sim.program_change is None
-
-
-def test_a_build_running_when_the_write_is_answered_is_waited_for(ready):
     from clicknick.simulation_session import WATCH_MS
 
     _name(ready, "X001", "Start")
+    ready.open()
+    _rebuild(ready, {"X001": "StartPB"}, same_program=True)
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.sim.program_change.cause == "save"
+
+
+def test_a_build_with_another_run_py_is_offered(ready):
+    from clicknick.simulation_session import WATCH_MS
+
+    _write_source(ready)
+    ready.open()
+    (ready.analysis.project_dir / "run.py").write_text("edited", encoding="utf-8")
+    _rebuild(ready, same_program=True)
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.sim.program_change.cause == "save", "pyrung runs run.py too"
+
+
+def test_a_build_is_offered_when_the_program_running_could_not_be_read(ready, monkeypatch):
+    from clicknick.services import project_workspace
+    from clicknick.simulation_session import WATCH_MS
+
+    _write_source(ready)
+    real = project_workspace._source_fingerprint
+
+    def unreadable(_source):
+        raise PermissionError("being written")
+
+    monkeypatch.setattr(project_workspace, "_source_fingerprint", unreadable)
+    ready.open()  # the launch could not read src/plc
+    monkeypatch.setattr(project_workspace, "_source_fingerprint", real)
+
+    _rebuild(ready, same_program=True)
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.sim.program_change.cause == "save", "unknown is no proof of the same program"
+
+
+def test_a_build_after_a_write_that_raced_a_build_is_offered(ready):
+    """Which program pyrung read is unknown: a build of the program before the write is offered."""
+    from clicknick.simulation_session import WATCH_MS
+
+    _name(ready, "X001", "Start")
+    _write_source(ready)
     _running_with_settings(ready)
+    main = ready.analysis.project_dir / "src" / "plc" / "main.py"
+    before = main.read_text(encoding="utf-8")
     _rebuild(ready, {"X001": "StartPB"})
 
     ready.sim.run_time_edit()
-    ready.saves += 1
-    ready.analysis._generation += 1
-    ready.analysis._status = AnalysisStatus.BUILDING
+    _rebuild(ready)  # CLICK saved again before pyrung's answer was handled
     ready.scheduler.run_ready()
-    assert ready.sim.program_change is None, "still building"
-    assert ready.sim.to_tag("X001") == "Start", "which program pyrung read is not known yet"
+    assert "changed while it was written" in ready.messages("error")
 
-    ready.analysis._status = AnalysisStatus.READY  # it built the program written
+    main.write_text(before, encoding="utf-8")  # a save of the program before the write
+    _rebuild(ready, {"X001": "Start"}, same_program=True)
     ready.scheduler.fire(WATCH_MS)
-    assert ready.sim.to_tag("X001") == "StartPB"
-    assert ready.sim.program_change is None
-    assert "changed while it was written" not in ready.messages("error")
+    change = ready.sim.program_change
+    assert change is not None and change.cause == "save"
 
 
 def test_a_build_running_when_the_write_is_answered_can_bring_another_program(ready):
