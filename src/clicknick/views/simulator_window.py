@@ -456,6 +456,13 @@ class SimulatorWindow(tk.Toplevel):
             arrow=tk.FIRST if from_input else tk.LAST, tags=("drag",),
         )  # fmt: skip
 
+    def _cancel_link_drag(self, _event: object = None) -> None:
+        """Escape: drop a drag in progress without opening anything."""
+        if self._link_drag is not None:
+            self._link_drag = None
+            self._canvas.delete("drag")
+            self._canvas.configure(cursor="")
+
     def _end_link_drag(self) -> None:
         drag, self._link_drag = self._link_drag, None
         if drag is None:
@@ -819,9 +826,12 @@ class SimulatorWindow(tk.Toplevel):
         self._tooltip_item(
             (track, knob, bezel, cap),
             lambda a=address: (
-                "Momentary pushbutton: on while held. Right-click to change."
-                if self._simulation.is_momentary(a)
-                else "Maintained switch: click to latch. Right-click to change."
+                (
+                    "Momentary pushbutton: on while held. Right-click to change."
+                    if self._simulation.is_momentary(a)
+                    else "Maintained switch: click to latch. Right-click to change."
+                )
+                + "\nDrag its label onto an output to link them."
             ),
         )
         pending = c.create_oval(
@@ -868,7 +878,7 @@ class SimulatorWindow(tk.Toplevel):
     def _output_hint(self, address: str) -> str:
         if address in self._simulation.forces:
             return "Forced. Double-click (or click the padlock) to release."
-        return "Double-click to force it the other way. Drag its label onto an input (or from an input's label onto this) to link them."
+        return "Double-click to force it the other way. Drag its label onto an input's label to link them."
 
     def _flip_output(self, address: str) -> None:
         """Double-click: force an output the other way from what it shows, or release it."""
@@ -1448,6 +1458,9 @@ class SimulatorWindow(tk.Toplevel):
         for table in (self._inputs, self._outputs, self._analog_in, self._analog_out):
             table.clear()
         self._drawn_ranges.clear()
+        # Deleting the items under the pointer sends no <Leave>, and a drag's anchor is gone.
+        self._link_drag = None
+        c.configure(cursor="")
         self._cpu_leds.clear()
         self._mode_labels.clear()
         self._mode_knob = None
@@ -1794,6 +1807,7 @@ class SimulatorWindow(tk.Toplevel):
         self._canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self._canvas.bind("<ButtonRelease-1>", self._on_any_release, add="+")
         self._canvas.bind("<B1-Motion>", self._on_link_drag, add="+")
+        self.bind("<Escape>", self._cancel_link_drag, add="+")
         self._canvas.bind("<Configure>", self._on_canvas_resized, add="+")
         self._canvas.bind(
             "<MouseWheel>", lambda e: self._canvas.yview_scroll(-1 * (e.delta // 120), "units")

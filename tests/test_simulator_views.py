@@ -878,6 +878,41 @@ def test_pressing_an_outputs_row_off_its_label_starts_no_drag(simulator, ready):
     _release(win, x, y)
 
 
+def test_a_redraw_mid_drag_drops_the_drag_and_the_crosshair(simulator, ready, monkeypatch):
+    win = simulator(ready)
+    win.geometry("1100x760")
+    win.update()
+    opened: list = []
+    monkeypatch.setattr(win, "_open_link_dialog", lambda address, **kw: opened.append(address))
+    x, y = _label_center(win, "handle:X002")
+    _press(win, x, y)
+    win._canvas.configure(cursor="crosshair")
+    win._redraw()
+    assert win._link_drag is None
+    assert str(win._canvas.cget("cursor")) == ""
+    _release(win, x, y)
+    assert opened == []
+
+
+def test_escape_cancels_a_drag_in_progress(simulator, ready, monkeypatch):
+    win = simulator(ready)
+    win.geometry("1100x760")
+    win.update()
+    opened: list = []
+    monkeypatch.setattr(win, "_open_link_dialog", lambda address, **kw: opened.append(address))
+    x, y = _label_center(win, "handle:X002")
+    _press(win, x, y)
+    out_x, out_y = _center(win, "out:Y001")
+    win._on_link_drag(SimpleNamespace(x=out_x, y=out_y))
+    assert win._canvas.find_withtag("drag")
+    win._cancel_link_drag()
+    assert win._link_drag is None
+    assert not win._canvas.find_withtag("drag")
+    assert str(win._canvas.cget("cursor")) == ""
+    _release(win, out_x, out_y)
+    assert opened == []
+
+
 def test_clicking_an_input_switch_still_toggles_it(simulator, ready):
     win = simulator(ready)
     win.geometry("1100x760")

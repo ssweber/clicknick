@@ -151,7 +151,7 @@ option. It can. Nothing on the branch needs Modbus writes to X.
   glyph on the input with the switch enabled again. A promoted link waiting for Sync gets a "pending Sync" badge.
 - **Enable not on the panel:** the enable can be a C bit, a DS value with a trigger and so on. In that case the
   chip shows the nickname and gives nothing to highlight.
-- **Create:** drag from an output LED to an input terminal, or right-click an input and choose "Link to output…".
+- **Create:** drag from an output's label to an input's label, or the other way, or right-click an input and choose "Link to output…".
   A popover asks for on/off delay, or for analog targets the profile, plus a trigger value for integer enables. It
   creates a bench link and has a "Save to project" button.
 - **Right-click a linked input:** Edit, Cut (simulate failure) / Restore, Save to project, Remove (bench only).
@@ -240,8 +240,8 @@ Original plan:
 
 ### Built vs. the plan above
 
-- Built: chips (program solid, bench dashed, cut as a dashed red ring), hover wire through the gaps, drag an output
-  onto an input to open the link dialog, the right-click menu, the Wiring menu (per-link enable, Bench wiring
+- Built: chips (program solid, bench dashed, cut as a dashed red ring), hover wire through the gaps, drag an output's label
+  onto an input's (or the reverse) to open the link dialog, the right-click menu, the Wiring menu (per-link enable, Bench wiring
   on/off, Discard bench links), adoption of Console edits, Save to project.
 - Different: no "pending Sync" badge. A saved bench link says so in its tooltip and the menu reads "Saved to project".
 - Built later the same day: the chip counts down a running delay (pyrung frames carry `linksPending`, simulated ms
