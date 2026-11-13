@@ -1162,3 +1162,78 @@ def test_a_fill_of_an_invalid_value_is_said(editor, dialogs, tk_root):
 
     assert [row.new_value for row in panel.rows[:3]] == [None, None, None]
     assert [line.split(":")[0] for line in dialogs.errors[0].splitlines()] == ["DS1", "DS2", "DS3"]
+
+
+def _panel_with(editor, dialogs, tk_root, addresses):
+    window = editor()
+    dialogs.new_names.append("Pasted")
+    window._new_dataview()
+    panel = window._get_current_panel()
+    for address in addresses:
+        panel.add_address(address)
+    tk_root.update()
+    return panel
+
+
+def _paste(panel, tk_root, row, column, text, *, idle=True):
+    panel.sheet.select_cell(row, column)
+    tk_root.clipboard_clear()
+    tk_root.clipboard_append(text)
+    panel.sheet.MT.ctrl_v()
+    if idle:
+        tk_root.update()
+
+
+def test_two_pastes_give_two_warnings(editor, dialogs, tk_root):
+    panel = _panel_with(editor, dialogs, tk_root, ["DS1", "DS2"])
+    panel.set_modbus_columns_visible(True)
+    tk_root.update()
+
+    _paste(panel, tk_root, 0, COL_NEW_VALUE, "abc", idle=False)  # no idle between the two
+    _paste(panel, tk_root, 1, COL_NEW_VALUE, "xyz")
+
+    assert [message.split(":")[0] for message in dialogs.errors] == ["DS1", "DS2"]
+
+
+def test_a_paste_into_the_force_column_is_not_checked_as_a_new_value(editor, dialogs, tk_root):
+    """With the Modbus columns hidden, the displayed column 3 is Force."""
+    panel = _panel_with(editor, dialogs, tk_root, ["DS1"])
+    panel.set_modbus_columns_visible(False)
+    panel.set_force_column_visible(True)
+    tk_root.update()
+
+    _paste(panel, tk_root, 0, 3, "abc")
+
+    assert dialogs.errors == []
+    assert panel.rows[0].new_value is None
+
+
+def test_clearing_a_new_value_is_never_refused(editor, dialogs, tk_root):
+    panel = _panel_with(editor, dialogs, tk_root, ["DS1", "DS2"])
+    panel.set_modbus_columns_visible(True)
+    tk_root.update()
+    _paste(panel, tk_root, 0, COL_NEW_VALUE, "5\n6")
+    assert [row.new_value for row in panel.rows[:2]] == [5, 6]
+
+    panel.sheet.MT.create_selection_box(0, COL_NEW_VALUE, 2, COL_NEW_VALUE + 1, "cells")
+    panel.sheet.MT.delete_key()
+    tk_root.update()
+
+    assert [row.new_value for row in panel.rows[:2]] == [None, None]
+    assert dialogs.errors == []
+
+
+def test_a_destroyed_panel_has_no_idle_warning_left(editor, dialogs, tk_root):
+    panel = _panel_with(editor, dialogs, tk_root, ["DS1"])
+    panel.set_modbus_columns_visible(True)
+    tk_root.update()
+    panel.sheet.select_cell(0, COL_NEW_VALUE)
+    tk_root.clipboard_clear()
+    tk_root.clipboard_append("abc")
+    panel.sheet.MT.ctrl_v()  # the warning is queued for idle
+    assert panel._rejected_pastes_after_id is not None
+
+    panel.destroy()
+    tk_root.update()
+
+    assert dialogs.errors == []

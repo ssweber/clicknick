@@ -572,19 +572,24 @@ class DataviewPanel(ttk.Frame):
             shown.append(f"and {len(rejected) - len(shown)} more")
         messagebox.showwarning("Invalid New Value", "\n".join(shown), parent=self)
 
+    def _on_paste_start(self, _event) -> None:
+        """A paste ends the batch before it: its warning is shown before this paste's own."""
+        self._warn_rejected_pastes()
+
     def _reject_new_value(self, row_idx: int, text: str, error: str) -> str | None:
         """Refuse a New Value. Text typed in the cell editor is asked for again once tksheet
-        has closed the editor; a pasted or filled value keeps the cell as it was and is
-        listed in one warning once the paste or fill has finished."""
+        has closed the editor. A value pasted, filled or put in by Replace All keeps the cell
+        as it was and is listed in one warning, shown when the next paste starts or the
+        window is idle; clearing a cell is never refused."""
         if not self.sheet.MT.text_editor.open:
             if not self._rejected_pastes:
-                self.after_idle(self._warn_rejected_pastes)
+                self._rejected_pastes_after_id = self.after_idle(self._warn_rejected_pastes)
             self._rejected_pastes.append(
                 f"{self.rows[row_idx].address}: {error or 'Invalid value'}"
             )
             return self._new_value_display(self.rows[row_idx])
         self._rejected_edit = (row_idx, text, error or "Invalid value")
-        self.after_idle(self.reopen_rejected_edit)
+        self._rejected_edit_after_id = self.after_idle(self.reopen_rejected_edit)
         return None
 
     def _validate_edit(self, event) -> str | None:
@@ -596,8 +601,11 @@ class DataviewPanel(ttk.Frame):
         Returns:
             The validated/normalized value, or empty string if invalid
         """
+        # tksheet gives the displayed column; hidden columns shift it off the data column
+        column = self.sheet.MT.datacn(event.column) if hasattr(event, "column") else None
+
         # Only validate Address column
-        if hasattr(event, "column") and event.column == COL_ADDRESS:
+        if column == COL_ADDRESS:
             value = (event.value or "").strip()
 
             # Empty is valid (clearing the cell); an invalid address clears it too
@@ -605,7 +613,7 @@ class DataviewPanel(ttk.Frame):
                 return ""
             return self._display_address(value) or ""
 
-        if hasattr(event, "column") and event.column == COL_FORCE:
+        if column == COL_FORCE:
             row_idx = getattr(event, "row", None)
             if row_idx is None or row_idx >= len(self.rows):
                 return event.value
@@ -618,7 +626,7 @@ class DataviewPanel(ttk.Frame):
                 return self._force_display(row)
             return DataViewFile.value_to_display(parsed.value, row.data_type)
 
-        if hasattr(event, "column") and event.column == COL_NEW_VALUE:
+        if column == COL_NEW_VALUE:
             row_idx = getattr(event, "row", None)
             if row_idx is None or row_idx >= len(self.rows):
                 return event.value
@@ -701,6 +709,7 @@ class DataviewPanel(ttk.Frame):
         self.sheet.bind("<<SheetModified>>", self._on_sheet_modified)
 
         # Handle row drag-and-drop reordering
+        self.sheet.extra_bindings("begin_paste", self._on_paste_start)
         self.sheet.extra_bindings("end_move_rows", self._on_rows_moved)
 
         # Handle row insert/delete for dynamic row management
@@ -759,6 +768,11 @@ class DataviewPanel(ttk.Frame):
         # Only handle destruction of this widget, not children
         if event.widget == self:
             self.stop_file_monitoring()
+            for after_id in (self._rejected_pastes_after_id, self._rejected_edit_after_id):
+                if after_id is not None:
+                    self.after_cancel(after_id)
+            self._rejected_pastes_after_id = self._rejected_edit_after_id = None
+            self._rejected_pastes.clear()
 
     def __init__(
         self,
@@ -787,6 +801,8 @@ class DataviewPanel(ttk.Frame):
 
         self._rejected_edit: tuple[int, str, str] | None = None
         self._rejected_pastes: list[str] = []
+        self._rejected_pastes_after_id: str | None = None
+        self._rejected_edit_after_id: str | None = None
         self.file_path = file_path
         self.on_modified = on_modified
         self.on_addresses_changed = on_addresses_changed
