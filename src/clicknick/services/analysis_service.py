@@ -256,13 +256,18 @@ def _refresh_workspace_guidance(source: Path, destination: Path) -> None:
 
 
 def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
-    """Publish a complete staged generation without risking workspace edits."""
+    """Publish a complete staged generation without risking workspace edits.
+
+    It waits for a backup or restore of the workspace under way, and holds the
+    workspace from its backup of edits until the generation is recorded.
+    """
     from .project_workspace import (
         _replace_tree,
         _replace_trees,
         backup_modified_plc_source,
         plc_source_dir,
         record_generated_plc_source,
+        workspace_writing,
     )
 
     staged_source = plc_source_dir(staged_dir)
@@ -270,31 +275,32 @@ def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
         raise ValueError(f"staged generated source directory not found: {staged_source}")
 
     persist_dir.mkdir(parents=True, exist_ok=True)
-    backup_modified_plc_source(persist_dir)
+    with workspace_writing(persist_dir, wait=True):
+        backup_modified_plc_source(persist_dir)
 
-    # Support files first. csv/ and src/plc go last and together, so a failure
-    # anywhere (a file open in Excel) never leaves csv/ from one save and src/plc
-    # from another; the generation record is written only once both are in.
-    for child in staged_dir.iterdir():
-        if child.name in {"src", "csv"}:
-            continue
-        destination = persist_dir / child.name
-        if child.name in _GENERATED_DIR_NAMES:
-            _replace_tree(child, destination)
-        elif child.name in _GENERATED_FILE_NAMES:
-            shutil.copy2(child, destination)
-        elif child.name in _WORKSPACE_GUIDANCE_FILES and destination.is_file():
-            _refresh_workspace_guidance(child, destination)
-        else:
-            _copy_missing(child, destination)
-    # Outputs this generation does not write go, csv_output/ among them.
-    _clean_generated(persist_dir, keep=frozenset(child.name for child in staged_dir.iterdir()))
+        # Support files first. csv/ and src/plc go last and together, so a failure
+        # anywhere (a file open in Excel) never leaves csv/ from one save and src/plc
+        # from another; the generation record is written only once both are in.
+        for child in staged_dir.iterdir():
+            if child.name in {"src", "csv"}:
+                continue
+            destination = persist_dir / child.name
+            if child.name in _GENERATED_DIR_NAMES:
+                _replace_tree(child, destination)
+            elif child.name in _GENERATED_FILE_NAMES:
+                shutil.copy2(child, destination)
+            elif child.name in _WORKSPACE_GUIDANCE_FILES and destination.is_file():
+                _refresh_workspace_guidance(child, destination)
+            else:
+                _copy_missing(child, destination)
+        # Outputs this generation does not write go, csv_output/ among them.
+        _clean_generated(persist_dir, keep=frozenset(child.name for child in staged_dir.iterdir()))
 
-    pairs = [(staged_source, plc_source_dir(persist_dir))]
-    if (staged_dir / "csv").is_dir():
-        pairs.insert(0, (staged_dir / "csv", persist_dir / "csv"))
-    _replace_trees(pairs)
-    record_generated_plc_source(persist_dir)
+        pairs = [(staged_source, plc_source_dir(persist_dir))]
+        if (staged_dir / "csv").is_dir():
+            pairs.insert(0, (staged_dir / "csv", persist_dir / "csv"))
+        _replace_trees(pairs)
+        record_generated_plc_source(persist_dir)
 
 
 def _regenerate_persisted_project(

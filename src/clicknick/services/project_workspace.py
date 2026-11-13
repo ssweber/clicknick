@@ -11,7 +11,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Sequence
+import threading
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,6 +30,36 @@ _OLDER_NAME_FORMAT = "%Y%m%dT%H%M%SZ"
 _OLDER_NAME = re.compile(r"(\d{8}T\d{6}Z)(?:-(\d+))?")
 _PRUNING_PREFIX = ".pruning-"
 _COPY_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc")
+# One lock per workspace folder; see workspace_writing.
+_WORKSPACE_LOCKS: dict[str, threading.RLock] = {}
+_WORKSPACE_LOCKS_GUARD = threading.Lock()
+
+
+class WorkspaceBusyError(ValueError):
+    """Another thread is writing the workspace's ``src/plc`` or its backups."""
+
+
+@contextmanager
+def workspace_writing(project_dir: Path, *, wait: bool = False) -> Iterator[None]:
+    """Hold *project_dir*'s lock while reading or writing its ``src/plc`` and backups.
+
+    A build's publish, a backup, a restore and choosing a workspace each hold
+    it, so none sees another's trees part way through. The build waits for it
+    (``wait=True``) on its worker thread. The others run on the Tk thread and
+    raise WorkspaceBusyError instead of freezing the window behind a build.
+    The thread that holds it may take it again.
+    """
+    key = os.path.normcase(str(project_dir.resolve()))
+    with _WORKSPACE_LOCKS_GUARD:
+        lock = _WORKSPACE_LOCKS.setdefault(key, threading.RLock())
+    if not lock.acquire(blocking=wait):
+        raise WorkspaceBusyError(
+            f"ClickNick is writing {project_dir} from CLICK's save; try again when it finishes"
+        )
+    try:
+        yield
+    finally:
+        lock.release()
 
 
 def plc_source_dir(project_dir: Path) -> Path:
@@ -404,16 +436,18 @@ def backup_plc_source(project_dir: Path) -> tuple[Path, int]:
     are kept in all. A tree that a kept backup already holds makes no new one:
     that backup becomes the newest, with a new time.
     """
-    file_count, _retired = _back_up(project_dir)
-    _prune_older_backups(project_dir)
+    with workspace_writing(project_dir):
+        file_count, _retired = _back_up(project_dir)
+        _prune_older_backups(project_dir)
     return plc_backup_dir(project_dir), file_count
 
 
 def backup_modified_plc_source(project_dir: Path) -> tuple[Path, int] | None:
     """Snapshot active source only when it contains work beyond regeneration."""
-    if not plc_source_is_modified(project_dir):
-        return None
-    return backup_plc_source(project_dir)
+    with workspace_writing(project_dir):
+        if not plc_source_is_modified(project_dir):
+            return None
+        return backup_plc_source(project_dir)
 
 
 @dataclass(frozen=True)
@@ -427,15 +461,7 @@ class PlcRestore:
     edits_backed_up: bool
 
 
-def restore_plc_source(project_dir: Path, older: str | None = None) -> PlcRestore:
-    """Replace active ``src/plc`` with the newest backup, or the older one named *older*.
-
-    Edits in ``src/plc`` that are neither the last generation nor the chosen
-    backup become the newest backup first (the rule of
-    ``backup_modified_plc_source``). The chosen backup is copied aside before
-    that, since that backup moves ``backup/src/plc`` to an older slot. Pruning
-    runs only once ``src/plc`` holds the restored tree, and keeps its backup.
-    """
+def _restore(project_dir: Path, older: str | None) -> PlcRestore:
     if older is None:
         chosen = plc_backup_dir(project_dir)
         if not chosen.is_dir():
@@ -466,6 +492,19 @@ def restore_plc_source(project_dir: Path, older: str | None = None) -> PlcRestor
         older = retired.name
     _prune_older_backups(project_dir, keep=older)
     return PlcRestore(chosen, file_count, backed_up)
+
+
+def restore_plc_source(project_dir: Path, older: str | None = None) -> PlcRestore:
+    """Replace active ``src/plc`` with the newest backup, or the older one named *older*.
+
+    Edits in ``src/plc`` that are neither the last generation nor the chosen
+    backup become the newest backup first (the rule of
+    ``backup_modified_plc_source``). The chosen backup is copied aside before
+    that, since that backup moves ``backup/src/plc`` to an older slot. Pruning
+    runs only once ``src/plc`` holds the restored tree, and keeps its backup.
+    """
+    with workspace_writing(project_dir):
+        return _restore(project_dir, older)
 
 
 #: Creation flags for ClickNick's Python children: no console window.

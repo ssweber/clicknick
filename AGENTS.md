@@ -241,6 +241,11 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   held as the newest backup (or in `src/plc`, as the backup it restored); one that failed left `src/plc` as
   it was and deleted no backup; a tree once in a backup, or in `src/plc` with edits as one began, is gone
   only when 5 kept backups were the newest after it
+- One lock per workspace folder (`workspace_writing`) is held by a build's publish (from its backup of
+  edits to the generation record), `backup`, `restore` and choosing a workspace, so none sees another's
+  trees part way through. The build waits for it on its worker thread; the others run on the Tk thread and
+  are refused (`WorkspaceBusyError`) rather than freeze the window. `clicknick-cli` is also refused while the
+  analysis says it is building (`_get_project_dir`); the lock covers a build that still publishes when it does not
 
 ### Preview Changes
 - The one window for getting ladder into CLICK (`views/preview_changes_window.py`; it was called Guided Paste):

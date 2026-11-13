@@ -61,6 +61,7 @@
 
 ### Fixed
 
+- `clicknick-cli backup` and `restore`, and choosing a workspace, no longer run while ClickNick writes a CLICK save into the workspace, where a backup could hold files from two saves; they say to try again when it finishes.
 - `clicknick-cli` accepts options as separate words (`rung apply main --select r3`, `tag set-physical ... --on-delay 50ms`) instead of refusing them.
 - Double-clicking a Tag Browser item that is a nickname with others under it (`Tank_Pump1` over `Tank_Pump1_Run`) filters the Address Editor to that nickname and the ones under it, the same ones Rename changes, instead of hiding its own row.
 - The Simulator's Console can be popped out while a command from a closed Console pane is still running; only a command sent from that pane keeps Pop out off.
