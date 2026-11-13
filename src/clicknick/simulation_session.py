@@ -940,6 +940,20 @@ class SimulationSession:
         new = (analysis.project_tag_to_addr_key, analysis.project_addr_key_to_tag)
         return plan_carry(old, new, forces, links, self._analog_channels())
 
+    def _to_compare(self, analysis: AnalysisService) -> bool:
+        """True when the finished build *analysis* is yet to be compared with the program running."""
+        from .services.analysis_service import AnalysisStatus
+
+        return (
+            self.is_ready
+            and not self._writing
+            and not self._write_error
+            and self._program_source is not None
+            and self._program_names is not None
+            and analysis.status is AnalysisStatus.READY
+            and analysis.generation not in (self._examined, self._program_generation)
+        )
+
     @property
     def program_change(self) -> ProgramChange | None:
         """A program CLICK saved or the workspace holds that the simulation does not run yet."""
@@ -976,6 +990,8 @@ class SimulationSession:
                 )
             if analysis.status is not AnalysisStatus.READY:
                 return None  # still building
+            if self._to_compare(analysis):
+                return None  # _examine_build compares it first
             saves = self._save_count()
             if saves is not None and saves == self._program_saves:
                 return ProgramChange(
@@ -1014,29 +1030,22 @@ class SimulationSession:
             and watch.same()
         )
 
-    def _examine_build(self) -> None:
+    def _examine_build(self) -> bool:
         """Take a finished build that holds the program the simulation runs as run.
 
         Another build of the same program (a Sync or Reload from CLICK that leaves
-        it as it was) is then not offered. Each build is compared once.
+        it as it was) is then not offered. Each build is compared once; True when
+        one was compared now.
         """
-        from .services.analysis_service import AnalysisStatus
-
         analysis = self._get_analysis()
-        if (
-            not self.is_ready
-            or self._writing
-            or self._write_error
-            or analysis is None
-            or analysis.status is not AnalysisStatus.READY
-            or analysis.generation in (self._examined, self._program_generation)
-        ):
-            return
+        if analysis is None or not self._to_compare(analysis):
+            return False
         self._examined = analysis.generation
         if self._runs_workspace_program(analysis):
             self._program_generation = analysis.generation
             self._program_saves = self._save_count()
             self._source_changed = False
+        return True
 
     def _check_program(self) -> None:
         """Notice an edit to the workspace source, and tell listeners when the offer changes."""
@@ -1607,7 +1616,8 @@ class SimulationSession:
             # Paused for a write; its answer says when the names change.
             self._emit("frame")
             return
-        self._examine_build()  # before the views read program_change
+        if self._examine_build():  # before the views read program_change
+            self._check_program()
         # Anyone can drive (the Console, an agent through `pyrung live`), and
         # the last command wins: mode, pacing and forces follow the frames.
         if not self._position_held:

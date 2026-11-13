@@ -346,7 +346,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   A finished build of the program the simulation runs (a Sync or Reload from CLICK that leaves it as it
   was) is not offered: its tag names, `src/plc` and `run.py` are those read at the launch or write
   (`PlcSourceWatch.same`; a file that could not be read either time is no proof). The watch tick and
-  each frame compare a build once (`_examine_build`); `program_change` only reads the result
+  each frame compare a build once (`_examine_build`); `program_change` only reads the result and offers
+  nothing for a build not compared yet
 - One check says whether the workspace's program can run (`_workspace_problem`: converted, current, a
   `run.py`, no rung ClickNick cannot read). Start, a write and Restart all use it; a write or Restart it
   refuses leaves the simulation running and sets a notice saying why

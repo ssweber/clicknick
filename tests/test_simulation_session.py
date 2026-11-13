@@ -1248,11 +1248,14 @@ def _rebuild(
     *,
     saved: bool = True,
     same_program: bool = False,
+    compared: bool = True,
 ) -> None:
     """A CLICK save rebuilt the analysis: a new tag map (with *renames* by address).
 
     Not *saved*: a rebuild without a save (Reload from CLICK, a Sync). The build
     writes ``src/plc`` again; unless *same_program*, it now holds another rung.
+    Unless not *compared*, the session then compares it with the program it
+    runs, as its watch tick or a frame does.
     """
     if saved:
         harness.saves += 1
@@ -1274,6 +1277,8 @@ def _rebuild(
         ),
     )
     harness.analysis._generation += 1
+    if compared:
+        harness.sim._check_program()
 
 
 def _bench_by_name(dap: FakeDap, names: dict[str, str]) -> None:
@@ -1827,6 +1832,46 @@ def test_a_build_of_the_program_running_is_not_offered(ready):
     change = ready.sim.program_change
     assert change is not None and change.cause == "save"
     assert change.actions == ("run_time_edit", "stop_and_write")
+
+
+def test_a_build_is_not_offered_before_it_is_compared(ready):
+    """In STOP no frames come: the watch tick compares the build before anything is offered."""
+    from clicknick.simulation_session import WATCH_MS
+
+    _write_source(ready)
+    ready.open()
+    ready.events.clear()
+
+    _rebuild(ready, saved=False, same_program=True, compared=False)  # a Sync that changes nothing
+    assert ready.sim.program_change is None, "what a view drawn now reads"
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.sim.program_change is None
+    assert "desired" not in [e.kind for e in ready.events]
+
+    _rebuild(ready, compared=False)  # a save with another rung
+    assert ready.sim.program_change is None, "not compared yet"
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.sim.program_change.cause == "save"
+    assert [e.kind for e in ready.events].count("desired") == 1
+
+
+def test_an_offer_goes_when_a_later_build_holds_the_program_running(ready):
+    """CLICK saved another rung, then the program as it was (an undo and a save)."""
+    from clicknick.simulation_session import WATCH_MS
+
+    _write_source(ready)
+    ready.open()
+    main = ready.analysis.project_dir / "src" / "plc" / "main.py"
+    before = main.read_text(encoding="utf-8")
+    _rebuild(ready)
+    assert ready.sim.program_change.cause == "save"
+    ready.events.clear()
+
+    main.write_text(before, encoding="utf-8")
+    _rebuild(ready, same_program=True, compared=False)
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.sim.program_change is None
+    assert [e.kind for e in ready.events].count("desired") == 1, "the offer's banner goes"
 
 
 def test_a_build_with_new_names_only_is_offered(ready):
