@@ -1234,17 +1234,27 @@ def test_frames_carry_link_countdowns_by_address(ready):
 
 
 def _rebuild(
-    harness: Harness, renames: dict[str, str] | None = None, *, saved: bool = True
+    harness: Harness,
+    renames: dict[str, str] | None = None,
+    *,
+    saved: bool = True,
+    same_program: bool = False,
 ) -> None:
     """A CLICK save rebuilt the analysis: a new tag map (with *renames* by address).
 
-    Not *saved*: a rebuild without a save (Reload from CLICK, a Sync).
+    Not *saved*: a rebuild without a save (Reload from CLICK, a Sync). The build
+    writes ``src/plc`` again; unless *same_program*, it now holds another rung.
     """
     if saved:
         harness.saves += 1
     from pyclickplc.addresses import get_addr_key, parse_address
 
     old = harness.analysis._result
+    main = old.project_dir / "src" / "plc" / "main.py"
+    main.parent.mkdir(parents=True, exist_ok=True)
+    held = main.read_text(encoding="utf-8") if main.is_file() else ""
+    rungs = held.count("rung")
+    main.write_text(held if same_program else f"{held}rung {rungs + 1}\n", encoding="utf-8")
     key_to_tag = dict(old.addr_key_to_tag)
     for address, tag in (renames or {}).items():
         key_to_tag[get_addr_key(*parse_address(address))] = tag
@@ -1776,6 +1786,97 @@ def test_a_save_during_the_write_keeps_the_old_names_and_offers_it_again(ready):
     ready.sim.run_time_edit()
     _rebuild(ready)  # CLICK saved again before pyrung's answer was handled
     ready.scheduler.run_ready()
+
+    assert "changed while it was written" in ready.messages("error")
+    assert ready.sim.to_tag("X001") == "Start"
+    change = ready.sim.program_change
+    assert change is not None and change.cause == "save"
+    assert change.actions == ("run_time_edit", "stop_and_write")
+
+def test_a_build_of_the_program_written_is_not_offered_again(ready):
+    """A save counted twice, or a Reload from CLICK after it: one write answers both."""
+    from clicknick.simulation_session import WATCH_MS
+
+    _name(ready, "X001", "Start")
+    _running_with_settings(ready)
+    _rebuild(ready, {"X001": "StartPB"})
+    assert ready.sim.program_change.cause == "save"
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+    assert ready.sim.program_change is None
+    ready.events.clear()
+
+    _rebuild(ready, same_program=True)
+    assert ready.sim.program_change is None, "the simulation runs this program already"
+    ready.scheduler.fire(WATCH_MS)
+    _rebuild(ready, saved=False, same_program=True)
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.sim.program_change is None
+    assert "desired" not in [e.kind for e in ready.events], "nothing was offered"
+
+    _rebuild(ready)  # a save with another rung
+    change = ready.sim.program_change
+    assert change is not None and change.cause == "save"
+    assert change.actions == ("run_time_edit", "stop_and_write")
+
+
+def test_a_build_with_new_names_only_is_offered(ready):
+    _name(ready, "X001", "Start")
+    ready.open()
+    _rebuild(ready, {"X001": "StartPB"}, same_program=True)
+    assert ready.sim.program_change.cause == "save"
+
+
+def test_a_build_of_the_same_program_during_the_write_lets_the_write_stand(ready):
+    _name(ready, "X001", "Start")
+    _running_with_settings(ready)
+    _rebuild(ready, {"X001": "StartPB"})
+
+    ready.sim.run_time_edit()
+    _rebuild(ready, same_program=True)  # the same save built again before the answer
+    ready.scheduler.run_ready()
+
+    assert "changed while it was written" not in ready.messages("error")
+    assert "OK - the simulation runs the new program." in ready.messages()
+    assert ready.sim.to_tag("X001") == "StartPB"
+    assert ready.sim.program_change is None
+
+
+def test_a_build_running_when_the_write_is_answered_is_waited_for(ready):
+    from clicknick.simulation_session import WATCH_MS
+
+    _name(ready, "X001", "Start")
+    _running_with_settings(ready)
+    _rebuild(ready, {"X001": "StartPB"})
+
+    ready.sim.run_time_edit()
+    ready.saves += 1
+    ready.analysis._generation += 1
+    ready.analysis._status = AnalysisStatus.BUILDING
+    ready.scheduler.run_ready()
+    assert ready.sim.program_change is None, "still building"
+    assert ready.sim.to_tag("X001") == "Start", "which program pyrung read is not known yet"
+
+    ready.analysis._status = AnalysisStatus.READY  # it built the program written
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.sim.to_tag("X001") == "StartPB"
+    assert ready.sim.program_change is None
+    assert "changed while it was written" not in ready.messages("error")
+
+
+def test_a_build_running_when_the_write_is_answered_can_bring_another_program(ready):
+    from clicknick.simulation_session import WATCH_MS
+
+    _name(ready, "X001", "Start")
+    _running_with_settings(ready)
+    _rebuild(ready, {"X001": "StartPB"})
+
+    ready.sim.run_time_edit()
+    ready.saves += 1
+    ready.analysis._status = AnalysisStatus.BUILDING
+    ready.scheduler.run_ready()
+    _rebuild(ready, saved=False)  # it built another rung
+    ready.scheduler.fire(WATCH_MS)
 
     assert "changed while it was written" in ready.messages("error")
     assert ready.sim.to_tag("X001") == "Start"
