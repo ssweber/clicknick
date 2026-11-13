@@ -402,6 +402,9 @@ class SimulationSession:
         self._writing = False
         self._write_error: str | None = None
         self._shown_change: ProgramChange | None = None
+        # The PLC data file changed during a write: relaunch from it once the write is
+        # answered, unless the simulation launched again meanwhile.
+        self._data_restart_due = False
         # Console commands in flight (run_console_command): one could land between a
         # write's listing and its reload. Counted here, so closing the panel that sent
         # one does not leave the count set.
@@ -1016,7 +1019,7 @@ class SimulationSession:
                 self._adopt_snapshot(self._plc_data_path)
                 reload_data = True
         if not self._follow_program() and reload_data:
-            self.restart()
+            self._restart_for_data()
         self._check_program()
         self._watch_after_id = self._scheduler.after(WATCH_MS, self._watch_tick)
 
@@ -1090,6 +1093,7 @@ class SimulationSession:
         self._writing = False
         self._write_error = None
         self._position_held = False
+        self._data_restart_due = False
         dap = self._dap
         self._dap = None
         if dap is not None:
@@ -1678,6 +1682,19 @@ class SimulationSession:
                 return
         self.relaunch()
 
+    def _restart_for_data(self) -> None:
+        """Restart from the PLC data file now, or once the write in flight is answered."""
+        if self._writing:
+            self._data_restart_due = True
+        else:
+            self.restart()
+
+    def _restart_if_data_changed(self) -> None:
+        """After a write is answered: the restart a PLC data change during it asked for."""
+        if self._data_restart_due:
+            self._data_restart_due = False
+            self.restart()
+
     def relaunch(self) -> None:
         """Launch again if the simulation is on, waiting out a build (the workspace moved)."""
         if self._enabled and not self._closed:
@@ -1796,6 +1813,7 @@ class SimulationSession:
         self._links_refetch = False
         self._fetch_links(dap, token, sync=True)
         self._check_program()
+        self._restart_if_data_changed()
 
     def _on_write_failed(
         self,
@@ -1831,6 +1849,7 @@ class SimulationSession:
         self._links_refetch = False
         self._fetch_links(dap, token, sync=True)
         self._check_program()
+        self._restart_if_data_changed()
 
     def _write_refusal(self) -> str | None:
         """Why the workspace's program cannot be written to the running simulation, or None."""
@@ -2077,7 +2096,7 @@ class SimulationSession:
         self._plc_data_mtime = _mtime(path)
         self._message(f"Loading PLC data: {path}")
         self._adopt_snapshot(path)
-        self.restart()
+        self._restart_for_data()
 
     def _on_modbus_connect_failed(self, service: Any, text: str) -> None:
         if service is not self._modbus:

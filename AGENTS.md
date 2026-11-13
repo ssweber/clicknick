@@ -374,7 +374,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   user's (`_position_held`) so Restart starts in it and the write offered is for it, until the user moves
   the switch.
   Restart (also on the toolbar) relaunches on what the workspace holds now, from power-on values or the PLC
-  data file, with the same desired state and switch position; so do Start, a PLC data file change, and a
+  data file, with the same desired state and switch position; so do Start, a PLC data file change (one
+  seen during a write once the write is answered, unless it relaunched meanwhile), and a
   simulation that failed to start once a later build converts (`_follow_program`). A workspace move
   relaunches without the check (`relaunch`), waiting out the build
 - `_reapply` (after a launch) sends every entry even when one goes unanswered; an unanswered entry stays set
