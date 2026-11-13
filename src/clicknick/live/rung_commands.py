@@ -254,7 +254,7 @@ def _describe_change(change: ProgramChange, *, new: bool) -> str:
 
 
 def _open_proposal(ctx: DispatchContext, parts: list[str]) -> tuple[str, int]:
-    """Compare the exported proposal with CLICK's program and show it in Preview Changes.
+    """Compare the exported proposal with CLICK's program and show it in Review Changes.
 
     Returns the reply and how many rungs the proposal changes.
     """

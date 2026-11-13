@@ -211,7 +211,7 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - Publishing a build swaps `csv/` and `src/plc` as a pair and records the generation last, so a workspace
   never holds `csv/` from one save and `src/plc` from another
 - A build that fails before it publishes leaves `project_dir` an earlier save's (`project_is_current`
-  is False), and Preview Changes then has nothing to compare with
+  is False), and Review Changes then has nothing to compare with
 - `SavedProgram.save_count` is the one signal that CLICK saved: only the ScrWatcher bumps it, once per save
   (after a change to the Scr*.tmp files it checks every 500 ms and counts the save once two checks in a row
   find them unchanged, about 1 s).
@@ -250,9 +250,9 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   freezing the window. `clicknick-cli` commands that read the workspace are refused the same way while the
   analysis is BUILDING (`_get_project_dir`)
 
-### Preview Changes
-- The one window for getting ladder into CLICK (`views/preview_changes_window.py`; it was called Guided Paste):
-  **Ladder > Compare with > Folder** opens it on any folder of ladder CSVs, the Workspace's **Preview Changes** /
+### Review Changes
+- The one window for getting ladder into CLICK (`views/review_changes_window.py`; it was called Guided Paste):
+  **Ladder > Compare with > Folder** opens it on any folder of ladder CSVs, the Workspace's **Review Changes** /
   `clicknick-cli rung apply` on the workspace's `csv_output/`. The app keeps one window per folder and reloads it
   when the folder is shown again
 - A window's `ProposalSource` says where its proposal comes from ("from workspace", "from <folder>") in the title
@@ -260,13 +260,13 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   programs only in CLICK, unless the source is a copy of another PLC (`takes_nicknames`, `deletes_only_in_click`).
   The user's choices are kept as they differ from those (`_flipped_in_click`). A window shown as another source
   resets only those two choices (a deletion marked done stays one); skips and what was pasted stay, as they are
-  about what CLICK holds. The caller gives the source (`_show_preview_changes(source=)`; by default
+  about what CLICK holds. The caller gives the source (`_show_review_changes(source=)`; by default
   `ProposalSource.of`)
 - **Compare with > Other CLICK window** lists the CLICK windows other than the connected one. Picking one copies
   its last save and its database's nicknames into `%LOCALAPPDATA%/ClickNick/compare/CLICK (hwnd)/`
   (`services/click_snapshot.py`, replaced whole each time) and shows that folder as `ProposalSource.other_click`.
   **↻ Refresh from <project>** copies it again (`refresh_source`). Each window-list refresh (startup included)
-  deletes the copies of windows not in the list, except one that is or holds a folder an open Preview
+  deletes the copies of windows not in the list, except one that is or holds a folder an open Review
   Changes window shows (`remove_stale_snapshots`)
 - `services/rung_diff.py` is the one comparison of a CSV bundle with CLICK's last save (`csv/`): which programs
   differ, which rungs, and the diff text. Rungs are compared by `rung_fingerprint`; pyrung source is only how a

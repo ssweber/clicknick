@@ -283,7 +283,7 @@ def test_simulation_toggle_reports_and_switches_state() -> None:
 
 
 @pytest.mark.parametrize("answer", [True, False])
-def test_new_legacy_encodings_pop_up_and_offer_preview_changes(monkeypatch, answer: bool) -> None:
+def test_new_legacy_encodings_pop_up_and_offer_review_changes(monkeypatch, answer: bool) -> None:
     from clicknick.ladder.program import LegacyEncoding
 
     app = ClickNickApp.__new__(ClickNickApp)
@@ -301,7 +301,7 @@ def test_new_legacy_encodings_pop_up_and_offer_preview_changes(monkeypatch, answ
 
     message = ask.call_args.args[1]
     assert f"Main Program rung 12, Math H70000: {detail}" in message
-    assert "Open Preview Changes now?" in message
+    assert "Open Review Changes now?" in message
     assert app._workspace_rung_apply.called is answer
 
     # The next build finds nothing new, so no popup shows
@@ -366,7 +366,7 @@ def test_a_program_csv_laddercodec_cannot_read_pops_up_too(monkeypatch) -> None:
     assert "empty rung" not in message
 
 
-def test_both_kinds_pop_up_together_and_offer_preview_changes(monkeypatch) -> None:
+def test_both_kinds_pop_up_together_and_offer_review_changes(monkeypatch) -> None:
     from clicknick.ladder.program import LegacyEncoding
 
     legacy = LegacyEncoding("main.csv", "Main Program", 12, "Math", "H70000", "it is stored...")
@@ -379,5 +379,5 @@ def test_both_kinds_pop_up_together_and_offer_preview_changes(monkeypatch) -> No
     message = ask.call_args.args[1]
     assert "Conf_Compare rung 4" in message
     assert "Main Program rung 12, Math H70000" in message
-    assert message.endswith("Open Preview Changes now?")
+    assert message.endswith("Open Review Changes now?")
     app._workspace_rung_apply.assert_called_once_with()

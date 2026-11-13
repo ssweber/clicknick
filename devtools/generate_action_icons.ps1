@@ -130,7 +130,7 @@ $tileBrush.Dispose()
 $tilePath.Dispose()
 Save-Icon $bitmap $graphics "console"
 
-# Preview Changes: a page with a green plus above a red minus, as in a diff.
+# Review Changes: a page with a green plus above a red minus, as in a diff.
 $canvas = New-IconCanvas
 $bitmap = $canvas[0]
 $graphics = $canvas[1]
@@ -144,7 +144,7 @@ $pen.Dispose()
 $pen = New-IconPen $red 2.1
 $graphics.DrawLine($pen, (Convert-Point 8.5 17), (Convert-Point 15.5 17))
 $pen.Dispose()
-Save-Icon $bitmap $graphics "preview_changes"
+Save-Icon $bitmap $graphics "review_changes"
 
 # Reload from CLICK: two conventional clockwise refresh arcs.
 $canvas = New-IconCanvas

@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from .connection_session import ConnectionSession
     from .data_session import DataSession
     from .services.workspace_mirror import ProjectWorkspaceConfig
-    from .views.preview_changes_window import ProposalSource
+    from .views.review_changes_window import ProposalSource
 
 # Set DPI awareness for better UI rendering
 windll.shcore.SetProcessDpiAwareness(1)
@@ -542,7 +542,7 @@ class ClickNickApp:
         self._request_ui_refresh()
 
     def _workspace_rung_apply(self) -> None:
-        """Preview workspace changes through the reviewed proposal flow."""
+        """Review workspace changes through the reviewed proposal flow."""
         if self._session is None or self._live_server is None:
             self._update_status("Connect to a CLICK project first", "error")
             return
@@ -550,15 +550,15 @@ class ClickNickApp:
         try:
             self._live_server.dispatch_now("rung apply")
         except Exception as exc:
-            messagebox.showerror("Preview Changes", str(exc), parent=self.root)
-            self._update_status(f"Preview failed: {exc}", "error")
+            messagebox.showerror("Review Changes", str(exc), parent=self.root)
+            self._update_status(f"Review failed: {exc}", "error")
             return
 
         status = self._get_workspace_status()
         if status.changed_rungs:
-            self._update_status(f"Previewing {status.label}", "connected")
+            self._update_status(f"Reviewing {status.label}", "connected")
         else:
-            self._update_status("Workspace clean; no changed rungs to preview", "connected")
+            self._update_status("Workspace clean; no changed rungs to review", "connected")
 
     def _workspace_reload_finished(self, success: bool, error: str | None) -> None:
         """Report completion of an explicit CLICK-to-workspace reload."""
@@ -566,7 +566,7 @@ class ClickNickApp:
             if self._session is not None:
                 self._session.record_rung_stage(0)
             # The edits were thrown away: so is the window offering to paste them.
-            for window in self._preview_changes_windows.values():
+            for window in self._review_changes_windows.values():
                 if window.winfo_exists() and window.shows_workspace_proposal:
                     window.destroy()
             self._update_status("Workspace reloaded from CLICK", "connected")
@@ -1087,7 +1087,7 @@ class ClickNickApp:
         self._set_pending_workspace_config(config)
 
     def _select_mirror_location(self) -> None:
-        """Choose a home and preview the PLC-named workspace destination."""
+        """Choose a home and review the PLC-named workspace destination."""
         plc_name = self._ensure_plc_name_for_workspace()
         if plc_name is None:
             return
@@ -1127,7 +1127,7 @@ class ClickNickApp:
         self._set_pending_workspace_config(config)
 
     def _on_workspace_config_selected(self, _event=None) -> None:
-        """Preview a known matching workspace selected by the user."""
+        """Review a known matching workspace selected by the user."""
         selected = self.mirror_project_selection_var.get().strip()
         config = next(
             (match for match in self._workspace_matches if str(match.workspace_path) == selected),
@@ -1254,7 +1254,7 @@ class ClickNickApp:
             messagebox.showerror(title, str(exc), parent=self.root)
 
     def _open_workspace(self) -> None:
-        """Open the one active workspace used by Preview Changes and the Simulator."""
+        """Open the one active workspace used by Review Changes and the Simulator."""
         self._open_folder(
             self._workspace_display_dir(),
             title="Open Workspace",
@@ -1487,8 +1487,8 @@ class ClickNickApp:
         test_header_spacer.configure(height=header_height)
         ttk.Button(
             workspace,
-            text="Preview Changes",
-            image=self._action_icons.get("preview_changes"),
+            text="Review Changes",
+            image=self._action_icons.get("review_changes"),
             compound=tk.LEFT,
             command=self._workspace_rung_apply,
         ).pack(fill=tk.X, pady=(0, 8))
@@ -1853,7 +1853,7 @@ class ClickNickApp:
             "connected",
         )
 
-    def _show_preview_changes(
+    def _show_review_changes(
         self,
         folder: Path,
         source_dir: Path | None = None,
@@ -1864,33 +1864,33 @@ class ClickNickApp:
         source: ProposalSource | None = None,
         refresh_source: Callable[[], None] | None = None,
     ) -> None:
-        """Show *folder* in Preview Changes: one window per folder, reloaded when shown again.
+        """Show *folder* in Review Changes: one window per folder, reloaded when shown again.
 
-        Preview Changes (``rung apply``) passes the workspace source the folder
+        Review Changes (``rung apply``) passes the workspace source the folder
         was exported from, and may name a program to start on and the rungs of
         it to paste. With *create* off, only a window already showing the folder
         is brought up to date. *source* says where the folder comes from: the
         workspace or the folder itself unless given; *refresh_source* copies it
         again from there.
         """
-        from .views.preview_changes_window import PreviewChangesWindow, ProposalSource
+        from .views.review_changes_window import ProposalSource, ReviewChangesWindow
 
         if source is None:
             source = ProposalSource.of(folder, source_dir)
-        self._preview_changes_windows = {
+        self._review_changes_windows = {
             path: window
-            for path, window in self._preview_changes_windows.items()
+            for path, window in self._review_changes_windows.items()
             if window.winfo_exists()
         }
         select = (program, rungs) if program else None
         key = folder.resolve()
-        window = self._preview_changes_windows.get(key)
+        window = self._review_changes_windows.get(key)
         if window is not None:
             window.reload(
                 source, source_dir=source_dir, refresh_source=refresh_source, select=select
             )
         elif create:
-            window = self._preview_changes_windows[key] = PreviewChangesWindow(
+            window = self._review_changes_windows[key] = ReviewChangesWindow(
                 self.root,
                 folder,
                 get_mdb_path=self._live_mdb_path,
@@ -1912,24 +1912,24 @@ class ClickNickApp:
             window.after_idle(window.show)
 
     def _compare_with_folder(self):
-        """Compare CLICK's program with a folder of ladder CSVs, in Preview Changes."""
+        """Compare CLICK's program with a folder of ladder CSVs, in Review Changes."""
         folder = filedialog.askdirectory(
             title="Compare with — choose a folder of ladder CSVs",
             parent=self.root,
         )
         if folder:
-            self._show_preview_changes(Path(folder))
+            self._show_review_changes(Path(folder))
 
     def _compare_with_click_window(self, hwnd: int, filename: str) -> None:
         """Compare CLICK's program with what another CLICK window last saved.
 
-        Its save and nicknames are copied to a ClickNick folder, which Preview
+        Its save and nicknames are copied to a ClickNick folder, which Review
         Changes shows as a copy of another PLC; Refresh copies them again, as
         long as that window still has the same project open.
         """
         from .services.click_snapshot import snapshot_click_program, snapshot_dir
         from .utils.click_temp import click_temp_dir
-        from .views.preview_changes_window import ProposalSource
+        from .views.review_changes_window import ProposalSource
 
         open_now = {
             instance.hwnd: instance.filename for instance in self.detector.get_click_instances()
@@ -1967,7 +1967,7 @@ class ClickNickApp:
             f"Compared with {filename}" + (f"; {note}" if note else ""),
             "error" if note else "connected",
         )
-        self._show_preview_changes(
+        self._show_review_changes(
             dest,
             source=ProposalSource.other_click(project),
             refresh_source=lambda: self._compare_with_click_window(hwnd, filename),
@@ -2035,7 +2035,7 @@ class ClickNickApp:
         # refresh; these commands own the stable behavior in the meantime.
         workspace_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Workspace", menu=workspace_menu)
-        workspace_menu.add_command(label="Preview Changes", command=self._workspace_rung_apply)
+        workspace_menu.add_command(label="Review Changes", command=self._workspace_rung_apply)
         workspace_menu.add_command(
             label="Reload from CLICK...", command=self._workspace_reload_from_click
         )
@@ -2191,8 +2191,8 @@ class ClickNickApp:
         # The loaded address data (CSV or database) and the windows bound to it.
         self._data = None
 
-        # Open Preview Changes windows by the folder each shows
-        self._preview_changes_windows = {}
+        # Open Review Changes windows by the folder each shows
+        self._review_changes_windows = {}
 
         # Live editing server: lets `clicknick-cli` push edits into this
         # running instance. Holds getters (not snapshots) so it always targets
@@ -2207,7 +2207,7 @@ class ClickNickApp:
             lambda: self._click.project_name if self._click else None,
             lambda: self._session.analysis if self._session else None,
             get_workspace_dir=self._workspace_source_dir,
-            show_proposal=self._show_preview_changes,
+            show_proposal=self._show_review_changes,
             get_mdb_path=self._live_mdb_path,
             get_synced_pending=lambda: self._session.synced_pending if self._session else 0,
             get_staged_rungs=lambda: self._session.staged_rungs if self._session else 0,
@@ -2250,12 +2250,12 @@ class ClickNickApp:
 
     def _remove_stale_compare_copies(self, open_hwnds: set[int]) -> None:
         """Delete the copies (``_compare_with_click_window``) of CLICK windows not in
-        *open_hwnds*, except one an open Preview Changes window shows."""
+        *open_hwnds*, except one an open Review Changes window shows."""
         from .services.click_snapshot import remove_stale_snapshots
 
         shown = [
             folder
-            for folder, window in self._preview_changes_windows.items()
+            for folder, window in self._review_changes_windows.items()
             if window.winfo_exists()
         ]
         remove_stale_snapshots(open_hwnds, shown)
@@ -2378,7 +2378,7 @@ class ClickNickApp:
         """Say once which rungs CLICK holds in an old encoding or ClickNick cannot read.
 
         An old encoding's text matches, so nothing else would show that CLICK
-        runs it differently, and Preview Changes pastes it again. The workspace
+        runs it differently, and Review Changes pastes it again. The workspace
         holds an empty rung for each rung it cannot read, so those must come
         from the user's own copy. So must a program whose CSV laddercodec cannot read.
         """
@@ -2418,13 +2418,13 @@ class ClickNickApp:
                 "CLICK holds these rungs in an old encoding, which an older ClickNick pasted. "
                 "CLICK runs them differently from how they read:\n\n"
                 + _listed(legacy)
-                + "\n\nPaste them into CLICK again. Preview Changes lists them in red."
+                + "\n\nPaste them into CLICK again. Review Changes lists them in red."
             )
         message = "\n\n".join(parts)
         if not legacy:
             messagebox.showwarning("Paste Again", message, parent=self.root)
             return
-        message += "\n\nOpen Preview Changes now?"
+        message += "\n\nOpen Review Changes now?"
         if messagebox.askyesno("Paste Again", message, icon=messagebox.WARNING, parent=self.root):
             self._workspace_rung_apply()
 

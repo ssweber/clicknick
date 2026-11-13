@@ -12,7 +12,7 @@ ACTION_ICON_FILES = {
     "data_view": "data_view.png",
     "check_program": "check_program.png",
     "console": "console.png",
-    "preview_changes": "preview_changes.png",
+    "review_changes": "review_changes.png",
     "reload_from_click": "reload_from_click.png",
 }
 

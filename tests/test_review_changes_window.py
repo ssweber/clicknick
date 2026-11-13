@@ -1,4 +1,4 @@
-"""Preview Changes follows the program in CLICK while it stays open, and steps through what differs."""
+"""Review Changes follows the program in CLICK while it stays open, and steps through what differs."""
 
 from __future__ import annotations
 
@@ -27,9 +27,9 @@ from clicknick.services.rung_diff import (
     ProposedProgram,
     compare_rungs,
 )
-from clicknick.views.preview_changes_window import PreviewChangesWindow, ProposalSource
+from clicknick.views.review_changes_window import ProposalSource, ReviewChangesWindow
 
-MODULE = "clicknick.views.preview_changes_window"
+MODULE = "clicknick.views.review_changes_window"
 NAMES = ["subroutines/a.csv", "subroutines/b.csv", "main.csv"]
 MAIN = NAMES.index("main.csv")
 
@@ -68,7 +68,7 @@ def _changes(differs: dict[str, bool]) -> dict[str, ProgramChange]:
 
 @pytest.fixture(autouse=True)
 def _own_preferences(monkeypatch, tmp_path: Path) -> Path:
-    """Keep each test's Preview Changes preferences out of the real per-user folder."""
+    """Keep each test's Review Changes preferences out of the real per-user folder."""
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
     return tmp_path / "appdata" / "ClickNick" / "guided-paste.json"
 
@@ -88,7 +88,7 @@ class _Var:
 
 def _bare_window(folder_names: list[str] = NAMES):
     """A window with mocks for widgets and nothing compared yet."""
-    window = PreviewChangesWindow.__new__(PreviewChangesWindow)
+    window = ReviewChangesWindow.__new__(ReviewChangesWindow)
     window._folder = Path("bundle")
     window._source_dir = None
     window._source = ProposalSource("bundle")
@@ -319,7 +319,7 @@ def test_window_closes_once_click_has_saved_everything(monkeypatch) -> None:
 
     _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
 
-    window._on_pasted.assert_called_once_with("CLICK saved everything from Preview Changes")
+    window._on_pasted.assert_called_once_with("CLICK saved everything from Review Changes")
     window.destroy.assert_called_once_with()
 
 
@@ -467,7 +467,7 @@ def test_first_time_tips_show_once(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     showinfo = Mock()
     monkeypatch.setattr(f"{MODULE}.messagebox.showinfo", showinfo)
-    window = PreviewChangesWindow.__new__(PreviewChangesWindow)
+    window = ReviewChangesWindow.__new__(ReviewChangesWindow)
     window.winfo_exists = lambda: True
 
     window._show_first_time_tips()
@@ -577,7 +577,7 @@ def test_whole_program_switch_copies_the_program_in_one_step(monkeypatch, copies
 
 
 def test_copy_switch_is_remembered_for_the_next_window(monkeypatch, _own_preferences) -> None:
-    from clicknick.views.preview_changes_window import _read_copy_whole
+    from clicknick.views.review_changes_window import _read_copy_whole
 
     assert _read_copy_whole() is False  # Changed rungs until the user chooses otherwise
     window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
@@ -612,7 +612,7 @@ def _folder_window(tmp_path: Path, source_dir: Path | None = None):
 
 
 def test_rungs_asked_for_by_number_do_not_change_the_remembered_switch(tmp_path: Path) -> None:
-    from clicknick.views.preview_changes_window import _read_copy_whole, _save_copy_whole
+    from clicknick.views.review_changes_window import _read_copy_whole, _save_copy_whole
 
     _save_copy_whole(True)
     window = _folder_window(tmp_path)
@@ -1176,10 +1176,10 @@ SISTER = ProposalSource.other_click("sister")
 
 
 def test_the_title_says_where_the_changes_come_from() -> None:
-    assert ProposalSource.of(Path("plcs/sister"), None).title == "Preview Changes — from sister"
+    assert ProposalSource.of(Path("plcs/sister"), None).title == "Review Changes — from sister"
     assert (
         ProposalSource.of(Path("ws/csv_output"), Path("ws/src/plc")).title
-        == "Preview Changes — from workspace"
+        == "Review Changes — from workspace"
     )
 
 
@@ -1222,7 +1222,7 @@ def test_a_folder_shown_as_the_workspace_keeps_what_is_in_click(tmp_path: Path) 
     window.reload(ProposalSource.of(window._folder, source_dir), source_dir=source_dir)
 
     assert window._source == ProposalSource(WORKSPACE_SOURCE)
-    window.title.assert_called_with("Preview Changes — from workspace")
+    window.title.assert_called_with("Review Changes — from workspace")
     # The source's defaults start over...
     assert window._flipped_in_click == set()
     assert not window._nicknames_skipped
@@ -1262,7 +1262,7 @@ def test_a_copy_of_another_click_window_can_be_taken_again(monkeypatch) -> None:
 
     window.reload(SISTER, refresh_source=refresh)
 
-    window.title.assert_called_with("Preview Changes — from sister")
+    window.title.assert_called_with("Review Changes — from sister")
     window._refresh_btn.configure.assert_called_with(text="↻ Refresh from sister")
     window._refresh_btn.pack.assert_called()
     window._on_refresh_source()
@@ -1586,7 +1586,7 @@ def test_row_clears_once_click_saves_a_clean_copy(monkeypatch) -> None:
 
 
 def test_legacy_note_names_runs_of_rungs_and_counts_past_five() -> None:
-    from clicknick.views.preview_changes_window import _legacy_note
+    from clicknick.views.review_changes_window import _legacy_note
 
     rungs = _coils(*(f"Y{n:03d}" for n in range(1, 10)))
     change = compare_rungs(rungs, rungs, [_legacy(n) for n in (1, 2, 3, 4, 5, 6, 9)])
@@ -1863,7 +1863,7 @@ def test_window_closes_once_click_holds_everything_not_skipped(monkeypatch, copi
     _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
 
     window._on_pasted.assert_called_once_with(
-        "CLICK saved everything taken from Preview Changes; 1 skipped difference left as CLICK has it"
+        "CLICK saved everything taken from Review Changes; 1 skipped difference left as CLICK has it"
     )
     window.destroy.assert_called_once_with()
 

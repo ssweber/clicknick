@@ -20,7 +20,7 @@ from clicknick.services.workspace_service import (
     WorkspaceState,
     get_workspace_status,
 )
-from clicknick.views.preview_changes_window import ProposalSource
+from clicknick.views.review_changes_window import ProposalSource
 
 
 def _analysis(
@@ -651,7 +651,7 @@ def test_a_save_that_cannot_be_read_during_a_build_reads_as_building_until_it_fi
 def test_a_rebuild_that_fails_before_publishing_has_nothing_to_compare(
     tmp_path, monkeypatch
 ) -> None:
-    """Preview Changes must not compare with the save before the one that failed."""
+    """Review Changes must not compare with the save before the one that failed."""
     from clicknick.services.analysis_service import AnalysisService
 
     project = tmp_path / "pyrung_project"
@@ -717,7 +717,7 @@ def test_closing_the_connection_closes_the_simulator_first() -> None:
     assert session.simulation is None
 
 
-def test_main_window_preview_changes_uses_consolidated_workflow() -> None:
+def test_main_window_review_changes_uses_consolidated_workflow() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
     app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
@@ -734,34 +734,34 @@ def test_main_window_preview_changes_uses_consolidated_workflow() -> None:
     app._workspace_rung_apply()
 
     app._live_server.dispatch_now.assert_called_once_with("rung apply")
-    app._update_status.assert_called_once_with("Previewing 4 changed rungs", "connected")
+    app._update_status.assert_called_once_with("Reviewing 4 changed rungs", "connected")
 
 
-def test_preview_changes_shows_each_folder_in_one_window(monkeypatch, tmp_path: Path) -> None:
+def test_review_changes_shows_each_folder_in_one_window(monkeypatch, tmp_path: Path) -> None:
     opened: list[MagicMock] = []
 
     def _open(*_args, **kwargs) -> MagicMock:
         opened.append(MagicMock(opened_with=kwargs))
         return opened[-1]
 
-    monkeypatch.setattr("clicknick.views.preview_changes_window.PreviewChangesWindow", _open)
+    monkeypatch.setattr("clicknick.views.review_changes_window.ReviewChangesWindow", _open)
     app = ClickNickApp.__new__(ClickNickApp)
     app.root = MagicMock()
-    app._preview_changes_windows = {}
+    app._review_changes_windows = {}
     folder, source = tmp_path / "csv_output", tmp_path / "src" / "plc"
 
     # Nothing to paste and no window showing the folder: none is opened
-    app._show_preview_changes(folder, source, None, None, False)
+    app._show_review_changes(folder, source, None, None, False)
     assert opened == []
 
-    app._show_preview_changes(folder, source, "main.csv", [3], True)
+    app._show_review_changes(folder, source, "main.csv", [3], True)
     assert len(opened) == 1
     assert opened[0].opened_with["source_dir"] == source
     assert opened[0].opened_with["select"] == ("main.csv", [3])
 
     assert opened[0].opened_with["source"] == ProposalSource(WORKSPACE_SOURCE)
     # Exported again: the same window reads the folder again
-    app._show_preview_changes(folder, source, None, None, True)
+    app._show_review_changes(folder, source, None, None, True)
     assert len(opened) == 1
     opened[0].reload.assert_called_once_with(
         ProposalSource(WORKSPACE_SOURCE), source_dir=source, refresh_source=None, select=None
@@ -769,8 +769,8 @@ def test_preview_changes_shows_each_folder_in_one_window(monkeypatch, tmp_path: 
 
     # A closed window is forgotten; another folder gets its own
     opened[0].winfo_exists.return_value = False
-    app._show_preview_changes(folder)
-    app._show_preview_changes(tmp_path / "other")
+    app._show_review_changes(folder)
+    app._show_review_changes(tmp_path / "other")
     assert len(opened) == 3
     assert opened[1].opened_with["source_dir"] is None
 
@@ -782,7 +782,7 @@ def test_successful_main_window_reload_clears_changed_rung_count() -> None:
     app._session = SimpleNamespace(record_rung_stage=MagicMock())
     proposal = MagicMock(shows_workspace_proposal=True)
     folder = MagicMock(shows_workspace_proposal=False)
-    app._preview_changes_windows = {Path("csv_output"): proposal, Path("export"): folder}
+    app._review_changes_windows = {Path("csv_output"): proposal, Path("export"): folder}
 
     app._workspace_reload_finished(True, None)
 

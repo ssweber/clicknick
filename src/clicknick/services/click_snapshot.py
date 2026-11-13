@@ -1,4 +1,4 @@
-"""A copy of what another CLICK window last saved, as a folder Preview Changes compares.
+"""A copy of what another CLICK window last saved, as a folder Review Changes compares.
 
 Comparing with another CLICK window (a sister PLC's project, say) reads its
 last save the way a folder of ladder CSVs is read: its Scr*.tmp files become

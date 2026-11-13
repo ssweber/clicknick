@@ -1,7 +1,7 @@
-"""Preview Changes: walk a folder of ladder CSVs into Click, with the rung diff.
+"""Review Changes: walk a folder of ladder CSVs into Click, with the rung diff.
 
 The one window for getting ladder into CLICK. The Ladder menu opens it on any
-folder of CSVs; the Workspace's Preview Changes button (``clicknick-cli rung
+folder of CSVs; the Workspace's Review Changes button (``clicknick-cli rung
 apply``) opens it on the workspace's ``csv_output/``. Each row is a program; the
 pane below shows how the
 selected one differs from CLICK's last save, and the step copies either the
@@ -131,7 +131,7 @@ _NICKNAMES_LISTED = 200
 _WATCH_INTERVAL_MS = 1000
 
 _FIRST_TIME_TIPS = (
-    "Preview Changes\n\n"
+    "Review Changes\n\n"
     "Each step copies rungs to the clipboard: a whole program, or just the rungs that "
     "differ when CLICK already has it (the Copy switch chooses). The pane under the list "
     "shows the difference. Work down each program in order: a step's rung numbers are "
@@ -166,7 +166,7 @@ def _read_copy_whole() -> bool:
 
 
 def _save_copy_whole(whole: bool) -> None:
-    """Remember the user's Copy switch choice for the next Preview Changes window."""
+    """Remember the user's Copy switch choice for the next Review Changes window."""
     path = _preferences_path()
     staging = path.with_suffix(".json.staging")
     try:
@@ -338,10 +338,10 @@ class ProposalSource:
 
     @property
     def title(self) -> str:
-        return f"Preview Changes — from {self.label}"
+        return f"Review Changes — from {self.label}"
 
 
-class PreviewChangesWindow(tk.Toplevel):
+class ReviewChangesWindow(tk.Toplevel):
     """Non-modal panel that walks the user through pasting ladder CSVs."""
 
     # ------------------------------------------------------------------
@@ -1648,7 +1648,7 @@ class PreviewChangesWindow(tk.Toplevel):
                     f"CLICK's version. This window still holds the proposal exported at "
                     f"{self._read_at} and can keep pasting it.\n"
                     "The edited source is kept in backup/src/plc (clicknick-cli restore list "
-                    "for older ones): run clicknick-cli restore, then Preview Changes, to work "
+                    "for older ones): run clicknick-cli restore, then Review Changes, to work "
                     "on it again."
                 )
         elif skipped := self._skipped_edits_line():
@@ -1957,10 +1957,10 @@ class PreviewChangesWindow(tk.Toplevel):
         """Say what the window did, as it closes on a CLICK save holding all of it."""
         skipped = self._skipped_count()
         if not skipped:
-            message = "CLICK saved everything from Preview Changes"
+            message = "CLICK saved everything from Review Changes"
         else:
             message = (
-                f"CLICK saved everything taken from Preview Changes; {skipped} skipped "
+                f"CLICK saved everything taken from Review Changes; {skipped} skipped "
                 f"difference{'s' if skipped != 1 else ''} left as CLICK has "
                 f"{'it' if skipped == 1 else 'them'}"
             )

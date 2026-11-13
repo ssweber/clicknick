@@ -14,7 +14,7 @@ A workspace is a folder that links up with your open project. ClickNick fills it
         <dt>csv/</dt><dd>the snapshot CLICK accepted</dd>
         <dt>nicknames.csv</dt><dd>addresses and nicknames</dd>
       </dl>
-      <p>Edit it and Preview Changes shows the diff.</p>
+      <p>Edit it and Review Changes shows the diff.</p>
     </div>
     <div class="workspace__col workspace__col--yours">
       <strong class="workspace__title">Yours stays</strong>

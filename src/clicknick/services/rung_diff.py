@@ -1,6 +1,6 @@
 """Rung-by-rung comparison of a proposed ladder bundle with the program in CLICK.
 
-One comparison serves Preview Changes (which programs to paste, and which of their
+One comparison serves Review Changes (which programs to paste, and which of their
 rungs) and ``clicknick-cli rung apply`` (what to report). A bundle is laid out
 like ``program_save`` output, ``main.csv`` + ``subroutines/*.csv``, and its
 programs are named like ``list_csv_folder`` names them.

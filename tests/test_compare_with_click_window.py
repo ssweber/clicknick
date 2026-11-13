@@ -1,4 +1,4 @@
-"""Comparing with another CLICK window: a copy of its last save, shown in Preview Changes."""
+"""Comparing with another CLICK window: a copy of its last save, shown in Review Changes."""
 
 from __future__ import annotations
 
@@ -187,7 +187,7 @@ def _app(windows: dict[int, str] | None = None) -> ClickNickApp:
             SimpleNamespace(hwnd=hwnd, filename=filename) for hwnd, filename in windows.items()
         ]
     )
-    app._show_preview_changes = MagicMock()
+    app._show_review_changes = MagicMock()
     return app
 
 
@@ -239,7 +239,7 @@ def test_comparing_with_a_click_window_shows_its_copy_as_another_plc(
     app._compare_with_click_window(2, "Line2.ckp")
 
     assert copies == [("CLICK (00000002)", snapshot_dir(2))]
-    (call,) = app._show_preview_changes.call_args_list
+    (call,) = app._show_review_changes.call_args_list
     assert call.args == (snapshot_dir(2),)
     source = call.kwargs["source"]
     assert (source.label, source.takes_nicknames, source.deletes_only_in_click) == (
@@ -259,7 +259,7 @@ def test_refresh_refuses_a_click_window_that_has_another_project_open(monkeypatc
     windows = {1: "Line1.ckp", 2: "Line2.ckp"}
     app = _app(windows)
     app._compare_with_click_window(2, "Line2.ckp")
-    refresh = app._show_preview_changes.call_args.kwargs["refresh_source"]
+    refresh = app._show_review_changes.call_args.kwargs["refresh_source"]
 
     windows[2] = "Unrelated.ckp"
     refresh()
@@ -277,7 +277,7 @@ def test_nicknames_left_out_are_said_in_the_status(monkeypatch) -> None:
     app._update_status.assert_called_with(
         "Compared with Line2.ckp; its nicknames were left out: database is locked", "error"
     )
-    app._show_preview_changes.assert_called_once()
+    app._show_review_changes.assert_called_once()
 
 
 def test_a_click_window_with_nothing_saved_is_explained(monkeypatch) -> None:
@@ -292,7 +292,7 @@ def test_a_click_window_with_nothing_saved_is_explained(monkeypatch) -> None:
     app._compare_with_click_window(2, "Line2.ckp")
 
     assert "Line2.ckp has no saved program" in showerror.call_args.args[1]
-    app._show_preview_changes.assert_not_called()
+    app._show_review_changes.assert_not_called()
 
 
 def test_refreshing_the_window_list_removes_copies_of_closed_windows(
@@ -313,7 +313,7 @@ def test_refreshing_the_window_list_removes_copies_of_closed_windows(
     app._data = None
     shown = SimpleNamespace(winfo_exists=lambda: True)
     closed = SimpleNamespace(winfo_exists=lambda: False)
-    app._preview_changes_windows = {
+    app._review_changes_windows = {
         snapshot_dir(4).resolve(): shown,
         snapshot_dir(5).resolve(): closed,
     }

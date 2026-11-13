@@ -17,22 +17,22 @@
 - The Simulator draws X and Y addresses the program uses but no module provides on a dashed card at the position they belong to (X2xx on "Expansion 2 - unassigned"), between the real modules; X and Y of one position share a card. They have switches and LEDs like any other point.
 - Feedback links let an output drive an input on the Simulator, like a contactor's aux contact or a limit switch: drag from an output's label to an input's, or the other way, to add one for the session, cut it to simulate a failed sensor, or save it to the input's comment for the program.
 - Copying rungs that use CLICK v4 instructions is refused when the CLICK window is older, instead of letting CLICK silently change them on paste.
-- Preview Changes marks which programs differ from CLICK's last save, steps through only those, and lists subroutines CLICK has that the folder doesn't.
-- Preview Changes shows the selected program's rung diff against CLICK's last save and steps through just the rungs that differ, saying which rung to paste over or delete in CLICK, or copies whole programs when you switch **Copy** to **Whole program**.
-- Preview Changes' rung diff highlights only the lines and words that changed, like GitHub Desktop, with one unchanged rung on each side of a difference and separators whose arrows show more.
-- Preview Changes lets you take or skip each difference: untick **Take this difference** or click its +/- gutter and CLICK keeps its rungs there, the steps are numbered around it, **Whole program** copies the program as you chose it, and ◀ ▶ (Alt+Up/Down or F7/Shift+F7) go through every difference across programs. A blue bar beside the +/- gutter marks the difference being looked at.
-- **Ladder > Compare with > Folder** (it was **Open in Preview Changes**) compares CLICK's program with a folder of ladder CSVs, such as a copy of another PLC, so you can take only some of its differences; the title and the diff say which folder the changes come from.
+- Review Changes marks which programs differ from CLICK's last save, steps through only those, and lists subroutines CLICK has that the folder doesn't.
+- Review Changes shows the selected program's rung diff against CLICK's last save and steps through just the rungs that differ, saying which rung to paste over or delete in CLICK, or copies whole programs when you switch **Copy** to **Whole program**.
+- Review Changes' rung diff highlights only the lines and words that changed, like GitHub Desktop, with one unchanged rung on each side of a difference and separators whose arrows show more.
+- Review Changes lets you take or skip each difference: untick **Take this difference** or click its +/- gutter and CLICK keeps its rungs there, the steps are numbered around it, **Whole program** copies the program as you chose it, and ◀ ▶ (Alt+Up/Down or F7/Shift+F7) go through every difference across programs. A blue bar beside the +/- gutter marks the difference being looked at.
+- **Ladder > Compare with > Folder** (it was **Open in Guided Paste**) compares CLICK's program with a folder of ladder CSVs, such as a copy of another PLC, so you can take only some of its differences; the title and the diff say which folder the changes come from.
 - **Ladder > Compare with > Other CLICK window** compares CLICK's program with what another open CLICK window last saved, such as a sister PLC's project: its nicknames start out skipped and the programs only this CLICK has start out kept, and **Refresh** takes its latest save.
 - ClickNick warns when CLICK holds rungs an older ClickNick pasted in a form CLICK runs differently.
-  - Preview Changes shows those programs in red until you paste them again.
+  - Review Changes shows those programs in red until you paste them again.
   - `clicknick-cli program save` lists them.
 - ClickNick names each rung it cannot read from CLICK, such as a compare CLICK's own dialog refuses, and asks you to paste it again (the build stopped with `WriterError`).
   - The workspace holds an empty rung in its place. The rest of the program builds.
   - The Simulator refuses to start until you paste it again.
-  - Preview Changes shows the program in red and copies it only whole (it left the program out).
-  - Preview Changes refuses to copy it while the folder holds an empty rung. Paste that rung from your own copy of the program first.
+  - Review Changes shows the program in red and copies it only whole (it left the program out).
+  - Review Changes refuses to copy it while the folder holds an empty rung. Paste that rung from your own copy of the program first.
   - Saving the clipboard to CSV names the rung it cannot read (it showed `WriterError`).
-- Preview Changes' **New Subroutine** button opens CLICK's New Subroutine Program window with the name filled in, for any subroutine CLICK's last save doesn't show it already has.
+- Review Changes' **New Subroutine** button opens CLICK's New Subroutine Program window with the name filled in, for any subroutine CLICK's last save doesn't show it already has.
 - **Tools > Repairs > Upgrade Project** rewrites comments in pyrung's old `profile=` form into the current keys and stages them on the Changed tab for you to review and Sync, as `clicknick-cli tag upgrade-project` does.
 - When the build stops on a comment in the old form, the Workspace status says to run **Tools > Repairs > Upgrade Project** (it said "Build failed").
 
@@ -53,12 +53,12 @@
 - The Simulator's link dialog and the annotation dialog offer every pyrung response (on/off delay, flasher, timed, toggle, ramp and approach), each with its own fields.
 - `tag set-physical` takes one option per key, such as `--flasher-on 8ms --flasher-off 8ms` or `--toggle` (it took `--profile`).
 - Sync and Discard clear the undo history.
-- Preview Changes steps through subroutines before `main.csv`, so they exist in CLICK before main's Call instructions are pasted.
-- **Preview Changes** and Guided Paste are one window, Preview Changes: the button and `clicknick-cli rung apply` open it on the workspace's whole proposed ladder (they opened one preview window per changed file), so new subroutines, rungs and subroutines an edit removes, and what CLICK has saved since are all shown in one place, and **Ladder > Open in Guided Paste** is now **Open in Preview Changes**.
-- Preview Changes closes once a CLICK save holds everything it was pasting, and after a save that came too early it stays open, says so, and can keep pasting.
-- A program CLICK has that the folder doesn't is a step in Preview Changes: delete it in CLICK and click **Next**, or untick **Delete it in CLICK** to keep it, and the window then closes on a CLICK save without it (it only advised deleting it, and stayed open while CLICK had it).
-- Under **Copy: Changed rungs**, Preview Changes copies a program whole when stepping through it would take 6 or more steps, unless it has 100 rungs or more or CLICK holds some of its rungs in an old encoding; **Step Through** steps through that program anyway (it only suggested switching).
-- A folder's `nicknames.csv` in Preview Changes is staged in the Address Editor instead of written straight into CLICK's database: **Stage nicknames** shows them on the Changed tab, validated, with a **Sync and Close** button, and the row counts what it changes ("3 new, 1 renamed") and can be skipped (it imported them unchecked, and could delete addresses the file listed blank).
+- Review Changes steps through subroutines before `main.csv`, so they exist in CLICK before main's Call instructions are pasted.
+- **Review Changes** is what Guided Paste is now, one window: the button and `clicknick-cli rung apply` open it on the workspace's whole proposed ladder (they opened one review window per changed file), so new subroutines, rungs and subroutines an edit removes, and what CLICK has saved since are all shown in one place, and **Ladder > Open in Guided Paste** is now **Ladder > Compare with**.
+- Review Changes closes once a CLICK save holds everything it was pasting, and after a save that came too early it stays open, says so, and can keep pasting.
+- A program CLICK has that the folder doesn't is a step in Review Changes: delete it in CLICK and click **Next**, or untick **Delete it in CLICK** to keep it, and the window then closes on a CLICK save without it (it only advised deleting it, and stayed open while CLICK had it).
+- Under **Copy: Changed rungs**, Review Changes copies a program whole when stepping through it would take 6 or more steps, unless it has 100 rungs or more or CLICK holds some of its rungs in an old encoding; **Step Through** steps through that program anyway (it only suggested switching).
+- A folder's `nicknames.csv` in Review Changes is staged in the Address Editor instead of written straight into CLICK's database: **Stage nicknames** shows them on the Changed tab, validated, with a **Sync and Close** button, and the row counts what it changes ("3 new, 1 renamed") and can be skipped (it imported them unchecked, and could delete addresses the file listed blank).
 
 ### Fixed
 
@@ -94,7 +94,7 @@
 - Text still being typed in an Address Editor cell is kept when you replace the data or close ClickNick and answer the save prompt; a cell that won't commit stops the close.
 - A cloned Address Editor tab shows block colors, errors and unsaved edits on every row, and opens at the saved scroll position.
 - CLICK v4 projects work: autocomplete fits its instruction dialogs, and Simulate and the workspace read its hardware and PLC name.
-- Check Program, Preview Changes and the simulation no longer show Windows' busy cursor while they start.
+- Check Program, Review Changes and the simulation no longer show Windows' busy cursor while they start.
 - Unsaved-change tracking is reliable: Undo, Discard and edits update duplicate marks so Sync isn't blocked by a stale "Duplicate", rows stop showing as unsaved once CLICK saves the value, changes CLICK writes right after a Sync are picked up, and an edit that fails partway changes nothing.
 - Sort by nickname, block colors, the Dataview editor, the window title and Workspace details stay current after edits, CLICK saves, Sync, CSV loads and workspace changes, and the Dataview editor writes unchanged CDV files back byte-for-byte.
 - Loading a CSV over unsaved changes asks to save or discard first.
@@ -105,7 +105,7 @@
 - Ctrl+Z and Ctrl+Y in the Dataview Editor undo and redo row moves and edits without the table and the saved file disagreeing, undoing an address change keeps its New Value, and a folder or block added from the Tag Browser is one undo step.
 - The Dataview Editor no longer opens a .cdv file it cannot read, so it can't save a nearly empty file over it.
 - Program analysis and AI tag lookups use the same nicknames as the generated code, switching CLICK projects no longer freezes the window, and the "tags synced" count counts each tag once.
-- Opening another project in the same CLICK window no longer leaves its workspace unbuilt until ClickNick restarts, and Preview Changes now updates its comparison when CLICK's program changes.
+- Opening another project in the same CLICK window no longer leaves its workspace unbuilt until ClickNick restarts, and Review Changes now updates its comparison when CLICK's program changes.
 - Open Temporary Workspace and the Workspace status update as soon as a build finishes, instead of waiting for something else to refresh the window, such as opening the Simulator.
 - Choosing an existing workspace whose `src/plc` holds edits copies them to `backup/src/plc` before the next build regenerates it; `clicknick-cli restore` puts them back.
 - Workspace setup no longer switches when both the current and the chosen workspace's `src/plc` hold edits; it names both folders so you can paste or discard one first.
@@ -117,7 +117,7 @@
 - A workspace `AGENTS.md` or `README.md` with a UTF-8 BOM gets pyrung's pointer under its title.
 - A workspace `pyproject.toml` ClickNick cannot read no longer reports a finished **Reload from CLICK** as failed.
 - A build that cannot finish writing the workspace, such as when a file in it is open in Excel, still fails but leaves `csv/` and `src/plc` both from the save before.
-- After a CLICK save whose build fails before the workspace is written, Preview Changes says it could not read CLICK's program instead of comparing with the save before.
+- After a CLICK save whose build fails before the workspace is written, Review Changes says it could not read CLICK's program instead of comparing with the save before.
 - A CLICK save is noticed when its files get an older timestamp (a copied-back project, a clock change) and when it only deletes a subroutine.
 - A broken `%LOCALAPPDATA%\ClickNick\project-sidecars.json` no longer stops ClickNick connecting to CLICK.
 - Editing a timer or counter comment's text no longer deletes the block tag on its TD/CTD (or T/CT) row, renaming a block renames the matching tags where they are without adding spaces or moving text, and a rename never overwrites a tag you set in the same edit.
@@ -165,14 +165,14 @@
 - The simulation's forces and bench links stay on their addresses when you rename their tags, and turning it off or restarting it while it restores them no longer deletes them; a saved force or link that is not on a CLICK address is reported instead of dropped without a word.
 - Closing the project or the CLICK window while the simulation starts stops it instead of leaving it holding Modbus port 502, and a simulation that exits as it starts shows as failed instead of ready.
 - Switch settings on Unassigned I/O inputs survive opening the Simulator before the first build finishes, an analog input with a range gets its slider once the simulation starts, and the Simulator follows nickname edits after a CSV is loaded.
-- Preview Changes remembers what you pasted until CLICK saves it: running Preview Changes again, switching **Copy**, a Sync or a failed read of CLICK's program no longer has you paste the same rungs a second time, a program whose pasted rungs the new export changes or takes back is copied whole, and **Restart** asks first.
-- Preview Changes no longer forgets what you pasted when CLICK saves while it is still reading the save before.
-- A program or deletion marked done in Preview Changes that CLICK's next save shows still to do is a step again, also when that save changed nothing (it stayed done, and the window never closed).
-- A ladder CSV that Preview Changes cannot read is left out with a notice, so the window still closes once CLICK has saved the rest.
+- Review Changes remembers what you pasted until CLICK saves it: running Review Changes again, switching **Copy**, a Sync or a failed read of CLICK's program no longer has you paste the same rungs a second time, a program whose pasted rungs the new export changes or takes back is copied whole, and **Restart** asks first.
+- Review Changes no longer forgets what you pasted when CLICK saves while it is still reading the save before.
+- A program or deletion marked done in Review Changes that CLICK's next save shows still to do is a step again, also when that save changed nothing (it stayed done, and the window never closed).
+- A ladder CSV that Review Changes cannot read is left out with a notice, so the window still closes once CLICK has saved the rest.
 - **Copy: Whole program** steps through a program when a difference you skipped keeps a rung CLICK holds in an old encoding, so the paste does not rewrite that rung from ClickNick's reading of it.
-- Without a comparison with CLICK, Preview Changes says to delete the program's rungs before pasting it whole, and copies only while connected to a CLICK window (it used the first CLICK window it found).
-- A folder's `nicknames.csv` without an Address Comment, Initial Value or Retentive column no longer clears those fields when Preview Changes stages it.
-- A program with no rungs copied whole in Preview Changes is a step of deleting its rungs in CLICK, then **Next** (copying it failed with "there are no rungs to copy").
+- Without a comparison with CLICK, Review Changes says to delete the program's rungs before pasting it whole, and copies only while connected to a CLICK window (it used the first CLICK window it found).
+- A folder's `nicknames.csv` without an Address Comment, Initial Value or Retentive column no longer clears those fields when Review Changes stages it.
+- A program with no rungs copied whole in Review Changes is a step of deleting its rungs in CLICK, then **Next** (copying it failed with "there are no rungs to copy").
 - `clicknick-rung load` on a CSV with no rungs says so instead of crashing.
 
 ## v0.23.4 - 2026-10-11

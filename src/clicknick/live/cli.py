@@ -28,8 +28,8 @@ Usage::
     # Rung commands
     clicknick-cli rung list                         # list available files
     clicknick-cli rung list main                    # rungs in main program
-    clicknick-cli rung apply                        # stage all changes and open Preview Changes
-    clicknick-cli rung apply main                   # stage main and open Preview Changes on it
+    clicknick-cli rung apply                        # stage all changes and open Review Changes
+    clicknick-cli rung apply main                   # stage main and open Review Changes on it
     clicknick-cli rung apply main --select r3       # stage and show rung 3
 
     # Program analysis

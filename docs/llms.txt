@@ -20,6 +20,6 @@ ClickNick is a free, local Windows application. It adds nickname autocomplete, p
 
 ## Project-file boundary
 
-ClickNick never directly edits a `.ckp` file. Ladder changes return through Preview Changes and CLICK's normal ladder workflow, and saving in CLICK Programming Software remains the final authority.
+ClickNick never directly edits a `.ckp` file. Ladder changes return through Review Changes and CLICK's normal ladder workflow, and saving in CLICK Programming Software remains the final authority.
 
 Source: https://github.com/ssweber/clicknick

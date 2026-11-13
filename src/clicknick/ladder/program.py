@@ -579,7 +579,7 @@ def unreadable_copy(file: str, program: str, exc: Exception) -> LegacyEncoding:
 def _read_back(path: Path, file: str, program: str) -> list[LegacyEncoding]:
     """A finding when laddercodec cannot read the CSV just written at *path*.
 
-    pyrung reads CSVs on its own, so the build would not notice. Preview Changes
+    pyrung reads CSVs on its own, so the build would not notice. Review Changes
     would, and then it pastes the whole program again.
     """
     try:
@@ -613,7 +613,7 @@ def describe_legacy_encoding(item: LegacyEncoding, *, program: bool = True) -> s
     """
     what = " ".join(part for part in (item.instruction, item.token) if part)
     if item.rung is None and not what:
-        # A finding about the whole copy, such as a CSV Preview Changes cannot read
+        # A finding about the whole copy, such as a CSV Review Changes cannot read
         return f"{item.program or item.file}: {item.detail}" if program else item.detail
     where = "an unknown rung" if item.rung is None else f"rung {item.rung}"
     if program:

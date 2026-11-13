@@ -26,7 +26,7 @@ AI is optional. If you use a coding agent, point it at the workspace, not the `.
     <li class="agent-flow__step">
       <strong>Proposes files</strong>
       <span>Edits to the ladder text, new tests, comments. All of it sits in the workspace for you to read.</span>
-      <p>Preview Changes shows the rung diff.</p>
+      <p>Review Changes shows the rung diff.</p>
     </li>
     <li class="agent-flow__step">
       <strong>You accept</strong>
@@ -44,7 +44,7 @@ The agent gets the same program, the same tests, and the same command-line check
 4. Review a proposed change and run the checks.
 5. Then, if it has earned it, propose ladder changes.
 
-Everything it runs is the same offline model. It has no connection to the PLC, and its ladder changes come back the way yours do: Preview Changes, your review, then a paste in CLICK.
+Everything it runs is the same offline model. It has no connection to the PLC, and its ladder changes come back the way yours do: Review Changes, your review, then a paste in CLICK.
 
 [Install ClickNick](../install.md){ .md-button .md-button--primary } [Help](../help/index.md){ .md-button } [GitHub](https://github.com/ssweber/clicknick){ .md-button }
 
