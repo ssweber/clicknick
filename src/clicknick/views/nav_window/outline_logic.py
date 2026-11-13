@@ -548,50 +548,45 @@ def _flatten_child_with_prefix(prefix: str, node: TreeNode) -> list[DisplayItem]
 
     ``prefix`` is the display text for ``node``'s own segment.
     """
-    current_path = [prefix]
-    is_gap = [node.is_gap]  # per part: is it a "_" gap
+    text = prefix
     collapse_node = node
     array_chain = False  # the chain ends on an array name shown with its [range]
 
     # A node that is an array itself (the child of a mixed array) is shown as one
     if node.is_array and not _has_mixed_array_content(node):
         if index_node := _is_single_element_array(node):
-            current_path[0] = f"{prefix}{index_node.label}"
+            text = f"{prefix}{index_node.label}"
             collapse_node = index_node
         else:
-            current_path[0] = f"{prefix}{_get_array_range(node)}"
+            text = f"{prefix}{_get_array_range(node)}"
             array_chain = True
 
-    # Collapse single-child chains
+    # Collapse single-child chains. Each step adds the nickname's own text from the end
+    # of the node before to the end of this one, so every underscore shows as spelled.
+    # (A gap standing at the head of an item shows "_"; with more after it, its "__".)
+    chained = False
     while not array_chain and len(collapse_node.children) == 1 and not collapse_node.leaves:
         only = collapse_node.child_nodes()[0]
         if only.is_index:
             break
+        if not chained and node.is_gap and prefix == node.label:
+            text = node.path_end[len(node.seg_start) :]
+        chained = True
+        spelled = only.path_end[len(collapse_node.path_end) :]
         if _has_mixed_array_content(only):
-            current_path.append(only.label)
-            is_gap.append(only.is_gap)
+            text += spelled
             collapse_node = only
             break
         if index_node := _is_single_element_array(only):
-            current_path.append(f"{only.label}{index_node.label}")
-            is_gap.append(False)
+            text += f"{spelled}{index_node.label}"
             collapse_node = index_node
         elif only.is_array:
-            current_path.append(f"{only.label}{_get_array_range(only)}")
-            is_gap.append(False)
+            text += f"{spelled}{_get_array_range(only)}"
             collapse_node = only
             array_chain = True
         else:
-            current_path.append(only.label)
-            is_gap.append(only.is_gap)
+            text += spelled
             collapse_node = only
-
-    # A gap is "__": its first underscore is the separator before it, so the part after
-    # a gap (not the first part, a gap standing for its own "__") has no separator
-    text = current_path[0]
-    for i in range(1, len(current_path)):
-        no_sep = is_gap[i - 1] and i > 1 and not is_gap[i]
-        text += current_path[i] if no_sep else f"_{current_path[i]}"
 
     # Handle mixed array content
     if _has_mixed_array_content(collapse_node):

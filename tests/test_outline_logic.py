@@ -911,6 +911,64 @@ class TestLoneNicknameShowsAsSpelled:
         items = _build([nick])
         assert get_all_texts(items) == [nick]
 
+    @pytest.mark.parametrize(
+        "nick",
+        ["____A", "_____A", "____2", "A__B1", "B__A1A1__", "_A1__B", "A____"],
+    )
+    def test_long_leading_runs_and_chains_read_as_spelled(self, nick):
+        assert get_all_texts(_build([nick])) == [nick]
+
+    @pytest.mark.parametrize(
+        ("nicks", "shown"),
+        [
+            (["Pump1", "Pump__1"], "Pump__1"),
+            (["A1", "A__B"], "A__B"),
+            (["A1", "A___1"], "A___1"),
+            (["B1", "B__A1A1__"], "B__A1A1__"),
+        ],
+    )
+    def test_mixed_array_children_read_as_spelled(self, nicks, shown):
+        assert shown in get_all_texts(_build(nicks))
+
+    def test_random_nicknames_read_as_spelled(self):
+        import random
+
+        rng = random.Random(20240611)
+        pieces = ["A", "Pump", "B", "1", "12", "A1", "Pump2", "x"]
+        runs = ["", "_", "__", "___", "____", "_____"]
+
+        def nickname() -> str:
+            parts = [rng.choice(runs)]
+            for _ in range(rng.randint(1, 3)):
+                parts.append(rng.choice(pieces))
+                parts.append(rng.choice(runs[1:]))
+            parts[-1] = rng.choice(runs)
+            return "".join(parts)
+
+        for _ in range(3000):
+            nick = nickname()
+            if not nick.strip("_"):
+                continue
+            assert get_all_texts(_build([nick])) == [nick], nick
+        for _ in range(500):
+            nicks = list({nickname() for _ in range(rng.randint(2, 6))})
+            nicks = [n for n in nicks if n.strip("_")]
+            items = _build(nicks)
+            paths = [
+                item.full_path
+                for top in items
+                for item, _ in top.iter_preorder()
+                if item.leaf is not None and not item.is_array
+            ]
+            assert sorted(p.rstrip("_") for p in paths) == sorted(n.rstrip("_") for n in nicks), (
+                nicks
+            )
+            for top in items:
+                for item, _ in top.iter_preorder():
+                    if item.leaf is not None and not item.children and not item.is_array:
+                        assert item.full_path.endswith(item.text), (nicks, item.text)
+                        assert item.full_path in nicks, (nicks, item.full_path)
+
     def test_gap_chain_with_siblings_reads_as_spelled(self):
         items = _build(["A___B", "A___C", "A__D"])
         (top,) = items
