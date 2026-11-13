@@ -1008,8 +1008,8 @@ class SimulationSession:
     def _restart_if_due(self) -> None:
         """The restart :meth:`_restart_when_free` asked for, unless a write or build still runs.
 
-        A refusal for any other reason drops it: the user's Restart, or a later
-        build that converts, starts the simulation again.
+        A refusal for any other reason drops it; the simulation runs on until the
+        user restarts it.
         """
         from .services.analysis_service import AnalysisStatus
 
