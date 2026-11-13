@@ -8,6 +8,7 @@ import re
 
 import pytest
 
+from clicknick.utils.rename_helpers import build_rename_pattern
 from clicknick.views.nav_window.outline_logic import build_tree, flatten_tree
 
 
@@ -381,31 +382,6 @@ class TestRenameValidation:
         assert new_text and new_text.strip() and len(new_text) > 0
 
 
-def build_rename_pattern(prefix: str, current_text: str, is_array: bool) -> tuple[str, str]:
-    """Helper to build rename pattern and replacement strings.
-
-    Args:
-        prefix: The full path prefix before the node to rename (e.g., "Tank_Pump_")
-        current_text: The current text of the node to rename
-        is_array: True if this is an array node (has numeric children)
-
-    Returns:
-        Tuple of (pattern, replacement_template) where replacement needs {new_text}
-    """
-    if is_array:
-        # Array pattern: ^(prefix)(current)(\d+)(_|$)
-        # Replacement: \1{new_text}\3\4
-        pattern = rf"^({re.escape(prefix)})({re.escape(current_text)})(\d+)(_|$)"
-        replacement_template = r"\1{new_text}\3\4"
-    else:
-        # Non-array pattern: ^(prefix)(current)(_|$)
-        # Replacement: \1{new_text}\3
-        pattern = rf"^({re.escape(prefix)})({re.escape(current_text)})(_|$)"
-        replacement_template = r"\1{new_text}\3"
-
-    return pattern, replacement_template
-
-
 class TestBuildRenamePattern:
     """Test the helper function that builds regex patterns."""
 
@@ -474,7 +450,6 @@ class TestRenameFromOutlineItems:
     @staticmethod
     def _rename(nicknames: list[str], text: str, new_text: str, occurrence: int = 0) -> list[str]:
         """Rename with the item shown as ``text`` (the ``occurrence``-th one in the tree)."""
-        from clicknick.utils.rename_helpers import build_rename_pattern as real_pattern
         from clicknick.utils.rename_helpers import rename_replacement
         from clicknick.views.nav_window.outline_logic import build_tree, flatten_tree
 
@@ -486,7 +461,7 @@ class TestRenameFromOutlineItems:
             if item.text == text
         ]
         item = found[occurrence]
-        pattern, template = real_pattern(
+        pattern, template = build_rename_pattern(
             item.rename_prefix, item.rename_text, item.rename_is_array, item.rename_exact
         )
         replacement = rename_replacement(template, new_text)
@@ -586,3 +561,35 @@ class TestRenameFromOutlineItems:
     def test_index_folder_leaves_a_sibling_with_a_trailing_underscore_alone(self):
         nicks = ["Pump1", "Pump1_X", "Pump1_", "Pump2_X"]
         assert self._rename(nicks, "1", "New", occurrence=0)[2] == "Pump1_"
+
+
+class TestDigitSegmentBetweenUnderscores:
+    """ "Zone_1_Temp" has a plain "1" segment: not the array "Zone1_Temp"."""
+
+    def test_stays_apart_from_the_array_and_renames_only_itself(self):
+        nicks = ["Zone_1_Temp", "Zone_2_Temp", "Zone1_Temp", "Zone2_Temp"]
+        assert TestRenameFromOutlineItems._rename(nicks, "Zone[1-2]", "Area") == [
+            "Zone_1_Temp",
+            "Zone_2_Temp",
+            "Area1_Temp",
+            "Area2_Temp",
+        ]
+        assert TestRenameFromOutlineItems._rename(nicks, "Zone_1_Temp", "Hot") == [
+            "Zone_1_Hot",
+            "Zone_2_Temp",
+            "Zone1_Temp",
+            "Zone2_Temp",
+        ]
+
+    def test_the_digit_segment_renames_its_own_nicknames(self):
+        nicks = ["Zone_1_Temp", "Zone_1_Hi", "Zone_12_Temp", "Zone1_Temp"]
+        assert TestRenameFromOutlineItems._rename(nicks, "Zone_1", "One") == [
+            "Zone_One_Temp",
+            "Zone_One_Hi",
+            "Zone_12_Temp",
+            "Zone1_Temp",
+        ]
+
+    def test_gap_chains_rename_exactly_what_they_show(self):
+        nicks = ["A__B", "A___B", "A___C"]
+        assert TestRenameFromOutlineItems._rename(nicks, "_B", "Q") == ["A__B", "A___Q", "A___C"]

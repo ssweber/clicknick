@@ -549,6 +549,7 @@ def _flatten_child_with_prefix(prefix: str, node: TreeNode) -> list[DisplayItem]
     ``prefix`` is the display text for ``node``'s own segment.
     """
     current_path = [prefix]
+    is_gap = [node.is_gap]  # per part: is it a "_" gap
     collapse_node = node
     array_chain = False  # the chain ends on an array name shown with its [range]
 
@@ -568,20 +569,29 @@ def _flatten_child_with_prefix(prefix: str, node: TreeNode) -> list[DisplayItem]
             break
         if _has_mixed_array_content(only):
             current_path.append(only.label)
+            is_gap.append(only.is_gap)
             collapse_node = only
             break
         if index_node := _is_single_element_array(only):
             current_path.append(f"{only.label}{index_node.label}")
+            is_gap.append(False)
             collapse_node = index_node
         elif only.is_array:
             current_path.append(f"{only.label}{_get_array_range(only)}")
+            is_gap.append(False)
             collapse_node = only
             array_chain = True
         else:
             current_path.append(only.label)
+            is_gap.append(only.is_gap)
             collapse_node = only
 
-    text = "_".join(current_path)
+    # A gap is "__": its first underscore is the separator before it, so the part after
+    # a gap (not the first part, a gap standing for its own "__") has no separator
+    text = current_path[0]
+    for i in range(1, len(current_path)):
+        no_sep = is_gap[i - 1] and i > 1 and not is_gap[i]
+        text += current_path[i] if no_sep else f"_{current_path[i]}"
 
     # Handle mixed array content
     if _has_mixed_array_content(collapse_node):

@@ -902,6 +902,23 @@ class TestSpellingsStayApart:
         assert paths == {i + 1: nick for i, nick in enumerate(nicks)}
 
 
+class TestLoneNicknameShowsAsSpelled:
+    @pytest.mark.parametrize(
+        "nick",
+        ["A__B", "A___B", "A____B", "A_____B", "___A", "__A", "A__", "A___", "A___B_C", "A1___B"],
+    )
+    def test_text_is_the_nickname(self, nick):
+        items = _build([nick])
+        assert get_all_texts(items) == [nick]
+
+    def test_gap_chain_with_siblings_reads_as_spelled(self):
+        items = _build(["A___B", "A___C", "A__D"])
+        (top,) = items
+        assert top.text == "A__"
+        assert [c.text for c in top.children] == ["_B", "_C", "D"]
+        assert [c.full_path for c in top.children] == ["A___B", "A___C", "A__D"]
+
+
 class TestSpellingsAreLabelledApart:
     def test_trailing_underscore_shows(self):
         assert sorted(get_all_texts(_build(["Pump_", "Pump"]))) == ["Pump", "Pump_"]
