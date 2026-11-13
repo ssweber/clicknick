@@ -19,6 +19,8 @@ from .project_workspace import (
     backup_plc_source,
     plc_backup_time,
     plc_source_is_modified,
+    record_generated_plc_source,
+    workspace_writing,
 )
 
 SIDECAR_NAME = ".clicknick.toml"
@@ -354,26 +356,10 @@ def validate_mirror_destination(source: Path, mirror: Path) -> None:
         raise ValueError("workspace directory must be separate from the active workspace")
 
 
-def sync_workspace_to_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
-    """Overlay the active workspace onto a mirror without deleting target files.
-
-    The one exception is ``csv/legacy_encodings.json``, which goes when the
-    active workspace has none. A mirror whose ``src/plc`` holds work beyond its
-    last generation keeps it: that tree is snapshotted to the mirror's
-    ``backup/src/plc`` (the backup there moves to ``backup/older``) and left
-    in place, and the next build regenerates it.
-    When the active workspace's ``src/plc`` holds edits too, nothing changes and
-    ValueError says so: one of the two would be left behind.
-    """
-    source = _normalized(source)
-    mirror = _normalized(mirror)
-    if not source.is_dir():
-        raise ValueError(f"active workspace directory not found: {source}")
-    if not (source / PLC_PACKAGE_PATH).is_dir():
-        raise ValueError(f"active workspace source not found: {source / PLC_PACKAGE_PATH}")
-    validate_mirror_destination(source, mirror)
+def _overlay_onto_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
     keep_mirror_source = plc_source_is_modified(mirror)
-    if keep_mirror_source and plc_source_is_modified(source):
+    source_is_modified = plc_source_is_modified(source)
+    if keep_mirror_source and source_is_modified:
         raise ValueError(
             "Both workspaces hold edits to src/plc that are not in CLICK:\n\n"
             f"{source / PLC_PACKAGE_PATH}\n{mirror / PLC_PACKAGE_PATH}\n\n"
@@ -412,7 +398,34 @@ def sync_workspace_to_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
             continue
         copied += _copy_file(path, mirror / relative, overwrite=False)
 
+    # The mirror took the active workspace's last generation, so it is one too.
+    if not keep_mirror_source and not source_is_modified:
+        record_generated_plc_source(mirror)
     return MirrorSyncResult(copied, mirror, kept_source=keep_mirror_source)
+
+
+def sync_workspace_to_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
+    """Overlay the active workspace onto a mirror without deleting target files.
+
+    The one exception is ``csv/legacy_encodings.json``, which goes when the
+    active workspace has none. A mirror whose ``src/plc`` holds work beyond its
+    last generation keeps it: that tree is snapshotted to the mirror's
+    ``backup/src/plc`` (the backup there moves to ``backup/older``) and left
+    in place, and the next build regenerates it. A mirror that took the active
+    workspace's unedited ``src/plc`` is recorded as that generation.
+    When the active workspace's ``src/plc`` holds edits too, nothing changes and
+    ValueError says so: one of the two would be left behind.
+    """
+    source = _normalized(source)
+    mirror = _normalized(mirror)
+    if not source.is_dir():
+        raise ValueError(f"active workspace directory not found: {source}")
+    if not (source / PLC_PACKAGE_PATH).is_dir():
+        raise ValueError(f"active workspace source not found: {source / PLC_PACKAGE_PATH}")
+    validate_mirror_destination(source, mirror)
+    # Not while a build publishes the active workspace: the copy would mix two generations.
+    with workspace_writing(source), workspace_writing(mirror):
+        return _overlay_onto_mirror(source, mirror)
 
 
 def get_workspace_directory_info(

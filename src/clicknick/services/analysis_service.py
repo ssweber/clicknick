@@ -256,13 +256,18 @@ def _refresh_workspace_guidance(source: Path, destination: Path) -> None:
 
 
 def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
-    """Publish a complete staged generation without risking workspace edits."""
+    """Publish a complete staged generation without risking workspace edits.
+
+    It waits for a backup or restore of the workspace under way, and holds the
+    workspace from its backup of edits until the generation is recorded.
+    """
     from .project_workspace import (
         _replace_tree,
         _replace_trees,
         backup_modified_plc_source,
         plc_source_dir,
         record_generated_plc_source,
+        workspace_writing,
     )
 
     staged_source = plc_source_dir(staged_dir)
@@ -270,31 +275,32 @@ def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
         raise ValueError(f"staged generated source directory not found: {staged_source}")
 
     persist_dir.mkdir(parents=True, exist_ok=True)
-    backup_modified_plc_source(persist_dir)
+    with workspace_writing(persist_dir, wait=True):
+        backup_modified_plc_source(persist_dir)
 
-    # Support files first. csv/ and src/plc go last and together, so a failure
-    # anywhere (a file open in Excel) never leaves csv/ from one save and src/plc
-    # from another; the generation record is written only once both are in.
-    for child in staged_dir.iterdir():
-        if child.name in {"src", "csv"}:
-            continue
-        destination = persist_dir / child.name
-        if child.name in _GENERATED_DIR_NAMES:
-            _replace_tree(child, destination)
-        elif child.name in _GENERATED_FILE_NAMES:
-            shutil.copy2(child, destination)
-        elif child.name in _WORKSPACE_GUIDANCE_FILES and destination.is_file():
-            _refresh_workspace_guidance(child, destination)
-        else:
-            _copy_missing(child, destination)
-    # Outputs this generation does not write go, csv_output/ among them.
-    _clean_generated(persist_dir, keep=frozenset(child.name for child in staged_dir.iterdir()))
+        # Support files first. csv/ and src/plc go last and together, so a failure
+        # anywhere (a file open in Excel) never leaves csv/ from one save and src/plc
+        # from another; the generation record is written only once both are in.
+        for child in staged_dir.iterdir():
+            if child.name in {"src", "csv"}:
+                continue
+            destination = persist_dir / child.name
+            if child.name in _GENERATED_DIR_NAMES:
+                _replace_tree(child, destination)
+            elif child.name in _GENERATED_FILE_NAMES:
+                shutil.copy2(child, destination)
+            elif child.name in _WORKSPACE_GUIDANCE_FILES and destination.is_file():
+                _refresh_workspace_guidance(child, destination)
+            else:
+                _copy_missing(child, destination)
+        # Outputs this generation does not write go, csv_output/ among them.
+        _clean_generated(persist_dir, keep=frozenset(child.name for child in staged_dir.iterdir()))
 
-    pairs = [(staged_source, plc_source_dir(persist_dir))]
-    if (staged_dir / "csv").is_dir():
-        pairs.insert(0, (staged_dir / "csv", persist_dir / "csv"))
-    _replace_trees(pairs)
-    record_generated_plc_source(persist_dir)
+        pairs = [(staged_source, plc_source_dir(persist_dir))]
+        if (staged_dir / "csv").is_dir():
+            pairs.insert(0, (staged_dir / "csv", persist_dir / "csv"))
+        _replace_trees(pairs)
+        record_generated_plc_source(persist_dir)
 
 
 def _regenerate_persisted_project(
@@ -431,6 +437,9 @@ class AnalysisService:
         # Build requests made (`mark_building`). A build that serves fewer than this
         # leaves the status BUILDING: what it publishes is older than the latest request.
         self._builds_asked = 0
+        # A request that failed before it could be queued while a build ran: the reason
+        # and detail it shows once the build that serves every request finishes.
+        self._failed_request: tuple[str, str | None] | None = None
 
     @property
     def is_available(self) -> bool:
@@ -495,26 +504,40 @@ class AnalysisService:
         """addr_key -> tag name for ``project_dir``'s source (see ``project_tag_to_addr_key``)."""
         return self._project_keys
 
+    def _record_failure(self, reason: str, detail: str | None) -> None:
+        """Show *reason* as the latest request's outcome; the caller holds ``_lock``."""
+        self._failed_request = None
+        self._epoch += 1
+        self._project_is_current = False
+        self._status = AnalysisStatus.FAILED
+        self._error = reason
+        self._error_detail = detail
+        self._system_nickname_repairs = ()
+        self._needs_comment_upgrade = False
+
     def mark_failed(
         self, reason: str, detail: str | None = None, *, serves: int | None = None
     ) -> None:
         """Record a failure the build thread never got to raise.
 
-        Used for pre-flight bail-outs (no project database, no saved ladder
-        files) so views can say *why* instead of waiting forever. A build that
-        *serves* fewer requests than were made leaves the status to the build
+        Without *serves*, a request failed before it could be queued (no project
+        database, no saved ladder files), so views can say *why* instead of waiting
+        forever. While a build runs the status stays BUILDING, and the failure shows
+        once the build that serves every request finishes; a later request replaces
+        it. With *serves*, the build for that request failed before ``build()`` ran;
+        one that serves fewer requests than were made leaves the status to the build
         queued after it.
         """
         with self._lock:
-            if serves is not None and serves < self._builds_asked:
+            if serves is None:
+                if self._status is AnalysisStatus.BUILDING:
+                    self._failed_request = (reason, detail)
+                    return
+            elif serves < self._builds_asked:
                 return
-            self._epoch += 1
-            self._project_is_current = False
-            self._status = AnalysisStatus.FAILED
-            self._error = reason
-            self._error_detail = detail
-            self._system_nickname_repairs = ()
-            self._needs_comment_upgrade = False
+            elif self._failed_request is not None:
+                reason, detail = self._failed_request
+            self._record_failure(reason, detail)
 
     def mark_building(self) -> int:
         """Report a queued build, so nobody sees a stale status until its thread starts.
@@ -523,6 +546,7 @@ class AnalysisService:
         """
         with self._lock:
             self._builds_asked += 1
+            self._failed_request = None
             self._status = AnalysisStatus.BUILDING
             self._error = None
             self._error_detail = None
@@ -669,12 +693,15 @@ class AnalysisService:
         except Exception as exc:
             with self._lock:
                 if self._epoch == epoch and serves >= self._builds_asked:
-                    self._status = AnalysisStatus.FAILED
-                    self._error = f"{type(exc).__name__}: {exc}"
-                    self._error_detail = traceback.format_exc()
-                    if isinstance(exc, SystemNicknameRepairRequired):
-                        self._system_nickname_repairs = exc.repairs
-                    self._needs_comment_upgrade = _is_old_comment_form(exc)
+                    if self._failed_request is not None:
+                        self._record_failure(*self._failed_request)
+                    else:
+                        self._status = AnalysisStatus.FAILED
+                        self._error = f"{type(exc).__name__}: {exc}"
+                        self._error_detail = traceback.format_exc()
+                        if isinstance(exc, SystemNicknameRepairRequired):
+                            self._system_nickname_repairs = exc.repairs
+                        self._needs_comment_upgrade = _is_old_comment_form(exc)
             raise
         with self._lock:
             if self._epoch != epoch:
@@ -691,12 +718,16 @@ class AnalysisService:
                 project_dir=project_dir,
             )
             if serves >= self._builds_asked:
-                self._status = AnalysisStatus.READY
+                if self._failed_request is not None:
+                    self._record_failure(*self._failed_request)
+                else:
+                    self._status = AnalysisStatus.READY
         return True
 
     def invalidate(self) -> None:
         with self._lock:
             self._epoch += 1
+            self._failed_request = None
             self._result = None
             self._project_dir = None
             self._project_tags = {}

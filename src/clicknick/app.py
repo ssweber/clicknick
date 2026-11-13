@@ -1207,10 +1207,6 @@ class ClickNickApp:
             if not confirmed:
                 return
 
-        from .services.project_workspace import (
-            plc_source_is_modified,
-            record_generated_plc_source,
-        )
         from .services.workspace_mirror import (
             remember_project_sidecar,
             save_project_workspace_config,
@@ -1223,11 +1219,7 @@ class ClickNickApp:
                 validate_mirror_destination(source, mirror_path)
             mirror_path.mkdir(parents=True, exist_ok=True)
             if changing_location:
-                source_was_modified = plc_source_is_modified(source)
-                result = sync_workspace_to_mirror(source, mirror_path)
-                # A kept (edited) source of the chosen workspace must still show as edited
-                if not source_was_modified and not result.kept_source:
-                    record_generated_plc_source(mirror_path)
+                sync_workspace_to_mirror(source, mirror_path)
             sidecar = save_project_workspace_config(config)
             remember_project_sidecar(sidecar, preferred_for=plc_name)
         except (OSError, ValueError) as exc:

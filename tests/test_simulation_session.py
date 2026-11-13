@@ -456,9 +456,9 @@ def test_failed_rebuild_does_not_launch_previous_program(ready):
 
 
 def test_failed_conversion_during_poll_is_reported(ready):
-    ready.analysis._status = AnalysisStatus.BUILDING
+    serves = ready.analysis.mark_building()
     ready.open()
-    ready.analysis.mark_failed("bad rung", "Traceback details")
+    ready.analysis.mark_failed("bad rung", "Traceback details", serves=serves)
     ready.scheduler.fire(ANALYSIS_POLL_MS)
     assert ready.sim.status is SimStatus.FAILED
     assert not ready.sim.is_waiting
@@ -1986,7 +1986,7 @@ def test_console_changes_while_a_build_fails_to_start_are_followed(ready):
     ready.dap.frame(forces={"Y001": True})
     ready.scheduler.run_ready()
 
-    ready.analysis.mark_building()
+    serves = ready.analysis.mark_building()
     # `unforce Y001`, `force C1 true` and `unlink X002` in the Console
     ready.dap.bench.pop("X002")
     ready.dap.links_revision += 1
@@ -1995,7 +1995,7 @@ def test_console_changes_while_a_build_fails_to_start_are_followed(ready):
     assert ready.sim.forces == {"C1": True}
     assert ready.sim.bench_links == {}
 
-    ready.analysis.mark_failed("no saved ladder files")  # failed before build() ran
+    ready.analysis.mark_failed("no saved ladder files", serves=serves)  # before build() ran
     ready.scheduler.fire(WATCH_MS)
     assert len(ready.daps) == 1
     assert ready.sim.forces == {"C1": True}

@@ -219,7 +219,10 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - `AnalysisService.status` reads BUILDING until a build that serves every request made so far
   (`mark_building` returns the count, `build(serves=)` takes it) finishes. A build of the files before a save
   that publishes while the save's build is queued leaves it BUILDING, so no reader (`saved_program()`,
-  `rung apply`, the Workspace status, the simulation) pairs a new save with the `csv/` of the save before
+  `rung apply`, the Workspace status, the simulation) pairs a new save with the `csv/` of the save before.
+  A request that fails before it is queued (`mark_failed` without `serves`: no database, no Scr*.tmp) while a
+  build runs leaves it BUILDING; that failure shows once the build serving every request finishes, unless a
+  later request replaced it
 - The generated code, persisted project and tag map all come from one nickname snapshot read from CLICK's
   database, so tag names always match the code. ClickNick edits reach analysis on the next build after Sync.
   `clicknick-cli` finds tags by the workspace's names (`project_tag_to_addr_key`)
@@ -241,6 +244,11 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   held as the newest backup (or in `src/plc`, as the backup it restored); one that failed left `src/plc` as
   it was and deleted no backup; a tree once in a backup, or in `src/plc` with edits as one began, is gone
   only when 5 kept backups were the newest after it
+- Each workspace folder has one lock (`workspace_writing`). A build's publish holds it from its backup of
+  edits to the generation record; `backup`, `restore` and choosing a workspace hold it throughout. The
+  build waits for it; the others run on the Tk thread and are refused (`WorkspaceBusyError`) instead of
+  freezing the window. `clicknick-cli` commands that read the workspace are refused the same way while the
+  analysis is BUILDING (`_get_project_dir`)
 
 ### Preview Changes
 - The one window for getting ladder into CLICK (`views/preview_changes_window.py`; it was called Guided Paste):

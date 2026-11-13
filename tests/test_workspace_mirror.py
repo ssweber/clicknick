@@ -390,6 +390,20 @@ def test_choosing_an_edited_workspace_while_the_active_one_is_edited_changes_not
     assert plc_source_is_modified(durable)
 
 
+def test_sync_records_a_mirror_that_took_an_unedited_source_as_that_generation(
+    tmp_path: Path,
+) -> None:
+    """Read and recorded while the sync holds the workspaces, not around it."""
+    source = _write_workspace(tmp_path / "active", main="generated\n")
+    record_generated_plc_source(source)
+    sync_workspace_to_mirror(source, tmp_path / "Clean Workspace")
+    assert not plc_source_is_modified(tmp_path / "Clean Workspace")
+
+    (source / "src" / "plc" / "main.py").write_text("agent edits\n", encoding="utf-8")
+    sync_workspace_to_mirror(source, tmp_path / "Edited Workspace")
+    assert plc_source_is_modified(tmp_path / "Edited Workspace")
+
+
 def test_sync_says_when_it_kept_the_mirrors_edited_source(tmp_path: Path) -> None:
     source = _write_workspace(tmp_path / "active", main="proposal\n")
     record_generated_plc_source(source)

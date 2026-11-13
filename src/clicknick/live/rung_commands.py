@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 from ..services.project_workspace import (
     NO_WINDOW,
+    WorkspaceBusyError,
     headless_python,
     plc_source_dir,
     project_environment,
@@ -44,9 +45,9 @@ def _get_project_dir(ctx: DispatchContext) -> Path:
     analysis = ctx.analysis
     if analysis is None:
         raise ValueError("workspace not available (no Click project connected)")
-    if getattr(getattr(analysis, "status", None), "value", None) == "building":
-        raise ValueError("workspace is being regenerated; try again when generation finishes")
     project_dir = analysis.project_dir
+    if getattr(getattr(analysis, "status", None), "value", None) == "building":
+        raise WorkspaceBusyError(project_dir or "the workspace")
     if project_dir is None or not project_dir.is_dir():
         raise ValueError("pyrung project not persisted to disk yet")
     return project_dir
