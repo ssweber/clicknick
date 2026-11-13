@@ -61,7 +61,7 @@
 
 ### Fixed
 
-- Pasting, filling or Replace All on New Values in the Data View editor applies the valid ones and lists each refused cell in one warning, instead of silently keeping the old value. Clearing a New Value is never refused.
+- Pasting or filling New Values in the Data View editor applies the valid ones and lists each refused cell in one warning, instead of silently keeping the old value. Clearing a New Value is never refused.
 - Pasting into the Data View editor's Force column while the Modbus columns are hidden is no longer checked as a New Value.
 - `clicknick-cli` accepts options as separate words (`rung apply main --select r3`, `tag set-physical ... --on-delay 50ms`) instead of refusing them.
 - Double-clicking a Tag Browser item that is a nickname with others under it (`Tank_Pump1` over `Tank_Pump1_Run`) filters the Address Editor to that nickname and the ones under it, the same ones Rename changes, instead of hiding its own row.

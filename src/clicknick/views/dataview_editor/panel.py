@@ -578,7 +578,7 @@ class DataviewPanel(ttk.Frame):
 
     def _reject_new_value(self, row_idx: int, text: str, error: str) -> str | None:
         """Refuse a New Value. Text typed in the cell editor is asked for again once tksheet
-        has closed the editor. A value pasted, filled or put in by Replace All keeps the cell
+        has closed the editor. A value pasted or filled keeps the cell
         as it was and is listed in one warning, shown when the next paste starts or the
         window is idle; clearing a cell is never refused."""
         if not self.sheet.MT.text_editor.open:
@@ -601,7 +601,9 @@ class DataviewPanel(ttk.Frame):
         Returns:
             The validated/normalized value, or empty string if invalid
         """
-        # tksheet gives the displayed column; hidden columns shift it off the data column
+        # Map the displayed column to the data column: hidden columns shift it. Paste, fill,
+        # cut/delete and cell edits pass displayed columns; sort, undo and Replace All may pass
+        # data columns, so map again if any of them is enabled.
         column = self.sheet.MT.datacn(event.column) if hasattr(event, "column") else None
 
         # Only validate Address column
