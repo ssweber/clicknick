@@ -10,7 +10,9 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 PLC_PACKAGE_PATH = Path("src") / "plc"
@@ -21,8 +23,11 @@ PLC_BACKUP_TIME_PATH = Path("backup") / "backup-time.txt"
 OLDER_PLC_BACKUPS_PATH = Path("backup") / "older"
 #: Backups kept in all: backup/src/plc and the older ones.
 KEPT_PLC_BACKUPS = 5
-_OLDER_NAME_FORMAT = "%Y%m%d-%H%M%S"
-_OLDER_NAME = re.compile(r"(\d{8}-\d{6})(?:-(\d+))?")
+# Older backups are named in UTC, so their names sort in the order they were taken
+# across a daylight-saving change, a time-zone change or a clock fix.
+_OLDER_NAME_FORMAT = "%Y%m%dT%H%M%SZ"
+_OLDER_NAME = re.compile(r"(\d{8}T\d{6}Z)(?:-(\d+))?")
+_PRUNING_PREFIX = ".pruning-"
 _COPY_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc")
 
 
@@ -260,6 +265,14 @@ def _record_backup_time(project_dir: Path, when: dt.datetime) -> None:
                 pass
 
 
+def older_plc_backup_time(name: str) -> dt.datetime:
+    """When the older backup *name* (one of ``older_plc_backups``) was taken, in UTC."""
+    match = _OLDER_NAME.fullmatch(name)
+    if match is None:
+        raise ValueError(f"not an older backup name: {name!r}")
+    return dt.datetime.strptime(match.group(1), _OLDER_NAME_FORMAT).replace(tzinfo=dt.UTC)
+
+
 def older_plc_backups(project_dir: Path) -> list[str]:
     """The names of the older backups, newest first.
 
@@ -281,7 +294,7 @@ def _retire_newest_backup(project_dir: Path) -> Path:
     """Move ``backup/src/plc`` to a new older slot named by its time; return the slot."""
     when = plc_backup_time(project_dir) or _now()
     root = older_plc_backups_dir(project_dir)
-    base = when.strftime(_OLDER_NAME_FORMAT)
+    base = when.astimezone(dt.UTC).strftime(_OLDER_NAME_FORMAT)
     # One past the highest suffix in use for this second, so the newest sorts first.
     taken = [
         int(match.group(2) or 1)
@@ -300,19 +313,27 @@ def _retire_newest_backup(project_dir: Path) -> Path:
 
 
 def _prune_older_backups(project_dir: Path) -> None:
-    root = older_plc_backups_dir(project_dir)
-    for name in older_plc_backups(project_dir)[KEPT_PLC_BACKUPS - 1 :]:
-        shutil.rmtree(root / name, ignore_errors=True)
+    """Delete the oldest backups beyond ``KEPT_PLC_BACKUPS``.
 
-
-def backup_plc_source(project_dir: Path) -> tuple[Path, int]:
-    """Copy the active ``src/plc`` tree to ``backup/src/plc``, keeping the backups before it.
-
-    The backup it replaces moves to ``backup/older/<YYYYMMDD-HHMMSS>/src/plc``
-    (the time it was taken), and the oldest go so that ``KEPT_PLC_BACKUPS`` are
-    kept in all. A tree that matches the newest backup makes no new one; only
-    its time moves.
+    Each is renamed out of the listing first, so a delete that stops part way
+    never leaves a broken backup that ``restore`` would take.
     """
+    root = older_plc_backups_dir(project_dir)
+    if not root.is_dir():
+        return
+    for leftover in root.glob(f"{_PRUNING_PREFIX}*"):
+        shutil.rmtree(leftover, ignore_errors=True)
+    for name in older_plc_backups(project_dir)[KEPT_PLC_BACKUPS - 1 :]:
+        doomed = root / f"{_PRUNING_PREFIX}{name}"
+        try:
+            (root / name).replace(doomed)
+        except OSError:
+            continue  # still whole; the next backup tries again
+        shutil.rmtree(doomed, ignore_errors=True)
+
+
+def _back_up(project_dir: Path) -> tuple[int, Path | None, bool]:
+    """Back up ``src/plc``: its file count, the older slot made, and whether a backup was made."""
     source = plc_source_dir(project_dir)
     if not source.is_dir():
         raise ValueError(f"generated source directory not found: {source}")
@@ -320,7 +341,7 @@ def backup_plc_source(project_dir: Path) -> tuple[Path, int]:
     when = _now()
     if destination.is_dir() and _source_fingerprint(destination) == _source_fingerprint(source):
         _record_backup_time(project_dir, when)
-        return destination, _file_count(destination)
+        return _file_count(destination), None, False
 
     slot = _retire_newest_backup(project_dir) if destination.exists() else None
     try:
@@ -332,7 +353,19 @@ def backup_plc_source(project_dir: Path) -> tuple[Path, int]:
         raise
     _record_backup_time(project_dir, when)
     _prune_older_backups(project_dir)
-    return destination, file_count
+    return file_count, slot, True
+
+
+def backup_plc_source(project_dir: Path) -> tuple[Path, int]:
+    """Copy the active ``src/plc`` tree to ``backup/src/plc``, keeping the backups before it.
+
+    The backup it replaces moves to ``backup/older/<YYYYMMDDTHHMMSSZ>/src/plc``
+    (the UTC time it was taken), and the oldest go so that ``KEPT_PLC_BACKUPS``
+    are kept in all. A tree that matches the newest backup makes no new one;
+    only its time moves.
+    """
+    file_count, _slot, _made = _back_up(project_dir)
+    return plc_backup_dir(project_dir), file_count
 
 
 def backup_modified_plc_source(project_dir: Path) -> tuple[Path, int] | None:
@@ -342,20 +375,52 @@ def backup_modified_plc_source(project_dir: Path) -> tuple[Path, int] | None:
     return backup_plc_source(project_dir)
 
 
-def restore_plc_source(project_dir: Path, older: str | None = None) -> tuple[Path, int]:
-    """Replace active ``src/plc`` with the newest backup, or the older one named *older*."""
+@dataclass(frozen=True)
+class PlcRestore:
+    """What ``restore_plc_source`` did."""
+
+    #: Where the restored backup is kept now: a backup of the edits moves the newest aside.
+    restored_from: Path
+    file_count: int
+    #: ``src/plc`` held edits no backup had; they are now the newest backup.
+    edits_backed_up: bool
+
+
+def restore_plc_source(project_dir: Path, older: str | None = None) -> PlcRestore:
+    """Replace active ``src/plc`` with the newest backup, or the older one named *older*.
+
+    Edits in ``src/plc`` that are neither the last generation nor the chosen
+    backup are backed up first (the rule of ``backup_modified_plc_source``).
+    The chosen backup is copied aside before that, since that backup moves
+    ``backup/src/plc`` to an older slot.
+    """
     if older is None:
-        source = plc_backup_dir(project_dir)
-        if not source.is_dir():
+        chosen = plc_backup_dir(project_dir)
+        if not chosen.is_dir():
             raise ValueError("no source backup found; run 'clicknick-cli backup' first")
     else:
         names = older_plc_backups(project_dir)
         if older not in names:
             listed = ", ".join(names) if names else "none"
             raise ValueError(f"no older backup named {older!r}; older backups: {listed}")
-        source = older_plc_backups_dir(project_dir) / older / PLC_PACKAGE_PATH
+        chosen = older_plc_backups_dir(project_dir) / older / PLC_PACKAGE_PATH
     destination = plc_source_dir(project_dir)
-    return source, _replace_tree(source, destination)
+    with tempfile.TemporaryDirectory(
+        prefix=".restoring-", dir=project_dir / "backup", ignore_cleanup_errors=True
+    ) as staging_root:
+        staged = Path(staging_root) / "plc"
+        shutil.copytree(chosen, staged, ignore=_COPY_IGNORE)
+        backed_up, slot = False, None
+        if (
+            destination.is_dir()
+            and plc_source_is_modified(project_dir)
+            and _source_fingerprint(destination) != _source_fingerprint(staged)
+        ):
+            _count, slot, backed_up = _back_up(project_dir)
+        file_count = _replace_tree(staged, destination)
+    if older is None and slot is not None:
+        chosen = slot / PLC_PACKAGE_PATH
+    return PlcRestore(chosen, file_count, backed_up)
 
 
 #: Creation flags for ClickNick's Python children: no console window.

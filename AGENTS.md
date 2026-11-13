@@ -227,10 +227,11 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   its baseline `tags.py` with them, never from CLICK's Project.ini at the time it runs
 - `backup/src/plc` is the newest backup of `src/plc` (taken before a build replaces edited source, on
   `clicknick-cli backup`, and when a chosen workspace's edits are kept). Each new backup first moves it to
-  `backup/older/<YYYYMMDD-HHMMSS>/src/plc`, named by the time it was taken (`backup/backup-time.txt`), and the
-  oldest go so that 5 are kept in all (`KEPT_PLC_BACKUPS`). A tree that matches the newest makes no new one.
-  Nothing refuses a save or a backup over this. `clicknick-cli restore` takes the newest, `restore <time>` an
-  older one
+  `backup/older/<YYYYMMDDTHHMMSSZ>/src/plc`, named by the UTC time it was taken (`backup/backup-time.txt`), so
+  names sort in the order taken; the oldest go so that 5 are kept in all (`KEPT_PLC_BACKUPS`), each renamed out
+  of the listing before it is deleted. A tree that matches the newest makes no new one. Nothing refuses a save
+  or a backup over this. `clicknick-cli restore` takes the newest, `restore <time>` an older one; it copies the
+  chosen backup aside, then backs up `src/plc` if it differs from both the last generation and that backup
 
 ### Preview Changes
 - The one window for getting ladder into CLICK (`views/preview_changes_window.py`; it was called Guided Paste):

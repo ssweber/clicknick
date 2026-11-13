@@ -39,7 +39,7 @@ Usage::
     clicknick-cli backup                            # snapshot src/plc (the last 5 are kept)
     clicknick-cli restore                           # restore the newest snapshot
     clicknick-cli restore list                      # list the older snapshots
-    clicknick-cli restore 20261112-143005           # restore an older snapshot
+    clicknick-cli restore 20261112T193005Z          # restore an older snapshot
 
     # Workflow
     clicknick-cli prompt-save                       # pop a save reminder in the GUI

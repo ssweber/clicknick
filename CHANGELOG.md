@@ -59,7 +59,7 @@
 
 ### Fixed
 
-- A CLICK save or `clicknick-cli backup` no longer replaces the only backup of edited workspace source: the last 5 are kept, the newest in `backup/src/plc` and the others in `backup/older/<time>/src/plc`, and `clicknick-cli restore list` and `restore <time>` put an older one back.
+- A CLICK save or `clicknick-cli backup` no longer replaces the only backup of edited workspace source: the last 5 are kept, the newest in `backup/src/plc` and the others in `backup/older/<time>/src/plc`; `clicknick-cli restore list` lists the older ones and `restore <time>` puts one back. `clicknick-cli restore` backs up edits in `src/plc` that no backup holds before it replaces them.
 - In the Tag Browser's Outline, Rename changes the segment you picked instead of an unrelated nickname that starts with the same letters, and nicknames like `Pump01_Run` keep their leading zeros, stay apart from `Pump1_Run`, and double-clicking one filters the Address Editor to it.
 - The Tag Browser's Outline lists array indices in numeric order (Pump2 before Pump10) and lists a nickname used on two addresses once for each.
 - Renaming an item in the Outline changes only the nicknames under that item, accepts a new name that starts with a digit, and is off for SC/SD entries and `__` groups.

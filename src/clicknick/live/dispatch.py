@@ -371,6 +371,7 @@ workspace:
   backup                              -> snapshot src/plc to backup/src/plc
                                          (the one before moves to backup/older/<time>; 5 kept)
   restore                             -> replace src/plc from backup/src/plc
+                                         (edits in src/plc no backup holds are backed up first)
   restore list                        -> list the older backups, newest first
   restore <time>                      -> replace src/plc from backup/older/<time>
 
@@ -506,24 +507,37 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
 
         from ..services.project_workspace import (
             backup_plc_source,
+            older_plc_backup_time,
             older_plc_backups,
+            plc_backup_dir,
             restore_plc_source,
         )
         from .rung_commands import _get_project_dir
 
         project_dir = _get_project_dir(ctx)
+        note = ""
         if verb == "backup":
             path, file_count = backup_plc_source(project_dir)
             action, preposition = "backed up", "to"
         elif parts[1:] == ["list"]:
             names = older_plc_backups(project_dir)
-            listing = "\n".join(names) if names else "no older backups"
+            listing = (
+                "\n".join(
+                    f"{name}  (taken {older_plc_backup_time(name).astimezone():%Y-%m-%d %H:%M:%S})"
+                    for name in names
+                )
+                if names
+                else "no older backups"
+            )
             return listing + _status_footer(ctx)
         else:
-            path, file_count = restore_plc_source(project_dir, *parts[1:])
+            restored = restore_plc_source(project_dir, *parts[1:])
+            path, file_count = restored.restored_from, restored.file_count
             action, preposition = "restored", "from"
+            if restored.edits_backed_up:
+                note = f"; the edits that were in src/plc are in {plc_backup_dir(project_dir)}"
         files = "source file" if file_count == 1 else "source files"
-        return f"OK: {action} {file_count} {files} {preposition} {path}" + _status_footer(ctx)
+        return f"OK: {action} {file_count} {files} {preposition} {path}{note}" + _status_footer(ctx)
 
     if verb == "check":
         if len(parts) != 1:

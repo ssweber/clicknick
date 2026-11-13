@@ -18,11 +18,14 @@ from clicknick.live.rung_commands import (
 from clicknick.services import project_workspace
 from clicknick.services.project_workspace import (
     KEPT_PLC_BACKUPS,
+    PlcRestore,
+    backup_modified_plc_source,
     backup_plc_source,
     headless_python,
     older_plc_backups,
     plc_backup_time,
     project_environment,
+    record_generated_plc_source,
     restore_plc_source,
 )
 
@@ -88,14 +91,18 @@ def test_backup_and_restore_replace_the_complete_plc_tree(tmp_path: Path):
     (source / "extra.py").write_text("remove me\n", encoding="utf-8")
     (source / "subroutines" / "startup.py").unlink()
 
-    restored_from, restored_count = restore_plc_source(tmp_path)
+    restored = restore_plc_source(tmp_path)
 
-    assert restored_from == backup_dir
-    assert restored_count == 3
+    assert restored.file_count == 3
     assert (source / "main.py").read_text(encoding="utf-8") == "logic = object()\n"
     assert (source / "subroutines" / "startup.py").is_file()
     assert not (source / "extra.py").exists()
-    assert (backup_dir / "main.py").is_file()
+    # No generation was recorded, so the changed tree counts as edits and is backed up first.
+    assert restored.edits_backed_up
+    assert (backup_dir / "main.py").read_text(encoding="utf-8") == "changed\n"
+    assert (backup_dir / "extra.py").is_file()
+    assert restored.restored_from.parent.parent.parent == tmp_path / "backup" / "older"
+    assert (restored.restored_from / "subroutines" / "startup.py").is_file()
 
 
 def _clock(monkeypatch, start: dt.datetime) -> list[dt.datetime]:
@@ -124,7 +131,7 @@ def _older_text(project_dir: Path, name: str) -> str:
 
 
 def test_a_backup_moves_the_one_before_it_aside_under_its_time(tmp_path: Path, monkeypatch):
-    start = dt.datetime(2026, 11, 12, 9, 30, 0).astimezone()
+    start = dt.datetime(2026, 11, 12, 9, 30, 0, tzinfo=dt.UTC)
     _clock(monkeypatch, start)
 
     _back_up(tmp_path, "edits A\n")
@@ -132,26 +139,29 @@ def test_a_backup_moves_the_one_before_it_aside_under_its_time(tmp_path: Path, m
 
     newest = tmp_path / "backup" / "src" / "plc"
     assert (newest / "main.py").read_text(encoding="utf-8") == "edits B\n"
-    assert older_plc_backups(tmp_path) == ["20261112-093000"]
-    assert _older_text(tmp_path, "20261112-093000") == "edits A\n"
+    assert older_plc_backups(tmp_path) == ["20261112T093000Z"]
+    assert _older_text(tmp_path, "20261112T093000Z") == "edits A\n"
     assert plc_backup_time(tmp_path) == start + dt.timedelta(minutes=1)
 
     (tmp_path / "src" / "plc" / "main.py").write_text("regenerated\n", encoding="utf-8")
-    restored_from, _count = restore_plc_source(tmp_path)
+    record_generated_plc_source(tmp_path)
+    restored = restore_plc_source(tmp_path)
 
-    assert restored_from == newest
+    # Clean source makes no new backup.
+    assert restored == PlcRestore(newest, 1, edits_backed_up=False)
+    assert older_plc_backups(tmp_path) == ["20261112T093000Z"]
     assert (tmp_path / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "edits B\n"
 
 
 def test_backups_keep_the_newest_five(tmp_path: Path, monkeypatch):
-    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0).astimezone())
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC))
 
     for index in range(KEPT_PLC_BACKUPS + 2):
         _back_up(tmp_path, f"edits {index}\n")
 
     names = older_plc_backups(tmp_path)
     assert KEPT_PLC_BACKUPS == 5
-    assert names == ["20261112-090500", "20261112-090400", "20261112-090300", "20261112-090200"]
+    assert names == ["20261112T090500Z", "20261112T090400Z", "20261112T090300Z", "20261112T090200Z"]
     assert [_older_text(tmp_path, name) for name in names] == [
         "edits 5\n",
         "edits 4\n",
@@ -164,7 +174,7 @@ def test_backups_keep_the_newest_five(tmp_path: Path, monkeypatch):
 
 
 def test_backups_in_the_same_second_are_kept_in_order(tmp_path: Path, monkeypatch):
-    same = dt.datetime(2026, 11, 12, 9, 0, 0).astimezone()
+    same = dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC)
     monkeypatch.setattr(project_workspace, "_now", lambda: same)
 
     for index in range(KEPT_PLC_BACKUPS + 6):
@@ -172,10 +182,10 @@ def test_backups_in_the_same_second_are_kept_in_order(tmp_path: Path, monkeypatc
 
     names = older_plc_backups(tmp_path)
     assert names == [
-        "20261112-090000-10",
-        "20261112-090000-9",
-        "20261112-090000-8",
-        "20261112-090000-7",
+        "20261112T090000Z-10",
+        "20261112T090000Z-9",
+        "20261112T090000Z-8",
+        "20261112T090000Z-7",
     ]
     assert [_older_text(tmp_path, name) for name in names] == [
         "edits 9\n",
@@ -186,36 +196,36 @@ def test_backups_in_the_same_second_are_kept_in_order(tmp_path: Path, monkeypatc
 
 
 def test_a_backup_matching_the_newest_makes_no_new_one(tmp_path: Path, monkeypatch):
-    times = _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0).astimezone())
+    times = _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC))
 
     _back_up(tmp_path, "edits A\n")
     _back_up(tmp_path, "edits B\n")
     _back_up(tmp_path, "edits B\n")
     _back_up(tmp_path, "edits B\n")
 
-    assert older_plc_backups(tmp_path) == ["20261112-090000"]
+    assert older_plc_backups(tmp_path) == ["20261112T090000Z"]
     assert plc_backup_time(tmp_path) == times[-1]
 
 
 def test_a_backup_without_a_recorded_time_moves_aside_under_its_newest_file(
     tmp_path: Path, monkeypatch
 ):
-    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0).astimezone())
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC))
     earlier = tmp_path / "backup" / "src" / "plc"
     earlier.mkdir(parents=True)
     (earlier / "main.py").write_text("edits from an earlier version\n", encoding="utf-8")
-    taken = dt.datetime(2026, 10, 1, 8, 15, 30).timestamp()
+    taken = dt.datetime(2026, 10, 1, 8, 15, 30, tzinfo=dt.UTC).timestamp()
     os.utime(earlier / "main.py", (taken, taken))
     assert plc_backup_time(tmp_path) == dt.datetime.fromtimestamp(taken).astimezone()
 
     _back_up(tmp_path, "edits A\n")
 
-    assert older_plc_backups(tmp_path) == ["20261001-081530"]
-    assert _older_text(tmp_path, "20261001-081530") == "edits from an earlier version\n"
+    assert older_plc_backups(tmp_path) == ["20261001T081530Z"]
+    assert _older_text(tmp_path, "20261001T081530Z") == "edits from an earlier version\n"
 
 
 def test_pruning_leaves_folders_not_named_like_a_backup(tmp_path: Path, monkeypatch):
-    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0).astimezone())
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC))
     keep = tmp_path / "backup" / "older" / "before the rewrite" / "src" / "plc"
     keep.mkdir(parents=True)
 
@@ -227,21 +237,24 @@ def test_pruning_leaves_folders_not_named_like_a_backup(tmp_path: Path, monkeypa
 
 
 def test_restore_takes_an_older_backup_by_name(tmp_path: Path, monkeypatch):
-    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0).astimezone())
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC))
     _back_up(tmp_path, "edits A\n")
     _back_up(tmp_path, "edits B\n")
 
-    restored_from, count = restore_plc_source(tmp_path, "20261112-090000")
+    restored = restore_plc_source(tmp_path, "20261112T090000Z")
 
-    assert restored_from == tmp_path / "backup" / "older" / "20261112-090000" / "src" / "plc"
-    assert count == 1
+    # src/plc held B, which is already the newest backup.
+    assert restored == PlcRestore(
+        tmp_path / "backup" / "older" / "20261112T090000Z" / "src" / "plc", 1, False
+    )
+    assert older_plc_backups(tmp_path) == ["20261112T090000Z"]
     assert (tmp_path / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "edits A\n"
-    with pytest.raises(ValueError, match="older backups: 20261112-090000"):
-        restore_plc_source(tmp_path, "20261112-080000")
+    with pytest.raises(ValueError, match="older backups: 20261112T090000Z"):
+        restore_plc_source(tmp_path, "20261112T080000Z")
 
 
 def test_a_backup_whose_time_cannot_be_written_is_still_made(tmp_path: Path, monkeypatch):
-    times = _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0).astimezone())
+    times = _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC))
     _back_up(tmp_path, "edits A\n")
     (tmp_path / "backup" / "backup-time.txt.staging").mkdir()  # the write fails
 
@@ -250,7 +263,7 @@ def test_a_backup_whose_time_cannot_be_written_is_still_made(tmp_path: Path, mon
     assert (tmp_path / "backup" / "src" / "plc" / "main.py").read_text(
         encoding="utf-8"
     ) == "edits B\n"
-    assert older_plc_backups(tmp_path) == ["20261112-090000"]
+    assert older_plc_backups(tmp_path) == ["20261112T090000Z"]
     newest_file = tmp_path / "backup" / "src" / "plc" / "main.py"
     assert plc_backup_time(tmp_path) != times[0]
     assert plc_backup_time(tmp_path) == (
@@ -259,7 +272,7 @@ def test_a_backup_whose_time_cannot_be_written_is_still_made(tmp_path: Path, mon
 
 
 def test_a_failed_backup_leaves_the_newest_backup_in_place(tmp_path: Path, monkeypatch):
-    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0).astimezone())
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC))
     _back_up(tmp_path, "edits A\n")
 
     def fail(*_args, **_kwargs):
@@ -273,7 +286,139 @@ def test_a_failed_backup_leaves_the_newest_backup_in_place(tmp_path: Path, monke
         encoding="utf-8"
     ) == "edits A\n"
     assert older_plc_backups(tmp_path) == []
-    assert not (tmp_path / "backup" / "older" / "20261112-090000").exists()
+    assert not (tmp_path / "backup" / "older" / "20261112T090000Z").exists()
+
+
+def _generate(project_dir: Path, text: str) -> None:
+    """Stand in for a CLICK save: back up edited source, regenerate, record the generation."""
+    backup_modified_plc_source(project_dir)
+    source = project_dir / "src" / "plc"
+    source.mkdir(parents=True, exist_ok=True)
+    (source / "main.py").write_text(text, encoding="utf-8")
+    record_generated_plc_source(project_dir)
+
+
+def _main(path: Path) -> str:
+    return (path / "main.py").read_text(encoding="utf-8")
+
+
+def test_restore_backs_up_edits_no_backup_holds(tmp_path: Path, monkeypatch):
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC))
+    source = tmp_path / "src" / "plc"
+    _generate(tmp_path, "generated one\n")
+    (source / "main.py").write_text("edits A\n", encoding="utf-8")
+    _generate(tmp_path, "generated two\n")  # A goes to the backup
+    (source / "main.py").write_text("edits B\n", encoding="utf-8")
+
+    restored = restore_plc_source(tmp_path)
+
+    assert _main(source) == "edits A\n"
+    assert restored.edits_backed_up
+    assert _main(tmp_path / "backup" / "src" / "plc") == "edits B\n"
+    assert restored.restored_from == (
+        tmp_path / "backup" / "older" / "20261112T090000Z" / "src" / "plc"
+    )
+    assert _main(restored.restored_from) == "edits A\n"
+
+
+def test_restoring_an_older_backup_backs_up_the_current_edits(tmp_path: Path, monkeypatch):
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC))
+    source = tmp_path / "src" / "plc"
+    _generate(tmp_path, "generated\n")
+    for text in ("edits A\n", "edits B\n"):
+        (source / "main.py").write_text(text, encoding="utf-8")
+        _generate(tmp_path, "generated\n")
+    (source / "main.py").write_text("edits C\n", encoding="utf-8")
+    (older_a,) = older_plc_backups(tmp_path)
+
+    restored = restore_plc_source(tmp_path, older_a)
+
+    assert _main(source) == "edits A\n"
+    assert restored.edits_backed_up
+    assert restored.restored_from == tmp_path / "backup" / "older" / older_a / "src" / "plc"
+    assert _main(tmp_path / "backup" / "src" / "plc") == "edits C\n"
+    assert [_older_text(tmp_path, name) for name in older_plc_backups(tmp_path)] == [
+        "edits B\n",
+        "edits A\n",
+    ]
+
+
+def test_restore_of_clean_source_makes_no_backup(tmp_path: Path, monkeypatch):
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC))
+    source = tmp_path / "src" / "plc"
+    _generate(tmp_path, "generated one\n")
+    (source / "main.py").write_text("edits A\n", encoding="utf-8")
+    _generate(tmp_path, "generated two\n")
+
+    restored = restore_plc_source(tmp_path)
+
+    assert not restored.edits_backed_up
+    assert _main(source) == "edits A\n"
+    assert older_plc_backups(tmp_path) == []
+
+
+def test_backups_keep_their_order_when_the_clocks_go_back(tmp_path: Path, monkeypatch):
+    summer = dt.timezone(dt.timedelta(hours=-4))
+    winter = dt.timezone(dt.timedelta(hours=-5))
+    times = iter(
+        [
+            dt.datetime(2026, 11, 1, 1, 40, tzinfo=summer),
+            dt.datetime(2026, 11, 1, 1, 45, tzinfo=summer),
+            dt.datetime(2026, 11, 1, 1, 50, tzinfo=summer),
+            dt.datetime(2026, 11, 1, 1, 55, tzinfo=summer),
+            # The clocks go back an hour: later moments, earlier wall-clock times.
+            dt.datetime(2026, 11, 1, 1, 5, tzinfo=winter),
+            dt.datetime(2026, 11, 1, 1, 10, tzinfo=winter),
+            dt.datetime(2026, 11, 1, 1, 15, tzinfo=winter),
+        ]
+    )
+    monkeypatch.setattr(project_workspace, "_now", lambda: next(times))
+
+    for index in range(7):
+        _back_up(tmp_path, f"edits {index}\n")
+
+    names = older_plc_backups(tmp_path)
+    assert [_older_text(tmp_path, name) for name in names] == [
+        "edits 5\n",
+        "edits 4\n",
+        "edits 3\n",
+        "edits 2\n",
+    ]
+    assert names[0] == "20261101T061000Z"  # 01:10 after the change
+
+
+def test_a_backup_pruned_part_way_is_no_longer_listed(tmp_path: Path, monkeypatch):
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC))
+    for index in range(KEPT_PLC_BACKUPS):
+        _back_up(tmp_path, f"edits {index}\n")
+    oldest = tmp_path / "backup" / "older" / "20261112T090000Z"
+    assert oldest.is_dir()
+
+    deleted: list[Path] = []
+    rmtree = shutil.rmtree
+
+    def delete_part(path, ignore_errors=False):
+        if not Path(path).name.startswith(".pruning-"):
+            return rmtree(path, ignore_errors=ignore_errors)
+        deleted.append(Path(path))
+        (Path(path) / "src" / "plc" / "main.py").unlink()  # then stops
+        return None
+
+    monkeypatch.setattr(project_workspace.shutil, "rmtree", delete_part)
+    _back_up(tmp_path, "edits 5\n")
+
+    assert not oldest.exists()
+    assert deleted == [tmp_path / "backup" / "older" / ".pruning-20261112T090000Z"]
+    names = older_plc_backups(tmp_path)
+    assert "20261112T090000Z" not in names
+    assert len(names) == KEPT_PLC_BACKUPS - 1
+    with pytest.raises(ValueError, match="no older backup named"):
+        restore_plc_source(tmp_path, "20261112T090000Z")
+
+    monkeypatch.undo()
+    _back_up(tmp_path, "edits 6\n")  # the next prune clears what was left
+
+    assert not deleted[0].exists()
 
 
 def test_rung_list_metadata_uses_preceding_click_comments():

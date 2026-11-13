@@ -46,6 +46,10 @@ def test_backup_and_restore_commands_round_trip_active_source(tmp_path: Path):
 
     assert "restored 1 source file" in result
     assert (source / "main.py").read_text(encoding="utf-8") == "proposal\n"
+    # No generation is recorded here, so the replaced tree counts as edits and is kept.
+    assert f"the edits that were in src/plc are in {tmp_path / 'backup' / 'src' / 'plc'}" in result
+    backup = tmp_path / "backup" / "src" / "plc" / "main.py"
+    assert backup.read_text(encoding="utf-8") == "regenerated\n"
 
 
 def test_backup_of_clean_source_keeps_the_backup_holding_edits(tmp_path: Path):
@@ -56,7 +60,9 @@ def test_backup_of_clean_source_keeps_the_backup_holding_edits(tmp_path: Path):
     dispatch(ctx, "backup")
 
     listed = dispatch(ctx, "restore list").splitlines()
-    (older,) = [line for line in listed if not line.startswith("[")]
+    (line,) = [line for line in listed if not line.startswith("[")]
+    older, taken = line.split(maxsplit=1)
+    assert taken.startswith("(taken ")
     result = dispatch(ctx, f"restore {older}")
 
     assert f"restored 1 source file from {tmp_path / 'backup' / 'older' / older}" in result
