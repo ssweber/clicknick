@@ -14,6 +14,8 @@ import pytest
 from pyclickplc.addresses import format_address_display, normalize_address, parse_addr_key
 from pyrung.core import PHYSICAL_KEYS
 
+from clicknick.data.data_source import CsvDataSource
+from clicknick.models.address_row import AddressRow
 from clicknick.services.analysis_service import AnalysisResult, AnalysisService, AnalysisStatus
 from clicknick.services.dap_service import DapRequestError
 from clicknick.services.physical_response import response
@@ -78,7 +80,8 @@ class FakeDap:
 
     Like pyrung, it keys forces and bench links by tag name: an address is
     resolved with the names of the program it runs (*program_names*, read at
-    launch and at each reload), and a reload carries them over by name.
+    launch and at each reload), and a planned reload places each entry as its
+    plan says and carries the rest over by name.
     """
 
     def __init__(self, **callbacks) -> None:
@@ -108,6 +111,8 @@ class FakeDap:
         self.bench_on = True
         self.refuse_links: dict[str, str] = {}
         self.reload_error: Exception | None = None
+        self.plans: list[dict] = []  # each pyrungReload's plan
+        self.reload_drops: dict[str, tuple[str, str]] = {}  # tag -> (reason, detail)
 
     def _tag(self, tag):
         """The name pyrung keys *tag* by: an address goes by the running program's name."""
@@ -125,13 +130,52 @@ class FakeDap:
     def terminate(self):
         self.calls.append(("terminate",))
 
-    def reload(self):
+    def planned_reload(self, plan):
+        """pyrungReload: each entry goes where *plan* says; one it leaves out keeps its name."""
         self.calls.append(("reload",))
+        self.plans.append(plan)
         if self.reload_error is not None:
-            raise self.reload_error
-        self.names = dict(self.program_names())  # forces and links stay on their names
+            raise self.reload_error  # a failed reload changes nothing
+        carried: list[dict] = []
+
+        def report(tag, kind, to, *, planned, **fields):
+            reason = self.reload_drops.get(tag)
+            entry = {
+                "tag": tag,
+                "kind": kind,
+                "to": None if reason else to,
+                "planned": planned,
+                "released": to is None and not reason,
+                "dropped": bool(reason),
+                **fields,
+            }
+            if reason:
+                entry["reason"], entry["detail"] = reason
+            carried.append(entry)
+            return entry["to"]  # fmt: skip
+
+        forces, planned_forces = {}, plan.get("forces") or {}
+        for tag, value in self.forces.items():
+            to = report(tag, "force", planned_forces.get(tag, tag),
+                        planned=tag in planned_forces, value=value)  # fmt: skip
+            if to is not None:
+                forces[to] = value
+        bench, planned_links = {}, plan.get("links") or {}
+        for fb, entry in self.bench.items():
+            target = planned_links.get(fb, {"fb": fb, "en": entry["enable"]})
+            kind = "cut" if entry["enable"] is None else "link"
+            to = None if target is None else target["fb"]
+            enable = None if target is None else target.get("en")
+            to = report(fb, kind, to, planned=fb in planned_links, feedback=fb,
+                        enable=enable if to else None, enabled=entry["enabled"])  # fmt: skip
+            if to is not None:
+                bench[to] = {**entry, "enable": enable}
+        for fb, to in (plan.get("declared") or {}).items():
+            report(fb, "declared", to, planned=True, feedback=fb, enable=self.project.get(fb))
+        self.forces, self.bench = forces, bench
+        self.names = dict(self.program_names())
         self.links_revision += 1
-        return "Reloaded at scan 7 (3 tag(s))"
+        return {"result": "Reloaded at scan 7 (3 tag(s))", "carried": carried}
 
     def set_mode(self, mode, patches=None, forces=None):
         self.calls.append(("set_mode", mode, patches, forces))
@@ -1362,13 +1406,16 @@ def test_run_time_edit_reloads_in_place_and_keeps_running(ready):
     ready.scheduler.run_ready()
 
     assert len(ready.daps) == 1 and ("terminate",) not in ready.dap.calls, "no relaunch"
-    # pyrung carries the force and the link by name, timing included: nothing moves.
+    # One planned reload (pyrung pauses first); the force and the link keep their names.
     assert _calls_since(ready.dap, mark) == [
-        ("pause",),
         ("reload",),
         ("patch", {"X001": True}),
         ("continue",),
     ]
+    assert ready.dap.plans == [
+        {"forces": {"Y001": "Y001"}, "links": {"X002": {"en": "Y001", "fb": "X002"}},
+         "declared": {}},
+    ]  # fmt: skip
     assert ready.sim.program_change is None
     assert "Reloaded at scan 7" in ready.messages()
     assert ready.sim.forces == {"Y001": True}
@@ -1394,15 +1441,15 @@ def test_a_write_moves_onto_the_new_name_only_what_a_rename_would_carry_away(rea
     ready.scheduler.run_ready()
 
     assert _calls_since(ready.dap, mark) == [
-        ("pause",),
-        ("unforce", "Motor"),
-        ("restore_link", "X002"),  # its enable, Y001, was Motor
         ("reload",),
-        ("link", "X002", "MotorRun"),
-        ("force", "MotorRun", True),
         ("patch", {"X001": True}),
         ("continue",),
-    ]
+    ], "nothing is released and sent again around the reload"
+    assert ready.dap.plans[-1] == {
+        "forces": {"Motor": "MotorRun"},
+        "links": {"X002": {"en": "MotorRun", "fb": "X002"}},  # its enable, Y001, was Motor
+        "declared": {},
+    }
     assert ready.dap.forces == {"MotorRun": True}
     assert ready.dap.bench["X002"]["enable"] == "MotorRun"
     assert ready.sim.forces == {"Y001": True}
@@ -1424,7 +1471,6 @@ def test_stop_and_write_goes_through_stop_to_run_in_the_same_process(ready):
 
     assert len(ready.daps) == 1 and ("terminate",) not in ready.dap.calls, "no relaunch"
     assert _calls_since(ready.dap, mark) == [
-        ("pause",),
         ("reload",),
         ("set_mode", "stop", None),
         ("set_mode", "run", {"X001": True}),
@@ -1450,10 +1496,7 @@ def test_write_in_stop_reloads_and_stays_in_stop(ready):
 
     ready.sim.write_program()
     ready.scheduler.run_ready()
-    assert _calls_since(ready.dap, mark) == [
-        ("reload",),
-        ("set_mode", "stop", None),  # pyrung's reload leaves it in RUN
-    ]
+    assert _calls_since(ready.dap, mark) == [("reload",)], "pyrung's reload keeps STOP"
     assert len(ready.daps) == 1
     assert ready.sim.program_change is None
     assert ready.sim.forces == {"Y001": True}
@@ -1482,7 +1525,7 @@ def test_a_console_reload_writes_for_the_mode_it_is_in(ready):
     mark = len(ready.dap.calls)
     ready.sim.reload()
     ready.scheduler.run_ready()
-    assert _calls_since(ready.dap, mark) == [("reload",), ("set_mode", "stop", None)]
+    assert _calls_since(ready.dap, mark) == [("reload",)]
 
     ready.sim.set_switch_position("run")
     ready.dap.frame(mode="run", running=True)
@@ -1490,8 +1533,7 @@ def test_a_console_reload_writes_for_the_mode_it_is_in(ready):
     mark = len(ready.dap.calls)
     ready.sim.reload()
     ready.scheduler.run_ready()
-    assert _calls_since(ready.dap, mark)[:2] == [("pause",), ("reload",)]
-    assert ready.dap.calls[-1] == ("continue",)
+    assert _calls_since(ready.dap, mark) == [("reload",), ("continue",)]
 
 
 def test_frames_name_tags_as_the_written_program_does_from_its_answer_on(ready, tmp_path):
@@ -1512,7 +1554,7 @@ def test_frames_name_tags_as_the_written_program_does_from_its_answer_on(ready, 
 
     ready.sim.write_program()
     ready.scheduler.run_ready()
-    assert ("force", "StartPB", True) in ready.dap.calls, "X001's force, under its new name"
+    assert ready.dap.plans[-1]["forces"] == {"Start": "StartPB"}, "X001's, under its new name"
     assert ready.dap.forces == {"StartPB": True}, "not on X005, the new Start"
     assert ready.sim.to_tag("X001") == "StartPB"
     ready.dap.frame(forces={"StartPB": True})
@@ -1601,14 +1643,13 @@ def test_internal_forces_whose_name_moves_are_listed_before_the_write_and_releas
     ready.sim.write_program()
     ready.scheduler.run_ready()
 
-    assert _calls_since(ready.dap, mark) == [
-        ("unforce", "Mode"),
-        ("unforce", "Speed"),
-        ("reload",),
-        ("set_mode", "stop", None),
-        ("force", "Auto", True),  # C1 renamed: the force stays on it
-    ]
-    assert ready.dap.forces == {"Level": 7, "Auto": True}, "pyrung carried Level"
+    assert _calls_since(ready.dap, mark) == [("reload",)]
+    assert ready.dap.plans[-1]["forces"] == {
+        "Mode": "Auto",  # C1 renamed: the force stays on it
+        "Speed": None,
+        "Level": "Level",
+    }
+    assert ready.dap.forces == {"Auto": True, "Level": 7}
     assert ready.sim.forces == {"DS2": 7, "C1": True}
     assert ready.sim.notice == f"Released {notice}"
 
@@ -1721,20 +1762,10 @@ def test_a_bench_link_follows_its_enable_name_to_its_new_address(ready):
     ready.sim.write_program()
     ready.scheduler.run_ready()
 
-    assert _calls_since(ready.dap, mark) == [("reload",), ("set_mode", "stop", None)]
+    assert _calls_since(ready.dap, mark) == [("reload",)]
     assert ready.dap.bench["X002"]["enable"] == "Motor"
     assert "The link on X002 now follows Motor on Y002 (was Y001)." in (ready.sim.notice or "")
     assert ready.sim.bench_links == {"X002": BenchLink("Y002", response=response(on_delay="1s"))}
-
-
-def test_restoring_a_bench_change_already_gone_counts_as_done():
-    from clicknick.simulation_session import _restore_link
-
-    dap = FakeDap()
-    _restore_link(dap, "X002")  # pyrung: "X002 has no bench change"
-    dap.restore_link = MagicMock(side_effect=DapRequestError("simulation is not running"))
-    with pytest.raises(DapRequestError):
-        _restore_link(dap, "X002")
 
 
 def test_a_save_during_the_write_keeps_the_old_names_and_offers_it_again(ready):
@@ -1812,19 +1843,19 @@ def test_a_rebuild_without_a_save_is_offered_as_a_rebuild(ready):
     assert change.actions == ("write",)
 
 
-def test_a_failed_write_puts_back_what_it_released_and_offers_a_restart(ready):
+def test_a_failed_write_changes_nothing_and_offers_a_restart(ready):
     _name(ready, "X001", "Start")
     _motor_running(ready)
     _rebuild(ready, {"X001": "StartPB", "Y001": "MotorRun"})
     ready.dap.reload_error = DapRequestError("Reload failed: invalid syntax (main.py, line 3)")
+    mark = len(ready.dap.calls)
 
     ready.sim.run_time_edit()
     ready.scheduler.run_ready()
 
     assert len(ready.daps) == 1
-    assert ready.dap.calls[-1] == ("continue",), "back to RUN on the old program"
-    after = _calls_since(ready.dap, ready.dap.calls.index(("reload",)))
-    assert ("link", "X002", "Motor") in after and ("force", "Motor", True) in after
+    # pyrung's failed reload changed nothing: there is nothing to send again.
+    assert _calls_since(ready.dap, mark) == [("reload",), ("continue",)], "RUN on the old program"
     assert ready.dap.forces == {"Motor": True}
     assert ready.dap.bench["X002"]["enable"] == "Motor"
     assert ready.sim.forces == {"Y001": True}
@@ -2374,11 +2405,8 @@ def test_a_link_that_lands_where_a_followed_name_went_is_dropped(ready):
     ready.sim.write_program()
     ready.scheduler.run_ready()
 
-    assert _calls_since(ready.dap, mark) == [
-        ("restore_link", "X002"),
-        ("reload",),
-        ("set_mode", "stop", None),
-    ]
+    assert _calls_since(ready.dap, mark) == [("reload",)]
+    assert ready.dap.plans[-1]["links"] == {"Start": {"en": "Motor", "fb": "Start"}, "X002": None}
     assert ready.dap.bench == {"Start": {"enable": "Motor", "enabled": True, "trigger": None,
                                          "response": {}}}  # fmt: skip
     assert ready.sim.bench_links == {"X002": BenchLink("Y001")}
@@ -2400,9 +2428,10 @@ def test_a_write_pyrung_never_answers_sends_nothing_by_name(ready):
     ready.sim.write_program()
     ready.scheduler.run_ready()
 
-    assert _calls_since(ready.dap, mark) == [("unforce", "Run"), ("reload",)], (
+    assert _calls_since(ready.dap, mark) == [("reload",)], (
         "`force Run` would land on C2 if pyrung did load the new program"
     )
+    assert ready.dap.plans[-1]["forces"] == {"Run": None}
     assert "which program the simulation runs is unknown" in ready.messages("error")
     assert ready.sim.program_change.actions[-1] == "restart"
 
@@ -2492,7 +2521,7 @@ def test_a_write_pyrung_never_answers_keeps_the_switch_position_for_restart(read
     assert ready.sim.switch_position == "step"
     text = ready.sim.program_change.text
     assert "it may be paused" in text
-    assert "Released before the reload: the force on Run" in text
+    assert "If it runs the new program, it released the force on Run" in text
     assert ready.sim.program_change.actions[-1] == "restart"
 
     ready.sim.restart()
@@ -2546,7 +2575,7 @@ def test_while_the_switch_is_held_the_write_offered_is_for_the_users_position(re
     ready.sim.run_time_edit()
     ready.scheduler.run_ready()
     calls = [call[0] for call in ready.dap.calls[mark:]]
-    assert calls[0] == "pause" and "reload" in calls and calls[-1] == "continue"
+    assert calls == ["reload", "continue"]
 
 
 def test_moving_the_switch_after_an_unanswered_write_follows_frames_again(ready):
@@ -2583,3 +2612,292 @@ def test_no_restart_while_the_program_is_written(ready):
     ready.scheduler.run_ready()
     assert len(ready.daps) == 1
     assert "Cannot restart while the program is being written." in ready.messages("error")
+
+
+# ----------------------------------------------------------------------
+# The write is one planned reload (pyrungReload)
+# ----------------------------------------------------------------------
+
+
+def _refused_by_an_older_pyrung() -> DapRequestError:
+    """What DapService raises when pyrung has no pyrungReload (before 0.16)."""
+    from clicknick.services.dap_service import DapService
+
+    class OlderPyrung(DapService):
+        def _send_and_wait(self, command, arguments=None, timeout=10.0):
+            return {"success": False, "message": f"Unsupported command: {command}"}
+
+    dap = OlderPyrung()
+    dap._proc = object()
+    with pytest.raises(DapRequestError) as refused:
+        dap.planned_reload({"forces": {}, "links": {}, "declared": {}})
+    return refused.value
+
+
+def test_a_pyrung_without_the_planned_reload_refuses_the_write_and_nothing_changes(ready):
+    _name(ready, "X001", "Start")
+    _motor_running(ready)
+    _rebuild(ready, {"X001": "StartPB", "Y001": "MotorRun"})
+    ready.dap.reload_error = _refused_by_an_older_pyrung()
+    mark = len(ready.dap.calls)
+
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    # No release and re-apply around a plain reload instead.
+    assert _calls_since(ready.dap, mark) == [("reload",), ("continue",)]
+    assert ready.dap.forces == {"Motor": True}
+    assert ready.dap.bench["X002"]["enable"] == "Motor"
+    assert ready.sim.forces == {"Y001": True}
+    assert ready.sim.bench_links == {"X002": ON_DELAY_LINK}
+    assert ready.sim.to_tag("X001") == "Start", "the old program runs on"
+    change = ready.sim.program_change
+    assert "pyrung 0.16.0 or later" in change.text
+    assert "or later can). The simulation still runs the previous one." in ready.messages("error")
+    assert change.actions == ("run_time_edit", "stop_and_write", "restart")
+
+
+def test_a_reload_refused_in_stop_leaves_it_as_it_was(ready):
+    ready.open()
+    ready.sim.force("Y001", True)
+    ready.dap.frame(forces={"Y001": True})
+    ready.scheduler.run_ready()
+    _rebuild(ready)
+    ready.dap.reload_error = DapRequestError("Timed out waiting for execution to pause")
+    mark = len(ready.dap.calls)
+
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+
+    assert _calls_since(ready.dap, mark) == [("reload",)], "no STOP, no forces sent again"
+    assert ready.sim.forces == {"Y001": True}
+    assert ready.sim.switch_position == "stop"
+    assert "Timed out waiting for execution to pause" in ready.sim.program_change.text
+    assert ready.sim.program_change.actions == ("write", "restart")
+
+
+def test_what_pyrung_could_not_keep_is_in_the_notice_and_is_not_kept(ready):
+    _motor_running(ready)
+    _rebuild(ready, {"Y001": "MotorRun"})
+    ready.dap.reload_drops = {"Motor": ("type changed", "MotorRun is an Int in the new program")}
+
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert ready.dap.forces == {}
+    assert ready.sim.forces == {}
+    assert ready.sim.bench_links == {"X002": ON_DELAY_LINK}
+    assert ready.sim.notice == (
+        "Kept under new names: the link on X002 now comes from MotorRun (was Motor). "
+        "Could not keep the force on Motor: MotorRun is an Int in the new program."
+    )
+
+
+def test_a_console_force_pyrung_carried_without_a_plan_is_kept_by_its_name(ready):
+    _running_with_settings(ready)
+    _rebuild(ready)
+    real = ready.dap.planned_reload
+
+    def late_force(plan):
+        ready.dap.forces = {**ready.dap.forces, "C1": True}  # `force C1 1` just before
+        return real(plan)
+
+    ready.dap.planned_reload = late_force
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert ready.sim.forces == {"Y001": True, "C1": True}
+
+
+def test_a_force_changed_just_before_the_reload_keeps_the_value_pyrung_reports(ready):
+    _running_with_settings(ready)
+    _rebuild(ready)
+    real = ready.dap.planned_reload
+
+    def late_force(plan):
+        ready.dap.forces = {**ready.dap.forces, "Y001": False}  # `force Y001 0` just before
+        return real(plan)
+
+    ready.dap.planned_reload = late_force
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert ready.sim.forces == {"Y001": False}
+
+
+def test_the_programs_own_links_go_with_the_plan_under_their_addresss_new_name(ready):
+    _name(ready, "X002", "Prox")
+    _name(ready, "X003", "Door")
+    _name(ready, "Y001", "Motor")
+    ready.open()
+    ready.dap.project = {"Prox": "Motor", "Door": "Motor", "Lamp": "Motor"}
+    ready.dap.bench["Door"] = {"enable": None, "enabled": True}  # cut: its coil does not run
+    _rebuild(ready, {"X002": "ProxSensor", "X003": "DoorSw"})
+
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+
+    assert ready.dap.plans[-1]["declared"] == {"Prox": "ProxSensor"}
+
+
+# A feedback on X002 that a bench link or the program's own link drives from Cmd (X001).
+_LINK_PROGRAM = """\
+import warnings
+warnings.simplefilter("ignore")
+from pyrung.core import Bool, PLC, Physical, Program, Rung, out
+cmd = Bool({enable!r})
+fb = {feedback}
+with Program(strict=False) as prog:
+    with Rung(cmd):
+        out(Bool("Lamp"))
+    with Rung(fb):
+        out(Bool("Sink"))
+runner = PLC(prog, dt=0.010)
+"""
+
+
+def _link_program(name: str, *, declared: bool, enable: str = "Cmd") -> str:
+    if declared:
+        feedback = f"Bool({name!r}, physical=Physical({name!r}, timed='100ms'), link={enable!r})"
+    else:
+        feedback = f"Bool({name!r})"
+    return _LINK_PROGRAM.format(feedback=feedback, enable=enable)
+
+
+def _timing_on_pyrung(tmp_path, *, declared: bool):
+    """In RUN on pyrung's adapter, X002 Prox's timed link from Cmd part way through its 100 ms."""
+    dap_class = _adapter_dap_class()
+    project = tmp_path / "project"
+    project.mkdir()
+    harness = Harness(tmp_path, _ready_analysis(project))
+    (project / "run.py").write_text(_link_program("Prox", declared=declared), encoding="utf-8")
+    for address, tag in (("X001", "Cmd"), ("X002", "Prox")):
+        _name(harness, address, tag)
+
+    def factory(**callbacks):
+        dap = dap_class(**callbacks)
+        harness.daps.append(dap)
+        return dap
+
+    harness.sim._dap_factory = factory
+    harness.open()
+    dap = harness.dap
+    dap.frame()
+    harness.scheduler.run_ready()
+    harness.sim.set_switch_position("run")
+    harness.scheduler.run_ready()
+    if not declared:
+        dap.link("Prox", "Cmd", response=(("timed", "100ms"),))  # `link Prox Cmd timed=100ms`
+    dap.force("Cmd", True)
+    dap.scan(3)
+    dap.frame()
+    harness.scheduler.run_ready()
+    count = dap.tag("__tmd_on__Prox")
+    assert 0 < count < 100
+    return harness, count
+
+
+@pytest.mark.parametrize(
+    ("declared", "enable"),
+    [(False, "Cmd"), (False, "Go"), (True, "Cmd"), (True, "Go")],
+    ids=["bench link", "bench link and its enable", "program's link", "program's link and enable"],
+)
+def test_renaming_a_linked_input_while_it_times_keeps_its_timing(tmp_path, declared, enable):
+    harness, count = _timing_on_pyrung(tmp_path, declared=declared)
+    dap = harness.dap
+    run = harness.analysis.project_dir / "run.py"
+    run.write_text(_link_program("ProxSensor", declared=declared, enable=enable), encoding="utf-8")
+    _rebuild(harness, {"X001": enable, "X002": "ProxSensor"})
+
+    harness.sim.run_time_edit()
+    harness.scheduler.run_ready()
+    dap.scan(1)
+
+    assert harness.sim.program_change is None
+    assert dap.tag("__tmd_on__ProxSensor") == count + 10, "one 10 ms scan on, not from 0"
+    assert dict(dap._adapter._runner.forces) == {enable: True}, "X001's force, on its new name"
+    assert harness.sim.forces == {"X001": True}
+    if declared:
+        return
+    assert list(dap._adapter._bench_links) == ["ProxSensor"]
+    assert dap._adapter._bench_links["ProxSensor"].coupling.en_name == enable
+    assert harness.sim.bench_links == {"X002": BenchLink("X001", response=response(timed="100ms"))}
+    renamed = ["the link on Prox is now on ProxSensor"]
+    if enable != "Cmd":
+        renamed = [
+            f"Cmd -> {enable} (X001)",
+            *renamed,
+            f"the link on Prox now comes from {enable} (was Cmd)",
+        ]
+    assert harness.sim.notice == f"Kept under new names: {', '.join(renamed)}."
+
+
+# Two timed links the program declares: Start (X002) from Cmd, Begin (X003) from Go.
+_TWO_LINKS_PROGRAM = """\
+import warnings
+warnings.simplefilter("ignore")
+from pyrung.core import Bool, PLC, Physical, Program, Rung, out
+cmd, go = Bool("Cmd"), Bool("Go")
+start = Bool("Start", physical=Physical("Start", timed="100ms"), link="Cmd")
+begin = Bool("Begin", physical=Physical("Begin", timed="100ms"), link="Go")
+with Program(strict=False) as prog:
+    with Rung(cmd):
+        out(Bool("Lamp"))
+    with Rung(go):
+        out(Bool("Horn"))
+    with Rung(start):
+        out(Bool("Sink"))
+    with Rung(begin):
+        out(Bool("Drain"))
+runner = PLC(prog, dt=0.010)
+"""
+
+
+def test_declared_links_whose_nicknames_and_comments_swap_keep_their_own_timing(tmp_path):
+    dap_class = _adapter_dap_class()
+    project = tmp_path / "project"
+    project.mkdir()
+    harness = Harness(tmp_path, _ready_analysis(project))
+    (project / "run.py").write_text(_TWO_LINKS_PROGRAM, encoding="utf-8")
+    for address, tag in (("X001", "Cmd"), ("X004", "Go"), ("X002", "Start"), ("X003", "Begin")):
+        _name(harness, address, tag)
+
+    def factory(**callbacks):
+        dap = dap_class(**callbacks)
+        harness.daps.append(dap)
+        return dap
+
+    harness.sim._dap_factory = factory
+    harness.open()
+    dap = harness.dap
+    dap.frame()
+    harness.scheduler.run_ready()
+    harness.sim.set_switch_position("run")
+    harness.scheduler.run_ready()
+    dap.force("Cmd", True)
+    dap.scan(3)
+    dap.force("Go", True)
+    dap.scan(2)
+    dap.frame()
+    harness.scheduler.run_ready()
+    start, begin = dap.tag("__tmd_on__Start"), dap.tag("__tmd_on__Begin")
+    assert 0 < begin < start < 100, "both part way through, Start further on"
+
+    # In CLICK, X002 and X003 swap nicknames and comments: each link keeps its name.
+    (project / "csv").mkdir()
+    CsvDataSource(str(project / "csv" / "nicknames.csv")).save_changes(
+        [
+            AddressRow("X", 2, nickname="Begin", comment="[link=Go, timed=100ms]"),
+            AddressRow("X", 3, nickname="Start", comment="[link=Cmd, timed=100ms]"),
+        ]
+    )
+    _rebuild(harness, {"X002": "Begin", "X003": "Start"})
+
+    harness.sim.run_time_edit()
+    harness.scheduler.run_ready()
+    dap.scan(1)
+
+    assert harness.sim.program_change is None
+    assert dap.tag("__tmd_on__Start") == start + 10, "Start's coil, on X003 now"
+    assert dap.tag("__tmd_on__Begin") == begin + 10, "Begin's coil, on X002 now"
+    assert harness.sim.notice in (None, "")
