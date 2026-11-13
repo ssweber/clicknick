@@ -45,7 +45,7 @@ from .services.physical_response import (
     response_label,
     response_tokens,
 )
-from .services.program_carry import CarryPlan, LinkTarget, address_of, plan_carry
+from .services.program_carry import CarryPlan, address_of, plan_carry
 from .services.sim_hardware import (
     MODULE_STATUS_PREFIX,
     PanelLayout,
@@ -308,24 +308,15 @@ def _bench_link(row: Mapping[str, Any], enable: str | None) -> BenchLink:
     return BenchLink(enable, row.get("trigger"), response_from_dap(row), enabled)
 
 
-def _restore_link(dap: Any, feedback: str) -> None:
-    """Drop the bench change on *feedback*; one already gone is done, as asked."""
-    try:
-        dap.restore_link(feedback)
-    except Exception as exc:
-        if "has no bench change" not in str(exc):
-            raise
-
-
 @dataclass(frozen=True)
 class _Listing:
-    """What pyrung had forced and linked when a write paused it, by address, once placed."""
+    """What pyrung had forced and linked around a write, by CLICK address."""
 
     forces: Mapping[str, PlcValue]
     links: Mapping[str, BenchLink]
     bench_wiring: bool
     problems: tuple[str, ...] = ()
-    #: What the write released or renamed (``CarryPlan.notice``).
+    #: What the write released, renamed or could not keep (``CarryPlan.written``).
     carried: str = ""
 
 
@@ -1816,7 +1807,7 @@ class SimulationSession:
     ) -> None:
         """A write that failed; not *known*: pyrung never answered, so which program runs is not.
 
-        *released* names what the write released before the reload it sent.
+        *released* names what the reload's plan releases.
         """
         dap = self._dap
         if token != self._token or dap is None:
@@ -1825,7 +1816,7 @@ class SimulationSession:
         if not known:
             text = f"{text}; which program the simulation runs is unknown, and it may be paused"
             if released:
-                text = f"{text}. Released before the reload: {', '.join(released)}"
+                text = f"{text}. If it runs the new program, it released {', '.join(released)}"
             # Frames may show it paused; Restart starts in the position the user had.
             self._position_held = True
         self._write_error = text
@@ -1858,11 +1849,13 @@ class SimulationSession:
     def _write_program(self, how: Literal["keep", "stop"], *, echo: bool = True) -> None:
         """Reload the workspace's program in the running process (no relaunch).
 
-        One job on the action worker, which the Console waits for: pause (in RUN),
-        read what pyrung has forced and linked, plan where each entry goes
-        (:func:`plan_carry`), reload, and go back to the mode it was in. pyrung's
-        listing, placed as planned, becomes the user's forces and links. A reload
-        that fails leaves the old program running and offers Restart.
+        One job on the action worker, which the Console waits for: read what
+        pyrung has forced and linked, plan where each entry goes
+        (:func:`plan_carry`), and send the plan with pyrung's planned reload,
+        which pauses a running continue, keeps the mode and places each entry.
+        Then go back to scanning as before. What pyrung reports it placed
+        becomes the user's forces and links. A reload that fails changes
+        nothing in pyrung: the old program runs on, and Restart is offered.
         """
         dap = self._dap
         if not self.is_ready or dap is None:
@@ -1903,8 +1896,8 @@ class SimulationSession:
 
         def job() -> None:
             source = _watch_source(project_dir)
-            unanswered: list[str] = []
             problems: list[str] = []
+            unanswered: list[str] = []
 
             def refusal(what: str, request: Callable[[], object]) -> str | None:
                 """Send *request*; why the simulation refused it, or None. No answer is noted."""
@@ -1918,14 +1911,10 @@ class SimulationSession:
                 return None
 
             try:
-                if position == "run":
-                    dap.pause()
                 forced = dict(dap.list_forces())
                 listed = dict(dap.list_links())
             except Exception as exc:
                 text = str(exc)
-                if position == "run":
-                    refusal("the switch position", dap.continue_)
                 self._post(lambda: self._on_write_failed(token, text, None))
                 return
 
@@ -1937,89 +1926,52 @@ class SimulationSession:
                 if isinstance(row, Mapping) and row.get("source") == "bench"
             }
             enables = {name: _link_enable(row) for name, row in rows.items()}
-            plan = plan_carry(old, target.names, forced, enables, analog)
-            # The entries whose name changes or that are released. pyrung carries the
-            # rest by name, with their timing. pyrung's planned reload hook (the plan's
-            # as_dap() sent with the reload) replaces the releases and re-sends here.
-            forces_out = {name: new for name, new in plan.forces.items() if new != name}
-            links_out = {
-                fb: new
-                for fb, new in plan.links.items()
-                if new is None or (new.feedback, new.enable) != (fb, enables[fb])
-            }
-            error: str | None = None
-            summary = ""
-            released: list[str] = []
+            declared = [
+                str(row.get("feedback", ""))
+                for row in listed.get("links") or ()
+                if isinstance(row, Mapping) and row.get("source") == "project" and row.get("active")
+            ]
+            plan = plan_carry(old, target.names, forced, enables, analog, declared)
+            bench_wiring = listed.get("bench") is not False
             try:
-                for name in forces_out:
-                    released.append(f"the force on {name}")
-                    dap.unforce(name)
-                for name in links_out:
-                    released.append(f"the bench link on {name}")
-                    _restore_link(dap, name)
-                summary = dap.reload()
+                body = dap.planned_reload(plan.as_dap())
             except Exception as exc:
                 error = str(exc)
                 if _unavailable(exc):
                     # No answer: which program runs, and so which names apply, is
                     # unknown. Nothing is sent by name; Restart starts over.
-                    unanswered_error = error
+                    released = tuple(
+                        [f"the force on {name}" for name, new in plan.forces.items() if new is None]
+                        + [f"the bench link on {fb}" for fb, new in plan.links.items() if new is None]
+                    )
                     self._post(
                         partial(
                             self._on_write_failed,
                             token,
-                            unanswered_error,
+                            error,
                             None,
                             known=False,
-                            released=tuple(released),
+                            released=released,
                         )
                     )
                     return
-
-            if error is None and (how == "stop" or position == "stop"):
-                # A reload leaves STOP for RUN. Stop and Write goes through STOP, and a
-                # Write in STOP stays there, so the next RUN clears non-retentive values.
-                reason = refusal("STOP", partial(dap.set_mode, "stop"))
-                if reason is not None:
-                    problems.append(f"STOP: {reason}")
-
-            # Sent again under their new names after a reload, or their old ones after a
-            # failure (the old program still runs). Released forces go back only then.
-            names = target.names if error is None else old
-            refused_forces: set[str] = set()
-            refused_links: set[str] = set()
-            for fb, new in links_out.items():
-                if error is not None:
-                    feedback, enable = fb, enables[fb]
-                elif new is not None:
-                    feedback, enable = new.feedback, new.enable
-                else:
-                    continue  # dropped
-                link = _bench_link(rows[fb], enable)
-                what = f"the bench link on {feedback}"
-                reason = refusal(what, partial(_send_link, dap, feedback, link))
-                if reason is None and not link.enabled:
-                    reason = refusal(what, partial(dap.set_links, enabled={feedback: False}))
-                if reason is not None:
-                    refused_links.add(fb)
-                    problems.append(f"{what}: {reason}")
-            for name, new in forces_out.items():
-                tag = name if error is not None else new
-                if tag is None:
-                    continue  # released
-                what = f"the force on {tag}"
-                reason = refusal(what, partial(dap.force, tag, forced[name]))
-                if reason is not None:
-                    refused_forces.add(name)
-                    problems.append(f"{what}: {reason}")
+                # Refused: nothing changed, but a running continue may have paused.
+                if position == "run":
+                    refusal("the switch position", dap.continue_)
+                listing = self._listing_as_set(forced, rows, bench_wiring, old)
+                self._post(lambda: self._on_write_failed(token, error, listing))
+                return
 
             reason = None
-            if error is None and how == "stop":
-                # Launched with keepForcesOnRun, so forces survive STOP -> RUN.
-                reason = refusal(
-                    "the switch position", partial(dap.set_mode, "run", patches=patches)
-                )
-            elif error is None and position != "stop" and patches:
+            if how == "stop":
+                # STOP -> RUN on the new program: retentive values and forces stay
+                # (launched with keepForcesOnRun), the rest is cleared.
+                reason = refusal("STOP", partial(dap.set_mode, "stop"))
+                if reason is None:
+                    reason = refusal(
+                        "the switch position", partial(dap.set_mode, "run", patches=patches)
+                    )
+            elif position != "stop" and patches:
                 # A renamed input lost its value under the old name.
                 reason = refusal("the switch position", partial(dap.patch, patches))
             if reason is None and position == "run":
@@ -2027,38 +1979,57 @@ class SimulationSession:
             if reason is not None:
                 problems.append(f"the switch position: {reason}")
             if unanswered:
-                problems.append(f"no answer for {', '.join(unanswered)}; they stay set")
+                problems.append(f"no answer for {', '.join(unanswered)}")
 
-            # What is set now, by CLICK address: the user's forces and links.
+            carried = [e for e in body.get("carried") or () if isinstance(e, Mapping)]
+            names = target.names
+            # What pyrung placed, by CLICK address: the user's forces and links.
             forces: dict[str, PlcValue] = {}
-            for name, value in forced.items():
-                tag = plan.forces[name] if error is None else name
-                address = None if tag is None or name in refused_forces else address_of(tag, names)
-                if address is not None:
-                    forces[address] = value
             links: dict[str, BenchLink] = {}
-            for fb, row in rows.items():
-                new = plan.links[fb] if error is None else LinkTarget(fb, enables[fb])
-                if new is None or fb in refused_links:
-                    continue
-                address = address_of(new.feedback, names)
-                enable = None if new.enable is None else address_of(new.enable, names)
-                if address is not None and (new.enable is None or enable is not None):
-                    links[address] = _bench_link(row, enable)
+            for entry in carried:
+                tag, to = str(entry.get("tag", "")), entry.get("to")
+                if to is None:
+                    continue  # released or dropped
+                address = address_of(str(to), names)
+                if address is None:
+                    continue  # on no CLICK address: not the user's
+                kind = entry.get("kind")
+                if kind == "force":
+                    forces[address] = forced.get(tag, entry.get("value"))
+                elif kind in ("link", "cut") and tag in rows:
+                    enable = entry.get("enable")
+                    enable_at = None if enable is None else address_of(str(enable), names)
+                    if enable is None or enable_at is not None:
+                        links[address] = _bench_link(rows[tag], enable_at)
             listing = _Listing(
-                forces,
-                links,
-                listed.get("bench") is not False,
-                tuple(problems),
-                plan.describe(written=True) if error is None else "",
+                forces, links, bench_wiring, tuple(problems), plan.written(carried)
             )
-            if error is not None:
-                failure = error
-                self._post(lambda: self._on_write_failed(token, failure, listing))
-                return
+            summary = str(body.get("result") or "")
             self._post(lambda: self._on_written(token, summary, target, source, listing))
 
         self._run_serial(job)
+
+    @staticmethod
+    def _listing_as_set(
+        forced: Mapping[str, PlcValue],
+        rows: Mapping[str, Mapping[str, Any]],
+        bench_wiring: bool,
+        names: tuple[Mapping[str, int], Mapping[int, str]],
+    ) -> _Listing:
+        """pyrung's listing by CLICK address, read with the names of the program it runs."""
+        forces: dict[str, PlcValue] = {}
+        for name, value in forced.items():
+            address = address_of(name, names)
+            if address is not None:
+                forces[address] = value
+        links: dict[str, BenchLink] = {}
+        for fb, row in rows.items():
+            address = address_of(fb, names)
+            enable = _link_enable(row)
+            enable_at = None if enable is None else address_of(enable, names)
+            if address is not None and (enable is None or enable_at is not None):
+                links[address] = _bench_link(row, enable_at)
+        return _Listing(forces, links, bench_wiring)
 
     def run_time_edit(self) -> None:
         """Write the workspace's program while in RUN, keeping every value, timer and force."""

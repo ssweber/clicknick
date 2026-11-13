@@ -11,7 +11,6 @@ import enum
 import json
 import subprocess
 import threading
-import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -26,10 +25,6 @@ class DapRequestError(RuntimeError):
 
 class DapUnavailableError(DapRequestError):
     """The adapter never answered: it is not running, died, or did not reply in time."""
-
-
-#: How long a reload keeps asking while a pause just sent has not landed yet.
-RELOAD_PAUSE_WAIT_S = 3.0
 
 
 class SimState(enum.Enum):
@@ -725,27 +720,26 @@ class DapService:
     # Reload
     # ------------------------------------------------------------------
 
-    def reload(self) -> str:
-        """Load the program files again, keeping tag values, timers, counters and forces.
+    def planned_reload(self, plan: Mapping[str, Any]) -> dict[str, Any]:
+        """Load the program files again, placing forces and bench changes as *plan* says.
 
-        pyrung refuses while it scans continuously. A pause sent just before
-        can take a moment to land, so that refusal is asked again for a short
-        while. Returns pyrung's summary of the reload.
+        *plan* is ``{forces, links, declared}`` keyed by the running program's
+        names (``CarryPlan.as_dap``). Tag values, timers, counters and the mode
+        stay; pyrung pauses a running continue first. A reload that fails
+        changes nothing. Returns ``{result, carried}``: pyrung's summary and
+        what became of every force, bench change and declared link.
         """
-        deadline = time.monotonic() + RELOAD_PAUSE_WAIT_S
-        while True:
-            try:
-                body = self._request(
-                    "evaluate", {"expression": "reload", "context": "repl"}, timeout=60.0
-                )
-            except DapUnavailableError:
-                raise
-            except DapRequestError as exc:
-                if "while continue is running" not in str(exc) or time.monotonic() >= deadline:
-                    raise
-                time.sleep(0.05)
-                continue
-            return str(body.get("result") or "")
+        try:
+            return self._request("pyrungReload", dict(plan), timeout=60.0)
+        except DapUnavailableError:
+            raise
+        except DapRequestError as exc:
+            if str(exc).startswith("Unsupported command"):
+                raise DapRequestError(
+                    "the installed pyrung cannot write a program into a running simulation "
+                    "(pyrung 0.16.0 or later can)"
+                ) from exc
+            raise
 
     # ------------------------------------------------------------------
     # Causal analysis

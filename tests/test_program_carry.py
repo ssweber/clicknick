@@ -102,6 +102,7 @@ def test_the_plan_takes_pyrungs_reload_shape():
         _maps({"X001": "Begin", "Y001": "Run", "C1": "Mode"}),
         {"Start": True, "Mode": True, "Speed": 4},
         {"Start": "Motor", "X002": None},
+        declared=("Motor",),
     )
     assert plan.as_dap() == {
         "forces": {"Start": "Begin", "Mode": "Mode", "Speed": "DS1"},
@@ -109,7 +110,28 @@ def test_the_plan_takes_pyrungs_reload_shape():
             "Start": {"en": "Run", "fb": "Begin"},
             "X002": {"cut": True, "fb": "X002"},
         },
+        "declared": {"Motor": "Run"},
     }
+
+
+@pytest.mark.parametrize(
+    ("new", "feedback", "declared"),
+    [
+        # A rename: the coil carries on under the address's new name.
+        ({"X001": "StartPB"}, "Start", {"Start": "StartPB"}),
+        ({}, "Start", {"Start": "X001"}),
+        ({"X002": "Prox"}, "X002", {"X002": "Prox"}),
+        # The name stays: pyrung keeps the coil by its name, so nothing is planned.
+        ({"X001": "Start"}, "Start", {}),
+        ({}, "X002", {}),
+        # The name went to another address: the program's link is on the address.
+        ({"X001": "Begin", "X005": "Start"}, "Start", {"Start": "Begin"}),
+        # Not on a CLICK address: not the user's.
+        ({}, "Scratch", {}),
+    ],
+)
+def test_a_declared_link_stays_on_its_address(new, feedback, declared):
+    assert plan_carry(OLD, _maps(new), {}, {}, declared=(feedback,)).declared == declared
 
 
 def test_the_notice_lists_releases_renames_then_moves():
@@ -125,11 +147,82 @@ def test_the_notice_lists_releases_renames_then_moves():
         "the link on X002 now comes from Begin (was Start). "
         "The link on X003 now follows Motor on Y005 (was Y001)."
     )
-    assert plan.describe(written=True).startswith("Released 2 forces: Mode (now on C2")
     assert CarryPlan().notice == ""
     one = plan_carry(OLD, _maps({"DS5": "Speed"}), {"Speed": 4}, {})
     assert one.notice == "Writing releases 1 force: Speed (now on DS5, was DS1)."
-    assert one.describe(written=True) == "Released 1 force: Speed (now on DS5, was DS1)."
+
+
+def _report(plan: CarryPlan, **drops: tuple[str, str]) -> list[dict]:
+    """pyrung's ``carried`` for *plan* placed as planned, except the entries in *drops*."""
+    carried: list[dict] = []
+    for tag, to in plan.forces.items():
+        carried.append({"tag": tag, "kind": "force", "to": to, "planned": True,
+                        "released": to is None, "dropped": False})  # fmt: skip
+    for fb, target in plan.links.items():
+        carried.append({"tag": fb, "kind": "cut" if target and target.enable is None else "link",
+                        "to": target and target.feedback, "enable": target and target.enable,
+                        "planned": True, "released": target is None, "dropped": False})  # fmt: skip
+    for fb, to in plan.declared.items():
+        carried.append({"tag": fb, "kind": "declared", "to": to, "planned": True,
+                        "released": False, "dropped": False})  # fmt: skip
+    for entry in carried:
+        if entry["tag"] in drops:
+            reason, detail = drops[entry["tag"]]
+            entry.update(to=None, released=False, dropped=True, reason=reason, detail=detail)
+    return carried
+
+
+def test_the_written_notice_says_what_pyrung_did():
+    plan = plan_carry(
+        OLD,
+        _maps({"X001": "Begin", "C2": "Mode", "Y005": "Motor"}),
+        {"Mode": True, "Start": True},
+        {"X002": "Start", "X003": "Motor"},
+    )
+    assert plan.written(_report(plan)) == (
+        "Released 1 force: Mode (now on C2, was C1). "
+        "Kept under new names: Start -> Begin (X001), "
+        "the link on X002 now comes from Begin (was Start). "
+        "The link on X003 now follows Motor on Y005 (was Y001)."
+    )
+    assert CarryPlan().written([]) == ""
+
+
+def test_an_entry_pyrung_could_not_keep_is_said_with_its_reason_instead_of_the_plan():
+    plan = plan_carry(
+        OLD,
+        _maps({"X001": "Begin", "DS1": "Speed", "Y001": "Motor"}),
+        {"Start": True, "Speed": 4},
+        {"X002": "Start"},
+    )
+    carried = _report(
+        plan,
+        Start=("type changed", "Begin is an Int in the new program"),
+        X002=("invalid", "the new program cannot link X002"),
+    )
+    assert plan.written(carried) == (
+        "Could not keep the force on Start: Begin is an Int in the new program. "
+        "Could not keep the bench link on X002: the new program cannot link X002."
+    )
+
+
+def test_drops_that_lose_nothing_are_not_listed():
+    carried = [
+        # The Console took them off between the listing and the reload.
+        {"tag": "Jog", "kind": "force", "dropped": True, "reason": "not forced"},
+        {"tag": "X009", "kind": "link", "dropped": True, "reason": "no bench change"},
+        # Saved to the project: the program's own link runs now.
+        {"tag": "X002", "kind": "link", "dropped": True, "reason": "in program"},
+        # The new program has no link like it there: the coil starts as the program says.
+        {"tag": "Start", "kind": "declared", "dropped": True, "reason": "unlinked"},
+        {"tag": "Prox", "kind": "declared", "dropped": True, "reason": "changed kind"},
+    ]
+    assert CarryPlan().written(carried) == ""
+    in_use = {"tag": "Start", "kind": "declared", "dropped": True, "reason": "in use",
+              "detail": "a coil already runs on Begin"}  # fmt: skip
+    assert CarryPlan().written([in_use]) == (
+        "The program's link on Start starts over: a coil already runs on Begin."
+    )
 
 
 @pytest.mark.parametrize(
