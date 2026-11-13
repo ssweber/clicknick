@@ -328,6 +328,35 @@ def test_slim_cpu_card_with_its_slots_as_one_housing(simulator, ready):
     assert win._outputs["Y101"]["x"] == slot_x + win._card_w + CARD_GAP
 
 
+def test_unassigned_io_is_drawn_in_its_position_between_real_cards(simulator, ready):
+    from clicknick.services.sim_hardware import build_panel_layout
+    from clicknick.views.simulator_window import CARD_GAP
+
+    def module(location, position, model, inputs=()):
+        return SimpleNamespace(
+            location=location, position=position, module=SimpleNamespace(model=model),
+            inputs=inputs, outputs=(), analog_inputs=(), analog_outputs=(),
+        )  # fmt: skip
+
+    modules = [
+        module("cpu", 0, "C2-03CPU-2"),
+        module("expansion", 1, "C0-08ND3", inputs=("X101",)),
+        module("expansion", 3, "C0-08ND3", inputs=("X301",)),
+    ]
+    used = {"X201", "Y201"}
+    ready.sim._layout_reader = lambda _path, _used: build_panel_layout(modules, used)
+    win = simulator(ready)
+    texts = {
+        win._canvas.itemcget(item, "text")
+        for item in win._canvas.find_all()
+        if win._canvas.type(item) == "text"
+    }
+    assert "Expansion 2 - unassigned" in texts
+    assert win._inputs["X201"]["x"] == win._inputs["X101"]["x"] + win._card_w + CARD_GAP
+    assert win._inputs["X301"]["x"] == win._inputs["X201"]["x"] + win._card_w + CARD_GAP
+    assert "Y201" in win._outputs
+
+
 # ----------------------------------------------------------------------
 # Feedback links
 # ----------------------------------------------------------------------

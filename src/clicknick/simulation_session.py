@@ -873,7 +873,7 @@ class SimulationSession:
             self._message(f"Could not read PLC data {path}: {exc}", "error")
             return
         layout = self._layout
-        if layout is not None and (layout.cards or layout.unassigned_inputs):
+        if layout is not None and layout.cards:
             inputs: Iterable[str] = layout.addresses("input")
             analog_inputs: Iterable[str] = layout.addresses("analog_in")
         else:

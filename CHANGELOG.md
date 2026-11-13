@@ -14,6 +14,7 @@
 
 - **Simulate** runs the saved program on your CLICK hardware as drawn from System Configuration, with input switches, output LEDs, analog values, forces, STOP / STEP / RUN with speed control, and a Modbus server on 127.0.0.1:502 that the Data View editor joins with a Force column.
 - Right-click a Simulator point to ask **Why**, **How** or **Show simplified logic** in the Console, where panel actions also echo as the matching commands, and double-click an output to force it.
+- The Simulator draws X and Y addresses the program uses but no module provides on a dashed card at the position they belong to (X2xx on "Expansion 2 - unassigned"), between the real modules; X and Y of one position share a card. They have switches and LEDs like any other point.
 - Feedback links let an output drive an input on the Simulator, like a contactor's aux contact or a limit switch: drag one to add it for the session, cut it to simulate a failed sensor, or save it to the input's comment for the program.
 - Copying rungs that use CLICK v4 instructions is refused when the CLICK window is older, instead of letting CLICK silently change them on paste.
 - Preview Changes marks which programs differ from CLICK's last save, steps through only those, and lists subroutines CLICK has that the folder doesn't.

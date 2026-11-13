@@ -966,7 +966,10 @@ def test_layout_lists_unassigned_io_the_program_uses(ready):
     ready.open()
     ready.sim.refresh_layout(force=True)
     assert ready.sim.layout is not None
-    assert ready.sim.layout.unassigned_inputs == ("X201",)
+    (placeholder,) = [c for c in ready.sim.layout.cards if not c.installed]
+    assert [t.address for t in placeholder.of_kind("input")] == ["X201"]
+    assert "X101" not in ready.sim.layout.addresses("input")
+    assert ready.sim.layout.modules == ("cpu:C0-02DD1-D",)
 
 
 def test_loading_plc_data_sets_switches_and_analog_values(ready, tmp_path):
@@ -2187,7 +2190,7 @@ def test_switches_on_unassigned_inputs_wait_for_the_analysis(ready, tmp_path):
     ready.analysis._generation += 1
     ready.sim.refresh_layout()
 
-    assert ready.sim.layout.unassigned_inputs == ("X201",)
+    assert "X201" in ready.sim.layout.addresses("input")
     assert ready.sim.switch_on("X201")
     assert ready.sim.notice is None
     ready.scheduler.fire(SAVE_DELAY_MS)
