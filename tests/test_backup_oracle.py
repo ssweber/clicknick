@@ -16,6 +16,7 @@ delete stops part way. After every step:
 from __future__ import annotations
 
 import datetime as dt
+import os
 import random
 import shutil
 from pathlib import Path
@@ -39,8 +40,9 @@ Tree = frozenset[tuple[str, str]]
 
 _FIXED_SEEDS = range(20)
 _FIXED_STEPS = 30
-_RANDOM_SEEDS = 200
-_RANDOM_STEPS = 15
+# Kept small for the gate; set CLICKNICK_ORACLE_SEEDS=200 (and CLICKNICK_ORACLE_STEPS) for a deeper run.
+_RANDOM_SEEDS = int(os.environ.get("CLICKNICK_ORACLE_SEEDS", "20"))
+_RANDOM_STEPS = int(os.environ.get("CLICKNICK_ORACLE_STEPS", "15"))
 
 
 class _Injected(OSError):
