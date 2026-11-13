@@ -2614,6 +2614,163 @@ def test_no_restart_while_the_program_is_written(ready):
     assert "Cannot restart while the program is being written." in ready.messages("error")
 
 
+def _data_file_saved_again(ready, data: Path) -> None:
+    """CLICK wrote the PLC data dump again; the next watch tick sees it."""
+    import os
+
+    from clicknick.simulation_session import WATCH_MS
+
+    later = data.stat().st_mtime + 5
+    os.utime(data, (later, later))
+    ready.scheduler.fire(WATCH_MS)
+
+
+def _writing_with_plc_data(ready, tmp_path) -> tuple[list, Path]:
+    """A simulation started from a PLC data file, with a write asked for and not answered."""
+    jobs = _queued(ready)
+    ready.open()
+    data = tmp_path / "data.csv"
+    data.write_text("a", encoding="utf-8")
+    ready.sim.set_plc_data_path(data)
+    _run_jobs(ready, jobs)
+    _rebuild(ready)
+    ready.sim.write_program()
+    assert ready.sim.writing
+    return jobs, data
+
+
+@pytest.mark.parametrize("answer", ["written", "refused", "unanswered"])
+def test_a_plc_data_change_during_a_write_relaunches_once_the_write_is_answered(
+    ready, tmp_path, answer
+):
+    from clicknick.services.dap_service import DapUnavailableError
+
+    jobs, data = _writing_with_plc_data(ready, tmp_path)
+    if answer == "refused":
+        ready.dap.reload_error = DapRequestError("Reload failed: invalid syntax")
+    elif answer == "unanswered":
+        ready.dap.reload_error = DapUnavailableError("evaluate: no response from simulation")
+    daps = len(ready.daps)
+
+    _data_file_saved_again(ready, data)
+    assert len(ready.daps) == daps, "never in the middle of a write"
+    assert "PLC data file changed. Reloading once the program is written." in ready.messages()
+    assert "Cannot restart" not in ready.messages("error")
+
+    _run_jobs(ready, jobs)
+    assert len(ready.daps) == daps + 1
+    assert ready.dap.calls[0][2]["snapshot_path"] == data
+    assert ready.sim.is_ready
+
+    _data_file_saved_again(ready, data)
+    _run_jobs(ready, jobs)
+    assert len(ready.daps) == daps + 2, "a change after the write relaunches as before"
+
+
+def test_choosing_a_plc_data_file_during_a_write_starts_from_it_once_answered(ready, tmp_path):
+    jobs, _data = _writing_with_plc_data(ready, tmp_path)
+    daps = len(ready.daps)
+    other = tmp_path / "other.csv"
+    other.write_text("b", encoding="utf-8")
+
+    ready.sim.set_plc_data_path(other)
+    assert len(ready.daps) == daps
+    assert "Cannot restart" not in ready.messages("error")
+
+    _run_jobs(ready, jobs)
+    assert len(ready.daps) == daps + 1
+    assert ready.dap.calls[0][2]["snapshot_path"] == other
+
+
+def test_a_plc_data_change_during_a_write_relaunches_once_if_it_already_relaunched(ready, tmp_path):
+    jobs, data = _writing_with_plc_data(ready, tmp_path)
+    daps = len(ready.daps)
+    _data_file_saved_again(ready, data)
+
+    ready.sim.relaunch()  # the workspace moved: this launch reads the data file
+    _run_jobs(ready, jobs)
+    assert len(ready.daps) == daps + 1
+    assert ready.dap.calls[0][2]["snapshot_path"] == data
+
+
+def test_a_plc_data_change_during_a_write_that_a_build_overtakes_relaunches_after_the_build(
+    ready, tmp_path
+):
+    from clicknick.simulation_session import WATCH_MS
+
+    jobs, data = _writing_with_plc_data(ready, tmp_path)
+    daps = len(ready.daps)
+    _data_file_saved_again(ready, data)
+    ready.analysis._status = AnalysisStatus.BUILDING  # CLICK saved before the write's answer
+    _run_jobs(ready, jobs)
+    ready.scheduler.fire(WATCH_MS)
+    assert len(ready.daps) == daps, "no launch on a workspace being rebuilt"
+    assert "still being converted" not in ready.messages("error")
+
+    _rebuild(ready)
+    ready.scheduler.fire(WATCH_MS)
+    assert len(ready.daps) == daps + 1
+    assert ready.dap.calls[0][2]["snapshot_path"] == data
+    _run_jobs(ready, jobs)
+    ready.scheduler.fire(WATCH_MS)
+    assert len(ready.daps) == daps + 1, "relaunched once"
+
+
+def test_a_plc_data_change_the_simulation_died_after_relaunches_once_with_the_build(
+    ready, tmp_path
+):
+    from clicknick.simulation_session import WATCH_MS
+
+    jobs, data = _writing_with_plc_data(ready, tmp_path)
+    daps = len(ready.daps)
+    _data_file_saved_again(ready, data)
+    ready.analysis._status = AnalysisStatus.BUILDING
+    _run_jobs(ready, jobs)
+    ready.dap.callbacks["on_state"](SimpleNamespace(value="error"), None)
+    ready.scheduler.run_ready()
+    assert ready.sim.status is SimStatus.FAILED
+
+    _rebuild(ready)  # _follow_program starts the simulation on it
+    ready.scheduler.fire(WATCH_MS)
+    _run_jobs(ready, jobs)
+    ready.scheduler.fire(WATCH_MS)
+    assert len(ready.daps) == daps + 1
+    assert ready.dap.calls[0][2]["snapshot_path"] == data
+
+
+def test_a_modbus_port_change_during_a_write_relaunches_on_it_once_answered(ready):
+    jobs = _queued(ready)
+    ready.open()
+    _run_jobs(ready, jobs)
+    _rebuild(ready)
+    ready.sim.write_program()
+    daps = len(ready.daps)
+
+    ready.sim.set_modbus_port(5020)
+    assert len(ready.daps) == daps
+    assert "Cannot restart" not in ready.messages("error")
+
+    _run_jobs(ready, jobs)
+    assert len(ready.daps) == daps + 1
+    assert ready.dap.calls[0][2]["modbus"]["port"] == 5020
+
+
+def test_a_plc_data_change_during_a_console_command_relaunches_at_once(ready, tmp_path):
+    ready.open()
+    data = tmp_path / "data.csv"
+    data.write_text("a", encoding="utf-8")
+    ready.sim.set_plc_data_path(data)
+    ready.scheduler.run_ready()
+    daps = len(ready.daps)
+    finish, _got = _console_command(ready)
+    ready.sim._run_background = lambda target, _name: target()  # the command stays in flight
+
+    _data_file_saved_again(ready, data)
+    ready.scheduler.run_ready()
+    assert len(ready.daps) == daps + 1, "Restart does not wait for a Console command"
+    finish()
+
+
 # ----------------------------------------------------------------------
 # The write is one planned reload (pyrungReload)
 # ----------------------------------------------------------------------

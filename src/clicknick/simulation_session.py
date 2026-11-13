@@ -402,6 +402,9 @@ class SimulationSession:
         self._writing = False
         self._write_error: str | None = None
         self._shown_change: ProgramChange | None = None
+        # A restart the PLC data file or the Modbus port asked for that waits for the
+        # write in flight to be answered, or for a build to finish. Any launch serves it.
+        self._restart_due = False
         # Console commands in flight (run_console_command): one could land between a
         # write's listing and its reload. Counted here, so closing the panel that sent
         # one does not leave the count set.
@@ -1002,21 +1005,48 @@ class SimulationSession:
             self._shown_change = change
             self._emit("desired")
 
+    def _restart_if_due(self) -> None:
+        """The restart :meth:`_restart_when_free` asked for, unless a write or build still runs.
+
+        A refusal for any other reason drops it; the simulation runs on until the
+        user restarts it.
+        """
+        from .services.analysis_service import AnalysisStatus
+
+        if not self._restart_due or self._writing:
+            return
+        analysis = self._get_analysis()
+        if (
+            self._dap is not None
+            and analysis is not None
+            and analysis.status is AnalysisStatus.BUILDING
+        ):
+            return  # the watch tick asks again
+        self._restart_due = False
+        self.restart()
+
+    def _restart_when_free(self) -> None:
+        """Restart now, or once the write in flight is answered and no build runs."""
+        self._restart_due = True
+        self._restart_if_due()
+
     def _watch_tick(self) -> None:
         self._watch_after_id = None
         if self._closed or not self._enabled:
             return
         self.refresh_layout()
-        reload_data = False
         if self.is_ready and self._plc_data_path is not None:
             mtime = _mtime(self._plc_data_path)
             if mtime is not None and (self._plc_data_mtime is None or mtime > self._plc_data_mtime):
                 self._plc_data_mtime = mtime
-                self._message("PLC data file changed. Reloading...")
+                if self._writing:
+                    self._message("PLC data file changed. Reloading once the program is written.")
+                else:
+                    self._message("PLC data file changed. Reloading...")
                 self._adopt_snapshot(self._plc_data_path)
-                reload_data = True
-        if not self._follow_program() and reload_data:
-            self.restart()
+                self._restart_due = True
+        if not self._follow_program():  # a launch serves a restart that is due
+            self._restart_if_due()
         self._check_program()
         self._watch_after_id = self._scheduler.after(WATCH_MS, self._watch_tick)
 
@@ -1090,6 +1120,7 @@ class SimulationSession:
         self._writing = False
         self._write_error = None
         self._position_held = False
+        self._restart_due = False
         dap = self._dap
         self._dap = None
         if dap is not None:
@@ -1796,6 +1827,7 @@ class SimulationSession:
         self._links_refetch = False
         self._fetch_links(dap, token, sync=True)
         self._check_program()
+        self._restart_if_due()
 
     def _on_write_failed(
         self,
@@ -1831,6 +1863,7 @@ class SimulationSession:
         self._links_refetch = False
         self._fetch_links(dap, token, sync=True)
         self._check_program()
+        self._restart_if_due()
 
     def _write_refusal(self) -> str | None:
         """Why the workspace's program cannot be written to the running simulation, or None."""
@@ -2077,7 +2110,7 @@ class SimulationSession:
         self._plc_data_mtime = _mtime(path)
         self._message(f"Loading PLC data: {path}")
         self._adopt_snapshot(path)
-        self.restart()
+        self._restart_when_free()
 
     def _on_modbus_connect_failed(self, service: Any, text: str) -> None:
         if service is not self._modbus:
@@ -2189,7 +2222,7 @@ class SimulationSession:
         if port == self._state.modbus_port:
             return
         self._update_state(modbus_port=port)
-        self.restart()
+        self._restart_when_free()
 
     # ------------------------------------------------------------------
     # Inputs
