@@ -9,11 +9,13 @@ Pure logic: no tkinter, no store.
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
 from pyclickplc.addresses import normalize_address, parse_address
 from pyclickplc.banks import BANKS, DataType
 from pyrung.click.tag_map import TagMeta
 
+from ..data.data_source import CsvDataSource
 from .annotation_service import AnnotationService
 from .physical_response import meta_fields, meta_response, same_response
 from .sim_state import BenchLink
@@ -91,3 +93,31 @@ def comment_has_link(comment: str, link: BenchLink, enable_names: tuple[str, ...
         return False
     names_enable = any(meta.link in _link_texts(name, link) for name in enable_names if name)
     return names_enable and same_response(meta_response(meta), link.response)
+
+
+def declares_link(comment: str) -> bool:
+    """True when *comment* declares a link pyrung runs: ``link=`` beside a response or physical."""
+    try:
+        _block_tag, meta, _free_text = AnnotationService.decompose_comment(comment)
+    except ValueError:
+        return False
+    if meta is None or meta.link is None:
+        return False
+    return meta.physical is not None or bool(meta_response(meta))
+
+
+def linked_feedbacks(csv_dir: Path) -> frozenset[str]:
+    """The tags a workspace's program declares links on, from its ``nicknames.csv``.
+
+    The workspace's tag names come from the same snapshot. Empty when the file
+    is missing or cannot be read.
+    """
+    try:
+        rows = CsvDataSource(str(csv_dir / "nicknames.csv")).load_all_addresses()
+    except (OSError, ValueError):
+        return frozenset()
+    return frozenset(
+        row.nickname.strip() or row.display_address
+        for row in rows.values()
+        if declares_link(row.comment)
+    )

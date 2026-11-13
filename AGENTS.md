@@ -339,9 +339,10 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   - a force stays on its address under the new name on a pure rename (an unnamed address gaining a nickname
     included); a force whose name now sits on another address stays only on X, Y or an analog channel's DF and
     is released on internal memory
-  - a link the program declares and runs (`declared`) stays on its address: when the address has another name
-    in the new program, its coil carries on there. A bench link or declared link that moves keeps its coil's
-    state, so a timer part way through carries on
+  - a link the program declares and runs (`declared`) follows its feedback's name while the new program declares
+    a link on that name (from the workspace's `csv/nicknames.csv`, `linked_feedbacks`); when the name is gone
+    or sits on an address with no declared link, its coil carries on on its address under the new name. A
+    bench link or declared link that moves keeps its coil's state, so a timer part way through carries on
 - The offer lists releases, drops and moves before the user writes. After the reload, pyrung's report
   (`carried`) is the truth: the entries it placed are adopted by address, and the notice
   (`CarryPlan.written`) keeps the plan's notes for the entries placed as planned and says why pyrung could
@@ -349,7 +350,7 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   A write answered after another build started keeps the old names and offers the change again. The switch
   shows the position it had until the write is answered
 - A reload that fails changes nothing in pyrung: the old program keeps running with its forces and links (a
-  RUN Time Edit sends continue again, since pyrung may have paused), and **Restart** is added to the offer.
+  write made in RUN sends continue again, since pyrung may have paused), and **Restart** is added to the offer.
   A pyrung without `pyrungReload` refuses the write the same way, with a notice that it needs pyrung 0.16.0;
   nothing falls back to releasing and re-sending entries around a plain reload. A reload pyrung never
   answers sends nothing by name (which program runs is unknown) and offers Restart; its notice says the

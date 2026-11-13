@@ -14,6 +14,11 @@ def _maps(names: dict[str, str]):
     return {tag: key for key, tag in keys.items()}, keys
 
 
+def _texts(plan: CarryPlan, section: str) -> tuple[str, ...]:
+    """The plan's notes in *section*, in order."""
+    return tuple(note.text for note in plan.notes if note.section == section)
+
+
 OLD = _maps({"X001": "Start", "Y001": "Motor", "C1": "Mode", "DS1": "Speed", "DF1": "Temp"})
 
 
@@ -45,14 +50,15 @@ OLD = _maps({"X001": "Start", "Y001": "Motor", "C1": "Mode", "DS1": "Speed", "DF
 def test_forces(new, name, target, note):
     plan = plan_carry(OLD, _maps(new), {name: True}, {}, analog=("DF1",))
     assert plan.forces == {name: target}
-    assert (plan.released if target is None else plan.renamed) == ((note,) if note else ())
+    section = "released" if target is None else "renamed"
+    assert _texts(plan, section) == ((note,) if note else ())
 
 
 def test_an_internal_df_is_not_hardware_unless_an_analog_channel_has_it():
     new = _maps({"DF1": "Probe", "DF2": "Temp"})
     plan = plan_carry(OLD, new, {"Temp": 20.5}, {})
     assert plan.forces == {"Temp": None}
-    assert plan.released == ("Temp (now on DF2, was DF1)",)
+    assert _texts(plan, "released") == ("Temp (now on DF2, was DF1)",)
     plan = plan_carry(OLD, new, {"Temp": 20.5}, {}, analog=("DF1",))
     assert plan.forces == {"Temp": "Probe"}
 
@@ -74,7 +80,7 @@ def test_an_internal_df_is_not_hardware_unless_an_analog_channel_has_it():
 def test_links(new, feedback, enable, target):
     plan = plan_carry(OLD, _maps(new), {}, {feedback: enable})
     assert plan.links == {feedback: target}
-    assert plan.released == ()
+    assert _texts(plan, "released") == ()
 
 
 @pytest.mark.parametrize(
@@ -93,7 +99,7 @@ def test_links(new, feedback, enable, target):
 )  # fmt: skip
 def test_a_link_that_follows_a_name_to_another_address_is_noted(new, feedback, enable, moved):
     plan = plan_carry(OLD, _maps(new), {}, {feedback: enable})
-    assert plan.moved == moved
+    assert _texts(plan, "moved") == moved
 
 
 def test_the_plan_takes_pyrungs_reload_shape():
@@ -115,23 +121,36 @@ def test_the_plan_takes_pyrungs_reload_shape():
 
 
 @pytest.mark.parametrize(
-    ("new", "feedback", "declared"),
+    ("new", "linked", "feedback", "declared"),
     [
         # A rename: the coil carries on under the address's new name.
-        ({"X001": "StartPB"}, "Start", {"Start": "StartPB"}),
-        ({}, "Start", {"Start": "X001"}),
-        ({"X002": "Prox"}, "X002", {"X002": "Prox"}),
+        ({"X001": "StartPB"}, ("StartPB",), "Start", {"Start": "StartPB"}),
+        ({}, (), "Start", {"Start": "X001"}),
+        ({"X002": "Prox"}, ("Prox",), "X002", {"X002": "Prox"}),
         # The name stays: pyrung keeps the coil by its name, so nothing is planned.
-        ({"X001": "Start"}, "Start", {}),
-        ({}, "X002", {}),
-        # The name went to another address: the program's link is on the address.
-        ({"X001": "Begin", "X005": "Start"}, "Start", {"Start": "Begin"}),
+        ({"X001": "Start"}, ("Start",), "Start", {}),
+        ({"X001": "Start"}, (), "Start", {}),
+        ({}, ("X002",), "X002", {}),
+        # The name went to another address that the new program links: the coil follows it.
+        ({"X001": "Begin", "X005": "Start"}, ("Begin", "Start"), "Start", {}),
+        # ...that it does not link: the coil carries on on its address.
+        ({"X001": "Begin", "X005": "Start"}, ("Begin",), "Start", {"Start": "Begin"}),
         # Not on a CLICK address: not the user's.
-        ({}, "Scratch", {}),
+        ({}, (), "Scratch", {}),
     ],
 )
-def test_a_declared_link_stays_on_its_address(new, feedback, declared):
-    assert plan_carry(OLD, _maps(new), {}, {}, declared=(feedback,)).declared == declared
+def test_a_declared_link_follows_its_name_while_the_new_program_links_it(
+    new, linked, feedback, declared
+):
+    plan = plan_carry(OLD, _maps(new), {}, {}, declared=(feedback,), linked=linked)
+    assert plan.declared == declared
+
+
+def test_declared_links_that_swap_names_and_comments_keep_their_own_coils():
+    old = _maps({"X001": "Start", "X005": "Begin"})
+    new = _maps({"X001": "Begin", "X005": "Start"})
+    plan = plan_carry(old, new, {}, {}, declared=("Start", "Begin"), linked=("Start", "Begin"))
+    assert plan.declared == {}, "pyrung carries each coil on by its name"
 
 
 def test_the_notice_lists_releases_renames_then_moves():
@@ -218,11 +237,22 @@ def test_drops_that_lose_nothing_are_not_listed():
         {"tag": "Prox", "kind": "declared", "dropped": True, "reason": "changed kind"},
     ]
     assert CarryPlan().written(carried) == ""
-    in_use = {"tag": "Start", "kind": "declared", "dropped": True, "reason": "in use",
-              "detail": "a coil already runs on Begin"}  # fmt: skip
-    assert CarryPlan().written([in_use]) == (
-        "The program's link on Start starts over: a coil already runs on Begin."
-    )
+
+
+
+@pytest.mark.parametrize(
+    ("reason", "detail"),
+    [
+        ("in use", "a coil already runs on Begin"),
+        ("not declared", "a bench change replaces the program's link on Begin"),
+    ],
+)
+def test_a_declared_link_that_could_not_move_is_said_with_pyrungs_reason(reason, detail):
+    entry = {"tag": "Start", "kind": "declared", "to": None, "dropped": True,
+             "reason": reason, "detail": detail}  # fmt: skip
+    plan = CarryPlan(declared={"Start": "Begin"})
+    assert plan.written([entry]) == f"The program's link on Start could not move to Begin: {detail}."
+    assert CarryPlan().written([entry]) == f"The program's link on Start could not move: {detail}."
 
 
 @pytest.mark.parametrize(
@@ -248,8 +278,9 @@ def test_two_links_on_one_new_feedback_keep_the_one_that_followed_its_name(
     plan = plan_carry(_maps(old), _maps(new), {}, links)
     assert plan.links[kept[0]] == kept[1]
     assert plan.links[dropped] is None
-    assert note in plan.moved
-    about = [t for t in plan.moved + plan.renamed if t.split(" ", 3)[3].startswith(dropped + " ")]
+    assert note in _texts(plan, "moved")
+    texts = _texts(plan, "moved") + _texts(plan, "renamed")
+    about = [t for t in texts if t.split(" ", 3)[3].startswith(dropped + " ")]
     assert about == [note], "no note says the dropped link was kept"
     assert plan.as_dap()["links"][dropped] is None
 

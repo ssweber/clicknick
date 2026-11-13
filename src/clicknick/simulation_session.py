@@ -38,6 +38,7 @@ from pyclickplc.addresses import (
     parse_address,
 )
 
+from .services.link_annotation import linked_feedbacks
 from .services.physical_response import (
     Response,
     response_from_dap,
@@ -1953,7 +1954,8 @@ class SimulationSession:
                 for row in listed.get("links") or ()
                 if isinstance(row, Mapping) and row.get("source") == "project" and row.get("active")
             ]
-            plan = plan_carry(old, target.names, forced, enables, analog, declared)
+            linked = linked_feedbacks(project_dir / "csv")
+            plan = plan_carry(old, target.names, forced, enables, analog, declared, linked)
             bench_wiring = listed.get("bench") is not False
             try:
                 body = dap.planned_reload(plan.as_dap())
@@ -2021,7 +2023,8 @@ class SimulationSession:
                     continue  # on no CLICK address: not the user's
                 kind = entry.get("kind")
                 if kind == "force":
-                    forces[address] = forced.get(tag, entry.get("value"))
+                    # pyrung's value: a force can change between the listing and the reload.
+                    forces[address] = entry["value"] if "value" in entry else forced.get(tag)
                 elif kind in ("link", "cut") and tag in rows:
                     enable = entry.get("enable")
                     enable_at = None if enable is None else address_of(str(enable), names)

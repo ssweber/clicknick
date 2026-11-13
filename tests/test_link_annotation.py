@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from clicknick.services.link_annotation import comment_has_link, comment_with_link
+from clicknick.data.data_source import CsvDataSource
+from clicknick.models.address_row import AddressRow
+from clicknick.services.link_annotation import (
+    comment_has_link,
+    comment_with_link,
+    linked_feedbacks,
+)
 from clicknick.services.physical_response import response
 from clicknick.services.sim_state import BenchLink
 
@@ -95,3 +101,16 @@ def test_a_word_enable_keeps_its_zero_trigger():
 
     assert link_text("Mode", BenchLink("DS1", trigger=0)) == "Mode:0"
     assert link_text("Mode", BenchLink("DS1", trigger=2)) == "Mode:2"
+
+
+def test_the_workspace_snapshot_names_the_feedbacks_its_program_links(tmp_path):
+    rows = [
+        AddressRow("X", 1, nickname="Start", comment="[link=Cmd, timed=100ms] Start PB"),
+        AddressRow("X", 2, nickname="Begin", comment="Begin PB"),
+        AddressRow("X", 3, comment="[link=Cmd, on_delay=2s]"),
+        AddressRow("X", 4, nickname="Door", comment="[link=Cmd]"),  # no response: no link runs
+    ]
+    CsvDataSource(str(tmp_path / "nicknames.csv")).save_changes(rows)
+
+    assert linked_feedbacks(tmp_path) == {"Start", "X003"}
+    assert linked_feedbacks(tmp_path / "missing") == frozenset()

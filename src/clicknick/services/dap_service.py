@@ -510,7 +510,7 @@ class DapService:
         the STOP -> RUN transition instead of clearing them.
 
         Autoreload stays off: files rewritten under the process (a CLICK save,
-        an edit) change nothing until :meth:`reload`.
+        an edit) change nothing until :meth:`planned_reload`.
         """
         if self._proc is not None:
             self.terminate()

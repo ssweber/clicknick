@@ -14,6 +14,8 @@ import pytest
 from pyclickplc.addresses import format_address_display, normalize_address, parse_addr_key
 from pyrung.core import PHYSICAL_KEYS
 
+from clicknick.data.data_source import CsvDataSource
+from clicknick.models.address_row import AddressRow
 from clicknick.services.analysis_service import AnalysisResult, AnalysisService, AnalysisStatus
 from clicknick.services.dap_service import DapRequestError
 from clicknick.services.physical_response import response
@@ -2704,6 +2706,22 @@ def test_a_console_force_pyrung_carried_without_a_plan_is_kept_by_its_name(ready
     assert ready.sim.forces == {"Y001": True, "C1": True}
 
 
+def test_a_force_changed_just_before_the_reload_keeps_the_value_pyrung_reports(ready):
+    _running_with_settings(ready)
+    _rebuild(ready)
+    real = ready.dap.planned_reload
+
+    def late_force(plan):
+        ready.dap.forces = {**ready.dap.forces, "Y001": False}  # `force Y001 0` just before
+        return real(plan)
+
+    ready.dap.planned_reload = late_force
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert ready.sim.forces == {"Y001": False}
+
+
 def test_the_programs_own_links_go_with_the_plan_under_their_addresss_new_name(ready):
     _name(ready, "X002", "Prox")
     _name(ready, "X003", "Door")
@@ -2809,3 +2827,71 @@ def test_renaming_a_linked_input_while_it_times_keeps_its_timing(tmp_path, decla
             f"the link on Prox now comes from {enable} (was Cmd)",
         ]
     assert harness.sim.notice == f"Kept under new names: {', '.join(renamed)}."
+
+
+# Two timed links the program declares: Start (X002) from Cmd, Begin (X003) from Go.
+_TWO_LINKS_PROGRAM = """\
+import warnings
+warnings.simplefilter("ignore")
+from pyrung.core import Bool, PLC, Physical, Program, Rung, out
+cmd, go = Bool("Cmd"), Bool("Go")
+start = Bool("Start", physical=Physical("Start", timed="100ms"), link="Cmd")
+begin = Bool("Begin", physical=Physical("Begin", timed="100ms"), link="Go")
+with Program(strict=False) as prog:
+    with Rung(cmd):
+        out(Bool("Lamp"))
+    with Rung(go):
+        out(Bool("Horn"))
+    with Rung(start):
+        out(Bool("Sink"))
+    with Rung(begin):
+        out(Bool("Drain"))
+runner = PLC(prog, dt=0.010)
+"""
+
+
+def test_declared_links_whose_nicknames_and_comments_swap_keep_their_own_timing(tmp_path):
+    dap_class = _adapter_dap_class()
+    project = tmp_path / "project"
+    project.mkdir()
+    harness = Harness(tmp_path, _ready_analysis(project))
+    (project / "run.py").write_text(_TWO_LINKS_PROGRAM, encoding="utf-8")
+    for address, tag in (("X001", "Cmd"), ("X004", "Go"), ("X002", "Start"), ("X003", "Begin")):
+        _name(harness, address, tag)
+
+    def factory(**callbacks):
+        dap = dap_class(**callbacks)
+        harness.daps.append(dap)
+        return dap
+
+    harness.sim._dap_factory = factory
+    harness.open()
+    dap = harness.dap
+    dap.frame()
+    harness.scheduler.run_ready()
+    harness.sim.set_switch_position("run")
+    harness.scheduler.run_ready()
+    dap.force("Cmd", True)
+    dap.scan(3)
+    dap.force("Go", True)
+    dap.scan(2)
+    assert (dap.tag("__tmd_on__Start"), dap.tag("__tmd_on__Begin")) == (50, 20)
+
+    # In CLICK, X002 and X003 swap nicknames and comments: each link keeps its name.
+    (project / "csv").mkdir()
+    CsvDataSource(str(project / "csv" / "nicknames.csv")).save_changes(
+        [
+            AddressRow("X", 2, nickname="Begin", comment="[link=Go, timed=100ms]"),
+            AddressRow("X", 3, nickname="Start", comment="[link=Cmd, timed=100ms]"),
+        ]
+    )
+    _rebuild(harness, {"X002": "Begin", "X003": "Start"})
+
+    harness.sim.run_time_edit()
+    harness.scheduler.run_ready()
+    dap.scan(1)
+
+    assert harness.sim.program_change is None
+    assert dap.tag("__tmd_on__Start") == 60, "Start's coil, on X003 now"
+    assert dap.tag("__tmd_on__Begin") == 30, "Begin's coil, on X002 now"
+    assert harness.sim.notice in (None, "")

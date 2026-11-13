@@ -21,9 +21,11 @@ The rule:
 - A force whose name now sits on another address stays on its address too
   when that is hardware (X, Y and the analog channels' DF registers). On
   internal memory it is released.
-- A link the program declares (in its feedback's comment) is on an address:
-  when that address has another name in the new program, the coil carries on
-  under it, timing included (``declared``).
+- A link the program declares (in its feedback's comment) follows its
+  feedback's name while the new program declares a link on that name: pyrung
+  carries the coil on by name. When the name is gone, or now sits on an
+  address the new program declares no link on, the coil carries on on its
+  address, under the address's new name, timing included (``declared``).
 
 Entries whose name is on no CLICK address are not the user's: pyrung carries
 them as they are.
@@ -75,23 +77,27 @@ class CarryNote:
 #: Drops that lose nothing: the Console already removed the entry, or the
 #: program now declares the bench link itself.
 _NO_LOSS = frozenset({"not forced", "no bench change", "in program"})
-#: A declared link's coil starts over because the new program has no link like
-#: the old one there: the program changed, so that is expected.
+#: A declared link's coil does not move because the new program has no link
+#: like the old one there: the program changed, so that is expected.
 _DECLARED_NO_LOSS = frozenset({"unlinked", "gone", "changed kind"})
 
 
-def _drop_line(entry: Mapping[str, Any]) -> str:
-    """An entry of pyrung's ``carried`` that could not be kept, in words; "" for none."""
+def _drop_line(entry: Mapping[str, Any], declared: Mapping[str, str]) -> str:
+    """An entry of pyrung's ``carried`` that could not be kept, in words; "" for none.
+
+    *declared* is the plan's: where each declared link's coil was to go.
+    """
     if not entry.get("dropped"):
         return ""
     reason = str(entry.get("reason") or "")
     kind = entry.get("kind")
     if reason in _NO_LOSS or (kind == "declared" and reason in _DECLARED_NO_LOSS):
         return ""
-    tag = entry.get("tag")
+    tag = str(entry.get("tag"))
     detail = entry.get("detail") or reason
     if kind == "declared":
-        return f"The program's link on {tag} starts over: {detail}."
+        onto = f" to {declared[tag]}" if tag in declared else ""
+        return f"The program's link on {tag} could not move{onto}: {detail}."
     what = {"force": "force", "cut": "cut"}.get(str(kind), "bench link")
     return f"Could not keep the {what} on {tag}: {detail}."
 
@@ -129,21 +135,6 @@ class CarryPlan:
     links: Mapping[str, LinkTarget | None] = field(default_factory=dict)
     declared: Mapping[str, str] = field(default_factory=dict)
     notes: tuple[CarryNote, ...] = ()
-
-    def _section(self, section: Section) -> tuple[str, ...]:
-        return tuple(note.text for note in self.notes if note.section == section)
-
-    @property
-    def released(self) -> tuple[str, ...]:
-        return self._section("released")
-
-    @property
-    def renamed(self) -> tuple[str, ...]:
-        return self._section("renamed")
-
-    @property
-    def moved(self) -> tuple[str, ...]:
-        return self._section("moved")
 
     def as_dap(self) -> dict[str, Any]:
         """The plan as ``pyrungReload`` takes it: ``{"forces", "links", "declared"}``."""
@@ -190,7 +181,7 @@ class CarryPlan:
             for note in self.notes
             if self._as_planned(note, outcome.get((note.kind, note.name)))
         ]
-        drops = [line for entry in entries if (line := _drop_line(entry))]
+        drops = [line for entry in entries if (line := _drop_line(entry, self.declared))]
         return " ".join(part for part in (_render(done, written=True), *drops) if part)
 
 
@@ -255,6 +246,7 @@ def plan_carry(
     links: Mapping[str, str | None],
     analog: Collection[str] = (),
     declared: Collection[str] = (),
+    linked: Collection[str] = (),
 ) -> CarryPlan:
     """Decide what a write does with each force and bench link pyrung lists.
 
@@ -263,7 +255,8 @@ def plan_carry(
     links (feedback name -> enable name, None for a cut). *analog* holds the
     DF addresses the I/O configuration gives analog channels. *declared* holds
     the feedbacks of the links the running program declares and runs (those
-    no bench change replaces).
+    no bench change replaces); *linked* the feedbacks the new program declares
+    links on.
     """
     before, after = _Program(old), _Program(new)
     carried_forces: dict[str, str | None] = {}
@@ -321,11 +314,13 @@ def plan_carry(
         moved.extend(CarryNote("link", feedback, "moved", text) for text in places)
     notes.extend(moved)
 
-    # A declared link's coil carries on where the program declares it now: on its
-    # address, under the address's new name. One whose name stays needs no plan.
+    # A declared link's coil follows its name while the new program declares a link
+    # on it: pyrung carries it on by name, with no plan. Otherwise it carries on on
+    # its address, under the address's new name.
     carried_declared: dict[str, str] = {}
     for feedback in declared:
         address = before.address(feedback)
-        if address is not None and (now_named := after.name(address)) != feedback:
-            carried_declared[feedback] = now_named
+        if address is None or feedback in linked or after.address(feedback) == address:
+            continue
+        carried_declared[feedback] = after.name(address)
     return CarryPlan(carried_forces, carried_links, carried_declared, tuple(notes))
