@@ -135,6 +135,8 @@ def main() -> None:
 
     if not args.command:
         parser.error("no command given")
+    if any(word in ("-s", "--session") or word.startswith("--session=") for word in args.command):
+        parser.error("put -s/--session before the command")
 
     # `help` handled locally — no server connection needed
     if args.command[0] == "help":

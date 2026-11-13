@@ -144,57 +144,106 @@ def test_an_unclosed_quote_sends_nothing(monkeypatch, store, capsys):
     assert "No closing quotation" in capsys.readouterr().err
 
 
-def _documented_examples() -> list[list[str]]:
-    """The shell words of every ``clicknick-cli ...`` example in the module docstring."""
-    examples = []
-    for line in cli.__doc__.splitlines():
-        line = line.strip()
-        if line.startswith("clicknick-cli "):
-            words = shlex.split(line, comments=True)[1:]
-            if words not in (["list"], ["help"]):  # answered without the app
-                examples.append(words)
-    return examples
+# Each example of the module docstring, as typed, and the command it sends.
+_EXAMPLES = {
+    "ping": "ping",
+    "get ExampleTag": "get ExampleTag",
+    "set ExampleTag nickname RenamedTag": "set ExampleTag nickname RenamedTag",
+    'set DS1 comment "Example comment"': "set DS1 comment 'Example comment'",
+    "unused C": "unused C",
+    "unused DS 3": "unused DS 3",
+    "unused C100": "unused C100",
+    "unused C1031 C1414": "unused C1031 C1414",
+    "tag show ExampleTag": "tag show ExampleTag",
+    "tag set-flag ExampleTag external": "tag set-flag ExampleTag external",
+    'tag set-choices Mode "Off:0" "Manual:1" "Auto:2"': "tag set-choices Mode Off:0 Manual:1 Auto:2",
+    "tag set-range Temp_PV 0 100": "tag set-range Temp_PV 0 100",
+    "tag set-uom Temp_PV degC": "tag set-uom Temp_PV degC",
+    "tag set-physical Clamp_FB Clamp --on-delay 50ms --off-delay 200ms": (
+        "tag set-physical Clamp_FB Clamp --on-delay 50ms --off-delay 200ms"
+    ),
+    "tag apply": "tag apply",
+    "rung list": "rung list",
+    "rung list main": "rung list main",
+    "rung apply": "rung apply",
+    "rung apply main": "rung apply main",
+    "rung apply main --select r3": "rung apply main --select r3",
+    "check": "check",
+    "backup": "backup",
+    "restore": "restore",
+    "restore list": "restore list",
+    "restore 20261112T193005Z": "restore 20261112T193005Z",
+    "prompt-save": "prompt-save",
+}
 
 
-@pytest.mark.parametrize("words", _documented_examples(), ids=lambda words: " ".join(words)[:60])
-def test_every_documented_example_reaches_the_command(monkeypatch, words):
-    """Each example, split as a shell does, is sent whole: options included."""
+def _main(monkeypatch, *argv: str) -> list[tuple[str | None, str]]:
     sent: list[tuple[str | None, str]] = []
-
-    def _send(label, command):
-        sent.append((label, command))
-        return True, "ok"
-
-    monkeypatch.setattr(cli, "send_command", _send)
-    monkeypatch.setattr(cli, "find_sessions", lambda: [])
-    monkeypatch.setattr(sys, "argv", ["clicknick-cli", *words])
-    with pytest.raises(SystemExit) as exited:
+    monkeypatch.setattr(
+        cli, "send_command", lambda label, text: (sent.append((label, text)), (True, ""))[1]
+    )
+    monkeypatch.setattr(sys, "argv", ["clicknick-cli", *argv])
+    with pytest.raises(SystemExit):
         cli.main()
-    assert exited.value.code in (0, None)
-    session = None
-    if words[0] in ("-s", "--session"):
-        session, words = words[1], words[2:]
-    expected = [cli.quote_words(part) for part in cli._commands(words, None)]
-    assert sent == [(session, command) for command in expected]
-    assert expected  # the example had a command
+    return sent
+
+
+def test_the_table_holds_every_documented_example():
+    documented = {
+        line.strip().removeprefix("clicknick-cli ").split(" #")[0].strip()
+        for line in cli.__doc__.splitlines()
+        if line.strip().startswith("clicknick-cli ")
+    }
+    local = {
+        "list",
+        "help",
+        "-s MyProject get DS1",
+        '"set C1 nickname Pump ; set C2 nickname Valve"',
+    }
+    assert documented - local == set(_EXAMPLES)
+
+
+@pytest.mark.parametrize(("line", "expected"), _EXAMPLES.items())
+def test_every_documented_example_is_sent_as_written(monkeypatch, line, expected):
+    assert _main(monkeypatch, *shlex.split(line)) == [(None, expected)]
 
 
 @pytest.mark.parametrize(
-    "words",
+    ("argv", "label", "expected"),
     [
-        ["rung", "apply", "main", "--select", "r3,r7"],
-        ["tag", "set-physical", "Clamp_FB", "Clamp", "--system", "S"],
-        ["tag", "set-physical", "Clamp_FB", "Clamp", "--on-delay", "50ms", "--off-delay", "200ms"],
-        ["--session", "MyProject", "rung", "apply", "--select", "r3"],
+        (["rung", "apply", "main", "--select", "r3,r7"], None, "rung apply main --select r3,r7"),
+        (
+            ["tag", "set-physical", "Clamp_FB", "Clamp", "--system", "S"],
+            None,
+            "tag set-physical Clamp_FB Clamp --system S",
+        ),
+        (
+            ["--session", "MyProject", "rung", "apply", "--select", "r3"],
+            "MyProject",
+            "rung apply --select r3",
+        ),
+        (["-s", "MyProject", "get", "DS1"], "MyProject", "get DS1"),
+        (["get", "-h"], None, "get -h"),
     ],
 )
-def test_an_option_given_as_its_own_word_is_part_of_the_command(monkeypatch, words):
+def test_an_option_given_as_its_own_word_is_part_of_the_command(monkeypatch, argv, label, expected):
+    assert _main(monkeypatch, *argv) == [(label, expected)]
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["set", "DS1", "comment", "x", "-s", "MyProject"],
+        ["get", "DS1", "--session", "MyProject"],
+        ["set", "C1", "comment", "a", ";", "get", "C1", "-s", "MyProject"],
+    ],
+)
+def test_a_session_option_after_the_command_is_refused(monkeypatch, capsys, argv):
     sent: list[str] = []
-    monkeypatch.setattr(
-        cli, "send_command", lambda _label, command: (sent.append(command), (True, ""))[1]
-    )
-    monkeypatch.setattr(sys, "argv", ["clicknick-cli", *words])
-    with pytest.raises(SystemExit):
+    monkeypatch.setattr(cli, "send_command", lambda label, text: (sent.append(text), (True, ""))[1])
+    monkeypatch.setattr(sys, "argv", ["clicknick-cli", *argv])
+    with pytest.raises(SystemExit) as exited:
         cli.main()
-    command = words[2:] if words[0] == "--session" else words
-    assert sent == [cli.quote_words(command)]
+    assert exited.value.code == 2
+    assert sent == []
+    assert "put -s/--session before the command" in capsys.readouterr().err
