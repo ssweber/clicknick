@@ -243,9 +243,9 @@ def test_restore_takes_an_older_backup_by_name(tmp_path: Path, monkeypatch):
 
     restored = restore_plc_source(tmp_path, "20261112T090000Z")
 
-    # src/plc held B, which is already the newest backup.
+    # src/plc held B, which stays the newest backup: no new one is made.
     assert restored == PlcRestore(
-        tmp_path / "backup" / "older" / "20261112T090000Z" / "src" / "plc", 1, False
+        tmp_path / "backup" / "older" / "20261112T090000Z" / "src" / "plc", 1, True
     )
     assert older_plc_backups(tmp_path) == ["20261112T090000Z"]
     assert (tmp_path / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "edits A\n"
@@ -357,6 +357,91 @@ def test_restore_of_clean_source_makes_no_backup(tmp_path: Path, monkeypatch):
     assert older_plc_backups(tmp_path) == []
 
 
+def _full_set(project_dir: Path) -> Path:
+    """Older O1-O4, newest N, and edits C in src/plc that no backup holds."""
+    source = project_dir / "src" / "plc"
+    _generate(project_dir, "generated\n")
+    for text in ("O1\n", "O2\n", "O3\n", "O4\n", "N\n"):
+        (source / "main.py").write_text(text, encoding="utf-8")
+        _generate(project_dir, "generated\n")
+    (source / "main.py").write_text("C\n", encoding="utf-8")
+    return source
+
+
+def _every_backup(project_dir: Path) -> list[str]:
+    older = [_older_text(project_dir, name) for name in older_plc_backups(project_dir)]
+    return [_main(project_dir / "backup" / "src" / "plc"), *older]
+
+
+def test_repeated_restores_keep_every_backup(tmp_path: Path, monkeypatch):
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC))
+    source = _full_set(tmp_path)
+
+    first = restore_plc_source(tmp_path)
+    assert _main(source) == "N\n"
+    assert sorted(_every_backup(tmp_path)) == ["C\n", "N\n", "O1\n", "O2\n", "O3\n", "O4\n"]
+
+    for expected in ("C\n", "N\n", "C\n"):
+        restored = restore_plc_source(tmp_path)
+        assert _main(source) == expected
+        assert restored.restored_from.is_dir()
+
+    # Each tree src/plc held was already a backup: none is made, none goes.
+    assert first.edits_backed_up
+    assert sorted(_every_backup(tmp_path)) == ["C\n", "N\n", "O1\n", "O2\n", "O3\n", "O4\n"]
+
+
+def test_a_backup_an_older_one_holds_becomes_the_newest(tmp_path: Path, monkeypatch):
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC))
+    _back_up(tmp_path, "edits A\n")
+    _back_up(tmp_path, "edits B\n")
+    _back_up(tmp_path, "edits C\n")
+
+    _back_up(tmp_path, "edits A\n")
+
+    assert _main(tmp_path / "backup" / "src" / "plc") == "edits A\n"
+    assert [_older_text(tmp_path, name) for name in older_plc_backups(tmp_path)] == [
+        "edits C\n",
+        "edits B\n",
+    ]
+
+
+def test_a_failed_restore_of_the_oldest_keeps_every_backup(tmp_path: Path, monkeypatch):
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC))
+    source = _full_set(tmp_path)
+    oldest = older_plc_backups(tmp_path)[-1]
+    replace_tree = project_workspace._replace_tree
+
+    def failing(tree: Path, destination: Path) -> int:
+        if destination == source:
+            raise OSError("src/plc in use")
+        return replace_tree(tree, destination)
+
+    monkeypatch.setattr(project_workspace, "_replace_tree", failing)
+    with pytest.raises(OSError, match="src/plc in use"):
+        restore_plc_source(tmp_path, oldest)
+
+    assert _main(source) == "C\n"
+    assert sorted(_every_backup(tmp_path)) == ["C\n", "N\n", "O1\n", "O2\n", "O3\n", "O4\n"]
+
+
+def test_restoring_the_oldest_keeps_its_backup(tmp_path: Path, monkeypatch):
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC))
+    source = _full_set(tmp_path)
+    oldest = older_plc_backups(tmp_path)[-1]
+
+    restored = restore_plc_source(tmp_path, oldest)
+
+    assert _main(source) == "O1\n"
+    assert restored.restored_from.is_dir()
+    assert _main(restored.restored_from) == "O1\n"
+    # Six for now; the next backup trims to five.
+    assert sorted(_every_backup(tmp_path)) == ["C\n", "N\n", "O1\n", "O2\n", "O3\n", "O4\n"]
+    (source / "main.py").write_text("D\n", encoding="utf-8")
+    backup_plc_source(tmp_path)
+    assert sorted(_every_backup(tmp_path)) == ["C\n", "D\n", "N\n", "O3\n", "O4\n"]
+
+
 def test_backups_keep_their_order_when_the_clocks_go_back(tmp_path: Path, monkeypatch):
     summer = dt.timezone(dt.timedelta(hours=-4))
     winter = dt.timezone(dt.timedelta(hours=-5))
@@ -397,9 +482,9 @@ def test_a_backup_pruned_part_way_is_no_longer_listed(tmp_path: Path, monkeypatc
     deleted: list[Path] = []
     rmtree = shutil.rmtree
 
-    def delete_part(path, ignore_errors=False):
+    def delete_part(path, *args, **kwargs):
         if not Path(path).name.startswith(".pruning-"):
-            return rmtree(path, ignore_errors=ignore_errors)
+            return rmtree(path, *args, **kwargs)
         deleted.append(Path(path))
         (Path(path) / "src" / "plc" / "main.py").unlink()  # then stops
         return None
