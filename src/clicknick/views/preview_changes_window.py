@@ -1622,7 +1622,7 @@ class PreviewChangesWindow(tk.Toplevel):
         return (
             f"{skipped} skipped {what} in the workspace source. When CLICK saves, the "
             "workspace goes back to CLICK's version and skipped edits are kept only in "
-            "backup/src/plc."
+            "backup/src/plc (clicknick-cli restore list for older ones)."
         )
 
     def _update_notice(self) -> None:
@@ -1647,8 +1647,9 @@ class PreviewChangesWindow(tk.Toplevel):
                     "CLICK was saved before all of this was pasted, so the workspace is back to "
                     f"CLICK's version. This window still holds the proposal exported at "
                     f"{self._read_at} and can keep pasting it.\n"
-                    "The edited source is kept in backup/src/plc: run clicknick-cli restore, "
-                    "then Preview Changes, to work on it again."
+                    "The edited source is kept in backup/src/plc (clicknick-cli restore list "
+                    "for older ones): run clicknick-cli restore, then Preview Changes, to work "
+                    "on it again."
                 )
         elif skipped := self._skipped_edits_line():
             lines.append(skipped)
@@ -1964,7 +1965,10 @@ class PreviewChangesWindow(tk.Toplevel):
                 f"{'it' if skipped == 1 else 'them'}"
             )
             if self._source_dir is not None:
-                message += " (skipped edits are in backup/src/plc)"
+                message += (
+                    " (skipped edits are in backup/src/plc; clicknick-cli restore list for "
+                    "older ones)"
+                )
         if left_out := self._left_out_names():
             verb = "was" if len(left_out) == 1 else "were"
             message += f"; {', '.join(left_out)} could not be read and {verb} left out"

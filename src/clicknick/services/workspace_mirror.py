@@ -17,6 +17,7 @@ from ..models.name_validation import validate_click_name
 from .project_workspace import (
     PLC_PACKAGE_PATH,
     backup_plc_source,
+    plc_backup_time,
     plc_source_is_modified,
 )
 
@@ -359,7 +360,8 @@ def sync_workspace_to_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
     The one exception is ``csv/legacy_encodings.json``, which goes when the
     active workspace has none. A mirror whose ``src/plc`` holds work beyond its
     last generation keeps it: that tree is snapshotted to the mirror's
-    ``backup/src/plc`` and left in place, and the next build regenerates it.
+    ``backup/src/plc`` (the backup there moves to ``backup/older``) and left
+    in place, and the next build regenerates it.
     When the active workspace's ``src/plc`` holds edits too, nothing changes and
     ValueError says so: one of the two would be left behind.
     """
@@ -413,16 +415,6 @@ def sync_workspace_to_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
     return MirrorSyncResult(copied, mirror, kept_source=keep_mirror_source)
 
 
-def _latest_mtime(root: Path) -> dt.datetime | None:
-    try:
-        timestamps = [path.stat().st_mtime for path in root.rglob("*") if path.is_file()]
-    except OSError:
-        return None
-    if not timestamps:
-        return None
-    return dt.datetime.fromtimestamp(max(timestamps)).astimezone()
-
-
 def get_workspace_directory_info(
     config: ProjectWorkspaceConfig | None, generated_dir: Path | None
 ) -> WorkspaceDirectoryInfo:
@@ -438,7 +430,7 @@ def get_workspace_directory_info(
             last_regenerated_at = dt.datetime.fromtimestamp(state_file.stat().st_mtime).astimezone()
         except OSError:
             pass
-        last_backup_at = _latest_mtime(generated_dir / "backup" / "src" / "plc")
+        last_backup_at = plc_backup_time(generated_dir)
     return WorkspaceDirectoryInfo(
         generated_dir=generated_dir,
         config_path=config_path,

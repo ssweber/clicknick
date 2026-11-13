@@ -10,8 +10,8 @@ Grammar (one command per connection)::
     get  <ID>                          -> show current row fields + dirty flag
     set  <ID> <field> <value...>       -> edit a field (appears as a staged change)
     unused <type-or-addr>... [count]   -> free address(es); one per hint
-    backup                             -> snapshot src/plc for recovery
-    restore                            -> replace src/plc from that snapshot
+    backup                             -> snapshot src/plc for recovery (keeps the last 5)
+    restore [<time>|list]              -> replace src/plc from the newest or an older snapshot; list them
     check                              -> lint the editable pyrung proposal
     tag  <subcommand> ...              -> annotation metadata operations
     rung <subcommand> ...              -> program listing / apply
@@ -369,7 +369,12 @@ data:
 
 workspace:
   backup                              -> snapshot src/plc to backup/src/plc
+                                         (the one before moves to backup/older/<time>; 5 kept)
   restore                             -> replace src/plc from backup/src/plc
+                                         (edits in src/plc no backup holds are backed up first)
+  restore list                        -> list the older backups, newest first
+  restore <time>                      -> replace src/plc from backup/older/<time>
+                                         (a backup taken again takes a new name)
 
 analysis:
   check                               -> lint src/plc (Tools -> Check Program rules)
@@ -496,21 +501,44 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
         return _cmd_unused(ctx, hints, count)
 
     if verb in ("backup", "restore"):
-        if len(parts) != 1:
-            raise ValueError(f"usage: {verb}")
+        if verb == "backup" and len(parts) != 1:
+            raise ValueError("usage: backup")
+        if verb == "restore" and len(parts) > 2:
+            raise ValueError("usage: restore [<time>|list]")
 
-        from ..services.project_workspace import backup_plc_source, restore_plc_source
+        from ..services.project_workspace import (
+            backup_plc_source,
+            older_plc_backup_time,
+            older_plc_backups,
+            plc_backup_dir,
+            restore_plc_source,
+        )
         from .rung_commands import _get_project_dir
 
         project_dir = _get_project_dir(ctx)
+        note = ""
         if verb == "backup":
             path, file_count = backup_plc_source(project_dir)
             action, preposition = "backed up", "to"
+        elif parts[1:] == ["list"]:
+            names = older_plc_backups(project_dir)
+            listing = (
+                "\n".join(
+                    f"{name}  (taken {older_plc_backup_time(name).astimezone():%Y-%m-%d %H:%M:%S})"
+                    for name in names
+                )
+                if names
+                else "no older backups"
+            )
+            return listing + _status_footer(ctx)
         else:
-            path, file_count = restore_plc_source(project_dir)
+            restored = restore_plc_source(project_dir, *parts[1:])
+            path, file_count = restored.restored_from, restored.file_count
             action, preposition = "restored", "from"
+            if restored.edits_backed_up:
+                note = f"; the edits that were in src/plc are in {plc_backup_dir(project_dir)}"
         files = "source file" if file_count == 1 else "source files"
-        return f"OK: {action} {file_count} {files} {preposition} {path}" + _status_footer(ctx)
+        return f"OK: {action} {file_count} {files} {preposition} {path}{note}" + _status_footer(ctx)
 
     if verb == "check":
         if len(parts) != 1:

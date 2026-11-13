@@ -225,6 +225,22 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   `clicknick-cli` finds tags by the workspace's names (`project_tag_to_addr_key`)
 - `csv/analog_inputs.json` records the analog inputs a workspace was generated with; `tag apply` regenerates
   its baseline `tags.py` with them, never from CLICK's Project.ini at the time it runs
+- `backup/src/plc` is the newest backup of `src/plc` (taken before a build replaces edited source, on
+  `clicknick-cli backup`, and when a chosen workspace's edits are kept). Each new backup first moves it to
+  `backup/older/<YYYYMMDDTHHMMSSZ>/src/plc`, named by the time it was taken (`backup/backup-time.txt`; when
+  that cannot be written, the backup's files are dated to it instead). Older backups are named in UTC, so a
+  daylight-saving or time-zone change does not reorder them. A tree that any kept backup holds makes no new
+  one: that backup becomes the newest. The oldest go so that 5 are kept in all (`KEPT_PLC_BACKUPS`), each
+  renamed out of the listing before it is deleted, and only once the whole backup or restore succeeded.
+  Nothing refuses a save or a backup over this
+- `clicknick-cli restore` takes the newest backup, `restore <time>` an older one. It copies the chosen backup
+  aside, then backs up `src/plc` if it differs from both the last generation and that backup, then replaces
+  `src/plc`. Its pruning keeps the restored backup, so six may be kept until the next backup.
+  `tests/test_backup_oracle.py` plays random edits, builds, backups and restores, some with a copy, move,
+  time-file write or prune that fails, and checks after each: one that succeeded left the edits `src/plc`
+  held as the newest backup (or in `src/plc`, as the backup it restored); one that failed left `src/plc` as
+  it was and deleted no backup; a tree once in a backup, or in `src/plc` with edits as one began, is gone
+  only when 5 kept backups were the newest after it
 
 ### Preview Changes
 - The one window for getting ladder into CLICK (`views/preview_changes_window.py`; it was called Guided Paste):

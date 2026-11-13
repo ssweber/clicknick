@@ -1483,6 +1483,7 @@ def test_folder_emptied_by_a_click_save_keeps_what_was_read(tmp_path: Path, copi
     notice = window._notice_lbl.configure.call_args.kwargs["text"]
     assert "still holds the proposal exported at" in notice
     assert "clicknick-cli restore" in notice
+    assert "(clicknick-cli restore list for older ones)" in notice
     window._notice_lbl.pack.assert_called()
 
 
@@ -1880,7 +1881,10 @@ def test_skipped_workspace_edits_are_warned_of(monkeypatch, tmp_path: Path) -> N
     notice = window._notice_lbl.configure.call_args.kwargs["text"]
     assert notice.startswith("1 skipped difference is an edit in the workspace source.")
     assert "kept only in backup/src/plc" in notice
-    assert window._pasted_message().endswith("(skipped edits are in backup/src/plc)")
+    assert "kept only in backup/src/plc (clicknick-cli restore list for older ones)" in notice
+    assert window._pasted_message().endswith(
+        "(skipped edits are in backup/src/plc; clicknick-cli restore list for older ones)"
+    )
 
 
 # ---------------------------------------------------------------------------

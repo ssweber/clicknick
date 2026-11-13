@@ -28,6 +28,7 @@ from clicknick.services.analysis_service import (
 from clicknick.services.project_workspace import (
     backup_plc_source,
     generated_source_state_path,
+    older_plc_backups,
     plc_source_is_modified,
 )
 
@@ -687,6 +688,26 @@ def test_dirty_source_is_snapshotted_before_click_regeneration(tmp_path):
     assert (persist / "backup" / "src" / "plc" / "main.py").read_text(
         encoding="utf-8"
     ) == "unfinished work\n"
+
+
+def test_edits_backed_up_by_one_save_survive_edits_backed_up_by_the_next(tmp_path):
+    persist = tmp_path / "pyrung_project"
+    _publish_generated_project(_staged_project(tmp_path / "first", "generated one\n"), persist)
+    (persist / "src" / "plc" / "main.py").write_text("edits A, half pasted\n", encoding="utf-8")
+    _publish_generated_project(_staged_project(tmp_path / "second", "generated two\n"), persist)
+    # Edits B on the regenerated source, without restoring A first.
+    (persist / "src" / "plc" / "main.py").write_text("edits B\n", encoding="utf-8")
+
+    _publish_generated_project(_staged_project(tmp_path / "third", "generated three\n"), persist)
+
+    assert (persist / "backup" / "src" / "plc" / "main.py").read_text(
+        encoding="utf-8"
+    ) == "edits B\n"
+    (older,) = older_plc_backups(persist)
+    assert (persist / "backup" / "older" / older / "src" / "plc" / "main.py").read_text(
+        encoding="utf-8"
+    ) == "edits A, half pasted\n"
+    assert generated_source_state_path(persist).is_file()
 
 
 def test_regeneration_preserves_workspace_owned_files(tmp_path):
