@@ -214,10 +214,10 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - `clicknick-cli restore` takes the newest backup, `restore <time>` an older one. It copies the chosen backup
   aside, then backs up `src/plc` if it differs from both the last generation and that backup, then replaces
   `src/plc`. Its pruning keeps the restored backup, so six may be kept until the next backup
-- A backup or restore that succeeds leaves the edits `src/plc` held as the newest backup (or in `src/plc`, as the
-  backup it restored). A tree once in a backup, or in `src/plc` with edits as one began, is gone only when 5
-  kept backups were the newest after it. `tests/test_backup_oracle.py` checks these rules over random edits,
-  builds, backups and restores with injected copy, move, time-file and prune failures
+- A build, backup or restore that succeeds leaves the edits `src/plc` held as the newest backup (or in `src/plc`,
+  as the backup it restored). A tree once in a backup, or in `src/plc` with edits as one began, is gone only
+  when 5 kept backups were the newest after it. `tests/test_backup_oracle.py` checks these rules over random
+  edits, builds, backups and restores with injected copy, move, time-file and prune failures
 - Each workspace folder has one lock (`workspace_writing`). A build's publish holds it from its backup of
   edits to the generation record; `backup`, `restore` and choosing a workspace hold it throughout. The
   build waits for it; the others run on the Tk thread and are refused (`WorkspaceBusyError`) instead of
