@@ -88,3 +88,19 @@ def test_a_short_temp_path_is_given_in_its_long_form(monkeypatch, tmp_path):
 
     assert click_temp.temp_root() == long_root
     assert click_dataview_folder(HWND) == folder / "DataView"
+
+
+def test_only_scr_n_tmp_names_are_program_files(tmp_path: Path) -> None:
+    from clicknick.utils.click_temp import scr_files
+
+    for name in (
+        "Scr1.tmp",
+        "SCR10.TMP",
+        "Scr2.tmp",
+        "Scr2.tmp~RFcf1eba5.TMP",
+        "Scr.tmp",
+        "Scr3.tmp.bak",
+    ):
+        (tmp_path / name).write_text("x", encoding="utf-8")
+
+    assert [p.name for p in scr_files(tmp_path)] == ["Scr1.tmp", "SCR10.TMP", "Scr2.tmp"]

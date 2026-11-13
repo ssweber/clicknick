@@ -81,5 +81,5 @@ def scr_files(folder: Path) -> list[Path]:
     """
     return sorted(
         (p for p in folder.glob("Scr*") if _SCR_NAME.fullmatch(p.name)),
-        key=lambda p: p.name,
+        key=lambda p: p.name.casefold(),
     )
