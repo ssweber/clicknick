@@ -938,12 +938,20 @@ class TestOutlineFilter:
             "Tank_Pump1_Run",
         ]
 
-    def test_it_shows_what_rename_changes(self):
-        base = "Tank_Pump1"
-        pattern, _ = build_rename_pattern("Tank_", "Pump1", False)
-        renamed = [n for n in self.NICKNAMES if re.match(pattern, n)]
+    @pytest.mark.parametrize(
+        ("prefix", "text", "nicknames"),
+        [
+            ("Tank_", "Pump1", ["Tank_Pump1", "Tank_Pump1_Run", "Tank_Pump10", "Tank_Pump10_Run"]),
+            ("Tank_", "Pump1", ["Tank_pump1", "Tank_Pump1_run", "tank_Pump1", "Tank_Pump1_"]),
+            ("", "Tank", ["Tank", "Tank_", "Tank_A", "Tank__A", "Tanks", "tank_A"]),
+            ("", "Tank_Pump1", ["Tank_Pump1", "Tank_Pump1_Run", "Tank_Pump1X"]),
+        ],
+    )
+    def test_it_shows_what_rename_changes(self, prefix, text, nicknames):
+        pattern, _ = build_rename_pattern(prefix, text, False)
+        renamed = [n for n in nicknames if re.match(pattern, n)]
 
-        assert renamed == [n for n in self.NICKNAMES if nickname_under(n, base)]
+        assert renamed == [n for n in nicknames if nickname_under(n, prefix + text)]
 
     def test_a_folder_without_its_own_nickname_filters_by_prefix(self):
         assert outline_filter("Tank_", self.NICKNAMES) == "^Tank_"

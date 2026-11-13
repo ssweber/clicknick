@@ -116,6 +116,7 @@ class FakePanel:
         self.name = name
         self.file_path = Path(f"{name}.cdv")
         self.is_dirty = False
+        self.reopen_rejected_edit = lambda: False
         # No cell is being edited
         self.sheet = SimpleNamespace(MT=SimpleNamespace(text_editor=SimpleNamespace(open=False)))
         self._poll_addresses = poll_addresses or []

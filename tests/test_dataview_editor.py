@@ -260,6 +260,11 @@ def test_a_failed_save_closes_neither_the_tab_nor_the_window(editor, dialogs, tm
     panel.add_address("DS1")
     shutil.rmtree(path.parent)  # e.g. CLICK closed and removed its temp folder
 
+    # The Save As that replaces the dead folder cannot write there either
+    blocked = tmp_path / "blocked"
+    (blocked / "DataView1.cdv").mkdir(parents=True)
+    dialogs.folders.extend([str(blocked), str(blocked)])
+    dialogs.yes_no.extend([True, True])  # overwrite?
     dialogs.yes_no_cancel.append(True)
     assert window._on_tab_close_request(0) is False
     assert len(dialogs.errors) == 1 and "DataView1" in dialogs.errors[0]
@@ -866,6 +871,43 @@ def test_open_and_save_as_start_in_a_folder_that_exists(
     shown.mkdir()
     window.shared_data._get_folder = lambda: shown
     assert window._dialog_folder() == shown
+
+
+def test_write_stops_when_a_refusal_has_not_reopened_its_cell_yet(
+    editor, dialogs, tk_root, tmp_path, monkeypatch
+):
+    window, panel, _path = _typed(
+        editor, tk_root, tmp_path, monkeypatch, row=0, column=COL_NEW_VALUE, text="abc"
+    )
+    panel.sheet.MT.close_text_editor(SimpleNamespace(keysym="FocusOut"))
+    assert not panel.sheet.MT.text_editor.open  # the reopen is still queued
+    sent = []
+    monkeypatch.setattr(window, "_write_payload", sent.append)
+
+    window._write_all()
+
+    assert sent == []
+    assert dialogs.errors == ["X001: Must be 0 or 1"]
+
+
+def test_save_of_a_tab_in_a_deleted_folder_asks_where_to_save(
+    editor, dialogs, tk_root, tmp_path, monkeypatch
+):
+    path = _copy(tmp_path)
+    window = editor()
+    window._open_dataview(path)
+    tk_root.update()
+    (panel,) = window._iter_open_panels()
+    shutil.rmtree(path.parent)  # CLICK deleted its temp folder
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    dialogs.folders.append(str(target))
+
+    window._save_current()
+
+    assert not path.parent.exists()
+    assert panel.file_path == target / f"{panel.name}.cdv"
+    assert panel.file_path.exists()
 
 
 def test_text_typed_in_a_real_cell_is_committed(editor, dialogs, tk_root, tmp_path, monkeypatch):

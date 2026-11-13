@@ -171,8 +171,8 @@ class AddressPanel(ttk.Frame):
             # An item of the Outline: the nickname and those under it
             if not arg:
                 return None
-            base = arg.lower()
-            return {row.addr_key for row in self.rows if nickname_under(row.nickname.lower(), base)}
+            # Case-sensitive, like Rename
+            return {row.addr_key for row in self.rows if nickname_under(row.nickname, arg)}
 
         svc = self._get_analysis()
         if svc is None or not svc.is_available:
@@ -193,7 +193,7 @@ class AddressPanel(ttk.Frame):
     def _apply_filters(self) -> None:
         """Apply current filter settings using tksheet's display_rows().
 
-        Supports analysis prefixes (input:, output:, upstream:Tag, etc.)
+        Supports analysis prefixes (input:, output:, upstream:Tag, tree:Nickname, etc.)
         and anchor patterns (^pattern, pattern$, ^pattern$).
         """
         # Save current selection before changing filter

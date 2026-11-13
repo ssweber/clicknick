@@ -405,13 +405,15 @@ class DataviewEditorWindow(tk.Toplevel):
         before switching to CLICK is still in the editor.
         """
         mt = panel.sheet.MT
+        # A refused New Value whose cell has not reopened yet is still an open edit
+        if panel.reopen_rejected_edit():
+            return False
         if not mt.text_editor.open:
             return True
         mt.mouseclick_outside_editor_or_dropdown_all_canvases()
         if mt.text_editor.open:
             self.focus_force()
             mt.mouseclick_outside_editor_or_dropdown_all_canvases()
-        # A New Value that does not validate is said and reopened: nothing is written
         if panel.reopen_rejected_edit():
             return False
         if mt.text_editor.open:
@@ -607,7 +609,8 @@ class DataviewEditorWindow(tk.Toplevel):
 
     def _save_panel(self, panel: DataviewPanel) -> bool:
         """Save a dataview to its file, or ask where to save an untitled one."""
-        if panel.file_path is None:
+        # CLICK deletes its temp folder when the window closes: ask where to save instead
+        if panel.file_path is None or not panel.file_path.parent.is_dir():
             return self._save_as(panel)
         saved = panel.save()
         self._update_tab_title(panel)
