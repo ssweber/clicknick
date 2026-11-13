@@ -12,168 +12,160 @@
 
 ### Added
 
-- **Simulate** runs the saved program on your CLICK hardware as drawn from System Configuration, with input switches, output LEDs, analog values, forces, STOP / STEP / RUN with speed control, and a Modbus server on 127.0.0.1:502 that the Data View editor joins with a Force column.
-- Right-click a Simulator point to ask **Why**, **How** or **Show simplified logic** in the Console, where panel actions also echo as the matching commands, and double-click an output to force it.
-- The Simulator draws X and Y addresses the program uses but no module provides on a dashed card at the position they belong to (X2xx on "Expansion 2 - unassigned"), between the real modules; X and Y of one position share a card. They have switches and LEDs like any other point.
-- Feedback links let an output drive an input on the Simulator, like a contactor's aux contact or a limit switch: drag from an output's label to an input's, or the other way, to add one for the session, cut it to simulate a failed sensor, or save it to the input's comment for the program.
-- Copying rungs that use CLICK v4 instructions is refused when the CLICK window is older, instead of letting CLICK silently change them on paste.
-- Review Changes marks which programs differ from CLICK's last save, steps through only those, and lists subroutines CLICK has that the folder doesn't.
-- Review Changes shows the selected program's rung diff against CLICK's last save and steps through just the rungs that differ, saying which rung to paste over or delete in CLICK, or copies whole programs when you switch **Copy** to **Whole program**.
-- Review Changes' rung diff highlights only the lines and words that changed, like GitHub Desktop, with one unchanged rung on each side of a difference and separators whose arrows show more.
-- Review Changes lets you take or skip each difference: untick **Take this difference** or click its +/- gutter and CLICK keeps its rungs there, the steps are numbered around it, **Whole program** copies the program as you chose it, and ◀ ▶ (Alt+Up/Down or F7/Shift+F7) go through every difference across programs. A blue bar beside the +/- gutter marks the difference being looked at.
-- **Ladder > Compare with > Folder** (it was **Open in Guided Paste**) compares CLICK's program with a folder of ladder CSVs, such as a copy of another PLC, so you can take only some of its differences; the title and the diff say which folder the changes come from.
-- **Ladder > Compare with > Other CLICK window** compares CLICK's program with what another open CLICK window last saved, such as a sister PLC's project: its nicknames start out skipped and the programs only this CLICK has start out kept, and **Refresh** takes its latest save.
-- ClickNick warns when CLICK holds rungs an older ClickNick pasted in a form CLICK runs differently.
-  - Review Changes shows those programs in red until you paste them again.
-  - `clicknick-cli program save` lists them.
-- ClickNick names each rung it cannot read from CLICK, such as a compare CLICK's own dialog refuses, and asks you to paste it again (the build stopped with `WriterError`).
-  - The workspace holds an empty rung in its place. The rest of the program builds.
-  - The Simulator refuses to start until you paste it again.
-  - Review Changes shows the program in red and copies it only whole (it left the program out).
-  - Review Changes refuses to copy it while the folder holds an empty rung. Paste that rung from your own copy of the program first.
-  - Saving the clipboard to CSV names the rung it cannot read (it showed `WriterError`).
-- Review Changes' **New Subroutine** button opens CLICK's New Subroutine Program window with the name filled in, for any subroutine CLICK's last save doesn't show it already has.
-- **Tools > Repairs > Upgrade Project** rewrites comments in pyrung's old `profile=` form into the current keys and stages them on the Changed tab for you to review and Sync, as `clicknick-cli tag upgrade-project` does.
-- When the build stops on a comment in the old form, the Workspace status says to run **Tools > Repairs > Upgrade Project** (it said "Build failed").
+#### Simulate
+
+- **Simulate** runs CLICK's last save on your CLICK hardware as drawn from System Configuration, with input switches, output LEDs, analog values, forces (double-click an output), STOP / STEP / RUN with speed control, and a Modbus server on 127.0.0.1 (port 502 by default) that the Data View editor joins with a Force column.
+- X and Y addresses the program uses but no module provides get switches and LEDs on a dashed card at the position they belong to (X2xx on "Expansion 2 - unassigned"), between the real modules.
+- Feedback links let an output drive an input, like a contactor's aux contact or a limit switch: drag between an output's label and an input's to add one for the session, cut it to simulate a failed sensor, or save it to the input's comment for the program.
+- When you save in CLICK or edit the workspace's ladder source, the Simulator offers to write the new program as CLICK does for a running PLC: in RUN, **RUN Time Edit** keeps every value, timer and force, and **Stop and Write** goes through STOP, keeping retentive values and forces; in STOP or while stepping, **Write** keeps values and the mode. A save that does not convert leaves the old program running, and the Simulator says why.
+- Before a write the Simulator lists the forces it will release and the bench links it will drop or move, and afterwards says what was kept and why anything was not: forces on inputs and outputs stay on their addresses, a force on internal memory is released when its nickname moves to another address, and bench links follow their nicknames.
+- **Restart** on the Simulator's toolbar starts the simulation over on what the workspace holds now, from power-on values or your PLC data file, with your mode, switches, forces and bench links. It is also offered when a write fails.
+
+#### Console
+
+- Right-click a Simulator point to ask **Why**, **How** or **Show simplified logic** in the Console, and what you do on the Simulator shows in the Console as the matching command.
+
+#### Review Changes
+
+- Review Changes marks which programs differ from CLICK's last save and shows each one's rung diff, highlighting only the lines and words that changed, with one unchanged rung on each side and separators whose arrows show more.
+- It steps through only the rungs that differ, saying which rung to paste over or delete in CLICK, or copies whole programs when you switch **Copy** to **Whole program**.
+- You can take or skip each difference: untick **Take this difference** or click its +/- gutter and CLICK keeps its rungs there, the steps are numbered around it, and ◀ ▶ (Alt+Up/Down or F7/Shift+F7) go through every difference across programs.
+- **Ladder > Compare with > Folder** compares CLICK's program with any folder of ladder CSVs, such as a copy of another PLC, so you can take only some of its differences; the title and the diff say which folder the changes come from.
+- **Ladder > Compare with > Other CLICK window** compares CLICK's program with what another open CLICK window last saved, such as a sister PLC's project: its nicknames start out skipped, the programs only this CLICK has start out kept, and **Refresh from** takes its latest save.
+- Review Changes remembers what you pasted until CLICK saves it, also when you switch **Copy**, Sync or open it again, and **Restart** asks before forgetting it.
+- It closes once a CLICK save holds everything it was pasting; after a save that came too early it stays open, says so, and can keep pasting.
+- A program CLICK has that the folder doesn't is a step: delete it in CLICK and click **Next**, or untick **Delete it in CLICK** to keep it.
+- **New Subroutine** opens CLICK's New Subroutine Program window with the name filled in, and subroutines come before `main.csv`, so they exist in CLICK before main's Call instructions are pasted.
+- Under **Copy: Changed rungs**, a program that would take 6 or more steps is copied whole, unless it has 100 rungs or more or CLICK holds some of its rungs in an old encoding; **Step Through** steps through it anyway.
+- ClickNick warns when CLICK holds rungs an older ClickNick pasted in a form CLICK runs differently: Review Changes shows those programs in red until you paste them again, and `clicknick-rung program save` lists them.
+
+#### Other
+
+- CLICK v4.00 is supported: autocomplete fits its instruction dialogs, and Simulate and the workspace read its hardware and PLC name.
+- Copying rungs that use CLICK v4 instructions is refused when the CLICK window is an older version, instead of letting CLICK silently change them on paste.
+- ClickNick names each rung it cannot read from CLICK, such as a compare CLICK's own dialog refuses, and asks you to paste it again, instead of stopping the build: the workspace holds an empty rung in its place, the Simulator refuses to start until you paste it, Review Changes shows the program in red, and **Save Clipboard to CSV** names the rung. Review Changes does not copy a folder's program while it holds such an empty rung.
+- **Tools > Repairs > Upgrade Project** and `clicknick-cli tag upgrade-project` rewrite comments in pyrung's old `profile=` form into the current keys and stage them on the Changed tab for you to review and Sync; when the build stops on such a comment, the Workspace status says to run it.
+- A CLICK save or `clicknick-cli backup` keeps the last 5 backups of edited workspace source, the newest in `backup/src/plc` and the others in `backup/older/<time>/src/plc` (it kept one); `clicknick-cli restore list` lists them, `restore <time>` puts one back, and `restore` first backs up edits in `src/plc` that no backup holds.
+
+### Behaviour changes
+
+- Guided Paste and the workspace's **Preview Changes** are now one window, **Review Changes**: the workspace's **Review Changes** button and `clicknick-cli rung apply` open it on the whole proposed ladder (they opened one window per changed file), and **Ladder > Compare with > Folder** replaces **Ladder > Open in Guided Paste**.
+  - To paste a folder of ladder CSVs, open it with **Ladder > Compare with > Folder** and follow the steps it lists.
+- A folder's `nicknames.csv` is no longer written straight into CLICK's database: **Stage nicknames** stages what it sets on the Address Editor's Changed tab, validated, and the row says what it changes ("3 new, 1 renamed").
+  - Review the staged rows and click **Sync and Close**.
+- The main window's **Console** button is now **Simulate**, and the Console is a pane inside it (<kbd>Ctrl</kbd>+<kbd>`</kbd> toggles it, **Pop out** gives it a window). The simulation keeps running after the Simulator closes.
+  - Stop the simulation with **Stop** beside the main window's "Test - Sim" legend.
+- A CLICK save or an edit to the workspace's `src/plc` no longer reloads the running simulation by itself: the Simulator offers to write the new program, the Console's `reload` writes it the same way, and `autoreload` is refused.
+  - Answer the Simulator's offer, or type `reload`, to run the new program.
+- A workspace's `AGENTS.md` and `README.md` are now yours: pyrung's guidance is in `AGENTS.pyrung.md` and `README.pyrung.md`, ClickNick only adds a line to yours that points there, and an older generated `AGENTS.md` or `README.md` is moved to `*.previous.md`.
+  - Keep your own notes in `AGENTS.md` and `README.md`, and copy back anything you had added to a `*.previous.md`.
+- Physical responses in comments take one key per value (`flasher_on=8ms, flasher_off=8ms`, `ramp_on=`, `approach_to=`) in place of `profile=`, and `link=` takes a CLICK address such as `Y001`, or `~Y001` to follow a bit while it is OFF, and needs only a response such as `on_delay=`. The build stops on a comment in the old form.
+  - Run **Tools > Repairs > Upgrade Project**, review the rewritten comments on the Changed tab, and Sync.
+- `clicknick-cli tag set-physical` takes one option per key, such as `--flasher-on 8ms --flasher-off 8ms` or `--toggle`, in place of `--profile`.
+  - Update scripts that pass `--profile`; `clicknick-cli help` lists the options.
+- `clicknick-cli` reads every word after the command as the command's, so `-s`/`--session` after the command is refused.
+  - Put the session first: `clicknick-cli -s <session> <command>`.
+- Sync and Discard clear the undo history.
+  - Undo what you need before you Sync or Discard.
 
 ### Changed
 
-- The Console is now a pane in **Simulate** (<kbd>Ctrl</kbd>+<kbd>`</kbd> toggles it, **Pop out** gives it a window), and the simulation keeps running after the Simulator closes until you stop it from the main window.
-- When you save in CLICK or edit the workspace's ladder source, the simulation keeps running the program it has and the Simulator offers to write the new one, as CLICK does for a running PLC (it reloaded or restarted on its own).
-  - In RUN, **RUN Time Edit** keeps every value, timer and force, and **Stop and Write** goes through STOP, which keeps retentive values and forces and clears the rest. In STOP or while stepping, **Write** keeps values and the mode.
-  - Forces on inputs and outputs stay on their addresses under the new names. Bench links follow their nicknames, or stay on the address when a nickname is gone. A force on internal memory stays on its address when only the nickname changed; one whose nickname moved to another address is released. When a nickname moves onto an address that has its own bench change, the nickname's link wins and the other is dropped. The Simulator lists these releases, drops and moves before you write, and after it says what was kept and why anything was not.
-  - A link whose input is renamed keeps its timing through the write, for a bench link and for a link saved in the input's comment.
-  - Forces and links set or released in the Console just before a write are kept as the Console left them.
-  - A save that does not convert, or that holds a rung ClickNick cannot read, leaves the old program running, and the Simulator says why.
-  - The Simulator does not offer to write a program it already runs (after a Sync or Reload from CLICK that leaves it as it was).
-  - **Restart** on the Simulator's toolbar starts the simulation over on what the workspace holds now (CLICK's last save and any edits), from power-on values (or your PLC data file), with your mode, switches, forces and bench links. It is also offered when writing fails.
-  - The Console's `reload` writes the program as the Simulator would; `autoreload` is refused. The Console waits while a program is written.
-- A workspace's `AGENTS.md` and `README.md` are now yours to edit: pyrung's guidance moves to `AGENTS.pyrung.md` and `README.pyrung.md`, and an older generated `AGENTS.md` or `README.md` is kept as `*.previous.md`.
-- `link=` annotations take a CLICK address such as `Y001`, or `~Y001` to follow a bit while it is OFF, and need only a response such as `on_delay=`.
-- The Simulator's link dialog and the annotation dialog offer every pyrung response (on/off delay, flasher, timed, toggle, ramp and approach), each with its own fields.
-- `tag set-physical` takes one option per key, such as `--flasher-on 8ms --flasher-off 8ms` or `--toggle` (it took `--profile`).
-- Sync and Discard clear the undo history.
-- Review Changes steps through subroutines before `main.csv`, so they exist in CLICK before main's Call instructions are pasted.
-- **Review Changes** is what Guided Paste is now, one window: the button and `clicknick-cli rung apply` open it on the workspace's whole proposed ladder (they opened one window per changed file), so new subroutines, rungs and subroutines an edit removes, and what CLICK has saved since are all shown in one place, and **Ladder > Open in Guided Paste** is now **Ladder > Compare with**.
-- Review Changes closes once a CLICK save holds everything it was pasting, and after a save that came too early it stays open, says so, and can keep pasting.
-- A program CLICK has that the folder doesn't is a step in Review Changes: delete it in CLICK and click **Next**, or untick **Delete it in CLICK** to keep it, and the window then closes on a CLICK save without it (it only advised deleting it, and stayed open while CLICK had it).
-- Under **Copy: Changed rungs**, Review Changes copies a program whole when stepping through it would take 6 or more steps, unless it has 100 rungs or more or CLICK holds some of its rungs in an old encoding; **Step Through** steps through that program anyway (it only suggested switching).
-- A folder's `nicknames.csv` in Review Changes is staged in the Address Editor instead of written straight into CLICK's database: **Stage nicknames** shows them on the Changed tab, validated, with a **Sync and Close** button, and the row counts what it changes ("3 new, 1 renamed") and can be skipped (it imported them unchecked, and could delete addresses the file listed blank).
+- The annotation dialog and the Simulator's link dialog offer every pyrung response (on/off delay, flasher, timed, toggle, ramp and approach), each with its own fields.
+- The status bar names the edit Undo and Redo acted on.
 
 ### Fixed
 
-- A build or Compare with > Other CLICK window that reads while CLICK is saving no longer takes CLICK's short-lived `Scr23.tmp~RF...TMP` copy for a second copy of that program.
-- The Tag Browser Outline shows nicknames with three or more underscores in a row (`A___B`) as spelled, instead of one underscore too many.
-- Pasting or filling New Values in the Data View editor applies the valid ones and lists each refused cell in one warning, instead of silently keeping the old value. Clearing a New Value is never refused.
-- Pasting into the Data View editor's Force column while the Modbus columns are hidden is no longer checked as a New Value.
-- Saving or choosing a PLC data file, or changing the Modbus port, while the Simulator writes a program or while CLICK's save is being converted restarts the simulation once that ends, instead of being refused.
-- `clicknick-cli backup`, `restore` and choosing a workspace are refused while ClickNick regenerates the workspace from a CLICK save, with a note to try again when it finishes; a backup taken then could hold files from two saves.
-- When CLICK saves again during a conversion and ClickNick cannot read that save, the Workspace shows the failure once the conversion finishes, instead of at once, and until then `clicknick-cli` says to try again rather than read a workspace being written.
-- `clicknick-cli` accepts options as separate words (`rung apply main --select r3`, `tag set-physical ... --on-delay 50ms`) instead of refusing them.
-- Double-clicking a Tag Browser item that is a nickname with others under it (`Tank_Pump1` over `Tank_Pump1_Run`) filters the Address Editor to that nickname and the ones under it, the same ones Rename changes, instead of hiding its own row.
-- The Simulator's Console can be popped out while a command from a closed Console pane is still running; only a command sent from that pane keeps Pop out off.
-- After the CLICK window closes with a CSV loaded from its temp folder, the Dataview Editor's Open and Save As start in the folder you used last (or Documents) instead of the deleted temp folder, and Save on a Data View from that deleted folder asks where to save.
-- A Dataview **New Value** that is not valid for its address (such as `abc` for DS1) now says why and keeps your text in the cell, instead of reverting to the earlier value that Write would send.
-- A CLICK save or `clicknick-cli backup` no longer replaces the only backup of edited workspace source: the last 5 are kept, the newest in `backup/src/plc` and the others in `backup/older/<time>/src/plc`; `clicknick-cli restore list` lists the older ones and `restore <time>` puts one back. `clicknick-cli restore` backs up edits in `src/plc` that no backup holds before it replaces them.
-- In the Tag Browser's Outline, Rename changes the segment you picked instead of an unrelated nickname that starts with the same letters, and nicknames like `Pump01_Run` keep their leading zeros, stay apart from `Pump1_Run`, and double-clicking one filters the Address Editor to it.
-- The Tag Browser's Outline lists array indices in numeric order (Pump2 before Pump10) and lists a nickname used on two addresses once for each.
-- Renaming an item in the Outline changes only the nicknames under that item, accepts a new name that starts with a digit, and is off for SC/SD entries and `__` groups.
-- Double-clicking an SC or SD entry in the Outline no longer leaves a stale filter in the Address Editor, and those groups stay open when the list refreshes.
-- The overlay's tooltip and the Tag Browser show a timer or counter value's initial value only when its timer or counter is not Retentive, as the Address Editor does.
-- The overlay sends nothing to CLICK when you press Esc or click away, so an empty or half-typed name no longer lands in CLICK's field, Enter on an empty overlay just closes it and leaves the Address Picker open, and Esc keeps the overlay hidden for that field until you move to another field.
-- The overlay comes back when you click into the same empty field again after clicking away.
-- Multi-word overlay searches list matches in list order instead of a random one, and a one-letter search lists only names containing that letter.
-- A nickname used twice is listed once in the overlay with its first address, sorting by nickname ignores case, and the overlay's tooltip is read from a row of the types the field accepts.
-- In the Address Editor, Undo and Redo wait while you are typing in a cell, and Sync and closing the window keep what you typed.
-- Fill Down over a timer or counter selection numbers only the rows of the first row's type, and Fill Down and Clone no longer copy block tags into the new rows' comments (a row that already has its own block tag keeps it); after a Sync, check those comments in CLICK.
-- Add Block over a selection that includes both a timer's T and TD rows (or CT and CTD) tags matching pairs, and the Tag Browser's rename changes nicknames only, leaving comments as they are; after a Sync, check the timer or counter block comments in CLICK.
-- With **Hide Used** ticked, the Address Editor's right-click menu, Discard changes and character-limit tooltip act on the column you clicked, not the one beside it.
+#### Autocomplete and Tag Browser
+
+- The overlay sends nothing to CLICK when you press Esc or click away, so an empty or half-typed name no longer lands in CLICK's field; Enter on an empty overlay just closes it, Esc keeps it hidden for that field until you move to another field, and it comes back when you click into the same empty field again.
+- Multi-word overlay searches list matches in list order instead of a random one, a one-letter search lists only names containing that letter, a nickname used twice is listed once with its first address, sorting by nickname ignores case, and the tooltip is read from a row of the types the field accepts.
+- The overlay's tooltip and the Tag Browser show Retentive and the initial value against the address's own default: the initial value only when a timer or counter is not Retentive, Non-retentive for a non-retentive counter, and no "Initial Value = 0" on a retentive DS or TD.
+- The Tag Browser's Outline shows nicknames with two or more underscores in a row (`Tank__Level`) as spelled, instead of with one underscore too many.
+- In the Outline, Rename changes the segment you picked and only the nicknames under it (not an unrelated nickname that starts with the same letters), leaves comments as they are, accepts a new name that starts with a digit, and is off for SC/SD entries and `__` groups.
+- The Outline keeps leading zeros (`Pump01_Run` stays apart from `Pump1_Run`), lists array indices in numeric order (Pump2 before Pump10), and lists a nickname used on two addresses once for each.
+- Double-clicking a nickname in the Outline that has others under it (`Tank_Pump1` over `Tank_Pump1_Run`) filters the Address Editor to it and the ones under it instead of hiding its own row, and double-clicking an SC or SD entry no longer leaves a stale filter; those groups stay open when the list refreshes.
+
+#### Address Editor and Sync
+
+- Undo and Redo wait while you are typing in a cell, and text still being typed is kept when you Sync, close the window, replace the data or close ClickNick; a cell that won't commit stops the close.
+- Fill Down over a timer or counter selection numbers only the rows of the first row's type, and Fill Down and Clone no longer copy block tags into the new rows' comments (a row that already has its own keeps it); after a Sync, check those comments in CLICK.
+- Add Block over a selection with both a timer's T and TD rows (or CT and CTD) tags matching pairs, and Remove Block keeps the rest of the comment as it was (`<Pumps> Fill` becomes `Fill`, not ` Fill`); after a Sync, check those comments in CLICK.
+- Editing a timer or counter comment's text no longer deletes the block tag on its TD/CTD (or T/CT) row, renaming a block renames the matching tags in place without adding spaces or moving text (`</Tanks> last` stays `</Tanks> last`), a rename never overwrites a tag you set in the same edit, and changing only a block's colour no longer adds a half block tag to an untagged TD/CTD row.
+- Discard row changes on a T or CT row no longer changes its TD/CTD row's Retentive.
+- With **Hide Used** ticked, the right-click menu, Discard changes and the character-limit tooltip act on the column you clicked, not the one beside it.
 - The Init Value and Ret cells of SC, SD, XD and YD rows are read-only instead of showing an edit that Sync never writes.
-- Ctrl+W in the Address Editor closes one tab, and in either editor only its own tab, instead of closing two and then raising an error.
-- Remove Block keeps the rest of the comment as it was (`<Pumps> Fill` becomes `Fill`, not ` Fill`); after a Sync, check such a comment in CLICK.
-- Text still being typed in an Address Editor cell is kept when you replace the data or close ClickNick and answer the save prompt; a cell that won't commit stops the close.
-- A cloned Address Editor tab shows block colors, errors and unsaved edits on every row, and opens at the saved scroll position.
-- CLICK v4 projects work: autocomplete fits its instruction dialogs, and Simulate and the workspace read its hardware and PLC name.
-- Check Program, Review Changes and the simulation no longer show Windows' busy cursor while they start.
+- Ctrl+W closes one tab, in either editor only its own, instead of closing two and then raising an error.
+- A cloned tab shows block colors, errors and unsaved edits on every row, and opens at the saved scroll position.
 - Unsaved-change tracking is reliable: Undo, Discard and edits update duplicate marks so Sync isn't blocked by a stale "Duplicate", rows stop showing as unsaved once CLICK saves the value, changes CLICK writes right after a Sync are picked up, and an edit that fails partway changes nothing.
-- Sort by nickname, block colors, the Dataview editor, the window title and Workspace details stay current after edits, CLICK saves, Sync, CSV loads and workspace changes, and the Dataview editor writes unchanged CDV files back byte-for-byte.
-- Loading a CSV over unsaved changes asks to save or discard first.
-- Closing a tab, the Dataview Editor or the data behind it offers every unsaved dataview for saving, untitled ones too (you pick their folder); a save that fails or is cancelled closes nothing, and a failed one says why.
-- Text still in a Dataview cell, such as one you typed before switching to CLICK, is saved, written or asked about when you save, export, click **Write** or **Write All**, close a tab, close the Dataview Editor or the data, or CLICK opens another project (it was dropped, and Write sent the old value).
-- Saving a dataview that CLICK (or another program) changed after its rows were read asks whether to save over it, reload it, or do neither. A reload that replaces unsaved edits can be undone with Ctrl+Z.
-- The Dataview Editor stores addresses added from the Nickname box or the Tag Browser as CLICK writes them (`X001`, `XD0u`), finds nicknames whatever their case, and refuses text that is neither a nickname nor an address. Dataviews saved by an earlier ClickNick may still hold `X1` or `XD0U`: open them in CLICK and check each row shows its address.
-- Ctrl+Z and Ctrl+Y in the Dataview Editor undo and redo row moves and edits without the table and the saved file disagreeing, undoing an address change keeps its New Value, and a folder or block added from the Tag Browser is one undo step.
-- The Dataview Editor no longer opens a .cdv file it cannot read, so it can't save a nearly empty file over it.
-- Program analysis and AI tag lookups use the same nicknames as the generated code, switching CLICK projects no longer freezes the window, and the "tags synced" count counts each tag once.
-- Opening another project in the same CLICK window no longer leaves its workspace unbuilt until ClickNick restarts, and Review Changes now updates its comparison when CLICK's program changes.
-- Open Temporary Workspace and the Workspace status update as soon as a build finishes, instead of waiting for something else to refresh the window, such as opening the Simulator.
-- Choosing an existing workspace whose `src/plc` holds edits copies them to `backup/src/plc` before the next build regenerates it; `clicknick-cli restore` puts them back.
-- Workspace setup no longer switches when both the current and the chosen workspace's `src/plc` hold edits; it names both folders so you can paste or discard one first.
-- A chosen workspace whose `src/plc` edits were kept shows as edited instead of Clean.
-- **Export Workspace** and Workspace setup after a failed build say why instead of using the workspace of an earlier save.
-- "N tags synced - Save in CLICK" no longer drops to 0 when the workspace rebuilds, such as after a Sync with repairs, opening the Simulator or setting up a workspace, and opening the Simulator during a build no longer starts a second one.
-- Sync counts only the rows it wrote, so an edit CLICK's database already held no longer adds to "N tags synced" and a Sync of edits CLICK already had says there was nothing to write, and Save to a CSV file counts the rows you changed (it counted every row in the file).
-- A workspace `AGENTS.md` or `README.md` that is not UTF-8 no longer makes every build fail and leave the workspace without `csv/`.
-- A workspace `AGENTS.md` or `README.md` with a UTF-8 BOM gets pyrung's pointer under its title.
-- A workspace `pyproject.toml` ClickNick cannot read no longer reports a finished **Reload from CLICK** as failed.
-- A build that cannot finish writing the workspace, such as when a file in it is open in Excel, still fails but leaves `csv/` and `src/plc` both from the save before.
-- After a CLICK save whose build fails before the workspace is written, Review Changes says it could not read CLICK's program instead of comparing with the save before.
-- A CLICK save is noticed when its files get an older timestamp (a copied-back project, a clock change) and when it only deletes a subroutine.
-- A broken `%LOCALAPPDATA%\ClickNick\project-sidecars.json` no longer stops ClickNick connecting to CLICK.
-- Editing a timer or counter comment's text no longer deletes the block tag on its TD/CTD (or T/CT) row, renaming a block renames the matching tags where they are without adding spaces or moving text, and a rename never overwrites a tag you set in the same edit.
-  - After Sync, CLICK's Address Picker shows each renamed tag with the rest of its comment as it was, such as `</Tanks> last` on the close row.
-- Changing only a timer or counter block's colour no longer adds a half block tag to a TD/CTD row that has none, and Discard row changes on a T or CT row no longer changes its TD/CTD row's Retentive.
-- Answering Yes to "Save before closing?" with duplicate or invalid nicknames now refuses and closes nothing, as Sync does, instead of writing them to CLICK.
-- Sync keeps what CLICK changed in its database since ClickNick last read it.
-  - Change a comment in CLICK, then rename that address in ClickNick and Sync right away: CLICK keeps its new comment.
-- A system nickname CLICK wrote (SC, SD, X) no longer turns into an error that blocks Sync after a CLICK save or a Sync.
-- The nickname tooltip and the Tag Browser show Retentive and the initial value against the address's own default: a non-retentive counter shows Non-retentive, and a retentive DS or TD no longer shows "Initial Value = 0".
+- Sort by nickname, block colors, the Dataview editor, the window title and Workspace details stay current after edits, CLICK saves, Sync, CSV loads and workspace changes.
 - A paste that changes nothing is no longer an undo step.
-- The status bar names the edit Undo and Redo acted on.
+- Answering Yes to "Save before closing?" with duplicate or invalid nicknames refuses and closes nothing, as Sync does, instead of writing them to CLICK.
+- Sync keeps what CLICK changed in its database since ClickNick last read it: change a comment in CLICK, then rename that address in ClickNick and Sync, and CLICK keeps its new comment.
+- A system nickname CLICK wrote (SC, SD, X) no longer turns into an error that blocks Sync after a CLICK save or a Sync.
+- Sync counts only the rows it wrote, so an edit CLICK's database already held no longer adds to "N tags synced" and a Sync of edits CLICK already had says there was nothing to write; Save to a CSV file counts the rows you changed (it counted every row in the file).
+
+#### Nickname CSVs
+
+- Loading a CSV over unsaved changes asks to save or discard first, and a cancelled or failed load leaves the loaded data as it was.
+- A file that is not a nickname CSV, such as one without Address and Nickname columns, CLICK's own Address.csv, or one with a row whose Address is not a CLICK address, fails to load and says why, naming the line, instead of loading as an empty project that Save then overwrites.
 - A nickname CSV that Excel saved as "CSV UTF-8" loads its nicknames instead of loading empty.
-- A file that is not a nickname CSV, such as one without Address and Nickname columns, CLICK's own Address.csv, or a row whose Address is not a CLICK address, fails to load and names the line, instead of loading as an empty project that Save then overwrites.
-- In CSV mode, Save says so when the file cannot be written, such as while Excel holds it open, and keeps your edits, instead of reporting success, and refuses to overwrite a file that changed on disk into one ClickNick cannot read.
-- XD and YD nicknames in a CSV (`XD0u`, `XD8`) stay on their own addresses when loaded, imported or staged.
+- In CSV mode, Save says so when the file cannot be written, such as while Excel holds it open, and keeps your edits, and refuses to overwrite a file that changed on disk into one ClickNick cannot read.
+- XD and YD nicknames in a CSV (`XD0u`, `XD8`) stay on their own addresses when loaded or imported.
 - Nickname CSVs keep comments' leading and trailing spaces, read Retentive written as `1`/`0` or `True`/`False`, and end lines with CRLF, as CLICK's export does.
 - A Text initial value holding `,`, `"` or a space is quoted when ClickNick writes a CSV, and ClickNick reads it back unchanged; whether CLICK's import shows it unchanged is not yet checked (import such a CSV into CLICK and look at the Text address).
-- Import from CSV imports each row of a nested block once, under the innermost block, so unticking an inner block leaves its rows alone.
-- Import from CSV skips nicknames, comments or first-scan values when the file has no column for them, instead of clearing them, and accepts a file with no Nickname column.
+- Import from CSV imports each row of a nested block once, under the innermost block, skips nicknames, comments or first-scan values when the file has no column for them instead of clearing them, and accepts a file with no Nickname column.
 - Save Copy of CLICK's Address.csv keeps addresses that have only an initial value or Retentive set.
 - ClickNick reloads its data when the database or CSV is replaced by an older copy, such as a restored backup.
+
+#### Dataview Editor
+
+- A **New Value** that is not valid for its address (such as `abc` for DS1) is refused with the reason, whether typed, pasted or filled, instead of silently keeping the earlier value that Write would send; a typed one stays in the cell for you to fix.
+- Text still in a Dataview cell, such as one you typed before switching to CLICK, is saved, written or asked about when you save, export, click **Write** or **Write All**, close a tab, the Dataview Editor or the data, or CLICK opens another project (it was dropped, and Write sent the old value).
+- Closing a tab, the Dataview Editor or the data behind it offers every unsaved dataview for saving, untitled ones too (you pick their folder); a save that fails or is cancelled closes nothing, and a failed one says why.
+- Saving a dataview that CLICK (or another program) changed after its rows were read asks whether to save over it, reload it, or do neither; a reload that replaces unsaved edits can be undone with Ctrl+Z.
+- The Dataview Editor stores addresses added from the Nickname box or the Tag Browser as CLICK writes them (`X001`, `XD0u`), finds nicknames whatever their case, and refuses text that is neither a nickname nor an address. Dataviews saved by an earlier ClickNick may still hold `X1` or `XD0U`: open them in CLICK and check each row shows its address.
+- Ctrl+Z and Ctrl+Y undo and redo row moves and edits without the table and the saved file disagreeing, undoing an address change keeps its New Value, and a folder or block added from the Tag Browser is one undo step.
+- The Dataview Editor no longer opens a .cdv file it cannot read, so it can't save a nearly empty file over it, and it writes unchanged .cdv files back byte-for-byte.
+- The Dataview Editor and **Verify** use the DataView folder of the CLICK window ClickNick is connected to (with a second CLICK window open, or a folder left by a crash, they could show, save and check another project's dataviews).
+- After the CLICK window closes with a CSV loaded from its temp folder, Open and Save As start in the folder you used last (or Documents) instead of the deleted temp folder, and Save on a dataview from that folder asks where to save.
+
+#### CLICK windows and projects
+
 - Closing ClickNick (the window's X or **File > Exit**) asks to save unsaved Address Editor and Dataview edits, and Cancel keeps it open (it discarded them).
-- Nicknames loaded from a CSV stay loaded, with their unsaved edits, when CLICK opens another project or saves under a new name (they were closed without asking).
-- A cancelled or failed CSV load leaves the loaded database as it was (the title said CSV, and the next project change in CLICK left no nicknames loaded).
+- When CLICK saves under a new name or opens another project while you have unsaved address or Dataview changes, ClickNick asks whether to keep them for the new project, where Sync and Save then write them, or discard them (it discarded them).
+- Nicknames loaded from a CSV stay loaded, with their unsaved edits, when CLICK opens another project or saves under a new name; the question then covers unsaved Dataview changes (a Save wrote them over the new project's dataviews), and a Dataview Editor without them reopens on the new project's dataviews.
 - After the connected CLICK window closes, ClickNick lists the other windows and waits for you to pick one while nicknames are loaded (it connected to the first one and closed the loaded CSV).
 - **Stop** in the main window turns off only autocomplete, until you click **Start** or pick a window: ClickNick still notices CLICK closing or opening another project (it kept the old project's editors, simulation and database).
-- A CSV that cannot be loaded shows why, such as a missing Nickname column (the status only said "CSV load failed").
-- Two CLICK windows with the same project name are listed with their PIDs, so either can be picked, and the window list and status no longer show a window or "Monitoring" that is not current.
-- The window list always shows the connected CLICK window, also after ClickNick connects by itself or CLICK opens another project (it could be empty while the status said "Monitoring").
-- When CLICK saves under a new name or opens another project while you have unsaved address or Dataview changes, ClickNick asks whether to keep them for the new project, where Sync and Save then write them, or discard them (it discarded them).
-- With nicknames loaded from a CSV, that question covers unsaved Dataview changes too (they stayed open, and a Save wrote them over the new project's dataviews), and a Dataview Editor without them reopens on the new project's dataviews.
-- The Dataview Editor and **Verify** use the DataView folder of the CLICK window ClickNick is connected to (with a second CLICK window open, or a folder left by a crash, they could show, save and check another project's dataviews).
+- Two CLICK windows with the same project name are listed with their PIDs, so either can be picked, and the window list always shows the connected window, also after ClickNick connects by itself or CLICK opens another project.
 - ClickNick finds CLICK's project in the Windows temp folder when that is not under `C:\Users\<your name>`, such as on a renamed or domain account or with TEMP moved (it could not locate the CLICK database).
-- **Load Ladder CSV to Clipboard** copies for the connected CLICK window and asks you to connect first (it used the first CLICK window it found).
-- ClickNick deletes its copies of CLICK windows that have closed, made by **Compare with > Other CLICK window**, when it starts and when the window list is refreshed.
-- `clicknick-cli tag apply` keeps a comment's text and block tag and changes only the annotations you changed in `tags.py` (it replaced the comment with them alone, such as `[uom=mm]`).
-  - Comments that an earlier `tag apply` cut down to their annotations keep only the annotations in CLICK: put their text back by hand.
+- **Load Ladder CSV to Clipboard** and Review Changes copy only for the connected CLICK window and ask you to connect first (they used the first CLICK window found).
+- Check Program, Review Changes and the simulation no longer show Windows' busy cursor while they start.
+- A broken `%LOCALAPPDATA%\ClickNick\project-sidecars.json` no longer stops ClickNick connecting to CLICK.
+
+#### Workspace and builds
+
+- A build that reads while CLICK is saving no longer takes CLICK's short-lived `Scr23.tmp~RF...TMP` copy for a second copy of that program.
+- A CLICK save is noticed when its files get an older timestamp (a copied-back project, a clock change) and when it only deletes a subroutine.
+- Opening another project in the same CLICK window no longer leaves its workspace unbuilt until ClickNick restarts.
+- Program analysis and AI tag lookups use the same nicknames as the generated code, switching CLICK projects no longer freezes the window, and the "tags synced" count counts each tag once.
+- "N tags synced - Save in CLICK" no longer drops to 0 when the workspace rebuilds, such as after a Sync with repairs or setting up a workspace.
+- Open Temporary Workspace and the Workspace status update as soon as a build finishes, instead of waiting for something else to refresh the window.
+- A build that cannot finish writing the workspace, such as when a file in it is open in Excel, still fails but leaves `csv/` and `src/plc` both from the save before.
+- A workspace `pyproject.toml` ClickNick cannot read no longer reports a finished **Reload from CLICK** as failed.
+- **Export Workspace** and Workspace setup after a failed build say why instead of using the workspace of an earlier save.
+- Choosing an existing workspace whose `src/plc` holds edits copies them to `backup/src/plc` before the next build regenerates it, and shows it as edited instead of Clean; `clicknick-cli restore` puts them back.
+- Workspace setup no longer switches when both the current and the chosen workspace's `src/plc` hold edits; it names both folders so you can paste or discard one first.
+- `clicknick-cli backup`, `restore` and choosing a workspace are refused while ClickNick regenerates the workspace from a CLICK save, with a note to try again when it finishes; a backup taken then could hold files from two saves.
+
+#### clicknick-cli and clicknick-rung
+
+- `clicknick-cli` passes each argument as you typed it, so a value can hold quotes, backslashes or `;`, such as `set DS1 comment "Don't start"`; a command given as one argument is split at spaces and at `;` outside quotes.
+- `clicknick-cli` accepts options as separate words (`rung apply main --select r3`, `tag set-physical ... --on-delay 50ms`) instead of refusing them.
+- `clicknick-cli tag apply` keeps a comment's text and block tag and changes only the annotations you changed in `tags.py` (it replaced the comment with them alone, such as `[uom=mm]`). Comments that an earlier `tag apply` cut down to their annotations keep only the annotations in CLICK: put their text back by hand.
 - `clicknick-cli tag apply` no longer stages `[external]` on analog input channels you did not edit.
 - `clicknick-cli get`/`set` find tags by the names in the workspace, also when the analysis of a CLICK save failed.
-- `clicknick-cli` passes each argument as you typed it, so a value can hold quotes, backslashes or `;`, such as `set DS1 comment "Don't start"`.
-  - A command given as one argument is split at spaces and at `;` outside quotes. A backslash there is kept as typed (`C:\temp`), except that `\"` and `\\` still escape inside double quotes.
-  - An argument ending in `;` still ends a command.
 - `clicknick-cli prompt-save` answers at once while ClickNick shows the reminder, instead of holding every other command until the dialog is closed.
-- The simulation's forces and bench links stay on their addresses when you rename their tags, and turning it off or restarting it while it restores them no longer deletes them; a saved force or link that is not on a CLICK address is reported instead of dropped without a word.
-- Closing the project or the CLICK window while the simulation starts stops it instead of leaving it holding Modbus port 502, and a simulation that exits as it starts shows as failed instead of ready.
-- Switch settings on Unassigned I/O inputs survive opening the Simulator before the first build finishes, an analog input with a range gets its slider once the simulation starts, and the Simulator follows nickname edits after a CSV is loaded.
-- Review Changes remembers what you pasted until CLICK saves it: running Review Changes again, switching **Copy**, a Sync or a failed read of CLICK's program no longer has you paste the same rungs a second time, a program whose pasted rungs the new export changes or takes back is copied whole, and **Restart** asks first.
-- Review Changes no longer forgets what you pasted when CLICK saves while it is still reading the save before.
-- A program or deletion marked done in Review Changes that CLICK's next save shows still to do is a step again, also when that save changed nothing (it stayed done, and the window never closed).
-- A ladder CSV that Review Changes cannot read is left out with a notice, so the window still closes once CLICK has saved the rest.
-- **Copy: Whole program** steps through a program when a difference you skipped keeps a rung CLICK holds in an old encoding, so the paste does not rewrite that rung from ClickNick's reading of it.
-- Without a comparison with CLICK, Review Changes says to delete the program's rungs before pasting it whole, and copies only while connected to a CLICK window (it used the first CLICK window it found).
-- A folder's `nicknames.csv` without an Address Comment, Initial Value or Retentive column no longer clears those fields when Review Changes stages it.
-- A program with no rungs copied whole in Review Changes is a step of deleting its rungs in CLICK, then **Next** (copying it failed with "there are no rungs to copy").
-- `clicknick-rung load` on a CSV with no rungs says so instead of crashing.
+- A ladder CSV with no rungs no longer crashes `clicknick-rung load`, and in Review Changes copying such a program whole is a step of deleting its rungs in CLICK, then **Next**.
 
 ## v0.23.4 - 2026-10-11
 
