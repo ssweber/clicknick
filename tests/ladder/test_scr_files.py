@@ -25,4 +25,4 @@ def test_a_mid_save_copy_is_not_a_second_program(tmp_path: Path, monkeypatch) ->
     result = program_save(scr, tmp_path / "out")
 
     assert [p.source for p in result.programs] == ["Scr1.tmp", "Scr2.tmp"]
-    assert [p.name for p in result.subroutine_csvs] == ["motor.csv"]
+    assert [p.name for p in result.subroutine_csvs] == ["Motor.csv"]
