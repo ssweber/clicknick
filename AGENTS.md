@@ -3,23 +3,20 @@
 **IMPORTANT: DON'T USE `cd` before commands. The working directory is already set to the project root.**
 **IMPORTANT: Always use `make` commands, not direct `uv run` commands.**
 
-This file provides guidance to coding agents working in this repository.
-
 ## Project Overview
 
-**ClickNick** is a Windows desktop application providing context-aware nickname autocomplete and editing tools for CLICK PLC Programming Software (v2.60–v4.00). It connects via Access ODBC or the built-in Windows Jet fallback to read/write nicknames from the project's Access database (SC_.mdb) or can import from CSV. Core components:
+**ClickNick** is a Windows desktop application (Windows 10/11, Python 3.11+) with nickname autocomplete and
+editing tools for CLICK PLC Programming Software (v2.60–v4.00). It reads and writes nicknames in the project's
+Access database (SC_.mdb) through Access ODBC or the built-in Windows Jet fallback, or imports them from CSV.
+Core components:
 
 - **Overlay** – Positions a combobox over instruction dialog edit controls for nickname autocomplete
-- **Address Editor** – Unified tabbed tksheet-based editor with search/replace, block tagging, validation. Each tab displays ALL memory types in a single scrollable view
+- **Address Editor** – Tabbed tksheet editor with search/replace, block tagging, validation. Each tab shows ALL
+  memory types in one scrollable view
 - **Tag Browser** – Treeview of nicknames parsed by underscore segments and array indices
 - **Dataview Editor** – Edits .cdv files with nickname lookup from shared address data
-
-## Prerequisites
-
-- **OS:** Windows 10 or 11
-- **CLICK Software:** v2.60–v4.00
-- **Database connection:** Automatic Access ODBC or built-in Windows Jet fallback; Windows x64 normally needs no separate Access driver.
-- **Python:** 3.11+ (only if using pip; uv manages Python automatically)
+- **Review Changes** – Steps ladder from a folder of CSVs into CLICK
+- **Simulator** – Runs the workspace's program in pyrung, with an I/O panel and a command console
 
 ## Build & Development Commands
 
@@ -45,8 +42,9 @@ uv tool install --editable .
 ## Architecture
 
 ### Entry Points
-- `clicknick` (GUI) - calls `clicknick:main`
-- Main app: `src/clicknick/app.py` -> `ClickNickApp` class
+- `clicknick` (GUI) - calls `clicknick:main`; main app: `src/clicknick/app.py` -> `ClickNickApp`
+- `clicknick-cli` - `clicknick.live.cli:main`; `clicknick-rung` - `clicknick.ladder.cli:main`
+  (see `src/clicknick/ladder/AGENTS.md`)
 
 ### Package Structure
 
@@ -68,6 +66,8 @@ src/clicknick/
 │   └── undo_frame.py      # Undo/redo snapshot storage
 ├── services/              # Business logic (pure Python, no tkinter)
 ├── utils/                 # Utilities (filters, MDB, Win32)
+├── ladder/                # Clipboard I/O and the clicknick-rung CLI
+├── live/                  # clicknick-cli and the server it talks to in the app
 ├── views/                 # Windows and panels (passive observers)
 │   ├── address_editor/    # Address Editor views
 │   ├── dataview_editor/   # Dataview Editor views
@@ -81,36 +81,37 @@ src/clicknick/
 
 ### Immutable Base + Overlay Model
 
-The application maintains three distinct data layers to cleanly separate database truth from user edits:
+The store keeps three layers:
 
 1. **Base Layer** (`base_state`) - Latest snapshot from the external database (source of truth)
 2. **Overlay Layer** (`user_overrides`) - Sparse dictionary of unsaved edits: `addr_key` → read-only
    `{field: value}` holding only the fields the user set (no row copies, no dirty markers)
 3. **Visible Layer** (`visible_state`) - Computed projection of base + overrides
 
-**Core Principles:**
-- **Immutable Rows:** `AddressRow` is a frozen dataclass; changes create new instances via `dataclasses.replace()`
 - **Inputs vs derived:** base rows and the user's overrides are the inputs. Visible rows, validation, dirty
   fields, the nickname index and block colors are derived by one method, `AddressStore._derive()`, in one
   fixed order, after every change (edit, undo, redo, discard, save, external reload)
-- **Undo/Redo:** Tracks overlay layer only (user intent), preserves 50-level history
-- **External Updates:** Database refreshes update base layer while preserving user overrides
+- **External Updates:** Database refreshes update the base layer and keep user overrides
 
 ### Edit Session Pattern
 
-Edits flow through an edit session that accumulates changes atomically:
-
 1. **View** opens `AddressStore.edit_session(description)`
-2. **Service** accumulates changes via `session.set_field(addr_key, field, value)`
-3. Session uses `MutableRowBuilder` to accumulate changes per row
-4. **On clean exit:** applies cascades → freezes builders into overrides → if the overrides changed, pushes the
+2. **Service** accumulates changes via `session.set_field(addr_key, field, value)`; the session keeps a
+   `MutableRowBuilder` per row. Many changes make one undo frame (fill-down 500 rows = 1 undo)
+3. **On clean exit:** applies cascades → freezes builders into overrides → if the overrides changed, pushes the
    undo frame (the overrides before) and clears redo → `_derive()` → notifies. A session that changes nothing
    is not an undo step
-5. **On an exception:** nothing is committed (all-or-nothing); a failure inside the commit restores the inputs
-6. **All Views** receive changed `addr_keys` and refresh only those rows
+4. **On an exception:** nothing is committed (all-or-nothing); a failure inside the commit restores the inputs
+5. **All Views** receive changed `addr_keys` and refresh only those rows
+
+Cascades (`AddressStore._apply_cascades`): a Retentive change mirrors across the T/TD or CT/CTD pair; a row
+whose block tag changed (old tag vs new tag, not its text) has the matching open/close tag and the pairs' `_D`
+tags renamed in place, removed, or (on an untagged pair, when the tag was added or renamed) appended
+(`BlockService`). "The caller set this field" is read before any cascade runs, and a cascade never writes it.
 
 **The Rules** (rules 2, 3 and 5 are enforced by `tests/test_store_boundaries.py`):
 1. **Models are Immutable:** `AddressRow` is `frozen=True`; all changes create new instances
+   (`dataclasses.replace()`)
 2. **AddressStore is the Gatekeeper:** Only `AddressStore` writes its layers (`base_state`, `user_overrides`,
    `visible_state`, `block_colors`, `row_order`)
 3. **Services and data are Pure Logic:** `services/` and `data/` **never** import `tkinter`
@@ -123,18 +124,16 @@ Edits flow through an edit session that accumulates changes atomically:
 
 ### Observer Pattern
 
-All views register as observers with `AddressStore`:
-- `add_observer(callback)` - Subscribe to data changes
-- `callback(store, changed_keys: set[int] | None)` - Receive notifications with affected `addr_key` sets
+- `add_observer(callback)`; `callback(store, changed_keys: set[int] | None)` receives the affected `addr_key`s
 - The store replaces changed rows in the shared unified view before notifying; observer exceptions are logged
-- Views refresh only changed rows using targeted updates
+- Views refresh only changed rows
 
 ## Key Dependencies
 
-- `pywin32` - Python for Win32 (pywin32) extensions
-- `pyodbc` - ODBC connection to Access database
-- `tksheet` - Spreadsheet widget for Address Editor v7 (documentation at https://ragardner.github.io/tksheet/DOCUMENTATION.md)
-- `tkinter` - GUI framework (stdlib)
+- `pywin32`, `pyodbc` (Access database), `tksheet` v7 (Address Editor;
+  https://ragardner.github.io/tksheet/DOCUMENTATION.md), `tkinter`
+- `pyrung` (program conversion, simulation), `laddercodec` (CLICK clipboard encoding), `pyclickplc` (Modbus,
+  CLICK project files). All are pinned exactly in `pyproject.toml`
 
 ## Testing
 
@@ -150,37 +149,19 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - `test_mutable_row_builder.py` - Builder pattern, `changes()` output
 - `test_address_model.py` - AddressRow validation, frozen dataclass behavior
 
-**Service tests** (fully unit testable without tkinter):
+**Service tests** (no tkinter):
 - `test_block_service.py` - Block tag parsing, color assignment, range detection
 - `test_row_service.py` - Fill down, clone structure, edit session integration
 - `test_blocktag.py` - Tag parsing edge cases
 
-**Other tests:**
-- Filter tests cover abbreviation matching edge cases
-- View tests are integration tests requiring tkinter
+View tests are integration tests that need tkinter.
 
 ## Key Implementation Notes
-
-### Working with AddressRow
-- `AddressRow` is immutable (`frozen=True`); use `dataclasses.replace()` for changes
-- Never modify row attributes directly; always use `AddressStore.edit_session()`
-- Access visible data via `store.visible_state[addr_key]`, not direct row references
-
-### Edit Sessions
-- All data modifications must go through `store.edit_session(description)`
-- Use `session.set_field(addr_key, field, value)` to accumulate changes
-- Multiple changes batched into single undo frame (e.g., fill-down 500 rows = 1 undo)
-- Cascades (T/TD|CT/CTD sync, block tag sync) happen automatically within the session
-  (`AddressStore._apply_cascades`): a Retentive change mirrors across the pair; a row whose block tag changed
-  (old tag vs new tag, not its text) has the matching open/close tag and the pairs' `_D` tags renamed in place,
-  removed, or (on an untagged pair, when the tag was added or renamed) appended (`BlockService`). "The caller
-  set this field" is read before any cascade runs, and a cascade never writes it
-- A body that raises commits nothing
 
 ### Dirty State Detection
 - Check via `store.is_dirty(addr_key)` / `store.is_field_dirty(addr_key, "nickname")`
 - `_derive` first drops override fields the base already holds, so a field is dirty exactly when it is in
-  its row's override; nothing stores a separate dirty marker
+  its row's override
 
 ### Sync
 - `save_all_changes` refuses (raises) while rows have validation errors, for every caller. For the database it
@@ -190,31 +171,27 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   helper, `_flag_loaded_error`, on load, reload and Sync alike
 
 ### Undo/Redo
-- Tracks user intent (overlay layer) only, not database state
-- Max 50 undo frames (configurable via `MAX_UNDO_DEPTH`)
+- Tracks the overlay layer (user intent) only, not database state; at most `MAX_UNDO_DEPTH` (50) frames
 - A successful Sync/Save, or a Discard, clears Undo/Redo (frames hold override snapshots, not old values);
   a CLICK save does not
 - An unsaved field that the database now matches stops being an edit (`_rebase_override`, run by `_derive`)
-- Keyboard: Ctrl+Z (undo), Ctrl+Y (redo)
 
 ### Block Colors
-- Block colors are stored in `AddressStore.block_colors` dict, NOT in `AddressRow`
-- Access via `store.get_block_color(addr_key)` → returns color name or None
-- Colors are derived from comments (block tags) by `compute_block_colors`, the one implementation
-- Kept separate to avoid row recreation on color changes and exclude from undo/redo
+- Stored in `AddressStore.block_colors`, NOT in `AddressRow`, and not part of undo/redo; read them with
+  `store.get_block_color(addr_key)` (color name or None)
+- `compute_block_colors` is the one implementation that derives them from comments (block tags)
 - Duplicate block names: the first definition in address order is valid; later ones are flagged
 
 ### Program Analysis
 - One build worker per connection; requests made while it runs collapse into one follow-up build.
   `ConnectionSession.start_analysis` queues no build while one runs (that build serves it) and makes the
-  ScrWatcher once per session, because the watcher holds the count of tags synced since CLICK last saved
+  ScrWatcher once per session: the watcher holds the count of tags synced since CLICK last saved
 - Publishing a build swaps `csv/` and `src/plc` as a pair and records the generation last, so a workspace
   never holds `csv/` from one save and `src/plc` from another
 - A build that fails before it publishes leaves `project_dir` an earlier save's (`project_is_current`
   is False), and Review Changes then has nothing to compare with
 - `SavedProgram.save_count` is the one signal that CLICK saved: only the ScrWatcher bumps it, once per save
-  (after a change to the Scr*.tmp files it checks every 500 ms and counts the save once two checks in a row
-  find them unchanged, about 1 s).
+  (once the Scr*.tmp files, checked every 500 ms, are unchanged on two checks in a row after a change).
   A Sync rebuild, Reload from CLICK, a workspace change, a retry and a failed build leave it as it was
 - `AnalysisService.status` reads BUILDING until a build that serves every request made so far
   (`mark_building` returns the count, `build(serves=)` takes it) finishes. A build of the files before a save
@@ -230,20 +207,19 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   its baseline `tags.py` with them, never from CLICK's Project.ini at the time it runs
 - `backup/src/plc` is the newest backup of `src/plc` (taken before a build replaces edited source, on
   `clicknick-cli backup`, and when a chosen workspace's edits are kept). Each new backup first moves it to
-  `backup/older/<YYYYMMDDTHHMMSSZ>/src/plc`, named by the time it was taken (`backup/backup-time.txt`; when
-  that cannot be written, the backup's files are dated to it instead). Older backups are named in UTC, so a
-  daylight-saving or time-zone change does not reorder them. A tree that any kept backup holds makes no new
-  one: that backup becomes the newest. The oldest go so that 5 are kept in all (`KEPT_PLC_BACKUPS`), each
-  renamed out of the listing before it is deleted, and only once the whole backup or restore succeeded.
-  Nothing refuses a save or a backup over this
+  `backup/older/<YYYYMMDDTHHMMSSZ>/src/plc`, named in UTC by the time it was taken (`backup/backup-time.txt`;
+  when that cannot be written, the backup's files are dated to it instead). A tree that any kept backup holds
+  makes no new one: that backup becomes the newest. The oldest go so that 5 are kept in all
+  (`KEPT_PLC_BACKUPS`), each renamed out of the listing before it is deleted, and only once the whole backup or
+  restore succeeded; one that fails leaves `src/plc` as it was and deletes no backup. Nothing refuses a save or
+  a backup over this
 - `clicknick-cli restore` takes the newest backup, `restore <time>` an older one. It copies the chosen backup
   aside, then backs up `src/plc` if it differs from both the last generation and that backup, then replaces
   `src/plc`. Its pruning keeps the restored backup, so six may be kept until the next backup.
-  `tests/test_backup_oracle.py` plays random edits, builds, backups and restores, some with a copy, move,
-  time-file write or prune that fails, and checks after each: one that succeeded left the edits `src/plc`
-  held as the newest backup (or in `src/plc`, as the backup it restored); one that failed left `src/plc` as
-  it was and deleted no backup; a tree once in a backup, or in `src/plc` with edits as one began, is gone
-  only when 5 kept backups were the newest after it
+  `tests/test_backup_oracle.py` checks these rules over random edits, builds, backups and restores, some with a
+  copy, move, time-file write or prune that fails: one that succeeds leaves the edits `src/plc` held as the
+  newest backup (or in `src/plc`, as the backup it restored); a tree once in a backup, or in `src/plc` with
+  edits as one began, is gone only when 5 kept backups were the newest after it
 - Each workspace folder has one lock (`workspace_writing`). A build's publish holds it from its backup of
   edits to the generation record; `backup`, `restore` and choosing a workspace hold it throughout. The
   build waits for it; the others run on the Tk thread and are refused (`WorkspaceBusyError`) instead of
@@ -251,10 +227,10 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   analysis is BUILDING (`_get_project_dir`)
 
 ### Review Changes
-- The one window for getting ladder into CLICK (`views/review_changes_window.py`; it was called Guided Paste):
-  **Ladder > Compare with > Folder** opens it on any folder of ladder CSVs, the Workspace's **Review Changes** /
-  `clicknick-cli rung apply` on the workspace's `csv_output/`. The app keeps one window per folder and reloads it
-  when the folder is shown again
+- The one window for getting ladder into CLICK (`views/review_changes_window.py`): **Ladder > Compare with >
+  Folder** opens it on any folder of ladder CSVs, the Workspace's **Review Changes** / `clicknick-cli rung apply`
+  on the workspace's `csv_output/`. The app keeps one window per folder and reloads it when the folder is shown
+  again
 - A window's `ProposalSource` says where its proposal comes from ("from workspace", "from <folder>") in the title
   and the diff's `+++` header, and what starts out taken: differences always; the folder's nicknames, and deleting
   programs only in CLICK, unless the source is a copy of another PLC (`takes_nicknames`, `deletes_only_in_click`).
@@ -299,7 +275,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - Under "Changed rungs" a program is still copied whole when its steps number `_MANY_STEPS` (6) or more, unless
   it has `_SLOW_PASTE_RUNGS` (100) rungs, CLICK holds legacy-encoded rungs of it (a whole paste re-pastes skipped
   rungs from ClickNick's reading), a step of it is done, its rungs were asked for by number, or the user
-  clicked **Step Through** for it (`_copied_whole_for_steps`; 100 counts the paste as chosen, `merged`). Every difference of a program locks while one of its steps is half done
+  clicked **Step Through** for it (`_copied_whole_for_steps`; 100 counts the paste as chosen, `merged`). Every
+  difference of a program locks while one of its steps is half done
 - A folder CSV that cannot be read is left out (`_left_out`), with a notice: it is no step and does not hold the
   window open
 - A program only in CLICK (`only_in_click`) is a row like the others: taken, its step is deleting it in CLICK
@@ -316,13 +293,22 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - It runs headless: `turn_on()` starts it (opening the Simulator does this), and only `turn_off()` (the
   Start/Stop beside the main window's Test legend) or connection teardown stops it. Closing windows never
   does. The on/off state is not persisted: nothing launches a subprocess or listens on port 502 at app start
-- The Simulator (whose command console is a bottom pane, `views/console_panel.py`, that pops out and docks back)
-  and the Dataview editor only observe it (the Dataview attaches while it serves Modbus). Views
-  never own a `DapService`; while it is off they stay open and offer Start
+- The Simulator (its Console pane is `views/console_panel.py`) and the Dataview editor only observe it (the
+  Dataview attaches while it serves Modbus). Views never own a `DapService`; while it is off they stay open and
+  offer Start
 - Launched with `keepForcesOnRun`, so forces survive STOP -> RUN; switch/analog patches ride `set_mode("run")`
-- Values are read over Modbus; inputs (switch/analog patches), mode, speed, stepping and forces go over DAP.
-  X stays read-only over Modbus, as on a real CLICK. Mode, speed and forces follow frames,
-  because the Console and agents can drive the same simulation (last command wins)
+- Values are read over Modbus; inputs (switch/analog patches), mode, speed, stepping, forces and links go over
+  DAP. The Dataview reads and writes values over Modbus, the same client as for a real CLICK, and X stays
+  read-only there, as on a real CLICK (its Force column goes through the simulation). Mode, speed and forces
+  follow frames, because the Console and agents can drive the same simulation (last command wins)
+- The command path: **commands are text with a source; state is data; the write is a plan.** The next release
+  turns panel mutations (switches, analog values, forces, mode, step, speed, links) into pyrung command lines
+  with a source such as `panel`, sent over the connection the session already has. The command language lives
+  in pyrung: ClickNick will send lines verbatim (no `;` splitting in the Console pane, no echo of its own once
+  pyrung broadcasts the command text). Frames, force and link listings, Modbus info and causal queries stay
+  structured reads; the program write stays `pyrungReload` with its carry plan; launch and terminate stay
+  structured. Until that rework lands, add no new structured mutation request
+  (`scratchpad/visual-simulator-design.md`, "Commands and recording")
 - User actions emit an `echo` event with the equivalent console command (tag names via `to_tag()`), which the
   console pane shows as a comment; only actions that reach a running simulation echo, and analog values echo once
   they settle
@@ -335,14 +321,14 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   reports tag names; they are mapped with the names of the program the simulation runs (`_tag_maps`: the
   workspace's `project_tag_to_addr_key`, taken at launch and at each write), so a rename in CLICK does not move
   them until that program is written, and `load_state` reports entries that are not addresses
-- pyrung's autoreload is off: as on a CLICK, a changed program reaches the simulation only when the user writes
-  it. A new analysis generation (a CLICK save; "rebuilt" when the save count did not move, as after Reload
-  from CLICK or a Sync) or an edit to the workspace's `src/plc` (`PlcSourceWatch`, on the 2 s watch tick) is
-  offered as `program_change`: in RUN, **RUN Time Edit** (reload, continue: values, timers and forces stay)
-  or **Stop and Write** (reload, STOP, RUN again in the same process: pyrung keeps retentive values and
-  forces, clears the rest); in STOP or while stepping, **Write** (values and mode stay). A Console `reload`
-  writes for the current mode. The Console pane refuses `autoreload`; an agent on `pyrung live` can still
-  reload, or change forces while a write runs. A build that fails is a notice; the old program keeps running.
+- pyrung's autoreload is off: a changed program reaches the simulation only when the user writes it. A new
+  analysis generation (a CLICK save; "rebuilt" when the save count did not move, as after Reload from CLICK or a
+  Sync) or an edit to the workspace's `src/plc` (`PlcSourceWatch`, on the 2 s watch tick) is offered as
+  `program_change`: in RUN, **RUN Time Edit** (reload, continue: values, timers and forces stay) or **Stop and
+  Write** (reload, STOP, RUN again in the same process: pyrung keeps retentive values and forces, clears the
+  rest); in STOP or while stepping, **Write** (values and mode stay). A Console `reload` writes for the current
+  mode. The Console pane refuses `autoreload`; an agent on `pyrung live` can still reload, or change forces
+  while a write runs. A build that fails is a notice; the old program keeps running.
   A finished build of the program the simulation runs (a Sync or Reload from CLICK that leaves it as it
   was) is not offered: its tag names, `src/plc` and `run.py` are those read at the launch or write
   (`PlcSourceWatch.same`; a file that could not be read either time is no proof). The watch tick and
@@ -386,8 +372,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   answers sends nothing by name (which program runs is unknown) and offers Restart; its notice says the
   simulation may be paused and names what the plan releases, and the switch position stays the
   user's (`_position_held`) so Restart starts in it and the write offered is for it, until the user moves
-  the switch.
-  Restart (also on the toolbar) relaunches on what the workspace holds now, from power-on values or the PLC
+  the switch
+- Restart (also on the toolbar) relaunches on what the workspace holds now, from power-on values or the PLC
   data file, with the same desired state and switch position; so do Start, a PLC data file change and a
   Modbus port change (one seen during a write: once the write is answered, unless the simulation relaunched
   meanwhile; one seen while a build runs: once it ends, `_restart_due`), and a simulation that failed to
@@ -424,9 +410,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   its folder again when the edits were kept; otherwise it is closed without saving and opened again on
   the window's DataView folder (`_reopen_dataview_editor`)
 - ClickNick looks for an open project's `CLICK ({hwnd:08X})` folder under the Windows temp folder
-  (GetTempPathW; USER-CHECKS Q8), in its long form. Everything that looks for SC_.mdb, Address.csv,
-  Project.ini, Scr*.tmp or the DataView folder goes through `utils/click_temp.py` (`click_temp_dir`),
-  from the connected window's hwnd
+  (GetTempPathW), in its long form. Everything that looks for SC_.mdb, Address.csv, Project.ini, Scr*.tmp or
+  the DataView folder goes through `utils/click_temp.py` (`click_temp_dir`), from the connected window's hwnd
 - The Dataview Editor and Verify use only the connected window's DataView folder
   (`click_dataview_folder`), never another `CLICK (*` folder. The Dataview model takes the folder as a
   getter (`_dataview_folder`): with no window connected it is the loaded CSV's folder, or none

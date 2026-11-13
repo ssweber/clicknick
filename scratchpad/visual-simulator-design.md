@@ -3,6 +3,8 @@
 Design session 2026-10-18. Implemented on branch `feat/simulator` in pyclickplc, pyrung and clicknick; not
 released yet. Re-grounded 2026-10-21: Modbus input writes dropped (pyclickplc 0e739de), bench links added (pyrung
 c396ea1, clicknick f13096c, c4100d7), then layout B, the Console pane and the workspace guidance split.
+ClickNick's part has since landed on `dev`. The next release's design is
+[Commands and recording](#commands-and-recording-decided-2026-11-13).
 
 ## Agreed design
 
@@ -87,6 +89,8 @@ option. It can. Nothing on the branch needs Modbus writes to X.
 
 ### Plan
 
+Done in ClickNick: nothing sends `allow_input_writes` or `allowInputWrites` any more.
+
 - **ClickNick:** switches, pushbuttons and analog entries always go through DAP patch. That gives one command path,
   which the Console-echo idea below also wants. The sim's Modbus client becomes read-only polling. Drop
   `allow_input_writes=True` from both `connect` calls and `"allowInputWrites": True` from the launch args. While
@@ -106,7 +110,10 @@ option. It can. Nothing on the branch needs Modbus writes to X.
 
 ## Links (feedback wiring) as a first-class visual
 
-### What exists
+### What existed before the link work
+
+This is the state before 2026-10-21; see [pyrung work](#pyrung-work) and [Built vs. the plan](#built-vs-the-plan-above)
+for what was built.
 
 - **pyrung:** a feedback tag declares `physical=` (bool `on_delay`/`off_delay`, or a `ramp`/`approach`/`pulse`
   profile) and `link=<enable tag>[:<trigger>]`. This round-trips through the CLICK comment (`TagMeta`). At launch
@@ -275,6 +282,9 @@ Built 2026-10-21: right-click **Why** on any point, **Show simplified logic** an
 as green `#` lines with the matching command (switches, forces, mode, step, speed, links; not pushbuttons; analog
 values once settled), emitted by `SimulationSession` for what it actually sends.
 
+Superseded for the next release by [Commands and recording](#commands-and-recording-decided-2026-11-13): the panel
+sends its commands as text, and the Console shows pyrung's broadcast command text instead of ClickNick's echo.
+
 ### Rack layout (decided 2026-10-21)
 
 Layout B from the mockups: a slim CPU card (vertical RUN / STEP / STOP over PWR/RUN/ERR) on the left, with the CPU's
@@ -291,3 +301,54 @@ the workflow stay current. `AGENTS.md` and `README.md` are the user's: seeded on
 `<!-- pyrung:guidance -->` pointer line and an empty notes section. On each save ClickNick only puts a missing
 pointer line back; a file an older pyrung wrote whole (lifecycle markers) moves to `*.previous.md`. This replaced the
 marked-section refresh, which left everything outside the markers (program shape, commands) stale.
+
+## Commands and recording (decided 2026-11-13)
+
+Recording is out of this release. Record / Stop / Replay is the next release's headline, and this section sets the
+command path it needs.
+
+### Principle: commands are text with a source; state is data; the write is a plan
+
+- **Commands are text.** Every panel mutation (switches, analog values, forces, mode, step, speed, links) becomes a
+  pyrung command line with a source such as `panel`. The Console and `pyrung live` already send lines; with the
+  panel on the same path, pyrung sees every change as a command and can record it.
+- **State is data.** Frames, force and link listings, Modbus info and causal queries (`pyrungCausal`) stay
+  structured DAP reads.
+- **The write is a plan.** The program write stays `pyrungReload` with its carry plan (`CarryPlan.as_dap()`).
+  Launch and terminate stay structured too.
+- The command language lives in pyrung. ClickNick sends lines verbatim: no `;` splitting in the Console pane (it
+  splits today, in `ConsolePanel._submit_command_text`), and no echo rendered by ClickNick once pyrung broadcasts
+  the command text.
+- The panel sends its command text over the connection it already has (pyrung's recommendation), not a new
+  connection per command.
+- Until this rework lands, add no new structured mutation request to `DapService`.
+
+### Dataview and Modbus
+
+- The Dataview stays on Modbus for reads and writes: the same client as for a real CLICK, with X refused there, as
+  on the PLC.
+- Recording a Modbus write belongs in pyrung's Modbus write path (value and peer). That also records an outside HMI
+  writing to the simulation.
+
+### ClickNick's list for the next release
+
+- Send panel commands as text.
+- Show pyrung's broadcast command text in the Console instead of ClickNick's `echo` events.
+- Show the live session name, so `pyrung live` can join.
+- Make the switch and analog widgets follow outside changes. Today an outside `patch` moves the value but not the
+  switch.
+- Handle a relaunch during a recording: Restart, Start, a PLC data file change or a Modbus port change.
+
+### Bar for a shippable Record / Stop / Replay
+
+1. Timing reproduces: a session with an on-delay replays to the same outputs.
+2. Every ClickNick action that changes the simulation is recorded, or the UI says which are not.
+3. Replay starts from the state the recording started from.
+4. A replay against a changed program reports the lines that failed and whether outputs differ, rather than
+   silently diverging.
+5. A pass/fail notion, at least "the outputs at the end matched the recording's".
+
+### Open question (with pyrung)
+
+- Is the check explicit (`get` lines kept with their answers and compared on replay; Sam's preference) or an
+  implicit trace of outputs?
