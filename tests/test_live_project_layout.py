@@ -171,7 +171,12 @@ def test_backups_in_the_same_second_are_kept_in_order(tmp_path: Path, monkeypatc
         _back_up(tmp_path, f"edits {index}\n")
 
     names = older_plc_backups(tmp_path)
-    assert names == ["20261112-090000-10", "20261112-090000-9", "20261112-090000-8", "20261112-090000-7"]
+    assert names == [
+        "20261112-090000-10",
+        "20261112-090000-9",
+        "20261112-090000-8",
+        "20261112-090000-7",
+    ]
     assert [_older_text(tmp_path, name) for name in names] == [
         "edits 9\n",
         "edits 8\n",

@@ -204,6 +204,10 @@ def _replace_trees(pairs: Sequence[tuple[Path, Path]]) -> None:
                 shutil.rmtree(staging, ignore_errors=True)
 
 
+def _file_count(root: Path) -> int:
+    return sum(path.is_file() for path in root.rglob("*"))
+
+
 def _replace_tree(source: Path, destination: Path) -> int:
     """Copy *source* over *destination* without exposing a partial new tree."""
     _replace_trees([(source, destination)])
@@ -212,10 +216,6 @@ def _replace_tree(source: Path, destination: Path) -> int:
 
 def _now() -> dt.datetime:
     return dt.datetime.now().astimezone()
-
-
-def _file_count(root: Path) -> int:
-    return sum(path.is_file() for path in root.rglob("*"))
 
 
 def _latest_mtime(root: Path) -> dt.datetime | None:
