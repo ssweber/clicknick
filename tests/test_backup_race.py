@@ -107,18 +107,29 @@ def test_a_build_publishing_waits_for_a_backup_part_way_through(tmp_path: Path, 
         lambda: backup_plc_source(workspace),
     )
 
+    asked = threading.Event()
+    writing = project_workspace.workspace_writing
+
+    def asking(project_dir: Path, *, wait: bool = False):
+        if wait:
+            asked.set()
+        return writing(project_dir, wait=wait)
+
+    monkeypatch.setattr(project_workspace, "workspace_writing", asking)
     publish = threading.Thread(target=_publish_generated_project, args=(staged, workspace))
     publish.start()
-    publish.join(0.3)
-    publish_waited = publish.is_alive()
+    assert asked.wait(10), "the publish never asked for the workspace"
+    # It cannot finish without the workspace, which the paused backup holds.
+    assert publish.is_alive()
+    assert _read(plc_source_dir(workspace)) == _GENERATED
     backup.finish()
     publish.join(10)
+    assert not publish.is_alive()
 
     # Not main.py from one generation and subroutines/ from the next.
     assert _read(plc_backup_dir(workspace)) == _GENERATED
     assert _read(plc_source_dir(workspace)) == _NEXT
     assert not plc_source_is_modified(workspace)
-    assert publish_waited
 
 
 class _Analysis:

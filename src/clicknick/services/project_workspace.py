@@ -36,7 +36,10 @@ _WORKSPACE_LOCKS_GUARD = threading.Lock()
 
 
 class WorkspaceBusyError(ValueError):
-    """Another thread is writing the workspace's ``src/plc`` or its backups."""
+    """A build is regenerating the workspace *where* (a folder, or words naming it)."""
+
+    def __init__(self, where: Path | str) -> None:
+        super().__init__(f"ClickNick is regenerating {where} from CLICK; try again when it finishes")
 
 
 @contextmanager
@@ -53,9 +56,7 @@ def workspace_writing(project_dir: Path, *, wait: bool = False) -> Iterator[None
     with _WORKSPACE_LOCKS_GUARD:
         lock = _WORKSPACE_LOCKS.setdefault(key, threading.RLock())
     if not lock.acquire(blocking=wait):
-        raise WorkspaceBusyError(
-            f"ClickNick is writing {project_dir} from CLICK's save; try again when it finishes"
-        )
+        raise WorkspaceBusyError(project_dir)
     try:
         yield
     finally:

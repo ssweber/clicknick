@@ -327,6 +327,68 @@ class TestAnalysisStatus:
         assert svc.build(tmp_path, None, serves=second)
         assert svc.status is AnalysisStatus.READY
 
+    @pytest.mark.parametrize("fails", [False, True])
+    def test_a_request_failing_before_it_is_queued_waits_for_the_build_running(
+        self, monkeypatch, tmp_path, fails
+    ):
+        """CLICK saves while a build runs and the save's database is not found."""
+        svc = AnalysisService()
+        during: list[AnalysisStatus] = []
+
+        def _graph(*_args, on_project_generated=None, **_kwargs):
+            svc.mark_failed("No Click project database found.")
+            during.append(svc.status)
+            if fails:
+                raise ValueError("bad rung")
+            return MagicMock(), MagicMock(), tmp_path, {}
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _graph)
+        serves = svc.mark_building()
+
+        if fails:
+            with pytest.raises(ValueError):
+                svc.build(tmp_path, None, serves=serves)
+        else:
+            assert svc.build(tmp_path, None, serves=serves), "the build was discarded"
+            assert svc.is_available
+        assert during == [AnalysisStatus.BUILDING]
+        assert svc.status is AnalysisStatus.FAILED
+        assert svc.error == "No Click project database found."
+        # The failed request is a save the workspace does not hold.
+        assert not svc.project_is_current
+
+    def test_a_failed_request_waits_for_the_build_queued_before_it(self, monkeypatch, tmp_path):
+        svc = AnalysisService()
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
+        )
+        first = svc.mark_building()
+        second = svc.mark_building()
+        svc.mark_failed("No saved ladder files.")
+
+        assert svc.build(tmp_path, None, serves=first)
+        assert svc.status is AnalysisStatus.BUILDING
+        svc.mark_failed("selection unreadable", serves=second)  # its build never ran
+        assert svc.status is AnalysisStatus.FAILED
+        assert svc.error == "No saved ladder files."
+
+    def test_a_later_request_replaces_a_failed_one(self, monkeypatch, tmp_path):
+        svc = AnalysisService()
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
+        )
+        first = svc.mark_building()
+        svc.mark_failed("No saved ladder files.")
+        second = svc.mark_building()
+
+        assert svc.build(tmp_path, None, serves=first)
+        assert svc.status is AnalysisStatus.BUILDING
+        assert svc.build(tmp_path, None, serves=second)
+        assert svc.status is AnalysisStatus.READY
+        assert svc.error is None
+
     def test_failed_rebuild_keeps_previous_result(self, monkeypatch, tmp_path):
         """A failed rebuild must not take working analysis away from open windows."""
         svc = AnalysisService()
@@ -536,8 +598,8 @@ class TestBuildValidation:
         assert svc.project_dir == tmp_path
         assert not svc.project_is_current
 
-        svc.mark_building()
-        svc.mark_failed("No saved ladder files")
+        serves = svc.mark_building()
+        svc.mark_failed("selection unreadable", serves=serves)  # its build never ran
         assert not svc.project_is_current
 
 

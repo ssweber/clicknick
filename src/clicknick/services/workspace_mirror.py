@@ -19,6 +19,7 @@ from .project_workspace import (
     backup_plc_source,
     plc_backup_time,
     plc_source_is_modified,
+    record_generated_plc_source,
     workspace_writing,
 )
 
@@ -357,7 +358,8 @@ def validate_mirror_destination(source: Path, mirror: Path) -> None:
 
 def _overlay_onto_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
     keep_mirror_source = plc_source_is_modified(mirror)
-    if keep_mirror_source and plc_source_is_modified(source):
+    source_is_modified = plc_source_is_modified(source)
+    if keep_mirror_source and source_is_modified:
         raise ValueError(
             "Both workspaces hold edits to src/plc that are not in CLICK:\n\n"
             f"{source / PLC_PACKAGE_PATH}\n{mirror / PLC_PACKAGE_PATH}\n\n"
@@ -396,6 +398,9 @@ def _overlay_onto_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
             continue
         copied += _copy_file(path, mirror / relative, overwrite=False)
 
+    # The mirror took the active workspace's last generation, so it is one too.
+    if not keep_mirror_source and not source_is_modified:
+        record_generated_plc_source(mirror)
     return MirrorSyncResult(copied, mirror, kept_source=keep_mirror_source)
 
 
@@ -406,7 +411,8 @@ def sync_workspace_to_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
     active workspace has none. A mirror whose ``src/plc`` holds work beyond its
     last generation keeps it: that tree is snapshotted to the mirror's
     ``backup/src/plc`` (the backup there moves to ``backup/older``) and left
-    in place, and the next build regenerates it.
+    in place, and the next build regenerates it. A mirror that took the active
+    workspace's unedited ``src/plc`` is recorded as that generation.
     When the active workspace's ``src/plc`` holds edits too, nothing changes and
     ValueError says so: one of the two would be left behind.
     """

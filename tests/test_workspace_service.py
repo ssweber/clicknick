@@ -448,9 +448,9 @@ def test_save_count_counts_only_the_saves_click_makes(tmp_path, monkeypatch) -> 
     assert session.saved_program().save_count == 1
 
     # It is the same whatever the build is doing.
-    session.analysis.mark_building()
+    serves = session.analysis.mark_building()
     assert session.saved_program().save_count == 1
-    session.analysis.mark_failed("pyrung cannot convert this rung")
+    session.analysis.mark_failed("pyrung cannot convert this rung", serves=serves)
     failed = session.saved_program()
     assert failed.save_count == 1
     assert failed.csv_dir is None
@@ -589,12 +589,63 @@ def test_a_save_during_a_build_reads_as_building_until_its_own_build(
     assert pre_save.csv_dir is None
     # Every reader of the analysis agrees: the workspace is not the save's yet.
     assert pre_save_state is WorkspaceState.PREPARING
-    assert "being regenerated" in pre_save_workspace
+    assert "try again when it finishes" in pre_save_workspace
     assert saved.save_count == 1
     assert saved.building is False
     assert saved.csv_dir == project / "csv"
     assert state is not WorkspaceState.PREPARING
     assert workspace == project
+
+
+def test_a_save_that_cannot_be_read_during_a_build_reads_as_building_until_it_finishes(
+    tmp_path, monkeypatch
+) -> None:
+    """The CLI's readers of the workspace are refused while the build still publishes it."""
+    from clicknick.services.analysis_service import AnalysisService
+
+    _saved_click_project(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "clicknick.services.program_check_selection.ProgramCheckSelection",
+        lambda _workspace: MagicMock(),
+    )
+    project = tmp_path / "pyrung_project"
+    (project / "csv").mkdir(parents=True)
+    running, release = threading.Event(), threading.Event()
+
+    def build_graph(*_args, on_project_generated, **_kwargs):
+        on_project_generated(project, {})
+        running.set()
+        assert release.wait(timeout=10)
+        return MagicMock(), MagicMock(), project, {}
+
+    monkeypatch.setattr("clicknick.services.analysis_service._build_graph", build_graph)
+    outcomes: list[tuple[bool, str | None]] = []
+    done = threading.Event()
+
+    def finished(ok: bool, error: str | None) -> None:
+        outcomes.append((ok, error))
+        done.set()
+
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    session.analysis = AnalysisService()
+    session._start_analysis_thread(tmp_path, tmp_path / "SC_.mdb", on_complete=finished)
+    assert running.wait(timeout=10)
+
+    # CLICK saves while it runs, and the save's database is not found.
+    monkeypatch.setattr("clicknick.utils.mdb_shared.find_click_database", lambda **_kwargs: None)
+    session._on_scr_changed()
+    try:
+        assert session.analysis.status is AnalysisStatus.BUILDING
+        with pytest.raises(ValueError, match="try again when it finishes"):
+            _get_project_dir(DispatchContext(analysis=session.analysis))
+    finally:
+        release.set()
+    assert done.wait(timeout=10)
+
+    assert outcomes == [(True, None)], "the build was discarded"
+    assert session.analysis.status is AnalysisStatus.FAILED
+    assert "No Click project database found" in (session.analysis.error or "")
+    assert session.saved_program().csv_dir is None
 
 
 def test_a_rebuild_that_fails_before_publishing_has_nothing_to_compare(
