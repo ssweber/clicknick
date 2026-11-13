@@ -3,7 +3,7 @@
 "Save to project" turns a simulator bench link into the comment metadata
 pyrung reads (``[link=Motor_Run, on_delay=2s, off_delay=500ms]``); after a
 Sync the program declares the link itself and the bench copy drops away.
-Pure logic: no tkinter, no store.
+No tkinter, no store; `linked_feedbacks` reads a workspace's nicknames.csv.
 """
 
 from __future__ import annotations

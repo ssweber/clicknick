@@ -109,7 +109,9 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--session", "-s", help="Session label (.ckp project name)")
-    parser.add_argument("command", nargs="*", help="Command (chain with ';')")
+    # REMAINDER: from the first command word on, every word (``--select``
+    # included) is the command's, and argparse reads none of them.
+    parser.add_argument("command", nargs=argparse.REMAINDER, help="Command (chain with ';')")
     args = parser.parse_args()
 
     # `list` (or no args) -> show sessions

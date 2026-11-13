@@ -264,9 +264,7 @@ class _Run:
             # The edits are the newest backup now, or src/plc holds them as the
             # backup it restored (which keeps the step it was last the newest at).
             # Only a restore may leave them as an older backup: a backup promotes it.
-            restored = (
-                self.restoring and self.pending == source and self.pending in kept.values()
-            )
+            restored = self.restoring and self.pending == source and self.pending in kept.values()
             assert self.pending == newest or restored, (
                 f"edits {sorted(self.pending)} were not backed up",
                 history,

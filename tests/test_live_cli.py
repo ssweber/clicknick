@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import sys
 
 import pytest
@@ -141,3 +142,59 @@ def test_an_unclosed_quote_sends_nothing(monkeypatch, store, capsys):
     assert exited.value.code == 2
     assert sent == []
     assert "No closing quotation" in capsys.readouterr().err
+
+
+def _documented_examples() -> list[list[str]]:
+    """The shell words of every ``clicknick-cli ...`` example in the module docstring."""
+    examples = []
+    for line in cli.__doc__.splitlines():
+        line = line.strip()
+        if line.startswith("clicknick-cli "):
+            words = shlex.split(line, comments=True)[1:]
+            if words not in (["list"], ["help"]):  # answered without the app
+                examples.append(words)
+    return examples
+
+
+@pytest.mark.parametrize("words", _documented_examples(), ids=lambda words: " ".join(words)[:60])
+def test_every_documented_example_reaches_the_command(monkeypatch, words):
+    """Each example, split as a shell does, is sent whole: options included."""
+    sent: list[tuple[str | None, str]] = []
+
+    def _send(label, command):
+        sent.append((label, command))
+        return True, "ok"
+
+    monkeypatch.setattr(cli, "send_command", _send)
+    monkeypatch.setattr(cli, "find_sessions", lambda: [])
+    monkeypatch.setattr(sys, "argv", ["clicknick-cli", *words])
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+    assert exited.value.code in (0, None)
+    session = None
+    if words[0] in ("-s", "--session"):
+        session, words = words[1], words[2:]
+    expected = [cli.quote_words(part) for part in cli._commands(words, None)]
+    assert sent == [(session, command) for command in expected]
+    assert expected  # the example had a command
+
+
+@pytest.mark.parametrize(
+    "words",
+    [
+        ["rung", "apply", "main", "--select", "r3,r7"],
+        ["tag", "set-physical", "Clamp_FB", "Clamp", "--system", "S"],
+        ["tag", "set-physical", "Clamp_FB", "Clamp", "--on-delay", "50ms", "--off-delay", "200ms"],
+        ["--session", "MyProject", "rung", "apply", "--select", "r3"],
+    ],
+)
+def test_an_option_given_as_its_own_word_is_part_of_the_command(monkeypatch, words):
+    sent: list[str] = []
+    monkeypatch.setattr(
+        cli, "send_command", lambda _label, command: (sent.append(command), (True, ""))[1]
+    )
+    monkeypatch.setattr(sys, "argv", ["clicknick-cli", *words])
+    with pytest.raises(SystemExit):
+        cli.main()
+    command = words[2:] if words[0] == "--session" else words
+    assert sent == [cli.quote_words(command)]

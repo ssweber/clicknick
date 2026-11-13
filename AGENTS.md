@@ -357,7 +357,7 @@ Tests are in `tests/` and `src/` (pytest discovers both).
     is released on internal memory
   - a link the program declares and runs (`declared`) follows its feedback's name while the new program declares
     a link on that name (from the workspace's `csv/nicknames.csv`, `linked_feedbacks`); when the name is gone
-    or sits on an address with no declared link, its coil carries on on its address under the new name. A
+    or sits on an address with no declared link, its coil carries on at its address under the new name. A
     bench link or declared link that moves keeps its coil's state, so a timer part way through carries on
 - The offer lists releases, drops and moves before the user writes. After the reload, pyrung's report
   (`carried`) is the truth: the entries it placed are adopted by address, and the notice

@@ -24,7 +24,7 @@ The rule:
 - A link the program declares (in its feedback's comment) follows its
   feedback's name while the new program declares a link on that name: pyrung
   carries the coil on by name. When the name is gone, or now sits on an
-  address the new program declares no link on, the coil carries on on its
+  address the new program declares no link on, the coil carries on at its
   address, under the address's new name, timing included (``declared``).
 
 Entries whose name is on no CLICK address are not the user's: pyrung carries
