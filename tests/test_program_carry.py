@@ -239,7 +239,6 @@ def test_drops_that_lose_nothing_are_not_listed():
     assert CarryPlan().written(carried) == ""
 
 
-
 @pytest.mark.parametrize(
     ("reason", "detail"),
     [
@@ -251,7 +250,9 @@ def test_a_declared_link_that_could_not_move_is_said_with_pyrungs_reason(reason,
     entry = {"tag": "Start", "kind": "declared", "to": None, "dropped": True,
              "reason": reason, "detail": detail}  # fmt: skip
     plan = CarryPlan(declared={"Start": "Begin"})
-    assert plan.written([entry]) == f"The program's link on Start could not move to Begin: {detail}."
+    assert (
+        plan.written([entry]) == f"The program's link on Start could not move to Begin: {detail}."
+    )
     assert CarryPlan().written([entry]) == f"The program's link on Start could not move: {detail}."
 
 

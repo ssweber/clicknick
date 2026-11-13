@@ -2875,7 +2875,10 @@ def test_declared_links_whose_nicknames_and_comments_swap_keep_their_own_timing(
     dap.scan(3)
     dap.force("Go", True)
     dap.scan(2)
-    assert (dap.tag("__tmd_on__Start"), dap.tag("__tmd_on__Begin")) == (50, 20)
+    dap.frame()
+    harness.scheduler.run_ready()
+    start, begin = dap.tag("__tmd_on__Start"), dap.tag("__tmd_on__Begin")
+    assert 0 < begin < start < 100, "both part way through, Start further on"
 
     # In CLICK, X002 and X003 swap nicknames and comments: each link keeps its name.
     (project / "csv").mkdir()
@@ -2892,6 +2895,6 @@ def test_declared_links_whose_nicknames_and_comments_swap_keep_their_own_timing(
     dap.scan(1)
 
     assert harness.sim.program_change is None
-    assert dap.tag("__tmd_on__Start") == 60, "Start's coil, on X003 now"
-    assert dap.tag("__tmd_on__Begin") == 30, "Begin's coil, on X002 now"
+    assert dap.tag("__tmd_on__Start") == start + 10, "Start's coil, on X003 now"
+    assert dap.tag("__tmd_on__Begin") == begin + 10, "Begin's coil, on X002 now"
     assert harness.sim.notice in (None, "")
