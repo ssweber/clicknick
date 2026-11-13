@@ -252,6 +252,30 @@ def test_closing_the_data_session_saves_untitled_dataviews_or_closes_nothing(
     assert (tmp_path / "First.cdv").exists()
 
 
+def test_a_save_that_fails_in_a_live_folder_keeps_the_tab_and_window(editor, dialogs, tmp_path):
+    import stat
+
+    window = editor()
+    path = _copy(tmp_path)
+    window._open_dataview(path)
+    panel = window._get_current_panel()
+    panel.add_address("DS1")
+    path.chmod(stat.S_IREAD)  # the folder is there; the file cannot be written
+    try:
+        dialogs.yes_no_cancel.append(True)
+        assert window._on_tab_close_request(0) is False
+        assert len(dialogs.errors) == 1 and "DataView1" in dialogs.errors[0]
+        assert window._iter_open_panels() == [panel]
+
+        dialogs.yes_no_cancel.append(True)
+        window._on_close()
+        assert _exists(window)
+        assert len(dialogs.errors) == 2
+        assert panel.is_dirty
+    finally:
+        path.chmod(stat.S_IWRITE | stat.S_IREAD)
+
+
 def test_a_failed_save_closes_neither_the_tab_nor_the_window(editor, dialogs, tmp_path):
     window = editor()
     path = _copy(tmp_path)
