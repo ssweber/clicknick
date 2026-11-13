@@ -2600,3 +2600,190 @@ def test_no_restart_while_the_program_is_written(ready):
     ready.scheduler.run_ready()
     assert len(ready.daps) == 1
     assert "Cannot restart while the program is being written." in ready.messages("error")
+
+
+# ----------------------------------------------------------------------
+# The write is one planned reload (pyrungReload)
+# ----------------------------------------------------------------------
+
+
+def _refused_by_an_older_pyrung() -> DapRequestError:
+    """What DapService raises when pyrung has no pyrungReload (before 0.16)."""
+    from clicknick.services.dap_service import DapService
+
+    class OlderPyrung(DapService):
+        def _send_and_wait(self, command, arguments=None, timeout=10.0):
+            return {"success": False, "message": f"Unsupported command: {command}"}
+
+    dap = OlderPyrung()
+    dap._proc = object()
+    with pytest.raises(DapRequestError) as refused:
+        dap.planned_reload({"forces": {}, "links": {}, "declared": {}})
+    return refused.value
+
+
+def test_a_pyrung_without_the_planned_reload_refuses_the_write_and_nothing_changes(ready):
+    _name(ready, "X001", "Start")
+    _motor_running(ready)
+    _rebuild(ready, {"X001": "StartPB", "Y001": "MotorRun"})
+    ready.dap.reload_error = _refused_by_an_older_pyrung()
+    mark = len(ready.dap.calls)
+
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    # No release and re-apply around a plain reload instead.
+    assert _calls_since(ready.dap, mark) == [("reload",), ("continue",)]
+    assert ready.dap.forces == {"Motor": True}
+    assert ready.dap.bench["X002"]["enable"] == "Motor"
+    assert ready.sim.forces == {"Y001": True}
+    assert ready.sim.bench_links == {"X002": ON_DELAY_LINK}
+    assert ready.sim.to_tag("X001") == "Start", "the old program runs on"
+    change = ready.sim.program_change
+    assert "pyrung 0.16.0 or later" in change.text
+    assert "or later can). The simulation still runs the previous one." in ready.messages("error")
+    assert change.actions == ("run_time_edit", "stop_and_write", "restart")
+
+
+def test_a_reload_refused_in_stop_leaves_it_as_it_was(ready):
+    ready.open()
+    ready.sim.force("Y001", True)
+    ready.dap.frame(forces={"Y001": True})
+    ready.scheduler.run_ready()
+    _rebuild(ready)
+    ready.dap.reload_error = DapRequestError("Timed out waiting for execution to pause")
+    mark = len(ready.dap.calls)
+
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+
+    assert _calls_since(ready.dap, mark) == [("reload",)], "no STOP, no forces sent again"
+    assert ready.sim.forces == {"Y001": True}
+    assert ready.sim.switch_position == "stop"
+    assert "Timed out waiting for execution to pause" in ready.sim.program_change.text
+    assert ready.sim.program_change.actions == ("write", "restart")
+
+
+def test_what_pyrung_could_not_keep_is_in_the_notice_and_is_not_kept(ready):
+    _motor_running(ready)
+    _rebuild(ready, {"Y001": "MotorRun"})
+    ready.dap.reload_drops = {"Motor": ("type changed", "MotorRun is an Int in the new program")}
+
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert ready.dap.forces == {}
+    assert ready.sim.forces == {}
+    assert ready.sim.bench_links == {"X002": ON_DELAY_LINK}
+    assert ready.sim.notice == (
+        "Kept under new names: the link on X002 now comes from MotorRun (was Motor). "
+        "Could not keep the force on Motor: MotorRun is an Int in the new program."
+    )
+
+
+def test_a_console_force_pyrung_carried_without_a_plan_is_kept_by_its_name(ready):
+    _running_with_settings(ready)
+    _rebuild(ready)
+    real = ready.dap.planned_reload
+
+    def late_force(plan):
+        ready.dap.forces = {**ready.dap.forces, "C1": True}  # `force C1 1` just before
+        return real(plan)
+
+    ready.dap.planned_reload = late_force
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert ready.sim.forces == {"Y001": True, "C1": True}
+
+
+def test_the_programs_own_links_go_with_the_plan_under_their_addresss_new_name(ready):
+    _name(ready, "X002", "Prox")
+    _name(ready, "X003", "Door")
+    _name(ready, "Y001", "Motor")
+    ready.open()
+    ready.dap.project = {"Prox": "Motor", "Door": "Motor", "Lamp": "Motor"}
+    ready.dap.bench["Door"] = {"enable": None, "enabled": True}  # cut: its coil does not run
+    _rebuild(ready, {"X002": "ProxSensor", "X003": "DoorSw"})
+
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+
+    assert ready.dap.plans[-1]["declared"] == {"Prox": "ProxSensor"}
+
+
+# A feedback on X002 that a bench link or the program's own link drives from Cmd (X001).
+_LINK_PROGRAM = """\
+import warnings
+warnings.simplefilter("ignore")
+from pyrung.core import Bool, PLC, Physical, Program, Rung, out
+cmd = Bool("Cmd")
+fb = {feedback}
+with Program(strict=False) as prog:
+    with Rung(cmd):
+        out(Bool("Lamp"))
+    with Rung(fb):
+        out(Bool("Sink"))
+runner = PLC(prog, dt=0.010)
+"""
+
+
+def _link_program(name: str, *, declared: bool) -> str:
+    if declared:
+        feedback = f"Bool({name!r}, physical=Physical({name!r}, timed='100ms'), link='Cmd')"
+    else:
+        feedback = f"Bool({name!r})"
+    return _LINK_PROGRAM.format(feedback=feedback)
+
+
+def _timing_on_pyrung(tmp_path, *, declared: bool):
+    """In RUN on pyrung's adapter, X002 Prox's timed link from Cmd part way through its 100 ms."""
+    dap_class = _adapter_dap_class()
+    project = tmp_path / "project"
+    project.mkdir()
+    harness = Harness(tmp_path, _ready_analysis(project))
+    (project / "run.py").write_text(_link_program("Prox", declared=declared), encoding="utf-8")
+    for address, tag in (("X001", "Cmd"), ("X002", "Prox")):
+        _name(harness, address, tag)
+
+    def factory(**callbacks):
+        dap = dap_class(**callbacks)
+        harness.daps.append(dap)
+        return dap
+
+    harness.sim._dap_factory = factory
+    harness.open()
+    dap = harness.dap
+    dap.frame()
+    harness.scheduler.run_ready()
+    harness.sim.set_switch_position("run")
+    harness.scheduler.run_ready()
+    if not declared:
+        dap.link("Prox", "Cmd", response=(("timed", "100ms"),))  # `link Prox Cmd timed=100ms`
+    dap.force("Cmd", True)
+    dap.scan(3)
+    dap.frame()
+    harness.scheduler.run_ready()
+    count = dap.tag("__tmd_on__Prox")
+    assert 0 < count < 100
+    return harness, count
+
+
+@pytest.mark.parametrize("declared", [False, True], ids=["bench link", "program's link"])
+def test_renaming_a_linked_input_while_it_times_keeps_its_timing(tmp_path, declared):
+    harness, count = _timing_on_pyrung(tmp_path, declared=declared)
+    dap = harness.dap
+    run = harness.analysis.project_dir / "run.py"
+    run.write_text(_link_program("ProxSensor", declared=declared), encoding="utf-8")
+    _rebuild(harness, {"X002": "ProxSensor"})
+
+    harness.sim.run_time_edit()
+    harness.scheduler.run_ready()
+    dap.scan(1)
+
+    assert harness.sim.program_change is None
+    assert dap.tag("__tmd_on__ProxSensor") == count + 10, "one 10 ms scan on, not from 0"
+    assert dict(dap._adapter._runner.forces) == {"Cmd": True}
+    if not declared:
+        assert list(dap._adapter._bench_links) == ["ProxSensor"]
+        assert harness.sim.notice == "Kept under new names: the link on Prox is now on ProxSensor."

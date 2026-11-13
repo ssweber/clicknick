@@ -87,3 +87,40 @@ def test_requests_to_a_simulation_that_is_gone_are_unavailable_not_refused():
     with pytest.raises(DapRequestError, match="unknown tag") as refused:
         dap.force("BAD1", True)
     assert not isinstance(refused.value, DapUnavailableError)
+
+
+def test_a_write_is_one_pyrung_reload_request_with_the_plan():
+    plan = {"forces": {"Start": "StartPB"}, "links": {}, "declared": {"Prox": "ProxSensor"}}
+    body = {"result": "Reloaded at scan 7 (3 tag(s))", "carried": [{"tag": "Start"}]}
+    dap = _Scripted({"pyrungReload": {"success": True, "body": body}})
+    dap._proc = SimpleNamespace()
+    sent: list = []
+    scripted = dap._send_and_wait
+
+    def record(command, arguments=None, timeout=10.0):
+        sent.append((command, arguments))
+        return scripted(command, arguments, timeout)
+
+    dap._send_and_wait = record
+    assert dap.planned_reload(plan) == body
+    assert sent == [("pyrungReload", plan)]
+
+
+def test_a_refused_reload_is_not_asked_again():
+    """pyrung pauses a running continue itself before it reloads."""
+    refused = {"success": False, "message": "Timed out waiting for execution to pause"}
+    dap = _Scripted({"pyrungReload": refused})
+    dap._proc = SimpleNamespace()
+    with pytest.raises(DapRequestError, match="Timed out waiting"):
+        dap.planned_reload({})
+    assert dap.sent == ["pyrungReload"]
+
+
+def test_a_pyrung_without_the_planned_reload_is_named():
+    unsupported = {"success": False, "message": "Unsupported command: pyrungReload"}
+    dap = _Scripted({"pyrungReload": unsupported})
+    dap._proc = SimpleNamespace()
+    with pytest.raises(DapRequestError, match=r"pyrung 0\.16\.0 or later") as refused:
+        dap.planned_reload({})
+    assert not isinstance(refused.value, DapUnavailableError)
+    assert dap.sent == ["pyrungReload"]
