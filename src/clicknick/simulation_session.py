@@ -330,6 +330,23 @@ class _WriteTarget:
     saves: int | None
 
 
+@dataclass(frozen=True)
+class _UnsettledWrite:
+    """A write pyrung answered after a build started: which build's files it read is not known."""
+
+    target: _WriteTarget
+    #: What ``src/plc`` held when the write began.
+    source: PlcSourceWatch | None
+    carried: str
+
+
+def _same_names(
+    a: tuple[Mapping[str, int], Mapping[int, str]],
+    b: tuple[Mapping[str, int], Mapping[int, str]],
+) -> bool:
+    return dict(a[0]) == dict(b[0]) and dict(a[1]) == dict(b[1])
+
+
 def _mtime(path: Path | None) -> float | None:
     if path is None:
         return None
@@ -398,8 +415,12 @@ class SimulationSession:
         self._program_dir: Path | None = None
         self._program_source: PlcSourceWatch | None = None
         self._source_changed = False
+        # The build whose finished files _source_changed was last read for.
+        self._source_seen = -1
         # A write (pyrung reload) asked for and not answered yet, and why the last failed.
         self._writing = False
+        # A write answered after a build started, decided once that build is done.
+        self._unsettled: _UnsettledWrite | None = None
         self._write_error: str | None = None
         self._shown_change: ProgramChange | None = None
         # A restart the PLC data file or the Modbus port asked for that waits for the
@@ -938,6 +959,38 @@ class SimulationSession:
         new = (analysis.project_tag_to_addr_key, analysis.project_addr_key_to_tag)
         return plan_carry(old, new, forces, links, self._analog_channels())
 
+    def _holds(
+        self,
+        analysis: AnalysisService,
+        names: tuple[Mapping[str, int], Mapping[int, str]],
+        *,
+        source_changed: bool,
+    ) -> bool:
+        """True when the workspace holds the program with *names*, its ``src/plc`` unchanged."""
+        return (
+            not source_changed
+            and analysis.project_dir == self._program_dir
+            and _same_names(
+                names, (analysis.project_tag_to_addr_key, analysis.project_addr_key_to_tag)
+            )
+        )
+
+    def _runs_build(self, analysis: AnalysisService) -> bool:
+        """True when the finished build *analysis* holds the program the simulation runs.
+
+        Another build of the same save, or a Reload from CLICK, writes the same
+        ``src/plc`` and names: there is nothing to write. The source is read once
+        per build here (the watch tick reads it again), not on every frame.
+        """
+        watch = self._program_source
+        names = self._program_names
+        if self._writing or self._write_error or watch is None or names is None:
+            return False
+        if self._source_seen != analysis.generation:
+            self._source_seen = analysis.generation
+            self._source_changed = watch.changed()
+        return self._holds(analysis, names, source_changed=self._source_changed)
+
     @property
     def program_change(self) -> ProgramChange | None:
         """A program CLICK saved or the workspace holds that the simulation does not run yet."""
@@ -974,6 +1027,8 @@ class SimulationSession:
                 )
             if analysis.status is not AnalysisStatus.READY:
                 return None  # still building
+            if self._unsettled is not None or self._runs_build(analysis):
+                return None  # _check_program settles the write, or takes the build as run
             saves = self._save_count()
             if saves is not None and saves == self._program_saves:
                 return ProgramChange(
@@ -995,11 +1050,81 @@ class SimulationSession:
             self._write_actions(),
         )
 
+    def _adopt_program(
+        self,
+        generation: int,
+        names: tuple[Mapping[str, int], Mapping[int, str]],
+        saves: int | None,
+        source: PlcSourceWatch | None,
+        carried: str,
+    ) -> None:
+        """The simulation runs the program written: its build, names and source from now on."""
+        self._program_names = names
+        self._program_generation = generation
+        self._program_saves = saves
+        self._program_source = source
+        self._source_changed = False
+        self._message("OK - the simulation runs the new program.", "progress")
+        if carried:
+            self._set_notice(carried)
+
+    def _settle_write(self) -> None:
+        """Decide a write answered after a build started, once no build runs.
+
+        The write stands when the build left the workspace holding the program
+        written (pyrung read it, whichever build's files it was); otherwise the
+        names stay and the new program is offered.
+        """
+        from .services.analysis_service import AnalysisStatus
+
+        pending = self._unsettled
+        if pending is None or self._writing:
+            return
+        analysis = self._get_analysis()
+        if analysis is not None and analysis.status is AnalysisStatus.BUILDING:
+            return
+        self._unsettled = None
+        target = pending.target
+        converted = analysis is not None and analysis.status is AnalysisStatus.READY
+        source = pending.source
+        if (
+            analysis is not None
+            and converted
+            and source is not None
+            and self._holds(analysis, target.names, source_changed=source.changed())
+        ):
+            saves = self._save_count()
+            self._adopt_program(analysis.generation, target.names, saves, source, pending.carried)
+            return
+        self._program_saves = target.saves  # a later save is offered as one
+        when = "" if converted else " once it is converted"
+        self._message(
+            f"CLICK's program changed while it was written. Write it again{when}.", "error"
+        )
+
     def _check_program(self) -> None:
-        """Notice an edit to the workspace source, and tell listeners when the offer changes."""
+        """Notice an edit to the workspace source, and tell listeners when the offer changes.
+
+        A finished build that holds the program the simulation runs is taken as
+        run: it is not offered.
+        """
+        from .services.analysis_service import AnalysisStatus
+
         watch = self._program_source
         if watch is not None and self.is_ready and not self._writing:
             self._source_changed = watch.changed()
+        self._settle_write()
+        analysis = self._get_analysis()
+        if (
+            self.is_ready
+            and analysis is not None
+            and analysis.status is AnalysisStatus.READY
+            and analysis.generation != self._program_generation
+            and self._unsettled is None
+            and self._runs_build(analysis)
+        ):
+            self._program_generation = analysis.generation
+            self._program_saves = self._save_count()
         change = self.program_change
         if change != self._shown_change:
             self._shown_change = change
@@ -1117,7 +1242,9 @@ class SimulationSession:
         self._program_dir = None
         self._program_source = None
         self._source_changed = False
+        self._source_seen = -1
         self._writing = False
+        self._unsettled = None
         self._write_error = None
         self._position_held = False
         self._restart_due = False
@@ -1800,27 +1927,26 @@ class SimulationSession:
         if summary:
             self._message(summary)
         analysis = self._get_analysis()
+        self._unsettled = None
         if (
             analysis is None
             or analysis.generation != target.generation
             or analysis.status is AnalysisStatus.BUILDING
         ):
             # A build rewrote the workspace during the reload: which files pyrung
-            # read is unknown, so the names stay and the change is offered again.
-            self._message(
-                "CLICK's program changed while it was written. Write it again once it "
-                "is converted.",
-                "error",
-            )
+            # read is unknown, so the names stay until that build is done
+            # (_settle_write, from _check_program below).
+            self._unsettled = _UnsettledWrite(target, source, listing.carried)
+            if analysis is not None and analysis.status is AnalysisStatus.BUILDING:
+                self._message(
+                    "CLICK's program is being converted again. Once it is, ClickNick checks "
+                    "that the simulation runs it.",
+                    "progress",
+                )
         else:
-            self._program_names = target.names
-            self._program_generation = target.generation
-            self._program_saves = target.saves
-            self._program_source = source
-            self._source_changed = False
-            self._message("OK - the simulation runs the new program.", "progress")
-            if listing.carried:
-                self._set_notice(listing.carried)
+            self._adopt_program(
+                target.generation, target.names, target.saves, source, listing.carried
+            )
         # Read the links back with the names that now apply (a reload drops a bench
         # link the program now declares).
         self._links_synced = False
@@ -1847,6 +1973,7 @@ class SimulationSession:
             return
         self._writing = False
         if not known:
+            self._unsettled = None  # it may run neither
             text = f"{text}; which program the simulation runs is unknown, and it may be paused"
             if released:
                 text = f"{text}. If it runs the new program, it released {', '.join(released)}"

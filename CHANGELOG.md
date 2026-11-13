@@ -45,6 +45,7 @@
   - A link whose input is renamed keeps its timing through the write, for a bench link and for a link saved in the input's comment.
   - Forces and links set or released in the Console just before a write are kept as the Console left them.
   - A save that does not convert, or that holds a rung ClickNick cannot read, leaves the old program running, and the Simulator says why.
+  - One write answers one change: a new build of the program the simulation already runs (a save converted twice, a Reload from CLICK) is not offered, and a write made while a save converts stands when that save holds the program written.
   - **Restart** on the Simulator's toolbar starts the simulation over on what the workspace holds now (CLICK's last save and any edits), from power-on values (or your PLC data file), with your mode, switches, forces and bench links. It is also offered when writing fails.
   - The Console's `reload` writes the program as the Simulator would; `autoreload` is refused. The Console waits while a program is written.
 - A workspace's `AGENTS.md` and `README.md` are now yours to edit: pyrung's guidance moves to `AGENTS.pyrung.md` and `README.pyrung.md`, and an older generated `AGENTS.md` or `README.md` is kept as `*.previous.md`.

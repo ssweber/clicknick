@@ -342,7 +342,9 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   or **Stop and Write** (reload, STOP, RUN again in the same process: pyrung keeps retentive values and
   forces, clears the rest); in STOP or while stepping, **Write** (values and mode stay). A Console `reload`
   writes for the current mode. The Console pane refuses `autoreload`; an agent on `pyrung live` can still
-  reload, or change forces while a write runs. A build that fails is a notice; the old program keeps running
+  reload, or change forces while a write runs. A build that fails is a notice; the old program keeps running.
+  A finished build whose `src/plc` and tag names are those of the program the simulation runs (a save counted
+  twice, a Reload from CLICK after a write) is not offered: the simulation takes it as run (`_runs_build`)
 - One check says whether the workspace's program can run (`_workspace_problem`: converted, current, a
   `run.py`, no rung ClickNick cannot read). Start, a write and Restart all use it; a write or Restart it
   refuses leaves the simulation running and sets a notice saying why
@@ -371,8 +373,10 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   (`carried`) is the truth: the entries it placed are adopted by address, and the notice
   (`CarryPlan.written`) keeps the plan's notes for the entries placed as planned and says why pyrung could
   not keep any other (a drop that loses nothing, such as a link the program now declares, is not listed).
-  A write answered after another build started keeps the old names and offers the change again. The switch
-  shows the position it had until the write is answered
+  A write answered after another build started keeps the old names until no build runs (`_settle_write`):
+  the write stands when the workspace then holds the program written (its `src/plc` as the write began, its
+  names), else the error says the program changed while it was written and the change is offered again. The
+  switch shows the position it had until the write is answered
 - A reload that fails changes nothing in pyrung: the old program keeps running with its forces and links (a
   write made in RUN sends continue again, since pyrung may have paused), and **Restart** is added to the offer.
   A pyrung without `pyrungReload` refuses the write the same way, with a notice that it needs pyrung 0.16.0;

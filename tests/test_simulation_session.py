@@ -1233,6 +1233,15 @@ def test_frames_carry_link_countdowns_by_address(ready):
 # ----------------------------------------------------------------------
 
 
+def _write_source(harness: Harness, *, same_program: bool = False) -> None:
+    """A build writes the workspace's ``src/plc``; unless *same_program*, with another rung."""
+    main = harness.analysis.project_dir / "src" / "plc" / "main.py"
+    main.parent.mkdir(parents=True, exist_ok=True)
+    held = main.read_text(encoding="utf-8") if main.is_file() else ""
+    rungs = held.count("rung")
+    main.write_text(held if same_program else f"{held}rung {rungs + 1}\n", encoding="utf-8")
+
+
 def _rebuild(
     harness: Harness,
     renames: dict[str, str] | None = None,
@@ -1250,11 +1259,7 @@ def _rebuild(
     from pyclickplc.addresses import get_addr_key, parse_address
 
     old = harness.analysis._result
-    main = old.project_dir / "src" / "plc" / "main.py"
-    main.parent.mkdir(parents=True, exist_ok=True)
-    held = main.read_text(encoding="utf-8") if main.is_file() else ""
-    rungs = held.count("rung")
-    main.write_text(held if same_program else f"{held}rung {rungs + 1}\n", encoding="utf-8")
+    _write_source(harness, same_program=same_program)
     key_to_tag = dict(old.addr_key_to_tag)
     for address, tag in (renames or {}).items():
         key_to_tag[get_addr_key(*parse_address(address))] = tag
@@ -1401,6 +1406,7 @@ def test_a_save_is_offered_once_its_build_is_done(ready):
     ready.scheduler.fire(WATCH_MS)
     assert ready.sim.program_change is None
 
+    _write_source(ready)
     ready.analysis._status = AnalysisStatus.READY
     ready.scheduler.fire(WATCH_MS)
     assert ready.sim.program_change.cause == "save"
@@ -1792,6 +1798,7 @@ def test_a_save_during_the_write_keeps_the_old_names_and_offers_it_again(ready):
     change = ready.sim.program_change
     assert change is not None and change.cause == "save"
     assert change.actions == ("run_time_edit", "stop_and_write")
+
 
 def test_a_build_of_the_program_written_is_not_offered_again(ready):
     """A save counted twice, or a Reload from CLICK after it: one write answers both."""
