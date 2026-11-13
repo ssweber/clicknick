@@ -390,20 +390,41 @@ class SimulatorWindow(tk.Toplevel):
         x0, y0, x1, y1 = self._canvas.coords(info["led"])
         return (x0 + x1) / 2, (y0 + y1) / 2
 
-    # Drag an output onto an input (or analog input) to link them.
+    # Drag from an output to an input (or analog input), or from an input to an output,
+    # to link them. The input is the feedback and the output its enable either way.
+
+    def _link_anchor(self, address: str) -> tuple[float, float] | None:
+        """Where a link drag from *address* starts: its terminal, or the middle of an analog row."""
+        center = self._terminal_center(address)
+        if center is not None:
+            return center
+        box = self._canvas.bbox(f"ai:{address}")
+        if box is None:
+            return None
+        return box[0] + 10, (box[1] + box[3]) / 2
 
     def _start_link_drag(self, address: str) -> None:
-        start = self._terminal_center(address)
+        start = self._link_anchor(address)
         if start is not None:
             self._link_drag = {"source": address, "start": start, "target": None}
 
+    def _on_input_row_press(self, address: str) -> None:
+        """Start a link drag from an input row, except on its switch, which is the switch's press."""
+        if any(tag.startswith("sw:") for tag in self._canvas.gettags("current")):
+            return
+        self._start_link_drag(address)
+
     def _link_target_at(self, x: float, y: float, source: str) -> str | None:
-        """The ``in:`` / ``ai:`` row tag under canvas point (x, y), if it can be linked."""
+        """The row tag under canvas point (x, y) that *source* can be linked to.
+
+        An output links to an ``in:`` / ``ai:`` row, an input to an ``out:`` row.
+        """
         c = self._canvas
+        kinds = ("out",) if source in self._inputs or source in self._analog_in else ("in", "ai")
         for item in reversed(c.find_overlapping(x, y, x, y)):
             for tag in c.gettags(item):
                 kind, _, address = tag.partition(":")
-                if kind in ("in", "ai") and address and address != source:
+                if kind in kinds and address and address != source:
                     return tag
         return None
 
@@ -425,9 +446,12 @@ class SimulatorWindow(tk.Toplevel):
             )  # fmt: skip
         sx, sy = drag["start"]
         c.create_oval(sx - 8, sy - 8, sx + 8, sy + 8, outline=P.LINK_BENCH, width=2, tags=("drag",))
+        # The arrow always points at the input, whichever end the drag began on.
+        from_input = drag["source"] in self._inputs or drag["source"] in self._analog_in
         c.create_line(
-            sx, sy, x, y, fill=P.LINK_BENCH, width=2, dash=(5, 3), arrow=tk.LAST, tags=("drag",)
-        )
+            sx, sy, x, y, fill=P.LINK_BENCH, width=2, dash=(5, 3),
+            arrow=tk.FIRST if from_input else tk.LAST, tags=("drag",),
+        )  # fmt: skip
 
     def _end_link_drag(self) -> None:
         drag, self._link_drag = self._link_drag, None
@@ -436,9 +460,14 @@ class SimulatorWindow(tk.Toplevel):
         self._canvas.delete("drag")
         self._canvas.configure(cursor="")
         target = drag["target"]
-        if target is not None:
-            kind, _, address = target.partition(":")
-            self._open_link_dialog(address, analog=kind == "ai", enable=drag["source"])
+        if target is None:
+            return
+        kind, _, address = target.partition(":")
+        source = drag["source"]
+        if kind == "out":
+            self._open_link_dialog(source, analog=source in self._analog_in, enable=address)
+        else:
+            self._open_link_dialog(address, analog=kind == "ai", enable=source)
 
     def _show_details(self) -> None:
         detail = self._simulation.error_detail or ""
@@ -824,6 +853,7 @@ class SimulatorWindow(tk.Toplevel):
             "badge": badge, "pending": pending, "pill": pill, "pill_text": pill_text,
             "cut": cut, "x": x, "cy": cy, "top": self._card_top, "gutter": self._card_gutter,
         }  # fmt: skip
+        c.tag_bind(tag, "<ButtonPress-1>", lambda _e, a=address: self._on_input_row_press(a))
         c.tag_bind(switch, "<ButtonPress-1>", lambda _e, a=address: self._on_switch_press(a))
         c.tag_bind(switch, "<ButtonRelease-1>", lambda _e, a=address: self._on_switch_release(a))
 
@@ -836,7 +866,7 @@ class SimulatorWindow(tk.Toplevel):
     def _output_hint(self, address: str) -> str:
         if address in self._simulation.forces:
             return "Forced. Double-click (or click the padlock) to release."
-        return "Double-click to force it the other way. Drag onto an input to link it."
+        return "Double-click to force it the other way. Drag onto an input (or from one onto this) to link them."
 
     def _flip_output(self, address: str) -> None:
         """Double-click: force an output the other way from what it shows, or release it."""
@@ -929,6 +959,7 @@ class SimulatorWindow(tk.Toplevel):
         )  # fmt: skip
         self._draw_label(x + 10, y + 11, address, x + self._card_w - BADGE_W, tag)
         badge = self._draw_badge(x + self._card_w - 11, y + 11, address)
+        c.tag_bind(tag, "<ButtonPress-1>", lambda _e, a=address: self._start_link_drag(a))
         var = tk.StringVar()
         entry = ttk.Entry(c, textvariable=var, width=8, justify="right")
         entry.bind("<Return>", lambda _e, a=address: self._commit_analog(a))

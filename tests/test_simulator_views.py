@@ -790,6 +790,120 @@ def test_a_drag_released_off_an_input_does_nothing(simulator, ready, monkeypatch
     assert opened == []
 
 
+def _center(win, item) -> tuple[int, int]:
+    x0, y0, x1, y1 = win._canvas.bbox(item)
+    return int((x0 + x1) // 2), int((y0 + y1) // 2)
+
+
+def _press(win, x: int, y: int) -> None:
+    win._canvas.event_generate("<Motion>", x=x, y=y)
+    win._canvas.event_generate("<ButtonPress-1>", x=x, y=y)
+
+
+def _release(win, x: int, y: int) -> None:
+    win._canvas.event_generate("<ButtonRelease-1>", x=x, y=y)
+    win.update()
+
+
+def test_dragging_an_input_onto_an_output_opens_the_link_dialog(simulator, ready, monkeypatch):
+    win = simulator(ready)
+    win.geometry("1100x760")
+    win.update()
+    opened: list = []
+    monkeypatch.setattr(
+        win, "_open_link_dialog", lambda address, **kw: opened.append((address, kw))
+    )
+    x, y = _center(win, win._inputs["X002"]["led"])
+    _press(win, x, y)
+    assert win._link_drag is not None and win._link_drag["source"] == "X002"
+
+    out_x, out_y = _center(win, "out:Y001")
+    win._on_link_drag(SimpleNamespace(x=out_x, y=out_y))
+    assert win._link_drag["target"] == "out:Y001"
+    assert win._canvas.itemcget(win._canvas.find_withtag("drag")[-1], "arrow") == "first"
+
+    _release(win, out_x, out_y)
+    assert opened == [("X002", {"analog": False, "enable": "Y001"})]
+    assert not win._canvas.find_withtag("drag")
+
+
+def test_an_input_dragged_onto_an_input_or_itself_links_nothing(simulator, ready, monkeypatch):
+    win = simulator(ready)
+    opened: list = []
+    monkeypatch.setattr(win, "_open_link_dialog", lambda address, **kw: opened.append(address))
+    other = win._inputs["X001"]
+    win._start_link_drag("X002")
+    win._on_link_drag(SimpleNamespace(x=other["x"] + 100, y=other["cy"]))
+    assert win._link_drag["target"] is None
+    own = win._inputs["X002"]
+    win._on_link_drag(SimpleNamespace(x=own["x"] + 100, y=own["cy"]))
+    assert win._link_drag["target"] is None
+    win._on_any_release(None)
+    assert opened == []
+
+
+def test_dragging_an_analog_input_onto_an_output_opens_the_link_dialog(
+    simulator, ready, monkeypatch
+):
+    win = simulator(ready)
+    opened: list = []
+    monkeypatch.setattr(
+        win, "_open_link_dialog", lambda address, **kw: opened.append((address, kw))
+    )
+    out = win._outputs["Y001"]
+    win._start_link_drag("DF1")
+    assert win._link_drag is not None
+    win._on_link_drag(SimpleNamespace(x=out["x"] + 100, y=_center(win, "out:Y001")[1]))
+    win._on_any_release(None)
+    assert opened == [("DF1", {"analog": True, "enable": "Y001"})]
+
+
+def test_clicking_an_input_switch_still_toggles_it(simulator, ready):
+    win = simulator(ready)
+    win.geometry("1100x760")
+    win.update()
+    x, y = _center(win, "sw:X001")
+    _press(win, x, y)
+    assert win._link_drag is None, "the switch's press is not a link drag"
+    _release(win, x, y)
+    assert ready.sim.switch_on("X001")
+
+
+def test_a_momentary_input_is_pressed_by_its_switch_and_released_after(
+    simulator, ready, monkeypatch
+):
+    win = simulator(ready)
+    win.geometry("1100x760")
+    ready.sim.set_momentary("X002", True)
+    win.update()
+    calls: list = []
+    monkeypatch.setattr(ready.sim, "press_input", lambda a: calls.append(("press", a)))
+    monkeypatch.setattr(ready.sim, "release_input", lambda a: calls.append(("release", a)))
+    x, y = _center(win, "sw:X002")
+    _press(win, x, y)
+    _release(win, x, y)
+    assert calls == [("press", "X002"), ("release", "X002")]
+
+
+def test_dragging_from_a_momentary_input_row_leaves_it_released(simulator, ready, monkeypatch):
+    win = simulator(ready)
+    win.geometry("1100x760")
+    ready.sim.set_momentary("X002", True)
+    win.update()
+    calls: list = []
+    monkeypatch.setattr(ready.sim, "press_input", lambda a: calls.append(("press", a)))
+    monkeypatch.setattr(ready.sim, "release_input", lambda a: calls.append(("release", a)))
+    monkeypatch.setattr(ready.sim, "toggle_switch", lambda a: calls.append(("toggle", a)))
+    monkeypatch.setattr(win, "_open_link_dialog", lambda address, **kw: None)
+    x, y = _center(win, win._inputs["X002"]["led"])
+    _press(win, x, y)
+    out_x, out_y = _center(win, "out:Y001")
+    win._on_link_drag(SimpleNamespace(x=out_x, y=out_y))
+    _release(win, out_x, out_y)
+    assert calls == []
+    assert win._held is None
+
+
 # ----------------------------------------------------------------------
 # Questions in the console, echo, countdowns
 # ----------------------------------------------------------------------
