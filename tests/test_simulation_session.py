@@ -2681,9 +2681,7 @@ def test_choosing_a_plc_data_file_during_a_write_starts_from_it_once_answered(re
     assert ready.dap.calls[0][2]["snapshot_path"] == other
 
 
-def test_a_plc_data_change_during_a_write_relaunches_once_if_it_already_relaunched(
-    ready, tmp_path
-):
+def test_a_plc_data_change_during_a_write_relaunches_once_if_it_already_relaunched(ready, tmp_path):
     jobs, data = _writing_with_plc_data(ready, tmp_path)
     daps = len(ready.daps)
     _data_file_saved_again(ready, data)

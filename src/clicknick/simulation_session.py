@@ -1005,6 +1005,13 @@ class SimulationSession:
             self._shown_change = change
             self._emit("desired")
 
+    def _restart_for_data(self) -> None:
+        """Restart from the PLC data file now, or once the write in flight is answered."""
+        if self._writing:
+            self._data_restart_due = True
+        else:
+            self.restart()
+
     def _watch_tick(self) -> None:
         self._watch_after_id = None
         if self._closed or not self._enabled:
@@ -1681,13 +1688,6 @@ class SimulationSession:
                 )
                 return
         self.relaunch()
-
-    def _restart_for_data(self) -> None:
-        """Restart from the PLC data file now, or once the write in flight is answered."""
-        if self._writing:
-            self._data_restart_due = True
-        else:
-            self.restart()
 
     def _restart_if_data_changed(self) -> None:
         """After a write is answered: the restart a PLC data change during it asked for."""
