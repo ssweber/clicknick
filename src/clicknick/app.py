@@ -1087,7 +1087,7 @@ class ClickNickApp:
         self._set_pending_workspace_config(config)
 
     def _select_mirror_location(self) -> None:
-        """Choose a home and review the PLC-named workspace destination."""
+        """Choose a home and preview the PLC-named workspace destination."""
         plc_name = self._ensure_plc_name_for_workspace()
         if plc_name is None:
             return
@@ -1127,7 +1127,7 @@ class ClickNickApp:
         self._set_pending_workspace_config(config)
 
     def _on_workspace_config_selected(self, _event=None) -> None:
-        """Review a known matching workspace selected by the user."""
+        """Preview a known matching workspace selected by the user."""
         selected = self.mirror_project_selection_var.get().strip()
         config = next(
             (match for match in self._workspace_matches if str(match.workspace_path) == selected),
