@@ -795,6 +795,12 @@ def _center(win, item) -> tuple[int, int]:
     return int((x0 + x1) // 2), int((y0 + y1) // 2)
 
 
+def _label_center(win, tag: str) -> tuple[int, int]:
+    """The middle of the row's address text, the handle a link drag starts from."""
+    text = next(i for i in win._canvas.find_withtag(tag) if win._canvas.type(i) == "text")
+    return _center(win, text)
+
+
 def _press(win, x: int, y: int) -> None:
     win._canvas.event_generate("<Motion>", x=x, y=y)
     win._canvas.event_generate("<ButtonPress-1>", x=x, y=y)
@@ -813,7 +819,7 @@ def test_dragging_an_input_onto_an_output_opens_the_link_dialog(simulator, ready
     monkeypatch.setattr(
         win, "_open_link_dialog", lambda address, **kw: opened.append((address, kw))
     )
-    x, y = _center(win, win._inputs["X002"]["led"])
+    x, y = _label_center(win, "handle:X002")
     _press(win, x, y)
     assert win._link_drag is not None and win._link_drag["source"] == "X002"
 
@@ -858,6 +864,20 @@ def test_dragging_an_analog_input_onto_an_output_opens_the_link_dialog(
     assert opened == [("DF1", {"analog": True, "enable": "Y001"})]
 
 
+def test_pressing_an_outputs_row_off_its_label_starts_no_drag(simulator, ready):
+    win = simulator(ready)
+    win.geometry("1100x760")
+    win.update()
+    x, y = _center(win, win._outputs["Y001"]["led"])
+    _press(win, x, y)
+    assert win._link_drag is None
+    _release(win, x, y)
+    x, y = _label_center(win, "handle:Y001")
+    _press(win, x, y)
+    assert win._link_drag is not None and win._link_drag["source"] == "Y001"
+    _release(win, x, y)
+
+
 def test_clicking_an_input_switch_still_toggles_it(simulator, ready):
     win = simulator(ready)
     win.geometry("1100x760")
@@ -895,7 +915,7 @@ def test_dragging_from_a_momentary_input_row_leaves_it_released(simulator, ready
     monkeypatch.setattr(ready.sim, "release_input", lambda a: calls.append(("release", a)))
     monkeypatch.setattr(ready.sim, "toggle_switch", lambda a: calls.append(("toggle", a)))
     monkeypatch.setattr(win, "_open_link_dialog", lambda address, **kw: None)
-    x, y = _center(win, win._inputs["X002"]["led"])
+    x, y = _label_center(win, "handle:X002")
     _press(win, x, y)
     out_x, out_y = _center(win, "out:Y001")
     win._on_link_drag(SimpleNamespace(x=out_x, y=out_y))
