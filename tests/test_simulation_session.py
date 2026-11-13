@@ -2754,6 +2754,7 @@ def test_a_modbus_port_change_during_a_write_relaunches_on_it_once_answered(read
     assert len(ready.daps) == daps + 1
     assert ready.dap.calls[0][2]["modbus"]["port"] == 5020
 
+
 def test_a_plc_data_change_during_a_console_command_relaunches_at_once(ready, tmp_path):
     ready.open()
     data = tmp_path / "data.csv"

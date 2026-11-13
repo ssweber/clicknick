@@ -1005,11 +1005,6 @@ class SimulationSession:
             self._shown_change = change
             self._emit("desired")
 
-    def _restart_when_free(self) -> None:
-        """Restart now, or once the write in flight is answered and no build runs."""
-        self._restart_due = True
-        self._restart_if_due()
-
     def _restart_if_due(self) -> None:
         """The restart :meth:`_restart_when_free` asked for, unless a write or build still runs.
 
@@ -1029,6 +1024,11 @@ class SimulationSession:
             return  # the watch tick asks again
         self._restart_due = False
         self.restart()
+
+    def _restart_when_free(self) -> None:
+        """Restart now, or once the write in flight is answered and no build runs."""
+        self._restart_due = True
+        self._restart_if_due()
 
     def _watch_tick(self) -> None:
         self._watch_after_id = None
