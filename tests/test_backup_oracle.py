@@ -8,7 +8,7 @@ a prune delete stops part way. After every step:
 
 - an operation that succeeded left the edits ``src/plc`` held when it began
   as the newest backup, or in ``src/plc`` as the backup it restored;
-- an operation that failed left ``src/plc`` as it began;
+- an operation that failed left ``src/plc`` as it began and deleted no backup;
 - every tree that was ever in a backup, or in ``src/plc`` with edits when an
   operation began, is still in ``src/plc`` or a backup, unless at least
   ``KEPT_PLC_BACKUPS`` distinct trees that were the newest backup later than
@@ -79,6 +79,7 @@ class _Run:
         self.generated: Tree | None = None
         self.tracked: set[Tree] = set()  # trees that must not be lost early
         self.began: Tree | None = None  # src/plc as the operation began
+        self.kept_before: dict[str, Tree] = {}  # the backups as a failing operation began
         self.pending: Tree | None = None  # edited src/plc as the operation began
         self.newest_at: dict[Tree, int] = {}  # last step a tree was the newest backup
         self.clock = dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC)
@@ -142,8 +143,17 @@ class _Run:
         self.pending = tree if tree is not None and tree != self.generated else None
 
     def _failed(self, injected: str | None, history: str) -> str:
+        """A failed operation leaves src/plc as it began and deletes no backup.
+
+        The newest backup is the one before, or the edits (a restore whose copy
+        into src/plc failed after it backed them up).
+        """
         assert injected in ("copy", "move"), history
         assert _read(self.source) == self.began, f"{history}: src/plc changed"
+        kept = self.kept()
+        assert set(self.kept_before.values()) <= set(kept.values()), f"{history}: lost a backup"
+        newest = kept.get("newest")
+        assert newest in (self.kept_before.get("newest"), self.pending), f"{history}: newest"
         self.pending = None
         return history
 
@@ -158,6 +168,8 @@ class _Run:
 
     def _inject(self, patch, *, copies_into: tuple[Path, ...]) -> str | None:
         roll = self.rng.random()
+        if roll < 0.18:  # a copy or a move fails the operation
+            self.kept_before = self.kept()
         if roll < 0.10:
             into = self.rng.choice(copies_into)
             replace_tree = project_workspace._replace_tree
@@ -174,18 +186,22 @@ class _Run:
             older_root = older_plc_backups_dir(self.project)
             replace = Path.replace
             moves = roll < 0.18
-            failed: list[Path] = []
+            # The first or the second move of a backup to or from backup/older fails
+            # (a promotion retires the newest first); the move back works.
+            fail_at = self.rng.choice((1, 2))
+            seen: list[Path] = []
 
             def failing_replace(path: Path, target) -> Path:
                 target = Path(target)
                 if moves:
-                    # A backup moving to or from backup/older; the move back works.
-                    hit = not failed and newest in (path, target)
+                    hit = newest in (path, target)
                     hit = hit and older_root in (*path.parents, *target.parents)
+                    if hit:
+                        seen.append(path)
+                        hit = len(seen) == fail_at
                 else:
                     hit = path.name == "backup-time.txt.staging"
                 if hit:
-                    failed.append(path)
                     raise _Injected("move failed")
                 return replace(path, target)
 

@@ -264,11 +264,38 @@ def test_a_backup_whose_time_cannot_be_written_is_still_made(tmp_path: Path, mon
         encoding="utf-8"
     ) == "edits B\n"
     assert older_plc_backups(tmp_path) == ["20261112T090000Z"]
-    newest_file = tmp_path / "backup" / "src" / "plc" / "main.py"
-    assert plc_backup_time(tmp_path) != times[0]
-    assert plc_backup_time(tmp_path) == (
-        dt.datetime.fromtimestamp(newest_file.stat().st_mtime).astimezone()
-    )
+    # Not the time of the backup before: its files are dated to when it was taken.
+    assert plc_backup_time(tmp_path) == times[1]
+
+
+def test_a_backup_made_newest_again_without_a_written_time_is_not_pruned_next(
+    tmp_path: Path, monkeypatch
+):
+    times = _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC))
+    source = tmp_path / "src" / "plc"
+    source.mkdir(parents=True)
+    (source / "main.py").write_text("edits A\n", encoding="utf-8")
+    edited = dt.datetime(2026, 11, 1, 8, 0, 0, tzinfo=dt.UTC).timestamp()
+    os.utime(source / "main.py", (edited, edited))  # A was edited days ago
+    backup_plc_source(tmp_path)
+    for text in ("edits B\n", "edits C\n", "edits D\n", "edits E\n"):
+        _back_up(tmp_path, text)
+    staging = tmp_path / "backup" / "backup-time.txt.staging"
+    staging.mkdir()  # the write fails
+
+    _back_up(tmp_path, "edits A\n")  # A, the oldest backup, becomes the newest
+
+    assert plc_backup_time(tmp_path) == times[5]
+    staging.rmdir()
+    _back_up(tmp_path, "edits F\n")
+
+    assert older_plc_backups(tmp_path) == [
+        "20261112T090500Z",
+        "20261112T090400Z",
+        "20261112T090300Z",
+        "20261112T090200Z",
+    ]
+    assert _older_text(tmp_path, "20261112T090500Z") == "edits A\n"
 
 
 def test_a_failed_backup_leaves_the_newest_backup_in_place(tmp_path: Path, monkeypatch):

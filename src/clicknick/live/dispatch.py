@@ -374,6 +374,7 @@ workspace:
                                          (edits in src/plc no backup holds are backed up first)
   restore list                        -> list the older backups, newest first
   restore <time>                      -> replace src/plc from backup/older/<time>
+                                         (a backup taken again takes a new name)
 
 analysis:
   check                               -> lint src/plc (Tools -> Check Program rules)
