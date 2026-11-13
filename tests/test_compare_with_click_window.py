@@ -326,3 +326,22 @@ def test_refreshing_the_window_list_removes_copies_of_closed_windows(
         "CLICK (00000004)",
         "notes.txt",
     ]
+
+
+def test_a_copy_click_makes_mid_save_is_not_a_program(
+    click_dir: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """CLICK briefly writes ``Scr2.tmp~RF<hex>.TMP``; it must not decode as a second Scr2."""
+    other = Program("Motor", 2, [_rung("C20")])
+    real = {
+        b"Scr1.tmp": Program("Main Program", 1, [_rung("C1")]),
+        b"Scr2.tmp": Program("Motor", 2, [_rung("C10"), _rung("C11")]),
+        b"half-written": other,
+    }
+    monkeypatch.setattr("clicknick.ladder.program.decode_program", real.__getitem__)
+    (click_dir / "Scr2.tmp~RFcf1eba5.TMP").write_bytes(b"half-written")
+    dest = tmp_path / "copy"
+
+    snapshot_click_program(click_dir, dest)
+
+    assert len(read_csv(dest / "subroutines" / "motor.csv")) == 2

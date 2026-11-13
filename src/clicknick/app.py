@@ -16,6 +16,7 @@ from .detection.window_detector import ClickInstance, ClickWindowDetector
 from .detection.window_mapping import CLICK_PLC_WINDOW_MAPPING
 from .resources.action_icons import ActionIconCache
 from .resources.icon_data import ICON_PNG_BASE64
+from .utils.click_temp import scr_files
 from .utils.filters import (  # preserve lru_cache
     ContainsFilter,
     ContainsPlusFilter,
@@ -643,7 +644,7 @@ class ClickNickApp:
             return None
 
         mdb_path = self._live_mdb_path()
-        if mdb_path is None or not list(mdb_path.parent.glob("Scr*.tmp")):
+        if mdb_path is None or not scr_files(mdb_path.parent):
             self._update_status(
                 "Project not saved to disk. Please save in Click Software first.",
                 "error",

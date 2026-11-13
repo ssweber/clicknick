@@ -6,6 +6,8 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..utils.click_temp import scr_files
+
 if TYPE_CHECKING:
     from ..utils.scheduling import Scheduler
 
@@ -37,7 +39,7 @@ class ScrWatcher:
 
     def _snapshot(self) -> frozenset[tuple[str, int, int]]:
         files: set[tuple[str, int, int]] = set()
-        for path in self._folder.glob("Scr*.tmp"):
+        for path in scr_files(self._folder):
             try:
                 stat = path.stat()
             except OSError:

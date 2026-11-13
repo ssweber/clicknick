@@ -34,6 +34,7 @@ from laddercodec.encode import AfToken, ConditionToken
 from laddercodec.instructions import UnknownCondition, UnknownInstruction
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
 
+from ..utils.click_temp import scr_files
 from ..utils.mdb_operations import ensure_addresses_exist
 
 if TYPE_CHECKING:
@@ -659,8 +660,8 @@ def program_save(
     Raises FileNotFoundError if no Scr*.tmp files found.
     Raises ValueError if no main program (prog_idx=1) found.
     """
-    scr_files = sorted(scr_folder.glob("Scr*.tmp"))
-    if not scr_files:
+    programs_found = scr_files(scr_folder)
+    if not programs_found:
         raise FileNotFoundError(f"No Scr*.tmp files found in {scr_folder}")
 
     dest = output or scr_folder
@@ -668,7 +669,7 @@ def program_save(
 
     decoded: list[tuple[Program, list[Warning]]] = []
     infos: list[ProgramInfo] = []
-    for scr_path in scr_files:
+    for scr_path in programs_found:
         data = scr_path.read_bytes()
         prog, legacy = _decode_program_recording_legacy(data)
         decoded.append((prog, legacy))

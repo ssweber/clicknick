@@ -23,6 +23,7 @@ from multiprocessing.connection import Listener
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ..utils.click_temp import scr_files
 from .dispatch import DispatchContext, dispatch
 from .session import LABEL_FILENAME, PORT_FILENAME, WORKSPACE_FILENAME
 
@@ -163,7 +164,7 @@ class LiveServer:
         """Build a fresh dispatch context from current getter values."""
         analysis = self._get_analysis() if self._get_analysis else None
         mdb_path = self._get_mdb_path() if self._get_mdb_path else None
-        project_saved = None if mdb_path is None else any(mdb_path.parent.glob("Scr*.tmp"))
+        project_saved = None if mdb_path is None else bool(scr_files(mdb_path.parent))
         resolve_tag = None
         if analysis is not None and analysis.project_tag_to_addr_key:
             # The workspace's names: a build that fails after publishing it keeps

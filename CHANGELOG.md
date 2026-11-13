@@ -61,6 +61,7 @@
 
 ### Fixed
 
+- A build or Compare with > Other CLICK window that reads while CLICK is saving no longer takes CLICK's short-lived `Scr23.tmp~RF...TMP` copy for a second copy of that program.
 - The Tag Browser Outline shows nicknames with three or more underscores in a row (`A___B`) as spelled, instead of one underscore too many.
 - Pasting or filling New Values in the Data View editor applies the valid ones and lists each refused cell in one warning, instead of silently keeping the old value. Clearing a New Value is never refused.
 - Pasting into the Data View editor's Force column while the Modbus columns are hidden is no longer checked as a New Value.

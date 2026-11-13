@@ -285,3 +285,33 @@ def test_watching_another_folder_starts_from_what_it_holds(tmp_path) -> None:
 
     assert changed == []
     assert watcher.folder == second
+
+
+def test_a_copy_clicks_makes_mid_save_is_not_a_save(tmp_path) -> None:
+    (tmp_path / "Scr23.tmp").write_text("program", encoding="utf-8")
+    changed: list[bool] = []
+    watcher = _watching(tmp_path, changed)
+
+    copy = tmp_path / "Scr23.tmp~RFcf1eba5.TMP"
+    copy.write_text("program", encoding="utf-8")
+    _settle(watcher)
+    copy.unlink()
+    _settle(watcher)
+
+    assert changed == []
+
+
+def test_only_scr_n_tmp_names_are_program_files(tmp_path) -> None:
+    from clicknick.utils.click_temp import scr_files
+
+    for name in (
+        "Scr1.tmp",
+        "SCR10.TMP",
+        "Scr2.tmp",
+        "Scr2.tmp~RFcf1eba5.TMP",
+        "Scr.tmp",
+        "Scr3.tmp.bak",
+    ):
+        (tmp_path / name).write_text("x", encoding="utf-8")
+
+    assert [p.name for p in scr_files(tmp_path)] == ["SCR10.TMP", "Scr1.tmp", "Scr2.tmp"]

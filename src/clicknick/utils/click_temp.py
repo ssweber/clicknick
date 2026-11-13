@@ -9,6 +9,7 @@ lightweight CLI can use it.
 
 from __future__ import annotations
 
+import re
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
@@ -67,3 +68,18 @@ def temp_root() -> Path:
 def click_temp_dir(hwnd: int) -> Path:
     """The temp folder of the CLICK window *hwnd* (it may not exist)."""
     return temp_root() / f"CLICK ({hwnd:08X})"
+
+
+_SCR_NAME = re.compile(r"Scr\d+\.tmp", re.IGNORECASE)
+
+
+def scr_files(folder: Path) -> list[Path]:
+    """The program files CLICK saved in *folder*: ``Scr<N>.tmp``, sorted by name.
+
+    A save also makes short-lived copies such as ``Scr23.tmp~RFcf1eba5.TMP``
+    (and one left behind if CLICK is killed mid-save); those are not programs.
+    """
+    return sorted(
+        (p for p in folder.glob("Scr*") if _SCR_NAME.fullmatch(p.name)),
+        key=lambda p: p.name,
+    )

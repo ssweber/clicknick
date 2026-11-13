@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .utils.click_temp import scr_files
+
 if TYPE_CHECKING:
     import tkinter as tk
     from collections.abc import Callable
@@ -292,7 +294,7 @@ class ConnectionSession:
 
         db_path = Path(db_value)
         scr_folder = db_path.parent
-        if not list(scr_folder.glob("Scr*.tmp")):
+        if not scr_files(scr_folder):
             self.analysis.mark_failed(
                 "No saved ladder files (Scr*.tmp) in the project folder. "
                 "Save the project in Click Software first."
