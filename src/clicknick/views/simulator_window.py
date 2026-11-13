@@ -14,7 +14,7 @@ chip draws the wire to the driving terminal. Links are made, cut and saved to
 the project from the right-click menu; the Wiring menu lists them all.
 
 Cards are compact and flow into rows in rack order, so a full rack (CPU, two
-option slots, eight expansions and the unassigned strip) fits without
+option slots, eight expansions and a placeholder card at each position) fits without
 horizontal scrolling.
 
 The command console is a resizable pane under the rack (Ctrl+` shows or hides
@@ -111,7 +111,7 @@ class _Piece(NamedTuple):
     width: float
     height: float
     draw: Callable[[float, float], None]
-    #: Installed on the DIN rail (the placeholder and unassigned strip are not).
+    #: Installed on the DIN rail (the No CPU card and unassigned placeholders are not).
     on_rail: bool = True
     #: Space before it when it follows another card in the same rack row.
     gap: float = CARD_GAP
@@ -1104,10 +1104,15 @@ class SimulatorWindow(tk.Toplevel):
     def _draw_card(self, x: float, y: float, card: Card) -> None:
         """A module's I/O; the CPU's own I/O is the card beside the slim CPU card."""
         inputs, outputs, analog_in, analog_out = self._card_parts(card)
-        title = "Built-in I/O" if card.location == "cpu" else card.title
+        title = "Built-in I/O" if card.location == "cpu" and card.installed else card.title
         counts = (len(inputs), len(outputs), len(analog_in), len(analog_out))
-        subtitle = self._card_subtitle(card.model, counts)
-        self._draw_card_frame(x, y, self._module_height(card), title, subtitle)
+        if card.installed:
+            subtitle = self._card_subtitle(card.model, counts)
+        else:
+            subtitle = "Used, no module configured"
+        self._draw_card_frame(
+            x, y, self._module_height(card), title, subtitle, dashed=not card.installed
+        )
         self._card_top = y
         self._draw_rows(x, y + HEADER_H + BODY_PAD, inputs, outputs, analog_in, analog_out)
 
@@ -1129,15 +1134,6 @@ class SimulatorWindow(tk.Toplevel):
             x + 10, y + HEADER_H + 10, text=self._placeholder_text(), anchor="nw", fill=P.TEXT,
             font=_FONT_SMALL, width=self._card_w - 20,
         )  # fmt: skip
-
-    def _draw_unassigned(self, x: float, y: float, layout: PanelLayout) -> None:
-        inputs, outputs = layout.unassigned_inputs, layout.unassigned_outputs
-        height = self._card_height(len(inputs), len(outputs), 0, 0)
-        self._draw_card_frame(
-            x, y, height, "Unassigned I/O", "Used, not on any module", dashed=True
-        )
-        self._card_top = y
-        self._draw_rows(x, y + HEADER_H + BODY_PAD, inputs, outputs, (), ())
 
     def _draw_rail(self, x0: float, x1: float, y: float) -> None:
         """A DIN rail running behind a row of installed modules (visible in the gaps)."""
@@ -1180,11 +1176,17 @@ class SimulatorWindow(tk.Toplevel):
         if layout is None:
             return pieces
         # The CPU card stands as tall as the I/O cards in its housing.
-        housing = [card for card in layout.cards if card.location in ("cpu", "slot")]
+        housing = [
+            card for card in layout.cards if card.installed and card.location in ("cpu", "slot")
+        ]
         cpu_h = max([CPU_CARD_MIN_H] + [self._module_height(card) for card in housing])
         for card in layout.cards:
             draw = partial(self._draw_card, card=card)
-            if card.location == "cpu":
+            if not card.installed:
+                gap = HOUSING_GAP if card.location == "slot" else CARD_GAP
+                height = self._module_height(card)
+                pieces.append(_Piece(self._card_w, height, draw, on_rail=False, gap=gap))
+            elif card.location == "cpu":
                 pieces.append(
                     _Piece(CPU_CARD_W, cpu_h, partial(self._draw_cpu_card, card=card, height=cpu_h))
                 )
@@ -1195,12 +1197,6 @@ class SimulatorWindow(tk.Toplevel):
             else:
                 gap = HOUSING_GAP if card.location == "slot" else CARD_GAP
                 pieces.append(_Piece(self._card_w, self._module_height(card), draw, gap=gap))
-        if layout.unassigned_inputs or layout.unassigned_outputs:
-            n_in, n_out = len(layout.unassigned_inputs), len(layout.unassigned_outputs)
-            height = self._card_height(n_in, n_out, 0, 0)
-            pieces.append(
-                _Piece(self._card_w, height, partial(self._draw_unassigned, layout=layout), False)
-            )
         return pieces
 
     def _flow(self, pieces: list[_Piece]) -> list[list[_Piece]]:
@@ -1443,6 +1439,9 @@ class SimulatorWindow(tk.Toplevel):
                 piece.draw(x, y)
                 if piece.on_rail:
                     rail.extend((x, x + piece.width))
+                elif rail:  # no rail behind a placeholder
+                    self._draw_rail(min(rail) - 6, max(rail) + 6, y + 70)
+                    rail = []
                 x += piece.width
             if rail:
                 self._draw_rail(min(rail) - 6, max(rail) + 6, y + 70)

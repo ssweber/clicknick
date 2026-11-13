@@ -873,7 +873,7 @@ class SimulationSession:
             self._message(f"Could not read PLC data {path}: {exc}", "error")
             return
         layout = self._layout
-        if layout is not None and (layout.cards or layout.unassigned_inputs):
+        if layout is not None and layout.cards:
             inputs: Iterable[str] = layout.addresses("input")
             analog_inputs: Iterable[str] = layout.addresses("analog_in")
         else:
@@ -2602,7 +2602,7 @@ class SimulationSession:
     def _restore_when_known(self) -> None:
         """Trim the remembered settings to the hardware, once it is fully known.
 
-        Inputs the program uses with no card to provide them (Unassigned I/O)
+        Inputs the program uses with no module to provide them (unassigned placeholder cards)
         are known only from the analysis; until one is available, settings on
         them would look like settings on missing hardware.
         """

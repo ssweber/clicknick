@@ -1,4 +1,4 @@
-"""Simulator hardware panel: cards from the module list and the unassigned-I/O strip."""
+"""Simulator hardware panel: cards from the module list and placeholders for used I/O."""
 
 from __future__ import annotations
 
@@ -7,7 +7,11 @@ from types import SimpleNamespace
 import pytest
 from pyclickplc.addresses import get_addr_key
 
-from clicknick.services.sim_hardware import build_panel_layout, io_addresses, read_panel_layout
+from clicknick.services.sim_hardware import (
+    build_panel_layout,
+    io_addresses,
+    read_panel_layout,
+)
 
 
 def _module(location, position, model, inputs=(), outputs=(), ai=(), ao=()):
@@ -46,13 +50,73 @@ def test_cards_follow_physical_order_with_terminals_by_kind():
     assert layout.modules == ("cpu:C0-02DD1-D", "expansion1:C0-08ND3")
 
 
-def test_used_io_without_a_module_goes_to_the_unassigned_strip():
+def _placeholders(layout):
+    return [c for c in layout.cards if not c.installed]
+
+
+def _addresses(card, kind):
+    return [t.address for t in card.of_kind(kind)]
+
+
+def test_used_io_without_a_module_gets_a_placeholder_at_its_position():
     layout = build_panel_layout([CPU], used_io={"X001", "X201", "Y301", "X021", "Y002"})
 
-    assert layout.unassigned_inputs == ("X021", "X201")
-    assert layout.unassigned_outputs == ("Y301",)
+    assert [(c.key, c.installed) for c in layout.cards] == [
+        ("cpu", True),
+        ("slot1", False),
+        ("expansion2", False),
+        ("expansion3", False),
+    ]
+    slot, exp2, exp3 = _placeholders(layout)
+    assert slot.title == "Option slot 1 - unassigned"
+    assert _addresses(slot, "input") == ["X021"]
+    assert _addresses(exp2, "input") == ["X201"]
+    assert _addresses(exp3, "output") == ["Y301"]
     assert "X201" in layout.addresses("input")
     assert "Y301" in layout.addresses("output")
+
+
+def test_x_and_y_of_one_position_share_one_placeholder():
+    layout = build_panel_layout(
+        [CPU],
+        used_io={f"X10{i}" for i in range(1, 9)} | {f"Y10{i}" for i in range(1, 9)},
+    )
+
+    (combo,) = _placeholders(layout)
+    assert combo.key == "expansion1"
+    assert combo.title == "Expansion 1 - unassigned"
+    assert _addresses(combo, "input") == [f"X10{i}" for i in range(1, 9)]
+    assert _addresses(combo, "output") == [f"Y10{i}" for i in range(1, 9)]
+    assert layout.modules == ("cpu:C0-02DD1-D",)
+
+
+def test_placeholder_sits_between_the_real_cards_around_it():
+    third = _module("expansion", 3, "C0-08ND3", inputs=[f"X30{i}" for i in range(1, 9)])
+    layout = build_panel_layout([CPU, EXPANSION, third], used_io={"X201"})
+
+    assert [(c.key, c.installed) for c in layout.cards] == [
+        ("cpu", True),
+        ("expansion1", True),
+        ("expansion2", False),
+        ("expansion3", True),
+    ]
+    assert layout.modules == ("cpu:C0-02DD1-D", "expansion1:C0-08ND3", "expansion3:C0-08ND3")
+
+
+def test_io_beyond_a_modules_points_goes_on_a_placeholder_after_it():
+    layout = build_panel_layout([CPU, EXPANSION], used_io={"X112", "Y101", "X005"})
+
+    assert [(c.key, c.installed) for c in layout.cards] == [
+        ("cpu", True),
+        ("cpu", False),
+        ("expansion1", True),
+        ("expansion1", False),
+    ]
+    cpu_extra, exp_extra = _placeholders(layout)
+    assert _addresses(cpu_extra, "input") == ["X005"]
+    assert _addresses(exp_extra, "input") == ["X112"]
+    assert _addresses(exp_extra, "output") == ["Y101"]
+    assert layout.modules == ("cpu:C0-02DD1-D", "expansion1:C0-08ND3")
 
 
 def test_poll_addresses_cover_every_terminal_once():
@@ -65,8 +129,9 @@ def test_poll_addresses_cover_every_terminal_once():
 def test_no_cpu_layout():
     layout = build_panel_layout([], used_io={"X001"})
     assert not layout.has_cpu
-    assert layout.cards == ()
-    assert layout.unassigned_inputs == ("X001",)
+    assert [(c.key, c.installed) for c in layout.cards] == [("cpu", False)]
+    assert layout.cards[0].title == "CPU - unassigned"
+    assert layout.modules == ()
 
 
 def test_io_addresses_keeps_only_x_and_y():
@@ -90,4 +155,4 @@ def test_reads_a_real_project_ini(tmp_path):
     cpu = layout.cards[0]
     assert cpu.location == "cpu"
     assert cpu.of_kind("input")[0].address == "X001"
-    assert layout.unassigned_inputs == ("X501",)
+    assert _addresses(_placeholders(layout)[0], "input") == ["X501"]

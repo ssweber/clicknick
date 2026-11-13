@@ -3,7 +3,8 @@
 Pure data. ``read_panel_layout`` reads CLICK's Project.ini through pyclickplc's
 ``read_io_layout``; ``build_panel_layout`` turns that module list (or any
 objects of the same shape) into cards of terminals, and lists the X/Y
-addresses the program uses that no installed module provides.
+addresses the program uses that no installed module provides, each as a
+placeholder card at the position its address belongs to.
 """
 
 from __future__ import annotations
@@ -54,12 +55,18 @@ class Terminal:
 
 @dataclass(frozen=True)
 class Card:
-    """One installed module, in physical order."""
+    """One module in physical order.
+
+    A card with ``installed`` False is a placeholder: the program uses X/Y
+    addresses of this position that no module in Project.ini provides. It has
+    no model and is not part of ``PanelLayout.modules``.
+    """
 
     location: Location
     position: int
     model: str
     terminals: tuple[Terminal, ...]
+    installed: bool = True
 
     @property
     def key(self) -> str:
@@ -68,10 +75,12 @@ class Card:
     @property
     def title(self) -> str:
         if self.location == "cpu":
-            return "CPU"
-        if self.location == "slot":
-            return f"Option slot {self.position}"
-        return f"Expansion {self.position}"
+            name = "CPU"
+        elif self.location == "slot":
+            name = f"Option slot {self.position}"
+        else:
+            name = f"Expansion {self.position}"
+        return name if self.installed else f"{name} - unassigned"
 
     def of_kind(self, kind: TerminalKind) -> tuple[Terminal, ...]:
         return tuple(t for t in self.terminals if t.kind == kind)
@@ -81,35 +90,30 @@ class Card:
 class PanelLayout:
     """Everything the Simulator window draws.
 
-    ``unassigned_*`` are X/Y addresses the program uses that no installed
-    module provides; they still get a switch or LED so the program can be driven.
+    ``cards`` holds the installed modules and, in their physical place, the
+    placeholders for used X/Y addresses no module provides; a placeholder
+    still gets a switch or LED so the program can be driven.
     """
 
     cards: tuple[Card, ...] = ()
-    unassigned_inputs: tuple[str, ...] = ()
-    unassigned_outputs: tuple[str, ...] = ()
 
     @property
     def has_cpu(self) -> bool:
-        return any(card.location == "cpu" for card in self.cards)
+        return any(card.location == "cpu" and card.installed for card in self.cards)
 
     @property
     def modules(self) -> tuple[str, ...]:
         """Stable description of the installed hardware, e.g. ``"expansion1:C0-16ND3"``."""
-        return tuple(f"{card.key}:{card.model}" for card in self.cards)
+        return tuple(f"{card.key}:{card.model}" for card in self.cards if card.installed)
 
     def addresses(self, kind: TerminalKind) -> tuple[str, ...]:
-        """Every address of *kind* on the panel, unassigned strip included."""
+        """Every address of *kind* on the panel, placeholders included."""
         found = [
             t.address
             for card in self.cards
             for t in card.terminals
             if t.kind == kind and t.address is not None
         ]
-        if kind == "input":
-            found.extend(self.unassigned_inputs)
-        elif kind == "output":
-            found.extend(self.unassigned_outputs)
         return tuple(dict.fromkeys(found))
 
     @property
@@ -163,16 +167,60 @@ def _card(module_io: ModuleIOLike) -> Card:
     )
 
 
+def _position(address: str) -> tuple[Location, int]:
+    """Where an X/Y address sits: the CPU (1-20), option slot 1 (21-99) or expansion n (n01-n99)."""
+    index = parse_address(address)[1]
+    if index >= 100:
+        return "expansion", index // 100
+    return ("cpu", 0) if index <= 20 else ("slot", 1)
+
+
+def _rank(location: Location, position: int, installed: bool = True) -> tuple[int, int]:
+    """Sort key in rack order. A placeholder for the CPU's addresses goes after the
+    option slots, so it does not split the CPU housing."""
+    if location == "cpu" and not installed:
+        return (1, 100)
+    return ({"cpu": 0, "slot": 1, "expansion": 2}[location], position)
+
+
+def _where(card: Card) -> tuple[Location, int, bool]:
+    return card.location, card.position, card.installed
+
+
+def _placeholder(location: Location, position: int, addresses: Sequence[str]) -> Card:
+    terminals = [
+        Terminal(kind, channel, address)
+        for kind, bank in (("input", "X"), ("output", "Y"))
+        for channel, address in enumerate((a for a in addresses if a[0] == bank), start=1)
+    ]
+    return Card(location, position, "", tuple(terminals), installed=False)
+
+
 def build_panel_layout(modules: Iterable[ModuleIOLike], used_io: Iterable[str] = ()) -> PanelLayout:
-    """Cards for *modules* (in the order given), plus the used I/O no card provides."""
-    cards = tuple(_card(module_io) for module_io in modules)
+    """Cards for *modules* (in the order given), plus a placeholder card at each position
+    holding the used I/O no card provides.
+
+    A position with both X and Y left over gets one placeholder (an assumed combo
+    module). Addresses past the points of a real module at their position go on a
+    placeholder right after that module.
+    """
+    cards = [_card(module_io) for module_io in modules]
     provided = {t.address for card in cards for t in card.terminals if t.address is not None}
     missing = sorted((a for a in set(used_io) if a not in provided), key=address_sort_key)
-    return PanelLayout(
-        cards=cards,
-        unassigned_inputs=tuple(a for a in missing if a.startswith("X")),
-        unassigned_outputs=tuple(a for a in missing if a.startswith("Y")),
-    )
+    by_position: dict[tuple[Location, int], list[str]] = {}
+    for address in missing:
+        if address[:1] in ("X", "Y"):
+            by_position.setdefault(_position(address), []).append(address)
+    for (location, position), addresses in sorted(
+        by_position.items(), key=lambda item: _rank(*item[0], installed=False)
+    ):
+        placeholder = _placeholder(location, position, addresses)
+        rank = _rank(location, position, installed=False)
+        at = len(cards)
+        while at > 0 and _rank(*_where(cards[at - 1])) > rank:
+            at -= 1
+        cards.insert(at, placeholder)
+    return PanelLayout(cards=tuple(cards))
 
 
 def read_panel_layout(project_ini: Path, used_io: Iterable[str] = ()) -> PanelLayout:
