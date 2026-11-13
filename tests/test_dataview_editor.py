@@ -1091,3 +1091,74 @@ def test_write_all_writes_nothing_while_a_cell_will_not_commit(
 
     assert written == []
     assert dialogs.errors == [_FINISH, _FINISH]
+
+
+def _pasted_new_values(editor, dialogs, tk_root, addresses, texts):
+    """A panel with *addresses* in its first rows, *texts* pasted down the New Value column."""
+    window = editor()
+    dialogs.new_names.append("Pasted")
+    window._new_dataview()
+    panel = window._get_current_panel()
+    for address in addresses:
+        panel.add_address(address)
+    panel.set_modbus_columns_visible(True)
+    tk_root.update()
+    panel.sheet.select_cell(0, COL_NEW_VALUE)
+    tk_root.clipboard_clear()
+    tk_root.clipboard_append("\n".join(texts))
+    tk_root.update()
+    panel.sheet.MT.ctrl_v()
+    tk_root.update()
+    return panel
+
+
+def test_a_paste_applies_the_valid_cells_and_lists_the_rest_in_one_warning(
+    editor, dialogs, tk_root
+):
+    panel = _pasted_new_values(editor, dialogs, tk_root, ["DS1", "DS2", "DS3"], ["abc", "7", "xyz"])
+
+    assert [row.new_value for row in panel.rows[:3]] == [None, 7, None]
+    assert len(dialogs.errors) == 1
+    lines = dialogs.errors[0].splitlines()
+    assert [line.split(":")[0] for line in lines] == ["DS1", "DS3"]
+    assert panel.undo()
+    assert [row.new_value for row in panel.rows[:3]] == [None, None, None]
+
+
+def test_a_paste_lists_the_first_ten_rejected_cells_and_counts_the_rest(editor, dialogs, tk_root):
+    addresses = [f"DS{n}" for n in range(1, 13)]
+    _pasted_new_values(editor, dialogs, tk_root, addresses, ["abc"] * 12)
+
+    assert len(dialogs.errors) == 1
+    lines = dialogs.errors[0].splitlines()
+    assert len(lines) == 11
+    assert lines[-1] == "and 2 more"
+
+
+def test_a_paste_of_valid_values_shows_no_warning(editor, dialogs, tk_root):
+    panel = _pasted_new_values(editor, dialogs, tk_root, ["DS1", "DS2"], ["5", "6"])
+
+    assert [row.new_value for row in panel.rows[:2]] == [5, 6]
+    assert dialogs.errors == []
+
+
+def test_a_fill_of_an_invalid_value_is_said(editor, dialogs, tk_root):
+    """Filling one value down a selection pastes it into every selected cell."""
+    window = editor()
+    dialogs.new_names.append("Filled")
+    window._new_dataview()
+    panel = window._get_current_panel()
+    for address in ("DS1", "DS2", "DS3"):
+        panel.add_address(address)
+    panel.set_modbus_columns_visible(True)
+    tk_root.update()
+    panel.sheet.select_cell(0, COL_NEW_VALUE)
+    panel.sheet.MT.create_selection_box(0, COL_NEW_VALUE, 3, COL_NEW_VALUE + 1, "cells")
+    tk_root.clipboard_clear()
+    tk_root.clipboard_append("abc")
+    tk_root.update()
+    panel.sheet.MT.ctrl_v()
+    tk_root.update()
+
+    assert [row.new_value for row in panel.rows[:3]] == [None, None, None]
+    assert [line.split(":")[0] for line in dialogs.errors[0].splitlines()] == ["DS1", "DS2", "DS3"]

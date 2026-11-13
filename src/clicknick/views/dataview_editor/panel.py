@@ -55,6 +55,9 @@ MAX_UNDO_DEPTH = 50
 Stamp = tuple[float, int]
 
 
+_MAX_REJECTIONS_SHOWN = 10
+
+
 class _UndoFrame(NamedTuple):
     """The rows and their Write checks, as one undo step restores them."""
 
@@ -559,10 +562,26 @@ class DataviewPanel(ttk.Frame):
         self._notify_modified()
         self._notify_addresses_changed()
 
+    def _warn_rejected_pastes(self) -> None:
+        """Say which cells of a paste or fill kept their value because the new one was invalid."""
+        rejected, self._rejected_pastes = self._rejected_pastes, []
+        if not rejected or not self.winfo_exists():
+            return
+        shown = rejected[:_MAX_REJECTIONS_SHOWN]
+        if len(rejected) > len(shown):
+            shown.append(f"and {len(rejected) - len(shown)} more")
+        messagebox.showwarning("Invalid New Value", "\n".join(shown), parent=self)
+
     def _reject_new_value(self, row_idx: int, text: str, error: str) -> str | None:
         """Refuse a New Value. Text typed in the cell editor is asked for again once tksheet
-        has closed the editor; a pasted or filled value just keeps the cell as it was."""
+        has closed the editor; a pasted or filled value keeps the cell as it was and is
+        listed in one warning once the paste or fill has finished."""
         if not self.sheet.MT.text_editor.open:
+            if not self._rejected_pastes:
+                self.after_idle(self._warn_rejected_pastes)
+            self._rejected_pastes.append(
+                f"{self.rows[row_idx].address}: {error or 'Invalid value'}"
+            )
             return self._new_value_display(self.rows[row_idx])
         self._rejected_edit = (row_idx, text, error or "Invalid value")
         self.after_idle(self.reopen_rejected_edit)
@@ -767,6 +786,7 @@ class DataviewPanel(ttk.Frame):
         super().__init__(parent)
 
         self._rejected_edit: tuple[int, str, str] | None = None
+        self._rejected_pastes: list[str] = []
         self.file_path = file_path
         self.on_modified = on_modified
         self.on_addresses_changed = on_addresses_changed

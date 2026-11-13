@@ -61,6 +61,7 @@
 
 ### Fixed
 
+- Pasting or filling New Values in the Data View editor applies the valid ones and lists each refused cell in one warning, instead of silently keeping the old value.
 - `clicknick-cli` accepts options as separate words (`rung apply main --select r3`, `tag set-physical ... --on-delay 50ms`) instead of refusing them.
 - Double-clicking a Tag Browser item that is a nickname with others under it (`Tank_Pump1` over `Tank_Pump1_Run`) filters the Address Editor to that nickname and the ones under it, the same ones Rename changes, instead of hiding its own row.
 - The Simulator's Console can be popped out while a command from a closed Console pane is still running; only a command sent from that pane keeps Pop out off.
