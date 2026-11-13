@@ -2,9 +2,13 @@
 
 Each step edits ``src/plc``, regenerates it (the build's backup), runs
 ``backup``, ``restore`` or ``restore <time>``, sometimes with a failure
-injected: the copy into ``src/plc`` or ``backup/src/plc`` fails, or a prune
-delete stops part way. After every step:
+injected: a copy into ``src/plc`` or ``backup/src/plc`` fails, the move of a
+backup to or from ``backup/older`` fails, the backup time cannot be written, or
+a prune delete stops part way. After every step:
 
+- an operation that succeeded left the edits ``src/plc`` held when it began
+  as the newest backup, or in ``src/plc`` as the backup it restored;
+- an operation that failed left ``src/plc`` as it began;
 - every tree that was ever in a backup, or in ``src/plc`` with edits when an
   operation began, is still in ``src/plc`` or a backup, unless at least
   ``KEPT_PLC_BACKUPS`` distinct trees that were the newest backup later than
@@ -59,14 +63,6 @@ def _read(root: Path) -> Tree | None:
     )
 
 
-def _write(root: Path, tree: Tree) -> None:
-    if root.exists():
-        shutil.rmtree(root)
-    root.mkdir(parents=True)
-    for name, text in tree:
-        (root / name).write_text(text, encoding="utf-8")
-
-
 class _Run:
     def _now(self) -> dt.datetime:
         self.clock += dt.timedelta(minutes=1)
@@ -82,6 +78,7 @@ class _Run:
         self.edited: list[Tree] = []  # edited trees, to write one again
         self.generated: Tree | None = None
         self.tracked: set[Tree] = set()  # trees that must not be lost early
+        self.began: Tree | None = None  # src/plc as the operation began
         self.pending: Tree | None = None  # edited src/plc as the operation began
         self.newest_at: dict[Tree, int] = {}  # last step a tree was the newest backup
         self.clock = dt.datetime(2026, 11, 12, 9, 0, 0, tzinfo=dt.UTC)
@@ -97,6 +94,18 @@ class _Run:
         if self.rng.random() < 0.5:
             tree.add(("extra.py", f"helper {self.made}\n"))
         return frozenset(tree)
+
+    def _write(self, tree: Tree) -> None:
+        """Write *tree* to src/plc, its files dated by the run's clock."""
+        if self.source.exists():
+            shutil.rmtree(self.source)
+        self.source.mkdir(parents=True)
+        stamp = self.clock.timestamp()
+        for name, text in tree:
+            path = self.source / name
+            path.write_text(text, encoding="utf-8")
+            os.utime(path, (stamp, stamp))
+        self.written.add(tree)
 
     def kept(self) -> dict[str, Tree]:
         """Each listed backup by where it is: "newest" or an older backup's name."""
@@ -119,8 +128,7 @@ class _Run:
         else:
             tree = self._new_tree("edits")
             self.edited.append(tree)
-        _write(self.source, tree)
-        self.written.add(tree)
+        self._write(tree)
         return "edit"
 
     def _begin(self) -> None:
@@ -129,32 +137,61 @@ class _Run:
         An operation that fails leaves src/plc as it was, so an edit made after
         it may drop that tree.
         """
-        tree = _read(self.source)
+        self.began = _read(self.source)
+        tree = self.began
         self.pending = tree if tree is not None and tree != self.generated else None
+
+    def _failed(self, injected: str | None, history: str) -> str:
+        assert injected in ("copy", "move"), history
+        assert _read(self.source) == self.began, f"{history}: src/plc changed"
+        self.pending = None
+        return history
 
     def regenerate(self) -> str:
         self._begin()
         backup_modified_plc_source(self.project)
         tree = self._new_tree("generated")
-        _write(self.source, tree)
-        self.written.add(tree)
+        self._write(tree)
         record_generated_plc_source(self.project)
         self.generated = tree
         return "regenerate"
 
-    def _inject(self, patch, *, into: Path) -> str | None:
+    def _inject(self, patch, *, copies_into: tuple[Path, ...]) -> str | None:
         roll = self.rng.random()
-        if roll < 0.12:
+        if roll < 0.10:
+            into = self.rng.choice(copies_into)
             replace_tree = project_workspace._replace_tree
 
-            def failing(source: Path, destination: Path) -> int:
+            def failing_copy(source: Path, destination: Path) -> int:
                 if destination == into:
                     raise _Injected("copy failed")
                 return replace_tree(source, destination)
 
-            patch.setattr(project_workspace, "_replace_tree", failing)
+            patch.setattr(project_workspace, "_replace_tree", failing_copy)
             return "copy"
-        if roll < 0.24:
+        if roll < 0.26:
+            newest = plc_backup_dir(self.project)
+            older_root = older_plc_backups_dir(self.project)
+            replace = Path.replace
+            moves = roll < 0.18
+            failed: list[Path] = []
+
+            def failing_replace(path: Path, target) -> Path:
+                target = Path(target)
+                if moves:
+                    # A backup moving to or from backup/older; the move back works.
+                    hit = not failed and newest in (path, target)
+                    hit = hit and older_root in (*path.parents, *target.parents)
+                else:
+                    hit = path.name == "backup-time.txt.staging"
+                if hit:
+                    failed.append(path)
+                    raise _Injected("move failed")
+                return replace(path, target)
+
+            patch.setattr(Path, "replace", failing_replace)
+            return "move" if moves else "time file"
+        if roll < 0.36:
             rmtree = shutil.rmtree
 
             def part_way(path, *args, **kwargs):
@@ -172,13 +209,11 @@ class _Run:
     def backup(self) -> str:
         self._begin()
         with self.monkeypatch.context() as patch:
-            injected = self._inject(patch, into=plc_backup_dir(self.project))
+            injected = self._inject(patch, copies_into=(plc_backup_dir(self.project),))
             try:
                 backup_plc_source(self.project)
             except _Injected:
-                assert injected == "copy"
-                self.pending = None
-                return "backup (copy failed)"
+                return self._failed(injected, f"backup ({injected} failed)")
         return f"backup{f' ({injected})' if injected else ''}"
 
     def restore(self, older: bool) -> str:
@@ -188,13 +223,13 @@ class _Run:
         name = self.rng.choice(names) if older else None
         self._begin()
         with self.monkeypatch.context() as patch:
-            injected = self._inject(patch, into=self.source)
+            # The copy of the chosen backup into src/plc, or the backup of the edits.
+            copies_into = (self.source, plc_backup_dir(self.project))
+            injected = self._inject(patch, copies_into=copies_into)
             try:
                 restored = restore_plc_source(self.project, name)
             except _Injected:
-                assert injected == "copy"
-                self.pending = None
-                return f"restore {name or ''} (copy failed)"
+                return self._failed(injected, f"restore {name or ''} ({injected} failed)")
         assert restored.restored_from.is_dir(), restored
         assert _read(restored.restored_from) == _read(self.source)
         return f"restore {name or ''}{f' ({injected})' if injected else ''}"
@@ -205,15 +240,22 @@ class _Run:
         kept = self.kept()
         for where, tree in kept.items():
             assert tree in self.written, (where, tree, history)
-        self.tracked.update(kept.values())
+        source = _read(self.source)
+        newest = kept.get("newest")
         if self.pending is not None:
+            # The edits are the newest backup now, or src/plc holds them as the
+            # backup it restored (which keeps the step it was last the newest at).
+            restored = self.pending == source and self.pending in kept.values()
+            assert self.pending == newest or restored, (
+                f"edits {sorted(self.pending)} were not backed up",
+                history,
+            )
             self.tracked.add(self.pending)
             self.pending = None
-        newest = kept.get("newest")
+        self.tracked.update(kept.values())
         if newest is not None:
             self.newest_at[newest] = self.step
         present = set(kept.values())
-        source = _read(self.source)
         if source is not None:
             present.add(source)
         backed_up = set(kept.values())

@@ -235,8 +235,8 @@ def _latest_mtime(root: Path) -> dt.datetime | None:
 def plc_backup_time(project_dir: Path) -> dt.datetime | None:
     """When the backup in ``backup/src/plc`` was taken, or None without one.
 
-    A backup from an earlier ClickNick has no recorded time: its newest file's
-    time stands in.
+    Without a recorded time (a backup from an earlier ClickNick, or one whose
+    time could not be written) its newest file's time stands in.
     """
     backup = plc_backup_dir(project_dir)
     if not backup.is_dir():
@@ -249,17 +249,29 @@ def plc_backup_time(project_dir: Path) -> dt.datetime | None:
 
 
 def _record_backup_time(project_dir: Path, when: dt.datetime) -> None:
-    """Record *when*; a backup is in place either way, so a failure here never fails it."""
+    """Record *when*; a backup is in place either way, so a failure here never fails it.
+
+    If the time cannot be written, the backup's files are dated *when*, since
+    their own times can be much older (a copy keeps them, and a backup an older
+    one already held keeps that one's files).
+    """
     path = project_dir / PLC_BACKUP_TIME_PATH
     staging = path.with_suffix(f"{path.suffix}.staging")
     try:
         staging.write_text(when.isoformat(timespec="seconds") + "\n", encoding="utf-8")
         staging.replace(path)
     except OSError:
-        # The time of the backup before would misname this one: its files' time stands in.
+        # The time of the backup before would misname this one.
         for leftover in (staging, path):
             try:
                 leftover.unlink(missing_ok=True)
+            except OSError:
+                pass
+        stamp = when.timestamp()
+        for file in plc_backup_dir(project_dir).rglob("*"):
+            try:
+                if file.is_file():
+                    os.utime(file, (stamp, stamp))
             except OSError:
                 pass
 
