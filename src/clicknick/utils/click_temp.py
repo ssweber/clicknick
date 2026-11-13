@@ -2,7 +2,7 @@
 
 CLICK makes one folder per window, ``CLICK ({hwnd:08X})``, holding SC_.mdb, Address.csv,
 Project.ini, the Scr*.tmp saves and the DataView folder. ClickNick looks for it under
-the Windows temp folder (GetTempPathW; USER-CHECKS Q8), and everything that looks for
+the Windows temp folder (GetTempPathW), and everything that looks for
 it goes through ``click_temp_dir``. Pure ``os``/``pathlib``/``ctypes``, so the
 lightweight CLI can use it.
 """
@@ -59,7 +59,7 @@ def _long_path(path: str) -> str:
 def temp_root() -> Path:
     """The folder CLICK makes its ``CLICK (hwnd)`` folders in, in its long form.
 
-    ClickNick takes CLICK's temp folder to be the Windows temp path (USER-CHECKS Q8),
+    ClickNick takes CLICK's temp folder to be the Windows temp path,
     or Python's temp folder where Windows gives none.
     """
     return Path(_long_path(_windows_temp_path() or tempfile.gettempdir()))

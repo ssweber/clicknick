@@ -16,6 +16,8 @@ ClickNick's part has since landed on `dev`. The next release's design is
   `pyrungListForces`), not a custom Modbus command. Modbus has no concept of a force, and CLICK uses a separate
   Override channel for this too.
 - Values are read over Modbus. Inputs (switches, analog), mode, speed, stepping, forces and links go over DAP.
+- Next release: panel changes go over DAP as command text; see
+  [Commands and recording](#commands-and-recording-decided-2026-11-13).
 
 ### I/O panel
 
@@ -62,7 +64,7 @@ ClickNick's part has since landed on `dev`. The next release's design is
 
 ### Open TODOs
 
-- Simulator screenshot in the docs (`<!-- TODO -->` in `docs/help/index.md`).
+- Simulator screenshot in the docs.
 - docs-build not run.
 - Contract tests against a real DAP subprocess (session and view tests use fakes).
 - Release order: pyclickplc, then pyrung, then ClickNick bumps both pins (it pins pyrung 0.15.2 today, so the real
@@ -95,7 +97,8 @@ Done in ClickNick: nothing sends `allow_input_writes` or `allowInputWrites` any 
   which the Console-echo idea below also wants. The sim's Modbus client becomes read-only polling. Drop
   `allow_input_writes=True` from both `connect` calls and `"allowInputWrites": True` from the launch args. While
   the Dataview is attached to the sim, X rows behave as they would on a real PLC: writes are rejected, so force
-  them instead.
+  them instead. The next release makes that one path command text: see
+  [Commands and recording](#commands-and-recording-decided-2026-11-13).
 - **pyrung:** drop `ModbusConfig.allow_input_writes`, the `allowInputWrites` launch key, the
   "(X inputs writable)" banner, the `modbus_info` field and their docs and tests.
 - **pyclickplc:** revert `allow_input_writes` in `server.py`, `client.py` and `modbus_service.py`, along with its
@@ -112,8 +115,8 @@ Done in ClickNick: nothing sends `allow_input_writes` or `allowInputWrites` any 
 
 ### What existed before the link work
 
-This is the state before 2026-10-21; see [pyrung work](#pyrung-work) and [Built vs. the plan](#built-vs-the-plan-above)
-for what was built.
+This is the state before 2026-10-21; see [pyrung work](#pyrung-work) and
+[Built vs. the plan](#built-vs-the-plan-above) for what was built.
 
 - **pyrung:** a feedback tag declares `physical=` (bool `on_delay`/`off_delay`, or a `ramp`/`approach`/`pulse`
   profile) and `link=<enable tag>[:<trigger>]`. This round-trips through the CLICK comment (`TagMeta`). At launch
@@ -203,8 +206,8 @@ Original plan:
   `restore` / `remove` / `promote`. It re-applies links after relaunch, before `set_mode("run")` the way forces
   are re-applied, and adopts link changes made from the Console the way `_adopt_forces` does.
 - **Promote** needs the current `DataSession`'s store. Give `SimulationSession` a getter (rule 6), not a copy.
-  Today `link=` in a comment takes nicknames only, because the harness looks up `_known_tags_by_name`; the
-  decision below adds CLICK addresses.
+  (Outdated: `link=` in a comment took nicknames only, because the harness looked up `_known_tags_by_name`; the
+  decision below added CLICK addresses, and `link=Y001` now parses.)
 - The panel layout gains a per-terminal link state. `sim_hardware` stays pure data; the link state comes from the
   session, not from the layout.
 

@@ -109,14 +109,17 @@ whose block tag changed (old tag vs new tag, not its text) has the matching open
 tags renamed in place, removed, or (on an untagged pair, when the tag was added or renamed) appended
 (`BlockService`). "The caller set this field" is read before any cascade runs, and a cascade never writes it.
 
-**The Rules** (rules 2, 3 and 5 are enforced by `tests/test_store_boundaries.py`):
+**The Rules** (`tests/test_store_boundaries.py` enforces rules 2, 3 and 5; for rule 5 it checks that nothing
+outside the store touches `_current_session`):
 1. **Models are Immutable:** `AddressRow` is `frozen=True`; all changes create new instances
    (`dataclasses.replace()`)
 2. **AddressStore is the Gatekeeper:** Only `AddressStore` writes its layers (`base_state`, `user_overrides`,
    `visible_state`, `block_colors`, `row_order`)
-3. **Services and data are Pure Logic:** `services/` and `data/` **never** import `tkinter`
-4. **Views are Passive:** Views lookup rows via `store.visible_state[addr_key]` and listen for change notifications
-5. **Use the session you are given:** write through the session yielded by `edit_session()`; never touch
+3. **Services and data are Pure Logic:** `services/`, `data/` and `simulation_session.py` **never** import
+   `tkinter`
+4. **Views are Passive:** Views lookup rows via `store.visible_state[addr_key]` and listen for change
+   notifications; nothing keeps a row reference across a change
+5. **Every edit goes through `store.edit_session()`:** write through the session it yields; never touch
    `store._current_session`
 6. **One home per fact:** the current data lives in `ClickNickApp._data` (a `DataSession`), the connected CLICK
    window in `ClickNickApp._click` (an immutable `ClickConnection`). Consumers take getters, not copies
@@ -126,14 +129,11 @@ tags renamed in place, removed, or (on an untagged pair, when the tag was added 
 
 - `add_observer(callback)`; `callback(store, changed_keys: set[int] | None)` receives the affected `addr_key`s
 - The store replaces changed rows in the shared unified view before notifying; observer exceptions are logged
-- Views refresh only changed rows
 
 ## Key Dependencies
 
-- `pywin32`, `pyodbc` (Access database), `tksheet` v7 (Address Editor;
-  https://ragardner.github.io/tksheet/DOCUMENTATION.md), `tkinter`
-- `pyrung` (program conversion, simulation), `laddercodec` (CLICK clipboard encoding), `pyclickplc` (Modbus,
-  CLICK project files). All are pinned exactly in `pyproject.toml`
+`pywin32`, `pyodbc`, `tksheet` v7 (https://ragardner.github.io/tksheet/DOCUMENTATION.md), `pyrung`, `laddercodec`,
+`pyclickplc`, all pinned exactly in `pyproject.toml`; `tkinter` (stdlib).
 
 ## Testing
 
@@ -154,8 +154,6 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - `test_row_service.py` - Fill down, clone structure, edit session integration
 - `test_blocktag.py` - Tag parsing edge cases
 
-View tests are integration tests that need tkinter.
-
 ## Key Implementation Notes
 
 ### Dirty State Detection
@@ -171,7 +169,7 @@ View tests are integration tests that need tkinter.
   helper, `_flag_loaded_error`, on load, reload and Sync alike
 
 ### Undo/Redo
-- Tracks the overlay layer (user intent) only, not database state; at most `MAX_UNDO_DEPTH` (50) frames
+- Tracks the overlay layer (user intent) only; at most `MAX_UNDO_DEPTH` (50) frames
 - A successful Sync/Save, or a Discard, clears Undo/Redo (frames hold override snapshots, not old values);
   a CLICK save does not
 - An unsaved field that the database now matches stops being an edit (`_rebase_override`, run by `_derive`)
@@ -215,11 +213,11 @@ View tests are integration tests that need tkinter.
   a backup over this
 - `clicknick-cli restore` takes the newest backup, `restore <time>` an older one. It copies the chosen backup
   aside, then backs up `src/plc` if it differs from both the last generation and that backup, then replaces
-  `src/plc`. Its pruning keeps the restored backup, so six may be kept until the next backup.
-  `tests/test_backup_oracle.py` checks these rules over random edits, builds, backups and restores, some with a
-  copy, move, time-file write or prune that fails: one that succeeds leaves the edits `src/plc` held as the
-  newest backup (or in `src/plc`, as the backup it restored); a tree once in a backup, or in `src/plc` with
-  edits as one began, is gone only when 5 kept backups were the newest after it
+  `src/plc`. Its pruning keeps the restored backup, so six may be kept until the next backup
+- A backup or restore that succeeds leaves the edits `src/plc` held as the newest backup (or in `src/plc`, as the
+  backup it restored). A tree once in a backup, or in `src/plc` with edits as one began, is gone only when 5
+  kept backups were the newest after it. `tests/test_backup_oracle.py` checks these rules over random edits,
+  builds, backups and restores with injected copy, move, time-file and prune failures
 - Each workspace folder has one lock (`workspace_writing`). A build's publish holds it from its backup of
   edits to the generation record; `backup`, `restore` and choosing a workspace hold it throughout. The
   build waits for it; the others run on the Tk thread and are refused (`WorkspaceBusyError`) instead of
@@ -273,9 +271,9 @@ View tests are integration tests that need tkinter.
   and there is no nicknames step (workspace tags go through `tag apply`). Any other folder is shown by converting
   its CSVs with pyrung
 - Under "Changed rungs" a program is still copied whole when its steps number `_MANY_STEPS` (6) or more, unless
-  it has `_SLOW_PASTE_RUNGS` (100) rungs, CLICK holds legacy-encoded rungs of it (a whole paste re-pastes skipped
-  rungs from ClickNick's reading), a step of it is done, its rungs were asked for by number, or the user
-  clicked **Step Through** for it (`_copied_whole_for_steps`; 100 counts the paste as chosen, `merged`). Every
+  its paste as chosen (`merged`) has `_SLOW_PASTE_RUNGS` (100) rungs or more, CLICK holds legacy-encoded rungs
+  of it (a whole paste re-pastes skipped rungs from ClickNick's reading), a step of it is done, its rungs were
+  asked for by number, or the user clicked **Step Through** for it (`_copied_whole_for_steps`). Every
   difference of a program locks while one of its steps is half done
 - A folder CSV that cannot be read is left out (`_left_out`), with a notice: it is no step and does not hold the
   window open
@@ -301,13 +299,14 @@ View tests are integration tests that need tkinter.
   DAP. The Dataview reads and writes values over Modbus, the same client as for a real CLICK, and X stays
   read-only there, as on a real CLICK (its Force column goes through the simulation). Mode, speed and forces
   follow frames, because the Console and agents can drive the same simulation (last command wins)
-- The command path: **commands are text with a source; state is data; the write is a plan.** The next release
-  turns panel mutations (switches, analog values, forces, mode, step, speed, links) into pyrung command lines
-  with a source such as `panel`, sent over the connection the session already has. The command language lives
-  in pyrung: ClickNick will send lines verbatim (no `;` splitting in the Console pane, no echo of its own once
-  pyrung broadcasts the command text). Frames, force and link listings, Modbus info and causal queries stay
-  structured reads; the program write stays `pyrungReload` with its carry plan; launch and terminate stay
-  structured. Until that rework lands, add no new structured mutation request
+- Panel mutations (switches, analog values, forces, mode, step, speed, links) go as structured DAP requests
+  today; add no new one. The next release sends them as pyrung command lines with a source such as `panel`
+  (**commands are text with a source; state is data; the write is a plan**), over the connection the session
+  already has. The command language lives in pyrung, and ClickNick will send lines verbatim. The Console pane
+  splits a line on `;` today (`ConsolePanel._submit_command_text`; its `autoreload` and `reload` refusals rely
+  on it); that, and ClickNick's own echo once pyrung broadcasts the command text, go with the rework. Frames,
+  force and link listings, Modbus info and causal queries stay structured reads; the program write stays
+  `pyrungReload` with its carry plan; launch and terminate stay structured
   (`scratchpad/visual-simulator-design.md`, "Commands and recording")
 - User actions emit an `echo` event with the equivalent console command (tag names via `to_tag()`), which the
   console pane shows as a comment; only actions that reach a running simulation echo, and analog values echo once
