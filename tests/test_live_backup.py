@@ -48,6 +48,29 @@ def test_backup_and_restore_commands_round_trip_active_source(tmp_path: Path):
     assert (source / "main.py").read_text(encoding="utf-8") == "proposal\n"
 
 
+def test_backup_of_clean_source_keeps_the_backup_holding_edits(tmp_path: Path):
+    source = _write_source(tmp_path, "unpasted edits\n")
+    ctx = _context(tmp_path)
+    dispatch(ctx, "backup")
+    (source / "main.py").write_text("regenerated\n", encoding="utf-8")
+    dispatch(ctx, "backup")
+
+    listed = dispatch(ctx, "restore list").splitlines()
+    (older,) = [line for line in listed if not line.startswith("[")]
+    result = dispatch(ctx, f"restore {older}")
+
+    assert f"restored 1 source file from {tmp_path / 'backup' / 'older' / older}" in result
+    assert (source / "main.py").read_text(encoding="utf-8") == "unpasted edits\n"
+    assert dispatch(ctx, "restore").startswith("OK: restored 1 source file")
+    assert (source / "main.py").read_text(encoding="utf-8") == "regenerated\n"
+
+
+def test_restore_list_without_older_backups(tmp_path: Path):
+    _write_source(tmp_path, "proposal\n")
+
+    assert dispatch(_context(tmp_path), "restore list").splitlines()[0] == "no older backups"
+
+
 def test_restore_requires_an_existing_backup(tmp_path: Path):
     _write_source(tmp_path, "proposal\n")
 

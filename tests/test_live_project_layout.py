@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import os
+import shutil
 from pathlib import Path
+
+import pytest
 
 from clicknick.live.rung_commands import (
     _all_file_stems,
@@ -11,9 +15,13 @@ from clicknick.live.rung_commands import (
     _get_csv_stem,
     _resolve_file,
 )
+from clicknick.services import project_workspace
 from clicknick.services.project_workspace import (
+    KEPT_PLC_BACKUPS,
     backup_plc_source,
     headless_python,
+    older_plc_backups,
+    plc_backup_time,
     project_environment,
     restore_plc_source,
 )
@@ -88,6 +96,161 @@ def test_backup_and_restore_replace_the_complete_plc_tree(tmp_path: Path):
     assert (source / "subroutines" / "startup.py").is_file()
     assert not (source / "extra.py").exists()
     assert (backup_dir / "main.py").is_file()
+
+
+def _clock(monkeypatch, start: dt.datetime) -> list[dt.datetime]:
+    """Make each backup one minute after the one before; return the times handed out."""
+    times: list[dt.datetime] = []
+
+    def now() -> dt.datetime:
+        times.append(start + dt.timedelta(minutes=len(times)))
+        return times[-1]
+
+    monkeypatch.setattr(project_workspace, "_now", now)
+    return times
+
+
+def _back_up(project_dir: Path, text: str) -> None:
+    source = project_dir / "src" / "plc"
+    source.mkdir(parents=True, exist_ok=True)
+    (source / "main.py").write_text(text, encoding="utf-8")
+    backup_plc_source(project_dir)
+
+
+def _older_text(project_dir: Path, name: str) -> str:
+    return (project_dir / "backup" / "older" / name / "src" / "plc" / "main.py").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_a_backup_moves_the_one_before_it_aside_under_its_time(tmp_path: Path, monkeypatch):
+    start = dt.datetime(2026, 11, 12, 9, 30, 0).astimezone()
+    _clock(monkeypatch, start)
+
+    _back_up(tmp_path, "edits A\n")
+    _back_up(tmp_path, "edits B\n")
+
+    newest = tmp_path / "backup" / "src" / "plc"
+    assert (newest / "main.py").read_text(encoding="utf-8") == "edits B\n"
+    assert older_plc_backups(tmp_path) == ["20261112-093000"]
+    assert _older_text(tmp_path, "20261112-093000") == "edits A\n"
+    assert plc_backup_time(tmp_path) == start + dt.timedelta(minutes=1)
+
+    (tmp_path / "src" / "plc" / "main.py").write_text("regenerated\n", encoding="utf-8")
+    restored_from, _count = restore_plc_source(tmp_path)
+
+    assert restored_from == newest
+    assert (tmp_path / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "edits B\n"
+
+
+def test_backups_keep_the_newest_five(tmp_path: Path, monkeypatch):
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0).astimezone())
+
+    for index in range(KEPT_PLC_BACKUPS + 2):
+        _back_up(tmp_path, f"edits {index}\n")
+
+    names = older_plc_backups(tmp_path)
+    assert KEPT_PLC_BACKUPS == 5
+    assert names == ["20261112-090500", "20261112-090400", "20261112-090300", "20261112-090200"]
+    assert [_older_text(tmp_path, name) for name in names] == [
+        "edits 5\n",
+        "edits 4\n",
+        "edits 3\n",
+        "edits 2\n",
+    ]
+    assert (tmp_path / "backup" / "src" / "plc" / "main.py").read_text(
+        encoding="utf-8"
+    ) == "edits 6\n"
+
+
+def test_backups_in_the_same_second_are_kept_in_order(tmp_path: Path, monkeypatch):
+    same = dt.datetime(2026, 11, 12, 9, 0, 0).astimezone()
+    monkeypatch.setattr(project_workspace, "_now", lambda: same)
+
+    for index in range(KEPT_PLC_BACKUPS + 6):
+        _back_up(tmp_path, f"edits {index}\n")
+
+    names = older_plc_backups(tmp_path)
+    assert names == ["20261112-090000-10", "20261112-090000-9", "20261112-090000-8", "20261112-090000-7"]
+    assert [_older_text(tmp_path, name) for name in names] == [
+        "edits 9\n",
+        "edits 8\n",
+        "edits 7\n",
+        "edits 6\n",
+    ]
+
+
+def test_a_backup_matching_the_newest_makes_no_new_one(tmp_path: Path, monkeypatch):
+    times = _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0).astimezone())
+
+    _back_up(tmp_path, "edits A\n")
+    _back_up(tmp_path, "edits B\n")
+    _back_up(tmp_path, "edits B\n")
+    _back_up(tmp_path, "edits B\n")
+
+    assert older_plc_backups(tmp_path) == ["20261112-090000"]
+    assert plc_backup_time(tmp_path) == times[-1]
+
+
+def test_a_backup_without_a_recorded_time_moves_aside_under_its_newest_file(
+    tmp_path: Path, monkeypatch
+):
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0).astimezone())
+    earlier = tmp_path / "backup" / "src" / "plc"
+    earlier.mkdir(parents=True)
+    (earlier / "main.py").write_text("edits from an earlier version\n", encoding="utf-8")
+    taken = dt.datetime(2026, 10, 1, 8, 15, 30).timestamp()
+    os.utime(earlier / "main.py", (taken, taken))
+    assert plc_backup_time(tmp_path) == dt.datetime.fromtimestamp(taken).astimezone()
+
+    _back_up(tmp_path, "edits A\n")
+
+    assert older_plc_backups(tmp_path) == ["20261001-081530"]
+    assert _older_text(tmp_path, "20261001-081530") == "edits from an earlier version\n"
+
+
+def test_pruning_leaves_folders_not_named_like_a_backup(tmp_path: Path, monkeypatch):
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0).astimezone())
+    keep = tmp_path / "backup" / "older" / "before the rewrite" / "src" / "plc"
+    keep.mkdir(parents=True)
+
+    for index in range(KEPT_PLC_BACKUPS + 2):
+        _back_up(tmp_path, f"edits {index}\n")
+
+    assert keep.is_dir()
+    assert len(older_plc_backups(tmp_path)) == KEPT_PLC_BACKUPS - 1
+
+
+def test_restore_takes_an_older_backup_by_name(tmp_path: Path, monkeypatch):
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0).astimezone())
+    _back_up(tmp_path, "edits A\n")
+    _back_up(tmp_path, "edits B\n")
+
+    restored_from, count = restore_plc_source(tmp_path, "20261112-090000")
+
+    assert restored_from == tmp_path / "backup" / "older" / "20261112-090000" / "src" / "plc"
+    assert count == 1
+    assert (tmp_path / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "edits A\n"
+    with pytest.raises(ValueError, match="older backups: 20261112-090000"):
+        restore_plc_source(tmp_path, "20261112-080000")
+
+
+def test_a_failed_backup_leaves_the_newest_backup_in_place(tmp_path: Path, monkeypatch):
+    _clock(monkeypatch, dt.datetime(2026, 11, 12, 9, 0, 0).astimezone())
+    _back_up(tmp_path, "edits A\n")
+
+    def fail(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(shutil, "copytree", fail)
+    with pytest.raises(OSError, match="disk full"):
+        _back_up(tmp_path, "edits B\n")
+
+    assert (tmp_path / "backup" / "src" / "plc" / "main.py").read_text(
+        encoding="utf-8"
+    ) == "edits A\n"
+    assert older_plc_backups(tmp_path) == []
+    assert not (tmp_path / "backup" / "older" / "20261112-090000").exists()
 
 
 def test_rung_list_metadata_uses_preceding_click_comments():

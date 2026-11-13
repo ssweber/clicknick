@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -12,6 +13,9 @@ from clicknick.app import ClickNickApp
 from clicknick.connection_session import ClickConnection
 from clicknick.services.analysis_service import _publish_generated_project
 from clicknick.services.project_workspace import (
+    backup_plc_source,
+    older_plc_backups,
+    plc_backup_time,
     plc_source_is_modified,
     record_generated_plc_source,
 )
@@ -187,6 +191,29 @@ def test_sync_overwrites_only_owned_paths_and_never_deletes(tmp_path: Path) -> N
     assert not (mirror / "backup" / "src").exists()
     assert not (mirror / ".venv").exists()
     assert not (mirror / ".clicknick.toml").exists()
+
+
+def test_keeping_a_mirrors_edited_source_keeps_its_earlier_backup(tmp_path: Path) -> None:
+    source = _write_workspace(tmp_path / "active", main="generated\n")
+    record_generated_plc_source(source)
+    mirror = _write_workspace(tmp_path / "Example Workspace", main="generated\n")
+    record_generated_plc_source(mirror)
+    earlier = mirror / "backup" / "src" / "plc"
+    earlier.mkdir(parents=True)
+    (earlier / "main.py").write_text("earlier edits\n", encoding="utf-8")
+    (mirror / "src" / "plc" / "main.py").write_text("unpasted edits\n", encoding="utf-8")
+
+    result = sync_workspace_to_mirror(source, mirror)
+
+    assert result.kept_source
+    assert (earlier / "main.py").read_text(encoding="utf-8") == "unpasted edits\n"
+    (older,) = older_plc_backups(mirror)
+    older_main = mirror / "backup" / "older" / older / "src" / "plc" / "main.py"
+    assert older_main.read_text(encoding="utf-8") == "earlier edits\n"
+
+    sync_workspace_to_mirror(source, mirror)
+
+    assert older_plc_backups(mirror) == [older]
 
 
 def _generated(root: Path, main: str) -> Path:
@@ -436,6 +463,13 @@ def test_directory_info_reports_configuration_and_generation_times(tmp_path: Pat
     assert info.mirror_dir == config.workspace_path
     assert info.last_regenerated_at is not None
     assert info.last_backup_at is not None
+
+    # A backup made now reports when it was made, not when its files were last edited.
+    os.utime(generated / "src" / "plc" / "main.py", (0, 0))
+    backup_plc_source(generated)
+    taken = plc_backup_time(generated)
+    assert taken is not None and taken.year > 1970
+    assert get_workspace_directory_info(config, generated).last_backup_at == taken
 
 
 def test_app_loads_one_matching_plc_workspace(monkeypatch, tmp_path: Path) -> None:

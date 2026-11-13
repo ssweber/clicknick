@@ -273,11 +273,14 @@ def _retire_newest_backup(project_dir: Path) -> Path:
     when = plc_backup_time(project_dir) or _now()
     root = older_plc_backups_dir(project_dir)
     base = when.strftime(_OLDER_NAME_FORMAT)
-    name, suffix = base, 1
-    while (root / name).exists():
-        suffix += 1
-        name = f"{base}-{suffix}"
-    slot = root / name
+    # One past the highest suffix in use for this second, so the newest sorts first.
+    taken = [
+        int(match.group(2) or 1)
+        for path in (root.iterdir() if root.is_dir() else ())
+        if (match := _OLDER_NAME.fullmatch(path.name)) and match.group(1) == base
+    ]
+    suffix = max(taken, default=0) + 1
+    slot = root / (base if suffix == 1 else f"{base}-{suffix}")
     (slot / PLC_PACKAGE_PATH).parent.mkdir(parents=True)
     try:
         plc_backup_dir(project_dir).replace(slot / PLC_PACKAGE_PATH)
