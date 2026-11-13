@@ -2602,7 +2602,7 @@ class SimulationSession:
     def _restore_when_known(self) -> None:
         """Trim the remembered settings to the hardware, once it is fully known.
 
-        Inputs the program uses with no card to provide them (Unassigned I/O)
+        Inputs the program uses with no module to provide them (unassigned placeholder cards)
         are known only from the analysis; until one is available, settings on
         them would look like settings on missing hardware.
         """

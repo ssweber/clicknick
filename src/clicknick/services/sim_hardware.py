@@ -175,8 +175,16 @@ def _position(address: str) -> tuple[Location, int]:
     return ("cpu", 0) if index <= 20 else ("slot", 1)
 
 
-def _rank(location: Location, position: int) -> tuple[int, int]:
+def _rank(location: Location, position: int, installed: bool = True) -> tuple[int, int]:
+    """Sort key in rack order. A placeholder for the CPU's addresses goes after the
+    option slots, so it does not split the CPU housing."""
+    if location == "cpu" and not installed:
+        return (1, 100)
     return ({"cpu": 0, "slot": 1, "expansion": 2}[location], position)
+
+
+def _where(card: Card) -> tuple[Location, int, bool]:
+    return card.location, card.position, card.installed
 
 
 def _placeholder(location: Location, position: int, addresses: Sequence[str]) -> Card:
@@ -204,12 +212,12 @@ def build_panel_layout(modules: Iterable[ModuleIOLike], used_io: Iterable[str] =
         if address[:1] in ("X", "Y"):
             by_position.setdefault(_position(address), []).append(address)
     for (location, position), addresses in sorted(
-        by_position.items(), key=lambda item: _rank(*item[0])
+        by_position.items(), key=lambda item: _rank(*item[0], installed=False)
     ):
         placeholder = _placeholder(location, position, addresses)
-        rank = _rank(location, position)
+        rank = _rank(location, position, installed=False)
         at = len(cards)
-        while at > 0 and _rank(cards[at - 1].location, cards[at - 1].position) > rank:
+        while at > 0 and _rank(*_where(cards[at - 1])) > rank:
             at -= 1
         cards.insert(at, placeholder)
     return PanelLayout(cards=tuple(cards))
