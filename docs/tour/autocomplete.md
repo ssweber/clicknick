@@ -1,6 +1,6 @@
 # Stop memorizing addresses
 
-**Tour 1 of 6**
+**Tour 2 of 6**
 
 You type `C123` because CLICK's instruction dialogs don't take nicknames.
 

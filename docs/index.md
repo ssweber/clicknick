@@ -1,18 +1,18 @@
 # Better tools for AutomationDirect CLICK PLCs
 
-CLICK Programming Software has no simulator, so ClickNick adds one: run your saved program without the PLC.
+CLICK Programming Software has no simulator. ClickNick adds one: run your saved program on your laptop, work the switches, and ask why an output did or didn't come on.
 
-Also nickname autocomplete, program checks, and your ladder (as Python) after every save.
+![ClickNick Simulator: pressing Start does nothing, the Console's why and how queries explain it, the panel's switches start the motor, right-clicking the output shows its simplified logic, and a force stops it](assets/simulator.gif)
 
-**CLICK stays CLICK. ClickNick gives you better tools around it.**
-
-[Take the tour](tour/autocomplete.md){ .md-button .md-button--primary } [Install ClickNick](install.md){ .md-button }
+pyrung, the engine underneath, is checked against a real CLICK, case by case: [conformance results](https://pyrung.com/pyrung/guides/conformance/) · [how it was built](https://pyrung.com/blog/click-plc-simulator/).
 
 > **ClickNick never edits your `.ckp`.** Nothing becomes part of the project until you save in CLICK Programming Software. [Where ClickNick writes.](help/index.md#where-clicknick-writes)
 
 > **Not official, not affiliated.** ClickNick is an independent project, not endorsed by AutomationDirect. The simulator and checks don't replace testing. Test on the real machine, with proper safeguards, before anything interacts with people.
 
-![ClickNick connected to a CLICK project](https://github.com/user-attachments/assets/de4148a2-cbc5-4b11-95e5-f884c59d70e0)
+[Take the tour](tour/simulator.md){ .md-button .md-button--primary } [Install ClickNick](install.md){ .md-button }
+
+Also: nickname autocomplete, the Address Editor, Check Program and Review Changes, and your ladder as Python after every save.
 
 ## Why
 
@@ -26,4 +26,4 @@ Built on [pyrung](https://pyrung.com/pyrung/), the engine that runs your ladder 
 
 ## Get started
 
-Two steps: install `uv`, then `uv tool install clicknick`. [Install](install.md) · [Take the tour](tour/autocomplete.md)
+Two steps: install `uv`, then `uv tool install clicknick`. [Install](install.md) · [Take the tour](tour/simulator.md)

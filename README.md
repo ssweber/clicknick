@@ -4,13 +4,11 @@
 
 ## Better tools for AutomationDirect CLICK PLCs
 
-**Write, check, test, troubleshoot, and maintain CLICK ladder without replacing CLICK Programming Software.**
+CLICK Programming Software has no simulator. ClickNick adds one: run your saved program on your laptop, work the switches, and ask why an output did or didn't come on.
 
-CLICK Programming Software has no simulator, so ClickNick adds one: run your saved program without the PLC.
+![ClickNick Simulator: pressing Start does nothing, the Console's why and how queries explain it, the panel's switches start the motor, right-clicking the output shows its simplified logic, and a force stops it](https://github.com/user-attachments/assets/a1982f37-38f6-4103-a3c9-32469f0761c8)
 
-Also nickname autocomplete. Automated program checks. Readable project history. Optional AI-assisted ladder programming.
-
-CLICK stays CLICK. ClickNick gives you better tools around it.
+pyrung, the engine underneath, is checked against a real CLICK, case by case: [conformance results](https://pyrung.com/pyrung/guides/conformance/) · [how it was built](https://pyrung.com/blog/click-plc-simulator/).
 
 Documentation and tour: https://pyrung.com/clicknick/
 
@@ -83,8 +81,6 @@ and the **Console** in a pane at the bottom (pop it out into its own window if y
 - Right-click a point or use the Console to ask why something happened - or why it did not.
 - Ask how to reach a state, including routes that must pass through or avoid particular conditions.
 - Connect the Data View or an HMI over Modbus at `127.0.0.1:502`, like the real PLC.
-
-![ClickNick Simulator: pressing Start does nothing, the Console's why and how queries explain it, the panel's switches start the motor, right-clicking the output shows its simplified logic, and a force stops it](https://github.com/user-attachments/assets/a1982f37-38f6-4103-a3c9-32469f0761c8)
 
 Interrupts, PID, and high-speed instructions are not yet supported.
 

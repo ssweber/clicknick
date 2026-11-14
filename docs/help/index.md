@@ -6,7 +6,7 @@ The product tour explains why the tools are useful. This page is the starting po
 
 - [Install ClickNick](../install.md)
 - [Connect a project and try the core workflow](../getting-started.md)
-- [Take the six-part product tour](../tour/autocomplete.md)
+- [Take the six-part product tour](../tour/simulator.md)
 - [Editing tools](../editing.md) — Address Editor, Tag Browser, Data View builder
 
 ## Check Program

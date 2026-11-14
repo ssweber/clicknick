@@ -1,6 +1,6 @@
 # Simulate your CLICK PLC without the hardware
 
-**Tour 3 of 6**
+**Tour 1 of 6**
 
 The panel isn't wired yet, or the machine is two hours away. Run the saved program on your laptop instead.
 
@@ -11,7 +11,7 @@ Click **Simulate**. ClickNick draws your CPU and modules from System Configurati
 - **It answers Modbus** at `127.0.0.1:502`, like the real PLC. The Data View connects to it with a Force column, and so can an HMI.
 - **Start from the machine's state.** In CLICK, choose **PLC > Read Data from PLC... > All > Save**, then load that file with **PLC Data** in the simulator. [More.](../help/index.md#plc-data-file)
 
-![ClickNick Simulator: pressing Start does nothing, the Console's why and how queries explain it, the panel's switches start the motor, right-clicking the output shows its simplified logic, and a force stops it](https://github.com/user-attachments/assets/a1982f37-38f6-4103-a3c9-32469f0761c8)
+![ClickNick Simulator: pressing Start does nothing, the Console's why and how queries explain it, the panel's switches start the motor, right-clicking the output shows its simplified logic, and a force stops it](../assets/simulator.gif)
 
 Open **Simulate** and use the **Console** pane at the bottom to question the program. Start with `why`: it traces what's holding a tag on, off, or blocked, which is usually the first troubleshooting question anyway.
 
@@ -23,4 +23,4 @@ This is a model of the program, not the PLC. It knows only the wiring and sensor
 
 ---
 
-**[Next: Still saving `Machine_FINAL_FINAL.ckp`? →](readable-history.md)**
+**[Next: Stop memorizing addresses →](autocomplete.md)**

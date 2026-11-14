@@ -32,7 +32,7 @@ Trailing numbers are read as arrays: `Alm1_id`, `Alm1_value`, `Alm2_id`, and `Al
 
 ## Navigate
 
-Autocomplete in every instruction dialog is [tour stop 1](tour/autocomplete.md).
+Autocomplete in every instruction dialog is [tour stop 2](tour/autocomplete.md).
 
 The Address Editor's filter box also understands what the program does with a tag. `input:` shows tags the ladder reads but never writes, your physical inputs and HMI bits. `output:` shows tags it writes but never reads, your physical outputs. `pivot:` shows the ones in between, and `isolated:` shows nicknamed addresses no rung touches. `upstream:MotorOut` shows everything that feeds a tag, however many rungs away; `downstream:StartPB` shows everything a tag feeds. `tree:Tank_Pump1` shows that nickname and the ones under it (`Tank_Pump1_Run`), which is what double-clicking it in the Tag Browser sets. Prefixes combine with text, so `upstream:MotorOut ^Alm` narrows to the alarms that can hold a motor off.
 
