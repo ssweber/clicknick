@@ -121,52 +121,13 @@ ClickNick is built on [pyrung](https://pyrung.com/pyrung/), the engine that runs
 
 ## Feature details
 
-### Nickname autocomplete
-
-An autocomplete dropdown appears over CLICK instruction dialogs. Start typing a nickname and select from the filtered list; ClickNick inserts the address into CLICK.
-
-- Choose prefix, partial/contains, or fuzzy abbreviation matching.
-- Hover over a nickname to see its address comment.
-- Hide system or internal addresses such as SC/SD and `__private__` tags.
-- Keep autocomplete synchronized with Address Editor changes.
-
-### Address Editor
-
-- Edit different address sections in multiple windows.
-- Copy and paste multiple cells, then review changes before syncing them to CLICK.
-- Detect duplicate nicknames and invalid values as you work.
-- Fill a nickname pattern down a selection, such as `Alm1` to `Alm2`, `Alm3`, and so on.
-- Clone related structures, such as `Alm1_ID` and `Alm1_Val` into the corresponding `Alm2` tags.
-- Create color-coded blocks for organization and navigation.
-- Undo or redo an entire bulk operation as one edit.
-
-Search with <kbd>Ctrl</kbd>+<kbd>F</kbd> and replace with <kbd>Ctrl</kbd>+<kbd>R</kbd>. Searches cover nickname and comment fields and can be limited to the current selection. The editor also accepts regular expressions, including `^` and `$` anchors and capture groups such as `\1` in replacements.
+- [Nickname autocomplete](https://pyrung.com/clicknick/tour/autocomplete/): matching, filters and what the list offers.
+- [Address Editor, Tag Browser and Data Views](https://pyrung.com/clicknick/editing/): bulk edits, search and replace, blocks, the nickname outline, and Data Views built by name.
+- [Simulator](https://pyrung.com/clicknick/help/#simulator), [Review Changes](https://pyrung.com/clicknick/help/#review-changes) and [connection help](https://pyrung.com/clicknick/help/): how each works, step by step.
 
 ![Address Editor demo](https://github.com/user-attachments/assets/ee7b1914-2f18-483a-ace1-84c2aa8eea98)
 
-> [!NOTE]
-> Nicknames edited in the Address Editor appear immediately in autocomplete. Existing ladder logic refreshes after using CLICK's Address Picker (<kbd>Ctrl</kbd>+<kbd>T</kbd>) or reopening the project. See [issue #36](https://github.com/ssweber/clicknick/issues/36) for details.
-
-### Tag Browser
-
-The Tag Browser turns a flat nickname list into an outline. Single underscores create hierarchy, so `SupplyTank_Pump_Status` becomes:
-
-```text
-SupplyTank
-└── Pump
-    └── Status
-```
-
-Trailing numbers are recognized as arrays. Tags such as `Alm1_id`, `Alm1_value`, `Alm2_id`, and `Alm2_value` are grouped beneath `Alm[1-2]`. Double-click an item to edit it.
-
 ![Tag Browser screenshot](https://github.com/user-attachments/assets/07928355-180e-4b00-b0bb-07ad2bdbe831)
-
-### Data View Editor
-
-- Load the `.cdv` files from an open CLICK project into tabs.
-- Add addresses by nickname instead of raw address.
-- Drag, cut, paste, and reorder entries freely.
-- Insert a nickname, related structure, or whole block from the Tag Browser.
 
 ## Project links
 

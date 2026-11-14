@@ -44,17 +44,9 @@ installs, what it talks to, and a per-release dependency report.
 
 Continue with [Getting started](getting-started.md).
 
-<span id="install-the-access-driver"></span>
-
 ## Database connection
 
-ClickNick connects automatically. On Windows x64, a separate database driver normally isn't needed. The first connection can take a few seconds.
-
-If connecting fails, open **Help > About ClickNick > Test Connection** and see [connection help](help/index.md#database-connection).
-
-<span id="test-a-specific-database-backend"></span>
-
-For connection overrides or CSV mode, see [connection options](help/index.md#connection-options).
+ClickNick connects automatically. On Windows x64, a separate database driver normally isn't needed, and the first connection can take a few seconds. If connecting fails, open **Help > About ClickNick > Test Connection**. [Connection help](help/index.md#database-connection) covers the rest, including [connection options](help/index.md#connection-options) and CSV mode.
 
 ## Pip alternative
 

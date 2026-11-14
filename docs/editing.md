@@ -8,7 +8,7 @@ Fill a pattern down a selection: `Alm1` becomes `Alm2`, `Alm3`, and so on. Clone
 
 ## Edit
 
-The Address Editor opens different address sections in separate windows, takes pasted ranges of cells, and flags duplicate nicknames and invalid values as you type. Search with <kbd>Ctrl</kbd>+<kbd>F</kbd> and replace with <kbd>Ctrl</kbd>+<kbd>R</kbd>, across nicknames and comments or within the current selection; regular expressions work, including `^` and `$` anchors and `` capture groups in replacements. Right-click a comment cell to set its annotations in a dialog (read-only, external, choices, min and max, unit of measure, physical timing) instead of typing bracket syntax; Check Program and the Console read them. Undo a whole bulk operation as one step, and review every change before it syncs to CLICK.
+The Address Editor opens different address sections in separate windows, takes pasted ranges of cells, and flags duplicate nicknames and invalid values as you type. Search with <kbd>Ctrl</kbd>+<kbd>F</kbd> and replace with <kbd>Ctrl</kbd>+<kbd>R</kbd>, across nicknames and comments or within the current selection; regular expressions work, including `^` and `$` anchors and capture groups such as `\1` in replacements. Right-click a comment cell to set its annotations in a dialog (read-only, external, choices, min and max, unit of measure, physical timing) instead of typing bracket syntax; Check Program and the Console read them. Undo a whole bulk operation as one step, and review every change before it syncs to CLICK.
 
 ![Address Editor demo](https://github.com/user-attachments/assets/ee7b1914-2f18-483a-ace1-84c2aa8eea98)
 
