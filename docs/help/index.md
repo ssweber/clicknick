@@ -41,7 +41,7 @@ What you do on the panel shows in the Console as a green `#` line with the match
 
 ### The Console
 
-The Console is the pane at the bottom of the Simulator. <kbd>Ctrl</kbd>+<kbd>`</kbd> shows or hides it, and **Pop out** gives it its own window. It takes pyrung's debug console commands: type `help` for the list, or see [Console commands](https://pyrung.com/pyrung/guides/dap-vscode/#debug-console).
+The Console is the pane at the bottom of the Simulator. <kbd>Ctrl</kbd>+<kbd>`</kbd> shows or hides it, and **Pop out** gives it its own window. It takes pyrung's Console commands: type `help` for the list, or see [Console commands](https://pyrung.com/pyrung/guides/console/).
 
 Two to start with:
 
