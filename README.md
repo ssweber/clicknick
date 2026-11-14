@@ -60,7 +60,7 @@ python -m clicknick
 
 </details>
 
-![ClickNick main window connected to a CLICK project](https://github.com/user-attachments/assets/de4148a2-cbc5-4b11-95e5-f884c59d70e0)
+![ClickNick main window connected to a CLICK project, with Check Program, Simulate and Review Changes](https://pyrung.com/clicknick/assets/main-window.png)
 
 ## Make everyday CLICK programming easier
 
@@ -111,7 +111,7 @@ In a workspace, you can:
 - Edit generated ladder source and use **Review Changes** to review the proposed CLICK rungs, take or skip each difference, and paste the ones you take into CLICK step by step.
 - Use **Reload from CLICK** to discard workspace changes and return to the saved CLICK program.
 
-![ClickNick Review Changes showing a proposed ladder rung edit](https://github.com/user-attachments/assets/78fc0d24-22d9-4f8d-8fa9-6b6e1507b891)
+![Review Changes showing a timer preset changed from 2 to 2.5 seconds in the workspace, compared with CLICK's last save](https://pyrung.com/clicknick/assets/review-changes.png)
 
 ClickNick preserves a recovery snapshot before regeneration replaces generated source. Files outside ClickNick's generated areas - such as your tests, notes, and editor configuration - remain yours.
 

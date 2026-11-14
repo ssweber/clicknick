@@ -2,7 +2,7 @@
 
 Open your project in CLICK Programming Software, save it, then start ClickNick. It finds the open project and shows the connection near the top of the window.
 
-![ClickNick connected to a CLICK project](https://github.com/user-attachments/assets/de4148a2-cbc5-4b11-95e5-f884c59d70e0)
+![ClickNick main window connected to a CLICK project, with Check Program, Simulate and Review Changes](assets/main-window.png)
 
 ## 1. Try nickname autocomplete
 
