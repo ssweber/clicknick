@@ -263,6 +263,7 @@ def _make_window_stub(
     window._modbus_toggle_var = FakeVar("Connect")
     window._target_var = FakeVar("")
     window._sim = None
+    window._plc_address_before_sim = None
     window._set_modbus_error_text = lambda text="": None
     window.write_checked_button = FakeWidget()
     window.write_all_button = FakeWidget()
@@ -628,3 +629,67 @@ def test_panel_draws_names_from_live_lookup_not_the_record():
     panel.refresh_nicknames()
     assert panel.sheet.get_cell_data(0, COL_NICKNAME) == ""
     assert panel.sheet.get_cell_data(0, COL_COMMENT) == ""
+
+
+class FakeSimulation:
+    modbus_available = True
+    modbus_info = {"port": 5020}
+    modbus_port = 5020
+
+    def add_listener(self, callback):
+        pass
+
+    def remove_listener(self, callback):
+        pass
+
+
+def _make_sim_window(current: list):
+    window = _make_window_stub([FakePanel("one")], connected=False)
+    window._get_simulation = lambda: current[0]
+    window._pending_sim_connect = False
+    window._on_sim_event = lambda *args: None
+    window._modbus_toolbar_var = FakeVar(True)
+    window._sync_panel_simulation = lambda panel: None
+    window.refresh_title = lambda: None
+    window._update_modbus_controls = lambda: None
+    window._connect_modbus = MagicMock()
+    window._modbus_host_var.set("192.168.0.10")
+    window._modbus_port_var.set("1502")
+    return window
+
+
+def test_simulation_stop_puts_back_the_plc_address():
+    sim = FakeSimulation()
+    current = [sim]
+    window = _make_sim_window(current)
+
+    window._check_simulation()
+    assert window._modbus_host_var.get() == "127.0.0.1"
+    assert window._modbus_port_var.get() == "5020"
+
+    window._connect_modbus.reset_mock()
+    current[0] = None
+    window._check_simulation()
+
+    assert window._modbus_host_var.get() == "192.168.0.10"
+    assert window._modbus_port_var.get() == "1502"
+    window._connect_modbus.assert_not_called()
+
+
+def test_restart_keeps_the_first_plc_address():
+    first, second = FakeSimulation(), FakeSimulation()
+    current = [first]
+    window = _make_sim_window(current)
+
+    window._check_simulation()
+    current[0] = second
+    window._check_simulation()
+
+    assert window._sim is second
+    assert window._modbus_host_var.get() == "127.0.0.1"
+
+    current[0] = None
+    window._check_simulation()
+
+    assert window._modbus_host_var.get() == "192.168.0.10"
+    assert window._modbus_port_var.get() == "1502"

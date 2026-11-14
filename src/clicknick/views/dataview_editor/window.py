@@ -873,6 +873,10 @@ class DataviewEditorWindow(tk.Toplevel):
             self._disconnect_modbus()
         self._sim = sim
         sim.add_listener(self._on_sim_event)
+        self._plc_address_before_sim = (
+            self._modbus_host_var.get(),
+            self._modbus_port_var.get(),
+        )
         self._modbus_host_var.set("127.0.0.1")
         self._modbus_port_var.set(str(sim.modbus_info.get("port") or sim.modbus_port))
         if not self._modbus_toolbar_var.get():
@@ -894,6 +898,11 @@ class DataviewEditorWindow(tk.Toplevel):
             self._sync_panel_simulation(panel)
         if self._is_modbus_connected():
             self._disconnect_modbus()
+        if self._plc_address_before_sim is not None:
+            host, port = self._plc_address_before_sim
+            self._plc_address_before_sim = None
+            self._modbus_host_var.set(host)
+            self._modbus_port_var.set(port)
         self.refresh_title()
         self._update_modbus_controls()
 
@@ -1343,6 +1352,7 @@ class DataviewEditorWindow(tk.Toplevel):
         self._connection_state = ConnectionState.DISCONNECTED
         self._modbus_host_var = tk.StringVar(value="127.0.0.1")
         self._modbus_port_var = tk.StringVar(value="502")
+        self._plc_address_before_sim: tuple[str, str] | None = None
         self._modbus_toggle_var = tk.StringVar(value="Connect")
         self._modbus_toolbar_var = tk.BooleanVar(value=False)
         self._target_var = tk.StringVar(value="")
