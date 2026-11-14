@@ -8,7 +8,7 @@
      Review and condense before release — entries accumulate during development and
      should be edited into shape before moving from Unreleased to a version heading. -->
 
-## Unreleased
+## v0.24.0 - 2026-11-14
 
 ### Added
 
