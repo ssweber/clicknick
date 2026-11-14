@@ -202,6 +202,9 @@ class ConsolePanel(ttk.Frame):
                 "error",
             )
             return
+        if "record" in verbs:
+            self._append_output("Recording isn't available in ClickNick yet.\n", "error")
+            return
         if "reload" in verbs:
             if [sub.lower() for sub in subs] == ["reload"]:
                 # RUN Time Edit in RUN, Write otherwise; a refusal comes back as a message.

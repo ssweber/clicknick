@@ -25,6 +25,7 @@
 
 - Right-click a Simulator point to ask **Why** in the Console, and on an output also **Show simplified logic** or **How (experimental)** to turn it ON or OFF.
 - What you do on the Simulator shows in the Console as the matching command.
+- The Console refuses `record` for now, because it would not capture what you do on the Simulator.
 
 #### Review Changes
 
