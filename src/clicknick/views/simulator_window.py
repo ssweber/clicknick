@@ -1761,7 +1761,7 @@ class SimulatorWindow(tk.Toplevel):
         bind_tooltip(
             self._plc_data_btn,
             "Start from the PLC's live values: a CSV saved in CLICK with\n"
-            "PLC > Read Data from PLC > All > Save (not the nickname CSV).\n"
+            "PLC > Read Data from PLC... > All > Save (not the nickname CSV).\n"
             "Switches and analog values take the file's values, and the\n"
             "simulation starts over whenever the file changes, on what the\n"
             "workspace holds now (CLICK's last save and any edits).",

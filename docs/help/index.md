@@ -62,7 +62,7 @@ A link the program itself declares in a tag's comment shows as a program link (b
 
 ### PLC data file
 
-The simulation starts from power-on defaults. To start from the controller's live values instead, save a data file in CLICK with **PLC > Read Data from PLC > All > Save**, then pick it with **PLC Data...** in the Simulator. That also sets the switches and analog values from it. It is not the nickname CSV. The simulation starts over whenever the file changes, on what the workspace holds now.
+The simulation starts from power-on defaults. To start from the controller's live values instead, save a data file in CLICK with **PLC > Read Data from PLC... > All > Save**, then pick it with **PLC Data...** in the Simulator. That also sets the switches and analog values from it. It is not the nickname CSV. The simulation starts over whenever the file changes, on what the workspace holds now.
 
 ## Workspaces
 
