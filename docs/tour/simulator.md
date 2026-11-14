@@ -15,11 +15,11 @@ Click **Simulate**. ClickNick draws your CPU and modules from System Configurati
 
 Open **Simulate** and use the **Console** pane at the bottom to question the program. Start with `why`: it traces what's holding a tag on, off, or blocked, which is usually the first troubleshooting question anyway.
 
-`how` is the experimental one. It searches for a way to reach a state you name. When it finds one, it lists the inputs to set, step by step, with what changed after each. On real programs it sometimes stops without an answer, and it can take a minute. [More on the Console.](../help/index.md#the-console)
+`how` is the experimental one. It searches for a way to reach a state you name. When it finds one, it lists the inputs to set, step by step, with what changed after each. On real programs it sometimes stops without an answer, and it can take a few minutes. [More on the Console.](../help/index.md#the-console)
 
 The Simulator, its Console, Data View and AI agents all drive the same simulated PLC. Nothing you do here touches the machine.
 
-This is a model of the program, not the PLC. It doesn't know about wiring, sensor timing, or network behavior, and analog values are whatever you feed it. Interrupts, PID, and high-speed instructions are not yet supported. What it tells you about the ladder is real. Confirm it on the machine.
+This is a model of the program, not the PLC. It knows only the wiring and sensor timing you give it with bench links, nothing of network behavior, and analog values are whatever you feed it. Interrupts, PID, and high-speed instructions are not yet supported. What it tells you about the ladder is real. Confirm it on the machine.
 
 ---
 

@@ -19,14 +19,15 @@ Run the saved program without the PLC, and keep it current as you edit.
 
 1. Save in CLICK, then click **Simulate**. The Simulator draws your hardware from System Configuration. It reads the saved ladder files, not unsaved edits.
 2. Flip the CPU to **RUN** and work the switches, or step one scan at a time.
-3. Right-click a point to ask about it: **Why is it ON?** (or OFF) on any input or output, and on outputs **Show simplified logic** and **How** to turn it on or off. The question runs in the Console, so you see the command it used.
-4. Change the ladder and save in CLICK. The simulation keeps running the program it has, as a PLC does until you load a new one, and the Simulator offers the new program. Choose how it goes in:
+3. Right-click a point to ask about it: **Why is it ON?** (or OFF) on any input or output, and on outputs **Show simplified logic** and **How (experimental)** to turn it on or off. The question runs in the Console, so you see the command it used.
+4. Force a point from the same right-click menu (**Force ON**, **Force OFF**, **Release force**), or double-click an output to force it the other way from what it shows.
+5. Change the ladder and save in CLICK. The simulation keeps running the program it has, as a PLC does until you load a new one, and the Simulator offers the new program. Choose how to load it:
     - In RUN, **RUN Time Edit** loads it and keeps every value, timer and force. **Stop and Write** goes through STOP and back to RUN, which keeps retentive values and forces and clears the rest.
     - In STOP or while stepping, **Write** loads it and keeps the values and the mode.
 
 An edit to the workspace's ladder source (`src/plc/`) is offered the same way.
 
-What the new program does to what you set up:
+The rules:
 
 - A save that does not convert, or that holds a rung ClickNick cannot read, leaves the old program running, and the Simulator says why.
 - A force on an input or output stays on its address. A force on internal memory stays on its address when only the nickname changed, and is released when its nickname moved to another address.
@@ -49,7 +50,7 @@ why Motor_Run
 how Motor_Run
 ```
 
-`why Motor_Run` answers what is holding the motor off: the rung that drives it and the contacts that are not made. `how Motor_Run` searches for inputs to set that turn it on and answers with them as steps, such as "Set Start_PB=True", with what changed after each. `how` can take a minute, and on real programs it sometimes stops without an answer.
+When the motor is off, `why Motor_Run` answers what is holding it off: the rung that drives it and the contacts that are not made. `how Motor_Run` searches for inputs to set that turn it on and answers with them as steps, such as "Set Start_PB=True", with what changed after each. `how` can take a few minutes, and on real programs it sometimes stops without an answer.
 
 ### Bench links
 
@@ -103,7 +104,7 @@ On every CLICK save, ClickNick refreshes `src/plc/` (your ladder as Python), `cs
 Edits to the ladder text go back into CLICK through **Review Changes**. It lists each program that differs from CLICK's last save, with the rung diff underneath, and walks you through pasting the differences into CLICK.
 
 1. Click **Review Changes** in the main window (or **Workspace > Review Changes**).
-2. Select a program. Click **Copy** to put just the rungs that differ on the clipboard. The step says which rung to select in CLICK's ladder editor, where to add an empty rung for new ones, and which rungs to delete.
+2. Select a program. Click **Copy** to put just the rungs that differ on the clipboard. The step says which rung to select and paste over in CLICK's ladder editor, where to add an empty rung for new ones, and which rungs to delete.
 3. Paste in CLICK with <kbd>Ctrl</kbd>+<kbd>V</kbd> and wait for the rungs to appear.
 4. Click **Next** and work down the program in order, so each step's rung numbers match what CLICK shows.
 5. Save in CLICK. Rows turn **Up to date** as CLICK saves what you pasted, and the window closes once CLICK has saved all of it.
@@ -123,7 +124,7 @@ The rules:
 
 ### Compare with another folder or CLICK window
 
-The same window can compare other ladder, so you take only some of its differences.
+The same window compares CLICK's program with other ladder, so you can take only some of its differences.
 
 - **Ladder > Compare with > Folder** opens it on any folder of ladder CSVs, such as a program exported from pyrung or a copy of another PLC.
 - **Ladder > Compare with > Other CLICK window** does the same with what another open CLICK window last saved.

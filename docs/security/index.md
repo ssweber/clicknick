@@ -52,13 +52,14 @@ workspaces are written to the folders the user chooses.
 - **PLC connection.** The Dataview editor connects over Modbus TCP (port 502 by default)
   after the user asks to go live, to the address they enter. It reads values and writes
   values when the user clicks Write.
-- **Simulator.** Starting the Simulator launches a child Python process (`python -m pyrung.dap`)
-  in the workspace folder that runs the workspace's `run.py`. The child starts a Modbus TCP
+- **Simulator.** Starting the Simulator launches a child Python process (`python -m pyrung.dap`),
+  working in the workspace folder, that runs the workspace's `run.py`. The child starts a Modbus TCP
   listener on `127.0.0.1`, port 502 unless the user picks another, and a command listener on
   `localhost` with a port chosen by Windows, which the Console and `pyrung live` use. Like the
   editor listener, it is unauthenticated, and other local users and processes that can reach
-  the port can connect. While the simulation runs, the Dataview editor attaches to that Modbus
-  listener. Nothing listens until the Simulator is started, and the child keeps running after
+  the port can connect. ClickNick connects to that Modbus listener to show the simulated
+  values, and so does the Dataview editor while it is open. Neither listener exists until the
+  simulation is started, and the child keeps running after
   the Simulator window closes until the user stops it, or ClickNick disconnects from CLICK or
   closes.
 - **Generated Python.** On project connection, ClickNick translates the ladder into Python
@@ -88,6 +89,7 @@ The paths below describe the default uv installation.
 | Python listening on `127.0.0.1:502` (or the port the user picked) | The Simulator's Modbus server, while the Simulator is on. |
 | Python starts a child Python process | Check Program, Review Changes, or the Simulator running the user's workspace. |
 | Python connects to `<PLC address>:502` | Dataview editor, after the user asks to go live. |
+| Python connects to `127.0.0.1:502` (or the port the user picked) | ClickNick reading the Simulator's values, while the simulation is on. |
 | Native `.pyd`, `.dll`, and `.exe` files appear under `%APPDATA%\uv\` | The Python interpreter and dependencies such as pywin32 and pyodbc. pywin32 includes `Pythonwin.exe` and `pythonservice.exe`; ClickNick does not run them. |
 | `HKCU\Environment` PATH changed | The uv installer adds its executable directory to the user's PATH. |
 
@@ -211,6 +213,8 @@ Default locations for an installation through uv:
 | Launcher stub | `%USERPROFILE%\.local\bin\clicknick.exe` |
 | uv download cache | `%LOCALAPPDATA%\uv\cache\` |
 | Live-session files | The CLICK temp folder for the open project, or `%LOCALAPPDATA%\ClickNick\live\`. CLICK does not read these files. |
+| Simulator settings (switches, forces, bench links) | `%LOCALAPPDATA%\ClickNick\simulator\<PLC name>.toml`, or `simulator.toml` in the workspace folder once one is set up |
+| Simulator command listener's port file | `%TEMP%\pyrung\pyrung-<session>.port` |
 | Generated engineering workspace | `%TEMP%\clicknick_*` while running, or the folder the user chooses for a durable workspace |
 | Project data it edits | `SC_.mdb` in `%TEMP%\CLICK (...)\`. CLICK writes it back into the `.ckp` on save. |
 
