@@ -20,7 +20,7 @@ jobs:
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           # 0.12.x is needed for `uv export --format cyclonedx1.5` and `uv audit`.
-          version: "0.12.1"
+          version: "0.13.8"
           enable-cache: auto
           python-version: "3.12"
 

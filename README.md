@@ -31,7 +31,7 @@ Open PowerShell and run:
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-Already have uv? Skip this step. Other installation methods are available in the [uv documentation](https://docs.astral.sh/uv/getting-started/installation/).
+Already have uv? Update it with `uv self update` (or `winget upgrade astral-sh.uv`) and skip the install. Other installation methods are available in the [uv documentation](https://docs.astral.sh/uv/getting-started/installation/).
 
 ### 2. Install and run ClickNick
 

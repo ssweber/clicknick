@@ -13,6 +13,9 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 On a managed machine, `winget install --id astral-sh.uv` installs the same thing without
 running a downloaded script.
 
+If you already have `uv`, update it first with `uv self update` (or `winget upgrade astral-sh.uv` if winget
+installed it).
+
 Then install and run ClickNick:
 
 ```powershell
