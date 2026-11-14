@@ -7,7 +7,7 @@ from clicknick.utils.verification import verify_mdb_addresses
 
 
 def _verify_row(row: AddressRow) -> list[str]:
-    shared_data = SimpleNamespace(all_rows={row.addr_key: row})
+    shared_data = SimpleNamespace(visible_state={row.addr_key: row})
     return verify_mdb_addresses(shared_data)
 
 

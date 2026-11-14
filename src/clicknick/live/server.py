@@ -23,6 +23,7 @@ from multiprocessing.connection import Listener
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ..utils.click_temp import scr_files
 from .dispatch import DispatchContext, dispatch
 from .session import LABEL_FILENAME, PORT_FILENAME, WORKSPACE_FILENAME
 
@@ -72,7 +73,8 @@ class LiveServer:
         get_session_label: Callable[[], str | None] | None = None,
         get_analysis: Callable[[], AnalysisService | None] | None = None,
         get_workspace_dir: Callable[[], Path | None] | None = None,
-        get_click_hwnd: Callable[[], int | None] | None = None,
+        show_proposal: Callable[[Path, Path, str | None, list[int] | None, bool], None]
+        | None = None,
         get_mdb_path: Callable[[], Path | None] | None = None,
         get_synced_pending: Callable[[], int] | None = None,
         get_staged_rungs: Callable[[], int] | None = None,
@@ -86,7 +88,7 @@ class LiveServer:
         self._get_session_label = get_session_label
         self._get_analysis = get_analysis
         self._get_workspace_dir = get_workspace_dir
-        self._get_click_hwnd = get_click_hwnd
+        self._show_proposal = show_proposal
         self._get_mdb_path = get_mdb_path
         self._get_synced_pending = get_synced_pending
         self._get_staged_rungs = get_staged_rungs
@@ -101,6 +103,7 @@ class LiveServer:
         self._drain_after_id: str | None = None
         self._advertise_after_id: str | None = None
         self._published_dir: Path | None = None
+        self._save_prompt_shown = False
 
     @property
     def port(self) -> int | None:
@@ -135,57 +138,44 @@ class LiveServer:
             finally:
                 conn.close()
 
+    def _show_save_prompt(self, title: str, message: str) -> None:
+        """Show the save reminder after the drain returns, one at a time.
+
+        The dialog is modal: shown inside the drain it would hold every queued
+        command, and the CLI waiting on this one, until the user closes it.
+        """
+        if self._save_prompt_shown:
+            return
+        self._save_prompt_shown = True
+
+        def _show() -> None:
+            from tkinter import messagebox
+
+            try:
+                messagebox.showinfo(title, message, parent=self._root)
+            finally:
+                self._save_prompt_shown = False
+
+        self._root.after(0, _show)
+
     # -- Tk main thread -----------------------------------------------------
 
     def _build_context(self) -> DispatchContext:
         """Build a fresh dispatch context from current getter values."""
         analysis = self._get_analysis() if self._get_analysis else None
         mdb_path = self._get_mdb_path() if self._get_mdb_path else None
-        project_saved = None if mdb_path is None else any(mdb_path.parent.glob("Scr*.tmp"))
+        project_saved = None if mdb_path is None else bool(scr_files(mdb_path.parent))
         resolve_tag = None
-        if analysis is not None and analysis.is_available:
-            resolve_tag = analysis.tag_to_addr_key.get
-
-        show_preview = None
-        if self._root is not None:
-            get_hwnd = self._get_click_hwnd
-            get_mdb = self._get_mdb_path
-
-            def _open_preview(
-                file_stem: str,
-                selection: str | None,
-                diff_text: str,
-                rung_nums: list[int] | None,
-                pending_dir: Path,
-                csv_stem: str | None = None,
-            ) -> None:
-                from ..views.rung_preview_window import RungPreviewWindow
-
-                RungPreviewWindow(
-                    self._root,
-                    diff_text,
-                    file_stem=file_stem,
-                    selection=selection,
-                    rung_nums=rung_nums,
-                    pending_dir=pending_dir,
-                    get_click_hwnd=get_hwnd,
-                    get_mdb_path=get_mdb,
-                    csv_stem=csv_stem,
-                )
-
-            show_preview = _open_preview
+        if analysis is not None and analysis.project_tag_to_addr_key:
+            # The workspace's names: a build that fails after publishing it keeps
+            # the previous build's analysis, with the previous build's names.
+            resolve_tag = analysis.project_tag_to_addr_key.get
 
         show_address_editor = self._open_editor
 
         show_save_prompt = None
         if self._root is not None:
-
-            def _prompt_save(title: str, message: str) -> None:
-                from tkinter import messagebox
-
-                messagebox.showinfo(title, message, parent=self._root)
-
-            show_save_prompt = _prompt_save
+            show_save_prompt = self._show_save_prompt
 
         synced_pending = self._get_synced_pending() if self._get_synced_pending else 0
         staged_rungs = self._get_staged_rungs() if self._get_staged_rungs else 0
@@ -197,7 +187,7 @@ class LiveServer:
             store=self._get_store(),
             resolve_tag=resolve_tag,
             analysis=analysis,
-            show_preview=show_preview,
+            show_proposal=self._show_proposal,
             show_address_editor=show_address_editor,
             show_save_prompt=show_save_prompt,
             record_staged_rungs=self._record_staged_rungs,

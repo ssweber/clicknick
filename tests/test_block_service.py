@@ -1,13 +1,13 @@
 """Tests for BlockService."""
 
 import pytest
-
-from clicknick.data.address_store import AddressStore
-from clicknick.services.block_service import (
+from pyclickplc.blocks import (
     compute_all_block_ranges,
     get_all_block_names,
     is_block_name_available,
 )
+
+from clicknick.data.address_store import AddressStore
 from clicknick.views.address_editor.view_builder import build_unified_view
 
 
@@ -33,7 +33,7 @@ def store():
     s.load_initial_data()
 
     # Build and cache unified view (needed for block color updates)
-    view = build_unified_view(s.visible_state, s.all_nicknames)
+    view = build_unified_view(s.visible_state)
     s.set_unified_view(view)
 
     return s
@@ -631,3 +631,42 @@ def test_interleaved_pair_sync_ct_ctd(store):
     # CTD1 should have the block tag with _D suffix
     ctd1_row = store.visible_state[ctd1_key]
     assert "<Counters_D>" in ctd1_row.comment
+
+
+# =============================================================================
+# Tag text helpers: the tag changes where it is, the rest of the comment stays
+# =============================================================================
+
+
+@pytest.mark.parametrize(
+    ("comment", "renamed"),
+    [
+        ("</Pumps> end", "</Tanks> end"),
+        ("Level < 5 > alarm <Pumps bg='Red'>", "Level < 5 > alarm <Tanks bg='Red'>"),
+        ("<Pumps bg='Pumps'/>", "<Tanks bg='Pumps'/>"),
+        ("no tag", "no tag"),
+    ],
+)
+def test_rename_block_tag_changes_only_the_name(comment, renamed):
+    from clicknick.services.block_service import rename_block_tag
+
+    assert rename_block_tag(comment, "Tanks") == renamed
+
+
+@pytest.mark.parametrize(
+    ("comment", "removed"),
+    [
+        ("<Pumps> text", "text"),
+        ("text </Pumps>", "text"),
+        ("a <Pumps /> b", "a b"),
+        ("<Pumps>  two", " two"),
+        ("<Pumps>", ""),
+        ("x < 5 > y", "x < 5 > y"),
+    ],
+)
+def test_remove_block_tag_takes_one_separator_with_it(comment, removed):
+    from clicknick.services.block_service import add_block_tag, remove_block_tag
+
+    assert remove_block_tag(comment) == removed
+    if removed and "<Pumps" in comment and comment.endswith(">"):
+        assert remove_block_tag(add_block_tag(removed, "<Pumps>")) == removed

@@ -13,11 +13,13 @@ default: install lint test
 install:
 	uv sync --locked --all-extras --dev
 
-# Work on ClickNick and pyrung together without changing release dependencies.
+# Work on ClickNick with local pyclickplc, pyrung and laddercodec without changing release dependencies.
 # Set UV_NO_SYNC=1 for subsequent make lint/test and app runs in this environment.
-.PHONY: install-pyrung-dev
-install-pyrung-dev:
-	uv pip install --editable ../pyclickplc --editable ../pyrung
+# SIBLINGS is the folder holding those checkouts (a worktree elsewhere passes it).
+SIBLINGS ?= ..
+.PHONY: install-dev
+install-dev:
+	uv pip install --editable $(SIBLINGS)/pyclickplc --editable $(SIBLINGS)/pyrung --editable $(SIBLINGS)/laddercodec
 
 lint:
 	uv run python devtools/lint.py

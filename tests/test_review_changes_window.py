@@ -1,0 +1,2629 @@
+"""Review Changes follows the program in CLICK while it stays open, and steps through what differs."""
+
+from __future__ import annotations
+
+import dataclasses
+import typing
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
+from laddercodec import Coil, Contact, Rung, write_csv
+from pyclickplc.addresses import get_addr_key
+
+from clicknick.connection_session import SavedProgram
+from clicknick.data.address_store import AddressStore
+from clicknick.data.data_source import CsvDataSource
+from clicknick.ladder.program import STAND_IN_COMMENT, LegacyEncoding, empty_rung
+from clicknick.models.address_row import AddressRow
+from clicknick.services.rung_diff import (
+    WORKSPACE_SOURCE,
+    BundleComparison,
+    BundleSources,
+    DifferenceKey,
+    PasteStep,
+    ProgramChange,
+    ProposedProgram,
+    compare_rungs,
+)
+from clicknick.views.review_changes_window import ProposalSource, ReviewChangesWindow
+
+MODULE = "clicknick.views.review_changes_window"
+NAMES = ["subroutines/a.csv", "subroutines/b.csv", "main.csv"]
+MAIN = NAMES.index("main.csv")
+
+
+def _coils(*coils: str) -> list[Rung]:
+    out = typing.get_type_hints(Contact)["type"].COIL_OUT
+    return [
+        Rung(logical_rows=1, conditions=[["-"] * 31], instructions=[Coil(out, coil)], comment=coil)
+        for coil in coils
+    ]
+
+
+# What each program in the folder holds
+RUNGS = tuple(_coils("Y001", "Y002", "Y003", "Y004"))
+
+
+def _without(*numbers: int) -> list[Rung]:
+    return [rung for number, rung in enumerate(RUNGS, start=1) if number not in numbers]
+
+
+def _rungs_differ(*numbers: int) -> ProgramChange:
+    """CLICK has the program without the proposed rungs *numbers*: they are new."""
+    return compare_rungs(_without(*numbers), RUNGS)
+
+
+def _rungs_removed(*numbers: int) -> ProgramChange:
+    """CLICK has all four rungs; the proposal is them without *numbers*."""
+    return compare_rungs(RUNGS, _without(*numbers))
+
+
+def _changes(differs: dict[str, bool]) -> dict[str, ProgramChange]:
+    return {
+        name: _rungs_differ(1) if differ else ProgramChange() for name, differ in differs.items()
+    }
+
+
+@pytest.fixture(autouse=True)
+def _own_preferences(monkeypatch, tmp_path: Path) -> Path:
+    """Keep each test's Review Changes preferences out of the real per-user folder."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    return tmp_path / "appdata" / "ClickNick" / "guided-paste.json"
+
+
+class _Var:
+    """A Tk variable without Tk."""
+
+    def __init__(self, value: bool) -> None:
+        self.value = value
+
+    def get(self) -> bool:
+        return self.value
+
+    def set(self, value: bool) -> None:
+        self.value = value
+
+
+def _bare_window(folder_names: list[str] = NAMES):
+    """A window with mocks for widgets and nothing compared yet."""
+    window = ReviewChangesWindow.__new__(ReviewChangesWindow)
+    window._folder = Path("bundle")
+    window._source_dir = None
+    window._source = ProposalSource("bundle")
+    window._title_lbl = Mock()
+    window.title = Mock()
+    window._refresh_source = None
+    window._refresh_btn = Mock()
+    window._programs = {
+        name: ProposedProgram(name, Path(name), RUNGS, len(RUNGS)) for name in folder_names
+    }
+    window._folder_items = [(name, Path(name), len(RUNGS), "") for name in folder_names]
+    window._items = list(window._folder_items)
+    window._done = set()
+    window._current_idx = None
+    window._copied = False
+    window._skipped = {}
+    window._pasted = {}
+    window._partial = {}
+    window._unplaced = set()
+    window._save_count = None
+    window._done_unchecked = False
+    window._step_through = set()
+    window._flipped_in_click = set()
+    window._step_through_btn = Mock()
+    window._basis = {}
+    window._viewed = set()
+    window._view_block = 0
+    window._selection = {}
+    window._nickname_path = None
+    window._nickname_rows = None
+    window._nickname_error = ""
+    window._nickname_fields = frozenset()
+    window._nicknames_skipped = False
+    window._nickname_plans = None
+    window._get_project_store = lambda: None
+    window._open_staged_nicknames = Mock()
+    window._changes = {}
+    window._only_in_click = {}
+    window._missing_in_click = frozenset()
+    window._click_compared = False
+    window._adding_subroutine = False
+    window._compare_note = ""
+    window._view_name = None
+    window._saved_program = SavedProgram()
+    window._before_sources = None
+    window._after_sources = BundleSources()
+    window._expanded = {}
+    window._expanded_change = None
+    window._sheet = Mock()
+    window._text = Mock()
+    window._text.index.return_value = "1.0"
+    window._progress_lbl = Mock()
+    window._nick_lbl = Mock()
+    window._notice_lbl = Mock()
+    window._opts = Mock()
+    window._read_at = "10:42"
+    window._on_pasted = Mock()
+    window.destroy = Mock()
+    window._compare_lbl = Mock()
+    window._action_btn = Mock()
+    window._copy_whole_var = _Var(False)
+    window._take_var = _Var(True)
+    window._take_chk = Mock()
+    window._bar_lbl = Mock()
+    window._detail_lbl = Mock()
+    window._review_lbl = Mock()
+    window._prev_btn = Mock()
+    window._next_btn = Mock()
+    window._add_sub_btn = Mock()
+    window._status_var = Mock()
+    window._show_nicks_var = Mock()
+    window._get_mdb_path = lambda: None
+    window._get_click_hwnd = lambda: 0
+    return window
+
+
+def _window(
+    monkeypatch,
+    program: SavedProgram,
+    changes_by_dir: dict[Path, dict[str, ProgramChange]],
+    missing: frozenset[str] = frozenset(),
+    only_in_click: dict[str, ProgramChange] | None = None,
+    only_in_click_by_dir: dict[Path, dict[str, ProgramChange]] | None = None,
+):
+    """A window without Tk widgets, comparing against canned results per CSV folder.
+
+    *only_in_click_by_dir* gives a folder its own programs only in CLICK; the
+    rest have *only_in_click*.
+    """
+    monkeypatch.setattr(
+        f"{MODULE}.compare_bundle",
+        lambda _programs, csv_dir: BundleComparison(
+            compared=True,
+            changes=changes_by_dir[csv_dir],
+            only_in_click=(only_in_click_by_dir or {}).get(csv_dir, only_in_click or {}),
+            missing_in_click=missing,
+        ),
+    )
+    window = _bare_window()
+    window.current = program
+    window._get_saved_program = lambda: window.current
+    window._compare_with_click()
+    window._project_session = window._saved_program.session
+    window._populate_sheet()
+    window._advance_to_first_pending()
+    return window
+
+
+def _change(window, program: SavedProgram) -> None:
+    window.current = program
+    window._on_saved_program_changed(program)
+
+
+def _note(window) -> str:
+    return window._compare_lbl.configure.call_args.kwargs["text"]
+
+
+def _differs(window) -> dict[str, bool]:
+    return {name: change.differs for name, change in window._changes.items()}
+
+
+def _action(window) -> str:
+    return window._action_btn.configure.call_args.kwargs["text"]
+
+
+def _status(window) -> str:
+    return window._status_var.set.call_args.args[0]
+
+
+# ---------------------------------------------------------------------------
+# Following the program in CLICK
+# ---------------------------------------------------------------------------
+
+
+def test_comparison_appears_once_the_new_project_is_read(monkeypatch) -> None:
+    session = object()
+    csv_dir = Path("workspace/csv")
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, building=True, note="reading"),
+        {
+            csv_dir: _changes(
+                {"main.csv": False, "subroutines/a.csv": False, "subroutines/b.csv": True}
+            )
+        },
+    )
+    assert _differs(window) == {}
+    assert window._current_idx == 0
+    assert _note(window) == "reading"
+
+    _change(window, SavedProgram(session, generation=1, csv_dir=csv_dir, note=""))
+
+    assert window._matches_click("main.csv")
+    assert window._current_idx == NAMES.index("subroutines/b.csv")
+    assert _note(window) == "Compared with CLICK's last save"
+
+
+def test_opening_another_project_recompares_and_forgets_what_was_pasted(monkeypatch) -> None:
+    old_dir, new_dir = Path("old/csv"), Path("new/csv")
+    old, new = object(), object()
+    window = _window(
+        monkeypatch,
+        SavedProgram(old, generation=1, csv_dir=old_dir, note=""),
+        {
+            old_dir: _changes(dict.fromkeys(NAMES, True)),
+            new_dir: _changes(
+                {"main.csv": False, "subroutines/a.csv": False, "subroutines/b.csv": True}
+            ),
+        },
+    )
+    window._done.add("main.csv")
+    window._copied = True
+
+    # The title changed: the old session is gone before the new one is ready.
+    _change(window, SavedProgram())
+    assert window._done == {"main.csv"}
+
+    window._copied = False
+    _change(window, SavedProgram(new, building=True, note="reading"))
+    assert window._done == set()
+    assert _differs(window) == {}
+    assert _note(window) == "reading"
+
+    _change(window, SavedProgram(new, generation=1, csv_dir=new_dir, note=""))
+    assert _differs(window)["main.csv"] is False
+    assert window._current_idx == NAMES.index("subroutines/b.csv")
+
+
+def test_click_save_keeps_rows_while_building_and_the_row_being_pasted(monkeypatch) -> None:
+    session = object()
+    before, after = Path("before/csv"), Path("after/csv")
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {
+            before: _changes(dict.fromkeys(NAMES, True)),
+            # The save took the row being pasted; main.csv is still to do
+            after: _changes({**dict.fromkeys(NAMES, False), "main.csv": True}),
+        },
+    )
+    window._copied = True
+
+    _change(
+        window, SavedProgram(session, generation=2, save_count=1, building=True, note="reading")
+    )
+    assert _differs(window) == dict.fromkeys(NAMES, True)
+    assert _note(window) == "reading"
+
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
+    assert _differs(window)["subroutines/a.csv"] is False
+    assert window._current_idx == 0
+    assert window._copied is True
+    window.destroy.assert_not_called()
+
+
+def test_window_closes_once_click_has_saved_everything(monkeypatch) -> None:
+    session = object()
+    before, after = Path("before/csv"), Path("after/csv")
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {
+            before: _changes(dict.fromkeys(NAMES, True)),
+            after: _changes(dict.fromkeys(NAMES, False)),
+        },
+    )
+    window._copied = True  # The last paste was saved without clicking "Next"
+
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
+
+    window._on_pasted.assert_called_once_with("CLICK saved everything from Review Changes")
+    window.destroy.assert_called_once_with()
+
+
+def test_window_opened_on_an_up_to_date_folder_stays_open(monkeypatch) -> None:
+    session = object()
+    csv_dir = Path("workspace/csv")
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, building=True, note="reading"),
+        {csv_dir: _changes(dict.fromkeys(NAMES, False))},
+    )
+
+    # The first comparison arrives; a later save changes nothing
+    _change(window, SavedProgram(session, generation=1, csv_dir=csv_dir, note=""))
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=csv_dir, note=""))
+
+    window.destroy.assert_not_called()
+    assert "Every changed program has been pasted" in _status(window)
+
+
+def test_window_stays_open_while_click_has_a_program_the_folder_dropped(monkeypatch) -> None:
+    session = object()
+    before, after = Path("before/csv"), Path("after/csv")
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {
+            before: _changes(dict.fromkeys(NAMES, True)),
+            after: _changes(dict.fromkeys(NAMES, False)),
+        },
+        only_in_click={"subroutines/old.csv": _rungs_removed(1)},
+    )
+
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
+
+    window.destroy.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# New subroutine in CLICK
+# ---------------------------------------------------------------------------
+
+
+def _add_sub_state(window) -> str:
+    return window._add_sub_btn.configure.call_args.kwargs["state"]
+
+
+def test_new_subroutine_only_for_subroutines_click_lacks(monkeypatch) -> None:
+    csv_dir = Path("workspace/csv")
+    window = _window(
+        monkeypatch,
+        SavedProgram(object(), generation=1, csv_dir=csv_dir, note=""),
+        {csv_dir: _changes(dict.fromkeys(NAMES, True))},
+        # main.csv is never offered, even if the comparison says CLICK lacks it
+        missing=frozenset({"main.csv", "subroutines/b.csv"}),
+    )
+
+    window._select_row(NAMES.index("main.csv"))
+    assert _add_sub_state(window) == "disabled"
+    window._select_row(NAMES.index("subroutines/a.csv"))  # changed, but CLICK has it
+    assert _add_sub_state(window) == "disabled"
+    window._select_row(NAMES.index("subroutines/b.csv"))
+    assert _add_sub_state(window) == "normal"
+
+
+def test_new_subroutine_for_every_subroutine_when_click_cannot_be_compared(monkeypatch) -> None:
+    # An unsaved project: CLICK's program cannot be read, so it may lack any subroutine
+    window = _window(monkeypatch, SavedProgram(object(), generation=1, note="Could not read"), {})
+
+    for name in NAMES:
+        window._select_row(NAMES.index(name))
+        assert _add_sub_state(window) == ("disabled" if name == "main.csv" else "normal")
+
+
+@pytest.fixture
+def adding(monkeypatch):
+    """A window on new subroutine b.csv, with CLICK and timers faked."""
+    csv_dir = Path("workspace/csv")
+    window = _window(
+        monkeypatch,
+        SavedProgram(object(), generation=1, csv_dir=csv_dir, note=""),
+        {csv_dir: _changes(dict.fromkeys(NAMES, True))},
+        missing=frozenset({"subroutines/b.csv"}),
+    )
+    window._select_row(NAMES.index("subroutines/b.csv"))
+    window._get_click_hwnd = lambda: 100
+    window.winfo_exists = lambda: True
+    window.after = lambda _ms, callback: callback()
+    win32 = Mock()
+    win32.get_pid.return_value = "42"
+    win32.get_foreground_pid.return_value = "42"
+    win32.set_control_text.return_value = True
+    monkeypatch.setattr(f"{MODULE}.WIN32", win32)
+    return window, win32
+
+
+def test_new_subroutine_sends_ctrl_u_and_names_the_dialog(adding) -> None:
+    window, win32 = adding
+    win32.find_process_window.side_effect = [None, None, 200]  # opens on the 2nd poll
+
+    window._on_add_subroutine()
+
+    win32.activate.assert_called_once_with(100)
+    win32.send_ctrl_key.assert_called_once_with("U")
+    win32.find_process_window.assert_called_with("42", "New Subroutine Program")
+    win32.set_control_text.assert_called_once_with(200, "Edit1", "b")
+    assert window._adding_subroutine is False
+    assert _add_sub_state(window) == "normal"
+
+
+def test_new_subroutine_fills_a_dialog_that_is_already_open(adding) -> None:
+    window, win32 = adding
+    win32.find_process_window.return_value = 200
+
+    window._on_add_subroutine()
+
+    win32.send_ctrl_key.assert_not_called()
+    win32.set_control_text.assert_called_once_with(200, "Edit1", "b")
+
+
+def test_new_subroutine_needs_click_in_front(adding) -> None:
+    window, win32 = adding
+    win32.find_process_window.return_value = None
+    win32.get_foreground_pid.return_value = "7"
+
+    window._on_add_subroutine()
+
+    win32.send_ctrl_key.assert_not_called()
+    assert window._adding_subroutine is False
+
+
+def test_new_subroutine_gives_up_when_the_dialog_never_opens(adding) -> None:
+    window, win32 = adding
+    win32.find_process_window.return_value = None
+
+    window._on_add_subroutine()
+
+    win32.send_ctrl_key.assert_called_once_with("U")
+    win32.set_control_text.assert_not_called()
+    assert "did not open" in _status(window)
+    assert window._adding_subroutine is False
+
+
+def test_first_time_tips_show_once(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    showinfo = Mock()
+    monkeypatch.setattr(f"{MODULE}.messagebox.showinfo", showinfo)
+    window = ReviewChangesWindow.__new__(ReviewChangesWindow)
+    window.winfo_exists = lambda: True
+
+    window._show_first_time_tips()
+    window._show_first_time_tips()
+
+    showinfo.assert_called_once()
+    assert (tmp_path / "ClickNick" / "guided_paste_popup_seen").exists()
+
+
+# ---------------------------------------------------------------------------
+# Copying: the whole program, or the rungs that differ
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def copies(monkeypatch) -> list[tuple[tuple, int]]:
+    """What each copy put on the clipboard: (rungs, number of the first)."""
+    made: list[tuple[tuple, int]] = []
+
+    def _prepare(rungs, *, first_rung=1, **_kwargs):
+        made.append((tuple(rungs), first_rung))
+        return SimpleNamespace(
+            payload=b"", rung_count=len(rungs), addresses_inserted=0, mdb_error=None
+        )
+
+    monkeypatch.setattr(f"{MODULE}.prepare_rungs_load", _prepare)
+    monkeypatch.setattr(f"{MODULE}.copy_to_clipboard", lambda *_a, **_k: None)
+    monkeypatch.setattr(f"{MODULE}.is_click_v4", lambda _hwnd: True)
+    return made
+
+
+def _on_main(monkeypatch, change: ProgramChange, missing: frozenset[str] = frozenset()):
+    """A window whose only step is main.csv, differing from CLICK by *change*."""
+    csv_dir = Path("workspace/csv")
+    changes = {**_changes(dict.fromkeys(NAMES, False)), "main.csv": change}
+    return _window(
+        monkeypatch,
+        SavedProgram(object(), generation=1, csv_dir=csv_dir, note=""),
+        {csv_dir: changes},
+        missing=missing,
+    )
+
+
+@pytest.mark.parametrize(("rungs", "warned"), [(99, False), (100, True)])
+def test_copy_pops_up_from_100_rungs(monkeypatch, rungs: int, warned: bool) -> None:
+    result = SimpleNamespace(payload=b"", rung_count=rungs, addresses_inserted=0, mdb_error=None)
+    showinfo = Mock()
+    monkeypatch.setattr(f"{MODULE}.prepare_rungs_load", lambda *_a, **_k: result)
+    monkeypatch.setattr(f"{MODULE}.copy_to_clipboard", lambda *_a, **_k: None)
+    monkeypatch.setattr(f"{MODULE}.is_click_v4", lambda _hwnd: True)
+    monkeypatch.setattr(f"{MODULE}.messagebox.showinfo", showinfo)
+    window = _bare_window(["main.csv"])
+
+    assert window._copy_rungs(0, None) is True
+
+    assert showinfo.called is warned
+    assert window._copied is True
+
+
+def test_changed_program_is_stepped_through_by_runs_of_differing_rungs(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+    assert window._current_idx == MAIN
+    assert _action(window) == "Copy r1"
+    assert "step 1 of 2" in _status(window)
+
+    window._on_action()
+    assert copies == [(RUNGS[:1], 1)]
+    assert _action(window) == "Next →"
+    assert "r1 of main.csv copied" in _status(window)
+    assert "To copy it again, click its row" in _status(window)
+
+    window._on_action()  # Next: the row's second run
+    assert window._done == set()
+    assert _action(window) == "Copy r3..4"
+
+    window._on_action()
+    assert copies[-1] == (RUNGS[2:], 3)
+
+    window._on_action()  # Next: nothing left of the row
+    assert window._done == {"main.csv"}
+    assert window._current_idx is None
+
+
+def _switch_copy(window, *, whole: bool) -> None:
+    """Pick "Whole program" or "Changed rungs" on the Copy switch."""
+    window._copy_whole_var.set(whole)
+    window._on_copy_mode()
+
+
+def test_whole_program_switch_copies_the_program_in_one_step(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+    assert _action(window) == "Copy r1"
+
+    _switch_copy(window, whole=True)
+    assert _action(window) == "Copy"
+    assert "the whole program, 4 rungs, replaces what CLICK has" in _status(window)
+    clear_first = "select all of its rungs (Shift+Up/Down) and delete them, then paste"
+    assert clear_first in _status(window)
+
+    window._on_action()
+    assert copies == [(RUNGS, 1)]
+    assert _action(window) == "Next →"
+    assert clear_first in _status(window)  # Still on screen while pasting
+
+    window._on_action()  # Next
+    assert window._done == {"main.csv"}
+
+
+def test_copy_switch_is_remembered_for_the_next_window(monkeypatch, _own_preferences) -> None:
+    from clicknick.views.review_changes_window import _read_copy_whole
+
+    assert _read_copy_whole() is False  # Changed rungs until the user chooses otherwise
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+
+    _switch_copy(window, whole=True)
+    assert _read_copy_whole() is True
+
+    _switch_copy(window, whole=False)
+    assert _read_copy_whole() is False
+
+    _own_preferences.write_text("not json", encoding="utf-8")
+    assert _read_copy_whole() is False
+
+
+# ---------------------------------------------------------------------------
+# Reading the folder
+# ---------------------------------------------------------------------------
+
+
+def _folder_window(tmp_path: Path, source_dir: Path | None = None):
+    """A window on a real folder holding main.csv and nicknames.csv, nothing in CLICK."""
+    folder = tmp_path / "bundle"
+    folder.mkdir(exist_ok=True)
+    write_csv(folder / "main.csv", _coils("Y001", "Y002"))
+    (folder / "nicknames.csv").write_text("", encoding="utf-8")
+    window = _bare_window([])
+    window._folder = folder
+    window._source_dir = source_dir
+    window._source = ProposalSource.of(folder, source_dir)
+    window._get_saved_program = SavedProgram
+    return window
+
+
+def test_rungs_asked_for_by_number_do_not_change_the_remembered_switch(tmp_path: Path) -> None:
+    from clicknick.views.review_changes_window import _read_copy_whole, _save_copy_whole
+
+    _save_copy_whole(True)
+    window = _folder_window(tmp_path)
+    window._copy_whole_var.set(True)
+
+    window.reload(window._source, select=("main.csv", [2]))
+
+    assert window._copy_whole_var.get() is False
+    assert _read_copy_whole() is True
+
+
+def test_switching_copy_mode_keeps_what_was_pasted(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+    window._on_action()  # Copy r1
+    window._on_action()  # Next: r1 is in CLICK
+    window._on_action()  # Copy r3..4, not yet pasted
+    assert _action(window) == "Next →"
+
+    _switch_copy(window, whole=True)
+    assert window._copied is False
+    assert _action(window) == "Copy"
+
+    # The steps go on from what CLICK holds: r1 is not pasted again
+    _switch_copy(window, whole=False)
+    assert _action(window) == "Copy r3..4"
+    assert "step 2 of 2" in _status(window)
+    assert window._done == set()
+
+
+def test_switching_copy_mode_keeps_a_step_half_done(monkeypatch, copies) -> None:
+    click = _coils("Y001", "Y007", "Y008", "Y009")
+    window = _on_main(monkeypatch, compare_rungs(click, RUNGS))
+    window._on_action()  # Copy r2..4
+    window._on_action()  # Next: pasted over rung 2; CLICK's rungs 5 to 6 are left to delete
+
+    _switch_copy(window, whole=True)
+    _switch_copy(window, whole=False)
+
+    assert window._current_step() == PasteStep(delete=(5, 6))
+    assert "step 2 of 2: rungs 5 to 6 are not in the program any more" in _status(window)
+
+
+def test_whole_program_switch_stays_on_for_the_next_row(monkeypatch, copies) -> None:
+    csv_dir = Path("workspace/csv")
+    window = _window(
+        monkeypatch,
+        SavedProgram(object(), generation=1, csv_dir=csv_dir, note=""),
+        {csv_dir: dict.fromkeys(NAMES, _rungs_differ(1, 3))},
+    )
+    _switch_copy(window, whole=True)
+
+    window._on_action()  # Copy
+    window._on_action()  # Next: on to the second program
+
+    assert window._current_idx == 1
+    assert _action(window) == "Copy"
+
+
+def test_sheet_selection_follows_the_current_step(monkeypatch, copies) -> None:
+    csv_dir = Path("workspace/csv")
+    window = _window(
+        monkeypatch,
+        SavedProgram(object(), generation=1, csv_dir=csv_dir, note=""),
+        {csv_dir: dict.fromkeys(NAMES, _rungs_differ(1))},
+    )
+    window._sheet.select_cell.assert_called_with(0, 1, run_binding_func=False)
+
+    window._on_action()  # Copy
+    window._on_action()  # Next: on to the second program
+
+    assert window._current_idx == 1
+    window._sheet.select_cell.assert_called_with(1, 1, run_binding_func=False)
+    window._sheet.see.assert_called_with(1, 1, keep_xscroll=True)
+
+    # A cell the user clicked in the row stays the selected one
+    window._sheet.select_cell.reset_mock()
+    window._sheet.get_currently_selected.return_value = SimpleNamespace(row=2, column=4)
+    window._on_cell_select(None)
+    assert window._current_idx == 2
+    window._sheet.select_cell.assert_not_called()
+
+
+def test_program_click_lacks_is_copied_whole(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1, 2, 3, 4), missing=frozenset({"main.csv"}))
+    assert _action(window) == "Copy"
+
+    window._on_action()
+
+    assert copies == [(RUNGS, 1)]
+
+
+def test_selected_rungs_take_the_differences_holding_them(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+    # Rung 2 matches CLICK; rung 3 is in the second difference, so only that one is taken
+    window._selection = {"main.csv": [2, 3]}
+    window._compare_with_click()
+    window._select_row(MAIN)
+    assert _action(window) == "Copy r3..4"
+    assert window._selection == {}
+
+    window._on_action()
+
+    assert copies == [(RUNGS[2:4], 3)]
+
+
+def test_reselecting_the_row_allows_copying_the_same_run_again(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+    window._on_action()
+    window._on_action()  # Next
+    window._on_action()  # Copy r3..4
+
+    window._select_row(MAIN)
+
+    assert window._copied is False
+    assert _action(window) == "Copy r3..4"
+
+
+def test_click_save_part_way_steps_through_what_is_left(monkeypatch, copies) -> None:
+    session = object()
+    before, after = Path("before/csv"), Path("after/csv")
+    same = _changes(dict.fromkeys(NAMES, False))
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {
+            before: {**same, "main.csv": _rungs_differ(1, 3, 4)},
+            after: {**same, "main.csv": _rungs_differ(3, 4)},
+        },
+    )
+    window._on_action()  # Copy r1, then paste and save in CLICK without "Next"
+
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
+
+    assert window._current_idx == MAIN
+    assert window._copied is False
+    assert _action(window) == "Copy r3..4"
+    assert "step 1 of 1" in _status(window)
+
+
+def test_removed_rungs_are_a_step_with_nothing_to_copy(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _rungs_removed(2, 3))
+
+    assert window._current_idx == MAIN
+    assert _action(window) == "Next →"
+    assert "step 1 of 1: rungs 2 to 3 are not in the program any more" in _status(window)
+    assert "Select them in CLICK (Shift+Up/Down) and delete them" in _status(window)
+
+    window._on_action()
+
+    assert copies == []
+    assert window._done == {"main.csv"}
+
+
+def test_each_step_says_where_its_rungs_go_in_click(monkeypatch, copies) -> None:
+    # After Y001, CLICK has three rungs where the proposal has three others
+    click = _coils("Y001", "Y007", "Y008", "Y009")
+    window = _on_main(monkeypatch, compare_rungs(click, RUNGS))
+
+    assert _action(window) == "Copy r2..4"
+    assert "step 1 of 2: r2..4 replaces rung 2" in _status(window)
+    assert "In CLICK, select rung 2 and paste over it (Ctrl+V)" in _status(window)
+
+    window._on_action()  # Copy
+    assert copies == [(RUNGS[1:], 2)]
+    assert "In CLICK, select rung 2 and paste over it (Ctrl+V), then click" in _status(window)
+
+    window._on_action()  # Next: the two rungs the paste did not take the place of
+    assert _action(window) == "Next →"
+    assert "step 2 of 2: rungs 5 to 6 are not in the program any more" in _status(window)
+
+    window._on_action()
+    assert window._done == {"main.csv"}
+
+
+def test_new_rungs_go_over_an_empty_rung(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+
+    assert "step 1 of 2: r1 is new" in _status(window)
+    assert "insert an empty rung above rung 1 and paste over it" in _status(window)
+
+    window._on_action()  # Copy
+    window._on_action()  # Next
+
+    assert "step 2 of 2: r3..4 is new" in _status(window)
+    assert "insert an empty rung after the last rung and paste over it" in _status(window)
+
+
+def _seven_steps() -> ProgramChange:
+    proposed = _coils(*(f"Y{n:03d}" for n in range(1, 14)))
+    return compare_rungs(proposed[1::2], proposed)  # Every other rung is new: seven steps
+
+
+def test_program_with_many_steps_is_copied_whole(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _seven_steps())
+
+    assert window._current_step() is None
+    assert "would take 7 steps, so it is copied whole" in _status(window)
+    window._step_through_btn.pack.assert_called()
+    window._on_action()  # Copy: the folder's whole program
+    assert copies[-1] == (RUNGS, 1)
+
+    few = _on_main(monkeypatch, _rungs_differ(1, 3))
+    assert few._current_step() is not None
+    assert "copied whole" not in _status(few)
+    few._step_through_btn.pack_forget.assert_called()
+
+
+def test_step_through_keeps_a_program_with_many_steps_rung_by_rung(monkeypatch) -> None:
+    window = _on_main(monkeypatch, _seven_steps())
+
+    window._on_step_through()
+
+    assert "main.csv, step 1 of 7" in _status(window)
+    assert window._copied_whole_for_steps("main.csv") == 0
+
+
+def test_skipping_below_six_steps_goes_back_to_stepping(monkeypatch) -> None:
+    window = _on_main(monkeypatch, _seven_steps())
+
+    window._toggle("main.csv", 0)
+
+    assert "main.csv, step 1 of 6" not in _status(window)  # Still six: whole
+    window._toggle("main.csv", 1)
+    assert "main.csv, step 1 of 5" in _status(window)
+
+
+# ---------------------------------------------------------------------------
+# Rungs CLICK holds in a legacy encoding
+# ---------------------------------------------------------------------------
+
+
+def _legacy(rung: int | None, file: str = "main.csv") -> LegacyEncoding:
+    detail = "it is stored as 16-bit and CLICK runs it as 4464."
+    return LegacyEncoding(file, "Main Program", rung, "Math", "H70000", detail)
+
+
+def test_a_click_save_that_makes_a_program_whole_starts_its_copy_over(monkeypatch, copies) -> None:
+    session, first, second = object(), Path("workspace/csv1"), Path("workspace/csv2")
+    base = _changes(dict.fromkeys(NAMES, False))
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=first, note=""),
+        {
+            first: {**base, "main.csv": _rungs_differ(1, 3)},
+            second: {**base, "main.csv": _seven_steps()},
+        },
+    )
+    window._on_action()  # Copy step 1 of 2
+    assert window._copied
+
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=second, note=""))
+
+    assert not window._copied  # What was copied was step 1, not the whole program
+    assert _action(window) == "Copy"
+    assert "so it is copied whole" in _status(window)
+
+
+def test_rungs_asked_for_by_number_are_stepped_through(monkeypatch) -> None:
+    window = _on_main(monkeypatch, _seven_steps())
+    window._selection = {"main.csv": list(range(1, 14))}
+
+    window._carry_choices()
+
+    assert window._copied_whole_for_steps("main.csv") == 0
+    assert len(window._steps("main.csv")) == 7
+
+
+def test_a_whole_paste_counts_the_rungs_skipping_keeps(monkeypatch) -> None:
+    proposed = _coils(*(f"Y{n:03d}" for n in range(1, 14)))
+    extra = _coils(*(f"C{n}" for n in range(1, 96)))
+    change = compare_rungs([*proposed[1::2], *extra], proposed)
+    window = _on_main(monkeypatch, change)
+    assert window._copied_whole_for_steps("main.csv") == 8
+
+    window._toggle("main.csv", len(change.differences) - 1)  # CLICK keeps its 95 extra rungs
+
+    assert window._copied_whole_for_steps("main.csv") == 0
+
+
+@pytest.mark.parametrize("why", ["slow paste", "old encoding"])
+def test_many_steps_stay_rung_by_rung(monkeypatch, why: str) -> None:
+    change = _seven_steps()
+    if why == "old encoding":
+        change = dataclasses.replace(change, legacy=(_legacy(2),))
+    window = _on_main(monkeypatch, change)
+    if why == "slow paste":
+        program = window._programs["main.csv"]
+        rungs = tuple(_coils(*(f"C{n}" for n in range(1, 101))))
+        window._programs["main.csv"] = dataclasses.replace(program, rungs=rungs, rung_count=100)
+
+    assert window._copied_whole_for_steps("main.csv") == 0
+
+
+def test_unreadable_program_is_not_copied(monkeypatch, copies) -> None:
+    window = _bare_window(["main.csv"])
+    window._programs["main.csv"] = ProposedProgram(
+        "main.csv", Path("main.csv"), None, 0, error="bad row 3"
+    )
+
+    assert window._copy_rungs(0, None) is False
+
+    assert copies == []
+    assert window._copied is False
+    assert "bad row 3" in _status(window)
+
+
+# ---------------------------------------------------------------------------
+# The "vs CLICK" column and the diff pane
+# ---------------------------------------------------------------------------
+
+
+def test_vs_click_column_says_how_each_program_differs(monkeypatch) -> None:
+    csv_dir = Path("workspace/csv")
+    window = _window(
+        monkeypatch,
+        SavedProgram(object(), generation=1, csv_dir=csv_dir, note=""),
+        {
+            csv_dir: {
+                "subroutines/a.csv": ProgramChange(),
+                "subroutines/b.csv": _rungs_differ(1, 2, 3, 4),
+                "main.csv": compare_rungs(_coils("Y003", "Y009"), _coils("Y001", "Y002", "Y003")),
+            }
+        },
+        missing=frozenset({"subroutines/b.csv"}),
+        only_in_click={"subroutines/old.csv": _rungs_removed(1, 2, 3)},
+    )
+
+    rows = {row[1]: row for row in window._sheet.set_sheet_data.call_args.args[0]}
+
+    assert rows["subroutines/a.csv"][3] == "Up to date"
+    assert rows["subroutines/b.csv"][3] == "New"
+    assert rows["main.csv"][3] == "2 changed, 1 removed"
+    assert rows["subroutines/old.csv"][2:4] == ["4", "Only in CLICK"]
+    assert window._click_label("not compared.csv") == ""
+
+
+@pytest.mark.parametrize(
+    ("change", "label"),
+    [
+        (_rungs_differ(2), "1 rung changed"),
+        (_rungs_differ(2, 3), "2 rungs changed"),
+        (_rungs_removed(1), "1 rung removed"),
+    ],
+)
+def test_vs_click_column_counts_rungs(monkeypatch, change: ProgramChange, label: str) -> None:
+    window = _on_main(monkeypatch, change)
+
+    assert window._click_label("main.csv") == label
+
+
+def _pieces(window) -> list[tuple[str, str | tuple[str, ...]]]:
+    """(text, tags) of each insert into the diff pane since it was last cleared."""
+    calls = window._text.method_calls
+    last_clear = max(i for i, call in enumerate(calls) if call[0] == "delete")
+    return [(call.args[1], call.args[2]) for call in calls[last_clear:] if call[0] == "insert"]
+
+
+def _inserted(window) -> list[tuple[str, str]]:
+    """(line, line tag) for everything put in the diff pane since it was last cleared.
+
+    A line put in piece by piece (its gutter, its changed words) is joined.
+    """
+    lines: list[tuple[str, str]] = []
+    for text, tags in _pieces(window):
+        if lines and not lines[-1][0].endswith("\n"):
+            lines[-1] = (lines[-1][0] + text, lines[-1][1])
+        else:
+            lines.append((text, tags if isinstance(tags, str) else "".join(tags[:1])))
+    return lines
+
+
+def test_pane_marks_the_gutter_and_the_changed_words(monkeypatch) -> None:
+    window = _on_main(monkeypatch, compare_rungs(_coils("Y001"), _coils("Y009")))
+
+    assert _pieces(window)[-6:] == [
+        ("+", ("added", "added_gutter")),
+        ("R1  out(", "added"),
+        ("Y009", ("added", "added_word")),
+        (")  # ", "added"),
+        ("Y009", ("added", "added_word")),
+        ("\n", "added"),
+    ]
+
+
+def test_pane_shows_the_current_rows_difference_and_scrolls_to_its_step(monkeypatch) -> None:
+    change = compare_rungs(_coils("Y001", "Y002"), _coils("Y001", "Y005", "Y002"))
+    window = _on_main(monkeypatch, change)
+
+    assert _inserted(window) == [
+        (
+            "pyrung could not show this program as text;"
+            " each rung is listed by its instructions.\n",
+            "note",
+        ),
+        ("--- CLICK/main.csv\n", "file_header"),
+        ("+++ bundle/main.csv\n", "file_header"),
+        (" R1  out(Y001)  # Y001\n", ""),
+        ("+R2  out(Y005)  # Y005\n", "added"),
+        (" R3  out(Y002)  # Y002\n", ""),
+    ]
+    assert window._shown_diff.starts == {2: 2}
+    # Line 4 of 6 in the pane: the note, two header lines, then the rung above
+    # the one to paste
+    window._text.index.return_value = "6.0"
+    window._scroll_to_view()
+    window._text.yview_moveto.assert_called_with(3 / 6)
+
+
+def test_clicking_a_separator_arrow_shows_more_unchanged_rungs(monkeypatch) -> None:
+    coils = [f"Y00{number}" for number in range(1, 9)]
+    window = _on_main(monkeypatch, compare_rungs(_coils(*coils), _coils(*coils[:7], "Y009")))
+    assert _inserted(window)[3] == ("↑ @@ R1..6 unchanged @@\n", "separator")
+
+    # The arrow is on line 4: the note and two header lines are above it
+    positions = {"@3,40": "4.0", "@0,0": "1.0", "end-1c": "9.0"}
+    window._text.index.side_effect = positions.__getitem__
+    window._text.get.return_value = "↑"
+    window._on_expand(SimpleNamespace(x=3, y=40))
+
+    assert _inserted(window)[3] == ("↑ @@ R1..3 unchanged @@\n", "separator")
+    assert [line for line, _tag in _inserted(window)[4:8]] == [
+        f" R{number}  out(Y00{number})  # Y00{number}\n" for number in range(4, 8)
+    ]
+    # Where the pane was, not the step's difference
+    window._text.yview_moveto.assert_called_with(0)
+
+
+def test_pane_explains_rows_with_nothing_to_show(monkeypatch) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1))
+    window._programs["subroutines/b.csv"] = ProposedProgram(
+        "subroutines/b.csv", Path("b.csv"), None, 0, error="bad row 3"
+    )
+    del window._changes["subroutines/b.csv"]
+
+    def _shown(name: str) -> str:
+        window._view_name = name
+        note, diff = window._describe_view()
+        assert not diff.lines
+        return note
+
+    assert _shown("subroutines/a.csv") == "subroutines/a.csv matches CLICK's last save."
+    assert _shown("subroutines/b.csv") == (
+        "subroutines/b.csv could not be read: bad row 3\n"
+        "It is left out: CLICK keeps what it has of it."
+    )
+    window._nickname_rows = {}
+    assert "Connect to the CLICK project" in _shown("nicknames.csv")
+
+    window._changes = {}
+    window._saved_program = SavedProgram(note="Connect to CLICK to see which programs changed")
+    assert _shown("main.csv") == "Connect to CLICK to see which programs changed"
+
+
+def _only_in_click_window(monkeypatch, *, saved_after: bool = False):
+    """main.csv and the subroutines differ; CLICK also has subroutines/old.csv.
+
+    With *saved_after*, a CLICK save (generation 2) makes the folder's programs match.
+    """
+    session, before, after = object(), Path("before/csv"), Path("after/csv")
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {
+            before: _changes(dict.fromkeys(NAMES, True)),
+            after: _changes(dict.fromkeys(NAMES, False)),
+        },
+        only_in_click={"subroutines/old.csv": compare_rungs(_coils("Y009"), [])},
+    )
+    window.saved_after = SavedProgram(session, generation=2, save_count=1, csv_dir=after, note="")
+    return window
+
+
+OLD = len(NAMES)  # The row of subroutines/old.csv, after the folder's own
+
+
+def test_clicking_a_program_only_in_click_makes_its_deletion_the_step(monkeypatch) -> None:
+    window = _only_in_click_window(monkeypatch)
+    window._sheet.get_currently_selected.return_value = SimpleNamespace(row=OLD)
+
+    window._on_cell_select(None)
+
+    assert window._current_idx == OLD
+    assert _inserted(window)[-1] == ("-R1  out(Y009)  # Y009\n", "removed")
+    assert 'Delete the subroutine old in CLICK, then click "Next"' in _status(window)
+    assert _action(window) == "Next →"
+    window._take_chk.configure.assert_called_with(text="Delete it in CLICK", state="normal")
+
+    window._on_action()  # Next: deleted
+
+    assert "subroutines/old.csv" in window._done
+
+
+def test_a_program_kept_in_click_does_not_hold_the_window_open(monkeypatch) -> None:
+    window = _only_in_click_window(monkeypatch)
+    window._view_name = "subroutines/old.csv"
+    assert window._needs_paste("subroutines/old.csv")
+
+    window._on_take()  # Untick Delete it in CLICK
+
+    assert not window._needs_paste("subroutines/old.csv")
+    assert window._click_label("subroutines/old.csv") == "Only in CLICK, kept"
+    _change(window, window.saved_after)
+    window.destroy.assert_called_once_with()
+
+
+def test_a_deletion_click_saved_without_is_to_do_again(monkeypatch) -> None:
+    window = _only_in_click_window(monkeypatch)
+    window._select_row(OLD)
+    window._on_action()  # Next, though it was not deleted
+    assert "subroutines/old.csv" in window._done
+
+    _change(window, window.saved_after)
+
+    window.destroy.assert_not_called()  # CLICK still has it
+    assert "subroutines/old.csv" not in window._done
+    assert window._items[window._current_idx][0] == "subroutines/old.csv"
+
+
+@pytest.mark.parametrize("deleted", ["subroutines/old.csv", "subroutines/older.csv"])
+def test_a_click_save_that_deletes_the_current_row_moves_on(monkeypatch, deleted) -> None:
+    session, before, after = object(), Path("before/csv"), Path("after/csv")
+    olds = {
+        "subroutines/old.csv": compare_rungs(_coils("Y009"), []),
+        "subroutines/older.csv": compare_rungs(_coils("Y008"), []),
+    }
+    left = {name: change for name, change in olds.items() if name != deleted}
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {before: _changes(dict.fromkeys(NAMES, True)), after: _changes(dict.fromkeys(NAMES, True))},
+        only_in_click_by_dir={before: olds, after: left},
+    )
+    window._select_row(next(i for i, (name, *_) in enumerate(window._items) if name == deleted))
+
+    # Deleted in CLICK and saved, before "Next"; the folder's programs are still to do
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
+
+    window.destroy.assert_not_called()
+    assert deleted not in [name for name, *_ in window._items]
+    assert window._items[window._current_idx][0] in NAMES  # On to the folder's programs
+    assert Path(deleted).stem not in _status(window)
+
+
+def test_a_reload_keeps_a_deletion_marked_done(monkeypatch) -> None:
+    window = _only_in_click_window(monkeypatch)
+    window._select_row(OLD)
+    window._on_action()  # Next: deleted
+    window._scan_folder = lambda: None  # The folder is read again, as it was
+
+    window._start(keep_done=True)
+
+    assert "subroutines/old.csv" in window._done
+    assert not window._needs_paste("subroutines/old.csv")
+
+
+# ---------------------------------------------------------------------------
+# Where the proposal comes from
+# ---------------------------------------------------------------------------
+
+SISTER = ProposalSource.other_click("sister")
+
+
+def test_the_title_says_where_the_changes_come_from() -> None:
+    assert ProposalSource.of(Path("plcs/sister"), None).title == "Review Changes — from sister"
+    assert (
+        ProposalSource.of(Path("ws/csv_output"), Path("ws/src/plc")).title
+        == "Review Changes — from workspace"
+    )
+
+
+def test_another_plcs_programs_only_in_click_start_out_kept(monkeypatch) -> None:
+    window = _only_in_click_window(monkeypatch)
+    window._source = SISTER
+
+    assert window._kept("subroutines/old.csv")
+    assert window._click_label("subroutines/old.csv") == "Only in CLICK, kept"
+    window._view_name = "subroutines/old.csv"
+    window._on_take()  # Tick Delete it in CLICK
+    assert window._needs_paste("subroutines/old.csv")
+
+    window._on_take()  # Untick it again
+    _change(window, window.saved_after)
+    window.destroy.assert_called_once_with()  # Kept: nothing holds the window open
+
+
+def test_another_plcs_nicknames_start_out_skipped() -> None:
+    window = _bare_window()
+    window._source = SISTER
+
+    window._forget_choices()
+
+    assert window._nicknames_skipped
+
+
+def test_a_folder_shown_as_the_workspace_keeps_what_is_in_click(tmp_path: Path) -> None:
+    window = _folder_window(tmp_path)
+    window._start()
+    window._flipped_in_click.add("subroutines/old.csv")
+    window._nicknames_skipped = True
+    key = DifferenceKey((), ())
+    window._skipped = {"main.csv": frozenset({key})}
+    window._pasted = {"main.csv": frozenset({key})}
+    window._partial = {"main.csv": 1}
+    window._step_through = {"main.csv"}
+
+    source_dir = tmp_path / "src" / "plc"
+    window.reload(ProposalSource.of(window._folder, source_dir), source_dir=source_dir)
+
+    assert window._source == ProposalSource(WORKSPACE_SOURCE)
+    window.title.assert_called_with("Review Changes — from workspace")
+    # The source's defaults start over...
+    assert window._flipped_in_click == set()
+    assert not window._nicknames_skipped
+    # ...and what was chosen and pasted of the programs stays
+    assert window._skipped == {"main.csv": frozenset({key})}
+    assert window._pasted == {"main.csv": frozenset({key})}
+    assert window._partial == {"main.csv": 1}
+    assert window._step_through == {"main.csv"}
+
+
+def test_a_deletion_marked_done_stays_one_under_another_plcs_defaults(monkeypatch) -> None:
+    window = _only_in_click_window(monkeypatch)
+    window._select_row(OLD)
+    window._on_action()  # Next: deleted
+    window._scan_folder = lambda: None
+
+    window.reload(SISTER)
+
+    assert not window._kept("subroutines/old.csv")
+    assert "subroutines/old.csv" in window._done
+
+
+def test_another_plcs_window_says_what_click_keeps_when_done(monkeypatch) -> None:
+    window = _only_in_click_window(monkeypatch)
+    window._source = SISTER
+
+    window._all_done()
+
+    assert "1 program(s) in CLICK that are not in this folder are kept" in _status(window)
+    assert "Every change has been made in CLICK" not in _status(window)  # Nothing deleted
+
+
+def test_a_copy_of_another_click_window_can_be_taken_again(monkeypatch) -> None:
+    window = _only_in_click_window(monkeypatch)
+    window._scan_folder = lambda: None
+    refresh = Mock()
+
+    window.reload(SISTER, refresh_source=refresh)
+
+    window.title.assert_called_with("Review Changes — from sister")
+    window._refresh_btn.configure.assert_called_with(text="↻ Refresh from sister")
+    window._refresh_btn.pack.assert_called()
+    window._on_refresh_source()
+    refresh.assert_called_once_with()
+
+    window.reload(SISTER)  # Shown again, as a folder that is not a copy
+
+    window._refresh_btn.pack_forget.assert_called()
+
+
+class _Database:
+    """CLICK's database as an AddressStore data source."""
+
+    supports_used_field = True
+    is_database = True
+    is_read_only = False
+    file_path = "SC_.mdb"
+
+    def load_all_addresses(self) -> dict[int, AddressRow]:
+        return {get_addr_key("X", 1): AddressRow("X", 1, nickname="Start")}
+
+    def save_changes(self, rows: list[AddressRow]) -> int:
+        return len(rows)
+
+
+def _project_store() -> AddressStore:
+    """CLICK's database names X001 Start, and nothing else."""
+    store = AddressStore(_Database())
+    store.load_initial_data()
+    return store
+
+
+def _nicknames_window(tmp_path: Path, store: AddressStore | None):
+    """A folder whose nicknames.csv renames X001 to Start_PB and names X003 Jog."""
+    window = _folder_window(tmp_path)
+    CsvDataSource(str(window._folder / "nicknames.csv")).save_changes(
+        [AddressRow("X", 1, nickname="Start_PB"), AddressRow("X", 3, nickname="Jog")]
+    )
+    window._get_project_store = lambda: store
+    window.winfo_exists = lambda: True
+    window.after = Mock()
+    return window
+
+
+def _label(window, name: str = "nicknames.csv") -> str:
+    row = next(idx for idx, (item, *_) in enumerate(window._items) if item == name)
+    calls = [c for c in window._sheet.set_cell_data.call_args_list if c.args[:2] == (row, 3)]
+    return calls[-1].args[2]
+
+
+def test_plain_folder_starts_with_its_nicknames(tmp_path: Path) -> None:
+    window = _nicknames_window(tmp_path, _project_store())
+
+    window._start()
+
+    assert [name for name, *_ in window._items] == ["nicknames.csv", "main.csv"]
+    assert window._items[1][2] == 2
+    assert _action(window) == "Stage nicknames"
+    assert _label(window) == "1 new, 1 renamed"
+    assert "Sync before pasting" in _status(window)
+
+
+def test_nicknames_wait_for_clicks_database(tmp_path: Path) -> None:
+    window = _nicknames_window(tmp_path, None)
+    window._start()
+    assert _label(window) == "needs CLICK's database"
+
+    window._on_action()
+
+    assert "Connect to the CLICK project" in _status(window)
+    window._open_staged_nicknames.assert_not_called()
+
+
+def test_staging_opens_the_address_editor_and_leaves_click_alone(tmp_path: Path) -> None:
+    store = _project_store()
+    window = _nicknames_window(tmp_path, store)
+    window._start()
+
+    window._on_action()  # Stage nicknames
+
+    x1, x3 = get_addr_key("X", 1), get_addr_key("X", 3)
+    assert (store.visible_state[x1].nickname, store.visible_state[x3].nickname) == (
+        "Start_PB",
+        "Jog",
+    )
+    assert store.base_state[x1].nickname == "Start"  # Only Sync writes CLICK's database
+    window._open_staged_nicknames.assert_called_once_with()
+    assert _label(window) == "1 new, 1 renamed, staged"
+    assert _action(window) == "Next →"
+
+    window._on_action()  # Next: on to the programs, the nicknames not done until synced
+    assert window._items[window._current_idx][0] == "main.csv"
+    assert "nicknames.csv" not in window._done
+
+
+def test_staged_nicknames_reopen_the_address_editor(tmp_path: Path) -> None:
+    store = _project_store()
+    window = _nicknames_window(tmp_path, store)
+    window._start()
+    window._on_action()  # Stage
+    window._start(select="nicknames.csv", keep_done=True)
+    assert _action(window) == "Open Address Editor"
+
+    window._on_action()
+
+    assert window._open_staged_nicknames.call_count == 2
+    assert len(store.undo_stack) == 1  # Staged once
+
+
+def test_syncing_the_nicknames_moves_on(tmp_path: Path) -> None:
+    store = _project_store()
+    window = _nicknames_window(tmp_path, store)
+    window._start()
+    window._on_action()  # Stage
+
+    store.save_all_changes()  # Sync and Close in the Address Editor
+    window._watch_saved_program()
+
+    assert _label(window) == "Up to date"
+    assert window._items[window._current_idx][0] == "main.csv"
+
+
+def test_skipped_nicknames_are_not_staged(tmp_path: Path) -> None:
+    store = _project_store()
+    window = _nicknames_window(tmp_path, store)
+    window._start()
+    window._view_name = "nicknames.csv"
+
+    window._on_take()
+
+    assert window._nicknames_skipped
+    assert _label(window) == "1 new, 1 renamed, skipped"
+    assert _action(window) == "Next →"
+    window._on_action()
+    assert not store.has_unsaved_changes()
+    assert window._items[window._current_idx][0] == "main.csv"
+
+
+def test_window_closes_once_click_has_the_programs_and_the_nicknames(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        f"{MODULE}.compare_bundle",
+        lambda _programs, _csv_dir: BundleComparison(
+            compared=True, changes={"main.csv": ProgramChange()}
+        ),
+    )
+    store = _project_store()
+    window = _nicknames_window(tmp_path, store)
+    program = SavedProgram(object(), generation=1, csv_dir=Path("csv"), note="")
+    window._get_saved_program = lambda: program
+    window._start()
+    window._project_session = program.session
+    window._on_action()  # Stage
+    window._watch_saved_program()
+    window.destroy.assert_not_called()  # Staged is not in CLICK
+
+    store.save_all_changes()
+    window._watch_saved_program()
+
+    window.destroy.assert_called_once_with()
+    window._on_pasted.assert_called_once()
+
+
+def test_workspace_proposal_leaves_nicknames_to_the_address_editor(tmp_path: Path) -> None:
+    source_dir = tmp_path / "src" / "plc"
+    source_dir.mkdir(parents=True)
+    (source_dir / "main.py").write_text("workspace source\n", encoding="utf-8")
+    window = _folder_window(tmp_path, source_dir)
+
+    window._start()
+
+    assert [name for name, *_ in window._items] == ["main.csv"]
+    assert window._proposed_sources().text("main.csv") == "workspace source\n"
+
+
+def test_reload_starts_on_the_named_program_with_its_selected_rungs(tmp_path: Path) -> None:
+    window = _folder_window(tmp_path)
+    window._copy_whole_var.set(True)
+
+    window.reload(window._source, select=("main.csv", [2]))
+
+    assert window._items[window._current_idx][0] == "main.csv"
+    # Nothing to compare with yet: the rungs asked for wait for CLICK's program
+    assert _action(window) == "Copy"
+    assert window._selection == {"main.csv": [2]}
+
+
+def test_reload_keeps_done_programs_whose_rungs_did_not_change(tmp_path: Path) -> None:
+    window = _folder_window(tmp_path, tmp_path / "src" / "plc")
+    sub = window._folder / "subroutines" / "fill.csv"
+    sub.parent.mkdir()
+    write_csv(sub, _coils("Y003"))
+    window._start()
+    window._done = {"subroutines/fill.csv", "main.csv"}
+
+    write_csv(window._folder / "main.csv", _coils("Y001", "Y009"))  # exported again
+    window.reload(window._source, source_dir=window._source_dir)
+
+    assert window._done == {"subroutines/fill.csv"}
+    assert window._items[window._current_idx][0] == "main.csv"
+
+    window._start()  # Restart clears the rest
+    assert window._done == set()
+
+
+def test_folder_emptied_by_a_click_save_keeps_what_was_read(tmp_path: Path, copies) -> None:
+    window = _folder_window(tmp_path, tmp_path / "src" / "plc")
+    window._start()
+    (window._folder / "main.csv").unlink()
+
+    window._start()  # Restart
+    window._on_action()
+
+    assert [name for name, *_ in window._items] == ["main.csv"]
+    assert len(copies[0][0]) == 2
+    # The window says what it is still pasting, and how to get the source back
+    notice = window._notice_lbl.configure.call_args.kwargs["text"]
+    assert "still holds the proposal exported at" in notice
+    assert "clicknick-cli restore" in notice
+    assert "(clicknick-cli restore list for older ones)" in notice
+    window._notice_lbl.pack.assert_called()
+
+
+def test_no_notice_while_the_folder_still_holds_what_was_read(tmp_path: Path) -> None:
+    window = _folder_window(tmp_path, tmp_path / "src" / "plc")
+
+    window._start()
+
+    window._notice_lbl.pack.assert_not_called()
+    window._notice_lbl.pack_forget.assert_called()
+
+
+def _legacy_click_copy(*rungs: int | None) -> ProgramChange:
+    """CLICK's copy reads the same as the proposal, but holds *rungs* in a legacy encoding."""
+    return compare_rungs(RUNGS, RUNGS, [_legacy(rung) for rung in rungs])
+
+
+def test_program_whose_click_copy_has_a_legacy_encoding_needs_pasting(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _legacy_click_copy(3))
+
+    assert not window._matches_click("main.csv")
+    assert window._needs_paste("main.csv")
+    assert window._current_idx == MAIN
+    assert _action(window) == "Copy r3"
+    status = _status(window)
+    assert "r3 replaces rung 3" in status
+    assert (
+        "CLICK's copy has an old encoding. Math H70000: it is stored as 16-bit and CLICK runs"
+        " it as 4464. Paste it again." in status
+    )
+    assert window._click_label("main.csv") == "1 rung changed, old encoding"
+
+    window._on_action()
+    assert copies == [(RUNGS[2:3], 3)]
+
+
+def test_legacy_encoding_row_is_red_until_it_is_the_current_row(monkeypatch) -> None:
+    window = _on_main(monkeypatch, _legacy_click_copy(3))
+    window._sheet.reset_mock()
+    window._current_idx = None
+    window._update_highlights()
+
+    red = {
+        call.kwargs["row"]
+        for call in window._sheet.highlight_cells.call_args_list
+        if call.kwargs.get("bg") == "#f8d7da"
+    }
+    assert red == {MAIN}
+
+    window._sheet.reset_mock()
+    window._current_idx = MAIN
+    window._update_highlights()
+    assert {call.kwargs.get("bg") for call in window._sheet.highlight_cells.call_args_list} == {
+        "#cce5ff",
+        None,
+    }
+
+
+def test_pane_says_which_rungs_click_holds_in_a_legacy_encoding(monkeypatch) -> None:
+    window = _on_main(monkeypatch, _legacy_click_copy(2, 4))
+
+    note, _diff = window._describe_view()
+
+    assert note.splitlines()[:3] == [
+        "CLICK's copy of rungs 2, 4 has an old encoding. Paste them again.",
+        "  rung 2, Math H70000: it is stored as 16-bit and CLICK runs it as 4464.",
+        "  rung 4, Math H70000: it is stored as 16-bit and CLICK runs it as 4464.",
+    ]
+    # The diff starts below every line of the note
+    assert window._diff_first_line == note.count("\n") + 2
+
+
+def test_legacy_encoding_without_a_rung_number_pastes_the_whole_program(monkeypatch) -> None:
+    window = _on_main(monkeypatch, _legacy_click_copy(None))
+
+    assert window._needs_paste("main.csv")
+    assert "Paste the whole program again." in window._describe_view()[0]
+
+    _switch_copy(window, whole=True)
+    assert "CLICK's copy has an old encoding" in _status(window)
+
+
+def test_row_clears_once_click_saves_a_clean_copy(monkeypatch) -> None:
+    session = object()
+    before, after = Path("before/csv"), Path("after/csv")
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {
+            before: {**_changes(dict.fromkeys(NAMES, False)), "main.csv": _legacy_click_copy(3)},
+            after: _changes(dict.fromkeys(NAMES, False)),
+        },
+    )
+    assert window._needs_paste("main.csv")
+
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
+
+    assert window._matches_click("main.csv")
+    window.destroy.assert_called_once_with()
+
+
+def test_legacy_note_names_runs_of_rungs_and_counts_past_five() -> None:
+    from clicknick.views.review_changes_window import _legacy_note
+
+    rungs = _coils(*(f"Y{n:03d}" for n in range(1, 10)))
+    change = compare_rungs(rungs, rungs, [_legacy(n) for n in (1, 2, 3, 4, 5, 6, 9)])
+
+    lines = _legacy_note(change).splitlines()
+
+    assert lines[0] == "CLICK's copy of rungs 1 to 6, 9 has an old encoding. Paste them again."
+    assert len(lines) == 7
+    assert lines[-1] == "  ...and 2 more"
+
+
+def test_deleting_a_legacy_encoded_rung_says_why(monkeypatch, copies) -> None:
+    # CLICK's first Y001 is the stale one. The matcher keeps its second Y001,
+    # so the stale rung is deleted and a good copy goes in after the last rung.
+    rungs = _coils("Y001", "Y001")
+    change = compare_rungs(rungs, rungs, [_legacy(1)])
+    assert [opcode[0] for opcode in change.opcodes] == ["delete", "equal", "insert"]
+    window = _on_main(monkeypatch, change)
+
+    status = _status(window)
+    assert "step 1 of 2: rung 1 is not in the program any more" in status
+    assert status.endswith(
+        "CLICK's copy has an old encoding. Math H70000: it is stored as 16-bit and CLICK"
+        " runs it as 4464."
+    )
+
+    window._on_action()  # Next: the good copy
+    assert "step 2 of 2: r2 is new" in _status(window)
+    assert "old encoding" not in _status(window)
+
+
+def test_old_copies_left_after_pasting_stale_rungs_are_named_as_such(monkeypatch, copies) -> None:
+    # Pasting r2..4 over CLICK's rung 2 leaves CLICK's old rungs 3 and 4 below them
+    window = _on_main(monkeypatch, _legacy_click_copy(2, 3, 4))
+    assert _action(window) == "Copy r2..4"
+
+    window._on_action()  # Copy
+    window._on_action()  # Next: the old copies
+
+    status = _status(window)
+    assert status.startswith(
+        "main.csv, step 2 of 2: CLICK's old copies of these rungs are now below the pasted"
+        " ones, at rungs 5 to 6.\nSelect them in CLICK"
+    )
+    assert "not in the program any more" not in status
+    assert status.endswith(
+        "CLICK's copy has an old encoding. Math H70000: it is stored as 16-bit and CLICK"
+        " runs it as 4464."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Taking and skipping differences
+# ---------------------------------------------------------------------------
+
+
+def _bar(window) -> str:
+    return window._bar_lbl.configure.call_args.kwargs["text"]
+
+
+def _detail(window) -> str:
+    return window._detail_lbl.configure.call_args.kwargs["text"]
+
+
+def _review(window) -> str:
+    return window._review_lbl.configure.call_args.kwargs["text"]
+
+
+def test_unticking_a_difference_skips_it_and_renumbers_the_steps(monkeypatch, copies) -> None:
+    # CLICK has Y002 only: r1 and r3..4 are new, two differences
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+    assert _bar(window) == "Difference 1 of 2"
+    assert window._take_var.get() is True
+
+    window._on_take()  # Untick: skip r1
+
+    assert window._take_var.get() is False
+    assert _detail(window) == "Skipped: not added"
+    assert window._click_label("main.csv") == "3 rungs changed, 1 skipped"
+    assert _action(window) == "Copy r3..4"
+    assert "step 1 of 1: r3..4 is new" in _status(window)
+    assert "insert an empty rung after the last rung" in _status(window)
+
+    window._on_action()
+    assert copies == [(RUNGS[2:], 3)]
+
+
+def test_skipping_a_replacement_says_click_keeps_its_rungs(monkeypatch) -> None:
+    window = _on_main(monkeypatch, compare_rungs(_coils("Y001", "Y007", "Y008"), RUNGS))
+
+    window._on_take()
+
+    assert _detail(window) == "Skipped: CLICK keeps its rungs 2 to 3"
+
+
+def test_clicking_the_gutter_of_a_difference_skips_it(monkeypatch) -> None:
+    change = compare_rungs(_coils("Y001", "Y002"), _coils("Y001", "Y005", "Y002"))
+    window = _on_main(monkeypatch, change)
+    # The note, two header lines and R1 are above the added rung, on line 5
+    positions = {"@3,70": "5.0", "@0,0": "1.0", "end-1c": "7.0"}
+    window._text.index.side_effect = positions.__getitem__
+
+    window._on_gutter(SimpleNamespace(x=3, y=70))
+
+    assert window._all_skipped("main.csv")
+    window._text.tag_add.assert_any_call("skipped", "5.0", "6.0")
+    assert _action(window) == "Next →"
+
+
+def test_current_difference_has_a_bar_beside_its_gutter(monkeypatch) -> None:
+    # CLICK has Y002 only: r1 is the first difference, r3..4 the second
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+
+    def _marked() -> list[str]:
+        return [c.args[1] for c in window._text.tag_add.call_args_list if c.args[0] == "current"]
+
+    # The note and two header lines are above r1, on line 4
+    assert _marked() == ["4.0"]
+
+    window._text.tag_add.reset_mock()
+    window._on_difference_key(1)
+
+    # Then R2 matching CLICK, and r3..4 below it
+    assert _marked() == ["6.0", "7.0"]
+
+
+def test_program_with_every_difference_skipped_is_left_as_click_has_it(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+    window._toggle("main.csv", 0)
+    window._toggle("main.csv", 1)
+
+    assert window._click_label("main.csv") == "3 rungs changed, all skipped"
+    assert _action(window) == "Next →"
+    assert "Every difference of main.csv is skipped" in _status(window)
+
+    window._on_action()
+
+    assert copies == []
+    assert window._done == set()  # Nothing of it went into CLICK
+    assert window._current_idx is None
+    window._progress_lbl.configure.assert_called_with(
+        text="0 of 0 done · 2 up to date in CLICK · 2 differences skipped"
+    )
+
+
+def test_whole_program_copies_the_program_as_chosen(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+    _switch_copy(window, whole=True)
+    window._toggle("main.csv", 0)  # Skip r1: CLICK has no rung there
+
+    assert _action(window) == "Copy, 1 skipped"
+    whole = "the whole program as you chose it, 3 rungs, with 1 skipped difference"
+    assert whole in _status(window)
+
+    window._on_action()
+
+    assert copies == [(RUNGS[1:], 1)]
+
+
+def test_a_difference_cannot_be_skipped_once_its_step_is_done(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+    window._on_action()  # Copy r1
+    window._toggle("main.csv", 0)  # Copied but not pasted yet: still a choice
+    assert window._skipped_in("main.csv") == 1
+    window._toggle("main.csv", 0)  # Taken again
+    window._on_action()  # Copy r1
+    window._on_action()  # Next: r1 is in CLICK
+
+    window._toggle("main.csv", 0)
+
+    assert window._skipped_in("main.csv") == 0
+    assert "pasted into CLICK already" in _status(window)
+    window._take_chk.configure.assert_called_with(state="disabled")
+    assert _detail(window) == "Pasted"
+
+
+def test_skipping_what_is_left_after_a_paste_finishes_the_program(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+    window._on_action()  # Copy r1
+    window._on_action()  # Next
+
+    window._toggle("main.csv", 1)  # Skip r3..4
+
+    assert _action(window) == "Next →"
+    assert "What is left of main.csv is skipped" in _status(window)
+    window._on_action()
+    assert window._done == {"main.csv"}
+
+
+def _three_changed(monkeypatch):
+    """Every program differs from CLICK in two places: r1 and r3 are new."""
+    csv_dir = Path("workspace/csv")
+    return _window(
+        monkeypatch,
+        SavedProgram(object(), generation=1, csv_dir=csv_dir, note=""),
+        {csv_dir: dict.fromkeys(NAMES, _rungs_differ(1, 3))},
+    )
+
+
+def test_difference_arrows_go_on_into_the_next_program(monkeypatch, copies) -> None:
+    window = _three_changed(monkeypatch)
+    assert _bar(window) == "Difference 1 of 6"
+    assert _review(window) == "2 programs not reviewed yet"
+    assert window._pending_icon("main.csv") == "●"
+
+    assert window._on_difference_key(1) == "break"
+    assert (window._current_idx, _bar(window)) == (0, "Difference 2 of 6")
+
+    window._on_difference_key(1)
+    assert (window._current_idx, window._view_block) == (1, 0)
+    assert _review(window) == "1 program not reviewed yet"
+
+    window._on_difference_key(-1)
+    assert (window._current_idx, window._view_block) == (0, 1)
+
+    window._on_difference_key(-1)
+    window._on_difference_key(-1)  # Round to the last program's last difference
+    assert (window._current_idx, window._view_block) == (MAIN, 1)
+    assert _bar(window) == "Difference 6 of 6"
+    assert _review(window) == ""
+
+
+def test_steps_carry_on_where_they_got_to_after_visiting_another_row(monkeypatch, copies) -> None:
+    window = _three_changed(monkeypatch)
+    window._on_action()  # Copy r1
+    window._on_action()  # Next
+    assert _action(window) == "Copy r3"
+
+    window._select_row(1)
+    assert _action(window) == "Copy r1"
+    window._select_row(0)
+
+    assert _action(window) == "Copy r3"
+    assert "step 2 of 2" in _status(window)
+
+
+def test_skips_follow_their_differences_over_a_click_save(monkeypatch, copies) -> None:
+    session = object()
+    before, after = Path("before/csv"), Path("after/csv")
+    same = _changes(dict.fromkeys(NAMES, False))
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {
+            before: {**same, "main.csv": _rungs_differ(1, 3, 4)},
+            # CLICK has r4 now, pasted by hand: r1 is still new, and so is r3
+            after: {**same, "main.csv": _rungs_differ(1, 3)},
+        },
+    )
+    window._toggle("main.csv", 0)  # Skip r1
+
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
+
+    # r1 is the same difference as before, still skipped; r3 is a new one, taken
+    assert window._skipped_in("main.csv") == 1
+    assert _action(window) == "Copy r3"
+
+
+def test_window_closes_once_click_holds_everything_not_skipped(monkeypatch, copies) -> None:
+    session = object()
+    before, after = Path("before/csv"), Path("after/csv")
+    same = _changes(dict.fromkeys(NAMES, False))
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {
+            before: {**same, "main.csv": _rungs_differ(1, 3, 4)},
+            after: {**same, "main.csv": _rungs_differ(3, 4)},
+        },
+    )
+    window._toggle("main.csv", 1)  # Skip r3..4
+    window._on_action()  # Copy r1, then paste and save in CLICK
+
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
+
+    window._on_pasted.assert_called_once_with(
+        "CLICK saved everything taken from Review Changes; 1 skipped difference left as CLICK has it"
+    )
+    window.destroy.assert_called_once_with()
+
+
+def test_skipped_workspace_edits_are_warned_of(monkeypatch, tmp_path: Path) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+    window._source_dir = tmp_path / "src" / "plc"
+    (tmp_path / "main.csv").write_text("", encoding="utf-8")  # The proposal is still there
+    window._programs["main.csv"] = ProposedProgram(
+        "main.csv", tmp_path / "main.csv", RUNGS, len(RUNGS)
+    )
+
+    window._toggle("main.csv", 0)
+
+    notice = window._notice_lbl.configure.call_args.kwargs["text"]
+    assert notice.startswith("1 skipped difference is an edit in the workspace source.")
+    assert "kept only in backup/src/plc" in notice
+    assert "kept only in backup/src/plc (clicknick-cli restore list for older ones)" in notice
+    assert window._pasted_message().endswith(
+        "(skipped edits are in backup/src/plc; clicknick-cli restore list for older ones)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rungs ClickNick cannot read from CLICK
+# ---------------------------------------------------------------------------
+
+_REFUSED = "ClickNick cannot read this Compare."
+
+
+def _unreadable(rung: int | None, instruction: str = "Compare", detail: str = _REFUSED):
+    return LegacyEncoding("main.csv", "Main Program", rung, instruction, "", detail, True)
+
+
+_WHOLE = "In CLICK, select all of its rungs (Shift+Up/Down) and delete them, then paste (Ctrl+V)"
+
+
+def _red(window) -> set[int]:
+    window._sheet.reset_mock()
+    window._current_idx = None
+    window._update_highlights()
+    return {
+        call.kwargs["row"]
+        for call in window._sheet.highlight_cells.call_args_list
+        if call.kwargs.get("bg") == "#f8d7da"
+    }
+
+
+def test_rung_clicknick_cannot_read_is_red_and_the_program_pasted_whole(
+    monkeypatch, copies
+) -> None:
+    window = _on_main(monkeypatch, compare_rungs(RUNGS, RUNGS, [_unreadable(3)]))
+
+    assert window._needs_paste("main.csv")
+    assert _action(window) == "Copy"
+    assert _status(window).splitlines() == [
+        "main.csv: the whole program, 4 rungs, replaces what CLICK has.",
+        f'Click "Copy". {_WHOLE}',
+        "CLICK's copy of rung 3 cannot be read. Paste the whole program again.",
+        f"  rung 3, Compare: {_REFUSED}",
+    ]
+    assert window._click_label("main.csv") == "1 rung changed, unreadable"
+
+    window._on_action()
+
+    assert copies == [(RUNGS, 1)]
+    assert _red(window) == {MAIN}
+
+
+def test_no_difference_of_a_program_clicknick_cannot_read_can_be_skipped(
+    monkeypatch, copies
+) -> None:
+    """A skip would keep CLICK's empty rung in place of the rung it cannot read."""
+    click = [RUNGS[0], empty_rung(STAND_IN_COMMENT), *RUNGS[2:]]
+    proposed = [RUNGS[0], *_coils("Y009"), *RUNGS[2:]]
+    change = compare_rungs(click, proposed, [_unreadable(2)])
+    window = _on_main(monkeypatch, change)
+    window._programs["main.csv"] = ProposedProgram(
+        "main.csv", Path("main.csv"), tuple(proposed), len(proposed)
+    )
+
+    assert window._choosable("main.csv") is None
+    assert window._all_differences() == []
+    window._toggle("main.csv", 0)
+    # A skip carried over from before CLICK's copy could not be read changes nothing
+    window._skipped["main.csv"] = frozenset(change.differences)
+
+    assert window._skipped_in("main.csv") == 0
+    assert window._needs_paste("main.csv")
+    assert window._steps("main.csv") == []
+    window._status_var.set(window._step_prompt(MAIN))
+    assert _action(window) == "Copy"
+
+    window._on_action()
+
+    assert copies == [(tuple(proposed), 1)]
+
+
+def test_click_copy_that_cannot_be_read_pastes_the_whole_program(monkeypatch) -> None:
+    detail = "ClickNick cannot read CLICK's copy of this program. Invalid marker 'X'"
+    change = compare_rungs(RUNGS, RUNGS, [_unreadable(None, instruction="", detail=detail)])
+    window = _on_main(monkeypatch, change)
+
+    assert window._needs_paste("main.csv")
+    assert window._describe_view()[0].splitlines()[:2] == [
+        "CLICK's copy cannot be read. Paste the whole program again.",
+        f"  {detail}",
+    ]
+
+
+def test_label_names_both_faults_when_a_program_has_both(monkeypatch) -> None:
+    window = _on_main(monkeypatch, compare_rungs(RUNGS, RUNGS, [_legacy(2), _unreadable(3)]))
+
+    assert window._click_label("main.csv") == "2 rungs changed, old encoding, unreadable"
+    assert window._describe_view()[0].splitlines()[0] == (
+        "CLICK's copy of rungs 2 to 3 cannot be read or has an old encoding. "
+        "Paste the whole program again."
+    )
+
+
+def test_click_copy_no_read_accepts_is_deleted_whole_before_the_paste(monkeypatch, copies) -> None:
+    """Without CLICK's rungs, an "after the last rung" paste would leave them all in CLICK."""
+    detail = "CompareContact: 'DH70' (hex) and 'DS3920' (numeric) are not in one compare group"
+    change = compare_rungs([], RUNGS, [_unreadable(None, instruction="", detail=detail)])
+    window = _on_main(monkeypatch, change)
+
+    status = _status(window)
+    assert status.startswith("main.csv: the whole program, 4 rungs, replaces what CLICK has.")
+    assert "select all of its rungs (Shift+Up/Down) and delete them, then paste" in status
+    assert _action(window) == "Copy"
+
+    window._on_action()
+
+    assert copies == [(RUNGS, 1)]
+    assert "and delete them, then paste (Ctrl+V)" in _status(window)
+
+
+def test_a_program_only_in_click_that_cannot_be_read_is_one_to_delete(monkeypatch) -> None:
+    csv_dir = Path("workspace/csv")
+    finding = LegacyEncoding("subroutines/old.csv", "", None, "", "", "Invalid marker 'X'", True)
+    window = _window(
+        monkeypatch,
+        SavedProgram(object(), generation=1, csv_dir=csv_dir, note=""),
+        {csv_dir: _changes(dict.fromkeys(NAMES, True))},
+        only_in_click={"subroutines/old.csv": compare_rungs(_coils("Y009"), [], [finding])},
+    )
+    window._sheet.get_currently_selected.return_value = SimpleNamespace(row=len(NAMES))
+
+    window._on_cell_select(None)
+
+    note = window._describe_view()[0]
+    assert note.splitlines()[0] == (
+        "CLICK's copy cannot be read. "
+        "This folder does not have the program; it is to be deleted in CLICK."
+    )
+    assert "Paste" not in note
+
+    window._on_take()  # Untick Delete it in CLICK
+
+    assert window._describe_view()[0].splitlines()[0] == (
+        "CLICK's copy cannot be read. "
+        "This folder does not have the program; CLICK keeps it as it is."
+    )
+
+
+def _stand_in_window(monkeypatch, click: list, proposed: list, rung: int):
+    """main.csv with CLICK's rung *rung* unreadable, and the folder holding *proposed*."""
+    window = _on_main(monkeypatch, compare_rungs(click, proposed, [_unreadable(rung)]))
+    window._programs["main.csv"] = ProposedProgram(
+        "main.csv", Path("main.csv"), tuple(proposed), len(proposed)
+    )
+    window._update_action_btn()
+    window._status_var.set(window._step_prompt(MAIN))
+    return window
+
+
+def test_edits_around_a_stand_in_cannot_delete_clicks_rung(monkeypatch, copies) -> None:
+    """The user edited rung 1, deleted rung 2, and deleted the stand-in's comment.
+
+    Placed by the diff, the steps pasted the empty rung over rung 1 and deleted
+    CLICK's real rung 3.
+    """
+    click = [*RUNGS[:2], empty_rung(STAND_IN_COMMENT)]
+    window = _stand_in_window(monkeypatch, click, [*_coils("Y009"), empty_rung("")], 3)
+    refusal = (
+        "Rung 2 of Main Program is empty in this folder. CLICK's rung 3 cannot be read. "
+        "Paste that rung from your own copy of the program first."
+    )
+
+    assert window._current_steps() == []
+    assert _status(window).endswith(refusal)
+
+    window._on_action()
+
+    assert copies == []
+    assert _status(window) == f"Error loading main.csv: {refusal}"
+
+
+def test_a_program_differing_only_by_its_stand_in_is_red_and_refused(monkeypatch) -> None:
+    """The workspace flow with nothing edited: CLICK's rung 2 still has to be pasted."""
+    click = [RUNGS[0], empty_rung(STAND_IN_COMMENT), *RUNGS[2:]]
+    window = _stand_in_window(monkeypatch, click, click, 2)
+
+    assert not window._matches_click("main.csv")
+    assert window._needs_paste("main.csv")
+    assert not window._settled()
+    assert window._click_label("main.csv") == "1 rung changed, unreadable"
+    assert "Rung 2 of Main Program is empty in this folder." in _status(window)
+    assert _red(window) == {MAIN}
+
+
+def test_differences_lock_while_a_step_is_half_done(monkeypatch, copies) -> None:
+    """Taking a difference above a half-done one would renumber the delete left to do."""
+    click = _coils("Y005", "Y009", "Y002", "Y006", "Y007", "Y008", "Y004")
+    window = _on_main(monkeypatch, compare_rungs(click, _coils("Y001", "Y002", "Y003", "Y004")))
+    window._toggle("main.csv", 0)  # Skip Y005 -> Y001
+    window._on_action()  # Copy rung 3 (Y003)
+    window._on_action()  # Next: pasted over rung 4, rungs 5 to 6 left to delete
+    assert window._partial == {"main.csv": 1}
+    prompt = _status(window)
+
+    window._toggle("main.csv", 0)  # Take it again: refused
+
+    assert window._skipped_of("main.csv") == {window._changes["main.csv"].differences[0]}
+    assert "under way" in _status(window)
+    assert window._locked("main.csv", 1)
+    assert _status(window) != prompt
+    window._on_action()  # Next: the deletes are done, and with them the program
+
+    assert not window._partial
+    assert "main.csv" in window._done
+
+
+def test_nicknames_can_be_skipped_without_clicks_database(tmp_path: Path) -> None:
+    window = _nicknames_window(tmp_path, None)
+    window._start()
+    window._view_name = "nicknames.csv"
+    window._update_difference_bar()
+    window._take_chk.configure.assert_called_with(text="Take these nicknames", state="normal")
+
+    window._on_take()
+    window._on_action()  # Next
+
+    assert window._items[window._current_idx][0] == "main.csv"
+    assert not window._needs_paste("nicknames.csv")
+
+
+def test_discarding_staged_nicknames_asks_to_stage_them_again(tmp_path: Path) -> None:
+    store = _project_store()
+    window = _nicknames_window(tmp_path, store)
+    window._start()
+    window._on_action()  # Stage
+    assert _action(window) == "Next →"
+
+    store.discard_all_changes()  # Discard in the Address Editor
+    window._watch_saved_program()
+
+    assert _action(window) == "Stage nicknames"
+    assert "Sync before pasting" in _status(window)
+    assert _label(window) == "1 new, 1 renamed"
+
+
+def test_nicknames_csv_without_a_column_leaves_that_field_alone(tmp_path: Path) -> None:
+    class _Commented(_Database):
+        def load_all_addresses(self) -> dict[int, AddressRow]:
+            row = AddressRow("X", 1, nickname="Start", comment="Green button")
+            return {get_addr_key("X", 1): row}
+
+    store = AddressStore(_Commented())
+    store.load_initial_data()
+    window = _nicknames_window(tmp_path, store)
+    (window._folder / "nicknames.csv").write_text("Address,Nickname\nX001,Start_PB\n")
+    window._start()
+    assert _label(window) == "1 renamed"
+
+    window._on_action()  # Stage nicknames
+
+    x1 = get_addr_key("X", 1)
+    assert store.visible_state[x1].nickname == "Start_PB"
+    assert store.visible_state[x1].comment == "Green button"
+
+
+# ---------------------------------------------------------------------------
+# What CLICK holds pasted, not saved yet
+# ---------------------------------------------------------------------------
+
+
+def _exported(monkeypatch, click: list[Rung], proposed: list[Rung], *, compared: bool = True):
+    """A window on main.csv, compared by what it holds with CLICK's last save *click*.
+
+    The subroutines match CLICK. ``_export`` reads main.csv again, ``_save`` saves in CLICK.
+    Not *compared*, CLICK's last save cannot be read until ``_change`` gives its folder.
+    """
+    saves: dict[str, list[Rung]] = {"1": list(click)}
+
+    def _compare(programs, csv_dir):
+        changes = {
+            program.name: compare_rungs(
+                saves[csv_dir.name] if program.name == "main.csv" else RUNGS, program.rungs
+            )
+            for program in programs
+            if program.rungs is not None
+        }
+        return BundleComparison(compared=True, changes=changes)
+
+    monkeypatch.setattr(f"{MODULE}.compare_bundle", _compare)
+    window = _bare_window()
+    window._programs["main.csv"] = ProposedProgram(
+        "main.csv", Path("main.csv"), tuple(proposed), len(proposed)
+    )
+    window.saves = saves
+    window.session = window._project_session = object()
+    window.current = SavedProgram(
+        window.session, generation=1, csv_dir=Path("1") if compared else None, note=""
+    )
+    window._get_saved_program = lambda: window.current
+    # What the folder holds, read by each _scan_folder; _export changes it
+    window.folder = dict(window._programs)
+    window._scan_folder = lambda: setattr(window, "_programs", dict(window.folder))
+    window._start()
+    return window
+
+
+def _export(window, proposed: list[Rung]) -> None:
+    """The folder is exported again holding *proposed* as main.csv; the window reloads."""
+    window.folder["main.csv"] = ProposedProgram(
+        "main.csv", Path("main.csv"), tuple(proposed), len(proposed)
+    )
+    window.reload(window._source)
+
+
+def _save(window, click: list[Rung]) -> None:
+    """CLICK saves holding *click* as its main program."""
+    generation = window.current.generation + 1
+    window.saves[str(generation)] = list(click)
+    _change(
+        window,
+        SavedProgram(
+            window.session,
+            generation=generation,
+            save_count=window.current.save_count + 1,
+            csv_dir=Path(str(generation)),
+        ),
+    )
+
+
+def test_a_new_export_goes_on_from_what_click_holds_pasted(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, _without(1, 3, 4), RUNGS)
+    window._on_action()  # Copy r1
+    window._on_action()  # Next: CLICK holds Y001 Y002, not saved
+
+    # Rung 4 is edited in the workspace and exported again
+    _export(window, [*RUNGS[:3], *_coils("Y005")])
+
+    assert _action(window) == "Copy r3..4"
+    assert "step 2 of 2: r3..4 is new" in _status(window)
+    assert "after the last rung" in _status(window)
+
+
+def test_a_new_export_that_changes_a_pasted_rung_copies_the_program_whole(
+    monkeypatch, copies
+) -> None:
+    window = _exported(monkeypatch, _without(1, 3, 4), RUNGS)
+    window._on_action()  # Copy r1
+    window._on_action()  # Next: CLICK holds Y001 Y002, not saved
+    edited = [*_coils("Y009"), *RUNGS[1:]]
+
+    _export(window, edited)  # The rung just pasted is edited
+
+    assert window._current_step() is None
+    assert _action(window) == "Copy"
+    status = _status(window)
+    assert "select all of its rungs (Shift+Up/Down) and delete them, then paste" in status
+    assert "so its changed rungs cannot be numbered: it is copied whole" in status
+    window._on_action()
+    assert copies[-1] == (tuple(edited), 1)
+    window._on_action()  # Next
+    assert window._done == {"main.csv"}
+
+    _save(window, edited)
+    window.destroy.assert_called_once_with()
+
+
+def test_a_new_export_keeps_a_step_half_done(monkeypatch, copies) -> None:
+    proposed = [*RUNGS, *_coils("Y005")]
+    window = _exported(monkeypatch, _coils("Y001", "Y007", "Y008", "Y009", "Y005"), proposed)
+    window._on_action()  # Copy r2..4
+    window._on_action()  # Next: pasted over rung 2; CLICK's rungs 5 to 6 are left to delete
+
+    _export(window, [*proposed, *_coils("Y006")])  # A rung added at the end
+
+    assert window._current_step() == PasteStep(delete=(5, 6))
+    assert "step 2 of 3" in _status(window)
+
+
+def test_a_paste_the_new_export_takes_back_is_pasted_over_until_click_saves(
+    monkeypatch, copies
+) -> None:
+    window = _exported(monkeypatch, _without(1), RUNGS)
+    window._on_action()  # Copy r1
+    window._on_action()  # Next: CLICK holds r1, not saved
+
+    _export(window, _without(1))  # r1 is taken out of the workspace again
+
+    assert window._needs_paste("main.csv")
+    assert not window._settled()
+    assert window._click_label("main.csv") == "Pasted, not saved"
+    assert _action(window) == "Copy"
+    assert "select all of its rungs (Shift+Up/Down) and delete them" in _status(window)
+    window._on_action()
+    assert copies[-1] == (tuple(_without(1)), 1)
+
+
+def test_skipping_every_difference_of_a_program_pasted_into_still_copies_it_whole(
+    monkeypatch, copies
+) -> None:
+    window = _exported(monkeypatch, _without(1), RUNGS)
+    window._on_action()  # Copy r1
+    window._on_action()  # Next: CLICK holds r1, not saved
+    _export(window, [*_coils("Y009"), *RUNGS[1:]])  # The rung just pasted is edited
+    change = window._changes["main.csv"]
+
+    for block in range(len(change.differences)):
+        window._toggle("main.csv", block)
+
+    assert window._needs_paste("main.csv")
+    assert not window._settled()
+    window._on_action()
+    # CLICK's last save, over what was pasted
+    assert copies[-1] == (tuple(_without(1)), 1)
+
+
+def test_a_whole_paste_without_a_comparison_is_not_stepped_through_after_a_new_export(
+    monkeypatch, copies
+) -> None:
+    window = _exported(monkeypatch, _without(1), RUNGS, compared=False)
+    window._select_row(MAIN)
+    window._on_action()  # Copy
+    window._on_action()  # Next: CLICK holds the four rungs, not saved
+    edited = [*RUNGS[:3], *_coils("Y009")]
+
+    _export(window, edited)
+    _change(window, SavedProgram(window.session, generation=1, csv_dir=Path("1"), note=""))
+
+    # Not "Copy r1, r4": CLICK holds r1 pasted
+    assert window._current_step() is None
+    assert _action(window) == "Copy"
+    assert "select all of its rungs (Shift+Up/Down) and delete them" in _status(window)
+    window._on_action()
+    assert copies[-1] == (tuple(edited), 1)
+
+
+def test_a_click_save_forgets_what_was_pasted_and_shows_what_is_left(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, _without(1, 3, 4), RUNGS)
+    window._on_action()  # Copy r1
+    window._on_action()  # Next
+
+    _save(window, _without(3, 4))  # CLICK saved holding r1
+
+    assert window._pasted == {}
+    assert _action(window) == "Copy r3..4"
+    assert "step 1 of 1" in _status(window)
+
+
+def test_restart_asks_before_forgetting_what_click_holds_pasted(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+    window._on_action()  # Copy r1
+    window._on_action()  # Next: r1 is in CLICK, not saved; nothing done yet
+    ask = Mock(return_value=False)
+    monkeypatch.setattr(f"{MODULE}.messagebox.askyesno", ask)
+
+    window._on_restart()
+
+    assert (
+        "CLICK holds rungs pasted from this window that it has not saved" in ask.call_args.args[1]
+    )
+    assert _action(window) == "Copy r3..4"
+
+
+def test_a_program_marked_done_that_clicks_save_still_differs_is_to_do_again(
+    monkeypatch, copies
+) -> None:
+    session = object()
+    before, after = Path("before/csv"), Path("after/csv")
+    same = _changes(dict.fromkeys(NAMES, False))
+    # r1 went into subroutine a instead: CLICK saves it there, after a's own rungs
+    pasted_into_a = compare_rungs([*RUNGS, RUNGS[0]], RUNGS)
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {
+            before: {**same, "main.csv": _rungs_differ(1)},
+            after: {**same, "subroutines/a.csv": pasted_into_a, "main.csv": _rungs_differ(1)},
+        },
+    )
+    window._on_action()  # Copy r1
+    window._on_action()  # Next
+    assert window._done == {"main.csv"}
+
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
+
+    assert window._done == set()
+    assert window._needs_paste("main.csv")
+    window._select_row(MAIN)
+    assert _action(window) == "Copy r1"
+    window.destroy.assert_not_called()
+
+
+def test_a_program_marked_done_but_not_pasted_is_to_do_after_a_save(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, _without(1), RUNGS)
+    window._on_action()  # Copy r1
+    window._on_action()  # Next, though it was not pasted
+
+    _save(window, _without(1))  # CLICK saves; none of its programs changed
+
+    assert window._done == set()
+    assert _action(window) == "Copy r1"
+    window.destroy.assert_not_called()
+
+
+def test_a_deletion_marked_done_is_to_do_after_a_save_that_changes_nothing(monkeypatch) -> None:
+    session, before, after = object(), Path("before/csv"), Path("after/csv")
+    same = _changes(dict.fromkeys(NAMES, False))
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {before: same, after: same},
+        only_in_click={"subroutines/old.csv": compare_rungs(_coils("Y009"), [])},
+    )
+    window._select_row(OLD)
+    window._on_action()  # Next, though it was not deleted
+
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
+
+    assert window._done == set()
+    assert window._items[window._current_idx][0] == "subroutines/old.csv"
+    window.destroy.assert_not_called()
+
+
+def test_a_save_that_changes_no_program_forgets_what_was_pasted(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, _without(1, 3, 4), RUNGS)
+    window._on_action()  # Copy r1
+    window._on_action()  # Next: r1 is in CLICK, not saved
+
+    _save(window, _without(1, 3, 4))  # The paste was undone in CLICK, then CLICK saved
+
+    assert window._pasted == {}
+    assert _action(window) == "Copy r1"
+    assert "step 1 of 2" in _status(window)
+
+
+def test_a_save_forgets_a_whole_paste_made_without_a_comparison(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, RUNGS, RUNGS, compared=False)
+    window._select_row(MAIN)
+    window._on_action()  # Copy
+    window._on_action()  # Next
+    _change(window, SavedProgram(window.session, generation=1, csv_dir=Path("1"), note=""))
+    assert window._unplaced == {"main.csv"}
+
+    _save(window, RUNGS)  # What CLICK saves is what it had
+
+    assert window._unplaced == set()
+    window.destroy.assert_called_once_with()
+
+
+def test_a_save_before_the_first_comparison_checks_what_was_done(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, _without(1), RUNGS, compared=False)
+    window._select_row(MAIN)
+    window._on_action()  # Copy
+    window._on_action()  # Next, though it was not pasted
+
+    _change(
+        window,
+        SavedProgram(window.session, generation=1, save_count=1, building=True, note="reading"),
+    )
+    _change(
+        window, SavedProgram(window.session, generation=2, save_count=1, csv_dir=Path("1"), note="")
+    )
+
+    assert window._done == set()
+    assert window._unplaced == set()
+    window._select_row(MAIN)
+    assert _action(window) == "Copy r1"
+
+
+def test_a_reading_with_nothing_connected_is_not_a_save(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, _without(1, 3, 4), RUNGS)
+    _save(window, _without(1, 3, 4))
+    window._on_action()  # Copy r1
+    window._on_action()  # Next: r1 is in CLICK, not saved
+    saved = window.current
+
+    _change(window, SavedProgram())  # No session for a moment
+    assert window._pasted
+    assert window._done_unchecked is False
+    _change(window, saved)
+
+    assert _action(window) == "Copy r3..4"
+    assert "step 2 of 2" in _status(window)
+
+
+def test_a_failed_build_keeps_what_was_pasted(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, _without(1, 3, 4), RUNGS)
+    window._on_action()  # Copy r1
+    window._on_action()  # Next: r1 is in CLICK, not saved
+    failed = "Could not read CLICK's program; see the main window"
+
+    _change(window, SavedProgram(window.session, generation=2, note=failed))
+    assert _note(window) == failed
+    _change(window, SavedProgram(window.session, generation=3, csv_dir=Path("1"), note=""))
+
+    assert _action(window) == "Copy r3..4"
+    assert "step 2 of 2" in _status(window)
+
+
+def test_a_rebuild_without_a_click_save_keeps_what_was_pasted(monkeypatch, copies) -> None:
+    session = object()
+    csv_dir = Path("workspace/csv")
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=csv_dir, note=""),
+        {csv_dir: {**_changes(dict.fromkeys(NAMES, False)), "main.csv": _rungs_differ(1, 3, 4)}},
+    )
+    window._on_action()  # Copy r1
+    window._on_action()  # Next: r1 is in CLICK, not saved
+
+    # The workspace is built again (after a Sync, say); CLICK's last save is as it was
+    _change(window, SavedProgram(session, generation=2, building=True, note="reading"))
+    _change(window, SavedProgram(session, generation=2, csv_dir=csv_dir, note=""))
+
+    assert _action(window) == "Copy r3..4"
+    assert "step 2 of 2" in _status(window)
+
+
+# ---------------------------------------------------------------------------
+# What cannot be copied as it is
+# ---------------------------------------------------------------------------
+
+
+def test_a_csv_that_cannot_be_read_is_left_out(monkeypatch, copies) -> None:
+    session, before, after = object(), Path("before/csv"), Path("after/csv")
+    bad = "subroutines/b.csv"
+    differ = _changes({"subroutines/a.csv": True, "main.csv": True})
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {before: differ, after: _changes({"subroutines/a.csv": False, "main.csv": False})},
+    )
+    window._programs[bad] = ProposedProgram(bad, Path(bad), None, 0, error="bad row 3")
+    window._compare_with_click()
+    window._populate_sheet()
+
+    assert not window._needs_paste(bad)
+    assert window._click_label(bad) == "unreadable"
+    assert "1 unreadable" in window._progress_lbl.configure.call_args.kwargs["text"]
+    window._notice_lbl.pack.assert_called()
+
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
+
+    window.destroy.assert_called_once_with()
+    assert "subroutines/b.csv could not be read" in window._on_pasted.call_args.args[0]
+
+
+def _two_legacy() -> ProgramChange:
+    """CLICK holds rungs 1 and 3 in a legacy encoding: two differences."""
+    return _legacy_click_copy(1, 3)
+
+
+def test_whole_program_steps_through_a_program_whose_skipped_rung_has_an_old_encoding(
+    monkeypatch, copies
+) -> None:
+    window = _on_main(monkeypatch, _two_legacy())
+    window._toggle("main.csv", 0)  # Keep CLICK's rung 1
+
+    _switch_copy(window, whole=True)
+
+    assert _action(window) == "Copy r3"
+    assert "Stepped through, not copied whole" in _status(window)
+    assert "CLICK's rung 1" in _status(window)
+    window._on_action()
+    assert copies == [(RUNGS[2:3], 3)]
+
+
+def test_without_a_comparison_a_whole_copy_says_to_clear_the_program_first(
+    monkeypatch, copies
+) -> None:
+    window = _window(monkeypatch, SavedProgram(object(), generation=1, note="Could not read"), {})
+    window._select_row(MAIN)
+
+    assert "if the program has rungs, select all of them (Shift+Up/Down)" in _status(window)
+    window._on_action()
+    assert "if the program has rungs, select all of them" in _status(window)
+
+
+def test_a_whole_copy_of_no_rungs_says_to_delete_them_in_click(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, RUNGS, [])
+    _switch_copy(window, whole=True)
+
+    assert _action(window) == "Next →"
+    assert 'In CLICK, delete all its rungs, then click "Next"' in _status(window)
+    window._on_action()  # Next
+
+    assert copies == []
+    assert window._done == {"main.csv"}
+
+
+def test_a_program_with_no_rungs_like_clicks_says_it_is_up_to_date(monkeypatch, copies) -> None:
+    window = _exported(monkeypatch, [], [])
+
+    window._select_row(MAIN)
+
+    assert "main.csv already matches CLICK's last save: neither has rungs" in _status(window)
+    assert _action(window) == "Next →"
+
+
+def test_a_program_pasted_into_whose_new_export_has_no_rungs_says_to_delete_them(
+    monkeypatch, copies
+) -> None:
+    window = _exported(monkeypatch, _without(1, 3, 4), RUNGS)
+    window._on_action()  # Copy r1
+    window._on_action()  # Next: CLICK holds r1, not saved; r3..4 to go
+
+    _export(window, [])
+
+    assert _action(window) == "Next →"
+    assert 'In CLICK, delete all its rungs, then click "Next"' in _status(window)
+    window._on_action()
+    assert window._done == {"main.csv"}
+
+
+def test_a_program_click_cannot_read_back_stays_done_after_a_save(monkeypatch, copies) -> None:
+    session = object()
+    before, after = Path("before/csv"), Path("after/csv")
+    same = _changes(dict.fromkeys(NAMES, False))
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=before, note=""),
+        {
+            before: {**same, "main.csv": _rungs_differ(1)},
+            after: {
+                **same,
+                "subroutines/a.csv": _rungs_differ(2),
+                "main.csv": compare_rungs(RUNGS, RUNGS, [_unreadable(3)]),
+            },
+        },
+    )
+    window._on_action()  # Copy r1
+    window._on_action()  # Next
+
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
+
+    assert "main.csv" in window._done
+
+
+def test_copying_needs_the_connected_click_window(monkeypatch, copies) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1))
+    window._get_click_hwnd = lambda: None
+
+    window._on_action()  # Copy r1
+
+    assert copies == []
+    assert window._copied is False
+    assert "Not connected to CLICK" in _status(window)

@@ -228,6 +228,7 @@ class ConsoleInput(ttk.Combobox):
         completer: ConsoleCompleter,
         tag_provider: Callable[[str], list[str]],
         on_submit: Callable[[str], None],
+        history: list[str] | None = None,
         **kwargs,
     ) -> None:
         ComboboxTCLManager.setup_tcl_if_needed(parent)
@@ -238,8 +239,9 @@ class ConsoleInput(ttk.Combobox):
         self._on_submit = on_submit
         self._dropdown = DropdownManager(self)
 
-        self._history: list[str] = []
-        self._history_idx: int = 0
+        # Shared with the caller when given, so it outlives this widget.
+        self._history: list[str] = history if history is not None else []
+        self._history_idx: int = len(self._history)
 
         self._pre_token: str = ""
         self._post_token: str = ""
@@ -258,6 +260,10 @@ class ConsoleInput(ttk.Combobox):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def remember(self, command: str) -> None:
+        """Add a command run from elsewhere to the history, so Up brings it back."""
+        self._push_history(command)
 
     def submit(self) -> None:
         """Programmatic submit (e.g. from Send button)."""

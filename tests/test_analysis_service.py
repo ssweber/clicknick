@@ -7,12 +7,15 @@ so these tests focus on the mapping and query layers using a mock graph.
 from __future__ import annotations
 
 import shutil
-from dataclasses import dataclass
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from pyclickplc.addresses import get_addr_key
 from pyrung.click import SystemNicknameRepair, SystemNicknameRepairRequired
 
+from clicknick.models.address_row import AddressRow
+from clicknick.models.address_slots import iter_address_slots
 from clicknick.services.analysis_service import (
     AnalysisResult,
     AnalysisService,
@@ -25,40 +28,41 @@ from clicknick.services.analysis_service import (
 from clicknick.services.project_workspace import (
     backup_plc_source,
     generated_source_state_path,
+    older_plc_backups,
+    plc_source_is_modified,
 )
 
 
-@dataclass(frozen=True)
-class FakeRow:
-    nickname: str = ""
-    display_address: str = ""
-
-
 class TestBuildTagAddrKeyMap:
-    def test_maps_nicknames(self):
-        base = {
-            100: FakeRow(nickname="MotorOut", display_address="Y001"),
-            200: FakeRow(nickname="PumpRun", display_address="Y002"),
-        }
-        tag_to_key, key_to_tag = _build_tag_addr_key_map(base)
-        assert tag_to_key == {"MotorOut": 100, "PumpRun": 200}
-        assert key_to_tag == {100: "MotorOut", 200: "PumpRun"}
+    """The tag map comes from the same nickname snapshot as the generated code."""
 
-    def test_empty_nickname_falls_back_to_display_address(self):
-        base = {100: FakeRow(nickname="", display_address="X001")}
-        tag_to_key, key_to_tag = _build_tag_addr_key_map(base)
-        assert tag_to_key == {"X001": 100}
-        assert key_to_tag == {100: "X001"}
+    def test_maps_nicknames(self):
+        y1, y2 = get_addr_key("Y", 1), get_addr_key("Y", 2)
+        rows = {
+            y1: AddressRow(memory_type="Y", address=1, nickname="MotorOut"),
+            y2: AddressRow(memory_type="Y", address=2, nickname="PumpRun"),
+        }
+        tag_to_key, key_to_tag = _build_tag_addr_key_map(rows)
+        assert tag_to_key["MotorOut"] == y1
+        assert tag_to_key["PumpRun"] == y2
+        assert key_to_tag[y1] == "MotorOut"
+
+    def test_unnamed_addresses_fall_back_to_display_address(self):
+        tag_to_key, key_to_tag = _build_tag_addr_key_map({})
+        x1 = get_addr_key("X", 1)
+        assert tag_to_key["X001"] == x1
+        assert key_to_tag[x1] == "X001"
 
     def test_whitespace_nickname_treated_as_empty(self):
-        base = {100: FakeRow(nickname="  ", display_address="X001")}
-        tag_to_key, key_to_tag = _build_tag_addr_key_map(base)
-        assert tag_to_key == {"X001": 100}
+        x1 = get_addr_key("X", 1)
+        rows = {x1: AddressRow(memory_type="X", address=1, nickname="  ")}
+        tag_to_key, key_to_tag = _build_tag_addr_key_map(rows)
+        assert key_to_tag[x1] == "X001"
 
-    def test_empty_state(self):
+    def test_covers_every_address_slot(self):
         tag_to_key, key_to_tag = _build_tag_addr_key_map({})
-        assert tag_to_key == {}
-        assert key_to_tag == {}
+        assert len(key_to_tag) == sum(1 for _ in iter_address_slots())
+        assert len(tag_to_key) == len(key_to_tag)
 
 
 def _make_service_with_mock_graph(
@@ -191,17 +195,6 @@ class TestAnalysisServiceLifecycle:
         )
         assert svc.known_tag_names() == frozenset({"A", "B"})
 
-    def test_rebuild_mapping(self):
-        svc = _make_service_with_mock_graph(
-            tag_roles={"OldName": "input"},
-            tag_to_addr_key={"OldName": 100},
-        )
-        assert svc.get_role_keys("input") == {100}
-
-        svc.rebuild_mapping({100: FakeRow(nickname="NewName", display_address="X001")})
-        assert svc._result.tag_to_addr_key == {"NewName": 100}
-        assert svc._result.role_cache == {}
-
 
 class TestAnalysisStatus:
     """The status machine views poll to tell 'still building' from 'failed'."""
@@ -228,7 +221,7 @@ class TestAnalysisStatus:
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _boom)
         with pytest.raises(ValueError, match="bad rung"):
-            svc.build(tmp_path, None, {})
+            svc.build(tmp_path, None)
 
         assert svc.status is AnalysisStatus.FAILED
         assert svc.error == "ValueError: bad rung"
@@ -249,31 +242,161 @@ class TestAnalysisStatus:
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _needs_repair)
         with pytest.raises(SystemNicknameRepairRequired):
-            svc.build(tmp_path, None, {})
+            svc.build(tmp_path, None)
 
         assert svc.status is AnalysisStatus.FAILED
         assert svc.system_nickname_repairs == (repair,)
         assert "CLICK system nicknames need repair" in (svc.error or "")
 
+    @pytest.mark.parametrize("wrapped", ["raised", "cause", "context"])
+    def test_a_build_refusing_an_old_comment_form_asks_for_upgrade_project(
+        self, monkeypatch, tmp_path, wrapped
+    ):
+        from pyrung.click.tag_map import OldCommentFormError
+
+        svc = AnalysisService()
+
+        def _old_form(*_args, **_kwargs):
+            error = OldCommentFormError("profile=ramp:up=1", "Level at DF1")
+            if wrapped == "raised":
+                raise error
+            try:
+                raise error
+            except OldCommentFormError as exc:
+                # "context" wraps it with another error as the cause, so only the
+                # context link leads back to pyrung's error.
+                cause = exc if wrapped == "cause" else KeyError("other")
+                raise RuntimeError("project load failed") from cause
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _old_form)
+        with pytest.raises((OldCommentFormError, RuntimeError)):
+            svc.build(tmp_path, None)
+
+        assert svc.status is AnalysisStatus.FAILED
+        assert svc.needs_comment_upgrade
+        svc.mark_building()
+        assert not svc.needs_comment_upgrade
+
+    def test_another_failure_does_not_ask_for_upgrade_project(self, monkeypatch, tmp_path):
+        svc = AnalysisService()
+
+        def _fails(*_args, **_kwargs):
+            raise ValueError("bad rung")
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _fails)
+        with pytest.raises(ValueError):
+            svc.build(tmp_path, None)
+        assert not svc.needs_comment_upgrade
+
     def test_build_success_is_ready(self, monkeypatch, tmp_path):
         svc = AnalysisService()
         monkeypatch.setattr(
             "clicknick.services.analysis_service._build_graph",
-            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path),
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
         )
-        svc.build(tmp_path, None, {100: FakeRow(nickname="A", display_address="X001")})
+        svc.build(tmp_path, None)
         assert svc.status is AnalysisStatus.READY
         assert svc.error is None
         assert svc.is_available
+
+    @pytest.mark.parametrize("fails", [False, True])
+    def test_a_build_asked_for_since_keeps_it_building(self, monkeypatch, tmp_path, fails):
+        """A save queues a build while one runs: the one running publishes the save before."""
+        svc = AnalysisService()
+        outcomes = iter([fails, False])
+
+        def _graph(*_args, **_kwargs):
+            if next(outcomes):
+                raise ValueError("bad rung")
+            return MagicMock(), MagicMock(), tmp_path, {}
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _graph)
+        first = svc.mark_building()
+        second = svc.mark_building()  # CLICK saved while the first build runs
+
+        if fails:
+            with pytest.raises(ValueError):
+                svc.build(tmp_path, None, serves=first)
+        else:
+            assert svc.build(tmp_path, None, serves=first)
+        assert svc.status is AnalysisStatus.BUILDING
+        assert svc.error is None
+        svc.mark_failed("selection unreadable", serves=first)
+        assert svc.status is AnalysisStatus.BUILDING
+
+        assert svc.build(tmp_path, None, serves=second)
+        assert svc.status is AnalysisStatus.READY
+
+    @pytest.mark.parametrize("fails", [False, True])
+    def test_a_request_failing_before_it_is_queued_waits_for_the_build_running(
+        self, monkeypatch, tmp_path, fails
+    ):
+        """CLICK saves while a build runs and the save's database is not found."""
+        svc = AnalysisService()
+        during: list[AnalysisStatus] = []
+
+        def _graph(*_args, on_project_generated=None, **_kwargs):
+            svc.mark_failed("No Click project database found.")
+            during.append(svc.status)
+            if fails:
+                raise ValueError("bad rung")
+            return MagicMock(), MagicMock(), tmp_path, {}
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _graph)
+        serves = svc.mark_building()
+
+        if fails:
+            with pytest.raises(ValueError):
+                svc.build(tmp_path, None, serves=serves)
+        else:
+            assert svc.build(tmp_path, None, serves=serves), "the build was discarded"
+            assert svc.is_available
+        assert during == [AnalysisStatus.BUILDING]
+        assert svc.status is AnalysisStatus.FAILED
+        assert svc.error == "No Click project database found."
+        # The failed request is a save the workspace does not hold.
+        assert not svc.project_is_current
+
+    def test_a_failed_request_waits_for_the_build_queued_before_it(self, monkeypatch, tmp_path):
+        svc = AnalysisService()
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
+        )
+        first = svc.mark_building()
+        second = svc.mark_building()
+        svc.mark_failed("No saved ladder files.")
+
+        assert svc.build(tmp_path, None, serves=first)
+        assert svc.status is AnalysisStatus.BUILDING
+        svc.mark_failed("selection unreadable", serves=second)  # its build never ran
+        assert svc.status is AnalysisStatus.FAILED
+        assert svc.error == "No saved ladder files."
+
+    def test_a_later_request_replaces_a_failed_one(self, monkeypatch, tmp_path):
+        svc = AnalysisService()
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
+        )
+        first = svc.mark_building()
+        svc.mark_failed("No saved ladder files.")
+        second = svc.mark_building()
+
+        assert svc.build(tmp_path, None, serves=first)
+        assert svc.status is AnalysisStatus.BUILDING
+        assert svc.build(tmp_path, None, serves=second)
+        assert svc.status is AnalysisStatus.READY
+        assert svc.error is None
 
     def test_failed_rebuild_keeps_previous_result(self, monkeypatch, tmp_path):
         """A failed rebuild must not take working analysis away from open windows."""
         svc = AnalysisService()
         monkeypatch.setattr(
             "clicknick.services.analysis_service._build_graph",
-            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path),
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
         )
-        svc.build(tmp_path, None, {100: FakeRow(nickname="A", display_address="X001")})
+        svc.build(tmp_path, None)
         assert svc.is_available
 
         def _boom(*_args, **_kwargs):
@@ -281,7 +404,7 @@ class TestAnalysisStatus:
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _boom)
         with pytest.raises(RuntimeError):
-            svc.build(tmp_path, None, {})
+            svc.build(tmp_path, None)
 
         assert svc.status is AnalysisStatus.FAILED
         assert svc.is_available, "previous good result was discarded"
@@ -298,11 +421,11 @@ class TestAnalysisStatus:
 
         def _build_then_switch(*_args, **_kwargs):
             svc.invalidate()
-            return MagicMock(), MagicMock(), tmp_path / "old-workspace"
+            return MagicMock(), MagicMock(), tmp_path / "old-workspace", {}
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _build_then_switch)
 
-        svc.build(tmp_path, None, {})
+        svc.build(tmp_path, None)
 
         assert svc.status is AnalysisStatus.IDLE
         assert not svc.is_available
@@ -340,7 +463,7 @@ class TestBuildValidation:
         svc = AnalysisService()
 
         with pytest.raises(error_type, match=message):
-            svc.build(tmp_path, None, {}, persist_dir=tmp_path)
+            svc.build(tmp_path, None, persist_dir=tmp_path)
 
         assert svc.status is AnalysisStatus.FAILED
         assert not svc.is_available
@@ -376,7 +499,7 @@ class TestBuildValidation:
 
         svc = AnalysisService()
         with pytest.raises(ValueError, match="unsupported instruction"):
-            svc.build(tmp_path, None, {}, persist_dir=project)
+            svc.build(tmp_path, None, persist_dir=project)
 
         regenerate.assert_called_once()
         assert svc.project_dir == project
@@ -392,7 +515,7 @@ class TestBuildValidation:
         svc = AnalysisService()
 
         with pytest.raises(ValueError, match="codegen failed"):
-            svc.build(tmp_path, None, {}, persist_dir=tmp_path)
+            svc.build(tmp_path, None, persist_dir=tmp_path)
 
         assert svc.project_dir is None
 
@@ -401,15 +524,83 @@ class TestBuildValidation:
 
         def build_then_switch(*_args, on_project_generated, **_kwargs):
             svc.invalidate()
-            on_project_generated(tmp_path)
+            on_project_generated(tmp_path, {})
             raise ValueError("old project failed")
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", build_then_switch)
         with pytest.raises(ValueError, match="old project failed"):
-            svc.build(tmp_path, None, {})
+            svc.build(tmp_path, None)
 
         assert svc.status is AnalysisStatus.IDLE
         assert svc.project_dir is None
+        assert not svc.project_is_current
+        assert svc.project_tag_to_addr_key == {}
+
+    def test_a_rebuild_failing_after_publishing_names_tags_as_the_workspace_does(
+        self, monkeypatch, tmp_path
+    ):
+        """Nicknames swapped in CLICK: the workspace on disk already uses the new names."""
+        ds1, ds2 = get_addr_key("DS", 1), get_addr_key("DS", 2)
+
+        def rows(first: str, second: str) -> dict[int, AddressRow]:
+            return {
+                ds1: AddressRow(memory_type="DS", address=1, nickname=first),
+                ds2: AddressRow(memory_type="DS", address=2, nickname=second),
+            }
+
+        def build_graph(names: dict[int, AddressRow], fails: bool):
+            def build(*_args, on_project_generated, **_kwargs):
+                on_project_generated(tmp_path, names)
+                if fails:
+                    raise ValueError("graph failed")
+                return MagicMock(), MagicMock(), tmp_path, names
+
+            return build
+
+        svc = AnalysisService()
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            build_graph(rows("Fill", "Drain"), fails=False),
+        )
+        svc.build(tmp_path, None, persist_dir=tmp_path)
+        assert svc.project_tag_to_addr_key["Fill"] == ds1
+        assert svc.project_is_current
+
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            build_graph(rows("Drain", "Fill"), fails=True),
+        )
+        with pytest.raises(ValueError):
+            svc.build(tmp_path, None, persist_dir=tmp_path)
+
+        assert svc.project_tag_to_addr_key["Fill"] == ds2
+        assert svc.project_addr_key_to_tag[ds2] == "Fill"
+        assert svc.tag_to_addr_key["Fill"] == ds1, "the graph's names stay the last good build's"
+        assert svc.project_is_current
+
+    def test_a_rebuild_failing_before_publishing_leaves_an_older_workspace(
+        self, monkeypatch, tmp_path
+    ):
+        svc = AnalysisService()
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
+        )
+        svc.build(tmp_path, None, persist_dir=tmp_path)
+
+        def _boom(*_args, **_kwargs):
+            raise RuntimeError("conversion broke")
+
+        monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _boom)
+        with pytest.raises(RuntimeError):
+            svc.build(tmp_path, None, persist_dir=tmp_path)
+
+        assert svc.project_dir == tmp_path
+        assert not svc.project_is_current
+
+        serves = svc.mark_building()
+        svc.mark_failed("selection unreadable", serves=serves)  # its build never ran
+        assert not svc.project_is_current
 
 
 class TestGeneration:
@@ -422,11 +613,11 @@ class TestGeneration:
         svc = AnalysisService()
         monkeypatch.setattr(
             "clicknick.services.analysis_service._build_graph",
-            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path),
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
         )
-        svc.build(tmp_path, None, {})
+        svc.build(tmp_path, None)
         assert svc.generation == 1
-        svc.build(tmp_path, None, {})
+        svc.build(tmp_path, None)
         assert svc.generation == 2
 
     def test_bumps_even_when_the_build_fails(self, monkeypatch, tmp_path):
@@ -438,7 +629,7 @@ class TestGeneration:
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _boom)
         with pytest.raises(RuntimeError):
-            svc.build(tmp_path, None, {})
+            svc.build(tmp_path, None)
         assert svc.generation == 1
 
 
@@ -561,6 +752,26 @@ def test_dirty_source_is_snapshotted_before_click_regeneration(tmp_path):
     ) == "unfinished work\n"
 
 
+def test_edits_backed_up_by_one_save_survive_edits_backed_up_by_the_next(tmp_path):
+    persist = tmp_path / "pyrung_project"
+    _publish_generated_project(_staged_project(tmp_path / "first", "generated one\n"), persist)
+    (persist / "src" / "plc" / "main.py").write_text("edits A, half pasted\n", encoding="utf-8")
+    _publish_generated_project(_staged_project(tmp_path / "second", "generated two\n"), persist)
+    # Edits B on the regenerated source, without restoring A first.
+    (persist / "src" / "plc" / "main.py").write_text("edits B\n", encoding="utf-8")
+
+    _publish_generated_project(_staged_project(tmp_path / "third", "generated three\n"), persist)
+
+    assert (persist / "backup" / "src" / "plc" / "main.py").read_text(
+        encoding="utf-8"
+    ) == "edits B\n"
+    (older,) = older_plc_backups(persist)
+    assert (persist / "backup" / "older" / older / "src" / "plc" / "main.py").read_text(
+        encoding="utf-8"
+    ) == "edits A, half pasted\n"
+    assert generated_source_state_path(persist).is_file()
+
+
 def test_regeneration_preserves_workspace_owned_files(tmp_path):
     persist = tmp_path / "Example Workspace"
     (persist / ".git").mkdir(parents=True)
@@ -585,34 +796,192 @@ def test_regeneration_preserves_workspace_owned_files(tmp_path):
     assert (persist / "pyproject.toml").read_text(encoding="utf-8") == "user config\n"
 
 
-def test_regeneration_refreshes_only_marked_workspace_guidance(tmp_path):
+_POINTER = "<!-- pyrung:guidance --> Read @AGENTS.pyrung.md first."
+
+
+def _staged_guidance(path):
+    staged = _staged_project(path, "generated\n")
+    (staged / "AGENTS.md").write_text(f"# Machine: Line1\n\n{_POINTER}\n", encoding="utf-8")
+    (staged / "AGENTS.pyrung.md").write_text("fresh guidance\n", encoding="utf-8")
+    return staged
+
+
+def test_regeneration_rewrites_pyrungs_guidance_and_keeps_the_users(tmp_path):
     persist = tmp_path / "Example Workspace"
     persist.mkdir()
-    (persist / "README.md").write_text(
-        "# User heading\n\n"
+    user = f"# Machine: Line1\n\n{_POINTER}\n\n## Notes\n\nStation 3 prox is flaky.\n"
+    (persist / "AGENTS.md").write_text(user, encoding="utf-8")
+    (persist / "AGENTS.pyrung.md").write_text("stale guidance\n", encoding="utf-8")
+
+    _publish_generated_project(_staged_guidance(tmp_path / "staged"), persist)
+
+    assert (persist / "AGENTS.md").read_text(encoding="utf-8") == user
+    assert (persist / "AGENTS.pyrung.md").read_text(encoding="utf-8") == "fresh guidance\n"
+
+
+def test_regeneration_puts_a_missing_pointer_back(tmp_path):
+    persist = tmp_path / "Example Workspace"
+    persist.mkdir()
+    (persist / "AGENTS.md").write_text("My own notes.\n", encoding="utf-8")
+
+    _publish_generated_project(_staged_guidance(tmp_path / "staged"), persist)
+
+    assert (persist / "AGENTS.md").read_text(encoding="utf-8") == f"{_POINTER}\n\nMy own notes.\n"
+
+    (persist / "AGENTS.md").write_text("# Line 1\n\nMy own notes.\n", encoding="utf-8")
+    _publish_generated_project(_staged_guidance(tmp_path / "staged-again"), persist)
+    assert (persist / "AGENTS.md").read_text(encoding="utf-8") == (
+        f"# Line 1\n\n{_POINTER}\n\nMy own notes.\n"
+    ), "under the user's title"
+
+
+def test_guidance_written_whole_by_an_older_pyrung_moves_aside(tmp_path):
+    persist = tmp_path / "Example Workspace"
+    persist.mkdir()
+    old = (
+        "# Machine: Line1\n\n"
         "<!-- pyrung:workspace-lifecycle:start -->\n"
         "temporary guidance\n"
         "<!-- pyrung:workspace-lifecycle:end -->\n\n"
-        "User notes.\n",
-        encoding="utf-8",
+        "Edited by hand.\n"
+    )
+    (persist / "AGENTS.md").write_text(old, encoding="utf-8")
+
+    staged = _staged_guidance(tmp_path / "staged")
+    _publish_generated_project(staged, persist)
+
+    assert (persist / "AGENTS.previous.md").read_text(encoding="utf-8") == old
+    assert (persist / "AGENTS.md").read_text(encoding="utf-8") == (
+        (staged / "AGENTS.md").read_text(encoding="utf-8")
     )
 
-    staged = _staged_project(tmp_path / "staged-guidance", "generated\n")
-    (staged / "README.md").write_text(
-        "# Generated heading\n\n"
-        "<!-- pyrung:workspace-lifecycle:start -->\n"
-        "persistent guidance\n"
-        "<!-- pyrung:workspace-lifecycle:end -->\n",
-        encoding="utf-8",
+
+def test_an_ansi_guidance_file_does_not_stop_the_build(tmp_path):
+    persist = tmp_path / "Example Workspace"
+    _publish_generated_project(_staged_project(tmp_path / "first", "generated one\n"), persist)
+    ansi = (
+        "# Line 1\r\n\r\nOven at 180\N{DEGREE SIGN}C, caf\N{LATIN SMALL LETTER E WITH ACUTE}.\r\n"
     )
+    (persist / "AGENTS.md").write_bytes(ansi.encode("cp1252"))
+    staged = _staged_guidance(tmp_path / "second")
+    (staged / "csv").mkdir()
+    (staged / "csv" / "main.csv").write_text("rung\n", encoding="utf-8")
+    (staged / "src" / "plc" / "main.py").write_text("generated two\n", encoding="utf-8")
 
     _publish_generated_project(staged, persist)
 
-    readme = (persist / "README.md").read_text(encoding="utf-8")
-    assert "# User heading" in readme
-    assert "User notes." in readme
-    assert "persistent guidance" in readme
-    assert "temporary guidance" not in readme
+    assert (persist / "AGENTS.md").read_bytes() == ansi.encode("cp1252")
+    assert (persist / "csv" / "main.csv").is_file()
+    assert (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "generated two\n"
+
+
+def test_a_guidance_file_with_a_bom_gets_the_pointer_under_its_title(tmp_path):
+    persist = tmp_path / "Example Workspace"
+    persist.mkdir()
+    (persist / "AGENTS.md").write_bytes(b"\xef\xbb\xbf# Line 2\r\n\r\nMy own notes.\r\n")
+
+    _publish_generated_project(_staged_guidance(tmp_path / "staged"), persist)
+
+    assert (persist / "AGENTS.md").read_bytes() == (
+        b"\xef\xbb\xbf# Line 2\r\n\r\n" + _POINTER.encode() + b"\r\n\r\nMy own notes.\r\n"
+    )
+
+
+def test_a_folder_that_cannot_be_copied_leaves_the_last_one(tmp_path, monkeypatch):
+    """A csv/ file open in Excel used to leave the workspace with no csv/ at all."""
+    persist = tmp_path / "pyrung_project"
+    first = _staged_project(tmp_path / "first", "generated one\n")
+    (first / "csv").mkdir()
+    (first / "csv" / "main.csv").write_text("first save\n", encoding="utf-8")
+    _publish_generated_project(first, persist)
+    second = _staged_project(tmp_path / "second", "generated two\n")
+    (second / "csv").mkdir()
+    (second / "csv" / "main.csv").write_text("second save\n", encoding="utf-8")
+    copytree = shutil.copytree
+
+    def refuse_csv(source, *args, **kwargs):
+        if Path(source).name == "csv":
+            raise PermissionError("main.csv is open in another program")
+        return copytree(source, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copytree", refuse_csv)
+
+    with pytest.raises(PermissionError):
+        _publish_generated_project(second, persist)
+
+    assert (persist / "csv" / "main.csv").read_text(encoding="utf-8") == "first save\n"
+    assert (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "generated one\n"
+
+
+def _save(root: Path, label: str) -> Path:
+    staged = _staged_project(root, f"{label}\n")
+    (staged / "csv").mkdir()
+    (staged / "csv" / "main.csv").write_text(f"{label}\n", encoding="utf-8")
+    (staged / "nicknames.csv").write_text(f"{label}\n", encoding="utf-8")
+    return staged
+
+
+def _assert_workspace_holds(persist: Path, label: str) -> None:
+    """csv/ and src/plc come from one save, recorded as its generation."""
+    assert (persist / "csv" / "main.csv").read_text(encoding="utf-8") == f"{label}\n"
+    assert (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8") == f"{label}\n"
+    assert not plc_source_is_modified(persist)
+
+
+def test_a_locked_nicknames_csv_leaves_csv_and_source_from_one_save(tmp_path, monkeypatch):
+    persist = tmp_path / "pyrung_project"
+    _publish_generated_project(_save(tmp_path / "first", "save 1"), persist)
+    copy2 = shutil.copy2
+
+    def refuse_nicknames(source, *args, **kwargs):
+        if Path(source).name == "nicknames.csv":
+            raise PermissionError("nicknames.csv is open in another program")
+        return copy2(source, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copy2", refuse_nicknames)
+
+    with pytest.raises(PermissionError):
+        _publish_generated_project(_save(tmp_path / "second", "save 2"), persist)
+
+    _assert_workspace_holds(persist, "save 1")
+
+
+def test_a_refused_source_rename_puts_csv_back_too(tmp_path, monkeypatch):
+    persist = tmp_path / "pyrung_project"
+    _publish_generated_project(_save(tmp_path / "first", "save 1"), persist)
+    replace = Path.replace
+
+    def refuse_source(self, target):
+        if self.name == ".plc.staging":
+            raise PermissionError("src/plc is in use")
+        return replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", refuse_source)
+
+    with pytest.raises(PermissionError):
+        _publish_generated_project(_save(tmp_path / "second", "save 2"), persist)
+
+    _assert_workspace_holds(persist, "save 1")
+    assert sorted(path.name for path in persist.iterdir() if path.name.startswith(".")) == []
+    assert sorted(path.name for path in (persist / "src").iterdir()) == ["plc"]
+
+    monkeypatch.setattr(Path, "replace", replace)
+    _publish_generated_project(_save(tmp_path / "third", "save 3"), persist)
+    _assert_workspace_holds(persist, "save 3")
+
+
+def test_regeneration_removes_outputs_it_no_longer_writes(tmp_path):
+    persist = tmp_path / "pyrung_project"
+    _publish_generated_project(_staged_project(tmp_path / "first", "generated\n"), persist)
+    (persist / "csv_output").mkdir()
+    (persist / "csv_output" / "main.csv").write_text("exported\n", encoding="utf-8")
+    (persist / "run.py").write_text("# runner\n", encoding="utf-8")
+
+    _publish_generated_project(_staged_project(tmp_path / "second", "generated\n"), persist)
+
+    assert not (persist / "csv_output").exists()
+    assert not (persist / "run.py").exists()
+    assert (persist / "project_to_csv.py").is_file()
 
 
 def test_clean_regeneration_does_not_replace_existing_recovery_snapshot(tmp_path):
@@ -649,7 +1018,93 @@ def test_failed_regeneration_keeps_dirty_source_in_place(tmp_path, monkeypatch):
     monkeypatch.setattr("pyrung.click.ladder_to_pyrung_project", fail_generation)
 
     with pytest.raises(RuntimeError, match="conversion failed"):
-        _regenerate_persisted_project(tmp_path, None, persist)
+        _regenerate_persisted_project(tmp_path, None, persist, analog_inputs=frozenset())
 
     assert active.read_text(encoding="utf-8") == "unfinished work\n"
     assert not (persist / "backup" / "src" / "plc").exists()
+
+
+def test_regeneration_publishes_the_legacy_record_and_removes_it_after_a_clean_save(
+    tmp_path, monkeypatch
+):
+    import warnings
+
+    import laddercodec
+    from laddercodec.model import Program
+
+    from clicknick.ladder.program import LEGACY_ENCODINGS_FILE, read_legacy_encodings
+
+    class FakeLegacyWarning(UserWarning):
+        def __init__(self, rung: int) -> None:
+            super().__init__("Math H70000")
+            self.instruction, self.token, self.rung, self.program = "Math", "H70000", rung, None
+            self.detail = "it is stored as 16-bit and CLICK runs it as 4464."
+
+    monkeypatch.setattr(laddercodec, "LegacyEncodingWarning", FakeLegacyWarning, raising=False)
+    stale = [True]
+
+    def decode_program(_data):
+        if stale[0]:
+            warnings.warn(FakeLegacyWarning(0), stacklevel=2)
+        return Program(name="Main Program", prog_idx=1, rungs=[])
+
+    def generate(_csv_dir, *, output_dir, **_kwargs):
+        (output_dir / "src" / "plc").mkdir(parents=True)
+        (output_dir / "src" / "plc" / "main.py").write_text("generated\n", encoding="utf-8")
+
+    monkeypatch.setattr("clicknick.ladder.program.decode_program", decode_program)
+    monkeypatch.setattr("clicknick.ladder.program.write_csv", lambda *_a, **_k: None)
+    monkeypatch.setattr("pyrung.click.ladder_to_pyrung_project", generate)
+    scr = tmp_path / "scr"
+    scr.mkdir()
+    (scr / "Scr1.tmp").write_bytes(b"scr")
+    persist = tmp_path / "pyrung_project"
+
+    _regenerate_persisted_project(scr, None, persist, analog_inputs=frozenset())
+
+    record = persist / "csv" / LEGACY_ENCODINGS_FILE
+    assert [item.rung for item in read_legacy_encodings(persist / "csv")] == [1]
+
+    stale[0] = False  # CLICK saved a clean copy
+    _regenerate_persisted_project(scr, None, persist, analog_inputs=frozenset())
+
+    assert not record.exists()
+
+
+def test_build_with_a_rung_laddercodec_cannot_read_publishes_the_rest(tmp_path, monkeypatch):
+    """The build used to stop on WriterError, so the workspace and its csv/ went stale."""
+    import typing
+
+    from laddercodec import Coil, Contact, Rung
+    from laddercodec.instructions import UnknownCondition
+    from laddercodec.model import Program
+
+    from clicknick.ladder.program import STAND_IN_COMMENT, read_legacy_encodings
+
+    coil = typing.get_type_hints(Contact)["type"].COIL_OUT
+
+    def _rung(output: str, first: object = "-") -> Rung:
+        conditions = [first, *["-"] * 30]
+        return Rung(1, [conditions], [Coil(coil, output)], None)
+
+    rungs = [_rung("C1"), _rung("C2", UnknownCondition(raw=b"Compare")), _rung("C3")]
+    monkeypatch.setattr(
+        "clicknick.ladder.program.decode_program",
+        lambda _data: Program("Main Program", 1, rungs),
+    )
+    monkeypatch.setattr("clicknick.services.analysis_service._channel_inputs", lambda _s: [])
+    scr = tmp_path / "scr"
+    scr.mkdir()
+    (scr / "Scr1.tmp").write_bytes(b"scr")
+    persist = tmp_path / "pyrung_project"
+    svc = AnalysisService()
+
+    assert svc.build(scr, None, persist_dir=persist)
+
+    assert svc.status is AnalysisStatus.READY
+    assert [(item.rung, item.unreadable) for item in read_legacy_encodings(persist / "csv")] == [
+        (2, True)
+    ]
+    main = (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8")
+    assert STAND_IN_COMMENT in main
+    assert "out(C3)" in main

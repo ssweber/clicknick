@@ -8,7 +8,7 @@ Fill a pattern down a selection: `Alm1` becomes `Alm2`, `Alm3`, and so on. Clone
 
 ## Edit
 
-The Address Editor opens different address sections in separate windows, takes pasted ranges of cells, and flags duplicate nicknames and invalid values as you type. Search with <kbd>Ctrl</kbd>+<kbd>F</kbd> and replace with <kbd>Ctrl</kbd>+<kbd>R</kbd>, across nicknames and comments or within the current selection; regular expressions work, including `^` and `$` anchors and `` capture groups in replacements. Right-click a comment cell to set its annotations in a dialog (read-only, external, choices, min and max, unit of measure, physical timing) instead of typing bracket syntax; Check Program and the Console read them. Undo a whole bulk operation as one step, and review every change before it syncs to CLICK.
+The Address Editor opens different address sections in separate windows, takes pasted ranges of cells, and flags duplicate nicknames and invalid values as you type. Search with <kbd>Ctrl</kbd>+<kbd>F</kbd> and replace with <kbd>Ctrl</kbd>+<kbd>R</kbd>, across nicknames and comments or within the current selection; regular expressions work, including `^` and `$` anchors and capture groups such as `\1` in replacements. Right-click a comment cell to set its annotations in a dialog (read-only, external, choices, min and max, unit of measure, physical timing) instead of typing bracket syntax; Check Program and the Console read them. Undo a whole bulk operation as one step, and review every change before it syncs to CLICK.
 
 ![Address Editor demo](https://github.com/user-attachments/assets/ee7b1914-2f18-483a-ace1-84c2aa8eea98)
 
@@ -32,9 +32,9 @@ Trailing numbers are read as arrays: `Alm1_id`, `Alm1_value`, `Alm2_id`, and `Al
 
 ## Navigate
 
-Autocomplete in every instruction dialog is [tour stop 1](tour/autocomplete.md).
+Autocomplete in every instruction dialog is [tour stop 2](tour/autocomplete.md).
 
-The Address Editor's filter box also understands what the program does with a tag. `input:` shows tags the ladder reads but never writes, your physical inputs and HMI bits. `output:` shows tags it writes but never reads, your physical outputs. `pivot:` shows the ones in between, and `isolated:` shows nicknamed addresses no rung touches. `upstream:MotorOut` shows everything that feeds a tag, however many rungs away; `downstream:StartPB` shows everything a tag feeds. Prefixes combine with text, so `upstream:MotorOut ^Alm` narrows to the alarms that can hold a motor off.
+The Address Editor's filter box also understands what the program does with a tag. `input:` shows tags the ladder reads but never writes, your physical inputs and HMI bits. `output:` shows tags it writes but never reads, your physical outputs. `pivot:` shows the ones in between, and `isolated:` shows nicknamed addresses no rung touches. `upstream:MotorOut` shows everything that feeds a tag, however many rungs away; `downstream:StartPB` shows everything a tag feeds. `tree:Tank_Pump1` shows that nickname and the ones under it (`Tank_Pump1_Run`), which is what double-clicking it in the Tag Browser sets. Prefixes combine with text, so `upstream:MotorOut ^Alm` narrows to the alarms that can hold a motor off.
 
 Data Views are built by name. Load the `.cdv` files from the open project into tabs, add addresses by nickname, and drag to reorder. Double-click a tag in the Tag Browser to add it to the Data View, or double-click a group to add the whole structure or block at once. A Data View created in ClickNick is imported into CLICK by hand.
 

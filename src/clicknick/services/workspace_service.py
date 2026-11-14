@@ -42,13 +42,15 @@ def get_workspace_status(
     if analysis.status is AnalysisStatus.BUILDING:
         return WorkspaceStatus(WorkspaceState.PREPARING, "Preparing")
     if analysis.status is AnalysisStatus.FAILED:
-        repairs = getattr(analysis, "system_nickname_repairs", ())
-        label = "Analysis failed" if analysis.project_dir is not None else "Build failed"
-        return WorkspaceStatus(
-            WorkspaceState.FAILED,
-            "System names need repair" if repairs else label,
-            detail=analysis.error,
-        )
+        if getattr(analysis, "system_nickname_repairs", ()):
+            label = "System names need repair"
+        elif getattr(analysis, "needs_comment_upgrade", False):
+            label = "Run Tools > Repairs > Upgrade Project"
+        elif analysis.project_dir is not None:
+            label = "Analysis failed"
+        else:
+            label = "Build failed"
+        return WorkspaceStatus(WorkspaceState.FAILED, label, detail=analysis.error)
 
     project_dir = analysis.project_dir
     if project_dir is None:

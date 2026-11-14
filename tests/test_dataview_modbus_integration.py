@@ -11,7 +11,9 @@ from pyclickplc.dataview import DataViewFile, DataViewRecord
 
 from clicknick.views.dataview_editor.panel import (
     COL_ADDRESS,
+    COL_COMMENT,
     COL_NEW_VALUE,
+    COL_NICKNAME,
     DataviewPanel,
 )
 from clicknick.views.dataview_editor.window import ConnectionState, DataviewEditorWindow
@@ -62,11 +64,13 @@ class FakeSheet:
         self.cells: dict[tuple[int, int], object] = {}
         self.data: list[list[object]] = []
         self.index_data: list[str] = []
+        # Every column is displayed, so a displayed column is its data column
+        self.MT = SimpleNamespace(datacn=lambda column: column)
 
     def get_cell_data(self, row, col):
         return self.cells.get((row, col), "")
 
-    def set_cell_data(self, row, col, value):
+    def set_cell_data(self, row, col, value, **kwargs):
         self.cells[(row, col)] = value
 
     def set_sheet_data(self, data, **kwargs):
@@ -99,6 +103,9 @@ class FakeSheet:
     def highlight_cells(self, **kwargs):
         return None
 
+    def dehighlight_cells(self, **kwargs):
+        return None
+
 
 class FakePanel:
     def __init__(
@@ -111,6 +118,9 @@ class FakePanel:
         self.name = name
         self.file_path = Path(f"{name}.cdv")
         self.is_dirty = False
+        self.reopen_rejected_edit = lambda: False
+        # No cell is being edited
+        self.sheet = SimpleNamespace(MT=SimpleNamespace(text_editor=SimpleNamespace(open=False)))
         self._poll_addresses = poll_addresses or []
         self._write_rows = write_rows or []
         self._write_all_rows = write_all_rows or []
@@ -212,15 +222,22 @@ class FakeModbusService:
 
 def _make_panel_stub(rows: list[DataViewRecord]) -> DataviewPanel:
     panel = DataviewPanel.__new__(DataviewPanel)
-    panel.rows = rows
+    panel._file = DataViewFile(rows=rows)
     panel.address_normalizer = normalize_address
     panel.nickname_lookup = None
     panel.on_modified = None
     panel.on_addresses_changed = None
     panel._write_checks = [False] * len(rows)
     panel._live_values = {}
+    panel._forces = {}
+    panel.on_force = None
     panel._suppress_notifications = False
     panel._is_dirty = False
+    panel._undo_stack = []
+    panel._redo_stack = []
+    panel._based_on = None
+    panel._saved_values = panel._row_values()
+    panel.load_error = None
     panel.sheet = FakeSheet()
     panel._update_status = lambda: None
     return panel
@@ -233,7 +250,6 @@ def _make_window_stub(
 ) -> DataviewEditorWindow:
     window = DataviewEditorWindow.__new__(DataviewEditorWindow)
     window.notebook = FakeNotebook(panels)
-    window._open_panels = {panel.file_path: panel for panel in panels}
     window._active_panel = panels[0] if panels else None
     window._pending_closed_panel = None
     window._modbus = FakeModbusService()
@@ -245,6 +261,9 @@ def _make_window_stub(
     window._modbus_host_var = FakeVar("127.0.0.1")
     window._modbus_port_var = FakeVar("502")
     window._modbus_toggle_var = FakeVar("Connect")
+    window._target_var = FakeVar("")
+    window._sim = None
+    window._plc_address_before_sim = None
     window._set_modbus_error_text = lambda text="": None
     window.write_checked_button = FakeWidget()
     window.write_all_button = FakeWidget()
@@ -375,7 +394,7 @@ def test_connection_menu_uses_same_handlers(monkeypatch):
     window._on_close = MagicMock()
     window._clear_selected_rows = MagicMock()
     window._refresh_nicknames = MagicMock()
-    window._refresh_file_list = MagicMock()
+    window.refresh_file_list = MagicMock()
     window._toggle_nav = MagicMock()
     window._toggle_modbus_toolbar = MagicMock()
     window._modbus_toolbar_var = FakeVar(True)
@@ -552,9 +571,10 @@ def test_export_writes_copy_without_rebinding_tab_path(monkeypatch, tmp_path):
 
     window = DataviewEditorWindow.__new__(DataviewEditorWindow)
     window.shared_data = SimpleNamespace(dataview_folder=tmp_path / "DataView")
-    window._open_panels = {source_path: panel}
+    window._last_folder = None
     window._get_current_panel = lambda: panel
-    window._refresh_file_list = MagicMock()
+    window._iter_open_panels = lambda: [panel]
+    window.refresh_file_list = MagicMock()
     window._update_tab_title = MagicMock()
 
     monkeypatch.setattr(
@@ -567,7 +587,6 @@ def test_export_writes_copy_without_rebinding_tab_path(monkeypatch, tmp_path):
     expected_export_path = export_dir / "source.cdv"
     assert panel.export_calls == [expected_export_path]
     assert panel.file_path == source_path
-    assert window._open_panels == {source_path: panel}
     assert panel.save_calls == 0
     assert window._update_tab_title.call_count == 0
 
@@ -575,23 +594,102 @@ def test_export_writes_copy_without_rebinding_tab_path(monkeypatch, tmp_path):
 def test_panel_export_keeps_binding_and_dirty(monkeypatch, tmp_path):
     panel = _make_panel_stub([_row("X001", True)])
     panel.file_path = tmp_path / "bound.cdv"
-    panel._header = None
     panel._is_dirty = True
     panel.status_label = FakeWidget()
 
-    captured: dict[str, object] = {}
-
-    def _capture_export(path, rows, has_new_values, header):
-        captured["path"] = path
-        captured["rows"] = rows
-        captured["has_new_values"] = has_new_values
-        captured["header"] = header
-
-    monkeypatch.setattr("clicknick.views.dataview_editor.panel.export_cdv", _capture_export)
-
     export_path = tmp_path / "copy.cdv"
     assert panel.export(export_path) is True
-    assert captured["path"] == export_path
-    assert captured["has_new_values"] is True
+
+    exported = DataViewFile.load(export_path)
+    assert exported.has_new_values is True
+    assert exported.rows[0].address == "X001"
     assert panel.file_path == tmp_path / "bound.cdv"
     assert panel.is_dirty is True
+
+
+def test_panel_draws_names_from_live_lookup_not_the_record():
+    names = {"X001": ("Start", "Start button")}
+    panel = _make_panel_stub([_row("X001"), _row("X002")])
+    panel.nickname_lookup = names.get
+    panel.sheet.set_refresh_timer = lambda: None
+
+    panel._update_row_display(0)
+    assert panel.sheet.get_cell_data(0, COL_NICKNAME) == "Start"
+    assert panel.sheet.get_cell_data(0, COL_COMMENT) == "Start button"
+    assert panel.rows[0].nickname == ""  # nothing copied onto the record
+
+    names["X001"] = ("StartRenamed", "Renamed")
+    names["X002"] = ("Stop", "")
+    panel.refresh_nicknames()
+    assert panel.sheet.get_cell_data(0, COL_NICKNAME) == "StartRenamed"
+    assert panel.sheet.get_cell_data(0, COL_COMMENT) == "Renamed"
+    assert panel.sheet.get_cell_data(1, COL_NICKNAME) == "Stop"
+
+    del names["X001"]
+    panel.refresh_nicknames()
+    assert panel.sheet.get_cell_data(0, COL_NICKNAME) == ""
+    assert panel.sheet.get_cell_data(0, COL_COMMENT) == ""
+
+
+class FakeSimulation:
+    modbus_available = True
+    modbus_info = {"port": 5020}
+    modbus_port = 5020
+
+    def add_listener(self, callback):
+        pass
+
+    def remove_listener(self, callback):
+        pass
+
+
+def _make_sim_window(current: list):
+    window = _make_window_stub([FakePanel("one")], connected=False)
+    window._get_simulation = lambda: current[0]
+    window._pending_sim_connect = False
+    window._on_sim_event = lambda *args: None
+    window._modbus_toolbar_var = FakeVar(True)
+    window._sync_panel_simulation = lambda panel: None
+    window.refresh_title = lambda: None
+    window._update_modbus_controls = lambda: None
+    window._connect_modbus = MagicMock()
+    window._modbus_host_var.set("192.168.0.10")
+    window._modbus_port_var.set("1502")
+    return window
+
+
+def test_simulation_stop_puts_back_the_plc_address():
+    sim = FakeSimulation()
+    current = [sim]
+    window = _make_sim_window(current)
+
+    window._check_simulation()
+    assert window._modbus_host_var.get() == "127.0.0.1"
+    assert window._modbus_port_var.get() == "5020"
+
+    window._connect_modbus.reset_mock()
+    current[0] = None
+    window._check_simulation()
+
+    assert window._modbus_host_var.get() == "192.168.0.10"
+    assert window._modbus_port_var.get() == "1502"
+    window._connect_modbus.assert_not_called()
+
+
+def test_restart_keeps_the_first_plc_address():
+    first, second = FakeSimulation(), FakeSimulation()
+    current = [first]
+    window = _make_sim_window(current)
+
+    window._check_simulation()
+    current[0] = second
+    window._check_simulation()
+
+    assert window._sim is second
+    assert window._modbus_host_var.get() == "127.0.0.1"
+
+    current[0] = None
+    window._check_simulation()
+
+    assert window._modbus_host_var.get() == "192.168.0.10"
+    assert window._modbus_port_var.get() == "1502"

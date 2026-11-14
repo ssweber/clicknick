@@ -9,9 +9,9 @@ ClickNick is a free, local Windows application. It adds nickname autocomplete, p
 - [Overview](./)
 - [Install](install/)
 - [Getting started](getting-started/)
+- [Product tour: Simulator](tour/simulator/)
 - [Product tour: nickname autocomplete](tour/autocomplete/)
 - [Product tour: program checks](tour/checks/)
-- [Product tour: offline Console](tour/offline-console/)
 - [Product tour: readable history](tour/readable-history/)
 - [Product tour: engineering workspace](tour/engineering-workspace/)
 - [Product tour: AI in a workspace you can check](tour/ai-in-the-workspace/)
@@ -20,6 +20,6 @@ ClickNick is a free, local Windows application. It adds nickname autocomplete, p
 
 ## Project-file boundary
 
-ClickNick never directly edits a `.ckp` file. Ladder changes return through Preview Changes and CLICK's normal ladder workflow, and saving in CLICK Programming Software remains the final authority.
+ClickNick never directly edits a `.ckp` file. Ladder changes return through Review Changes and CLICK's normal ladder workflow, and saving in CLICK Programming Software remains the final authority.
 
 Source: https://github.com/ssweber/clicknick

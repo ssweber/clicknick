@@ -1,5 +1,7 @@
 """Tests for AddressStore with base/overlay architecture."""
 
+from dataclasses import replace
+
 import pytest
 from pyclickplc.addresses import get_addr_key
 from pyclickplc.banks import DataType
@@ -125,11 +127,10 @@ class TestEditSession:
         """Editing different fields of one row across SEPARATE sessions must
         preserve earlier edits.
 
-        Regression: visible_state rows carry an empty dirty_fields, so freezing
-        a later session against visible_state dropped the prior session's dirty
-        markers and _merge_base_with_override reverted those fields. (Reachable
-        in the UI: edit a nickname in the grid, then edit that row's comment via
-        the right-click annotation dialog.)
+        Regression: a later session was once frozen against visible_state rather
+        than the existing override, which dropped the prior session's fields and
+        reverted them. (Reachable in the UI: edit a nickname in the grid, then
+        edit that row's comment via the right-click annotation dialog.)
         """
         addr_key = get_addr_key("X", 1)
 
@@ -520,7 +521,7 @@ class TestObservers:
     def test_edit_refreshes_cached_unified_view_before_notification(self, store):
         """A newly opened editor must see edits made before it registered."""
         addr_key = get_addr_key("C", 10)
-        view = build_unified_view(store.visible_state, store.all_nicknames)
+        view = build_unified_view(store.visible_state)
         store.set_unified_view(view)
 
         with store.edit_session("AI: tag apply") as session:
@@ -921,3 +922,461 @@ class TestExternalDatabaseUpdate:
         store_with_data._data_source.load_all_addresses = fail_load
 
         assert store_with_data._on_database_update() is False
+
+
+class TestDerivedStateStaysConsistent:
+    """Derived state (validation, dirty, block colors) must match a fresh computation.
+
+    Regression tests for bugs A-C from the 2026-10 state review, plus the
+    Sync/Discard undo-history rules.
+    """
+
+    @pytest.fixture
+    def named_store(self):
+        """Store with two distinct C nicknames loaded from the database."""
+        rows = {
+            get_addr_key("C", 1): AddressRow(memory_type="C", address=1, nickname="Alpha"),
+            get_addr_key("C", 2): AddressRow(memory_type="C", address=2, nickname="Beta"),
+        }
+        s = AddressStore(MockDataSource(rows))
+        s.load_initial_data()
+        return s
+
+    @staticmethod
+    def _rename(store, addr_key, nickname):
+        with store.edit_session("Rename") as session:
+            session.set_field(addr_key, "nickname", nickname)
+
+    def test_duplicate_rename_flags_both_rows(self, named_store):
+        c1, c2 = get_addr_key("C", 1), get_addr_key("C", 2)
+
+        self._rename(named_store, c2, "Alpha")
+
+        assert not named_store.visible_state[c1].is_valid
+        assert not named_store.visible_state[c2].is_valid
+
+    def test_undo_duplicate_rename_clears_partner_error(self, named_store):
+        c1 = get_addr_key("C", 1)
+        self._rename(named_store, get_addr_key("C", 2), "Alpha")
+
+        named_store.undo()
+
+        assert named_store.visible_state[c1].is_valid
+        assert not named_store.has_errors()
+
+    def test_discard_duplicate_rename_clears_partner_error(self, named_store):
+        c1 = get_addr_key("C", 1)
+        self._rename(named_store, get_addr_key("C", 2), "Alpha")
+
+        named_store.discard_all_changes()
+
+        assert named_store.visible_state[c1].is_valid
+        assert not named_store.has_errors()
+
+    def test_undo_back_into_duplicate_flags_partner(self, named_store):
+        c1, c2 = get_addr_key("C", 1), get_addr_key("C", 2)
+        self._rename(named_store, c2, "Alpha")
+        self._rename(named_store, c2, "Gamma")
+        assert named_store.visible_state[c1].is_valid
+
+        named_store.undo()
+
+        assert not named_store.visible_state[c1].is_valid
+        assert not named_store.visible_state[c2].is_valid
+
+    def test_sync_clears_undo_and_redo(self, named_store):
+        c1, c2 = get_addr_key("C", 1), get_addr_key("C", 2)
+        self._rename(named_store, c1, "AlphaNew")
+        self._rename(named_store, c2, "BetaNew")
+        named_store.undo()
+        assert named_store.can_undo() and named_store.can_redo()
+
+        named_store.save_all_changes()
+
+        assert not named_store.can_undo()
+        assert not named_store.can_redo()
+        assert not named_store.undo()
+        assert not named_store.has_unsaved_changes()
+
+    def test_failed_sync_keeps_undo_history(self, named_store):
+        self._rename(named_store, get_addr_key("C", 1), "AlphaNew")
+
+        def fail_save(rows):
+            raise RuntimeError("database locked")
+
+        named_store._data_source.save_changes = fail_save
+        with pytest.raises(RuntimeError):
+            named_store.save_all_changes()
+
+        assert named_store.can_undo()
+        assert named_store.has_unsaved_changes()
+
+    def test_external_save_keeps_undo_history(self, named_store):
+        c1 = get_addr_key("C", 1)
+        self._rename(named_store, c1, "AlphaNew")
+
+        named_store._data_source._initial_rows[c1] = AddressRow(
+            memory_type="C", address=1, nickname="AlphaFromClick"
+        )
+        named_store._on_database_update()
+
+        assert named_store.can_undo()
+        assert named_store.visible_state[c1].nickname == "AlphaNew"
+        assert named_store.is_dirty(c1)
+
+    def test_undo_to_value_click_already_has_is_not_dirty(self, named_store):
+        c1 = get_addr_key("C", 1)
+        self._rename(named_store, c1, "First")
+        self._rename(named_store, c1, "Second")
+
+        # CLICK saves "First", then the user undoes back to "First".
+        named_store._data_source._initial_rows[c1] = AddressRow(
+            memory_type="C", address=1, nickname="First"
+        )
+        named_store._on_database_update()
+        named_store.undo()
+
+        assert named_store.visible_state[c1].nickname == "First"
+        assert not named_store.is_dirty(c1)
+        assert not named_store.has_unsaved_changes()
+
+    def test_external_write_of_typed_value_clears_dirty(self, named_store):
+        c1 = get_addr_key("C", 1)
+        self._rename(named_store, c1, "Typed")
+        assert named_store.is_dirty(c1)
+
+        # CLICK saves the same value the user typed.
+        named_store._data_source._initial_rows[c1] = AddressRow(
+            memory_type="C", address=1, nickname="Typed"
+        )
+        named_store._on_database_update()
+
+        assert not named_store.is_field_dirty(c1, "nickname")
+        assert not named_store.is_dirty(c1)
+        assert not named_store.has_unsaved_changes()
+        assert named_store.get_dirty_keys() == set()
+
+    def test_discard_clears_undo_and_redo(self, named_store):
+        c1 = get_addr_key("C", 1)
+        self._rename(named_store, c1, "First")
+        self._rename(named_store, c1, "Second")
+        named_store.undo()
+        assert named_store.can_undo() and named_store.can_redo()
+
+        named_store.discard_all_changes()
+
+        assert not named_store.can_undo()
+        assert not named_store.can_redo()
+        assert named_store.visible_state[c1].nickname == "Alpha"
+
+    def test_block_colors_after_edit_match_first_load(self):
+        """Interleaved T/TD blocks color only their own type, before and after edits."""
+        t1, t3 = get_addr_key("T", 1), get_addr_key("T", 3)
+        rows = {
+            t1: AddressRow(memory_type="T", address=1, comment="<Pumps bg='Red'>"),
+            t3: AddressRow(memory_type="T", address=3, comment="</Pumps>"),
+        }
+        s = AddressStore(MockDataSource(rows))
+        s.load_initial_data()
+        s.set_unified_view(build_unified_view(s.visible_state))
+        at_load = dict(s.block_colors)
+        assert at_load.get(t1) == "Red"
+        assert get_addr_key("TD", 1) not in at_load
+
+        with s.edit_session("Unrelated comment") as session:
+            session.set_field(get_addr_key("C", 1), "comment", "note")
+
+        assert s.block_colors == at_load
+
+    @staticmethod
+    def _fresh_comment_validity(store):
+        """Comment validity a freshly loaded store computes for the same content."""
+        rows = {
+            key: AddressRow(memory_type=row.memory_type, address=row.address, comment=row.comment)
+            for key, row in store.visible_state.items()
+            if row.comment
+        }
+        fresh = AddressStore(MockDataSource(rows))
+        fresh.load_initial_data()
+        return {key: fresh.visible_state[key].comment_valid for key in rows}
+
+    def test_duplicate_block_name_first_definition_wins(self):
+        c1, c3, c10 = get_addr_key("C", 1), get_addr_key("C", 3), get_addr_key("C", 10)
+        rows = {
+            c1: AddressRow(memory_type="C", address=1, comment="<Pumps>"),
+            c3: AddressRow(memory_type="C", address=3, comment="</Pumps>"),
+        }
+        s = AddressStore(MockDataSource(rows))
+        s.load_initial_data()
+        s.set_unified_view(build_unified_view(s.visible_state))
+
+        def comment_validity():
+            return {key: s.visible_state[key].comment_valid for key in (c1, c3, c10)}
+
+        with s.edit_session("Duplicate block") as session:
+            session.set_field(c10, "comment", "<Pumps />")
+
+        assert comment_validity() == {c1: True, c3: True, c10: False}
+        assert self._fresh_comment_validity(s) == {c1: True, c3: True, c10: False}
+
+        # Removing the first definition makes the later one the valid one.
+        with s.edit_session("Remove first block") as session:
+            session.set_field(c1, "comment", "")
+            session.set_field(c3, "comment", "")
+
+        assert s.visible_state[c10].comment_valid
+        assert not s.has_errors()
+
+        s.undo()
+        assert comment_validity() == {c1: True, c3: True, c10: False}
+
+        s.undo()
+        assert comment_validity() == {c1: True, c3: True, c10: True}
+        assert not s.has_errors()
+
+    def test_reload_after_sync_changes_nothing(self, named_store):
+        """The file monitor reloads after our own Sync; that must be a no-op."""
+        c1 = get_addr_key("C", 1)
+        source = named_store._data_source
+
+        def save_changes(rows):
+            for row in rows:
+                source._initial_rows[row.addr_key] = row
+            return len(rows)
+
+        source.save_changes = save_changes
+        self._rename(named_store, c1, "AlphaSaved")
+        named_store.save_all_changes()
+        before = dict(named_store.visible_state)
+        notified = []
+        named_store.add_observer(lambda _store, keys: notified.append(keys))
+
+        assert named_store._on_database_update()
+
+        assert notified == []
+        assert named_store.visible_state[c1].nickname == "AlphaSaved"
+        assert not named_store.has_unsaved_changes()
+        assert named_store.visible_state == before
+
+
+class LiveSource:
+    """A database CLICK writes too: rows change without the store being told."""
+
+    supports_used_field = True
+    file_path = "live.mdb"
+    is_read_only = False
+    is_database = True
+
+    def __init__(self, rows):
+        self.rows = dict(rows)
+        self.saved: list[list[AddressRow]] = []
+        self.fail_load = False
+
+    def load_all_addresses(self):
+        if self.fail_load:
+            raise OSError("database locked")
+        return dict(self.rows)
+
+    def save_changes(self, rows):
+        self.saved.append(list(rows))
+        for row in rows:
+            # The database keeps content only, as SC_.mdb does.
+            self.rows[row.addr_key] = AddressRow(
+                memory_type=row.memory_type,
+                address=row.address,
+                nickname=row.nickname,
+                comment=row.comment,
+                initial_value=row.initial_value,
+                retentive=row.retentive,
+                used=row.used,
+                data_type=row.data_type,
+            )
+        return len(rows)
+
+
+def _live_store(rows):
+    source = LiveSource(rows)
+    store = AddressStore(source)
+    store.load_initial_data()
+    return store, source
+
+
+class TestSaveRefusesErrors:
+    """store#1: every caller of save_all_changes is gated on validation errors."""
+
+    def test_save_with_a_duplicate_nickname_raises_and_writes_nothing(self):
+        c1, c2 = get_addr_key("C", 1), get_addr_key("C", 2)
+        store, source = _live_store({c1: AddressRow(memory_type="C", address=1, nickname="Pump")})
+        with store.edit_session("Rename") as session:
+            session.set_field(c2, "nickname", "pump")
+            session.set_field(get_addr_key("C", 3), "nickname", "Bad!Name")
+
+        with pytest.raises(RuntimeError, match="validation errors"):
+            store.save_all_changes()
+
+        assert source.saved == []
+        assert store.is_dirty(c2)
+        assert store.can_undo()
+
+    def test_masked_system_nickname_does_not_block_save(self):
+        sc1, c1 = get_addr_key("SC", 1), get_addr_key("C", 1)
+        store, source = _live_store({sc1: AddressRow(memory_type="SC", address=1, nickname="log")})
+        with store.edit_session("Rename") as session:
+            session.set_field(c1, "nickname", "Pump")
+
+        assert store.save_all_changes() == {c1}
+        assert [row.addr_key for row in source.saved[0]] == [c1]
+
+
+class TestLoadedWithErrorSurvivesReloads:
+    """store#8: a CLICK-written system nickname stays exempt after a CLICK save or Sync."""
+
+    @staticmethod
+    def _store():
+        sc1 = get_addr_key("SC", 1)
+        store, source = _live_store({sc1: AddressRow(memory_type="SC", address=1, nickname="log")})
+        assert store.visible_state[sc1].loaded_with_error
+        return store, source, sc1
+
+    @staticmethod
+    def _edit_comment(store, addr_key, text="note"):
+        with store.edit_session("Comment") as session:
+            session.set_field(addr_key, "comment", text)
+
+    def test_after_a_click_save(self):
+        store, source, sc1 = self._store()
+        # CLICK saves something else; every row it hands back is a fresh object.
+        source.rows = {k: replace(r) for k, r in source.rows.items()}
+        source.rows[get_addr_key("C", 1)] = AddressRow(
+            memory_type="C", address=1, nickname="FromClick"
+        )
+        assert store._on_database_update()
+
+        self._edit_comment(store, sc1)
+
+        row = store.visible_state[sc1]
+        assert row.loaded_with_error
+        assert not row.has_reportable_error
+        assert not store.has_errors()
+
+    def test_after_sync(self):
+        store, _source, sc1 = self._store()
+        self._edit_comment(store, sc1)
+        store.save_all_changes()
+        assert store._on_database_update()
+
+        self._edit_comment(store, sc1, "second note")
+
+        assert store.visible_state[sc1].loaded_with_error
+        assert not store.has_errors()
+
+    def test_a_system_nickname_click_writes_after_load_is_exempt(self):
+        store, source, _sc1 = self._store()
+        sc2 = get_addr_key("SC", 2)
+        source.rows[sc2] = AddressRow(memory_type="SC", address=2, nickname="and")
+        assert store._on_database_update()
+
+        assert store.visible_state[sc2].loaded_with_error
+        assert not store.has_errors()
+
+    def test_renaming_the_row_still_drops_the_exemption(self):
+        store, _source, sc1 = self._store()
+
+        with store.edit_session("Rename") as session:
+            session.set_field(sc1, "nickname", "and")
+
+        assert not store.visible_state[sc1].loaded_with_error
+        assert store.has_errors()
+
+
+class TestSyncAgainstALiveDatabase:
+    """store#9: Sync writes the user's fields onto what the database holds now."""
+
+    def test_click_change_since_the_last_poll_is_kept(self):
+        x1 = get_addr_key("X", 1)
+        store, source = _live_store(
+            {x1: AddressRow(memory_type="X", address=1, nickname="Start", comment="old")}
+        )
+        with store.edit_session("Rename") as session:
+            session.set_field(x1, "nickname", "StartButton")
+        # CLICK changes the comment; the store has not polled yet.
+        source.rows[x1] = replace(source.rows[x1], comment="from CLICK")
+
+        assert store.save_all_changes() == {x1}
+
+        (written,) = source.saved[0]
+        assert (written.nickname, written.comment) == ("StartButton", "from CLICK")
+        assert store.visible_state[x1].comment == "from CLICK"
+        assert store.base_state[x1].nickname == "StartButton"
+        assert not store.has_unsaved_changes()
+
+    def test_insert_or_delete_is_decided_from_a_fresh_read(self):
+        c1 = get_addr_key("C", 1)
+        store, source = _live_store({c1: AddressRow(memory_type="C", address=1, nickname="Old")})
+        with store.edit_session("Clear") as session:
+            session.set_field(c1, "nickname", "")
+        # CLICK starts using C1 in the program before the next poll.
+        source.rows[c1] = replace(source.rows[c1], used=True)
+
+        store.save_all_changes()
+
+        (written,) = source.saved[0]
+        assert written.used is True
+        assert not written.needs_full_delete(is_dirty=True)
+
+    def test_a_value_click_already_saved_is_not_written(self):
+        c1, c2 = get_addr_key("C", 1), get_addr_key("C", 2)
+        store, source = _live_store({})
+        with store.edit_session("Rename") as session:
+            session.set_field(c1, "nickname", "Typed")
+            session.set_field(c2, "nickname", "Other")
+        source.rows[c1] = AddressRow(memory_type="C", address=1, nickname="Typed")
+
+        assert store.save_all_changes() == {c2}
+        assert [row.addr_key for row in source.saved[0]] == [c2]
+
+    def test_a_failed_read_writes_nothing(self):
+        c1 = get_addr_key("C", 1)
+        store, source = _live_store({})
+        with store.edit_session("Rename") as session:
+            session.set_field(c1, "nickname", "Typed")
+        source.fail_load = True
+
+        with pytest.raises(OSError):
+            store.save_all_changes()
+
+        assert source.saved == []
+        assert store.is_dirty(c1)
+        assert store.can_undo()
+
+
+class TestUndoBookkeeping:
+    """store#10: a session that changes nothing is not an undo step; descriptions carry over."""
+
+    def test_session_that_changes_nothing_keeps_undo_and_redo(self, store_with_data):
+        x1, x2 = get_addr_key("X", 1), get_addr_key("X", 2)
+        with store_with_data.edit_session("Rename") as session:
+            session.set_field(x2, "nickname", "Renamed")
+        store_with_data.undo()
+        assert len(store_with_data.redo_stack) == 1
+
+        with store_with_data.edit_session("Paste same values") as session:
+            session.set_field(x1, "nickname", "Input1")
+            session.set_field(x1, "comment", "Button")
+
+        assert store_with_data.undo_stack == []
+        assert len(store_with_data.redo_stack) == 1
+        assert store_with_data.redo()
+
+    def test_descriptions_survive_undo_and_redo(self, store):
+        x1 = get_addr_key("X", 1)
+        with store.edit_session("Rename X1") as session:
+            session.set_field(x1, "nickname", "Name")
+
+        store.undo()
+        assert store.get_redo_description() == "Rename X1"
+
+        store.redo()
+        assert store.get_undo_description() == "Rename X1"
+        store.undo()
+        assert store.get_redo_description() == "Rename X1"

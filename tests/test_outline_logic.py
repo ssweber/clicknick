@@ -1,10 +1,16 @@
 """Tests for outline_logic.py - tree building and flattening for address outline."""
 
+import re
+
+import pytest
+
+from clicknick.utils.rename_helpers import build_rename_pattern, nickname_under
 from clicknick.views.nav_window.outline_logic import (
     DisplayItem,
     TreeNode,
     build_tree,
     flatten_tree,
+    outline_filter,
     parse_segments,
 )
 
@@ -43,11 +49,11 @@ class TestLeadingUnderscorePreservation:
     def test_leading_underscore_preserved_simple(self):
         """Leading underscore should be preserved, not stripped."""
         # _IO1 should parse to [("_IO", 1)] not [("IO", 1)]
-        assert parse_segments("_IO1") == [("_IO", 1)]
+        assert parse_segments("_IO1") == [("_IO", "1")]
 
     def test_leading_underscore_preserved_with_children(self):
         """Leading underscore preserved when there are child segments."""
-        assert parse_segments("_IO1_Status") == [("_IO", 1), ("Status", None)]
+        assert parse_segments("_IO1_Status") == [("_IO", "1"), ("Status", None)]
 
     def test_leading_underscore_no_array(self):
         """Leading underscore without array index."""
@@ -89,10 +95,10 @@ class TestParseSegments:
 
     def test_array_detection_trailing_number(self):
         """Trailing numbers on alpha segments are detected as array indices."""
-        assert parse_segments("Motor1") == [("Motor", 1)]
-        assert parse_segments("Motor1_Speed") == [("Motor", 1), ("Speed", None)]
+        assert parse_segments("Motor1") == [("Motor", "1")]
+        assert parse_segments("Motor1_Speed") == [("Motor", "1"), ("Speed", None)]
         assert parse_segments("Pump2_Flow_Rate") == [
-            ("Pump", 2),
+            ("Pump", "2"),
             ("Flow", None),
             ("Rate", None),
         ]
@@ -109,7 +115,7 @@ class TestParseSegments:
         """Double underscore creates an intermediate _ node."""
         assert parse_segments("Modbus__x") == [("Modbus", None), ("_", None), ("x", None)]
         assert parse_segments("Test__Value") == [("Test", None), ("_", None), ("Value", None)]
-        assert parse_segments("Mtr1__Debounce") == [("Mtr", 1), ("_", None), ("Debounce", None)]
+        assert parse_segments("Mtr1__Debounce") == [("Mtr", "1"), ("_", None), ("Debounce", None)]
 
     def test_double_underscore_mid_string(self):
         """Double underscore in the middle of a longer nickname."""
@@ -760,3 +766,268 @@ class TestDisplayItemMethods:
 
         leaf = DisplayItem(text="test", leaf=("X", 1))
         assert leaf.is_leaf is True
+
+
+class TestArrayIndexDigits:
+    """An index keeps its digits as written; 01 and 1 are different names."""
+
+    def test_leading_zero_is_kept(self):
+        assert parse_segments("Pump01_Run") == [("Pump", "01"), ("Run", None)]
+
+    def test_leading_zero_in_paths_and_texts(self):
+        entries = [("DS", 1, "Pump01_Run", 1), ("DS", 2, "Pump02_Run", 2)]
+        items = flatten_tree(build_tree(entries))
+        assert get_all_texts(items) == ["Pump[01-02]", "01_Run", "02_Run"]
+        assert [c.full_path for c in items[0].children] == ["Pump01_Run", "Pump02_Run"]
+
+    def test_01_and_1_are_two_leaves(self):
+        entries = [("DS", 1, "Pump01_Run", 1), ("DS", 2, "Pump1_Run", 2)]
+        items = flatten_tree(build_tree(entries))
+        assert sorted(items[0].get_all_leaves()) == [("DS", 1), ("DS", 2)]
+        assert {c.full_path for c in items[0].children} == {"Pump01_Run", "Pump1_Run"}
+
+    def test_indices_sort_by_value(self):
+        entries = [("DS", 1, "Pump10_Run", 1), ("DS", 2, "Pump2_Run", 2), ("DS", 3, "Pump1_Run", 3)]
+        items = flatten_tree(build_tree(entries))
+        assert get_all_texts(items) == ["Pump[1-10]", "1_Run", "2_Run", "10_Run"]
+
+    def test_duplicate_nickname_keeps_every_address(self):
+        entries = [("DS", 1, "Pump_Run", 1), ("DS", 2, "Pump_Run", 2)]
+        items = flatten_tree(build_tree(entries))
+        assert items[0].get_all_leaves() == [("DS", 1), ("DS", 2)]
+
+
+class TestItemPaths:
+    """full_path and the rename segment come from the nickname text itself."""
+
+    def test_array_chain_children_paths_join_the_digits_directly(self):
+        entries = [
+            ("DS", 1, "Tank_Pump1_Run", 1),
+            ("DS", 2, "Tank_Pump2_Run", 2),
+            ("DS", 3, "Tank_Pump2_Stop", 3),
+        ]
+        (top,) = flatten_tree(build_tree(entries))
+        assert (top.text, top.full_path) == ("Tank_Pump[1-2]", "Tank_Pump")
+        assert (top.rename_prefix, top.rename_text, top.rename_is_array) == ("Tank_", "Pump", True)
+        assert [c.full_path for c in top.children] == ["Tank_Pump1_Run", "Tank_Pump2_"]
+
+    def test_chain_item_renames_its_last_segment(self):
+        entries = [("DS", 1, "Tank_T_A", 1), ("DS", 2, "Tank_T_B", 2)]
+        (top,) = flatten_tree(build_tree(entries))
+        assert (top.text, top.full_path) == ("Tank_T", "Tank_T_")
+        assert (top.rename_prefix, top.rename_text, top.rename_is_array) == ("Tank_", "T", False)
+
+    def test_double_underscore_paths_keep_both_underscores(self):
+        entries = [("DS", 1, "Mtr_A__Debug", 1), ("DS", 2, "Mtr_A__Other", 2)]
+        (top,) = flatten_tree(build_tree(entries))
+        paths = [item.full_path for item, _ in top.iter_preorder()]
+        assert paths[-2:] == ["Mtr_A__Debug", "Mtr_A__Other"]
+
+
+def _build(nicks: list[str]) -> list[DisplayItem]:
+    entries = [("DS", i + 1, nick, i + 1) for i, nick in enumerate(nicks)]
+    return flatten_tree(build_tree(entries))
+
+
+def _leaf_addresses(items: list[DisplayItem]) -> list[int]:
+    return sorted(addr for item in items for _, addr in item.get_all_leaves())
+
+
+class TestArrayInsideMixedArray:
+    def test_array_next_to_array_names_shows_its_range(self):
+        items = _build(["Motor1_Speed", "Motor2_Speed", "Motor_Fan1", "Motor_Fan2"])
+        fan = find_item(items, lambda i: i.text == "Motor_Fan[1-2]")
+        assert fan is not None
+        assert fan.full_path == "Motor_Fan"
+        assert (fan.rename_prefix, fan.rename_text, fan.rename_is_array) == ("Motor_", "Fan", True)
+
+    def test_array_with_child_arrays_of_its_own(self):
+        items = _build(
+            ["Command_Alarm", "Command_Alarm1_id", "Command_Alarm_Valve1", "Command_Alarm_Valve2"]
+        )
+        valve = find_item(items, lambda i: i.text == "Command_Alarm_Valve[1-2]")
+        assert valve is not None
+        assert valve.full_path == "Command_Alarm_Valve"
+
+
+class TestNoAddressIsLost:
+    def test_index_that_flattens_to_several_items(self):
+        nicks = ["Tank1_Valve", "Tank1_Valve1_X", "Tank1_Valve2_X", "Tank2_Y"]
+        assert _leaf_addresses(_build(nicks)) == [1, 2, 3, 4]
+
+    def test_index_with_an_address_of_its_own_and_children(self):
+        nicks = ["Tank_Pump1", "Tank_Pump1_Run", "Tank_Pump2_Run"]
+        assert _leaf_addresses(_build(nicks)) == [1, 2, 3]
+
+    def test_random_nicknames_appear_in_exactly_one_item_each(self):
+        import random
+
+        rng = random.Random(7)
+        parts = ["A", "B", "Pump", "T", "Tank", "_X", "1", "", "_"]
+        digits = ["", "", "1", "01", "2", "10"]
+        for _ in range(300):
+            nicks = []
+            for _ in range(rng.randint(1, 12)):
+                segs = [rng.choice(parts) + rng.choice(digits) for _ in range(rng.randint(1, 4))]
+                nick = rng.choice(["_", "_", "__"]).join(segs)
+                if parse_segments(nick):
+                    nicks.append(nick)
+            items = _build(nicks)
+            assert _leaf_addresses(items) == list(range(1, len(nicks) + 1)), nicks
+            # a leaf item's path is its nickname exactly
+            for top in items:
+                for item, _ in top.iter_preorder():
+                    if item.leaf is not None and not item.children and not item.is_array:
+                        assert nicks[item.leaf[1] - 1] == item.full_path, nicks
+
+
+class TestSpellingsStayApart:
+    @pytest.mark.parametrize(
+        "nicks",
+        [
+            ["Tank_1_Pump", "Tank1_Pump"],
+            ["A__B", "A___B", "A____B"],
+            ["Pump_", "Pump"],
+            ["___A", "__A"],
+        ],
+    )
+    def test_each_nickname_keeps_its_exact_path(self, nicks):
+        items = _build(nicks)
+        paths = {
+            item.leaf[1]: item.full_path
+            for top in items
+            for item, _ in top.iter_preorder()
+            if item.leaf is not None and not item.children and not item.is_array
+        }
+        assert paths == {i + 1: nick for i, nick in enumerate(nicks)}
+
+
+class TestLoneNicknameShowsAsSpelled:
+    @pytest.mark.parametrize(
+        "nick",
+        ["A__B", "A___B", "A____B", "A_____B", "___A", "__A", "A__", "A___", "A___B_C", "A1___B"],
+    )
+    def test_text_is_the_nickname(self, nick):
+        items = _build([nick])
+        assert get_all_texts(items) == [nick]
+
+    @pytest.mark.parametrize(
+        "nick",
+        ["____A", "_____A", "____2", "A__B1", "B__A1A1__", "_A1__B", "A____"],
+    )
+    def test_long_leading_runs_and_chains_read_as_spelled(self, nick):
+        assert get_all_texts(_build([nick])) == [nick]
+
+    @pytest.mark.parametrize(
+        ("nicks", "shown"),
+        [
+            (["Pump1", "Pump__1"], "Pump__1"),
+            (["A1", "A__B"], "A__B"),
+            (["A1", "A___1"], "A___1"),
+            (["B1", "B__A1A1__"], "B__A1A1__"),
+        ],
+    )
+    def test_mixed_array_children_read_as_spelled(self, nicks, shown):
+        assert shown in get_all_texts(_build(nicks))
+
+    def test_random_nicknames_read_as_spelled(self):
+        import random
+
+        rng = random.Random(20240611)
+        pieces = ["A", "Pump", "B", "1", "12", "A1", "Pump2", "x"]
+        runs = ["", "_", "__", "___", "____", "_____"]
+
+        def nickname() -> str:
+            parts = [rng.choice(runs)]
+            for _ in range(rng.randint(1, 3)):
+                parts.append(rng.choice(pieces))
+                parts.append(rng.choice(runs[1:]))
+            parts[-1] = rng.choice(runs)
+            return "".join(parts)
+
+        for _ in range(3000):
+            nick = nickname()
+            if not nick.strip("_"):
+                continue
+            assert get_all_texts(_build([nick])) == [nick], nick
+        for _ in range(500):
+            nicks = list({nickname() for _ in range(rng.randint(2, 6))})
+            nicks = [n for n in nicks if n.strip("_")]
+            items = _build(nicks)
+            paths = [
+                item.full_path
+                for top in items
+                for item, _ in top.iter_preorder()
+                if item.leaf is not None and not item.is_array
+            ]
+            assert sorted(p.rstrip("_") for p in paths) == sorted(n.rstrip("_") for n in nicks), (
+                nicks
+            )
+            for top in items:
+                for item, _ in top.iter_preorder():
+                    if item.leaf is not None and not item.children and not item.is_array:
+                        assert item.full_path.endswith(item.text), (nicks, item.text)
+                        assert item.full_path in nicks, (nicks, item.full_path)
+
+    def test_gap_chain_with_siblings_reads_as_spelled(self):
+        items = _build(["A___B", "A___C", "A__D"])
+        (top,) = items
+        assert top.text == "A__"
+        assert [c.text for c in top.children] == ["_B", "_C", "D"]
+        assert [c.full_path for c in top.children] == ["A___B", "A___C", "A__D"]
+
+
+class TestSpellingsAreLabelledApart:
+    def test_trailing_underscore_shows(self):
+        assert sorted(get_all_texts(_build(["Pump_", "Pump"]))) == ["Pump", "Pump_"]
+
+    def test_extra_underscore_after_a_gap_shows(self):
+        texts = get_all_texts(_build(["A__B", "A___B"]))
+        assert "B" in texts and "_B" in texts
+
+    def test_extra_underscore_before_a_leading_gap_name_shows(self):
+        texts = get_all_texts(_build(["___A", "__A"]))
+        assert sorted(t for t in texts if t.endswith("A")) == ["A", "_A"]
+
+
+class TestOutlineFilter:
+    """Double-clicking an item that is a nickname and has others under it keeps its own row."""
+
+    NICKNAMES = ["Tank_Pump1", "Tank_Pump1_Run", "Tank_Pump10", "Tank_Pump10_Run", "Tank_Level"]
+
+    def _top(self):
+        entries = [("DS", i, n, i) for i, n in enumerate(self.NICKNAMES, 1)]
+        return flatten_tree(build_tree(entries))[0]
+
+    def test_a_nickname_with_children_shows_itself_and_its_children_only(self):
+        top = self._top()
+        pump = find_item([top], lambda i: i.leaf == ("DS", 1))
+        assert pump is not None and pump.leaf == ("DS", 1) and pump.children
+
+        text = outline_filter(pump.full_path, self.NICKNAMES)
+
+        assert text == "tree:Tank_Pump1"
+        base = text.removeprefix("tree:")
+        assert [n for n in self.NICKNAMES if nickname_under(n, base)] == [
+            "Tank_Pump1",
+            "Tank_Pump1_Run",
+        ]
+
+    @pytest.mark.parametrize(
+        ("prefix", "text", "nicknames"),
+        [
+            ("Tank_", "Pump1", ["Tank_Pump1", "Tank_Pump1_Run", "Tank_Pump10", "Tank_Pump10_Run"]),
+            ("Tank_", "Pump1", ["Tank_pump1", "Tank_Pump1_run", "tank_Pump1", "Tank_Pump1_"]),
+            ("", "Tank", ["Tank", "Tank_", "Tank_A", "Tank__A", "Tanks", "tank_A"]),
+            ("", "Tank_Pump1", ["Tank_Pump1", "Tank_Pump1_Run", "Tank_Pump1X"]),
+        ],
+    )
+    def test_it_shows_what_rename_changes(self, prefix, text, nicknames):
+        pattern, _ = build_rename_pattern(prefix, text, False)
+        renamed = [n for n in nicknames if re.match(pattern, n)]
+
+        assert renamed == [n for n in nicknames if nickname_under(n, prefix + text)]
+
+    def test_a_folder_without_its_own_nickname_filters_by_prefix(self):
+        assert outline_filter("Tank_", self.NICKNAMES) == "^Tank_"
+        assert outline_filter("Tank_Pump1_Run", self.NICKNAMES) == "^Tank_Pump1_Run"

@@ -221,7 +221,7 @@ class ContainsPlusFilter(FilterBase):
 
     def matches_abbreviation(self, item, needle_variants):
         """Check if item matches any needle variant"""
-        abbr_tags = getattr(item, "abbr_tags", [])
+        abbr_tags = getattr(item, "abbr_tags", ())
         if not abbr_tags:
             return False
 
@@ -232,8 +232,11 @@ class ContainsPlusFilter(FilterBase):
         return False
 
     @lru_cache(maxsize=12000)  # noqa: B019
-    def _generate_tags_cached(self, text):
-        """Internal cached method that returns a tuple"""
+    def generate_tags(self, text):
+        """Generate searchable tags for a nickname, sorted and unique.
+
+        Cached, so the result is a tuple shared between equal nicknames.
+        """
         words = self.split_into_words(text)
         tags = []
 
@@ -252,11 +255,7 @@ class ContainsPlusFilter(FilterBase):
         for word in words:
             tags.extend(self.get_abbreviated_word_list(word))
 
-        return tuple(sorted(set(tags)))  # Return tuple for hashability
-
-    def generate_tags(self, text):
-        """Generate searchable tags for a nickname - returns list for compatibility"""
-        return list(self._generate_tags_cached(text))
+        return tuple(sorted(set(tags)))
 
     def _filter_single_word(self, completion_list, word):
         """Filter using cascading approach for single word searches"""
@@ -271,49 +270,41 @@ class ContainsPlusFilter(FilterBase):
         return contains_matches + abbreviation_matches
 
     def _filter_multiple_words(self, completion_list, search_words):
-        """Filter using intersection approach for multiple word searches"""
+        """Filter using intersection approach for multiple word searches.
+
+        Items keep their order in the list, so sorting and address order hold.
+        """
         # Sort words by length (longer/more specific words first for faster elimination)
-        search_words.sort(key=len, reverse=True)
+        search_words = sorted(search_words, key=len, reverse=True)
 
-        matching_items = set(completion_list)
-
+        candidates = list(completion_list)
         for word in search_words:
-            # Early exit if no items match all previous words
-            if not matching_items:
+            if not candidates:
                 break
 
-            # Only search within current candidates (progressively smaller set)
-            current_candidates = list(matching_items)
-
-            # Get contains matches for this word
-            contains_matches = set(self.contains_filter.filter_matches(current_candidates, word))
-
-            # Get abbreviation matches for this word
-            needle_variants = self.get_needle_variants(word)
-            abbreviation_matches = {
-                item
-                for item in current_candidates
-                if self.matches_abbreviation(item, needle_variants)
+            contains_matched_ids = {
+                id(item) for item in self.contains_filter.filter_matches(candidates, word)
             }
+            needle_variants = self.get_needle_variants(word)
+            candidates = [
+                item
+                for item in candidates
+                if id(item) in contains_matched_ids
+                or self.matches_abbreviation(item, needle_variants)
+            ]
 
-            # Combine both types of matches for this word
-            word_matches = contains_matches | abbreviation_matches
-
-            # Keep only items that match this word too (intersection)
-            matching_items &= word_matches
-
-        return list(matching_items)
+        return candidates
 
     def filter_matches(self, completion_list, current_text):
         """Find items that match ALL search words (intersection) with early termination optimization"""
-        if not current_text:
+        if not current_text.strip():
             return completion_list
 
         # Split input into words for multi-word search
         search_words = self.split_into_words(current_text)
         if not search_words:
-            # If no valid words extracted (e.g., whitespace only), return full list
-            return completion_list
+            # Only one-letter words (p, Z, p_): a plain contains search
+            return self.contains_filter.filter_matches(completion_list, current_text.strip())
 
         # Route to appropriate filtering method
         if len(search_words) == 1:
@@ -322,8 +313,16 @@ class ContainsPlusFilter(FilterBase):
             return self._filter_multiple_words(completion_list, search_words)
 
 
-ANALYSIS_PREFIXES = ("input:", "output:", "pivot:", "isolated:", "upstream:", "downstream:")
-_ARG_PREFIXES = ("upstream:", "downstream:")
+ANALYSIS_PREFIXES = (
+    "input:",
+    "output:",
+    "pivot:",
+    "isolated:",
+    "upstream:",
+    "downstream:",
+    "tree:",
+)
+_ARG_PREFIXES = ("upstream:", "downstream:", "tree:")
 
 
 def parse_analysis_prefix(raw_filter: str) -> tuple[str | None, str | None, str]:

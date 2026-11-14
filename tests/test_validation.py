@@ -2,9 +2,10 @@
 
 import pytest
 from pyclickplc.banks import DataType
+from pyclickplc.validation import validate_initial_value
 
 from clicknick.models.validation import (
-    validate_initial_value,
+    nickname_duplicate_checker,
     validate_nickname,
     validate_nickname_format,
 )
@@ -78,28 +79,34 @@ class TestValidateNickname:
 
     def test_format_error_takes_precedence(self):
         """Format errors are checked before uniqueness."""
-        is_valid, error = validate_nickname("_Invalid", {}, 100)
+        is_valid, error = validate_nickname("_Invalid", 100, nickname_duplicate_checker({}))
         assert is_valid is False
         assert "Cannot start with _" in error
 
     def test_unique_nickname(self):
         """Nickname not in dict is valid."""
         all_nicknames = {1: "Motor1", 2: "Motor2"}
-        is_valid, error = validate_nickname("Motor3", all_nicknames, 100)
+        is_valid, error = validate_nickname(
+            "Motor3", 100, nickname_duplicate_checker(all_nicknames)
+        )
         assert is_valid is True
         assert error == ""
 
     def test_duplicate_nickname(self):
         """Duplicate nickname is invalid."""
         all_nicknames = {1: "Motor1", 2: "Motor2"}
-        is_valid, error = validate_nickname("Motor1", all_nicknames, 100)
+        is_valid, error = validate_nickname(
+            "Motor1", 100, nickname_duplicate_checker(all_nicknames)
+        )
         assert is_valid is False
         assert "Duplicate" in error
 
     def test_duplicate_case_insensitive(self):
         """Duplicate check is case-insensitive."""
         all_nicknames = {1: "Motor1", 2: "Motor2"}
-        is_valid, error = validate_nickname("MOTOR1", all_nicknames, 100)
+        is_valid, error = validate_nickname(
+            "MOTOR1", 100, nickname_duplicate_checker(all_nicknames)
+        )
         assert is_valid is False
         assert "Duplicate" in error
 
@@ -107,27 +114,27 @@ class TestValidateNickname:
         """Same row (current_addr_key) is excluded from uniqueness check."""
         all_nicknames = {1: "Motor1", 2: "Motor2"}
         # Editing row 1, keeping same name is OK
-        is_valid, error = validate_nickname("Motor1", all_nicknames, 1)
+        is_valid, error = validate_nickname("Motor1", 1, nickname_duplicate_checker(all_nicknames))
         assert is_valid is True
         assert error == ""
 
-    def test_is_duplicate_fn_used(self):
-        """Custom is_duplicate_fn is used when provided."""
+    def test_custom_duplicate_checker_used(self):
+        """A custom duplicate checker decides uniqueness."""
 
         def custom_dup_check(nickname: str, exclude_addr_key: int) -> bool:
             return nickname.lower() == "taken"
 
-        is_valid, error = validate_nickname("Taken", {}, 100, is_duplicate_fn=custom_dup_check)
+        is_valid, error = validate_nickname("Taken", 100, custom_dup_check)
         assert is_valid is False
         assert "Duplicate" in error
 
-    def test_is_duplicate_fn_not_duplicate(self):
-        """Custom is_duplicate_fn returns False means valid."""
+    def test_custom_duplicate_checker_not_duplicate(self):
+        """A checker that reports no duplicate means valid."""
 
         def custom_dup_check(nickname: str, exclude_addr_key: int) -> bool:
             return False
 
-        is_valid, error = validate_nickname("AnyName", {}, 100, is_duplicate_fn=custom_dup_check)
+        is_valid, error = validate_nickname("AnyName", 100, custom_dup_check)
         assert is_valid is True
 
 

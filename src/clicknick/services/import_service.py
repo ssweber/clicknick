@@ -14,7 +14,7 @@ from pyclickplc.blocks import parse_block_tag, strip_block_tag
 
 if TYPE_CHECKING:
     from ..data.address_store import AddressStore
-    from ..data.edit_session_new import EditSession
+    from ..data.edit_session import EditSession
     from ..models.address_row import AddressRow
     from ..widgets.import_csv_dialog import BlockGroup
 

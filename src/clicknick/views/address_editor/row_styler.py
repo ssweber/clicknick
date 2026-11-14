@@ -49,7 +49,6 @@ class AddressRowStyler:
             sheet=self.sheet,
             store=self._store,
             get_rows=lambda: self.rows,
-            get_displayed_rows=lambda: self._displayed_rows,
         )
         styler.apply_all_styling()  # Full refresh
         styler.update_rows_styling({data_idx})  # Single row update
@@ -60,7 +59,6 @@ class AddressRowStyler:
         sheet: Sheet,
         store: AddressStore,
         get_rows: Callable[[], list[AddressRow]],
-        get_displayed_rows: Callable[[], list[int]],
     ):
         """Initialize the styler.
 
@@ -68,12 +66,10 @@ class AddressRowStyler:
             sheet: The tksheet Sheet instance
             store: The AddressStore for dirty checking
             get_rows: Callable returning the current list of AddressRow
-            get_displayed_rows: Callable returning current displayed row indices
         """
         self.sheet = sheet
         self._store = store
         self._get_rows = get_rows
-        self._get_displayed_rows = get_displayed_rows
 
         # Track pending highlight clear callbacks
         self._pending_highlight_clears: dict[int, str] = {}  # data_idx -> after_id
@@ -195,24 +191,19 @@ class AddressRowStyler:
     # --- Internal Methods ---
 
     def _apply_highlights(self) -> None:
-        """Apply all highlight_cells calls for displayed rows."""
-        displayed = self._get_displayed_rows()
-
-        for data_idx in displayed:
+        """Apply all highlight_cells calls, for every row (a filter change restyles nothing)."""
+        for data_idx in range(len(self._get_rows())):
             self._apply_row_highlights(data_idx)
 
     def _compute_target_notes(self) -> dict[tuple[int, int], CellNote]:
-        """Compute what notes should exist for displayed rows.
+        """Compute what notes should exist for every row.
 
         Returns:
             Dict mapping (row, col) -> CellNote
         """
         target: dict[tuple[int, int], CellNote] = {}
-        displayed = self._get_displayed_rows()
-
         rows = self._get_rows()
-        for data_idx in displayed:
-            row = rows[data_idx]
+        for data_idx, row in enumerate(rows):
             addr_key = row.addr_key
 
             # Nickname note (error and/or dirty)
@@ -266,7 +257,7 @@ class AddressRowStyler:
         return target
 
     def _update_notes(self) -> None:
-        """Update all cell notes for displayed rows."""
+        """Update all cell notes."""
         # Clear all existing notes first
         self.sheet.cell_notes.clear()
 

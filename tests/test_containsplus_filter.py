@@ -448,7 +448,7 @@ class TestContainsPlusFilter:
             assert len(tags) > 0
 
             # Should be sorted and unique
-            assert tags == sorted(set(tags))
+            assert list(tags) == sorted(set(tags))
 
             # All tags should be strings
             assert all(isinstance(tag, str) for tag in tags)
@@ -469,7 +469,7 @@ class TestContainsPlusFilter:
             assert hasattr(item, "nickname")
             assert hasattr(item, "abbr_tags")
             assert isinstance(item.nickname, str)
-            assert isinstance(item.abbr_tags, list)
+            assert isinstance(item.abbr_tags, tuple)
 
     def test_integration_abbreviation_pipeline(self, filter_obj):
         """Test the complete abbreviation pipeline integration"""
@@ -529,3 +529,30 @@ class TestContainsPlusFilter:
             # Complete pipeline should return the unchanged word
             complete_result = filter_instance.get_abbreviated_word_list(word)
             assert complete_result == [word]
+
+
+def _nicknames(*names):
+    return [Nickname(n, "C1", "", "", False) for n in names]
+
+
+class TestSearchResultOrder:
+    def test_multi_word_results_keep_list_order(self):
+        filter_obj = ContainsPlusFilter()
+        names = [
+            f"{a}_{b}_{i}" for i in range(8) for a, b in (("Pump", "Motor"), ("Motor", "Pump"))
+        ]
+        items = _nicknames(*names)
+        for item in items:
+            item.abbr_tags = filter_obj.generate_tags(item.nickname)
+
+        result = filter_obj.filter_matches(items, "pump motor")
+
+        assert [str(i.nickname) for i in result] == names
+
+    def test_single_letter_search_is_a_plain_contains(self):
+        filter_obj = ContainsPlusFilter()
+        items = _nicknames("Pump_Run", "Valve_Shut", "Alarm_Hi")
+
+        for text, expected in (("p", ["Pump_Run"]), ("Z", []), ("p_", ["Pump_Run"])):
+            result = filter_obj.filter_matches(items, text)
+            assert [i.nickname for i in result] == expected, text

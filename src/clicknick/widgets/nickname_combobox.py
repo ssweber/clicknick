@@ -687,7 +687,11 @@ class ComboboxEventHandler:
             self.combobox.finalize_entry()
             return
         elif event.keysym == "Escape":
-            self.combobox.master.withdraw()
+            # Cancel: close without sending anything to CLICK
+            if self.combobox.cancel_callback:
+                self.combobox.cancel_callback()
+            else:
+                self.combobox.master.withdraw()
             return
 
         if self._convert_dots_in_entry():
@@ -751,8 +755,7 @@ class NicknameCombobox(ttk.Combobox):
 
         # Event handler will be initialized after autocomplete is set up
         self.item_navigation_callback = None
-
-        self.finalizing = False
+        self.cancel_callback = None
 
     # Public API methods
 
@@ -813,7 +816,6 @@ class NicknameCombobox(ttk.Combobox):
 
         After processing, hides the master window.
         """
-        self.finalizing = True
         search_text = self.get_search_text()
         values = self["values"]
         selection = self.current()
@@ -852,6 +854,10 @@ class NicknameCombobox(ttk.Combobox):
     def set_item_navigation_callback(self, callback: Callable[[str], None]) -> None:
         """Set the callback function for when navigating through items."""
         self.item_navigation_callback = callback
+
+    def set_cancel_callback(self, callback: Callable[[], None]) -> None:
+        """Set the callback for Esc; without one, Esc withdraws the master window."""
+        self.cancel_callback = callback
 
     def set_selection_callback(self, callback: Callable[[str], None]) -> None:
         """Set the callback function for when a selection is made."""

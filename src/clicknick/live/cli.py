@@ -28,16 +28,18 @@ Usage::
     # Rung commands
     clicknick-cli rung list                         # list available files
     clicknick-cli rung list main                    # rungs in main program
-    clicknick-cli rung apply                        # stage all changes and open paste windows
-    clicknick-cli rung apply main                   # stage main and open its paste window
+    clicknick-cli rung apply                        # stage all changes and open Review Changes
+    clicknick-cli rung apply main                   # stage main and open Review Changes on it
     clicknick-cli rung apply main --select r3       # stage and show rung 3
 
     # Program analysis
     clicknick-cli check                             # lint the editable pyrung proposal
 
     # Workspace recovery
-    clicknick-cli backup                            # snapshot src/plc
-    clicknick-cli restore                           # restore that snapshot
+    clicknick-cli backup                            # snapshot src/plc (the last 5 are kept)
+    clicknick-cli restore                           # restore the newest snapshot
+    clicknick-cli restore list                      # list the older snapshots
+    clicknick-cli restore 20261112T193005Z          # restore an older snapshot
 
     # Workflow
     clicknick-cli prompt-save                       # pop a save reminder in the GUI
@@ -46,7 +48,11 @@ Usage::
     # Pick a specific session
     clicknick-cli -s MyProject get DS1
 
-Commands may be chained with ``;``::
+Each argument is one word, as the shell passed it. A command given as one
+argument is split into words at spaces outside quotes; a backslash escapes
+only ``"`` and ``\\`` inside double quotes and stays as it is elsewhere.
+Commands may be chained with ``;``: at the end of an argument, as an argument
+of its own, or outside quotes in that one argument::
 
     clicknick-cli "set C1 nickname Pump ; set C2 nickname Valve"
 
@@ -60,7 +66,32 @@ import argparse
 import sys
 
 from .client import send_command
+from .dispatch import quote_words, split_commands
 from .session import find_sessions, workspace_for_port_file
+
+
+def _commands(argv: list[str], parser: argparse.ArgumentParser) -> list[list[str]]:
+    """Return the words of each command in *argv*.
+
+    One argument is a command line of its own (``"set DS1 comment 'a b'"``);
+    more are the words the shell already split. Then a word ending in ``;``
+    ends a command (cmd.exe passes ``Pump; set`` as ``Pump;`` and ``set``); a
+    ``;`` anywhere else in a word is part of it.
+    """
+    if len(argv) == 1:
+        try:
+            return split_commands(argv[0])
+        except ValueError as exc:
+            parser.error(f"cannot read {argv[0]!r}: {exc}")
+    commands: list[list[str]] = [[]]
+    for word in argv:
+        if word.endswith(";"):
+            if word.rstrip(";"):
+                commands[-1].append(word.rstrip(";"))
+            commands.append([])
+        else:
+            commands[-1].append(word)
+    return [words for words in commands if words]
 
 
 def main() -> None:
@@ -78,7 +109,9 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--session", "-s", help="Session label (.ckp project name)")
-    parser.add_argument("command", nargs="*", help="Command (chain with ';')")
+    # REMAINDER: from the first command word on, every word (``--select``
+    # included) is the command's, and argparse reads none of them.
+    parser.add_argument("command", nargs=argparse.REMAINDER, help="Command (chain with ';')")
     args = parser.parse_args()
 
     # `list` (or no args) -> show sessions
@@ -102,6 +135,8 @@ def main() -> None:
 
     if not args.command:
         parser.error("no command given")
+    if any(word in ("-s", "--session") or word.startswith("--session=") for word in args.command):
+        parser.error("put -s/--session before the command")
 
     # `help` handled locally — no server connection needed
     if args.command[0] == "help":
@@ -110,8 +145,7 @@ def main() -> None:
         print(_format_help())
         return
 
-    raw = " ".join(args.command)
-    commands = [c.strip() for c in raw.split(";") if c.strip()]
+    commands = [quote_words(words) for words in _commands(args.command, parser)]
     all_ok = True
     for command in commands:
         try:

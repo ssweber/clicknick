@@ -10,14 +10,15 @@ Grammar (one command per connection)::
     get  <ID>                          -> show current row fields + dirty flag
     set  <ID> <field> <value...>       -> edit a field (appears as a staged change)
     unused <type-or-addr>... [count]   -> free address(es); one per hint
-    backup                             -> snapshot src/plc for recovery
-    restore                            -> replace src/plc from that snapshot
+    backup                             -> snapshot src/plc for recovery (keeps the last 5)
+    restore [<time>|list]              -> replace src/plc from the newest or an older snapshot; list them
     check                              -> lint the editable pyrung proposal
     tag  <subcommand> ...              -> annotation metadata operations
     rung <subcommand> ...              -> program listing / apply
     prompt-save                        -> pop a save reminder dialog in the GUI
 ``<field>`` is one of: nickname, comment, initial_value, retentive.
-Values may be quoted (shlex), e.g. ``set DS1 comment "Main motor run"``.
+Values may be quoted, e.g. ``set DS1 comment "Main motor run"``; a backslash
+escapes only ``"`` and ``\\`` inside double quotes (``split_words``).
 ``<ID>`` is a pyrung tag name (preferred) or CLICK display address (``DS1``, ``C100``).
 """
 
@@ -34,6 +35,7 @@ from ..services.annotation_service import AnnotationService
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
     from ..data.address_store import AddressStore
 
@@ -48,7 +50,9 @@ class DispatchContext:
     resolve_tag: Callable[[str], int | None] | None = None
     analysis: Any | None = None  # AnalysisService (avoid import for lightweight CLI)
     annotation: AnnotationService = field(default_factory=AnnotationService)
-    show_preview: Callable[..., None] | None = None
+    # (bundle folder, workspace source folder, program to select, its rungs to
+    # paste, open a window if none shows the folder) -> Review Changes
+    show_proposal: Callable[[Path, Path, str | None, list[int] | None, bool], None] | None = None
     show_address_editor: Callable[[str], None] | None = None
     show_save_prompt: Callable[[str, str], None] | None = None
     record_staged_rungs: Callable[[int], None] | None = None
@@ -56,6 +60,77 @@ class DispatchContext:
     staged_rungs: int = 0
     project_saved: bool | None = None
     pyrung_live_available: bool = False
+
+
+_WHITESPACE = " \t\r\n"
+
+
+def _read_commands(text: str, *, chain: bool) -> list[list[str]]:
+    """Read *text* into commands of words, as a POSIX shell quotes them.
+
+    Single or double quotes group words. Inside double quotes a backslash
+    escapes ``"`` and ``\\``; anywhere else it is an ordinary character, so a
+    Windows path such as ``C:\\temp`` stays as typed. With *chain*, a ``;``
+    outside quotes ends a command.
+    """
+    commands: list[list[str]] = [[]]
+    word: list[str] = []
+    in_word = False
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch in _WHITESPACE or (chain and ch == ";"):
+            if in_word:
+                commands[-1].append("".join(word))
+                word, in_word = [], False
+            if ch == ";":
+                commands.append([])
+        elif ch == "'":
+            end = text.find("'", i + 1)
+            if end < 0:
+                raise ValueError("No closing quotation")
+            word.append(text[i + 1 : end])
+            in_word, i = True, end
+        elif ch == '"':
+            i += 1
+            while True:
+                if i >= len(text):
+                    raise ValueError("No closing quotation")
+                ch = text[i]
+                if ch == '"':
+                    break
+                if ch == "\\" and text[i + 1 : i + 2] in ('"', "\\"):
+                    i += 1
+                    ch = text[i]
+                word.append(ch)
+                i += 1
+            in_word = True
+        else:
+            word.append(ch)
+            in_word = True
+        i += 1
+    if in_word:
+        commands[-1].append("".join(word))
+    return [words for words in commands if words]
+
+
+def split_words(command: str) -> list[str]:
+    """Split one command into its words (``_read_commands`` says how).
+
+    ``quote_words`` writes words back so this returns them unchanged.
+    """
+    commands = _read_commands(command, chain=False)
+    return commands[0] if commands else []
+
+
+def split_commands(text: str) -> list[list[str]]:
+    """Split a command line into commands at each ``;`` outside quotes."""
+    return _read_commands(text, chain=True)
+
+
+def quote_words(words: list[str]) -> str:
+    """Join *words* into one command that ``split_words`` reads back unchanged."""
+    return " ".join(shlex.quote(word) for word in words)
 
 
 def _parse_bool(value: str) -> bool:
@@ -229,7 +304,7 @@ def _project_status(ctx: DispatchContext) -> str | None:
     if analysis.is_available:
         if ctx.pyrung_live_available:
             return "pyrung live available"
-        return "project ready | open Console for pyrung live"
+        return "project ready | open Simulate for pyrung live"
 
     return None
 
@@ -240,7 +315,7 @@ def _workflow_status(ctx: DispatchContext) -> str | None:
     steps: list[str] = []
     staged_tags = 0
     if ctx.store is not None:
-        staged_tags = len(ctx.store.user_overrides)
+        staged_tags = len(ctx.store.get_dirty_keys())
         if staged_tags > 0:
             noun = "tag" if staged_tags == 1 else "tags"
             facts.append(f"{staged_tags} {noun} staged")
@@ -294,7 +369,12 @@ data:
 
 workspace:
   backup                              -> snapshot src/plc to backup/src/plc
+                                         (the one before moves to backup/older/<time>; 5 kept)
   restore                             -> replace src/plc from backup/src/plc
+                                         (edits in src/plc no backup holds are backed up first)
+  restore list                        -> list the older backups, newest first
+  restore <time>                      -> replace src/plc from backup/older/<time>
+                                         (a backup taken again takes a new name)
 
 analysis:
   check                               -> lint src/plc (Tools -> Check Program rules)
@@ -309,7 +389,9 @@ tags:
   tag clear-constraints <tag>
   tag set-uom <tag> <unit>
   tag clear-uom <tag>
-  tag set-physical <tag> <name> [--on-delay D] [--off-delay D] [--profile P] [--system S]
+  tag upgrade-project                 -> stage old annotation forms rewritten (pyrung migrations)
+  tag set-physical <tag> <name> <response> [--system S]
+    response: {physical_options}
   tag set-link <tag> <link>
   tag clear-physical <tag>
   tag apply                          -> edit src/plc/tags.py, then push the diff
@@ -317,14 +399,16 @@ tags:
 
 rungs:
   rung list [file]
-  rung apply [file] [--select r3,r7]  -> stage and open the paste window
+  rung apply [file] [--select r3,r7]  -> stage and open Review Changes
 
 workflow:
   prompt-save"""
 
 
 def _format_help() -> str:
-    return _HELP_TEXT
+    from ..services.physical_response import cli_usage
+
+    return _HELP_TEXT.format(physical_options=cli_usage())
 
 
 def dispatch(ctx: DispatchContext, command: str) -> str:
@@ -333,7 +417,7 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
     Runs on the Tk main thread. Raises on bad input; the caller turns
     exceptions into ``ERROR: ...`` replies.
     """
-    parts = shlex.split(command)
+    parts = split_words(command)
     if not parts:
         raise ValueError("empty command")
 
@@ -346,7 +430,7 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
         lines = ["pong"]
         if ctx.store is not None:
             lines.append(f"store: {ctx.store.loaded_row_count} rows")
-            staged = len(ctx.store.user_overrides)
+            staged = len(ctx.store.get_dirty_keys())
             if staged:
                 lines.append(f"tags staged: {staged}")
         else:
@@ -371,7 +455,7 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
     if verb == "prompt-save":
         if ctx.store is None or not ctx.store.has_unsaved_changes():
             return "no pending changes"
-        count = len(ctx.store.user_overrides)
+        count = len(ctx.store.get_dirty_keys())
         if ctx.store.has_errors():
             raise ValueError(f"{count} unsaved change(s) have validation errors — fix errors first")
         if ctx.show_save_prompt is not None:
@@ -417,21 +501,44 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
         return _cmd_unused(ctx, hints, count)
 
     if verb in ("backup", "restore"):
-        if len(parts) != 1:
-            raise ValueError(f"usage: {verb}")
+        if verb == "backup" and len(parts) != 1:
+            raise ValueError("usage: backup")
+        if verb == "restore" and len(parts) > 2:
+            raise ValueError("usage: restore [<time>|list]")
 
-        from ..services.project_workspace import backup_plc_source, restore_plc_source
+        from ..services.project_workspace import (
+            backup_plc_source,
+            older_plc_backup_time,
+            older_plc_backups,
+            plc_backup_dir,
+            restore_plc_source,
+        )
         from .rung_commands import _get_project_dir
 
         project_dir = _get_project_dir(ctx)
+        note = ""
         if verb == "backup":
             path, file_count = backup_plc_source(project_dir)
             action, preposition = "backed up", "to"
+        elif parts[1:] == ["list"]:
+            names = older_plc_backups(project_dir)
+            listing = (
+                "\n".join(
+                    f"{name}  (taken {older_plc_backup_time(name).astimezone():%Y-%m-%d %H:%M:%S})"
+                    for name in names
+                )
+                if names
+                else "no older backups"
+            )
+            return listing + _status_footer(ctx)
         else:
-            path, file_count = restore_plc_source(project_dir)
+            restored = restore_plc_source(project_dir, *parts[1:])
+            path, file_count = restored.restored_from, restored.file_count
             action, preposition = "restored", "from"
+            if restored.edits_backed_up:
+                note = f"; the edits that were in src/plc are in {plc_backup_dir(project_dir)}"
         files = "source file" if file_count == 1 else "source files"
-        return f"OK: {action} {file_count} {files} {preposition} {path}" + _status_footer(ctx)
+        return f"OK: {action} {file_count} {files} {preposition} {path}{note}" + _status_footer(ctx)
 
     if verb == "check":
         if len(parts) != 1:

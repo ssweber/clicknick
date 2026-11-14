@@ -1,0 +1,88 @@
+# mergeq configuration for ClickNick. Paths are relative to the main checkout.
+# Copied from laddercodec's devtools/mergeq/; only this file is repo-specific.
+
+base = "dev"                             # branch that trains land on
+home = "../clicknick-wt/buildbot"        # queue, logs, results, scratch worktrees, job notes
+worktree_root = "../clicknick-wt"        # `mergeq worktree new <name>` -> <root>/<name>
+branch_prefix = "bob/"                   # ... on branch <prefix><name>
+lock_file = "../clicknick-wt/.heavy.lock"
+lock_wait = 3600                         # seconds a heavy run waits for the lock
+targeted_slots = 3                       # `run` without --heavy at once; the rest wait. 0 = no limit
+targeted_wait = 1800                     # seconds a targeted run waits for a slot, then exits 125
+job_memory_mb = 8192                     # cap per job, all its processes (Windows Job Object); 0 = no cap
+# ClickNick is developed against the local pyclickplc, pyrung and laddercodec checkouts
+# (development.md, `make install-dev`). A gate's merge lives under home, so it names their
+# folder; the stages then run with UV_NO_SYNC=1 so `uv run` keeps those editable installs.
+install = { cmd = ["make", "install", "install-dev", "SIBLINGS=C:/Users/Sam/Documents/GitHub"], timeout = 900 }
+
+# Gate stages, cheapest first. A job runs them in this order and stops at the first failure.
+# The whole suite takes about 2 min, serial, so agents may run every stage (light).
+[stages]
+lint = { cmd = ["make", "lint", "UV_NO_SYNC=1"], timeout = 600, light = true }
+test = { cmd = ["make", "test", "UV_NO_SYNC=1"], timeout = 900, light = true }
+# Last: `uv run --group docs` re-syncs the environment, dropping the editable installs.
+docs = { cmd = ["make", "docs-check"], timeout = 600, light = true }   # strict docs build
+
+[presets]
+default = ["lint", "test"]
+fast = ["lint", "test"]
+heavy = ["lint", "test", "docs"]
+train = ["lint", "test", "docs"]
+
+# PreToolUse hook (hook.py). Regexes are searched in the shell command text.
+[hook]
+# Every non-light [stages] command is "heavy" automatically (none here). heavy_extra adds
+# commands that are heavy but are not stages.
+heavy_extra = [
+    '\bmake\s*($|[;&|])',                                   # bare `make` = install + lint + test
+]
+heavy_exempt = []
+# Commands that get a hard timeout and a named process group: in Bash they are rewritten to
+# `mergeq.py run --timeout N --name <agent>@<worktree> -- bash -c '...'` (N from a leading
+# `timeout N`, else default_timeout); in PowerShell they are refused with the fix.
+needs_timeout = ['\bpytest\b']
+default_timeout = 600
+
+# The read-only reviewer (matched on the hook's agent_type). Every shell segment must match an
+# allow pattern; redirects only to /dev/null or the write roots; no heredocs, no $(...),
+# no PowerShell; Write/Edit only under the write roots.
+reviewer_agent = "bob-reviewer"
+reviewer_write_roots = ["$TEMP", "$TMP", "/tmp"]
+# `[uv run] python <script>.py`: allowed only when the script is under a write root, and only
+# bounded: `python -I devtools/mergeq/mergeq.py run --timeout N [--cwd D] -- <command>` (its
+# Job Object applies job_memory_mb). The bare form has no memory limit and is refused.
+reviewer_script = '^(timeout\s+\S+\s+)?(uv\s+run\s+(--\S+\s+)*)?python[0-9.]*(\s+-\S+)*\s+(?P<script>\S+\.py)\b'
+reviewer_max_timeout = 1800
+# Allowed only inside that bounded run.
+reviewer_bounded = []
+# The read-only agent (agent_type == readonly_agent), for investigations that must not run
+# tests: the reviewer's rules, no scripts, no mergeq run, and none of these.
+readonly_agent = "bob-investigator"
+readonly_refuse = [
+    '^(timeout\s+\S+\s+)?(uv\s+run\s+(--\S+\s+)*)?(python[0-9.]*\s+(-I\s+)?-m\s+)?(pytest|unittest)\b',
+    '^make\b',
+]
+reviewer_allow = [
+    '^cd(\s|$)',
+    '^git\s+(-C\s+\S+\s+)?(diff|log|show|status|blame|grep|rev-parse|rev-list|merge-base|ls-files|ls-tree|cat-file|describe|shortlog|range-diff|for-each-ref|name-rev|whatchanged)\b',
+    '^git\s+(-C\s+\S+\s+)?branch(\s+(-a|-r|-v|-vv|--list|--contains|--merged|--no-merged|--show-current)\b.*)?$',
+    '^git\s+(-C\s+\S+\s+)?worktree\s+list\b',
+    '^(rg|grep|egrep|ls|cat|head|tail|wc|sort|uniq|cut|tr|diff|cmp|pwd|echo|printf|which|file|stat|du|tree|basename|dirname|realpath|true|false|test|\[|date|env|nl|column|jq|xxd|od)(\s|$)',
+    '^sed\s+-n(\s|$)',
+    '^awk\s+[^>]*$',
+    '^find\s(?!.*\s-(delete|exec|execdir|ok|okdir|fprint|fprintf|fls)\b)',
+    '^(timeout\s+\S+\s+)?(uv\s+run\s+(--\S+\s+)*)?(python[0-9.]*\s+(-I\s+)?-m\s+)?pytest\b',
+    '^python[0-9.]*\s+-I\s+\S*mergeq\.py\s+(status|ps|lock|worktree\s+list)\b',
+    '^(timeout\s+\S+\s+)?(uv\s+run\s+(--\S+\s+)*)?python[0-9.]*\s+--version\b',
+    # ruff and ty, read-only forms: no fixing, no in-place format, no --config (it can set
+    # `fix = true`), no output file.
+    '^(uv\s+run\s+(--\S+\s+)*)?ruff\s+check\b(?!.*(\s--(fix|unsafe-fixes|fix-only|add-noqa|watch|config|output-file)\b|\s-[wo]\b))',
+    '^(uv\s+run\s+(--\S+\s+)*)?ruff\s+format\b(?=.*\s--(check|diff)\b)(?!.*\s--config\b)',
+    '^(uv\s+run\s+(--\S+\s+)*)?ty\s+check\b',
+]
+
+[ps]
+# Processes shown by `mergeq ps --all` and offered to `reap --unmanaged`.
+names = ["python.exe", "python3.exe", "pytest.exe", "make.exe", "uv.exe"]
+# Never listed or reaped (language servers, linters' daemons).
+ignore = ['pyright', 'langserver', 'language[-_]server', '\bty\b.*\bserver\b', 'ruff\s+server', 'debugpy']

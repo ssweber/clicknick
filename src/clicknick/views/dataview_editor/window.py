@@ -17,7 +17,6 @@ from pyclickplc import ConnectionState, ModbusService, ReconnectConfig
 from pyclickplc.addresses import get_addr_key
 from pyclickplc.banks import INTERLEAVED_PAIRS
 
-from ...data.shared_dataview import SharedDataviewData
 from ...widgets.custom_notebook import CustomNotebook
 from ...widgets.new_dataview_dialog import NewDataviewDialog
 from ...widgets.nickname_combobox import NicknameCombobox
@@ -25,10 +24,14 @@ from ..nav_window.window import NavWindow
 from .panel import DataviewPanel
 
 if TYPE_CHECKING:
-    pass
+    from ...data_session import DataSession
+    from ...simulation_session import SimEvent, SimulationSession
 
 
 PlcValue = bool | int | float | str
+
+#: How often to check whether a simulation started or stopped.
+SIM_ATTACH_CHECK_MS = 1000
 
 
 class DataviewEditorWindow(tk.Toplevel):
@@ -42,25 +45,9 @@ class DataviewEditorWindow(tk.Toplevel):
 
     def _setup_window(self) -> None:
         """Configure window properties."""
-        base_title = "ClickNick Dataview Editor"
-        if self.title_suffix:
-            self.title(f"{base_title} - {self.title_suffix}")
-        else:
-            self.title(base_title)
-
+        self.refresh_title()
         self.geometry("800x600")
         self.minsize(800, 400)
-
-    def _refresh_file_list(self) -> None:
-        """Refresh the file list from the dataview folder."""
-        self.file_listbox.delete(0, tk.END)
-
-        files = self.shared_data.get_cdv_files()
-        for file_path in files:
-            self.file_listbox.insert(tk.END, file_path.stem)
-
-        # Store paths for lookup
-        self._file_paths = files
 
     def _get_current_panel(self) -> DataviewPanel | None:
         """Get the currently active panel."""
@@ -82,14 +69,15 @@ class DataviewEditorWindow(tk.Toplevel):
                 self.notebook.tab(i, text=title)
                 break
 
-    def _on_panel_modified(self) -> None:
-        """Handle panel modification event."""
-        panel = self._get_current_panel()
-        if panel:
-            self._update_tab_title(panel)
+    def _on_panel_modified(self, panel: DataviewPanel) -> None:
+        """Retitle the panel's tab, which need not be the current one (a reload from the prompt)."""
+        self._update_tab_title(panel)
 
     def _iter_open_panels(self) -> list[DataviewPanel]:
-        """Return panel widgets currently attached to notebook tabs."""
+        """Return panel widgets currently attached to notebook tabs.
+
+        The tabs are the one record of what is open, untitled dataviews included.
+        """
         panels: list[DataviewPanel] = []
         try:
             for tab_id in self.notebook.tabs():
@@ -99,6 +87,12 @@ class DataviewEditorWindow(tk.Toplevel):
         except tk.TclError:
             pass
         return panels
+
+    def _panel_for_path(self, file_path: Path) -> DataviewPanel | None:
+        """The open tab bound to file_path, if any."""
+        return next(
+            (panel for panel in self._iter_open_panels() if panel.file_path == file_path), None
+        )
 
     def _is_modbus_connected(self) -> bool:
         return self._connection_state == ConnectionState.CONNECTED
@@ -123,6 +117,8 @@ class DataviewEditorWindow(tk.Toplevel):
             self._modbus_toggle_var.set("Disconnect")
         else:
             self._modbus_toggle_var.set("Connect")
+        attached = self._sim is not None
+        self._target_var.set("Simulator" if attached else "")
         self.write_checked_button.config(
             state=(tk.NORMAL if connected and not action_busy else tk.DISABLED)
         )
@@ -133,10 +129,10 @@ class DataviewEditorWindow(tk.Toplevel):
             state=(tk.DISABLED if connecting or action_busy else tk.NORMAL)
         )
         self.host_entry.config(
-            state=(tk.DISABLED if connected or connecting or action_busy else tk.NORMAL)
+            state=(tk.DISABLED if connected or connecting or action_busy or attached else tk.NORMAL)
         )
         self.port_entry.config(
-            state=(tk.DISABLED if connected or connecting or action_busy else tk.NORMAL)
+            state=(tk.DISABLED if connected or connecting or action_busy or attached else tk.NORMAL)
         )
 
         if hasattr(self, "connection_menu"):
@@ -402,17 +398,66 @@ class DataviewEditorWindow(tk.Toplevel):
             lambda result, error: self._on_write_payload_complete(panel, result, error),
         )
 
+    def _commit_cell_editor(self, panel: DataviewPanel) -> bool:
+        """Commit the text typed in *panel*'s open cell editor; False, said, if it stays open.
+
+        tksheet commits nothing while the focus is outside ClickNick, so text typed
+        before switching to CLICK is still in the editor.
+        """
+        mt = panel.sheet.MT
+        # A refused New Value whose cell has not reopened yet is still an open edit
+        if panel.reopen_rejected_edit():
+            return False
+        if not mt.text_editor.open:
+            return True
+        mt.mouseclick_outside_editor_or_dropdown_all_canvases()
+        if mt.text_editor.open:
+            self.focus_force()
+            mt.mouseclick_outside_editor_or_dropdown_all_canvases()
+        if panel.reopen_rejected_edit():
+            return False
+        if mt.text_editor.open:
+            messagebox.showwarning(
+                "Cell Being Edited",
+                "Finish the cell edit first (Enter to keep it, Esc to cancel).",
+                parent=self,
+            )
+            return False
+        return True
+
     def _write_checked(self) -> None:
         panel = self._get_current_panel()
-        if panel is None:
+        # A button click leaves the focus in the cell editor: write the value typed there
+        if panel is None or not self._commit_cell_editor(panel):
             return
         self._write_payload(panel.get_write_rows())
 
     def _write_all(self) -> None:
         panel = self._get_current_panel()
-        if panel is None:
+        if panel is None or not self._commit_cell_editor(panel):
             return
         self._write_payload(panel.get_write_all_rows())
+
+    # ------------------------------------------------------------------
+    # Simulator attachment
+    # ------------------------------------------------------------------
+
+    def _sync_panel_simulation(self, panel: DataviewPanel) -> None:
+        sim = self._sim
+        panel.set_force_column_visible(sim is not None)
+        panel.update_forces(sim.forces if sim is not None else {})
+
+    def _show_force_error(self, text: str) -> None:
+        messagebox.showerror("Force", text, parent=self)
+
+    def _on_panel_force(self, address: str, value: PlcValue | None) -> None:
+        sim = self._sim
+        if sim is None:
+            return
+        if value is None:
+            sim.release_force(address)
+        else:
+            sim.force(address, value, on_error=self._show_force_error)
 
     def _open_dataview(self, file_path: Path) -> None:
         """Open a dataview file in a new tab.
@@ -420,14 +465,10 @@ class DataviewEditorWindow(tk.Toplevel):
         Args:
             file_path: Path to the CDV file
         """
-        # Check if already open
-        if file_path in self._open_panels:
-            # Switch to existing tab
-            panel = self._open_panels[file_path]
-            for i in range(self.notebook.index("end")):
-                if self.notebook.nametowidget(self.notebook.tabs()[i]) == panel:
-                    self.notebook.select(i)
-                    return
+        # Switch to the tab if it is already open
+        open_panel = self._panel_for_path(file_path)
+        if open_panel is not None:
+            self.notebook.select(open_panel)
             return
 
         # Create new panel
@@ -438,7 +479,18 @@ class DataviewEditorWindow(tk.Toplevel):
             on_addresses_changed=self._on_panel_addresses_changed,
             nickname_lookup=self.shared_data.lookup_nickname,
             address_normalizer=self.shared_data.normalize_address,
+            on_force=self._on_panel_force,
         )
+        if panel.load_error is not None:
+            # A tab of empty rows bound to the file could be saved over it.
+            panel.destroy()
+            messagebox.showerror(
+                "Open DataView",
+                f"Could not read '{file_path.name}': {panel.load_error}",
+                parent=self,
+            )
+            return
+        self._sync_panel_simulation(panel)
 
         # Sync Modbus column visibility before adding tab
         if not self._modbus_toolbar_var.get():
@@ -447,8 +499,6 @@ class DataviewEditorWindow(tk.Toplevel):
         # Add tab
         self.notebook.add(panel, text=file_path.stem)
         self.notebook.select(panel)
-
-        self._open_panels[file_path] = panel
 
     def _new_dataview(self) -> None:
         """Create a new unsaved dataview."""
@@ -467,7 +517,9 @@ class DataviewEditorWindow(tk.Toplevel):
             nickname_lookup=self.shared_data.lookup_nickname,
             address_normalizer=self.shared_data.normalize_address,
             name=name,
+            on_force=self._on_panel_force,
         )
+        self._sync_panel_simulation(panel)
 
         # Sync Modbus column visibility before adding tab
         if not self._modbus_toolbar_var.get():
@@ -476,11 +528,20 @@ class DataviewEditorWindow(tk.Toplevel):
         self.notebook.add(panel, text=name)
         self.notebook.select(panel)
 
-        self._open_panels[None] = panel  # Track with None key
+    def _dialog_folder(self) -> Path:
+        """Where Open, Save As and Export start: the DataView folder shown, else the
+        folder last used here, else Documents."""
+        folder = self.shared_data.dataview_folder
+        if folder is not None and folder.is_dir():
+            return folder
+        if self._last_folder is not None and self._last_folder.is_dir():
+            return self._last_folder
+        documents = Path.home() / "Documents"
+        return documents if documents.is_dir() else Path.home()
 
     def _open_file(self) -> None:
         """Open a CDV file via file dialog."""
-        initial_dir = self.shared_data.dataview_folder or Path.cwd()
+        initial_dir = self._dialog_folder()
 
         file_path = filedialog.askopenfilename(
             parent=self,
@@ -490,72 +551,84 @@ class DataviewEditorWindow(tk.Toplevel):
         )
 
         if file_path:
+            self._last_folder = Path(file_path).parent
             self._open_dataview(Path(file_path))
 
-    def _save_as(self) -> None:
-        """Save the current dataview to a selected folder."""
-        panel = self._get_current_panel()
-        if not panel:
-            return
+    def _save_as(self, panel: DataviewPanel) -> bool:
+        """Save a dataview into a folder the user picks, named after the dataview.
 
-        initial_dir = self.shared_data.dataview_folder or Path.cwd()
+        Returns False, with the dataview still unsaved, when the user cancels,
+        the file is open in another tab, or the save fails.
+        """
+        self.notebook.select(panel)
+        initial_dir = self._dialog_folder()
 
         # Use folder selection dialog
         folder_path = filedialog.askdirectory(
             parent=self,
-            title="Select Folder to Save DataView",
+            title=f"Select Folder to Save '{panel.name}'",
             initialdir=initial_dir,
         )
+        if not folder_path:
+            return False
+        self._last_folder = Path(folder_path)
 
-        if folder_path:
-            # Use the panel's name for the filename
-            new_path = Path(folder_path) / f"{panel.name}.cdv"
+        # Use the panel's name for the filename
+        new_path = Path(folder_path) / f"{panel.name}.cdv"
 
-            # Check if file already exists
-            if new_path.exists() and new_path != panel.file_path:
-                result = messagebox.askyesno(
-                    "File Exists",
-                    f"'{new_path.name}' already exists. Overwrite?",
-                    parent=self,
-                )
-                if not result:
-                    return
+        other = self._panel_for_path(new_path)
+        if other is not None and other is not panel:
+            messagebox.showerror(
+                "Save DataView",
+                f"'{new_path.name}' is open in another tab. Close that tab first.",
+                parent=self,
+            )
+            return False
 
-            # Update tracking
-            old_path = panel.file_path
-            if old_path in self._open_panels:
-                del self._open_panels[old_path]
+        # Check if file already exists
+        if new_path.exists() and new_path != panel.file_path:
+            result = messagebox.askyesno(
+                "File Exists",
+                f"'{new_path.name}' already exists. Overwrite?",
+                parent=self,
+            )
+            if not result:
+                return False
 
-            panel.save_as(new_path)
-            self._open_panels[new_path] = panel
-            self._update_tab_title(panel)
+        saved = panel.save_as(new_path)
+        self._update_tab_title(panel)
 
-            # Refresh file list if saved to dataview folder
-            if (
-                self.shared_data.dataview_folder
-                and new_path.parent == self.shared_data.dataview_folder
-            ):
-                self._refresh_file_list()
+        # Refresh file list if saved to dataview folder
+        if (
+            saved
+            and self.shared_data.dataview_folder
+            and new_path.parent == self.shared_data.dataview_folder
+        ):
+            self.refresh_file_list()
+        return saved
+
+    def _save_panel(self, panel: DataviewPanel) -> bool:
+        """Save a dataview to its file, or ask where to save an untitled one."""
+        # CLICK deletes its temp folder when the window closes: ask where to save instead
+        if panel.file_path is None or not panel.file_path.parent.is_dir():
+            return self._save_as(panel)
+        saved = panel.save()
+        self._update_tab_title(panel)
+        return saved
 
     def _save_current(self) -> None:
         """Save the current dataview."""
         panel = self._get_current_panel()
-        if not panel:
-            return
-
-        if panel.file_path:
-            panel.save()
-            self._update_tab_title(panel)
-        else:
-            self._save_as()
+        if panel is not None and self._commit_cell_editor(panel):
+            self._save_panel(panel)
 
     def _export(self) -> None:
         """Export the current dataview to a new location."""
         panel = self._get_current_panel()
-        if not panel:
+        if not panel or not self._commit_cell_editor(panel):
             return
 
-        initial_dir = self.shared_data.dataview_folder or Path.cwd()
+        initial_dir = self._dialog_folder()
 
         # Use folder selection dialog
         folder_path = filedialog.askdirectory(
@@ -566,6 +639,7 @@ class DataviewEditorWindow(tk.Toplevel):
 
         if not folder_path:
             return
+        self._last_folder = Path(folder_path)
 
         export_path = Path(folder_path) / f"{panel.name}.cdv"
 
@@ -573,6 +647,15 @@ class DataviewEditorWindow(tk.Toplevel):
         if panel.file_path and export_path == panel.file_path:
             panel.save()
             self._update_tab_title(panel)
+            return
+
+        other = self._panel_for_path(export_path)
+        if other is not None:
+            messagebox.showerror(
+                "Export DataView",
+                f"'{export_path.name}' is open in another tab. Close that tab first.",
+                parent=self,
+            )
             return
 
         if export_path.exists():
@@ -591,7 +674,7 @@ class DataviewEditorWindow(tk.Toplevel):
             self.shared_data.dataview_folder
             and export_path.parent == self.shared_data.dataview_folder
         ):
-            self._refresh_file_list()
+            self.refresh_file_list()
 
     def _close_tab_at_index(self, tab_index: int) -> None:
         """Close the tab at the given index.
@@ -621,18 +704,18 @@ class DataviewEditorWindow(tk.Toplevel):
         if not panel:
             return
 
-        selected = panel.get_selected_rows()
-        for row_idx in selected:
-            panel.clear_row(row_idx)
+        panel.clear_rows(panel.get_selected_rows())
 
     def _refresh_nicknames(self) -> None:
         """Refresh nicknames in all open panels."""
-        for panel in self._open_panels.values():
+        for panel in self._iter_open_panels():
             panel.refresh_nicknames()
 
     def _on_close(self) -> None:
         """Handle window close."""
-        # Check for unsaved changes
+        # Text still in a cell editor is an edit; a cell that won't commit stops the close.
+        if not self.commit_open_cell_editor():
+            return
         if self.has_unsaved_changes():
             result = messagebox.askyesnocancel(
                 "Unsaved Changes",
@@ -641,8 +724,8 @@ class DataviewEditorWindow(tk.Toplevel):
             )
             if result is None:  # Cancel
                 return
-            if result:  # Yes - save
-                self.save_all()
+            if result and not self.save_all():
+                return
 
         self.close_without_prompt()
 
@@ -651,9 +734,9 @@ class DataviewEditorWindow(tk.Toplevel):
         if self._nav_window is None:
             return
 
-        address_shared = self.shared_data._store
+        address_shared = self.shared_data.address_store
         if address_shared:
-            self._nav_window.refresh(address_shared.all_rows)
+            self._nav_window.refresh(address_shared.visible_state)
 
     def _insert_addresses(self, addresses: list[tuple[str, int]]) -> None:
         """Insert addresses into the current dataview.
@@ -661,17 +744,19 @@ class DataviewEditorWindow(tk.Toplevel):
         Args:
             addresses: List of (memory_type, address) tuples to insert
         """
-        address_shared = self.shared_data._store
+        address_shared = self.shared_data.address_store
         if not address_shared:
             return
 
-        for memory_type, address in addresses:
-            addr_key = get_addr_key(memory_type, address)
-            row = address_shared.all_rows.get(addr_key)
-            if row:
-                if not self.add_address_to_current(row.display_address):
-                    # No more empty rows available
-                    break
+        panel = self._get_current_panel()
+        if panel is None:
+            return
+        rows = (
+            address_shared.visible_state.get(get_addr_key(memory_type, address))
+            for memory_type, address in addresses
+        )
+        # One undo step for the whole folder or block
+        panel.add_addresses([row.display_address for row in rows if row is not None])
 
     def _on_outline_select(self, path: str, leaves: list[tuple[str, int]]) -> None:
         """Handle outline selection from NavWindow - insert addresses into current dataview.
@@ -754,6 +839,13 @@ class DataviewEditorWindow(tk.Toplevel):
             self._nav_window._dock_to_parent()
             self._tag_browser_var.set(True)
 
+    def _on_sim_event(self, event: SimEvent) -> None:
+        if event.kind in ("frame", "desired"):
+            for panel in self._iter_open_panels():
+                self._sync_panel_simulation(panel)
+        elif event.kind in ("status", "modbus"):
+            self._check_simulation()
+
     def _toggle_modbus_toolbar(self) -> None:
         """Toggle Modbus toolbar and column visibility."""
         visible = self._modbus_toolbar_var.get()
@@ -774,6 +866,63 @@ class DataviewEditorWindow(tk.Toplevel):
         else:
             w = max(self.winfo_width() - 300, 800)
             self.geometry(f"{w}x{self.winfo_height()}")
+
+    def _attach_simulation(self, sim: SimulationSession) -> None:
+        """Use the running simulation as this editor's PLC."""
+        if self._is_modbus_connected() or self._modbus_busy:
+            self._disconnect_modbus()
+        self._sim = sim
+        sim.add_listener(self._on_sim_event)
+        self._plc_address_before_sim = (
+            self._modbus_host_var.get(),
+            self._modbus_port_var.get(),
+        )
+        self._modbus_host_var.set("127.0.0.1")
+        self._modbus_port_var.set(str(sim.modbus_info.get("port") or sim.modbus_port))
+        if not self._modbus_toolbar_var.get():
+            self._modbus_toolbar_var.set(True)
+            self._toggle_modbus_toolbar()
+        for panel in self._iter_open_panels():
+            self._sync_panel_simulation(panel)
+        self.refresh_title()
+        self._update_modbus_controls()
+        self._pending_sim_connect = True
+
+    def _detach_simulation(self) -> None:
+        sim = self._sim
+        self._sim = None
+        self._pending_sim_connect = False
+        if sim is not None:
+            sim.remove_listener(self._on_sim_event)
+        for panel in self._iter_open_panels():
+            self._sync_panel_simulation(panel)
+        if self._is_modbus_connected():
+            self._disconnect_modbus()
+        if self._plc_address_before_sim is not None:
+            host, port = self._plc_address_before_sim
+            self._plc_address_before_sim = None
+            self._modbus_host_var.set(host)
+            self._modbus_port_var.set(port)
+        self.refresh_title()
+        self._update_modbus_controls()
+
+    def _check_simulation(self) -> None:
+        """Attach while a simulation serves Modbus; detach when it stops."""
+        sim = self._get_simulation() if self._get_simulation is not None else None
+        available = sim is not None and sim.modbus_available
+        if self._sim is not None and (not available or sim is not self._sim):
+            self._detach_simulation()
+        if available and self._sim is None and sim is not None:
+            self._attach_simulation(sim)
+        if self._pending_sim_connect and not self._modbus_busy:
+            self._pending_sim_connect = False
+            if not self._is_modbus_connected():
+                self._connect_modbus()
+
+    def _poll_simulation(self) -> None:
+        self._sim_after_id = None
+        self._check_simulation()
+        self._sim_after_id = self.after(SIM_ATTACH_CHECK_MS, self._poll_simulation)
 
     def _create_menu(self) -> None:
         """Create the menu bar."""
@@ -814,7 +963,7 @@ class DataviewEditorWindow(tk.Toplevel):
         # View menu
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="View", menu=view_menu)
-        view_menu.add_command(label="Refresh File List", command=self._refresh_file_list)
+        view_menu.add_command(label="Refresh File List", command=self.refresh_file_list)
         view_menu.add_separator()
 
         # Tag Browser toggle (checkbutton)
@@ -872,7 +1021,8 @@ class DataviewEditorWindow(tk.Toplevel):
             tab_id = self.notebook.tabs()[tab_index]
             panel = self.notebook.nametowidget(tab_id)
 
-            # Check for unsaved changes
+            if not self._commit_cell_editor(panel):
+                return False
             if panel.is_dirty:
                 result = messagebox.askyesnocancel(
                     "Unsaved Changes",
@@ -881,21 +1031,9 @@ class DataviewEditorWindow(tk.Toplevel):
                 )
                 if result is None:  # Cancel
                     return False
-                if result:  # Yes - save
-                    if panel.file_path:
-                        panel.save()
-                    else:
-                        # Need to save as
-                        self.notebook.select(tab_index)
-                        self._save_as()
-                        if panel.is_dirty:  # User cancelled save dialog
-                            return False
-
-            # Remove from tracking (cleanup before notebook.forget is called)
-            if panel.file_path in self._open_panels:
-                del self._open_panels[panel.file_path]
-            elif None in self._open_panels and self._open_panels[None] == panel:
-                del self._open_panels[None]
+                if result and not self._save_panel(panel):
+                    # Cancelled or failed: the tab stays open
+                    return False
 
             self._pending_closed_panel = panel
 
@@ -946,12 +1084,12 @@ class DataviewEditorWindow(tk.Toplevel):
         Returns:
             List of matching nickname strings
         """
-        address_shared = self.shared_data._store
+        address_shared = self.shared_data.address_store
         if not address_shared:
             return []
 
         candidates = sorted(
-            row.nickname for row in address_shared.all_rows.values() if row.nickname
+            row.nickname for row in address_shared.visible_state.values() if row.nickname
         )
 
         if self.shared_data.filter_func is not None:
@@ -962,31 +1100,41 @@ class DataviewEditorWindow(tk.Toplevel):
             return candidates
         return [n for n in candidates if search_upper in n.upper()]
 
-    def _on_nickname_selected(self, nickname: str) -> None:
-        """Handle nickname selection from combobox.
+    def _address_for_nickname(self, nickname: str) -> str | None:
+        """The address with this nickname, matched without case (an exact match first)."""
+        store = self.shared_data.address_store
+        addr_keys = store.get_addr_keys_for_nickname(nickname)
+        if not addr_keys:
+            addr_keys = store.get_addr_keys_for_nickname_insensitive(nickname)
+        if not addr_keys:
+            return None
+        row = store.visible_state.get(min(addr_keys))
+        return row.display_address if row is not None else None
 
-        Looks up the address for the nickname and inserts it into the dataview.
+    def _on_nickname_selected(self, text: str) -> None:
+        """Insert the address the Nickname box names into the current dataview.
+
+        The text is a nickname, or else an address. Anything else is refused
+        and stays in the box.
 
         Args:
-            nickname: The selected nickname string
+            text: The nickname or address from the combobox
         """
-        if not nickname:
+        text = text.strip()
+        if not text:
+            return
+        panel = self._get_current_panel()
+        if panel is None:
             return
 
-        address_shared = self.shared_data._store
-        if not address_shared:
+        address = self._address_for_nickname(text) or text
+        if not panel.add_address(address):
+            messagebox.showwarning(
+                "Insert",
+                f"'{text}' is not a nickname or an address.",
+                parent=self,
+            )
             return
-
-        # Find the address for this nickname
-        for row in address_shared.all_rows.values():
-            if row.nickname == nickname:
-                self.add_address_to_current(row.display_address)
-                self.nickname_combo.reset()
-                return
-
-        # Nickname not found - maybe user typed an address directly?
-        # Try to add it as-is (will be validated by the panel)
-        self.add_address_to_current(nickname)
         self.nickname_combo.reset()
 
     def _on_insert_button_clicked(self) -> None:
@@ -1031,7 +1179,7 @@ class DataviewEditorWindow(tk.Toplevel):
         ttk.Button(btn_frame, text="Open", command=self._open_selected, width=7).pack(
             side=tk.LEFT, padx=2
         )
-        ttk.Button(btn_frame, text="⟳", command=self._refresh_file_list, width=2).pack(
+        ttk.Button(btn_frame, text="⟳", command=self.refresh_file_list, width=2).pack(
             side=tk.LEFT, padx=2
         )
 
@@ -1089,6 +1237,9 @@ class DataviewEditorWindow(tk.Toplevel):
             self.modbus_toolbar, textvariable=self._modbus_port_var, width=6
         )
         self.port_entry.pack(side=tk.LEFT, padx=(3, 6))
+        ttk.Label(
+            self.modbus_toolbar, textvariable=self._target_var, font=("TkDefaultFont", 9, "bold")
+        ).pack(side=tk.LEFT, padx=(0, 6))
 
         self.modbus_connect_button = ttk.Button(
             self.modbus_toolbar,
@@ -1152,27 +1303,42 @@ class DataviewEditorWindow(tk.Toplevel):
         flag_path.parent.mkdir(parents=True, exist_ok=True)
         flag_path.touch()
 
+    def _on_address_store_changed(self, sender=None, affected_keys=None) -> None:
+        """Observer callback: the AddressStore changed.
+
+        Auto-refreshes nicknames in all open panels when address data is modified.
+        """
+        self._refresh_nicknames()
+        self._refresh_navigation()
+
     def __init__(
         self,
         parent: tk.Widget,
-        shared_data: SharedDataviewData,
-        title_suffix: str = "",
+        session: DataSession,
+        get_title_suffix: Callable[[], str] = lambda: "",
+        get_simulation: Callable[[], SimulationSession | None] | None = None,
     ):
         """Initialize the Dataview Editor window.
 
         Args:
             parent: Parent widget (usually the main app window)
-            shared_data: SharedDataviewData for managing dataviews
-            title_suffix: Optional suffix for window title (e.g., project name)
+            session: DataSession providing the Dataview model and AddressStore
+            get_title_suffix: The window title's suffix (the connected project's name)
+            get_simulation: The connection's simulation, if any. While it serves
+                Modbus the editor connects to it and shows a Force column.
         """
         super().__init__(parent)
 
-        self.shared_data = shared_data
-        self.title_suffix = title_suffix
-
-        # Track open panels by file path
-        self._open_panels: dict[Path | None, DataviewPanel] = {}
-        self._untitled_counter = 0
+        if session.dataview is None:
+            raise ValueError("DataSession has no Dataview model")
+        self._session = session
+        self.shared_data = session.dataview
+        self._get_title_suffix = get_title_suffix
+        self._get_simulation = get_simulation
+        self._sim: SimulationSession | None = None
+        self._pending_sim_connect = False
+        self._last_folder: Path | None = None
+        self._sim_after_id: str | None = None
 
         # Navigation window
         self._nav_window: NavWindow | None = None
@@ -1186,19 +1352,22 @@ class DataviewEditorWindow(tk.Toplevel):
         self._connection_state = ConnectionState.DISCONNECTED
         self._modbus_host_var = tk.StringVar(value="127.0.0.1")
         self._modbus_port_var = tk.StringVar(value="502")
+        self._plc_address_before_sim: tuple[str, str] | None = None
         self._modbus_toggle_var = tk.StringVar(value="Connect")
         self._modbus_toolbar_var = tk.BooleanVar(value=False)
+        self._target_var = tk.StringVar(value="")
 
         # Configure window
         self._setup_window()
         self._create_menu()
         self._create_widgets()
 
-        # Register with shared data
-        shared_data.register_window(self)
+        # Register with the session and follow store changes for nickname refresh
+        session.register_dataview_window(self)
+        self.shared_data.address_store.add_observer(self._on_address_store_changed)
 
         # Refresh file list
-        self._refresh_file_list()
+        self.refresh_file_list()
 
         # Show first-run popup
         self._show_dataview_editor_popup()
@@ -1210,10 +1379,36 @@ class DataviewEditorWindow(tk.Toplevel):
         self._init_after_id = self.after(100, self._toggle_nav)
 
         self._update_modbus_controls()
+        self._poll_simulation()
+
+    def refresh_file_list(self) -> None:
+        """Refresh the file list from the dataview folder."""
+        self.file_listbox.delete(0, tk.END)
+
+        files = self.shared_data.get_cdv_files()
+        for file_path in files:
+            self.file_listbox.insert(tk.END, file_path.stem)
+
+        # Store paths for lookup
+        self._file_paths = files
+
+    def refresh_title(self) -> None:
+        """Show the project CLICK has open now; the app calls this when it changes."""
+        title = "ClickNick Dataview Editor"
+        title_suffix = self._get_title_suffix()
+        if title_suffix:
+            title += f" - {title_suffix}"
+        if self._sim is not None:
+            title += " - Simulator"
+        self.title(title)
 
     def close_without_prompt(self) -> None:
         """Clean up resources and destroy window without save prompts."""
-        for after_id in (self._sash_after_id, self._init_after_id):
+        sim = self._sim
+        self._sim = None
+        if sim is not None:
+            sim.remove_listener(self._on_sim_event)
+        for after_id in (self._sash_after_id, self._init_after_id, self._sim_after_id):
             if after_id is not None:
                 self.after_cancel(after_id)
         self._sash_after_id = None
@@ -1229,38 +1424,32 @@ class DataviewEditorWindow(tk.Toplevel):
         if service is not None:
             self._run_background(self._disconnect_modbus_service, service)
 
-        self.shared_data.unregister_window(self)
+        self.shared_data.address_store.remove_observer(self._on_address_store_changed)
+        self._session.unregister_dataview_window(self)
         self.destroy()
 
-    def refresh_nicknames_from_shared(self) -> None:
-        """Called by SharedDataviewData when SharedAddressData changes.
+    def commit_open_cell_editor(self) -> bool:
+        """Commit the text typed in every tab's open cell editor, so it is an edit like any other.
 
-        Auto-refreshes nicknames in all open panels when address data is modified.
+        Closing, saving and the app's project-change question call this first.
+        Returns False, after telling the user, when an editor is still open.
         """
-        self._refresh_nicknames()
-        self._refresh_navigation()
+        return all(self._commit_cell_editor(panel) for panel in self._iter_open_panels())
 
     def has_unsaved_changes(self) -> bool:
         """Check if any open dataviews have unsaved changes."""
-        return any(panel.is_dirty for panel in self._open_panels.values())
+        return any(panel.is_dirty for panel in self._iter_open_panels())
 
-    def save_all(self) -> None:
-        """Save all open dataviews that have file paths."""
-        for panel in self._open_panels.values():
-            if panel.file_path and panel.is_dirty:
-                panel.save()
-                self._update_tab_title(panel)
+    def save_all(self) -> bool:
+        """Save every modified dataview, asking where to save untitled ones.
 
-    def add_address_to_current(self, address: str) -> bool:
-        """Add an address to the currently active dataview.
-
-        Args:
-            address: The address to add
-
-        Returns:
-            True if added successfully
+        Stops at the first one that is not saved (cancelled or failed; a failed
+        save says why) and returns False, so a caller closing the window closes nothing.
+        Text still in a cell editor is saved too; a cell that won't commit saves nothing.
         """
-        panel = self._get_current_panel()
-        if panel:
-            return panel.add_address(address)
-        return False
+        if not self.commit_open_cell_editor():
+            return False
+        for panel in self._iter_open_panels():
+            if panel.is_dirty and not self._save_panel(panel):
+                return False
+        return True

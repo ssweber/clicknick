@@ -278,6 +278,7 @@ class AddressEditorSheet(Sheet):
         replace_str: str,
         selection_only: bool = False,
         visible_rows_only: bool = True,
+        columns: set[int] | None = None,
     ) -> int:
         """Perform regex replacement directly with given pattern and replacement.
 
@@ -287,6 +288,7 @@ class AddressEditorSheet(Sheet):
             selection_only: If True, only replace in current selection
             visible_rows_only: If True (default), only replace in visible/non-filtered rows.
                 If False, replace in all rows including filtered ones.
+            columns: Data columns to replace in. Default: Nickname and Comment.
 
         Returns:
             Number of replacements made
@@ -358,6 +360,9 @@ class AddressEditorSheet(Sheet):
                 (tree or self.MT.all_rows_displayed or bisect_in(self.MT.displayed_rows, r))
                 and (self.MT.all_columns_displayed or bisect_in(self.MT.displayed_columns, c))
             ):
+                continue
+
+            if columns is not None and c not in columns:
                 continue
 
             # Check if this cell matches the pattern

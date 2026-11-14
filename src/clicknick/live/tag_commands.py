@@ -6,13 +6,21 @@ All commands accept a pyrung tag name (preferred) or CLICK display address.
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import fields, replace
 from typing import TYPE_CHECKING
 
 from pyrung.click.tag_map import TagMeta, format_tag_meta
 
 from ..models.address_row import initial_values_differ
 from ..services.annotation_service import AnnotationService
+from ..services.comment_upgrade_service import stage_comment_upgrades
+from ..services.physical_response import (
+    PHYSICAL_KEYS,
+    cli_option,
+    cli_usage,
+    meta_fields,
+    response_of,
+)
 from ..services.system_nickname_service import stage_system_nickname_repairs
 from .dispatch import _resolve_identifier
 
@@ -110,6 +118,31 @@ def _cmd_repair_system_nicknames(ctx: DispatchContext, parts: list[str]) -> str:
     for repair in repairs:
         lines.append(f"{repair.display_address}: {repair.current!r} -> {repair.replacement!r}")
     lines.append("Review in Address Editor -> Changed, then Sync to save")
+    return "\n".join(lines)
+
+
+def _cmd_upgrade_project(ctx: DispatchContext, parts: list[str]) -> str:
+    """Stage pyrung's rewrites of old annotation forms through the AddressStore."""
+    if parts:
+        raise ValueError("usage: tag upgrade-project")
+
+    assert ctx.store is not None
+    upgrades = stage_comment_upgrades(ctx.store)
+    if not upgrades:
+        return "upgrade project: every annotation is in the current form"
+
+    staged = [upgrade for upgrade in upgrades if upgrade.staged]
+    if staged and ctx.show_address_editor is not None:
+        ctx.show_address_editor("changed")
+
+    lines = [f"OK: {len(staged)} comment upgrade{'s' if len(staged) != 1 else ''} staged"]
+    for upgrade in staged:
+        lines.append(f"{upgrade.display_address}: {upgrade.current!r} -> {upgrade.replacement!r}")
+    for upgrade in upgrades:
+        if upgrade.problem:
+            lines.append(f"{upgrade.display_address}: fix by hand, {upgrade.problem}")
+    if staged:
+        lines.append("Review in Address Editor -> Changed, then Sync to save")
     return "\n".join(lines)
 
 
@@ -235,42 +268,45 @@ def _cmd_clear_uom(ctx: DispatchContext, parts: list[str]) -> str:
     )
 
 
+def _set_physical_usage() -> str:
+    return f"usage: tag set-physical <identifier> <name> {cli_usage()} [--system S]"
+
+
 def _cmd_set_physical(ctx: DispatchContext, parts: list[str]) -> str:
     if len(parts) < 2:
-        raise ValueError(
-            "usage: tag set-physical <identifier> <name> "
-            "[--on-delay D] [--off-delay D] [--profile P] [--system S]"
-        )
+        raise ValueError(_set_physical_usage())
     identifier = parts[0]
     name = parts[1]
-    on_delay = off_delay = profile = system = None
+    options = {cli_option(key): key for key in PHYSICAL_KEYS.values()}
+    values: dict[str, str | bool] = {}
+    system = None
 
+    seen: set[str] = set()
     i = 2
     while i < len(parts):
         opt = parts[i].lower()
-        if opt == "--on-delay" and i + 1 < len(parts):
-            on_delay = parts[i + 1]
-            i += 2
-        elif opt == "--off-delay" and i + 1 < len(parts):
-            off_delay = parts[i + 1]
-            i += 2
-        elif opt == "--profile" and i + 1 < len(parts):
-            profile = parts[i + 1]
+        if opt in seen:
+            raise ValueError(f"{opt} is given twice")
+        seen.add(opt)
+        key = options.get(opt)
+        if key is not None and key.is_flag:
+            values[key.name] = True
+            i += 1
+        elif key is not None and i + 1 < len(parts):
+            values[key.name] = parts[i + 1]
             i += 2
         elif opt == "--system" and i + 1 < len(parts):
             system = parts[i + 1]
             i += 2
         else:
-            raise ValueError(f"unexpected argument {parts[i]!r}")
+            raise ValueError(f"unexpected argument {parts[i]!r}\n{_set_physical_usage()}")
 
     addr_key, block_tag, meta, free_text = _get_meta(ctx, identifier)
     meta = replace(
         meta,
         physical=name,
-        on_delay=on_delay,
-        off_delay=off_delay,
-        profile=profile,
         system=system,
+        **meta_fields(response_of(values)),
     )
     return _apply_meta(
         ctx,
@@ -300,7 +336,11 @@ def _cmd_clear_physical(ctx: DispatchContext, parts: list[str]) -> str:
     identifier = parts[0]
     addr_key, block_tag, meta, free_text = _get_meta(ctx, identifier)
     meta = replace(
-        meta, physical=None, link=None, on_delay=None, off_delay=None, profile=None, system=None
+        meta,
+        physical=None,
+        link=None,
+        system=None,
+        **meta_fields(()),
     )
     return _apply_meta(
         ctx, identifier, addr_key, block_tag, meta, free_text, f"tag clear-physical {identifier}"
@@ -330,16 +370,21 @@ def _load_export_rows(project_dir):
     the tags.py on disk (with edits). Diffing the two exports cancels every
     systematic round-trip artifact (``[external]`` inference, bank-default
     retentive/initial on unnamed slots, hex padding, system addresses), leaving
-    only the agent's genuine edits.
+    only the agent's genuine edits. The baseline uses the analog input channels
+    recorded in csv/ when the workspace was generated: pyrung marks them ``external``.
     """
     import tempfile
     from pathlib import Path
 
     from ..data.data_source import CsvDataSource
+    from ..services.analysis_service import read_analog_inputs
     from ..services.project_workspace import plc_source_dir
     from .rung_commands import _get_before_files
 
-    baseline_src = _get_before_files(project_dir).get("src/plc/tags.py")
+    analog_inputs = read_analog_inputs(project_dir / "csv")
+    baseline_src = _get_before_files(project_dir, analog_inputs=analog_inputs).get(
+        "src/plc/tags.py"
+    )
     if not baseline_src:
         raise ValueError("could not reconstruct baseline tags.py from persisted CSVs")
     current_src = (plc_source_dir(project_dir) / "tags.py").read_text(encoding="utf-8")
@@ -355,6 +400,41 @@ def _load_export_rows(project_dir):
         )
 
 
+def _merge_meta(visible: TagMeta, base: TagMeta, cur: TagMeta) -> TagMeta:
+    """Take each annotation key tags.py changed; keep the others as the store holds them."""
+    changed = {
+        f.name: getattr(cur, f.name)
+        for f in fields(TagMeta)
+        if getattr(cur, f.name) != getattr(base, f.name)
+    }
+    return replace(visible, **changed)
+
+
+def _merge_comment(display_address: str, visible: str, base: str, cur: str) -> str:
+    """Carry what tags.py changed in a comment into the comment the store holds.
+
+    tags.py holds only part of a comment (generated code leaves out the block tag
+    and the text), so the comment is split into block tag, annotations and text,
+    and only the parts that differ between the two exports are taken.
+    """
+    decompose = AnnotationService.decompose_comment
+    visible_block, visible_meta, visible_text = decompose(visible)
+    base_block, base_meta, base_text = decompose(base)
+    cur_block, cur_meta, cur_text = decompose(cur)
+    meta = _merge_meta(visible_meta or TagMeta(), base_meta or TagMeta(), cur_meta or TagMeta())
+    errors = AnnotationService.validate_meta(meta)
+    if errors:
+        raise ValueError(
+            f"{display_address}: tags.py annotations do not fit the comment "
+            f"{visible!r}: {'; '.join(errors)}"
+        )
+    return AnnotationService.recompose_comment(
+        cur_block if cur_block != base_block else visible_block,
+        meta,
+        cur_text if cur_text != base_text else visible_text,
+    )
+
+
 def _compute_tag_changes(base_rows, cur_rows, store) -> list[tuple[int, str, str | bool]]:
     """Diff current-export against baseline-export into store field edits.
 
@@ -362,16 +442,17 @@ def _compute_tag_changes(base_rows, cur_rows, store) -> list[tuple[int, str, str
     agent's edits land. A row present in ``cur`` but absent from ``base`` is a
     brand-new tag on a previously-empty slot; it's compared against a synthesized
     default (using ``is_default_initial_value`` + ``DEFAULT_RETENTIVE``) so only
-    genuinely-set fields count. (Removals — a nickname dropped from tags.py — are
-    not cleared: this is the additive add/annotate flow, not a full replace.)
+    genuinely-set fields count. A changed comment is merged into the store's
+    comment part by part (``_merge_comment``). (Removals — a nickname dropped from
+    tags.py — are not cleared: this is the additive add/annotate flow, not a full
+    replace.)
     """
-    from dataclasses import replace
-
     from pyclickplc.banks import DEFAULT_RETENTIVE
 
     changes: list[tuple[int, str, str | bool]] = []
     for addr_key, cur in cur_rows.items():
-        if store.get_visible_row(addr_key) is None:
+        visible = store.get_visible_row(addr_key)
+        if visible is None:
             continue  # not tracked by the store (hidden/unsupported slot)
         base = base_rows.get(addr_key)
         if base is None:
@@ -385,7 +466,11 @@ def _compute_tag_changes(base_rows, cur_rows, store) -> list[tuple[int, str, str
         if cur.nickname != base.nickname:
             changes.append((addr_key, "nickname", cur.nickname))
         if cur.comment != base.comment:
-            changes.append((addr_key, "comment", cur.comment))
+            comment = _merge_comment(
+                visible.display_address, visible.comment, base.comment, cur.comment
+            )
+            if comment != visible.comment:
+                changes.append((addr_key, "comment", comment))
         if initial_values_differ(base, cur):
             changes.append((addr_key, "initial_value", cur.initial_value))
         if cur.retentive != base.retentive:
@@ -428,6 +513,7 @@ def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
 _SUBCOMMANDS = {
     "show": _cmd_show,
     "repair-system-nicknames": _cmd_repair_system_nicknames,
+    "upgrade-project": _cmd_upgrade_project,
     "apply": _cmd_apply,
     "set-flag": _cmd_set_flag,
     "clear-flag": _cmd_clear_flag,

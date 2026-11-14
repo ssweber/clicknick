@@ -9,9 +9,13 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from pyclickplc.addresses import get_addr_key
+from pyclickplc.banks import INTERLEAVED_PAIRS
+from pyclickplc.blocks import parse_block_tag, strip_block_tag
+
 if TYPE_CHECKING:
     from ..data.address_store import AddressStore
-    from ..data.edit_session_new import EditSession
+    from ..data.edit_session import EditSession
     from ..models.address_row import AddressRow
 
 
@@ -31,7 +35,9 @@ class RowService:
         Validation rules:
         - At least 2 rows required
         - First row must have a non-empty nickname containing a number
-        - All subsequent rows must have empty nicknames
+        - At least one other selected row has the first row's memory type
+        - All such rows must have empty nicknames (rows of other memory types,
+          such as the TD rows between T rows, are left alone)
 
         Args:
             rows: List of AddressRow objects to validate (in order)
@@ -53,12 +59,81 @@ class RowService:
         if not re.search(r"\d+", first_row.nickname):
             return False, "First nickname must contain a number"
 
-        # Check that all other rows have empty nicknames
-        for row in rows[1:]:
+        targets = RowService.fill_down_targets(rows)
+        if not targets:
+            return False, "Select more rows of the same memory type"
+
+        # Check that all rows to fill have empty nicknames
+        for row in targets:
             if row.nickname:
                 return False, "Other selected rows must be empty"
 
         return True, ""
+
+    @staticmethod
+    def _comment_without_block_tag(comment: str) -> str:
+        """The comment with every block tag removed, so a copy names no block.
+
+        Tags are removed until none is left. The space on one side of each
+        removed tag goes with it and the ends are trimmed; whitespace elsewhere
+        in the text stays as written.
+        """
+        text = comment
+        while True:
+            stripped = strip_block_tag(text)
+            if stripped == text:
+                break
+            # Where the tag stood: the first character the two texts differ at
+            at = 0
+            while at < len(stripped) and at < len(text) and stripped[at] == text[at]:
+                at += 1
+            if 0 < at < len(stripped) and stripped[at - 1].isspace() and stripped[at].isspace():
+                stripped = stripped[:at] + stripped[at + 1 :]
+            text = stripped.strip()
+        return text
+
+    @staticmethod
+    def _set_copied_comment(
+        session: EditSession, store: AddressStore, dest_key: int, comment: str
+    ) -> None:
+        """Copy a comment to a destination row, keeping a block tag the destination has.
+
+        A destination's own tag (for example the closing row of a block the
+        fill runs through) stays, with its comment, as the copy would remove it.
+        """
+        if parse_block_tag(store.visible_state[dest_key].comment).tag_type is not None:
+            return
+        session.set_field(dest_key, "comment", comment)
+
+    @staticmethod
+    def fill_down_targets(rows: list[AddressRow]) -> list[AddressRow]:
+        """Rows below the first that Fill Down writes: the first row's memory type only.
+
+        A T/TD or CT/CTD selection holds both types; only the source row's
+        type is numbered.
+        """
+        if not rows:
+            return []
+        memory_type = rows[0].memory_type
+        return [row for row in rows[1:] if row.memory_type == memory_type]
+
+    @staticmethod
+    def block_tag_keys(rows: list[AddressRow]) -> tuple[int, int]:
+        """Address keys that get the opening and closing tags of a block over `rows`.
+
+        `rows` are in address order. When the selection holds both rows of an
+        interleaved pair (T and TD, CT and CTD), the tags go on the T/CT row at
+        the first and last address and the store's pair cascade writes the
+        matching `_D` tags. Otherwise they are the first and last rows.
+        """
+        types = {r.memory_type for r in rows}
+
+        def tag_key(row: AddressRow) -> int:
+            if row.is_interleaved_secondary and INTERLEAVED_PAIRS[row.memory_type] in types:
+                return get_addr_key(INTERLEAVED_PAIRS[row.memory_type], row.address)
+            return row.addr_key
+
+        return tag_key(rows[0]), tag_key(rows[-1])
 
     @staticmethod
     def can_clone_structure(rows: list[AddressRow]) -> tuple[bool, str]:
@@ -166,42 +241,6 @@ class RowService:
 
     @staticmethod
     def fill_down(
-        store: AddressStore,
-        source_key: int,
-        target_keys: list[int],
-        increment_initial_value: bool = False,
-    ) -> set[int]:
-        """Fill down from source to target rows with incremented nicknames.
-
-        This is a convenience wrapper around clone_structure for the special case
-        where the template is a single row.
-
-        Must be called within an edit_session context.
-
-        Args:
-            store: The AddressStore instance
-            source_key: Source address key
-            target_keys: List of target address keys
-            increment_initial_value: If True and initial_value matches nickname number,
-                                      increment it along with nickname
-
-        Returns:
-            Set of affected addr_keys (source + all targets)
-        """
-        # Fill down is just clone_structure with a single-row template
-        affected = RowService.clone_structure(
-            store=store,
-            template_keys=[source_key],
-            destination_keys=target_keys,
-            clone_count=len(target_keys),
-            increment_initial_value=increment_initial_value,
-        )
-        # Include source key for backward compatibility
-        affected.add(source_key)
-        return affected
-
-    @staticmethod
-    def fill_down_with_session(
         session: EditSession,
         store: AddressStore,
         source_key: int,
@@ -221,7 +260,7 @@ class RowService:
         Returns:
             Set of affected addr_keys
         """
-        return RowService.clone_structure_with_session(
+        return RowService.clone_structure(
             session=session,
             store=store,
             template_keys=[source_key],
@@ -232,41 +271,6 @@ class RowService:
 
     @staticmethod
     def clone_structure(
-        store: AddressStore,
-        template_keys: list[int],
-        destination_keys: list[int],
-        clone_count: int,
-        increment_initial_value: bool = False,
-    ) -> set[int]:
-        """Clone a structure of rows with incremented nicknames.
-
-        Must be called within an edit_session context.
-
-        Args:
-            store: The AddressStore instance
-            template_keys: Source address keys (the template)
-            destination_keys: Destination address keys (must be clone_count * len(template_keys))
-            clone_count: Number of times to clone the template
-            increment_initial_value: If True and initial_value matches nickname number,
-                                      increment it along with nickname
-
-        Returns:
-            Set of affected addr_keys (all destination rows)
-        """
-        if store._current_session is None:
-            raise RuntimeError("clone_structure must be called within an edit_session")
-
-        return RowService.clone_structure_with_session(
-            session=store._current_session,
-            store=store,
-            template_keys=template_keys,
-            destination_keys=destination_keys,
-            clone_count=clone_count,
-            increment_initial_value=increment_initial_value,
-        )
-
-    @staticmethod
-    def clone_structure_with_session(
         session: EditSession,
         store: AddressStore,
         template_keys: list[int],
@@ -298,7 +302,8 @@ class RowService:
             template.append(
                 {
                     "nickname": row.nickname,
-                    "comment": row.comment,
+                    # A block tag names one block; a copy would duplicate it
+                    "comment": RowService._comment_without_block_tag(row.comment),
                     "initial_value": row.initial_value,
                     "retentive": row.retentive,
                 }
@@ -313,7 +318,7 @@ class RowService:
                 base_nickname = tmpl["nickname"]
                 if not base_nickname:
                     # Empty row in template - still copy comment/initial_value/retentive
-                    session.set_field(dest_key, "comment", tmpl["comment"])
+                    RowService._set_copied_comment(session, store, dest_key, tmpl["comment"])
                     session.set_field(dest_key, "initial_value", tmpl["initial_value"])
                     session.set_field(dest_key, "retentive", tmpl["retentive"])
                     affected.add(dest_key)
@@ -326,7 +331,7 @@ class RowService:
 
                 # Update via session
                 session.set_field(dest_key, "nickname", new_nickname)
-                session.set_field(dest_key, "comment", tmpl["comment"])
+                RowService._set_copied_comment(session, store, dest_key, tmpl["comment"])
 
                 # Copy/increment initial_value based on flag
                 if tmpl["initial_value"] and orig_num is not None and increment_initial_value:

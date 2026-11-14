@@ -42,8 +42,9 @@ workspaces are written to the folders the user chooses.
   through standard Windows APIs, then sends Enter, Tab, or Escape after a nickname is
   selected. It installs no keyboard hook and injects no code into `Click.exe`.
 - **Editor command listener.** While ClickNick is running, `clicknick-cli` can connect to
-  its local TCP port to read or stage address edits, check workspace code, and apply ladder
-  proposals. This listener runs even when the offline console is closed. It binds to
+  its local TCP port to read or stage address edits, check workspace code, and open Review
+  Changes on the workspace's ladder edits (`clicknick-cli rung apply`). This listener runs
+  whether or not the Simulator is open. It binds to
   `localhost`, with the port chosen by Windows. Connections are unauthenticated,
   and ClickNick does not check the connecting process's user identity. Other local users
   and processes that can reach the port can connect. Address edits are staged and undoable;
@@ -51,10 +52,20 @@ workspaces are written to the folders the user chooses.
 - **PLC connection.** The Dataview editor connects over Modbus TCP (port 502 by default)
   after the user asks to go live, to the address they enter. It reads values and writes
   values when the user clicks Write.
+- **Simulator.** Starting the Simulator launches a child Python process (`python -m pyrung.dap`),
+  working in the workspace folder, that runs the workspace's `run.py`. The child starts a Modbus TCP
+  listener on `127.0.0.1`, port 502 unless the user picks another, and a command listener on
+  `localhost` with a port chosen by Windows, which the Console and `pyrung live` use. Like the
+  editor listener, it is unauthenticated, and other local users and processes that can reach
+  the port can connect. ClickNick connects to that Modbus listener to show the simulated
+  values, and so does the Dataview editor while it is open. Neither listener exists until the
+  simulation is started, and the child keeps running after
+  the Simulator window closes until the user stops it, or ClickNick disconnects from CLICK or
+  closes.
 - **Generated Python.** On project connection, ClickNick translates the ladder into Python
   and runs the generated code in-process to build the model behind Check Program. This
   step does not run files found in the project folder.
-- **Workspace Python.** Check Program, applying a proposal, and the offline console run
+- **Workspace Python.** Check Program, Review Changes, and the Simulator run
   the user's editable workspace (`src/plc`, `run.py`, `project_to_csv.py`) in a child Python
   process. The `tag apply` command executes workspace `tags.py` inside ClickNick to export
   its nickname changes. These are intentional code execution features, with the signed-in
@@ -74,9 +85,11 @@ The paths below describe the default uv installation.
 |---|---|
 | Unsigned `clicknick.exe` in `%USERPROFILE%\.local\bin` starts Python from `%APPDATA%\uv\tools\clicknick\` | Normal launch. uv generates the small entry-point launcher; ClickNick runs as `python.exe` or `pythonw.exe`. |
 | Python starts `SysWOW64\...\powershell.exe -EncodedCommand ...` | The Jet database worker, on machines without a 64-bit Access driver. The full command and script identity are below. |
-| Python listening on `127.0.0.1:<random port>` | The editor command listener for `clicknick-cli`; the offline console uses a separate `pyrung live` connection for simulation. |
-| Python starts a child Python process | Check Program, applying a proposal, or the offline console running the user's workspace. |
+| Python listening on `127.0.0.1:<random port>` | The editor command listener for `clicknick-cli`, and the Simulator's command listener for the Console and `pyrung live`. |
+| Python listening on `127.0.0.1:502` (or the port the user picked) | The Simulator's Modbus server, while the Simulator is on. |
+| Python starts a child Python process | Check Program, Review Changes, or the Simulator running the user's workspace. |
 | Python connects to `<PLC address>:502` | Dataview editor, after the user asks to go live. |
+| Python connects to `127.0.0.1:502` (or the port the user picked) | ClickNick reading the Simulator's values, while the simulation is on. |
 | Native `.pyd`, `.dll`, and `.exe` files appear under `%APPDATA%\uv\` | The Python interpreter and dependencies such as pywin32 and pyodbc. pywin32 includes `Pythonwin.exe` and `pythonservice.exe`; ClickNick does not run them. |
 | `HKCU\Environment` PATH changed | The uv installer adds its executable directory to the user's PATH. |
 
@@ -158,18 +171,18 @@ behavior, while the checks provide the specific evidence listed below:
 
 ## Verify it yourself
 
-To install a specific ClickNick release: `uv tool install clicknick==0.23.1`.
+To install a specific ClickNick release: `uv tool install clicknick==<version>`.
 
 The report can be regenerated from the tagged source:
 
 ```powershell
 git clone https://github.com/ssweber/clicknick
 cd clicknick
-git checkout v0.23.1                                   # the release under review
+git checkout v<version>                                # the release under review
 uv export --frozen --no-dev --format cyclonedx1.5      # the dependency list
 uv audit --frozen --no-dev --no-group docs             # the vulnerability check
 uv build
-certutil -hashfile dist\clicknick-0.23.1-py3-none-any.whl SHA256
+certutil -hashfile dist\clicknick-<version>-py3-none-any.whl SHA256
 uv run python devtools/trust_report.py                 # regenerate the report into dist\trust
 ```
 
@@ -200,8 +213,10 @@ Default locations for an installation through uv:
 | Launcher stub | `%USERPROFILE%\.local\bin\clicknick.exe` |
 | uv download cache | `%LOCALAPPDATA%\uv\cache\` |
 | Live-session files | The CLICK temp folder for the open project, or `%LOCALAPPDATA%\ClickNick\live\`. CLICK does not read these files. |
+| Simulator settings (switches, forces, bench links) | `%LOCALAPPDATA%\ClickNick\simulator\<PLC name>.toml`, or `simulator.toml` in the workspace folder once one is set up |
+| Simulator command listener's port file | `%TEMP%\pyrung\pyrung-<session>.port` |
 | Generated engineering workspace | `%TEMP%\clicknick_*` while running, or the folder the user chooses for a durable workspace |
-| Project data it edits | `SC_.mdb` in `%LOCALAPPDATA%\Temp\CLICK (...)\`. CLICK writes it back into the `.ckp` on save. |
+| Project data it edits | `SC_.mdb` in `%TEMP%\CLICK (...)\`. CLICK writes it back into the `.ckp` on save. |
 
 ## Uninstall
 

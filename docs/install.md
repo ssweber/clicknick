@@ -1,6 +1,6 @@
 # Install ClickNick
 
-ClickNick supports Windows 10 and 11 and CLICK Programming Software v2.60-v3.90.
+ClickNick supports Windows 10 and 11 and CLICK Programming Software v2.60-v4.00.
 
 ## Install with `uv`
 
@@ -12,6 +12,9 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 On a managed machine, `winget install --id astral-sh.uv` installs the same thing without
 running a downloaded script.
+
+If you already have `uv`, update it first with `uv self update` (or `winget upgrade astral-sh.uv` if winget
+installed it).
 
 Then install and run ClickNick:
 
@@ -45,16 +48,11 @@ installs, what it talks to, and a per-release dependency report.
 Continue with [Getting started](getting-started.md).
 
 <span id="install-the-access-driver"></span>
+<span id="test-a-specific-database-backend"></span>
 
 ## Database connection
 
-ClickNick connects automatically. On Windows x64, a separate database driver normally isn't needed. The first connection can take a few seconds.
-
-If connecting fails, open **Help > About ClickNick > Test Connection** and see [connection help](help/index.md#database-connection).
-
-<span id="test-a-specific-database-backend"></span>
-
-For connection overrides or CSV mode, see [connection options](help/index.md#connection-options).
+ClickNick connects automatically. On Windows x64, a separate database driver normally isn't needed, and the first connection can take a few seconds. If connecting fails, open **Help > About ClickNick > Test Connection**. [Connection help](help/index.md#database-connection) covers the rest, including [connection options](help/index.md#connection-options) and CSV mode.
 
 ## Pip alternative
 

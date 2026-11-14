@@ -2,7 +2,7 @@
 
 Open your project in CLICK Programming Software, save it, then start ClickNick. It finds the open project and shows the connection near the top of the window.
 
-![ClickNick connected to a CLICK project](https://github.com/user-attachments/assets/de4148a2-cbc5-4b11-95e5-f884c59d70e0)
+![ClickNick main window connected to a CLICK project, with Check Program, Simulate and Review Changes](assets/main-window.png)
 
 ## 1. Try nickname autocomplete
 
@@ -16,10 +16,10 @@ Click **Check Program**. Findings are grouped by severity, with the rung they po
 
 ## 3. Run it offline
 
-Open **Console** to run the saved program without a PLC. Force inputs, step scans, inspect tags, ask `why` a tag is on or off. Nothing here touches the controller.
+Open **Simulate** to run the saved program without a PLC. Flip inputs and force outputs on the drawn hardware, step scans, and use the Console pane at the bottom to inspect tags or ask `why` a tag is on or off. Nothing here touches the controller.
 
 ## 4. Pick a workspace folder
 
 A workspace is a folder that links up with your open project. ClickNick fills it with your ladder (as Python) after every save. Anything you add, tests, notes, fixtures, stays. Until you pick a folder, ClickNick uses a temporary one, which is enough for checks and the Console. Pick a real folder from the Workspace controls when you want the work to stay with the machine. ClickNick remembers which folder goes with which project.
 
-[Start the tour](tour/autocomplete.md){ .md-button .md-button--primary } [Help](help/index.md){ .md-button }
+[Start the tour](tour/simulator.md){ .md-button .md-button--primary } [Help](help/index.md){ .md-button }

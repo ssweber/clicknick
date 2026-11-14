@@ -6,25 +6,23 @@ Target is 100 rows, but overflow (rows 100+) is supported with visual indication
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import tkinter as tk
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from tkinter import messagebox, ttk
+from typing import NamedTuple
 
 from pyclickplc.addresses import normalize_address
 from pyclickplc.dataview import (
     MAX_DATAVIEW_ROWS,
     DataViewFile,
-    create_empty_dataview,
-    get_data_type_for_address,
-)
-from pyclickplc.dataview import (
-    DataViewRecord as DataViewRecord,
+    DataViewRecord,
 )
 from tksheet import Sheet
 
-from .cdv_file import export_cdv, load_cdv, save_cdv
+from ..sim_palette import FORCED_BG
 
 # Column indices
 COL_ADDRESS = 0
@@ -33,8 +31,10 @@ COL_COMMENT = 2
 COL_NEW_VALUE = 3
 COL_WRITE = 4
 COL_LIVE = 5
+#: Shown only while the editor is attached to the simulator.
+COL_FORCE = 6
 
-NUM_COLUMNS = 6
+NUM_COLUMNS = 7
 
 PlcValue = bool | int | float | str
 
@@ -48,29 +48,52 @@ LIVE_FLASH_DURATION_MS = 1500
 # File monitoring interval in milliseconds
 FILE_MONITOR_INTERVAL_MS = 2000
 
+#: Undo levels kept per dataview.
+MAX_UNDO_DEPTH = 50
+
+#: A file's (mtime, size): which version of it is on disk.
+Stamp = tuple[float, int]
+
+
+_MAX_REJECTIONS_SHOWN = 10
+
+
+class _UndoFrame(NamedTuple):
+    """The rows and their Write checks, as one undo step restores them."""
+
+    rows: list[DataViewRecord]
+    checks: list[bool]
+    #: The version of the file these rows came from (None: from no file).
+    based_on: Stamp | None
+
 
 class DataviewPanel(ttk.Frame):
     """Panel for editing a single DataView's addresses.
 
     Displays rows with columns:
-    Address, Nickname, Comment, New Value, Write, Live.
+    Address, Nickname, Comment, New Value, Write, Live, and (attached to the
+    simulator) Force.
     Target is 100 rows, but supports overflow (rows 100+) with grey background.
     Overflow rows are excluded from saves.
     Supports row reordering, insert/delete, cut/copy/paste, and address autocomplete.
     New Value data is preserved internally and shown using DataViewFile helpers.
     """
 
-    def _canonical_address(self, address: str) -> str | None:
-        """Normalize an address for poll/write payloads."""
-        candidate = (address or "").strip()
+    def _display_address(self, text: str) -> str | None:
+        """CLICK's form of an address (``x1`` -> ``X001``, ``xd0u`` -> ``XD0u``), or None."""
+        candidate = (text or "").strip()
         if not candidate:
             return None
-        normalized = self.address_normalizer(candidate) if self.address_normalizer else None
-        if not normalized:
-            normalized = normalize_address(candidate)
-        if not normalized:
-            return None
-        return normalized.upper()
+        if self.address_normalizer is not None:
+            normalized = self.address_normalizer(candidate)
+            if normalized:
+                return normalized
+        return normalize_address(candidate)
+
+    def _canonical_address(self, address: str) -> str | None:
+        """Normalize an address for poll/write payloads."""
+        normalized = self._display_address(address)
+        return normalized.upper() if normalized else None
 
     @staticmethod
     def _display_text(value: object) -> str:
@@ -92,6 +115,23 @@ class DataviewPanel(ttk.Frame):
         value = self._live_values.get(address)
         return DataViewFile.value_to_display(value, row.data_type)
 
+    def _force_display(self, row: DataViewRecord) -> str:
+        address = self._canonical_address(row.address)
+        if not address or address not in self._forces:
+            return ""
+        return DataViewFile.value_to_display(self._forces[address], row.data_type)
+
+    def _sync_force_cell(self, row_idx: int) -> None:
+        """Show a row's force and mark forced rows the way the Simulator does."""
+        row = self.rows[row_idx]
+        text = self._force_display(row)
+        self.sheet.set_cell_data(row_idx, COL_FORCE, text, redraw=False)
+        for column in (COL_ADDRESS, COL_FORCE):
+            if text:
+                self.sheet.highlight_cells(row=row_idx, column=column, bg=FORCED_BG, redraw=False)
+            elif row_idx < MAX_DATAVIEW_ROWS:
+                self.sheet.dehighlight_cells(row=row_idx, column=column, redraw=False)
+
     def _sync_write_checkbox(self, row_idx: int) -> None:
         """Refresh write checkbox cell for a row."""
         row = self.rows[row_idx]
@@ -112,6 +152,10 @@ class DataviewPanel(ttk.Frame):
             self.sheet.set_cell_data(row_idx, COL_WRITE, checked)
         else:
             self.sheet.set_cell_data(row_idx, COL_WRITE, "")
+
+    def _notify_modified(self) -> None:
+        if self.on_modified:
+            self.on_modified(self)
 
     def _notify_addresses_changed(self) -> None:
         if self.on_addresses_changed:
@@ -140,6 +184,15 @@ class DataviewPanel(ttk.Frame):
                     canvas="row_index",
                 )
 
+    def _names_for(self, address: str) -> tuple[str, str]:
+        """Nickname and comment for an address, read live from the address data.
+
+        Never stored on the row, so the sheet cannot show a stale name.
+        """
+        if not address or self.nickname_lookup is None:
+            return "", ""
+        return self.nickname_lookup(address) or ("", "")
+
     def _populate_sheet(self) -> None:
         """Populate sheet with current row data."""
         self._suppress_notifications = True
@@ -148,20 +201,23 @@ class DataviewPanel(ttk.Frame):
             for i, row in enumerate(self.rows):
                 is_enabled = self._is_row_write_enabled(row)
                 checked = bool(self._write_checks[i]) if is_enabled else ""
+                nickname, comment = self._names_for(row.address)
                 data.append(
                     [
                         row.address,
-                        row.nickname,
-                        row.comment,
+                        nickname,
+                        comment,
                         self._new_value_display(row),
                         checked,
                         self._live_value_display(row),
+                        self._force_display(row),
                     ]
                 )
 
             self.sheet.set_sheet_data(data, reset_col_positions=False)
             for i in range(len(self.rows)):
                 self._sync_write_checkbox(i)
+                self._sync_force_cell(i)
 
             # Set row index labels (1 to N)
             self._refresh_row_indices()
@@ -175,12 +231,14 @@ class DataviewPanel(ttk.Frame):
         """Update display for a single row."""
         row = self.rows[row_idx]
 
+        nickname, comment = self._names_for(row.address)
         self.sheet.set_cell_data(row_idx, COL_ADDRESS, row.address)
-        self.sheet.set_cell_data(row_idx, COL_NICKNAME, row.nickname)
-        self.sheet.set_cell_data(row_idx, COL_COMMENT, row.comment)
+        self.sheet.set_cell_data(row_idx, COL_NICKNAME, nickname)
+        self.sheet.set_cell_data(row_idx, COL_COMMENT, comment)
         self.sheet.set_cell_data(row_idx, COL_NEW_VALUE, self._new_value_display(row))
         self.sheet.set_cell_data(row_idx, COL_LIVE, self._live_value_display(row))
         self._sync_write_checkbox(row_idx)
+        self._sync_force_cell(row_idx)
 
     def _update_status(self) -> None:
         """Update the status label."""
@@ -199,6 +257,56 @@ class DataviewPanel(ttk.Frame):
                 text=f"Addresses: {filled_count}/{MAX_DATAVIEW_ROWS}{dirty_text}"
             )
 
+    def _apply_force_edit(self, row_idx: int, text: str) -> None:
+        """Force (or, when cleared, release) the row's address through the simulator.
+
+        The cell then shows the simulator's forces again; a refused force never
+        appears, and the simulator reports why.
+        """
+        row = self.rows[row_idx]
+        address = self._canonical_address(row.address)
+        if address and self.on_force is not None:
+            if not text:
+                if address in self._forces:
+                    self.on_force(address, None)
+            else:
+                parsed = DataViewFile.try_parse_display(text, row.data_type)
+                if parsed.ok and parsed.value is not None:
+                    self.on_force(address, parsed.value)
+        self._sync_force_cell(row_idx)
+
+    def _row_values(self) -> list[tuple[object, ...]]:
+        """What a save writes for each row."""
+        return [(row.address, row.data_type, row.new_value) for row in self.rows]
+
+    def _snapshot(self) -> _UndoFrame:
+        return _UndoFrame(
+            [dataclasses.replace(row) for row in self.rows],
+            list(self._write_checks),
+            self._based_on,
+        )
+
+    def _push_undo(self, before: _UndoFrame) -> None:
+        """Record the state an edit started from; a new edit drops Redo."""
+        self._undo_stack.append(before)
+        del self._undo_stack[:-MAX_UNDO_DEPTH]
+        self._redo_stack.clear()
+
+    def _mark_read(self, stamp: Stamp | None) -> None:
+        """The rows are the file's version ``stamp``, as just loaded, reloaded or saved."""
+        self._saved_values = self._row_values()
+        self._is_dirty = False
+        self._based_on = stamp
+        self._monitor_stamp = stamp
+
+    def _on_undo_key(self, _event=None) -> str:
+        self.undo()
+        return "break"
+
+    def _on_redo_key(self, _event=None) -> str:
+        self.redo()
+        return "break"
+
     def _on_sheet_modified(self, event) -> None:
         """Handle sheet modification events."""
         if self._suppress_notifications:
@@ -212,6 +320,7 @@ class DataviewPanel(ttk.Frame):
         if not table_cells:
             return
 
+        before = self._snapshot()
         data_changed = False
         addresses_changed = False
 
@@ -229,18 +338,6 @@ class DataviewPanel(ttk.Frame):
                 if new_address != row.address:
                     row.address = new_address
                     row.update_data_type()
-
-                    # Lookup nickname and comment
-                    if new_address and self.nickname_lookup:
-                        result = self.nickname_lookup(new_address)
-                        if result:
-                            row.nickname, row.comment = result
-                        else:
-                            row.nickname = ""
-                            row.comment = ""
-                    else:
-                        row.nickname = ""
-                        row.comment = ""
 
                     # Clear stale runtime state when writability/address changes.
                     if old_address != row.address:
@@ -277,6 +374,9 @@ class DataviewPanel(ttk.Frame):
                 if row.new_value != old_native:
                     data_changed = True
 
+            elif col == COL_FORCE:
+                self._apply_force_edit(row_idx, self._display_text(new_value))
+
             elif col == COL_WRITE:
                 if self._is_row_write_enabled(row):
                     self._write_checks[row_idx] = bool(new_value)
@@ -285,10 +385,10 @@ class DataviewPanel(ttk.Frame):
                 self._sync_write_checkbox(row_idx)
 
         if data_changed:
+            self._push_undo(before)
             self._is_dirty = True
             self._update_status()
-            if self.on_modified:
-                self.on_modified()
+            self._notify_modified()
         if addresses_changed:
             self._notify_addresses_changed()
 
@@ -306,6 +406,7 @@ class DataviewPanel(ttk.Frame):
 
         if not rows_data:
             return
+        before = self._snapshot()
 
         # Ensure keys are integers (JSON often sends "0": 5)
         mapping = {int(k): int(v) for k, v in rows_data.items()}
@@ -333,6 +434,7 @@ class DataviewPanel(ttk.Frame):
             check if check is not None else remaining_checks.pop() for check in new_checks
         ]
 
+        self._push_undo(before)
         self._is_dirty = True
         self._update_status()
         self._refresh_row_indices()
@@ -341,8 +443,7 @@ class DataviewPanel(ttk.Frame):
             self._sync_write_checkbox(i)
         self.sheet.refresh(redraw_header=False, redraw_row_index=True)
 
-        if self.on_modified:
-            self.on_modified()
+        self._notify_modified()
         self._notify_addresses_changed()
 
     def _trim_empty_rows_from_bottom(self) -> None:
@@ -381,6 +482,7 @@ class DataviewPanel(ttk.Frame):
         added = event.get("added", {}).get("rows", {})
         if not added:
             return
+        before = self._snapshot()
 
         table_rows = added.get("table", {})
         if isinstance(table_rows, Mapping) and table_rows:
@@ -401,27 +503,22 @@ class DataviewPanel(ttk.Frame):
             if not address:
                 address = self.sheet.get_cell_data(row_idx, COL_ADDRESS) or ""
 
-            if address:
-                row.address = address.strip().upper()
-                row.update_data_type()
-                if self.nickname_lookup:
-                    result = self.nickname_lookup(row.address)
-                    if result:
-                        row.nickname, row.comment = result
+            row.address = self._display_address(address) or ""
+            row.update_data_type()
 
             self.rows.insert(insert_idx, row)
             self._write_checks.insert(insert_idx, False)
 
         # Auto-pad: remove empty rows from bottom if over 100
         self._trim_empty_rows_from_bottom()
+        self._push_undo(before)
 
         # Update display
         self._populate_sheet()
         self._is_dirty = True
         self._update_status()
 
-        if self.on_modified:
-            self.on_modified()
+        self._notify_modified()
         self._notify_addresses_changed()
 
     def _pad_to_target(self) -> None:
@@ -443,6 +540,7 @@ class DataviewPanel(ttk.Frame):
         deleted = event.get("deleted", {}).get("rows", {})
         if not deleted:
             return
+        before = self._snapshot()
 
         # Remove DataViewRecord objects that were deleted
         # The 'deleted' dict maps old indices to row data
@@ -454,17 +552,47 @@ class DataviewPanel(ttk.Frame):
 
         # Auto-pad: add empty rows if under 100
         self._pad_to_target()
+        self._push_undo(before)
 
         # Update display
         self._populate_sheet()
         self._is_dirty = True
         self._update_status()
 
-        if self.on_modified:
-            self.on_modified()
+        self._notify_modified()
         self._notify_addresses_changed()
 
-    def _validate_edit(self, event) -> str:
+    def _warn_rejected_pastes(self) -> None:
+        """Say which cells of a paste or fill kept their value because the new one was invalid."""
+        rejected, self._rejected_pastes = self._rejected_pastes, []
+        if not rejected or not self.winfo_exists():
+            return
+        shown = rejected[:_MAX_REJECTIONS_SHOWN]
+        if len(rejected) > len(shown):
+            shown.append(f"and {len(rejected) - len(shown)} more")
+        messagebox.showwarning("Invalid New Value", "\n".join(shown), parent=self)
+
+    def _on_paste_start(self, _event) -> None:
+        """A paste ends the batch before it: its warning is shown before this paste's own."""
+        self._warn_rejected_pastes()
+
+    def _reject_new_value(self, row_idx: int, text: str, error: str) -> str | None:
+        """Refuse a New Value. Text typed in the cell editor is asked for again once tksheet
+        has closed the editor. A value pasted or filled keeps the cell
+        as it was and is listed in one warning, shown when the next paste starts or the
+        window is idle; clearing a cell is never refused."""
+        if not self.sheet.MT.text_editor.open:
+            if not self._rejected_pastes:
+                self._rejected_pastes_after_id = self.after_idle(self._warn_rejected_pastes)
+            self._rejected_pastes.append(
+                f"{self.rows[row_idx].address}: {error or 'Invalid value'}"
+            )
+            return self._new_value_display(self.rows[row_idx])
+        self._rejected_edit = (row_idx, text, error or "Invalid value")
+        self._rejected_edit_after_id = self.after_idle(self.reopen_rejected_edit)
+        return None
+
+    def _validate_edit(self, event) -> str | None:
         """Validate and normalize cell edits.
 
         Args:
@@ -473,27 +601,34 @@ class DataviewPanel(ttk.Frame):
         Returns:
             The validated/normalized value, or empty string if invalid
         """
+        # Map the displayed column to the data column: hidden columns shift it. Paste, fill,
+        # cut/delete and cell edits pass displayed columns; sort, undo and Replace All may pass
+        # data columns, so map again if any of them is enabled.
+        column = self.sheet.MT.datacn(event.column) if hasattr(event, "column") else None
+
         # Only validate Address column
-        if hasattr(event, "column") and event.column == COL_ADDRESS:
+        if column == COL_ADDRESS:
             value = (event.value or "").strip()
 
-            # Empty is valid (clearing the cell)
+            # Empty is valid (clearing the cell); an invalid address clears it too
             if not value:
                 return ""
+            return self._display_address(value) or ""
 
-            # Try to normalize via lookup (handles "x1" -> "X001", "xd0u" -> "XD0u")
-            if self.address_normalizer:
-                normalized = self.address_normalizer(value)
-                if normalized:
-                    return normalized
-
-            # Fallback: basic validation without normalization
-            normalized = value.upper()
-            if get_data_type_for_address(normalized) is None:
+        if column == COL_FORCE:
+            row_idx = getattr(event, "row", None)
+            if row_idx is None or row_idx >= len(self.rows):
+                return event.value
+            row = self.rows[row_idx]
+            display_text = self._display_text(event.value)
+            if not display_text:
                 return ""
-            return normalized
+            parsed = DataViewFile.try_parse_display(display_text, row.data_type)
+            if not parsed.ok:
+                return self._force_display(row)
+            return DataViewFile.value_to_display(parsed.value, row.data_type)
 
-        if hasattr(event, "column") and event.column == COL_NEW_VALUE:
+        if column == COL_NEW_VALUE:
             row_idx = getattr(event, "row", None)
             if row_idx is None or row_idx >= len(self.rows):
                 return event.value
@@ -503,31 +638,48 @@ class DataviewPanel(ttk.Frame):
                 return self._new_value_display(row)
 
             display_text = self._display_text(event.value)
-            ok, _error = DataViewFile.validate_row_display(row, display_text)
+            ok, error = DataViewFile.validate_row_display(row, display_text)
             if not ok:
-                return self._new_value_display(row)
+                return self._reject_new_value(row_idx, display_text, error)
 
             parsed = DataViewFile.try_parse_display(display_text, row.data_type)
             if not parsed.ok:
-                return self._new_value_display(row)
+                return self._reject_new_value(row_idx, display_text, parsed.error)
             return DataViewFile.value_to_display(parsed.value, row.data_type)
 
         return event.value
+
+    def _apply_column_visibility(self) -> None:
+        hidden: set[int] = set()
+        if not self._modbus_columns_visible:
+            hidden |= {COL_NEW_VALUE, COL_WRITE, COL_LIVE}
+        if not self._force_column_visible:
+            hidden.add(COL_FORCE)
+        shown = set(range(NUM_COLUMNS)) - hidden
+        self.sheet.show_columns(columns=iter(sorted(shown)))
+        if hidden:
+            self.sheet.hide_columns(columns=hidden, data_indexes=True)
 
     def _create_widgets(self) -> None:
         """Create all panel widgets."""
         # Table (tksheet)
         self.sheet = Sheet(
             self,
-            headers=["Address", "Nickname", "Comment", "New Value", "Write", "Live"],
+            headers=["Address", "Nickname", "Comment", "New Value", "Write", "Live", "Force"],
             show_row_index=True,
             height=400,
             width=700,
         )
         self.sheet.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Enable standard bindings
+        # Enable standard bindings. Undo is the panel's own: tksheet's undo would
+        # change the sheet without the rows behind it.
         self.sheet.enable_bindings()
+        self.sheet.disable_bindings("undo")
+        for sequence in ("<Control-z>", "<Control-Z>"):
+            self.sheet.bind(sequence, self._on_undo_key)
+        for sequence in ("<Control-y>", "<Control-Y>", "<Control-Shift-z>", "<Control-Shift-Z>"):
+            self.sheet.bind(sequence, self._on_redo_key)
 
         # Enable row drag and drop for reordering
         self.sheet.enable_bindings("row_drag_and_drop")
@@ -548,7 +700,7 @@ class DataviewPanel(ttk.Frame):
         )
 
         # Set column widths
-        self.sheet.set_column_widths([90, 170, 220, 120, 70, 120])
+        self.sheet.set_column_widths([90, 170, 220, 120, 70, 120, 90])
         self.sheet.row_index(40)  # Row index width (row numbers)
 
         # Read-only display columns.
@@ -559,6 +711,7 @@ class DataviewPanel(ttk.Frame):
         self.sheet.bind("<<SheetModified>>", self._on_sheet_modified)
 
         # Handle row drag-and-drop reordering
+        self.sheet.extra_bindings("begin_paste", self._on_paste_start)
         self.sheet.extra_bindings("end_move_rows", self._on_rows_moved)
 
         # Handle row insert/delete for dynamic row management
@@ -567,6 +720,7 @@ class DataviewPanel(ttk.Frame):
 
         # Initialize with empty data
         self._populate_sheet()
+        self._apply_column_visibility()
 
         # Footer with status
         footer = ttk.Frame(self)
@@ -577,30 +731,37 @@ class DataviewPanel(ttk.Frame):
 
         self._update_status()
 
+    @staticmethod
+    def _stamp(path: Path) -> Stamp | None:
+        """The file's (mtime, size), or None when it can't be read."""
+        try:
+            stat = os.stat(path)
+        except OSError:
+            return None
+        return stat.st_mtime, stat.st_size
+
     def _load_file(self) -> None:
         """Load data from file."""
         if not self.file_path or not self.file_path.exists():
             return
 
+        # Stamped before reading: a write during the read is then a change still to load.
+        stamp = self._stamp(self.file_path)
         try:
-            self.rows, self.has_new_values, self._header = load_cdv(self.file_path)
-            self._write_checks = [False] * len(self.rows)
-            self._live_values.clear()
-
-            # Populate nicknames and comments from lookup
-            if self.nickname_lookup:
-                for row in self.rows:
-                    if row.address:
-                        result = self.nickname_lookup(row.address)
-                        if result:
-                            row.nickname, row.comment = result
-
-            self._populate_sheet()
-            self._is_dirty = False
-            self._update_status()
+            self._file = DataViewFile.load(self.file_path)
         except Exception as e:
-            # Show error
+            # Stay bound to the path, but never save the empty rows over the file.
+            self.load_error = str(e)
             self.status_label.config(text=f"Error loading: {e}")
+            return
+        self.load_error = None
+        self._write_checks = [False] * len(self.rows)
+        self._live_values.clear()
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        self._populate_sheet()
+        self._mark_read(stamp)
+        self._update_status()
 
     # --- File Monitoring ---
 
@@ -609,42 +770,66 @@ class DataviewPanel(ttk.Frame):
         # Only handle destruction of this widget, not children
         if event.widget == self:
             self.stop_file_monitoring()
+            for after_id in (self._rejected_pastes_after_id, self._rejected_edit_after_id):
+                if after_id is not None:
+                    self.after_cancel(after_id)
+            self._rejected_pastes_after_id = self._rejected_edit_after_id = None
+            self._rejected_pastes.clear()
 
     def __init__(
         self,
         parent: tk.Widget,
         file_path: Path | None = None,
-        on_modified: Callable[[], None] | None = None,
+        on_modified: Callable[[DataviewPanel], None] | None = None,
         on_addresses_changed: Callable[[DataviewPanel], None] | None = None,
         nickname_lookup: Callable[[str], tuple[str, str] | None] | None = None,
         address_normalizer: Callable[[str], str | None] | None = None,
         name: str | None = None,
+        on_force: Callable[[str, PlcValue | None], None] | None = None,
     ):
         """Initialize the dataview panel.
 
         Args:
             parent: Parent widget
             file_path: Path to the CDV file (None for new unsaved dataview)
-            on_modified: Callback when data is modified
+            on_modified: Callback with this panel when its rows or unsaved state change
             on_addresses_changed: Callback when row addresses change
             nickname_lookup: Callback to lookup (nickname, comment) for an address
             address_normalizer: Callback to normalize address to canonical form (e.g., "x1" -> "X001")
             name: Custom name for new unsaved dataviews (used instead of "Untitled")
+            on_force: Force an address to a value, or release it (None), in the simulator
         """
         super().__init__(parent)
 
+        self._rejected_edit: tuple[int, str, str] | None = None
+        self._rejected_pastes: list[str] = []
+        self._rejected_pastes_after_id: str | None = None
+        self._rejected_edit_after_id: str | None = None
         self.file_path = file_path
         self.on_modified = on_modified
         self.on_addresses_changed = on_addresses_changed
         self._custom_name = name
         self.nickname_lookup = nickname_lookup
         self.address_normalizer = address_normalizer
+        self.on_force = on_force
 
-        # Data model
-        self.rows: list[DataViewRecord] = create_empty_dataview()
-        self.has_new_values = False
-        self._header: str | None = None  # Original header from file
+        # Simulator forces by CLICK address, and which optional columns show
+        self._forces: dict[str, PlcValue] = {}
+        self._modbus_columns_visible = True
+        self._force_column_visible = False
+
+        # Data model: the CDV file itself (rows, header, and the original bytes
+        # pyclickplc uses to write an unchanged file back byte-for-byte)
+        self._file = DataViewFile()
         self._is_dirty = False
+        self._saved_values = self._row_values()
+        self._undo_stack: list[_UndoFrame] = []
+        self._redo_stack: list[_UndoFrame] = []
+        #: Why file_path could not be read; while set, Save refuses to write over it.
+        self.load_error: str | None = None
+        #: The version of file_path the rows came from: set by load, reload and save,
+        #: kept by edits, restored by Undo/Redo. Save asks when the file is another one.
+        self._based_on: Stamp | None = None
         self._write_checks: list[bool] = [False] * len(self.rows)
         self._live_values: dict[str, PlcValue] = {}
 
@@ -654,8 +839,9 @@ class DataviewPanel(ttk.Frame):
         # Live value flash highlight tracking: row_idx -> after_id
         self._live_flash_pending: dict[int, str] = {}
 
-        # File monitoring state
-        self._last_mtime: float = 0.0
+        # File monitoring state. The stamp is the file's as last loaded, saved or asked
+        # about, so the monitor asks once about a change; it never decides whether Save asks.
+        self._monitor_stamp: Stamp | None = None
         self._monitor_after_id: str | None = None
         self._monitoring_active = False
         self._reload_prompt_shown = False  # Prevent duplicate prompts
@@ -670,6 +856,151 @@ class DataviewPanel(ttk.Frame):
         # Stop monitoring when panel is destroyed
         self.bind("<Destroy>", self._on_destroy)
 
+    def reopen_rejected_edit(self) -> bool:
+        """Say why a New Value was refused and reopen its cell with the text typed; False if none."""
+        rejected, self._rejected_edit = self._rejected_edit, None
+        if rejected is None or not self.winfo_exists():
+            return False
+        row_idx, text, error = rejected
+        if row_idx >= len(self.rows):
+            return False
+        address = self.rows[row_idx].address
+        messagebox.showwarning("Invalid New Value", f"{address}: {error}", parent=self)
+        self.sheet.select_cell(row_idx, COL_NEW_VALUE)
+        self.sheet.open_cell()
+        self.sheet.set_text_editor_value(text)
+        return True
+
+    def _rebase_frames(self, old: Stamp | None, new: Stamp | None) -> None:
+        """Undo/Redo steps from file version ``old`` now come from ``new``.
+
+        For a save, and for a reload that read the same rows: the file then holds nothing
+        those steps have not read. Steps from any other version keep theirs.
+        """
+
+        def rebase(frames: list[_UndoFrame]) -> list[_UndoFrame]:
+            return [f._replace(based_on=new) if f.based_on == old else f for f in frames]
+
+        self._undo_stack = rebase(self._undo_stack)
+        self._redo_stack = rebase(self._redo_stack)
+
+    def _restore(self, frame: _UndoFrame) -> None:
+        """Put the rows back as a frame holds them and redraw the whole sheet from them."""
+        self.rows = [dataclasses.replace(row) for row in frame.rows]
+        self._write_checks = list(frame.checks)
+        self._based_on = frame.based_on
+        self._populate_sheet()
+        self._is_dirty = self._row_values() != self._saved_values
+        self._update_status()
+        self._notify_modified()
+        self._notify_addresses_changed()
+
+    def undo(self) -> bool:
+        """Undo the last edit to the rows. Returns False when there is none."""
+        if not self._undo_stack:
+            return False
+        self._redo_stack.append(self._snapshot())
+        self._restore(self._undo_stack.pop())
+        return True
+
+    def redo(self) -> bool:
+        """Redo the last undone edit. Returns False when there is none."""
+        if not self._redo_stack:
+            return False
+        self._undo_stack.append(self._snapshot())
+        self._restore(self._redo_stack.pop())
+        return True
+
+    def _show_save_error(self, text: str) -> None:
+        self.status_label.config(text=text)
+        messagebox.showerror("Save Error", text, parent=self)
+
+    def _changed_under_rows(self) -> bool:
+        """True when file_path is not the version the rows came from (CLICK writes .cdv files).
+
+        Any other mtime or size counts, not only a later one: a restored older copy is a change.
+        A deleted file is not one.
+        """
+        if self.file_path is None:
+            return False
+        stamp = self._stamp(self.file_path)
+        return stamp is not None and stamp != self._based_on
+
+    def _reload_file(self) -> None:
+        """Reload the file from disk, as an undo step: Ctrl+Z brings the replaced rows back."""
+        if not self.file_path or not self.file_path.exists():
+            return
+
+        before = self._snapshot()
+        stamp = self._stamp(self.file_path)
+        try:
+            self._file = DataViewFile.load(self.file_path)
+        except Exception as e:
+            self.status_label.config(text=f"Error reloading: {e}")
+            return
+        self.load_error = None
+        if [(r.address, r.data_type, r.new_value) for r in before.rows] != self._row_values():
+            self._push_undo(before)
+        else:
+            self._rebase_frames(before.based_on, stamp)
+        self._write_checks = [False] * len(self.rows)
+        self._live_values.clear()
+        self._populate_sheet()
+        self._mark_read(stamp)
+        self._update_status()
+        self._notify_modified()
+        self._notify_addresses_changed()
+
+    def _confirm_overwrite(self, path: Path) -> bool:
+        """Ask before saving over a change another program made; True to save."""
+        # The file monitor keeps running while the dialog is up; it must not ask too.
+        self._reload_prompt_shown = True
+        try:
+            answer = messagebox.askyesnocancel(
+                "File Changed",
+                f"'{path.name}' was changed by another program, such as CLICK, "
+                "after the rows you are saving were read from it.\n\n"
+                "Yes: save this dataview over it.\n"
+                "No: reload it (Ctrl+Z brings your edits back).\n"
+                "Cancel: do neither.",
+                parent=self,
+            )
+        finally:
+            self._reload_prompt_shown = False
+        if answer is False:
+            self._reload_file()
+        else:
+            # The monitor does not ask about this change again. Save still asks,
+            # until a save succeeds or the file is reloaded.
+            self._monitor_stamp = self._stamp(path)
+        self.sheet.focus_set()
+        return bool(answer)
+
+    def _save_to(self, path: Path) -> bool:
+        """Write the rows to path; on failure say why and change nothing."""
+        if self.load_error is not None and path == self.file_path:
+            self._show_save_error(
+                f"Could not read '{path.name}' when it was opened ({self.load_error}), "
+                "so it is not saved over."
+            )
+            return False
+        if (
+            path == self.file_path
+            and self._changed_under_rows()
+            and not self._confirm_overwrite(path)
+        ):
+            return False
+        try:
+            self._file.save(path)
+        except Exception as e:
+            self._show_save_error(f"Could not save '{self.name}': {e}")
+            return False
+        stamp = self._stamp(path)
+        self._rebase_frames(self._based_on, stamp)
+        self._mark_read(stamp)
+        self._update_status()
+        return True
+
     def save(self) -> bool:
         """Save data to file.
 
@@ -680,44 +1011,26 @@ class DataviewPanel(ttk.Frame):
         """
         if not self.file_path:
             return False
-
-        try:
-            # Check if any rows in the saveable range have new values
-            saveable_rows = self.rows[:MAX_DATAVIEW_ROWS]
-            self.has_new_values = any(
-                r.new_value is not None for r in saveable_rows if not r.is_empty
-            )
-            save_cdv(self.file_path, self.rows, self.has_new_values, self._header)
-            self._is_dirty = False
-            self._update_status()
-
-            # Update mtime so we don't prompt to reload our own save
-            if self.file_path.exists():
-                self._last_mtime = os.path.getmtime(self.file_path)
-
-            return True
-        except Exception as e:
-            self.status_label.config(text=f"Error saving: {e}")
-            return False
+        return self._save_to(self.file_path)
 
     def save_as(self, new_path: Path) -> bool:
-        """Save data to a new file path.
+        """Save data to a new file path and bind the panel to it.
 
         Args:
             new_path: New file path to save to.
 
         Returns:
-            True if saved successfully, False otherwise.
+            True if saved successfully; on failure the panel keeps its old path.
         """
-        old_path = self.file_path
+        if new_path == self.file_path:
+            return self.save()
+        if not self._save_to(new_path):
+            return False
         self.file_path = new_path
-        if self.save():
-            # Restart monitoring for new file
-            if old_path != new_path:
-                self.stop_file_monitoring()
-                self.start_file_monitoring()
-            return True
-        return False
+        self.load_error = None
+        self.stop_file_monitoring()
+        self.start_file_monitoring()
+        return True
 
     def export(self, path: Path) -> bool:
         """Export a copy to ``path`` without changing panel file binding.
@@ -726,11 +1039,8 @@ class DataviewPanel(ttk.Frame):
         restart monitoring, and does not clear modified state.
         """
         try:
-            # Match save semantics: header reflects whether any saveable row has
-            # a New Value.
-            saveable_rows = self.rows[:MAX_DATAVIEW_ROWS]
-            has_new_values = any(r.new_value is not None for r in saveable_rows if not r.is_empty)
-            export_cdv(path, self.rows, has_new_values, self._header)
+            # A separate file object, so this panel's file stays bound to its path.
+            DataViewFile(rows=self.rows, header=self._file.header).save(path)
             return True
         except Exception as e:
             self.status_label.config(text=f"Error exporting: {e}")
@@ -747,10 +1057,6 @@ class DataviewPanel(ttk.Frame):
         if self._monitoring_active or not self.file_path:
             return
 
-        # Store initial modification time
-        if self.file_path.exists():
-            self._last_mtime = os.path.getmtime(self.file_path)
-
         self._monitoring_active = True
         self._reload_prompt_shown = False
         self._schedule_file_check()
@@ -765,48 +1071,25 @@ class DataviewPanel(ttk.Frame):
                 pass
         self._monitor_after_id = None
 
-    def _reload_file(self) -> None:
-        """Reload the file from disk."""
-        if not self.file_path or not self.file_path.exists():
-            return
-
-        try:
-            self.rows, self.has_new_values, self._header = load_cdv(self.file_path)
-            self._write_checks = [False] * len(self.rows)
-            self._live_values.clear()
-
-            # Populate nicknames and comments from lookup
-            if self.nickname_lookup:
-                for row in self.rows:
-                    if row.address:
-                        result = self.nickname_lookup(row.address)
-                        if result:
-                            row.nickname, row.comment = result
-
-            self._populate_sheet()
-            self._is_dirty = False
-            self._update_status()
-
-            # Update mtime to prevent immediate re-prompt
-            self._last_mtime = os.path.getmtime(self.file_path)
-        except Exception as e:
-            self.status_label.config(text=f"Error reloading: {e}")
-
     def _prompt_reload(self) -> None:
-        """Prompt user to reload the file after external modification."""
-        self._reload_prompt_shown = True
+        """Offer to reload the file after another program changed it.
 
-        result = messagebox.askyesno(
-            "Reload",
-            "This file has been modified by another program.\n\nDo you want to reload it?",
-            parent=self,
+        Declining changes nothing here: the rows still come from the older version, so
+        Save asks before writing over this one.
+        """
+        message = (
+            f"'{self.name}' has been modified by another program.\n\nDo you want to reload it?"
         )
-
-        if result:
+        if self._is_dirty:
+            message += " It replaces your unsaved edits; Ctrl+Z brings them back."
+        self._reload_prompt_shown = True
+        try:
+            reload = messagebox.askyesno("Reload", message, parent=self)
+        finally:
+            self._reload_prompt_shown = False
+        if reload:
             self._reload_file()
-
-        # Allow future prompts
-        self._reload_prompt_shown = False
+        self.sheet.focus_set()
 
     def _check_file_modified(self) -> None:
         """Check if the CDV file has been modified externally."""
@@ -814,10 +1097,10 @@ class DataviewPanel(ttk.Frame):
             return
 
         try:
-            if self.file_path and self.file_path.exists():
-                current_mtime = os.path.getmtime(self.file_path)
-                if current_mtime > self._last_mtime and not self._reload_prompt_shown:
-                    self._last_mtime = current_mtime
+            if self.file_path and not self._reload_prompt_shown:
+                stamp = self._stamp(self.file_path)
+                if stamp is not None and stamp != self._monitor_stamp:
+                    self._monitor_stamp = stamp
                     self._prompt_reload()
         except Exception:
             # File might be locked during write, skip this check
@@ -874,12 +1157,6 @@ class DataviewPanel(ttk.Frame):
             new_row = DataViewRecord(address=address)
             new_row.update_data_type()
 
-            # Lookup nickname and comment
-            if self.nickname_lookup:
-                result = self.nickname_lookup(address)
-                if result:
-                    new_row.nickname, new_row.comment = result
-
             # Insert into data model
             self.rows.insert(idx, new_row)
             self._write_checks.insert(idx, False)
@@ -912,8 +1189,7 @@ class DataviewPanel(ttk.Frame):
         finally:
             self._suppress_notifications = False
 
-        if self.on_modified:
-            self.on_modified()
+        self._notify_modified()
         self._notify_addresses_changed()
 
     def _fill_row_at(self, address: str, idx: int) -> None:
@@ -921,12 +1197,6 @@ class DataviewPanel(ttk.Frame):
         row = self.rows[idx]
         row.address = address
         row.update_data_type()
-
-        # Lookup nickname and comment
-        if self.nickname_lookup:
-            result = self.nickname_lookup(address)
-            if result:
-                row.nickname, row.comment = result
 
         # Update sheet
         self._update_row_display(idx)
@@ -937,8 +1207,7 @@ class DataviewPanel(ttk.Frame):
         self.sheet.see(idx, COL_ADDRESS)
         self.sheet.select_row(idx)
 
-        if self.on_modified:
-            self.on_modified()
+        self._notify_modified()
         self._notify_addresses_changed()
 
     def _get_selected_row_index(self) -> int | None:
@@ -959,76 +1228,99 @@ class DataviewPanel(ttk.Frame):
 
         return None
 
-    def add_address(self, address: str) -> bool:
-        """Add an address using smart insertion placement.
-
-        Placement rules:
-        - If a row is selected AND empty: Fill it in place
-        - If a row is selected AND has data: INSERT new row immediately AFTER
-        - If no selection: Find first empty row followed by another empty (gap >= 2)
-        - Fallback: Fill first existing empty row (no insertion)
-        - Last resort: Append at end (creates overflow)
-
-        Args:
-            address: The address to add (e.g., "X001", "DS100")
-
-        Returns:
-            True if address was added (always True unless address is invalid).
-        """
-        normalized = address.strip().upper()
-        if not normalized:
-            return False
-
+    def _place_address(self, address: str) -> None:
+        """Put an address (already in CLICK's form) where the placement rules say."""
         # Get selection (checks both row and cell selection)
         selected_idx = self._get_selected_row_index()
 
         if selected_idx is not None:
             # If selected row is empty, fill it in place
             if selected_idx < len(self.rows) and self.rows[selected_idx].is_empty:
-                self._fill_row_at(normalized, selected_idx)
-                return True
+                self._fill_row_at(address, selected_idx)
+                return
             # Otherwise insert AFTER the selected row
-            insert_idx = selected_idx + 1
-            self._insert_address_at(normalized, insert_idx)
-            return True
+            self._insert_address_at(address, selected_idx + 1)
+            return
 
         # Find first empty row followed by another empty row (gap >= 2)
         target_idx = self._find_insertion_gap()
 
         if target_idx is not None:
             # Insert at the gap
-            self._insert_address_at(normalized, target_idx)
-            return True
+            self._insert_address_at(address, target_idx)
+            return
 
         # No gap found - find first empty row to FILL (not insert)
         for i, row in enumerate(self.rows):
             if row.is_empty:
-                self._fill_row_at(normalized, i)
-                return True
+                self._fill_row_at(address, i)
+                return
 
         # No empty rows - append at end (creates overflow)
-        self._insert_address_at(normalized, len(self.rows))
-        return True
+        self._insert_address_at(address, len(self.rows))
 
-    def clear_row(self, row_idx: int) -> None:
-        """Clear a specific row.
+    def add_addresses(self, addresses: Iterable[str]) -> int:
+        """Add addresses in order using smart insertion placement, as one undo step.
+
+        Placement rules, for each address:
+        - If a row is selected AND empty: Fill it in place
+        - If a row is selected AND has data: INSERT new row immediately AFTER
+        - If no selection: Find first empty row followed by another empty (gap >= 2)
+        - Fallback: Fill first existing empty row (no insertion)
+        - Last resort: Append at end (creates overflow)
+
+        Addresses are stored in CLICK's form (``x1`` -> ``X001``).
 
         Args:
-            row_idx: Index of the row to clear (0-99)
+            addresses: The addresses to add (e.g., "X001", "DS100")
+
+        Returns:
+            How many were added; text that is not a CLICK address is skipped.
         """
-        if 0 <= row_idx < len(self.rows):
+        normalized = [
+            address
+            for address in (self._display_address(text) for text in addresses)
+            if address is not None
+        ]
+        if not normalized:
+            return 0
+        self._push_undo(self._snapshot())
+        for address in normalized:
+            self._place_address(address)
+        return len(normalized)
+
+    def add_address(self, address: str) -> bool:
+        """Add one address (see add_addresses).
+
+        Returns:
+            True if the address was added, False if it is not a CLICK address.
+        """
+        return self.add_addresses([address]) == 1
+
+    def clear_rows(self, row_indices: Iterable[int]) -> None:
+        """Clear rows, as one undo step.
+
+        Args:
+            row_indices: Indexes of the rows to clear
+        """
+        indices = sorted(
+            {i for i in row_indices if 0 <= i < len(self.rows) and not self.rows[i].is_empty}
+        )
+        if not indices:
+            return
+        self._push_undo(self._snapshot())
+        for row_idx in indices:
             old_canonical = self._canonical_address(self.rows[row_idx].address)
             self.rows[row_idx].clear()
             self._write_checks[row_idx] = False
             if old_canonical:
                 self._live_values.pop(old_canonical, None)
             self._update_row_display(row_idx)
-            self._is_dirty = True
-            self._update_status()
+        self._is_dirty = True
+        self._update_status()
 
-            if self.on_modified:
-                self.on_modified()
-            self._notify_addresses_changed()
+        self._notify_modified()
+        self._notify_addresses_changed()
 
     def get_selected_rows(self) -> list[int]:
         """Get indices of currently selected rows."""
@@ -1138,25 +1430,40 @@ class DataviewPanel(ttk.Frame):
 
     def set_modbus_columns_visible(self, visible: bool) -> None:
         """Show or hide the Modbus-related columns (New Value, Write, Live)."""
-        columns = {COL_NEW_VALUE, COL_WRITE, COL_LIVE}
-        if visible:
-            self.sheet.show_columns(columns=columns)
-        else:
-            self.sheet.hide_columns(columns=columns, data_indexes=True)
+        self._modbus_columns_visible = visible
+        self._apply_column_visibility()
+
+    def set_force_column_visible(self, visible: bool) -> None:
+        """Show or hide the simulator's Force column (hidden against a real PLC)."""
+        if visible == self._force_column_visible:
+            return
+        self._force_column_visible = visible
+        self._apply_column_visibility()
+
+    def update_forces(self, forces: Mapping[str, PlcValue]) -> None:
+        """Show the simulator's current forces (empty when detached)."""
+        forces = dict(forces)
+        if forces == self._forces:
+            return
+        self._forces = forces
+        for row_idx in range(len(self.rows)):
+            self._sync_force_cell(row_idx)
+        self.sheet.set_refresh_timer()
 
     def refresh_nicknames(self) -> None:
-        """Refresh all nickname and comment lookups."""
-        if not self.nickname_lookup:
-            return
-
+        """Redraw nicknames and comments after the address data changed."""
         for i, row in enumerate(self.rows):
-            if row.address:
-                result = self.nickname_lookup(row.address)
-                if result:
-                    row.nickname, row.comment = result
-                else:
-                    row.nickname = ""
-                    row.comment = ""
-                self._update_row_display(i)
+            nickname, comment = self._names_for(row.address)
+            self.sheet.set_cell_data(i, COL_NICKNAME, nickname)
+            self.sheet.set_cell_data(i, COL_COMMENT, comment)
 
         self.sheet.set_refresh_timer()
+
+    @property
+    def rows(self) -> list[DataViewRecord]:
+        """Rows of the open CDV file."""
+        return self._file.rows
+
+    @rows.setter
+    def rows(self, rows: list[DataViewRecord]) -> None:
+        self._file.rows = rows

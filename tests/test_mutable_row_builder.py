@@ -1,6 +1,5 @@
 """Unit tests for MutableRowBuilder."""
 
-from clicknick.models.address_row import AddressRow
 from clicknick.models.mutable_row_builder import MutableRowBuilder
 
 
@@ -33,66 +32,34 @@ class TestMutableRowBuilderBasics:
         assert builder.retentive is True
 
 
-class TestMutableRowBuilderFreeze:
-    """Tests for MutableRowBuilder.freeze()."""
+class TestMutableRowBuilderChanges:
+    """Tests for MutableRowBuilder.changes()."""
 
-    def test_freeze_applies_nickname(self):
-        """Freeze applies nickname change to base row."""
-        base = AddressRow(memory_type="X", address=1, nickname="OldName")
+    def test_changes_holds_only_set_fields(self):
+        """Only fields that were assigned appear, with their values."""
         builder = MutableRowBuilder(nickname="NewName")
 
-        result = builder.freeze(base)
+        assert builder.changes() == {"nickname": "NewName"}
 
-        assert result.nickname == "NewName"
-        assert result.memory_type == "X"
-        assert result.address == 1
-        # Original row unchanged
-        assert base.nickname == "OldName"
-
-    def test_freeze_applies_multiple_fields(self):
-        """Freeze applies multiple field changes."""
-        base = AddressRow(memory_type="DS", address=1)
+    def test_changes_holds_every_set_field(self):
+        """Every assigned field appears, including falsy values."""
         builder = MutableRowBuilder(
             nickname="Motor1",
-            comment="Main motor",
+            comment="",
             initial_value="100",
-            retentive=True,
+            retentive=False,
         )
 
-        result = builder.freeze(base)
+        assert builder.changes() == {
+            "nickname": "Motor1",
+            "comment": "",
+            "initial_value": "100",
+            "retentive": False,
+        }
 
-        assert result.nickname == "Motor1"
-        assert result.comment == "Main motor"
-        assert result.initial_value == "100"
-        assert result.retentive is True
-
-    def test_freeze_preserves_unset_fields(self):
-        """Freeze preserves fields not set in builder."""
-        base = AddressRow(
-            memory_type="X",
-            address=1,
-            nickname="OriginalName",
-            comment="Original comment",
-            initial_value="1",
-            retentive=True,
-        )
-        builder = MutableRowBuilder(nickname="NewName")
-
-        result = builder.freeze(base)
-
-        assert result.nickname == "NewName"
-        assert result.comment == "Original comment"
-        assert result.initial_value == "1"
-        assert result.retentive is True
-
-    def test_freeze_empty_builder_returns_base(self):
-        """Freeze with no changes returns base row."""
-        base = AddressRow(memory_type="X", address=1, nickname="Name")
-        builder = MutableRowBuilder()
-
-        result = builder.freeze(base)
-
-        assert result is base
+    def test_changes_of_empty_builder_is_empty(self):
+        """An empty builder has no changes."""
+        assert MutableRowBuilder().changes() == {}
 
 
 class TestMutableRowBuilderFieldAccess:

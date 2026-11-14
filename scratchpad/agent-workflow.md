@@ -472,7 +472,8 @@ clicknick-live tag clear-uom <tag>
 
 **Physical devices:**
 ```
-clicknick-live tag set-physical <tag> <name> [--on-delay D] [--off-delay D] [--profile P] [--system S]
+clicknick-live tag set-physical <tag> <name> <response> [--system S]   # e.g. --on-delay 2s, --ramp-on 0.8, --toggle
+clicknick-live tag upgrade-project
 clicknick-live tag set-link <tag> <link>
 clicknick-live tag clear-physical <tag>
 ```

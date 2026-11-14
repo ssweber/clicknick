@@ -41,9 +41,21 @@ class KEYBDINPUT(ctypes.Structure):
     ]
 
 
+class MOUSEINPUT(ctypes.Structure):
+    _fields_ = [
+        ("dx", ctypes.c_long),
+        ("dy", ctypes.c_long),
+        ("mouseData", ctypes.c_ulong),
+        ("dwFlags", ctypes.c_ulong),
+        ("time", ctypes.c_ulong),
+        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+    ]
+
+
 class INPUT(ctypes.Structure):
+    # MOUSEINPUT is the largest member: SendInput rejects a smaller cbSize.
     class _INPUT(ctypes.Union):
-        _fields_ = [("ki", KEYBDINPUT)]
+        _fields_ = [("ki", KEYBDINPUT), ("mi", MOUSEINPUT)]
 
     _anonymous_ = ("_input",)
     _fields_ = [("type", ctypes.c_ulong), ("_input", _INPUT)]
@@ -119,13 +131,6 @@ class Win32API:
         except Exception:
             return ""
 
-    def get_title_by_class(self, class_name: str) -> str:
-        """Get window title by class name."""
-        hwnd = win32gui.FindWindow(class_name, None)
-        if hwnd:
-            return win32gui.GetWindowText(hwnd)
-        return ""
-
     def get_pos(self, hwnd: int) -> str:
         """Get window position as 'x,y,width,height' string."""
         if not hwnd or not win32gui.IsWindow(hwnd):
@@ -151,6 +156,24 @@ class Win32API:
             return True
 
         win32gui.EnumWindows(enum_callback, None)
+        return result[0]
+
+    def find_process_window(self, pid: str | int, title: str) -> int | None:
+        """Find a visible top-level window of process *pid* titled exactly *title*."""
+        result = [None]
+
+        def enum_callback(hwnd, _):
+            if win32gui.IsWindowVisible(hwnd) and win32gui.GetWindowText(hwnd) == title:
+                _, window_pid = win32process.GetWindowThreadProcessId(hwnd)
+                if window_pid == int(pid):
+                    result[0] = hwnd
+                    return False
+            return True
+
+        try:
+            win32gui.EnumWindows(enum_callback, None)
+        except Exception:
+            pass  # EnumWindows raises when the callback stops it early
         return result[0]
 
     def activate(
@@ -286,7 +309,7 @@ class Win32API:
         Args:
             hwnd: Parent window handle
             use_gui_thread_info: If True, use GetGUIThreadInfo (better for dynamically
-                created controls like TfrmDataView's inline edit). If False, use
+                created controls like the Data View's inline edit). If False, use
                 thread attachment method (faster for most windows).
         """
         if not hwnd or not win32gui.IsWindow(hwnd):
@@ -430,6 +453,22 @@ class Win32API:
 
             ctypes.windll.user32.SendInput(2, ctypes.byref(inputs), ctypes.sizeof(INPUT))
             return True
+        except Exception:
+            return False
+
+    def send_ctrl_key(self, letter: str) -> bool:
+        """Send Ctrl+<letter> (e.g. ``"U"``) to the foreground window."""
+        vk = ord(letter.upper())
+        try:
+            inputs = (INPUT * 4)()
+            for i, (key, flags) in enumerate(
+                [(VK_CONTROL, 0), (vk, 0), (vk, KEYEVENTF_KEYUP), (VK_CONTROL, KEYEVENTF_KEYUP)]
+            ):
+                inputs[i].type = INPUT_KEYBOARD
+                inputs[i].ki.wVk = key
+                inputs[i].ki.dwFlags = flags
+            sent = ctypes.windll.user32.SendInput(4, ctypes.byref(inputs), ctypes.sizeof(INPUT))
+            return sent == 4
         except Exception:
             return False
 

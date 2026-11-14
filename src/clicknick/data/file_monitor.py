@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import tkinter as tk
+    from ..utils.scheduling import Scheduler
 
 # File monitoring interval in milliseconds
 FILE_MONITOR_INTERVAL_MS = 2000
@@ -39,14 +39,16 @@ class FileMonitor:
         """
         self._file_path = file_path
         self._on_modified = on_modified
+        # The file's mtime and size when it was last read; any change to either reloads
         self._last_mtime: float = 0.0
+        self._last_size: int = 0
         self._after_id: str | None = None
         self._active = False
-        self._tk_root: tk.Tk | None = None
+        self._tk_root: Scheduler | None = None
 
-        # Capture initial mtime if file exists
         if self._file_path and os.path.exists(self._file_path):
-            self._last_mtime = os.path.getmtime(self._file_path)
+            stat = os.stat(self._file_path)
+            self._last_mtime, self._last_size = stat.st_mtime, stat.st_size
 
     @property
     def file_path(self) -> str | None:
@@ -58,25 +60,17 @@ class FileMonitor:
         """Whether monitoring is currently active."""
         return self._active
 
-    def update_mtime(self) -> None:
-        """Update the stored mtime to current file mtime.
-
-        Call this after saving changes to prevent false modification detection.
-        """
-        if self._file_path and os.path.exists(self._file_path):
-            self._last_mtime = os.path.getmtime(self._file_path)
-
     def _schedule_check(self) -> None:
         """Schedule the next file modification check."""
         if not self._active or not self._tk_root:
             return
         self._after_id = self._tk_root.after(FILE_MONITOR_INTERVAL_MS, self._check_modified)
 
-    def start(self, tk_root: tk.Tk) -> None:
+    def start(self, tk_root: Scheduler) -> None:
         """Start monitoring the file for changes.
 
         Args:
-            tk_root: Tkinter root window (needed for after() scheduling)
+            tk_root: Scheduler for polling (the Tk root window in the app)
         """
         if self._active:
             return
@@ -105,11 +99,12 @@ class FileMonitor:
 
         try:
             if self._file_path and os.path.exists(self._file_path):
-                current_mtime = os.path.getmtime(self._file_path)
-                if current_mtime > self._last_mtime:
+                # Any change of mtime or size reloads: a restored backup is older than the file it replaces
+                stat = os.stat(self._file_path)
+                if (stat.st_mtime, stat.st_size) != (self._last_mtime, self._last_size):
                     consumed = self._on_modified()
                     if consumed is not False:
-                        self._last_mtime = current_mtime
+                        self._last_mtime, self._last_size = stat.st_mtime, stat.st_size
         except Exception:
             # File might be locked during write, skip this check
             pass

@@ -21,6 +21,9 @@ class _Analysis:
 class _Store:
     user_overrides = {}
 
+    def get_dirty_keys(self) -> set[int]:
+        return set(self.user_overrides)
+
 
 class _Finding:
     code = "CMP_EXAMPLE"

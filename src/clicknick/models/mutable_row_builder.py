@@ -1,31 +1,27 @@
 """Mutable row builder for accumulating changes to AddressRow.
 
 MutableRowBuilder provides a mutable interface for building changes to
-an AddressRow. Changes are accumulated and then frozen into an immutable
-AddressRow via the freeze() method.
+an AddressRow. Changes are accumulated and then read out with changes(),
+which AddressStore freezes into the row's override.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .address_row import AddressRow
+from dataclasses import dataclass
 
 
 @dataclass
 class MutableRowBuilder:
     """Accumulator for building changes to an AddressRow.
 
-    All fields are optional (None means "no change"). When freeze() is called,
-    non-None values are applied to the base row to create a new immutable row.
+    All fields are optional (None means "no change"); changes() returns the
+    non-None ones.
 
     Usage:
         builder = MutableRowBuilder()
         builder.nickname = "NewName"
         builder.comment = "Updated comment"
-        new_row = builder.freeze(base_row)
+        builder.changes()  # {"nickname": "NewName", "comment": "Updated comment"}
     """
 
     # Content fields (user-editable)
@@ -47,21 +43,13 @@ class MutableRowBuilder:
             or self.retentive is not None
         )
 
-    def freeze(self, base: AddressRow) -> AddressRow:
-        """Apply accumulated changes to base row and return new immutable row.
-
-        Uses dataclasses.replace() to create a new row with only the
-        fields that were set in this builder.
-
-        Args:
-            base: The base AddressRow to apply changes to.
+    def changes(self) -> dict[str, str | bool]:
+        """Return the fields that were set, mapped to their values.
 
         Returns:
-            New AddressRow with changes applied.
+            Dict of field name -> value for every non-None field.
         """
-        # Build kwargs for only fields that were explicitly set
-        changes: dict = {}
-
+        changes: dict[str, str | bool] = {}
         if self.nickname is not None:
             changes["nickname"] = self.nickname
         if self.comment is not None:
@@ -70,13 +58,7 @@ class MutableRowBuilder:
             changes["initial_value"] = self.initial_value
         if self.retentive is not None:
             changes["retentive"] = self.retentive
-
-        if not changes:
-            return base
-
-        existing = getattr(base, "dirty_fields", frozenset())
-        changes["dirty_fields"] = existing | frozenset(changes.keys())
-        return replace(base, **changes)
+        return changes
 
     def get_field(self, field_name: str) -> str | bool | None:
         """Get a field value by name.

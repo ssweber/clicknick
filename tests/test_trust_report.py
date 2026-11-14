@@ -121,6 +121,17 @@ def test_foreign_subprocess_target_fails(tmp_path):
     assert not checks["No download commands in shipped scripts"].passed
 
 
+def test_headless_python_is_an_allowed_subprocess_target(tmp_path):
+    checks, *_ = _scan(
+        tmp_path,
+        {"a.py": "import subprocess\nsubprocess.run([headless_python(), '-m', 'x'])\n"},
+    )
+    label = (
+        "Subprocesses launch only the same Python interpreter or the built-in Windows PowerShell"
+    )
+    assert checks[label].passed
+
+
 def test_non_localhost_listener_fails(tmp_path):
     checks, *_ = _scan(
         tmp_path,

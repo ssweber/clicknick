@@ -9,9 +9,23 @@ from pyclickplc.validation import COMMENT_MAX_LENGTH
 from pyrung.click.tag_map import TagMeta, format_tag_meta
 
 from ..services.annotation_service import AnnotationService
+from ..services.physical_response import (
+    PHYSICAL_KEYS,
+    FeedbackType,
+    PhysicalKind,
+    key_tooltip,
+    kinds_for,
+    meta_fields,
+    meta_response,
+    physical_kind,
+    response_kind,
+    response_of,
+    shown_keys,
+)
 from .tooltip import bind_tooltip as _bind_tooltip
 
-_DURATION_HINT = "e.g. 50ms, 2s, 1s500ms"
+#: The response radio that sets no response keys.
+_NO_RESPONSE = ""
 
 
 class AnnotationDialog(tk.Toplevel):
@@ -80,6 +94,10 @@ class AnnotationDialog(tk.Toplevel):
             return "Bool"
         return "|".join(f"{label}:{value}" for value, label in choices.items())
 
+    def _response_kind(self) -> PhysicalKind | None:
+        name = self._kind_var.get()
+        return None if name == _NO_RESPONSE else physical_kind(name)
+
     # ── Build / populate ──
 
     def _build_meta_from_widgets(self) -> TagMeta | None:
@@ -99,15 +117,14 @@ class AnnotationDialog(tk.Toplevel):
         physical = self._physical_var.get().strip() or None
         link = self._link_var.get().strip() or None
 
-        on_delay: str | None = None
-        off_delay: str | None = None
-        profile: str | None = None
-        if physical:
-            if self._phys_mode.get() == "timing":
-                on_delay = self._on_delay_var.get().strip() or None
-                off_delay = self._off_delay_var.get().strip() or None
+        values: dict[str, str | bool] = {}
+        kind = self._response_kind()
+        for key in kind.keys if kind is not None else ():
+            if key.is_flag:
+                # A required flag (toggle) is the kind itself.
+                values[key.name] = key.required or bool(self._key_vars[key.name].get())
             else:
-                profile = self._profile_var.get().strip() or None
+                values[key.name] = str(self._key_vars[key.name].get()).strip()
 
         system = self._system_var.get().strip() or None
 
@@ -123,10 +140,8 @@ class AnnotationDialog(tk.Toplevel):
             uom=uom,
             link=link,
             physical=physical,
-            on_delay=on_delay,
-            off_delay=off_delay,
-            profile=profile,
             system=system,
+            **meta_fields(response_of(values)),
         )
 
     def _update_preview(self) -> None:
@@ -135,15 +150,23 @@ class AnnotationDialog(tk.Toplevel):
         meta = self._build_meta_from_widgets()
         if meta is None:
             return
-        full_comment = AnnotationService.recompose_comment(
-            self._block_tag_str, meta, self._free_text
-        )
-        bracket_text = format_tag_meta(meta)
+        try:
+            full_comment = AnnotationService.recompose_comment(
+                self._block_tag_str, meta, self._free_text
+            )
+            bracket_text = format_tag_meta(meta) or "(no annotations)"
+        except ValueError as exc:
+            # A half-typed value, such as a time without units yet.
+            full_comment = ""
+            bracket_text = f"({exc})"
 
         self._preview_text.configure(state="normal")
         self._preview_text.delete("1.0", tk.END)
-        self._preview_text.insert("1.0", bracket_text if bracket_text else "(no annotations)")
+        self._preview_text.insert("1.0", bracket_text)
         self._preview_text.configure(state="disabled")
+        if not full_comment:
+            self._char_label.configure(text="")
+            return
 
         length = len(full_comment)
         color = "red" if length > COMMENT_MAX_LENGTH else "gray"
@@ -308,22 +331,34 @@ class AnnotationDialog(tk.Toplevel):
         self._resize_to_fit()
 
     def _on_physical_changed(self) -> None:
-        has_physical = bool(self._physical_var.get().strip())
-        state = "normal" if has_physical else "disabled"
-        self._on_delay_entry.configure(state=state)
-        self._off_delay_entry.configure(state=state)
-        for child in self._profile_frame.winfo_children():
-            if isinstance(child, ttk.Entry):
-                child.configure(state=state)
         self._update_preview()
 
-    def _on_phys_mode_changed(self) -> None:
-        if self._phys_mode.get() == "timing":
-            self._timing_frame.pack(fill=tk.X, pady=(0, 2), before=self._sys_row)
-            self._profile_frame.pack_forget()
+    def _on_kind_changed(self) -> None:
+        """Show the chosen kind's keys. Each key keeps its own value across kinds."""
+        for child in self._response_frame.winfo_children():
+            child.destroy()
+        kind = self._response_kind()
+        for row, key in enumerate(shown_keys(kind) if kind is not None else ()):
+            var = self._key_vars[key.name]
+            if key.is_flag:
+                check = ttk.Checkbutton(
+                    self._response_frame, text=key.label, variable=var, command=self._update_preview
+                )
+                check.grid(row=row, column=0, columnspan=3, sticky=tk.W)
+                _bind_tooltip(check, key_tooltip(key))
+                continue
+            label = ttk.Label(self._response_frame, text=f"{key.label}:")
+            label.grid(row=row, column=0, sticky=tk.W)
+            entry = ttk.Entry(self._response_frame, textvariable=var, width=12)
+            entry.grid(row=row, column=1, sticky=tk.W, padx=(4, 4), pady=1)
+            hint = ttk.Label(self._response_frame, text=key.unit, foreground="gray")
+            hint.grid(row=row, column=2, sticky=tk.W)
+            for widget in (label, entry, hint):
+                _bind_tooltip(widget, key_tooltip(key))
+        if kind is None:
+            self._response_frame.pack_forget()
         else:
-            self._timing_frame.pack_forget()
-            self._profile_frame.pack(fill=tk.X, pady=(0, 2), before=self._sys_row)
+            self._response_frame.pack(fill=tk.X, pady=(0, 2), before=self._sys_row)
         self._update_preview()
 
     # ── Advanced section ──
@@ -350,59 +385,42 @@ class AnnotationDialog(tk.Toplevel):
         _bind_tooltip(
             self._physical_entry,
             "Name of the physical device this feedback represents.\n"
-            "Pair with on_delay/off_delay for simple delayed transitions "
-            "(contactors, limit switches) or profile for custom response "
-            "curves (thermocouples, encoders).",
+            "Optional: left empty, it is named after this tag. Give several\n"
+            "tags the same name to share one definition.\n"
+            "Pick a response below for how the device answers its link.",
         )
 
-        type_row = ttk.Frame(self._adv_frame)
-        type_row.pack(fill=tk.X, pady=(0, 2))
-        self._phys_mode = tk.StringVar(value="timing")
-        ttk.Label(type_row, text="type:").pack(side=tk.LEFT)
+        # The response kinds come from pyrung's table, each with its own keys.
+        kind_row = self._kind_row = ttk.Frame(self._adv_frame)
+        if self._kinds:
+            kind_row.pack(fill=tk.X, pady=(0, 2))
+        ttk.Label(kind_row, text="response:").pack(side=tk.LEFT)
+        self._kind_var = tk.StringVar(value=_NO_RESPONSE)
         ttk.Radiobutton(
-            type_row,
-            text="Timing",
-            variable=self._phys_mode,
-            value="timing",
-            command=self._on_phys_mode_changed,
-        ).pack(side=tk.LEFT, padx=(4, 10))
-        ttk.Radiobutton(
-            type_row,
-            text="Profile",
-            variable=self._phys_mode,
-            value="profile",
-            command=self._on_phys_mode_changed,
-        ).pack(side=tk.LEFT)
+            kind_row,
+            text="None",
+            variable=self._kind_var,
+            value=_NO_RESPONSE,
+            command=self._on_kind_changed,
+        ).pack(side=tk.LEFT, padx=(4, 8))
+        for kind in self._kinds:
+            radio = ttk.Radiobutton(
+                kind_row,
+                text=kind.label,
+                variable=self._kind_var,
+                value=kind.name,
+                command=self._on_kind_changed,
+            )
+            radio.pack(side=tk.LEFT, padx=(0, 8))
+            _bind_tooltip(radio, kind.description)
 
-        self._timing_frame = ttk.Frame(self._adv_frame)
-        self._timing_frame.pack(fill=tk.X, pady=(0, 2))
-        ttk.Label(self._timing_frame, text="on_delay:").pack(side=tk.LEFT)
-        self._on_delay_var = tk.StringVar()
-        self._on_delay_var.trace_add("write", lambda *_: self._update_preview())
-        self._on_delay_entry = ttk.Entry(
-            self._timing_frame, textvariable=self._on_delay_var, width=10
-        )
-        self._on_delay_entry.pack(side=tk.LEFT, padx=(4, 10))
-        ttk.Label(self._timing_frame, text="off_delay:").pack(side=tk.LEFT)
-        self._off_delay_var = tk.StringVar()
-        self._off_delay_var.trace_add("write", lambda *_: self._update_preview())
-        self._off_delay_entry = ttk.Entry(
-            self._timing_frame, textvariable=self._off_delay_var, width=10
-        )
-        self._off_delay_entry.pack(side=tk.LEFT, padx=(4, 4))
-        timing_hint = ttk.Label(self._timing_frame, text=_DURATION_HINT, foreground="gray")
-        timing_hint.pack(side=tk.LEFT)
-        _bind_tooltip(
-            timing_hint, "How long the real device takes to respond after the command changes"
-        )
-
-        self._profile_frame = ttk.Frame(self._adv_frame)
-        ttk.Label(self._profile_frame, text="profile:").pack(side=tk.LEFT)
-        self._profile_var = tk.StringVar()
-        self._profile_var.trace_add("write", lambda *_: self._update_preview())
-        ttk.Entry(self._profile_frame, textvariable=self._profile_var, width=20).pack(
-            side=tk.LEFT, padx=(4, 0)
-        )
+        self._key_vars: dict[str, tk.Variable] = {}
+        for name, key in PHYSICAL_KEYS.items():
+            var: tk.Variable = tk.BooleanVar() if key.is_flag else tk.StringVar()
+            if not key.is_flag:
+                var.trace_add("write", lambda *_: self._update_preview())
+            self._key_vars[name] = var
+        self._response_frame = ttk.Frame(self._adv_frame)
 
         self._sys_row = ttk.Frame(self._adv_frame)
         self._sys_row.pack(fill=tk.X, pady=(2, 0))
@@ -419,9 +437,16 @@ class AnnotationDialog(tk.Toplevel):
         self._link_var = tk.StringVar()
         self._link_var.trace_add("write", lambda *_: self._update_preview())
         ttk.Entry(link_row, textvariable=self._link_var, width=20).pack(side=tk.LEFT, padx=(4, 4))
-        link_hint = ttk.Label(link_row, text="e.g. EnableField or State:RUNNING", foreground="gray")
+        link_hint = ttk.Label(
+            link_row, text="e.g. Motor_Run, ~Y001 or State:RUNNING", foreground="gray"
+        )
         link_hint.pack(side=tk.LEFT)
-        _bind_tooltip(link_hint, "Command field that drives this feedback signal")
+        _bind_tooltip(
+            link_hint,
+            "Tag or CLICK address that drives this feedback signal,\n"
+            "with an optional :value trigger.\n"
+            "~ in front of a bit drives it while the bit is OFF",
+        )
 
         # ── Lock ──
         ttk.Separator(self._adv_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=4)
@@ -435,7 +460,7 @@ class AnnotationDialog(tk.Toplevel):
         lock_cb.pack(anchor=tk.W)
         _bind_tooltip(lock_cb, "Include in behavioral change tracking between program versions")
 
-        self._on_phys_mode_changed()
+        self._on_kind_changed()
 
     # ── Preview ──
 
@@ -512,9 +537,8 @@ class AnnotationDialog(tk.Toplevel):
             self._lock_var.set(meta.lock)
             self._link_var.set(meta.link or "")
             self._physical_var.set(meta.physical or "")
-            self._on_delay_var.set(meta.on_delay or "")
-            self._off_delay_var.set(meta.off_delay or "")
-            self._profile_var.set(meta.profile or "")
+            for name, value in meta_response(meta):
+                self._key_vars[name].set(value)
             self._system_var.set(meta.system or "")
 
             if meta.choices is not None:
@@ -530,11 +554,9 @@ class AnnotationDialog(tk.Toplevel):
 
             self._uom_var.set(meta.uom or "")
 
-            if meta.profile is not None:
-                self._phys_mode.set("profile")
-            else:
-                self._phys_mode.set("timing")
-            self._on_phys_mode_changed()
+            kind = response_kind(meta_response(meta))
+            self._kind_var.set(_NO_RESPONSE if kind is None else kind.name)
+            self._on_kind_changed()
             self._on_physical_changed()
 
             if AnnotationService.meta_has_advanced(meta):
@@ -551,7 +573,15 @@ class AnnotationDialog(tk.Toplevel):
         current_meta: TagMeta | None,
         free_text: str,
         block_tag_str: str | None,
+        *,
+        feedback: FeedbackType | None = None,
+        responds: bool = True,
     ):
+        """*feedback* limits the kinds to bool or analog. ``None`` offers every kind.
+
+        A text tag passes ``responds=False``, because no kind applies to text. The response
+        row then shows only for a comment that already declares a response.
+        """
         super().__init__(parent)
         self.title("Edit Annotations")
         self.resizable(False, True)
@@ -562,6 +592,13 @@ class AnnotationDialog(tk.Toplevel):
         self._free_text = free_text
         self._block_tag_str = block_tag_str
         self._meta = current_meta or TagMeta()
+        # The comment's own kind stays on offer, even when it doesn't suit the tag's type.
+        current_kind = response_kind(meta_response(self._meta))
+        self._kinds = tuple(
+            kind
+            for kind in kinds_for(None)
+            if (responds and kind in kinds_for(feedback)) or kind == current_kind
+        )
         self._updating = True
 
         self._create_widgets()

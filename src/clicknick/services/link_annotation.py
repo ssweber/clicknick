@@ -1,0 +1,123 @@
+"""Bench links written into, and read back from, a feedback tag's comment.
+
+"Save to project" turns a simulator bench link into the comment metadata
+pyrung reads (``[link=Motor_Run, on_delay=2s, off_delay=500ms]``); after a
+Sync the program declares the link itself and the bench copy drops away.
+No tkinter, no store; `linked_feedbacks` reads a workspace's nicknames.csv.
+"""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+
+from pyclickplc.addresses import normalize_address, parse_address
+from pyclickplc.banks import BANKS, DataType
+from pyrung.click.tag_map import TagMeta
+
+from ..data.data_source import CsvDataSource
+from .annotation_service import AnnotationService
+from .physical_response import meta_fields, meta_response, same_response
+from .sim_state import BenchLink
+
+
+def bit_enable(address: str | None) -> bool:
+    """True when the CLICK *address* is a bit (X, Y, C, T, CT, SC): it is only ON or OFF.
+
+    A bit enable's trigger is 0 (drive while it is OFF) or none (while it is ON).
+    """
+    normalized = normalize_address(address or "")
+    if normalized is None:
+        return False
+    bank, _index = parse_address(normalized)
+    return BANKS[bank].data_type == DataType.BIT
+
+
+def when_text(enable: str | None, trigger: int | str | None) -> str:
+    """When the enable drives the link, for labels: ``""``, ``" when OFF"`` or ``" = 3"``."""
+    if trigger is None:
+        return ""
+    if bit_enable(enable):
+        return " when OFF" if trigger == 0 else ""
+    return f" = {trigger}"
+
+
+def link_text(enable_name: str, link: BenchLink) -> str:
+    """The ``link=`` value: the enable's nickname (or address), plus ``:trigger``.
+
+    A bit enable that drives while OFF is written ``~Motor_Run``.
+    """
+    if link.trigger is None:
+        return enable_name
+    if link.trigger == 0 and bit_enable(link.enable):
+        return f"~{enable_name}"
+    return f"{enable_name}:{link.trigger}"
+
+
+def _link_texts(enable_name: str, link: BenchLink) -> set[str]:
+    """Every ``link=`` value that declares *link*; older projects spell ``~X`` as ``X:0``."""
+    texts = {link_text(enable_name, link)}
+    if link.trigger is not None:
+        texts.add(f"{enable_name}:{link.trigger}")
+    return texts
+
+
+def comment_with_link(comment: str, link: BenchLink, enable_name: str) -> str:
+    """*comment* with its link and response replaced by *link*.
+
+    The block tag, other metadata and free text are kept. A physical name is
+    dropped: the response now belongs to this tag alone, so it cannot clash
+    with a definition shared under that name.
+    """
+    if link.cut:
+        raise ValueError("a cut link has nothing to write to the project")
+    block_tag, meta, free_text = AnnotationService.decompose_comment(comment)
+    meta = replace(
+        meta or TagMeta(),
+        link=link_text(enable_name, link),
+        physical=None,
+        **meta_fields(link.response),
+    )
+    return AnnotationService.recompose_comment(block_tag, meta, free_text)
+
+
+def comment_has_link(comment: str, link: BenchLink, enable_names: tuple[str, ...]) -> bool:
+    """True when *comment* already declares *link* (enable by any of *enable_names*)."""
+    if link.cut:
+        return False
+    try:
+        _block_tag, meta, _free_text = AnnotationService.decompose_comment(comment)
+    except ValueError:
+        return False
+    if meta is None or meta.link is None:
+        return False
+    names_enable = any(meta.link in _link_texts(name, link) for name in enable_names if name)
+    return names_enable and same_response(meta_response(meta), link.response)
+
+
+def declares_link(comment: str) -> bool:
+    """True when *comment* declares a link pyrung runs: ``link=`` beside a response or physical."""
+    try:
+        _block_tag, meta, _free_text = AnnotationService.decompose_comment(comment)
+    except ValueError:
+        return False
+    if meta is None or meta.link is None:
+        return False
+    return meta.physical is not None or bool(meta_response(meta))
+
+
+def linked_feedbacks(csv_dir: Path) -> frozenset[str]:
+    """The tags a workspace's program declares links on, from its ``nicknames.csv``.
+
+    The workspace's tag names come from the same snapshot. Empty when the file
+    is missing or cannot be read.
+    """
+    try:
+        rows = CsvDataSource(str(csv_dir / "nicknames.csv")).load_all_addresses()
+    except (OSError, ValueError):
+        return frozenset()
+    return frozenset(
+        row.nickname.strip() or row.display_address
+        for row in rows.values()
+        if declares_link(row.comment)
+    )

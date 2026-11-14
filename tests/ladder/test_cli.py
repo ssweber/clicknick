@@ -6,7 +6,7 @@ import typing
 from pathlib import Path
 
 import pytest
-from laddercodec import BlockCopy, Coil, CompareContact, Contact, Rung, Timer
+from laddercodec import BlockCopy, Break, Coil, CompareContact, Contact, Rung, Timer, write_csv
 from laddercodec.csv.contract import CONDITION_COLUMNS
 from laddercodec.model import Program
 
@@ -17,7 +17,9 @@ from clicknick.ladder.cli import (
     _run_guided,
     main,
 )
+from clicknick.ladder.clipboard import parse_click_major_version
 from clicknick.ladder.program import (
+    NeedsClickV4Error,
     PrepareResult,
     _collapse_cols,
     _dedupe_filename_stem,
@@ -25,6 +27,9 @@ from clicknick.ladder.program import (
     _describe_single_rung,
     _extract_operand_candidates,
     _slugify,
+    check_click_version,
+    describe_csv,
+    encode_csv,
     extract_addresses_from_bin,
     extract_addresses_from_csv,
     prepare_rungs_load,
@@ -60,7 +65,7 @@ class TestExtractOperandCandidates:
         assert result == ["DS1", "100"]
 
     def test_timer(self):
-        assert _extract_operand_candidates(Timer("on_delay", "T1", "TD1", "1000", "ms")) == [
+        assert _extract_operand_candidates(Timer("on_delay", "T1", "TD1", "1000", "Tms")) == [
             "T1",
             "TD1",
         ]
@@ -112,12 +117,102 @@ class TestExtractAddresses:
 
         monkeypatch.setattr("clicknick.ladder.program.ensure_addresses_exist", _ensure)
 
-        result = prepare_rungs_load([rung], mdb_path=Path("SC_.mdb"))
+        result = prepare_rungs_load([rung], click_v4=False, mdb_path=Path("SC_.mdb"))
 
         assert result.addresses == ["DS201", "DS210", "DS202", "DS211"]
         assert provisioned == result.addresses
         assert result.addresses_inserted == 1
         assert result.payload
+
+
+# ---------------------------------------------------------------------------
+# CLICK version check
+# ---------------------------------------------------------------------------
+
+
+def _rung(instruction) -> Rung:
+    return Rung(logical_rows=1, conditions=[["-"] * 31], instructions=[instruction], comment=None)
+
+
+@pytest.mark.parametrize(
+    ("title", "major"),
+    [
+        ("CLICK Programming Software (Version3.71) - P.ckp - [Main Program]", 3),
+        ("CLICK Programming Software (Version4.00) - P.ckp - [Main Program]", 4),
+        ("CLICK Programming Software (Version4.12) - P.ckp", 4),
+        ("CLICK Programming Software (Version10.1) - P.ckp", 10),
+        ("CLICK Programming Software", None),
+    ],
+)
+def test_parse_click_major_version(title: str, major: int | None):
+    assert parse_click_major_version(title) == major
+
+
+class TestCheckClickVersion:
+    def test_v4_rungs_refused_by_older_click_with_rung_numbers(self):
+        rungs = [_rung(Coil(_IT.COIL_OUT, "Y001")), _rung(Break())]
+
+        with pytest.raises(NeedsClickV4Error, match=r"rung 2: break\(\)"):
+            check_click_version(rungs, click_v4=False)
+        with pytest.raises(NeedsClickV4Error, match=r"rung 11: break\(\)"):
+            check_click_version(rungs, click_v4=False, first_rung=10)
+
+    def test_v4_rungs_accepted_by_v4(self):
+        check_click_version([_rung(Break())], click_v4=True)
+
+    def test_older_rungs_accepted_by_older_click(self):
+        check_click_version([_rung(Coil(_IT.COIL_OUT, "Y001"))], click_v4=False)
+
+    def test_refused_load_leaves_mdb_untouched(self, monkeypatch: pytest.MonkeyPatch):
+        provisioned: list[str] = []
+        monkeypatch.setattr(
+            "clicknick.ladder.program.ensure_addresses_exist",
+            lambda _db, addresses: provisioned.extend(addresses) or {"inserted_count": 0},
+        )
+
+        with pytest.raises(NeedsClickV4Error):
+            prepare_rungs_load(
+                [_rung(Coil(_IT.COIL_OUT, "Y001")), _rung(Break())],
+                click_v4=False,
+                mdb_path=Path("SC_.mdb"),
+            )
+        assert provisioned == []
+
+
+# ---------------------------------------------------------------------------
+# A CSV that holds no rungs
+# ---------------------------------------------------------------------------
+
+
+def test_no_rungs_are_refused_with_a_value_error(tmp_path: Path) -> None:
+    empty = tmp_path / "empty.csv"
+    write_csv(empty, [])
+
+    assert describe_csv(empty) == "0 rungs"
+    with pytest.raises(ValueError, match="no rungs"):
+        encode_csv(empty)
+    with pytest.raises(ValueError, match="no rungs"):
+        prepare_rungs_load([], click_v4=True)
+
+
+@pytest.mark.parametrize("text", ["", None])
+def test_load_of_a_csv_without_rungs_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, text
+) -> None:
+    empty = tmp_path / "empty.csv"
+    if text is None:
+        write_csv(empty, [])  # Only the header
+    else:
+        empty.write_text(text, encoding="utf-8")
+    monkeypatch.setattr("clicknick.ladder.cli.resolve_mdb_path", lambda _path: None)
+    monkeypatch.setattr("clicknick.ladder.cli.is_click_v4", lambda *_a: True)
+    monkeypatch.setattr("clicknick.ladder.cli.copy_to_clipboard", lambda *_a, **_k: None)
+    monkeypatch.setattr("sys.argv", ["clicknick-rung", "load", str(empty)])
+
+    with pytest.raises(SystemExit, match="1"):
+        main()
+
+    assert "Error:" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------
@@ -544,12 +639,13 @@ class TestMainArgparse:
         src.write_bytes(b"\xaa\xbb")
         resolved_mdb = tmp_path / "SC_.mdb"
         copied: list[bytes] = []
-        prepare_calls: list[tuple[bytes, Path]] = []
+        prepare_calls: list[tuple[bytes, bool, Path]] = []
 
         monkeypatch.setattr("clicknick.ladder.cli.resolve_mdb_path", lambda _mdb_path: resolved_mdb)
+        monkeypatch.setattr("clicknick.ladder.cli.is_click_v4", lambda: True)
 
-        def mock_prepare_bin_load(data: bytes, *, mdb_path: Path) -> PrepareResult:
-            prepare_calls.append((data, mdb_path))
+        def mock_prepare_bin_load(data: bytes, *, click_v4: bool, mdb_path: Path) -> PrepareResult:
+            prepare_calls.append((data, click_v4, mdb_path))
             return PrepareResult(
                 payload=data,
                 rung_count=1,
@@ -567,7 +663,7 @@ class TestMainArgparse:
         _load_bin(src, None)
 
         out = capsys.readouterr().out
-        assert prepare_calls == [(b"\xaa\xbb", resolved_mdb)]
+        assert prepare_calls == [(b"\xaa\xbb", True, resolved_mdb)]
         assert copied == [b"\xaa\xbb"]
         assert "MDB: inserted 2 address(es) into SC_.mdb" in out
         assert "Copied rung.bin to clipboard (2 bytes)" in out
@@ -584,8 +680,9 @@ class TestMainArgparse:
         copied: list[bytes] = []
 
         monkeypatch.setattr("clicknick.ladder.cli.resolve_mdb_path", lambda _mdb_path: resolved_mdb)
+        monkeypatch.setattr("clicknick.ladder.cli.is_click_v4", lambda: True)
 
-        def _raise_decode_error(_data: bytes, *, mdb_path: Path) -> PrepareResult:
+        def _raise_decode_error(_data: bytes, *, click_v4: bool, mdb_path: Path) -> PrepareResult:
             raise ValueError("bad binary")
 
         monkeypatch.setattr("clicknick.ladder.cli.prepare_bin_load", _raise_decode_error)
@@ -597,7 +694,7 @@ class TestMainArgparse:
 
         out = capsys.readouterr().out
         assert copied == [b"\xaa"]
-        assert "MDB: skipped (could not decode .bin for address extraction: bad binary)" in out
+        assert "Could not decode .bin to check it or provision the MDB: bad binary" in out
         assert "Copied rung.bin to clipboard (1 bytes)" in out
 
     def test_load_csv_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -627,6 +724,7 @@ class TestMainArgparse:
             "clicknick.ladder.cli.resolve_mdb_path",
             lambda _mdb_path: (_ for _ in ()).throw(FileNotFoundError("no mdb")),
         )
+        monkeypatch.setattr("clicknick.ladder.cli.is_click_v4", lambda: True)
         monkeypatch.setattr("clicknick.ladder.cli.copy_to_clipboard", _raise)
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "load", str(src)])
         with pytest.raises(SystemExit, match="1"):

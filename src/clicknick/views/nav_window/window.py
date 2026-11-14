@@ -81,7 +81,7 @@ class NavWindow(tk.Toplevel):
         parent: tk.Toplevel,
         on_outline_select: Callable[[str, list[tuple[str, int]]], None],
         on_block_select: Callable[[list[tuple[str, int]]], None],
-        on_rename: Callable[[str, str, str, bool], None] | None = None,
+        on_rename: Callable[[str, str, str, bool, bool], None] | None = None,
     ):
         """Initialize the navigation window.
 
@@ -90,7 +90,7 @@ class NavWindow(tk.Toplevel):
             on_outline_select: Callback when outline item is selected (path, leaves).
                                Path is filter prefix for folders or exact nickname for leaves.
             on_block_select: Callback when block is selected (list of (memory_type, address)).
-            on_rename: Callback when rename is performed (prefix, old_text, new_text, is_array).
+            on_rename: Callback when rename is performed (prefix, old_text, new_text, is_array, exact).
         """
         super().__init__(parent)
         self.parent_window = parent
