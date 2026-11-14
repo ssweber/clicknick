@@ -202,8 +202,10 @@ class ConsolePanel(ttk.Frame):
                 "error",
             )
             return
-        if "record" in verbs:
-            self._append_output("Recording isn't available in ClickNick yet.\n", "error")
+        if "record" in verbs or "replay" in verbs:
+            self._append_output(
+                "Recording and replay aren't available in ClickNick yet.\n", "error"
+            )
             return
         if "reload" in verbs:
             if [sub.lower() for sub in subs] == ["reload"]:

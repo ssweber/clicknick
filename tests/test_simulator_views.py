@@ -1233,16 +1233,24 @@ def test_restart_starts_the_simulation_over(simulator, ready):
     assert str(win._restart_btn.cget("state")) == "disabled"
 
 
-def test_the_console_refuses_record_and_sends_nothing(simulator, ready):
+def test_the_console_refuses_record_and_replay_and_sends_nothing(simulator, ready):
     win = simulator(ready)
     sent: list[str] = []
     win._console._send = lambda command, **_kw: (sent.append(command), (True, ""))[1]
 
-    for line in ("record x", "step 1; record x", "record stop"):
+    for line in (
+        "record x",
+        "step 1; record x",
+        "record stop",
+        "replay x.txt",
+        "step 1; replay x.txt",
+    ):
         win._console._submit_command_text(line)
     ready.scheduler.run_ready()
 
-    assert _output(win._console).count("Recording isn't available in ClickNick yet.") == 3
+    assert (
+        _output(win._console).count("Recording and replay aren't available in ClickNick yet.") == 5
+    )
     assert sent == []
 
 
