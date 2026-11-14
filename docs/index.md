@@ -12,7 +12,9 @@ pyrung, the engine underneath, is checked against a real CLICK, case by case: [c
 
 [Take the tour](tour/simulator.md){ .md-button .md-button--primary } [Install ClickNick](install.md){ .md-button }
 
-Also: nickname autocomplete, the Address Editor, Check Program and Review Changes, and your ladder as Python after every save.
+Also: nickname autocomplete, the Address Editor, Check Program, Review Changes, and your ladder as Python after every save.
+
+**CLICK stays CLICK. ClickNick gives you better tools around it.**
 
 ## Why
 

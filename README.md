@@ -10,6 +10,10 @@ CLICK Programming Software has no simulator. ClickNick adds one: run your saved 
 
 pyrung, the engine underneath, is checked against a real CLICK, case by case: [conformance results](https://pyrung.com/pyrung/guides/conformance/) · [how it was built](https://pyrung.com/blog/click-plc-simulator/).
 
+Also: nickname autocomplete, the Address Editor, Check Program, Review Changes, and your ladder as Python after every save.
+
+CLICK stays CLICK. ClickNick gives you better tools around it.
+
 Documentation and tour: https://pyrung.com/clicknick/
 
 > [!IMPORTANT]
