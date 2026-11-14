@@ -20,7 +20,7 @@ Run the saved program without the PLC, and keep it current as you edit.
 1. Save in CLICK, then click **Simulate**. The Simulator draws your hardware from System Configuration. It reads the saved ladder files, not unsaved edits.
 2. Flip the CPU to **RUN** and work the switches, or step one scan at a time.
 3. Right-click a point to ask about it: **Why is it ON?** (or OFF) on any input or output, and on outputs **Show simplified logic** and **How (experimental)** to turn it on or off. The question runs in the Console, so you see the command it used.
-4. Force a point from the same right-click menu (**Force ON**, **Force OFF**, **Release force**), or double-click an output to force it the other way from what it shows.
+4. Force a point from the same right-click menu (**Force ON** / **Force OFF**, or **Force value...** on an analog channel; **Release force** undoes it), or double-click an output to force it the other way from what it shows.
 5. Change the ladder and save in CLICK. The simulation keeps running the program it has, as a PLC does until you load a new one, and the Simulator offers the new program. Choose how to load it:
     - In RUN, **RUN Time Edit** loads it and keeps every value, timer and force. **Stop and Write** goes through STOP and back to RUN, which keeps retentive values and forces and clears the rest.
     - In STOP or while stepping, **Write** loads it and keeps the values and the mode.
@@ -41,7 +41,7 @@ What you do on the panel shows in the Console as a green `#` line with the match
 
 ### The Console
 
-The Console is the pane at the bottom of the Simulator. <kbd>Ctrl</kbd>+<kbd>`</kbd> shows or hides it, and **Pop out** gives it its own window. It takes pyrung's debug console commands: type `help` for the list, or see [Console commands](PYRUNG_CONSOLE_URL).
+The Console is the pane at the bottom of the Simulator. <kbd>Ctrl</kbd>+<kbd>`</kbd> shows or hides it, and **Pop out** gives it its own window. It takes pyrung's debug console commands: type `help` for the list, or see [Console commands](https://pyrung.com/pyrung/guides/dap-vscode/#debug-console).
 
 Two to start with:
 
