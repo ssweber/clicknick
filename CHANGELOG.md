@@ -60,8 +60,8 @@
   - Stop it with **Stop** beside the main window's Test legend.
 - A CLICK save or an edit to the workspace's `src/plc` no longer reloads the running simulation, and the Console's `autoreload` is refused.
   - Answer the Simulator's offer to write the new program, or type `reload`.
-- While a simulation serves Modbus, the Data View editor drops its PLC connection and connects to the simulation (its title says Simulator); when the simulation stops, it disconnects and leaves the host at 127.0.0.1.
-  - To reach a real PLC, stop the simulation and enter the PLC's address again before **Connect**.
+- While a simulation serves Modbus, the Data View editor drops its PLC connection and connects to the simulation (its title says Simulator); when the simulation stops, it disconnects and puts back the host and port it had.
+  - To reach a real PLC, stop the simulation and press **Connect**.
 - A workspace's `AGENTS.md` and `README.md` are now yours; pyrung's guidance is in `AGENTS.pyrung.md` and `README.pyrung.md`, and an older generated file is moved to `*.previous.md`.
   - Copy anything you had added from the `*.previous.md` file back into yours.
 - Physical responses in comments take one key per value (`flasher_on=8ms, flasher_off=8ms`, `ramp_on=`, `approach_to=`) in place of `profile=`, and the build stops on a comment in the old form.
