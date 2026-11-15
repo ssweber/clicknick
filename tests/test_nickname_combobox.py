@@ -211,7 +211,7 @@ class TestIsPossibleAddressOrLiteral:
         assert is_possible_address_or_literal("1CT", strict=False) is False
 
     def test_all_valid_prefixes(self):
-        """Test all valid prefixes from DATA_TYPES."""
+        """Test every bank prefix (pyclickplc's BANKS)."""
         valid_prefixes = [
             "X",
             "Y",

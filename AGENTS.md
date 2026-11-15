@@ -279,7 +279,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   because that throws the edits away. It is not modal: the Address Editor's Sync is part of the same workflow
 - Given the workspace source (`source_dir`), the diff shows that source through the exporter's `rung_sources.json`
   and there is no nicknames step (workspace tags go through `tag apply`). Any other folder is shown by converting
-  its CSVs with pyrung
+  its CSVs with pyrung; when pyrung refuses it, the diff says why (`BundleSources.error`). Its `nicknames.csv` is
+  read with pyrung's reader (pyclickplc's `read_csv`, through `CsvDataSource`), so a file pyrung refuses is not staged
 - Under "Changed rungs" a program is still copied whole when its steps number `_MANY_STEPS` (6) or more, unless
   its paste as chosen (`merged`) has `_SLOW_PASTE_RUNGS` (100) rungs or more, CLICK holds legacy-encoded rungs
   of it (a whole paste re-pastes skipped rungs from ClickNick's reading), a step of it is done, its rungs were

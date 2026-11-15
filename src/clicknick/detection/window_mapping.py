@@ -1,23 +1,3 @@
-DATA_TYPES = {
-    "X": "BIT",
-    "Y": "BIT",
-    "C": "BIT",
-    "T": "BIT",
-    "CT": "BIT",
-    "SC": "BIT",
-    "DS": "INT",
-    "DD": "INT2",
-    "DH": "HEX",
-    "DF": "FLOAT",
-    "XD": "HEX",
-    "YD": "HEX",
-    "TD": "INT",
-    "CTD": "INT2",
-    "SD": "INT",
-    "TXT": "TXT",
-}
-
-
 # Address types each edit control accepts
 BITS = ["X", "Y", "C", "T", "CT", "SC"]
 COMPARE = ["DS", "TD", "SD", "DD", "DH", "CTD", "DF"]
