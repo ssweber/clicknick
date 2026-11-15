@@ -110,9 +110,10 @@ if the desktop cannot work.
   into `devtools/`, with paths as arguments, if the fallback is needed.
 - Needs from Sam then: enable Windows Sandbox and reboot, and run the installer by hand once inside it.
 - Inside the Sandbox, CLICK may not find the PLC: the Sandbox's network sits behind NAT. Sam's idea is to keep a
-  copy of the conformance PLC's hardware setup instead. CLICK takes hardware from the project it opens, so the
-  likelier form is a blank `.ckp` saved for that PLC and opened by the runner. A Project.ini copied into
-  CLICK's temp folder is not known to be read back.
+  copy of the conformance PLC's Project.ini and put it in place of the new project's. That may work: CLICK
+  picked up a PLC name ClickNick wrote into Project.ini (`write_plc_name`). Whether it also takes the hardware
+  (modules, I/O) from there, and when it reads the file, is the first thing to test. The other way is a blank
+  `.ckp` saved once for that PLC, which the runner opens.
 
 Early jobs once it works: what CLICK writes, and in what order, on Open, New and Save As (user check Q2 below);
 what CLICK turns constants such as `005`, `+5` and `0ffh` into (for laddercodec); the three small checks in the
