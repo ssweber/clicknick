@@ -6,7 +6,7 @@ from ctypes import windll
 from dataclasses import replace
 from pathlib import Path
 from tkinter import PhotoImage, filedialog, font, messagebox, simpledialog, ttk
-from typing import TYPE_CHECKING, Any, Generic, TypeVar, overload
+from typing import TYPE_CHECKING, Any, overload
 
 from .config import AppSettings
 from .connection_session import ClickConnection, SavedProgram
@@ -46,10 +46,7 @@ _MATCH_LABELS = ("None", "Prefix", "Contains", "Fuzzy")
 _LEGACY_LISTED = 10
 
 
-_T = TypeVar("_T")
-
-
-class _ShownState(Generic[_T]):
+class _ShownState[T]:
     """App attribute the main window displays: assigning it schedules one UI refresh.
 
     The value lives in the instance ``__dict__`` under the same name; as a data
@@ -59,7 +56,7 @@ class _ShownState(Generic[_T]):
     @overload
     def __get__(self, app: None, owner: Any = None) -> Self: ...
     @overload
-    def __get__(self, app: object, owner: Any = None) -> _T: ...
+    def __get__(self, app: object, owner: Any = None) -> T: ...
     def __get__(self, app, owner=None):
         if app is None:
             return self
@@ -68,7 +65,7 @@ class _ShownState(Generic[_T]):
         except KeyError:
             raise AttributeError(self._name) from None
 
-    def __set__(self, app, value: _T) -> None:
+    def __set__(self, app, value: T) -> None:
         app.__dict__[self._name] = value
         app._request_ui_refresh()
 

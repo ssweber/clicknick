@@ -5,7 +5,7 @@
 
 ## Project Overview
 
-**ClickNick** is a Windows desktop application (Windows 10/11, Python 3.11+) with nickname autocomplete and
+**ClickNick** is a Windows desktop application (Windows 10/11, Python 3.13+) with nickname autocomplete and
 editing tools for CLICK PLC Programming Software (v2.60–v4.00). It reads and writes nicknames in the project's
 Access database (SC_.mdb) through Access ODBC or the built-in Windows Jet fallback, or imports them from CSV.
 Core components:

@@ -716,7 +716,7 @@ class AddressStore:
     # --- Edit Session ---
 
     @contextmanager
-    def edit_session(self, description: str = "") -> Generator[EditSession, None, None]:
+    def edit_session(self, description: str = "") -> Generator[EditSession]:
         """Context manager for making changes with undo support.
 
         All modifications should happen within an edit_session. On a clean exit

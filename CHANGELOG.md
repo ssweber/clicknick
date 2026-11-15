@@ -8,6 +8,12 @@
      Review and condense before release — entries accumulate during development and
      should be edited into shape before moving from Unreleased to a version heading. -->
 
+## Unreleased
+
+### Changed
+
+- ClickNick now requires Python 3.13 or newer; `uv tool install clicknick` fetches one if needed.
+
 ## v0.24.1 - 2026-11-15
 
 ### Fixed

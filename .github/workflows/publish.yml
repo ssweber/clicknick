@@ -22,7 +22,7 @@ jobs:
           # 0.12.x is needed for `uv export --format cyclonedx1.5` and `uv audit`.
           version: "0.13.8"
           enable-cache: auto
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Set up Python
         run: uv python install
