@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ..models.address_row import AddressRow, initial_values_differ
+from ..models.validation import trim_entry
 
 if TYPE_CHECKING:
     from ..data.address_store import AddressStore
@@ -103,7 +104,9 @@ def plan_nicknames(
     base rows (to see what CLICK's database still lacks). Addresses the store
     does not track are left out. Only *fields* are compared: pass the fields
     the file has a column for (``CsvDataSource.fields``), so a column it lacks
-    leaves that field as it is.
+    leaves that field as it is. A nickname or comment is taken as CLICK stores
+    it, without a space at either end (``trim_entry``), so ``"Jog "`` is staged
+    as ``"Jog"`` and is done once the database holds ``"Jog"``.
     """
     changes: list[FieldChange] = []
     compared = [field for field in _FIELDS if field in fields]
@@ -113,19 +116,14 @@ def plan_nicknames(
         if old is None:
             continue
         for field in compared:
+            value = trim_entry(field, getattr(new, field))
             if field == "initial_value":
                 differs = initial_values_differ(old, new)
             else:
-                differs = getattr(old, field) != getattr(new, field)
+                differs = getattr(old, field) != value
             if differs:
                 changes.append(
-                    FieldChange(
-                        addr_key,
-                        old.display_address,
-                        field,
-                        getattr(old, field),
-                        getattr(new, field),
-                    )
+                    FieldChange(addr_key, old.display_address, field, getattr(old, field), value)
                 )
     return NicknamePlan(tuple(changes))
 

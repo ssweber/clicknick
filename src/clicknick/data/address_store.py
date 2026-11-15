@@ -14,7 +14,7 @@ Key behaviors:
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Generator, Mapping
+from collections.abc import Callable, Generator, Iterable, Mapping
 from contextlib import contextmanager
 from dataclasses import replace
 from types import MappingProxyType
@@ -31,7 +31,12 @@ from pyclickplc.blocks import compute_all_block_ranges, find_paired_tag_index, p
 from pyclickplc.validation import SYSTEM_NICKNAME_TYPES, validate_initial_value
 
 from ..models.address_row import AddressRow, initial_values_differ
-from ..models.validation import validate_comment, validate_nickname
+from ..models.validation import (
+    TRIMMED_FIELDS,
+    trim_entry,
+    validate_comment,
+    validate_nickname,
+)
 from ..services.block_service import BlockService, compute_block_colors, same_block_tag
 from ..services.nickname_index_service import NicknameIndexService
 from .data_source import DataSource
@@ -83,6 +88,10 @@ def _flag_loaded_error(row: AddressRow) -> AddressRow:
     if row.loaded_with_error == flagged:
         return row
     return replace(row, loaded_with_error=flagged)
+
+
+# The undo description of the edit that trims loaded nicknames and comments
+TRIM_DESCRIPTION = "Trim spaces"
 
 
 def _database_row(row: AddressRow, db_row: AddressRow) -> AddressRow:
@@ -515,6 +524,42 @@ class AddressStore:
 
         if changed:
             self._derive(changed)
+            self._stage_trims(changed)
+
+    def _stage_trims(self, keys: Iterable[int]) -> None:
+        """Stage the trim of each loaded nickname or comment with a space at either end.
+
+        CLICK stores neither with an edge space, so a value read with one
+        (from a CSV, or a database another tool wrote) becomes an unsaved edit
+        holding the trimmed value: one undo step, "Trim spaces", that Sync
+        writes. Undo puts the spaces back, and validation flags them again.
+
+        Only base rows in *keys* are looked at: callers pass the rows just
+        loaded or the rows a read of the data source changed, so a trim the
+        user undid is staged again only when the data source changes that row.
+        A field the user already edits is left alone, and so is a nickname
+        exempt as one CLICK wrote (``loaded_with_error``). Nothing is staged,
+        and no undo step pushed, when no row needs a trim, or while an edit
+        session is open (sessions do not nest).
+        """
+        trims: list[tuple[int, str, str]] = []
+        for key in keys:
+            base = self.base_state.get(key)
+            if base is None:
+                continue
+            override = self.user_overrides.get(key, {})
+            for field in TRIMMED_FIELDS:
+                value = getattr(base, field)
+                if field in override or value == trim_entry(field, value):
+                    continue
+                if field == "nickname" and base.loaded_with_error:
+                    continue
+                trims.append((key, field, trim_entry(field, value)))
+        if not trims or self._current_session is not None:
+            return
+        with self.edit_session(TRIM_DESCRIPTION) as session:
+            for key, field, value in trims:
+                session.set_field(key, field, value)
 
     def _on_database_update(self) -> bool:
         """Handle external database changes."""
@@ -548,6 +593,7 @@ class AddressStore:
         self._validate_all_rows()
 
         self._initialized = True
+        self._stage_trims(self.base_state)
 
         # Create file monitor
         self._file_monitor = FileMonitor(
@@ -653,8 +699,11 @@ class AddressStore:
     def _freeze_session(self, session: EditSession) -> set[int]:
         """Freeze session builders' values into user_overrides.
 
-        Values the base row already holds are kept here and dropped by _derive
-        (see _rebase_override), the one place dirty is decided.
+        A nickname or comment is frozen as CLICK stores it, without a space at
+        either end (trim_entry): this is the one place every edit, cascades
+        included, passes through. Values the base row already holds are kept
+        here and dropped by _derive (see _rebase_override), the one place dirty
+        is decided.
 
         Returns:
             Set of affected addr_keys
@@ -662,7 +711,9 @@ class AddressStore:
         affected = set()
 
         for addr_key, builder in session.pending.items():
-            changes = builder.changes()
+            changes = {
+                field: trim_entry(field, value) for field, value in builder.changes().items()
+            }
             if not changes or addr_key not in self.base_state:
                 continue
             # On top of any existing override, so fields set in an earlier
