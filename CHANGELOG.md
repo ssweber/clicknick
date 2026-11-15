@@ -12,7 +12,7 @@
 
 ### Changed
 
-- ClickNick now requires Python 3.13 or newer; `uv tool install clicknick` fetches one if needed.
+- ClickNick now requires Python 3.13 or 3.14 (pywin32 has no 3.15 build yet); `uv tool install clicknick` fetches one if needed.
 
 ## v0.24.1 - 2026-11-15
 

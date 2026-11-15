@@ -51,7 +51,7 @@ On Windows x64, a separate database driver normally isn't needed. If connecting 
 <details>
 <summary>Install with pip instead</summary>
 
-Python 3.13 or newer is required.
+Python 3.13 or 3.14 is required.
 
 ```powershell
 pip install clicknick
