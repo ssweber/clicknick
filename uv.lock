@@ -53,7 +53,6 @@ dev = [
     { name = "markdown" },
     { name = "pytest" },
     { name = "ruff" },
-    { name = "ssort" },
 ]
 docs = [
     { name = "zensical" },
@@ -78,7 +77,6 @@ dev = [
     { name = "markdown", specifier = "==3.10.3" },
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "ruff", specifier = ">=0.16.0" },
-    { name = "ssort", specifier = "==0.16.0" },
 ]
 docs = [{ name = "zensical", specifier = "==0.0.57" }]
 
@@ -283,15 +281,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7d/fa/3944b40b07da9ce895c0e6303a5ab7d53da063554f534556b134a54d6093/packaging-26.3.tar.gz", hash = "sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79", size = 313412, upload-time = "2026-08-04T18:15:28.737Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl", hash = "sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c", size = 129956, upload-time = "2026-08-04T18:15:27.159Z" },
-]
-
-[[package]]
-name = "pathspec"
-version = "1.1.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/5a/82/42f767fc1c1143d6fd36efb827202a2d997a375e160a71eb2888a925aac1/pathspec-1.1.1.tar.gz", hash = "sha256:17db5ecd524104a120e173814c90367a96a98d07c45b2e10c2f3919fff91bf5a", size = 135180, upload-time = "2026-04-27T01:46:08.907Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f1/d9/7fb5aa316bc299258e68c73ba3bddbc499654a07f151cba08f6153988714/pathspec-1.1.1-py3-none-any.whl", hash = "sha256:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189", size = 57328, upload-time = "2026-04-27T01:46:07.06Z" },
 ]
 
 [[package]]
@@ -548,18 +537,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b9/ab/d8e407669ffe5014429baf780c2df47e001968a6e4c17f615e2e7b13a9ba/ruff-0.17.4-py3-none-win32.whl", hash = "sha256:3971a78cba76298b284c8321e6d40d93045ed348bec5c369d85099efc97fb7cf", size = 9931993, upload-time = "2026-11-05T18:52:11.169Z" },
     { url = "https://files.pythonhosted.org/packages/bd/15/42af8a72d8946e3c9efd2bbf6641e462b6832783b0d043d63ef5b280ba7f/ruff-0.17.4-py3-none-win_amd64.whl", hash = "sha256:67c5a894fc054cf41f75f7afa24815de5a74329d97634126c2a1015740ff4e8c", size = 10292922, upload-time = "2026-11-05T18:52:13.436Z" },
     { url = "https://files.pythonhosted.org/packages/68/9e/f1dbffcfb8ff25dadbc21f87a8b73c3848abe4abada9d4b08ccef8bec40c/ruff-0.17.4-py3-none-win_arm64.whl", hash = "sha256:181ae38a9a8fb94925bf7d0794327b48d7fd7f4b50cfd84c0e999cc09ef8d131", size = 9889396, upload-time = "2026-11-05T18:52:15.549Z" },
-]
-
-[[package]]
-name = "ssort"
-version = "0.16.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pathspec" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/7a/c0/696b3c20b58f4a536845bbfded3be1d7a2b99e622ac51755e402c43729f0/ssort-0.16.0.tar.gz", hash = "sha256:1e7222cf7ffbbb0523d88fe1931a36b0bbd7f478d2964feb25be3621c52a981f", size = 23252, upload-time = "2025-12-07T02:20:00.092Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/5c/45/a23b1c13f2416e060af4d90e8407a350d5da7ad1ccf33e6eb9cbaaf7b363/ssort-0.16.0-py3-none-any.whl", hash = "sha256:013d57d4a0e4bde896afbcaa1e9e98a6829bf1b63ddcccecfcb7e64336921bba", size = 27683, upload-time = "2025-12-07T02:19:59.139Z" },
 ]
 
 [[package]]

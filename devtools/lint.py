@@ -37,11 +37,6 @@ def main() -> int:
 
     errcount = 0
     if args.check:
-        errcount += run(["ssort", "--check", *SRC_PATHS])
-    else:
-        errcount += run(["ssort", *SRC_PATHS])
-
-    if args.check:
         errcount += run(["ruff", "check", *SRC_PATHS])
     else:
         errcount += run(["ruff", "check", "--fix", *SRC_PATHS])

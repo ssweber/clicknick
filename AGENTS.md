@@ -28,7 +28,7 @@ make install                    # or: uv sync --all-extras --dev
 make
 
 # Individual commands
-make lint                       # Run codespell, ssort, ruff (check + format)
+make lint                       # Run ruff (check + format)
 make test                       # Run pytest (ALWAYS use this, not uv run pytest)
 make build                      # Build wheel with uv
 
