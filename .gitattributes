@@ -5,3 +5,5 @@
 *.ico binary
 *.mdb binary
 *.ckp binary
+# CLICK's own nickname export, read with the line ends CLICK wrote
+tests/NicknameExportTxtSpecials.csv -text

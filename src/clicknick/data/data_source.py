@@ -13,15 +13,14 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pyclickplc.addresses import get_addr_key, parse_address
+from pyclickplc.addresses import AddressRecord, get_addr_key
 from pyclickplc.banks import (
     BANKS,
     DEFAULT_RETENTIVE,
-    MEMORY_TYPE_BASES,
     MEMORY_TYPE_TO_DATA_TYPE,
     DataType,
 )
-from pyclickplc.nicknames import CSV_COLUMNS, DATA_TYPE_CODE_TO_STR, DATA_TYPE_STR_TO_CODE
+from pyclickplc.nicknames import format_csv, read_csv
 
 from ..models.address_row import AddressRow
 from ..utils.mdb_operations import (
@@ -36,9 +35,6 @@ if TYPE_CHECKING:
 
 # A nickname CSV must have these columns; without them it is not a nickname CSV
 REQUIRED_COLUMNS = ("Address", "Nickname")
-
-# Retentive as CLICK writes it (Yes/No) and as a spreadsheet may (1/0, True/False)
-_RETENTIVE_ON = ("yes", "true", "1")
 
 # The AddressRow field each nickname CSV column sets
 COLUMN_FIELDS = {
@@ -112,91 +108,31 @@ def read_mdb_csv(csv_path: str) -> dict[int, AddressRow]:
     return result
 
 
-def _quoted(text: str) -> str:
-    """Quoted, as CLICK writes every Nickname and Address Comment."""
-    return '"' + text.replace('"', '""') + '"'
+def _row(record: AddressRecord) -> AddressRow:
+    """*record*, read by pyclickplc, as the Address Editor's row (a CSV has no Used)."""
+    return AddressRow(
+        memory_type=record.memory_type,
+        address=record.address,
+        nickname=record.nickname,
+        comment=record.comment,
+        used=False,
+        data_type=int(record.data_type),
+        initial_value=record.initial_value,
+        retentive=record.retentive,
+    )
 
 
-def _bare(text: str) -> str:
-    """Unquoted, as CLICK writes the other columns, unless it holds a delimiter or quote.
-
-    Leading or trailing whitespace is quoted too, so a reader that trims bare
-    cells keeps it (a TXT initial value of one space).
-    """
-    special = any(char in text for char in ',"\r\n') or text != text.strip()
-    return _quoted(text) if special else text
-
-
-def _is_blank(row: dict[str | None, str | list[str] | None]) -> bool:
-    """A row with nothing in any cell, such as a spreadsheet's trailing ``,,,,,``."""
-    cells = [
-        cell for value in row.values() for cell in (value if isinstance(value, list) else [value])
-    ]
-    return not any((cell or "").strip() for cell in cells)
-
-
-def _read_nickname_csv(
-    csv_path: str, required: Sequence[str]
-) -> tuple[dict[int, AddressRow], frozenset[str]]:
-    """Rows of a nickname CSV, and the fields its columns set.
-
-    Raises ValueError when the file is not a nickname CSV it can read: a
-    *required* column missing, a row whose Address is not a CLICK address (such
-    as CLICK's own Address.csv, whose Address column holds numbers), not UTF-8,
-    or not CSV.
-    """
-    name = Path(csv_path).name
-    result: dict[int, AddressRow] = {}
-    # Excel's "CSV UTF-8" starts the file with a BOM; CLICK's export has none
-    with open(csv_path, newline="", encoding="utf-8-sig") as csvfile:
-        reader = csv.DictReader(csvfile)
-        try:
-            columns = reader.fieldnames
-            if columns is None:
-                raise ValueError(f"{name} is empty")
-            missing = [column for column in required if column not in columns]
-            if missing:
-                raise ValueError(f"{name} has no {' or '.join(missing)} column")
-            fields = frozenset(
-                field for column, field in COLUMN_FIELDS.items() if column in columns
-            )
-
-            for row in reader:
-                if _is_blank(row):
-                    continue
-                text = row.get("Address") or ""
-                try:
-                    mem_type, address = parse_address(text)
-                except ValueError:
-                    raise ValueError(
-                        f"{name} line {reader.line_num}: Address {text!r} is not a CLICK address"
-                    ) from None
-
-                default_data_type = MEMORY_TYPE_TO_DATA_TYPE.get(mem_type, 0)
-                data_type_str = (row.get("Data Type") or "").strip().upper()
-                data_type = DATA_TYPE_STR_TO_CODE.get(data_type_str, default_data_type)
-
-                default_retentive = DEFAULT_RETENTIVE.get(mem_type, False)
-                retentive_str = (row.get("Retentive") or "").strip()
-                retentive = (
-                    retentive_str.lower() in _RETENTIVE_ON if retentive_str else default_retentive
-                )
-
-                result[get_addr_key(mem_type, address)] = AddressRow(
-                    memory_type=mem_type,
-                    address=address,
-                    nickname=row.get("Nickname") or "",
-                    comment=row.get("Address Comment") or "",
-                    used=False,  # CSV has no used field
-                    data_type=data_type,
-                    initial_value=_initial_value(row.get("Initial Value") or "", data_type),
-                    retentive=retentive,
-                )
-        except UnicodeDecodeError as exc:
-            raise ValueError(f"{name} is not UTF-8 text: {exc}") from exc
-        except csv.Error as exc:
-            raise ValueError(f"{name} line {reader.line_num}: {exc}") from exc
-    return result, fields
+def _record(row: AddressRow) -> AddressRecord:
+    """*row*'s content as the record pyclickplc writes."""
+    return AddressRecord(
+        memory_type=row.memory_type,
+        address=row.address,
+        nickname=row.nickname,
+        comment=row.comment,
+        initial_value=row.initial_value,
+        retentive=row.retentive,
+        data_type=row.data_type,
+    )
 
 
 def _is_read_only(path: Path) -> bool:
@@ -284,9 +220,10 @@ class DataSource(ABC):
 class CsvDataSource(DataSource):
     """Data source backed by CSV file.
 
-    Reads and writes the CSV in the form CLICK exports it: columns
-    ``CSV_COLUMNS``, Nickname and Address Comment always quoted, CRLF line ends.
-    Has no 'Used' field information.
+    Reads the CSV with pyclickplc's ``read_csv`` and writes it with its
+    ``format_csv``, in the form CLICK exports it: Nickname and Address Comment
+    always quoted, CRLF line ends. pyrung reads the workspace's
+    ``nicknames.csv`` with the same reader. Has no 'Used' field information.
     """
 
     def __init__(self, csv_path: str, *, required: Sequence[str] = REQUIRED_COLUMNS):
@@ -329,20 +266,24 @@ class CsvDataSource(DataSource):
         """Load all addresses from the CSV file.
 
         Raises:
-            ValueError: The file is not a nickname CSV ClickNick can read; Save
-                refuses to overwrite it until a load succeeds again.
+            ValueError: The file is not a nickname CSV ``read_csv`` reads (the
+                message names the file and, for a row, its line); Save refuses
+                to overwrite it until a load succeeds again.
             OSError: The file cannot be opened.
 
         Returns:
             Dict mapping AddrKey (int) to AddressRow
         """
         try:
-            rows, self._fields = _read_nickname_csv(self._csv_path, self._required)
+            records = read_csv(self._csv_path, required=self._required)
         except ValueError as exc:
             self._unreadable = str(exc)
             raise
         self._unreadable = None
-        return rows
+        self._fields = frozenset(
+            field for column, field in COLUMN_FIELDS.items() if column in records.columns
+        )
+        return {addr_key: _row(record) for addr_key, record in records.items()}
 
     def save_changes(self, rows: Sequence[AddressRow]) -> int:
         """Save to the CSV file.
@@ -360,36 +301,10 @@ class CsvDataSource(DataSource):
                 f"longer be read ({self._unreadable})."
             )
 
-        # Collect all rows with content (CSV rewrites entire file)
-        rows_to_write = [row for row in rows if row.has_content]
-
-        # Sort by memory type order and address
-        rows_to_write.sort(
-            key=lambda r: (MEMORY_TYPE_BASES.get(r.memory_type, 0xFFFFFFFF), r.address)
-        )
-
-        lines = [",".join(CSV_COLUMNS)]
-        for row in rows_to_write:
-            # A defaulted numeric is written "0", as CLICK does; TXT's default is empty
-            if row.initial_value:
-                initial_value_str = str(row.initial_value)
-            elif row.data_type == DataType.TXT:
-                initial_value_str = ""
-            else:
-                initial_value_str = "0"
-
-            line_parts = [
-                row.display_address,  # XD/YD as CLICK shows them (XD0u, XD1-8)
-                DATA_TYPE_CODE_TO_STR.get(row.data_type, ""),
-                _quoted(row.nickname),
-                _bare(initial_value_str),
-                "Yes" if row.retentive else "No",
-                _quoted(row.comment),
-            ]
-            lines.append(",".join(line_parts))
-
-        _write_file(Path(self._csv_path), "".join(line + "\r\n" for line in lines))
-        return len(rows_to_write)
+        # The whole file is rewritten, with every row that has content
+        records = [_record(row) for row in rows if row.has_content]
+        _write_file(Path(self._csv_path), format_csv(records))
+        return len(records)
 
 
 def convert_mdb_csv_to_user_csv(source_path: str, dest_path: str) -> None:
