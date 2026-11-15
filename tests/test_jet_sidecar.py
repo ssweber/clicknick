@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import io
 import json
 import queue
@@ -422,6 +423,9 @@ def test_unloadable_odbc_loads_off_ui_thread_and_handles_result(jet_database, mo
     error = Mock()
     monkeypatch.setattr(app_module.messagebox, "showerror", error)
 
+    # Collect earlier tests' Tk objects here, on the Tk thread. Collected on the
+    # load thread, each waits about a second for a main loop that is not running.
+    gc.collect()
     app_module.ClickNickApp._load_instance_database(view, 1, "project.ckp", 2)
     assert view._session is None
     threads[0].join(timeout=30)
