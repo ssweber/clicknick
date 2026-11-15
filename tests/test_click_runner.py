@@ -88,6 +88,7 @@ class FakeClick(cd.Desktop):
         select_lag: int = 4,
         late_row: float | None = None,
         same_lan: bool = True,
+        tooltip: bool = False,
         startup_buttons: int = 3,
         dont_read_takes: bool = True,
         splash: bool = False,
@@ -115,6 +116,7 @@ class FakeClick(cd.Desktop):
             "select_lag": select_lag,
             "late_row": late_row,
             "same_lan": same_lan,
+            "tooltip": tooltip,
             "startup_buttons": startup_buttons,
             "dont_read_takes": dont_read_takes,
             "splash": splash,
@@ -225,6 +227,9 @@ class FakeClick(cd.Desktop):
         temp.mkdir()
         (temp / "SC_.mdb").write_bytes(b"mdb")
         (temp / "Project.ini").write_text("[Project]\n", encoding="utf-8")
+        if self.options["tooltip"]:
+            self._window("tooltips_class32", "", main.hwnd)
+            self._window("tooltips_class32", "Paste", 0)
         if self.options["guide"]:
             guide = self._window("#32770", "What’s New Feature Guide", main.hwnd)
             self._control(guide, "Button", "Next", 1003)
@@ -430,11 +435,19 @@ class FakeClick(cd.Desktop):
             self._later("paste", paste)
         elif command_id == cd.SYNTAX_CHECK:
 
-            def checked() -> None:
+            def checking() -> None:
+                # What the check lists comes first; the project's total is the last line
                 output.visible = True
-                output.value = "Checking...\r\nNewProject4 - 1 error(s), 0 warning(s)\r\n"
+                output.value = "Checking...\r\nNewProject40 - 0 error(s), 0 warning(s)\r\n"
+                self._later("syntax_check", checked)
 
-            self._later("syntax_check", checked)
+            def checked() -> None:
+                output.value += (
+                    "C0201 END instruction is missing.\r\n"
+                    "NewProject4 - 1 error(s), 0 warning(s)\r\n"
+                )
+
+            self._later("syntax_checking", checking)
         elif command_id == cd.SAVE_PROJECT_AS:
             self._later("save_as", self._show_save_as)
         elif command_id == cd.DISCONNECT:
@@ -801,6 +814,16 @@ def test_paste_provisions_the_runners_own_mdb(tmp_path, setup):
     result = cr.Run(fake, settings, prepare=prepare, stderr=io.StringIO()).execute()
     assert result["status"] == "ok", result["reason"]
     assert prepare.mdbs == [None, fake.temp_dir(fake.main.hwnd) / "SC_.mdb"]
+
+
+def test_tooltips_are_let_be(tmp_path, setup):
+    csv, exe = setup
+    fake = FakeClick(tmp_path, tooltip=True)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert code == cr.EXIT_OK, result["reason"]
+    log = (out / "run.log").read_text(encoding="utf-8")
+    assert log.count("a tooltip, let be: 'tooltips_class32'") == 2
 
 
 def test_no_guide_no_login_and_a_splash(tmp_path, setup):

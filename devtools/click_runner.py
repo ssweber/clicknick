@@ -24,7 +24,7 @@ Rules (scratchpad/roadmap.md, item 4):
 - It never writes to the PLC: every WM_COMMAND goes through ``Desktop.command`` and its
   allowlist (click_desktop.py).
 - Each step waits for a condition with a timeout. Any top-level window of CLICK that the
-  step does not expect stops the run: every window is dumped into ``DIR/abort/``, CLICK is
+  step does not expect (a tooltip aside) stops the run: every window is dumped into ``DIR/abort/``, CLICK is
   disconnected if it can be and then ended without saving. Every way out (a timeout, an
   error, Ctrl+C) goes through that cleanup.
 
@@ -87,7 +87,8 @@ _MAIN_TITLE = re.compile(r"^CLICK Programming Software \(Version4\.\d+\) - ")
 _NOT_RESPONDING = " (Not Responding)"
 _CURSOR = re.compile(r"\b(\d+):(\d+):([A-Z]+)\b")
 _STEPS = re.compile(r"\b(\d+)/(\d+)\b")
-_SYNTAX_RESULT = re.compile(r"(\d+) error\(s\), (\d+) warning\(s\)\s*$")
+# Windows that may come and go over CLICK's at any step (a toolbar's tip)
+TOOLTIP_CLASS = "tooltips_class32"
 
 
 class Refused(Exception):
@@ -280,6 +281,7 @@ class Run:
         self._dump_count = 0
         # Windows open before the main frame, and those of them still open
         self._tolerated: set[int] = set()
+        self._tooltips: set[int] = set()
         self.starting: list[Window] = []
         self.result: dict[str, Any] = {
             "command": settings.command,
@@ -386,6 +388,7 @@ class Run:
                     return True  # pyright: ignore[reportReturnType]
                 raise Aborted(f"CLICK exited while waiting for {what}")
             found, unexpected = classify(self.desktop.windows(self.pid), expected)
+            unexpected = self._without_tooltips(unexpected)
             if self.main is None and MAIN not in found:
                 for window in unexpected:
                     if window.hwnd not in self._tolerated:
@@ -417,6 +420,14 @@ class Run:
                 else:
                     self.log(f"CLICK does not answer; still waiting for {what}")
             time.sleep(self.s.poll)
+
+    def _without_tooltips(self, windows: list[Window]) -> list[Window]:
+        """*windows* but tooltips, each logged the first time it is seen."""
+        for window in windows:
+            if window.cls == TOOLTIP_CLASS and window.hwnd not in self._tooltips:
+                self._tooltips.add(window.hwnd)
+                self.log(f"a tooltip, let be: {_describe(window)}")
+        return [w for w in windows if w.cls != TOOLTIP_CLASS]
 
     def only_main(self, found: dict[str, Window]) -> bool:
         """The main frame alone, enabled and answering messages."""
@@ -782,21 +793,33 @@ class Run:
                 ),
                 "the Output pane's Edit (1005)",
             )
+            main = classify(self.desktop.windows(self.pid), [])[0].get(MAIN)
+            project = _project_file(main.title) if main is not None else None
+            if project is None:
+                raise Aborted("the main window's title names no project")
+            # The check lists what it finds, then "<project> - N error(s), M warning(s)" last
+            total = re.compile(
+                rf"^{re.escape(Path(project).stem)} - (\d+) error\(s\), (\d+) warning\(s\)\s*$",
+                re.MULTILINE,
+            )
             before = self.desktop.read_text(output.hwnd)
             self.command(SYNTAX_CHECK)
 
-            def finished(found: dict[str, Window]) -> re.Match[str] | None:
+            def finished(found: dict[str, Window]) -> tuple[str, re.Match[str]] | None:
                 if not self.only_main(found):
                     return None
                 text = self.desktop.read_text(output.hwnd)
                 if not text or text == before:
                     return None
-                return _SYNTAX_RESULT.search(text)
+                matches = list(total.finditer(text))
+                return (text, matches[-1]) if matches else None
 
-            match = self.wait(
-                "the Syntax Check result in Output", [], finished, timeout=self.s.paste_timeout
+            text, match = self.wait(
+                f"the Syntax Check result in Output ('{Path(project).stem} - ...')",
+                [],
+                finished,
+                timeout=self.s.paste_timeout,
             )
-            text = self.desktop.read_text(output.hwnd) or ""
             self.result["syntax_check"] = {
                 "text": text,
                 "errors": int(match.group(1)),
@@ -949,6 +972,7 @@ class Run:
         if self.connected and self.main is not None and self.desktop.alive(self.pid):
             try:
                 found, unexpected = classify(self.desktop.windows(self.pid), [])
+                unexpected = self._without_tooltips(unexpected)
                 if not self.desktop.idle(self.main, IDLE_TIMEOUT):
                     self.log("not disconnecting: CLICK does not answer")
                 elif unexpected or not self.only_main(found):
