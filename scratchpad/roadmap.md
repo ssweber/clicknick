@@ -83,9 +83,9 @@ from a real PLC.
 docstring has the rules and the result format). Live on Sam's desktop it pasted 1, 61 and 301 rungs into its
 own CLICK v4 connected to the conformance PLC, ran Syntax Check, saved, decoded the save back to CSV and
 matched every rung (a 301-rung paste freezes CLICK about 16 s; the whole run took 39 s). It drives CLICK by
-posted commands only, no keystrokes or pixels, and no command that reads or writes the PLC can be sent. The
-PLC login is `admin` (prefilled) / `123click`, deliberately not secret. Next: the early jobs below, and
-subroutines (pasting into one needs its dialogs recorded first, `record`).
+posted commands only, no keystrokes or pixels, and no command that reads the project from the PLC or writes
+one into it can be sent. The PLC login is `admin` (prefilled) / `123click`, deliberately not secret. Next: the
+early jobs below, and subroutines (pasting into one needs its dialogs recorded first, `record`).
 
 **Where it runs (Sam, 2026-11-15, replacing the plan's Sandbox-first rule):** on the CLICK installed on Sam's
 desktop, while he is away, as long as it is deterministic. Windows Sandbox is the fallback, and is needed only
