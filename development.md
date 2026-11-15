@@ -88,7 +88,10 @@ The version comes from the git tag, so there is no version number to edit.
 7. Open a pull request into `main`; once CI passes, squash-merge it.
 8. Publish a GitHub release tagged `vX.Y.Z`. `.github/workflows/publish.yml` builds on Windows,
    publishes to PyPI, attaches the trust report and SBOM to the release, and deploys the docs
-   from the release's tag. The public site changes only here: merges to `main` don't deploy it.
+   from the release's tag (not for a pre-release). The public site changes only here: merges to
+   `main` don't deploy it. To put a docs fix up between releases, or after promoting a
+   pre-release, run Docs by hand: `gh workflow run docs.yml --ref main -f ref=<tag or commit>`
+   (an empty `ref` rebuilds the latest release).
 
 ## Basic Developer Workflows
 

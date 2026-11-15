@@ -48,10 +48,10 @@ their sibling release is out.
 - Memory: the user-checks memory points at the sweep folder; point it here. Drop memories this file
   replaces.
 - Issue #36 is open.
-- Docs deploy on a release, not on every push to `main` (Sam, 2026-11-15: sessions merge their own
-  PRs on green, so `main` holds unreleased work). `docs.yml` builds on pull requests and deploys on
-  `workflow_dispatch` from `main`, checking out the `ref` input (default: the latest release);
-  `publish.yml` starts it with the release's tag. Branch `docs-on-release`.
+- Docs deploy on a release, not on every push to `main`: `docs.yml` builds on pull requests and deploys
+  on `workflow_dispatch` from `main`, building the `ref` input (default: the latest release);
+  `publish.yml` starts it with the release's tag. Scripts the build runs (`.github/scripts/`) come
+  from that tag, so a fix to them reaches the site with the next release.
 
 ## 2. ssort out, tests into CI (nothing)
 
