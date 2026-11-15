@@ -239,7 +239,9 @@ The rules it keeps:
   gone (CLICK removes it when it closes, not when the runner ends it).
 - It never writes to the PLC. Every `WM_COMMAND` goes through `Desktop.command`, which allows
   only Paste, Syntax Check, Save, Save As and Disconnect (`devtools/click_desktop.py`).
-- Each step waits for a window, a control's text or a file, with a timeout. A window it does not
+- Each step waits for a window, a control's text or a file, with a timeout. The paste shows
+  nothing when it is done: the decoded save is the check, and a saved main program without the
+  rungs pasted ends the run `aborted`. A window it does not
   expect stops the run: it dumps every window into `DIR/abort/`, disconnects when no dialog is
   open, ends CLICK without saving and checks that it is gone. Timeouts, errors and Ctrl+C end
   the same way.

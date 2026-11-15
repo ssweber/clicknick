@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "devtools"))
 import click_desktop as cd  # noqa: E402
 import click_runner as cr  # noqa: E402
 
-from clicknick.ladder.program import prepare_csv_load  # noqa: E402
+from clicknick.ladder.program import empty_rung, prepare_csv_load  # noqa: E402
 
 RUNG_CSV = (
     "marker,A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,AA,AB,AC,AD,AE,AF\n"
@@ -604,7 +604,7 @@ def test_paste_end_to_end(tmp_path, setup, capsys):
     assert result["syntax_check"]["errors"] == 1
     assert result["syntax_check"]["warnings"] == 0
     assert result["syntax_check"]["text"].endswith("1 error(s), 0 warning(s)\r\n")
-    assert result["rungs"] == {"pasted": 1, "saved_main": 1}
+    assert result["rungs"] == {"pasted": 1, "saved_main": 1, "same": True}
     assert Path(result["files"]["ckp"]) == out / "rung.ckp"
     assert (out / "rung.ckp").read_bytes() == b"ckp"
     assert sorted(p.name for p in (out / "click").iterdir()) == ["Project.ini", "Scr1.tmp"]
@@ -633,6 +633,40 @@ def test_paste_end_to_end(tmp_path, setup, capsys):
     assert not (out / "record").exists() and not (out / "abort").exists()
     # CLICK closed cleanly and removed its own temp folder
     assert_temp_left_to_click(fake, out, still_there=False)
+
+
+@pytest.mark.parametrize("empty_main", [[], [empty_rung("")]])
+def test_a_paste_that_did_not_land_aborts(tmp_path, setup, monkeypatch, empty_main):
+    """CLICK shows nothing when a paste is done; the decoded save is the check."""
+    csv, exe = setup
+    monkeypatch.setattr(
+        "clicknick.ladder.program.decode_program",
+        lambda data: Program("Main Program", 1, empty_main),
+    )
+    fake = FakeClick(tmp_path, stall="paste")
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert code == cr.EXIT_ABORTED
+    assert result["status"] == "aborted" and result["step"] == "decode"
+    assert result["reason"].startswith("the paste did not land: the saved main program has")
+    assert result["rungs"]["same"] is False
+    # CLICK itself had closed cleanly by then
+    assert fake.exited_cleanly and not fake.terminated
+
+
+def test_a_saved_main_that_differs_is_reported_not_aborted(tmp_path, setup, monkeypatch):
+    """What CLICK makes of a rung is the point of a run: a different rung is a result."""
+    csv, exe = setup
+    other = read_csv(csv)
+    other[0] = empty_rung("CLICK changed it")
+    other.append(read_csv(csv)[0])
+    monkeypatch.setattr(
+        "clicknick.ladder.program.decode_program",
+        lambda data: Program("Main Program", 1, other),
+    )
+    code, result = run(FakeClick(tmp_path), tmp_path / "out", csv, exe)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["rungs"] == {"pasted": 1, "saved_main": 2, "same": False}
 
 
 def test_paste_provisions_the_runners_own_mdb(tmp_path, setup):

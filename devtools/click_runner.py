@@ -595,12 +595,13 @@ class Run:
                 f"{prepared.rung_count} rung(s), {len(prepared.payload)} bytes; "
                 f"{prepared.addresses_inserted} address(es) added to SC_.mdb"
             )
-            self.result["rungs"] = {"pasted": prepared.rung_count, "saved_main": None}
+            self.result["rungs"] = {"pasted": prepared.rung_count, "saved_main": None, "same": None}
             self.desktop.set_clipboard(prepared.payload, self.main)
             self.command(PASTE)
             # A paste shows nothing when it is done, and WM_NULL can be answered before
-            # CLICK takes the posted paste. Posted commands run in order, though, so the
-            # Syntax Check posted next runs after the paste, and its result is the check.
+            # CLICK takes the posted paste. Posted commands run in order, so the Syntax
+            # Check and Save As posted next run after it; the decoded save checks that it
+            # landed (check_landed).
             self.wait("the main window after the paste", [], self.only_main)
             self.status_bar()
             self.record("pasted")
@@ -736,10 +737,38 @@ class Run:
             saved = self.decode(self.s.out / "click", self.s.out / "csv")
             files = [saved.main_csv, *saved.subroutine_csvs]
             self.result["files"]["csv"] = files
-            main = next((p for p in saved.programs if p.prog_idx == 1), None)
-            if self.result["rungs"] is not None and main is not None:
-                self.result["rungs"]["saved_main"] = main.rung_count
             self.log(f"decoded {', '.join(p.name for p in files)}")
+            self.check_landed(saved.main_csv)
+
+    def check_landed(self, main_csv: Path) -> None:
+        """Abort unless the saved main program holds the rungs pasted.
+
+        Nothing in CLICK shows that a paste is done, so this is the check: a paste that
+        did not land (the clipboard taken by another program, a payload CLICK refused)
+        leaves the new project's empty main program.
+        """
+        from laddercodec import read_csv
+
+        from clicknick.ladder.program import is_empty_rung, rung_fingerprint
+
+        assert self.s.csv is not None
+        pasted = read_csv(self.s.csv)
+        saved = read_csv(main_csv)
+        same = [rung_fingerprint(r) for r in pasted] == [
+            rung_fingerprint(r) for r in saved[: len(pasted)]
+        ]
+        self.result["rungs"] = {"pasted": len(pasted), "saved_main": len(saved), "same": same}
+        self.log(
+            f"saved main: {len(saved)} rung(s) for {len(pasted)} pasted; the first "
+            f"{len(pasted)} {'match' if same else 'differ from'} the CSV"
+        )
+        if len(saved) < len(pasted) or (
+            not all(is_empty_rung(r) for r in pasted) and all(is_empty_rung(r) for r in saved)
+        ):
+            raise Aborted(
+                f"the paste did not land: the saved main program has {len(saved)} rung(s) "
+                f"({sum(not is_empty_rung(r) for r in saved)} not empty), {len(pasted)} pasted"
+            )
 
     # -- cleanup --------------------------------------------------------------
 
@@ -838,6 +867,9 @@ class Run:
         if self.result["status"] is None and self.s.command == "paste":
             try:
                 self.decode_saved()
+            except Aborted as exc:
+                self.result.update(status="aborted", reason=str(exc))
+                self.log(f"ABORT: {exc}")
             except Exception as exc:
                 self.result.update(status="aborted", reason=f"decoding failed: {exc}")
                 self.log(f"ABORT: decoding failed: {exc}")
