@@ -197,3 +197,50 @@ extensions:
 See [Jet sidecar research](research/jet-sidecar/README.md) for validation results,
 standalone probes, and remaining platform checks. Production regression tests
 run with `make test`.
+
+## CLICK runner
+
+`devtools/click_runner.py` drives CLICK v4 on this desktop with nobody at it, so laddercodec and
+pyrung can ask CLICK what it makes of a rung. It starts its own CLICK, connects to the one PLC on
+the LAN (the new project then takes that PLC's hardware), answers "Don't read" to reading the
+PLC's project, and then:
+
+```bat
+set UV_NO_SYNC=1
+uv run python devtools/click_runner.py paste rung.csv --out runs\one
+uv run python devtools/click_runner.py record --out runs\dialogs
+```
+
+- `paste CSV --out DIR` pastes the CSV into the main program, runs Syntax Check, saves the
+  project as `DIR/<CSV name>.ckp`, copies CLICK's `Scr*.tmp` and `Project.ini` into `DIR/click/`,
+  disconnects, closes CLICK and decodes `DIR/click/` into `DIR/csv/`. `--record` also dumps
+  every window at each step.
+- `record --out DIR` connects the same way, dumps every window of CLICK (JSON with its
+  controls, and a PNG) at each step into `DIR/record/`, then disconnects and ends CLICK. Use it to
+  see a dialog the runner does not know yet.
+
+`DIR` must be new or empty. Each run writes `DIR/result.json` (also printed on stdout): the
+status (`ok`, `aborted` or `refused`), the step it reached, the Syntax Check text with its error
+and warning counts, the rung counts pasted and saved, the files written, and how long each step
+took. `DIR/run.log` logs every step. The exit code is 0 for `ok`, 1 for `aborted` and 2 for
+`refused`.
+
+Login uses the User Type CLICK fills in, or `--user-type` / `CLICK_RUNNER_USER_TYPE` (default
+`admin`) when it is empty, and the password from `--password` / `CLICK_RUNNER_PASSWORD` (default
+`123click`). `--click-exe` points at another CLICK.exe, and `--timeout` sets how many seconds each
+step may wait (default 60).
+
+The rules it keeps:
+
+- It refuses to start while any CLICK.exe runs or any CLICK window is open, and on a locked
+  screen (the input desktop is not `Default`). It finds windows only by the pid of the CLICK it
+  started, and files only in that CLICK's temp folder.
+- It never writes to the PLC. Every `WM_COMMAND` goes through `Desktop.command`, which allows
+  only Paste, Syntax Check, Save, Save As and Disconnect (`devtools/click_desktop.py`).
+- Each step waits for a window, a control's text or a file, with a timeout. A window it does not
+  expect stops the run: it dumps every window into `DIR/abort/`, disconnects when no dialog is
+  open, ends CLICK without saving and checks that it is gone. Timeouts, errors and Ctrl+C end
+  the same way.
+
+The runner reaches Windows only through `Desktop`. `tests/test_click_runner.py` runs it against a
+fake CLICK that plays the dialogs the probe of 2026-11-15 recorded; no test starts CLICK.
