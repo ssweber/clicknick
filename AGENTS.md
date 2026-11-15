@@ -57,7 +57,6 @@ src/clicknick/
 ├── simulation_session.py  # SimulationSession: pyrung DAP + Modbus + simulator settings (no tkinter)
 ├── models/                # Data models and constants
 │   ├── address_row.py     # Frozen dataclass for address data
-│   ├── address_slots.py   # Every address slot in display order
 │   └── mutable_row_builder.py  # Builder for accumulating changes
 ├── data/                  # Data storage and state management (no tkinter)
 │   ├── address_store.py   # Core store: base/overlay/visible layers, undo/redo, _derive

@@ -11,11 +11,10 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from pyclickplc.addresses import get_addr_key
+from pyclickplc.addresses import get_addr_key, iter_address_slots
 from pyrung.click import SystemNicknameRepair, SystemNicknameRepairRequired
 
 from clicknick.models.address_row import AddressRow
-from clicknick.models.address_slots import iter_address_slots
 from clicknick.services.analysis_service import (
     AnalysisResult,
     AnalysisService,

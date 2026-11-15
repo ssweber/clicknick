@@ -20,7 +20,7 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from pyclickplc.addresses import get_addr_key
+from pyclickplc.addresses import get_addr_key, iter_address_slots
 from pyclickplc.banks import (
     DEFAULT_RETENTIVE,
     INTERLEAVED_PAIRS,
@@ -31,7 +31,6 @@ from pyclickplc.blocks import compute_all_block_ranges, find_paired_tag_index, p
 from pyclickplc.validation import SYSTEM_NICKNAME_TYPES, validate_initial_value
 
 from ..models.address_row import AddressRow, initial_values_differ
-from ..models.address_slots import iter_address_slots
 from ..models.validation import validate_comment, validate_nickname
 from ..services.block_service import BlockService, compute_block_colors, same_block_tag
 from ..services.nickname_index_service import NicknameIndexService

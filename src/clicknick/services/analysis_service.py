@@ -19,11 +19,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from pyclickplc.addresses import format_address_display, get_addr_key
+from pyclickplc.addresses import format_address_display, get_addr_key, iter_address_slots
 from pyrung.click import SystemNicknameRepair, SystemNicknameRepairRequired
 from pyrung.click.tag_map import OldCommentFormError
-
-from ..models.address_slots import iter_address_slots
 
 if TYPE_CHECKING:
     from pyrung.core.analysis.pdg import ProgramGraph

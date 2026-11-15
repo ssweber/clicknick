@@ -8,12 +8,11 @@ import os
 import shutil
 import tempfile
 import tomllib
-from configparser import ConfigParser
-from configparser import Error as ConfigParserError
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..models.name_validation import validate_click_name
+from pyclickplc.validation import validate_click_name
+
 from .project_workspace import (
     PLC_PACKAGE_PATH,
     backup_plc_source,
@@ -141,83 +140,6 @@ def load_project_workspace_config(sidecar: Path) -> ProjectWorkspaceConfig:
         plc_name=plc_name.strip(),
         workspace_path=sidecar.parent,
     )
-
-
-def _plc_name_option(sections: set[str]) -> tuple[str, str]:
-    """The section and key holding the PLC name, given the file's lowercased sections.
-
-    CLICK 4 writes Project.ini with placeholder names: [PLCName] PLCName= is [Sec20] Key1=.
-    """
-    if "plcname" not in sections and "sec20" in sections:
-        return "Sec20", "Key1"
-    return "PLCName", "PLCName"
-
-
-def read_plc_name(project_ini: Path) -> str | None:
-    """Read CLICK's configured PLC name from a temporary ``Project.ini``."""
-    parser = ConfigParser(interpolation=None)
-    try:
-        with Path(project_ini).open(encoding="utf-8-sig") as stream:
-            parser.read_file(stream)
-        section, key = _plc_name_option({name.lower() for name in parser.sections()})
-        value = parser.get(section, key, fallback="").strip()
-    except (ConfigParserError, OSError, UnicodeError):
-        return None
-    return value or None
-
-
-def write_plc_name(project_ini: Path, plc_name: str) -> None:
-    """Atomically set CLICK's PLC name while preserving the rest of Project.ini."""
-    is_valid, error = validate_click_name(plc_name)
-    if not is_valid:
-        raise ValueError(error)
-    project_ini = _normalized(project_ini)
-    original = project_ini.read_bytes()
-    newline = b"\r\n" if b"\r\n" in original else b"\n"
-    lines = original.splitlines(keepends=True)
-    sections = {
-        line.strip()[1:-1].decode("ascii", "replace").lower()
-        for line in lines
-        if line.strip().startswith(b"[") and line.strip().endswith(b"]")
-    }
-    section, key = _plc_name_option(sections)
-    header = f"[{section}]".encode("ascii")
-    section_start = None
-    section_end = len(lines)
-    for index, line in enumerate(lines):
-        stripped = line.strip().lower()
-        if stripped == header.lower():
-            section_start = index
-        elif section_start is not None and stripped.startswith(b"[") and stripped.endswith(b"]"):
-            section_end = index
-            break
-
-    entry = key.encode("ascii") + b"=" + plc_name.strip().encode("ascii") + newline
-    if section_start is None:
-        if original and not original.endswith((b"\r", b"\n")):
-            lines.append(newline)
-        lines.extend((header + newline, entry))
-    else:
-        for index in range(section_start + 1, section_end):
-            if lines[index].split(b"=", 1)[0].strip().lower() == key.lower().encode("ascii"):
-                lines[index] = entry
-                break
-        else:
-            lines.insert(section_start + 1, entry)
-
-    descriptor, staging_value = tempfile.mkstemp(
-        prefix=f".{project_ini.name}.", suffix=".clicknick-name", dir=project_ini.parent
-    )
-    os.close(descriptor)
-    staging = Path(staging_value)
-    try:
-        staging.write_bytes(b"".join(lines))
-        staging.replace(project_ini)
-        if read_plc_name(project_ini) != plc_name.strip():
-            project_ini.write_bytes(original)
-            raise OSError("CLICK PLC name could not be verified")
-    finally:
-        staging.unlink(missing_ok=True)
 
 
 def default_locator_path() -> Path:
