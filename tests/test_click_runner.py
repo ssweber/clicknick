@@ -1106,10 +1106,25 @@ def test_a_click_error_box_aborts_with_its_code(tmp_path, setup, event, step):
     )
     assert result["reason"] == "CLICK error PTC-013: Timeout on attempting to connect to PLC."
     assert result["click_error"] == "PTC-013" and result["step"] == step
+    assert result["cleanup_click_error"] is None
     assert not fake.error_answered
     assert fake.commands.count("Disconnect") <= 1  # Only the step's own
     if event == "connect":
         assert "login" not in fake.events and result["plc"] is None
+
+
+def test_an_error_box_met_by_the_cleanup_is_not_what_stopped_the_run(tmp_path, setup):
+    """click_error tells a caller the box stopped the run; one met while the cleanup
+    disconnects after a timeout is kept apart."""
+    csv, exe = setup
+    fake = FakeClick(tmp_path, stall="syntax_check", error_on="disconnect")
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe, timeout=0.3)
+    assert_aborted(fake, out, code, result, "timed out after 0.3 s waiting for the Syntax Check")
+    assert result["click_error"] is None and result["cleanup_click_error"] == "PTC-013"
+    assert not fake.error_answered
+    log = (out / "run.log").read_text(encoding="utf-8")
+    assert "could not disconnect: CLICK error PTC-013" in log
 
 
 def test_click_error_reads_only_a_code_then_a_message():

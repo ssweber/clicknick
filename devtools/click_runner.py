@@ -20,8 +20,8 @@ and stderr. Exit code 0 when the status is ``ok``, 1 when ``aborted``, 2 when ``
 Syntax Check's text with its error and warning counts, the rungs pasted and saved
 (``same`` when the saved main program starts with the CSV's rungs), the PLC the status
 bar named once connected (``plc``), the status bar's panes at each step, the code of a
-CLICK error box that stopped the run (``click_error``), the files written, and how long
-each step took.
+CLICK error box that stopped the run (``click_error``; one met while the cleanup
+disconnects is ``cleanup_click_error``), the files written, and how long each step took.
 
 Rules (scratchpad/roadmap.md, item 4):
 
@@ -40,13 +40,17 @@ Rules (scratchpad/roadmap.md, item 4):
   does not rewrite stops the run: it would be decoded with the project.
 - Each step waits for a condition. Waiting for a dialog gives up after ``--timeout``
   seconds (default 60). CLICK freezes while it pastes, so the paste, Syntax Check, save
-  and close may take up to ``--paste-timeout`` (default 300). The paste is done when
-  CLICK answers again and, if its status bar can be read, shows the rungs pasted; the
-  saved main program holding them is the final check. Nothing is sent to a CLICK that
-  does not answer, and a wait logs the status bar every ``STATUS_EVERY`` seconds.
+  and close may take up to ``--paste-timeout`` (default 300); live run 7 (2026-11-15)
+  saw a paste of 301 rungs freeze it for 16 s and their Syntax Check for 6 s. The paste
+  is done when CLICK answers again and, if its status bar can be read, shows the rungs
+  pasted; the saved main program holding them is the final check. Nothing is sent to a
+  CLICK that does not answer, and a wait logs the status bar every ``STATUS_EVERY``
+  seconds.
 - A CLICK error box (a dialog whose text is a code on a line of its own, then a message:
   "PTC-013", "Timeout on attempting to connect to PLC.") stops the run at any step, with
   the code in ``click_error`` so a caller can decide to run again. Nothing is pressed in it.
+  A box met while the cleanup disconnects after another stop is logged and kept as
+  ``cleanup_click_error``; it is not what stopped the run.
 - Any top-level window of CLICK that the step does not expect (a tooltip aside) stops the
   run: every window is dumped into ``DIR/abort/`` (a window that does not answer without
   its edit text or a PNG), CLICK is disconnected if it answers with no dialog open, then
@@ -126,6 +130,14 @@ class Refused(Exception):
 
 class Aborted(Exception):
     """The run stops here; cleanup ends CLICK."""
+
+
+class ClickErrorBox(Aborted):
+    """CLICK showed an error box: its code (``PTC-013``) and message."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(f"CLICK error {code}: {message}")
+        self.code = code
 
 
 class _Unconfirmed(Exception):
@@ -367,6 +379,7 @@ class Run:
             "rungs": None,
             "plc": None,
             "click_error": None,
+            "cleanup_click_error": None,
             "status_bar": {},
             "files": {},
             "click": {"exe": settings.exe, "pid": None, "main_hwnd": None, "closed": None},
@@ -510,7 +523,7 @@ class Run:
             time.sleep(self.s.poll)
 
     def check_error_boxes(self, windows: list[Window]) -> None:
-        """Abort on a CLICK error box among *windows*, with its code in ``click_error``.
+        """Raise ``ClickErrorBox`` for a CLICK error box among *windows*.
 
         Nothing is pressed in it; the cleanup that follows leaves it open (a dialog is open,
         so it does not disconnect) and ends CLICK.
@@ -520,9 +533,7 @@ class Run:
                 continue
             error = click_error(window, self.desktop.controls(window.hwnd))
             if error is not None:
-                code, message = error
-                self.result["click_error"] = code
-                raise Aborted(f"CLICK error {code}: {message}")
+                raise ClickErrorBox(*error)
 
     def _without_tooltips(self, windows: list[Window]) -> list[Window]:
         """*windows* but tooltips, each logged the first time it is seen."""
@@ -767,6 +778,8 @@ class Run:
                     [STARTUP, CONNECT, READ_PROMPT],
                     lambda f: self.desktop.button_checked(dont_read.hwnd) == 1,
                 )
+            except ClickErrorBox:
+                raise
             except Aborted as exc:
                 raise Aborted(f"'Don't read' did not take: {exc}") from exc
             self.press(prompt, ok)
@@ -1145,6 +1158,10 @@ class Run:
                 else:
                     self.disconnect(label=None)
                     self.log("disconnected")
+            except ClickErrorBox as exc:
+                # Not what stopped the run: kept apart from click_error, which says it was
+                self.result["cleanup_click_error"] = exc.code
+                self.log(f"could not disconnect: {exc}")
             except Exception as exc:
                 self.log(f"could not disconnect: {exc}")
         self.end_click()
@@ -1221,6 +1238,8 @@ class Run:
                     if not self.result["click"]["closed"]:
                         raise Aborted("CLICK did not end")
             except Aborted as exc:
+                if isinstance(exc, ClickErrorBox):
+                    self.result["click_error"] = exc.code
                 self.stop(str(exc))
             except KeyboardInterrupt:
                 self.stop("interrupted (Ctrl+C)")
