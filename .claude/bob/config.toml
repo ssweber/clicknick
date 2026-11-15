@@ -1,0 +1,66 @@
+# bob settings for ClickNick (the bob plugin, github.com/ssweber/bob). No merge queue:
+# branches go into main through pull requests, gated by CI.
+# Paths are relative to the project root, the folder that holds .claude/.
+
+worktree_root = "../clicknick-wt"          # `run.py worktree new NAME` -> <worktree_root>/NAME
+procs_dir = "../clicknick-wt/.bob/procs"   # one file per live bounded run (`run.py ps`), and the slot locks
+base = "origin/main"                       # new worktrees start here, with no upstream
+branch_prefix = "bob/"                     # `worktree new NAME` makes branch <prefix>NAME unless --branch
+job_memory_mb = 8192                       # cap per run, all its processes (Windows Job Object); 0 = no cap
+targeted_slots = 3                         # bounded runs at once; the rest wait. 0 = no limit
+targeted_wait = 1800                       # seconds a run waits for a slot, then exits 125
+
+# PreToolUse hook. Regexes are searched in the shell command text, quoted strings and heredoc
+# bodies blanked.
+[hook]
+# Bash commands that get a hard timeout and a named process group: they are rewritten to
+# `run.py --timeout N --name <agent>@<worktree> -- bash -c '...'` (N from a leading
+# `timeout N`, else default_timeout). `make docs-serve` is a server and runs as typed.
+bash_wrap = ['\bpytest\b', '\bmake\b(?!\s+docs-serve\b)']
+# PowerShell commands that are refused with the fix (run them through run.py, or in Bash).
+powershell_refuse = ['\bpytest\b']
+default_timeout = 600
+
+# bob-reviewer: every shell segment must match reviewer_allow; redirects only to /dev/null or
+# the write roots; no heredocs, no $(...), no PowerShell; Write/Edit only under the write roots.
+reviewer_write_roots = ["$TEMP", "$TMP", "/tmp"]
+# `[uv run] python <script>.py`: allowed only when the script is under a write root, and only
+# bounded: `python -I <plugin>/scripts/run.py --timeout N [--name X] [--cwd D] -- <command>`.
+reviewer_script = '^(timeout\s+\S+\s+)?(uv\s+run\s+(--\S+\s+)*)?python[0-9.]*(\s+-\S+)*\s+(?P<script>\S+\.py)\b'
+reviewer_max_timeout = 1800
+# Allowed for the reviewer only inside that bounded run (e.g. `^node\s+--test\b`).
+reviewer_bounded = []
+# bob-investigator: the reviewer's rules, no scripts, no bounded runs, and none of these.
+readonly_refuse = [
+    '^(timeout\s+\S+\s+)?(uv\s+run\s+(--\S+\s+)*)?(python[0-9.]*\s+(-I\s+)?-m\s+)?(pytest|unittest)\b',
+    '^make\b',
+]
+reviewer_allow = [
+    '^cd(\s|$)',
+    '^git\s+(-C\s+\S+\s+)?(diff|log|show|status|blame|grep|rev-parse|rev-list|merge-base|ls-files|ls-tree|cat-file|describe|shortlog|range-diff|for-each-ref|name-rev|whatchanged)\b',
+    '^git\s+(-C\s+\S+\s+)?branch(\s+(-a|-r|-v|-vv|--list|--contains|--merged|--no-merged|--show-current)\b.*)?$',
+    '^git\s+(-C\s+\S+\s+)?worktree\s+list\b',
+    '^(rg|grep|egrep|ls|cat|head|tail|wc|sort|uniq|cut|tr|diff|cmp|pwd|echo|printf|which|file|stat|du|tree|basename|dirname|realpath|true|false|test|\[|date|env|nl|column|jq|xxd|od)(\s|$)',
+    '^sed\s+-n(\s|$)',
+    '^awk\s+[^>]*$',
+    '^find\s(?!.*\s-(delete|exec|execdir|ok|okdir|fprint|fprintf|fls)\b)',
+    '^(timeout\s+\S+\s+)?(uv\s+run\s+(--\S+\s+)*)?(python[0-9.]*\s+(-I\s+)?-m\s+)?pytest\b',
+    '^(timeout\s+\S+\s+)?(uv\s+run\s+(--\S+\s+)*)?python[0-9.]*\s+--version\b',
+    # ruff and ty, read-only forms: no fixing, no in-place format, no --config (it can set
+    # `fix = true`), no output file.
+    '^(uv\s+run\s+(--\S+\s+)*)?ruff\s+check\b(?!.*(\s--(fix|unsafe-fixes|fix-only|add-noqa|watch|config|output-file)\b|\s-[wo]\b))',
+    '^(uv\s+run\s+(--\S+\s+)*)?ruff\s+format\b(?=.*\s--(check|diff)\b)(?!.*\s--config\b)',
+    '^(uv\s+run\s+(--\S+\s+)*)?ty\s+check\b',
+]
+# With a [queue] section (queue.toml): every non-light stage is heavy, plus these. Heavy
+# commands are refused for subagents; the main session runs them through `mergeq.py run
+# --heavy` or the queue. heavy_exempt takes a main-session command back out.
+# ClickNick has no queue, so these are not read: profile.md's rule keeps agents off a bare `make`.
+heavy_extra = []
+heavy_exempt = []
+
+[ps]
+# Processes shown by `run.py ps --all` and offered to `reap --unmanaged`.
+names = ["python.exe", "python3.exe", "pytest.exe", "make.exe", "uv.exe"]
+# Never listed or reaped (language servers, linters' daemons).
+ignore = ['pyright', 'langserver', 'language[-_]server', '\bty\b.*\bserver\b', 'ruff\s+server', 'debugpy']

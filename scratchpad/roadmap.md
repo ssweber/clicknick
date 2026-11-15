@@ -21,7 +21,7 @@ How to use it:
 
 1. Housekeeping (nothing)
 2. ssort out, tests into CI (nothing)
-3. Adopt the bob plugin (Sam says when)
+3. The bob plugin (done)
 4. CLICK runner spike, on the desktop CLICK while Sam is away (CLICK, Sam), and the user checks it or a mock can automate (nothing)
 5. ConnectionSession owns the window and project (nothing)
 6. Split ClickNickApp (nothing)
@@ -38,7 +38,6 @@ their sibling release is out.
 - `dev` goes: it holds the same tree as `origin/main` (0.24.0 was squash-merged). Done locally
   (2026-11-15): local `dev` and `bob/train4` deleted, local `main` reset to `origin/main`. Deleting
   `origin/dev` is a push: ask Sam.
-- Done: the reviewer's targeted-pytest recipe in `.claude/skills/bob/profile.md` is committed with this file.
 - Arc folders under `../clicknick-wt/buildbot/jobs/` can go once this file holds their open items. They are
   here: the user checks (below), and two leftovers from the sweep ledger:
   - Tests and docstrings that still say "offline console".
@@ -62,23 +61,16 @@ their sibling release is out.
   take about 2 minutes). CI installs the pinned PyPI releases, not the sibling checkouts. On the first run,
   watch the tests that start pyrung's DAP subprocess or bind Modbus port 502.
 
-## 3. Adopt the bob plugin (Sam says when)
+## 3. The bob plugin (done)
 
-Sam's ruling (2026-11-15): the BOB tooling gets one source, a Claude Code plugin in its own repo (`bob`),
-built by the planner's agent. The queue and trains go with it; CI is the gate. The guard (`hook.py`:
-pytest under a timeout and a memory cap, the heavy lock, targeted slots, `run`, `ps`, `reap`, `lock`), the
-read-only roles, `worktree new/rm/list` and `note` stay, in the plugin. `worktree rm` refuses only a dirty
-tree and deletes the branch only when it is merged or every commit is on a remote; the base is
-`origin/main`, branched with `--no-track`.
+The BOB tooling is the bob plugin (github.com/ssweber/bob): the skill, the three agents, the
+PreToolUse hook and the bounded runner (`run.py`: timeouts, memory cap, targeted slots, `ps`, `reap`,
+`worktree new/rm/list`). There is no merge queue here; CI is the gate. ClickNick keeps two files of its
+own: `.claude/bob/config.toml` and `.claude/bob/profile.md`. A fault in the tooling is fixed once, in the
+plugin, through its own pull request.
 
-Until the switch, nothing changes in the skill, the agent files, `hook.py` or `mergeq.py` here; a fault goes
-to Sam or the planner, to be fixed once in the plugin. The switch is one small PR, when Sam says:
-
-- Delete `devtools/mergeq/`, `.claude/skills/bob/SKILL.md` and `.claude/agents/bob-*`.
-- Add `.claude/bob/config.toml` (what `mergeq.toml` holds, without `install`, `[stages]` and `[presets]`)
-  and move `.claude/skills/bob/profile.md` to `.claude/bob/profile.md`, rewritten for PRs into `main`
-  (it still says base `dev` and trains).
-- Change `.claude/settings.json` to the plugin. The hook fails closed, so open sessions reload plugins then.
+Once per clone: `claude plugin install bob@bob --scope project` (the `bob` marketplace is added once per
+machine: `claude plugin marketplace add ssweber/bob`).
 
 ## 4. CLICK runner spike (CLICK, Sam)
 

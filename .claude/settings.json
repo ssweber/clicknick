@@ -1,16 +1,6 @@
 {
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash|PowerShell|Write|Edit|NotebookEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python -I \"$CLAUDE_PROJECT_DIR/devtools/mergeq/hook.py\"",
-            "timeout": 30
-          }
-        ]
-      }
-    ]
-  }
+  "extraKnownMarketplaces": {
+    "bob": { "source": { "source": "github", "repo": "ssweber/bob" } }
+  },
+  "enabledPlugins": { "bob@bob": true }
 }
