@@ -26,6 +26,11 @@ Repo-specific rules for the /bob skill. Another repo replaces this file.
   before commands in the main checkout. No multi-line content inlined in shell commands
   (heredocs, `python -c`): write a file with Write, then run it.
 - The full suite is about 2 min, serial. Every stage is light.
+- Targeted pytest in another worktree W: builders use
+  `python -I <main>/devtools/mergeq/mergeq.py run --timeout 300 -- uv run --no-sync --project W pytest -c W/pyproject.toml --rootdir W <tests> -q`.
+  Reviewers may not run `mergeq.py run ... pytest`, and the hook's reviewer allowlist does not
+  accept `uv run --project W` either. Give them `cd W && uv run --no-sync pytest <tests> -q`
+  (both segments are on the allowlist; the hook wraps pytest in a timeout itself).
 
 ## Correctness contract (put in every builder and reviewer brief)
 
@@ -53,9 +58,9 @@ None. Trains gate on `train` (lint, test, docs).
 ## Models
 
 - Builders: Opus at `effort: high` for the store (`address_store.py`, `edit_session.py`,
-  `_derive`, undo), database backends and writes (`utils/mdb*`, Jet worker), Preview Changes and
+  `_derive`, undo), database backends and writes (`utils/mdb*`, Jet worker), Review Changes and
   rung diff, simulation session/DAP; Sonnet for one view's behaviour, tests-only or docs-only.
-- Reviewers: Opus for the store, database writes, Preview Changes and concurrency; Sonnet for a
+- Reviewers: Opus for the store, database writes, Review Changes and concurrency; Sonnet for a
   single view, tests, docs.
 - Read-only code questions: `bob-investigator`, Sonnet. A bug sweep of a component (it may run
   targeted tests and bounded probes) goes to `bob-reviewer` with the component instead of a
