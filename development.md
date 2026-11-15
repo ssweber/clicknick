@@ -76,16 +76,16 @@ Use a ClickNick revision compatible with the released pyrung version.
 The version comes from the git tag, so there is no version number to edit.
 
 1. Publish the libraries ClickNick needs: `laddercodec` and `pyclickplc`, then `pyrung`.
-2. On `dev`, update their pins in `pyproject.toml` and `uv.lock` together. The whole runtime
-   tree is pinned with `==`, so a new transitive dependency also needs a pin and an entry in
-   `PURPOSES` in `devtools/trust_report.py`.
+2. On a branch off `main`, update their pins in `pyproject.toml` and `uv.lock` together. The
+   whole runtime tree is pinned with `==`, so a new transitive dependency also needs a pin and
+   an entry in `PURPOSES` in `devtools/trust_report.py`.
 3. Return to the released dependencies (above) and run `make lint test`. Try what changed by
    hand: the tests can't drive CLICK.
 4. Run `make docs-check`.
 5. In `CHANGELOG.md`, condense `Unreleased` as its style comment says and move it under
    `## vX.Y.Z - YYYY-MM-DD`.
 6. Run `make trust-report`. A red check here fails the release later.
-7. Merge `dev` into `main`.
+7. Open a pull request into `main`; once CI passes, squash-merge it.
 8. Publish a GitHub release tagged `vX.Y.Z`. `.github/workflows/publish.yml` builds on Windows,
    publishes to PyPI, attaches the trust report and SBOM to the release, and refreshes the docs.
 
