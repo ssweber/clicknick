@@ -21,7 +21,7 @@ jobs:
         # Update this as needed:
         # Common platforms: ["ubuntu-latest", "macos-latest", "windows-latest"]
         os: ["windows-latest"]
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.13", "3.14"]
 
     # Windows required for pywin32 dependency.
     runs-on: ${{ matrix.os }}

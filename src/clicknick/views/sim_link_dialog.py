@@ -45,10 +45,9 @@ def _contact_style(widget: tk.Misc) -> str:
         return "Toolbutton"
     if "Contact.button" not in style.element_names():
         # Windows BUTTON part 1 states: 1 normal, 2 hot, 3 pressed, 4 disabled.
-        # Straight to Tk: Python's element_create takes "vsapi" only from 3.13.
-        style.tk.call(
-            "ttk::style", "element", "create", "Contact.button", "vsapi", "BUTTON", 1,
-            ("disabled", 4, "pressed", 3, "selected", 3, "active", 2, "", 1),
+        style.element_create(
+            "Contact.button", "vsapi", "BUTTON", 1,
+            [("disabled", 4), ("pressed", 3), ("selected", 3), ("active", 2), ("", 1)],
         )  # fmt: skip
         style.layout(
             "Contact.TRadiobutton",
