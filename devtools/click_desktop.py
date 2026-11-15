@@ -210,6 +210,7 @@ TH32CS_SNAPPROCESS = 0x00000002
 PROCESS_VM_OPERATION = 0x0008
 PROCESS_VM_READ = 0x0010
 PROCESS_VM_WRITE = 0x0020
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000  # For IsWow64Process
 MEM_COMMIT = 0x1000
 MEM_RESERVE = 0x2000
 MEM_RELEASE = 0x8000
@@ -629,9 +630,8 @@ class Win32Desktop(Desktop):
 
         pid = win32process.GetWindowThreadProcessId(hwnd)[1]
         kernel32 = _kernel32()
-        process = kernel32.OpenProcess(
-            PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE, False, pid
-        )
+        access = PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE
+        process = kernel32.OpenProcess(access | PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if not process:
             raise ctypes.WinError(ctypes.get_last_error())
         size = 1024 * 2
