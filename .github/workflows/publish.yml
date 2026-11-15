@@ -84,7 +84,8 @@ jobs:
 
   docs:
     name: Deploy the release's docs
-    if: github.event_name == 'release'
+    # A pre-release leaves the site on the last full release.
+    if: ${{ github.event_name == 'release' && !github.event.release.prerelease }}
     needs: publish
     runs-on: ubuntu-latest
     permissions:
