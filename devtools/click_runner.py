@@ -13,7 +13,7 @@ the same way and dumps every window of CLICK (JSON and PNG) at each step into
 terminated rather than closed); ``paste --record`` dumps the same way.
 
 ``DIR`` must not exist or be empty. The run ends with ``DIR/result.json``, printed on stdout
-too, and logs each step to ``DIR/run.log`` and stderr. Exit code 0 when the status is
+too (nothing else goes there), and logs each step to ``DIR/run.log`` and stderr. Exit code 0 when the status is
 ``ok``, 1 when ``aborted``, 2 when ``refused`` (nothing was started).
 
 Rules (scratchpad/roadmap.md, item 4):
@@ -44,7 +44,7 @@ import shutil
 import sys
 import time
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -1128,14 +1128,37 @@ def settings_from(argv: list[str] | None, environ: dict[str, str] | None = None)
     )
 
 
+@contextmanager
+def _stdout_to_stderr() -> Iterator[None]:
+    """Send what is printed to stdout to stderr, Python's and the process's (fd 1) alike.
+
+    stdout carries only the result: what runs on the way (an ODBC driver's notice, a DLL)
+    must not get into it.
+    """
+    sys.stdout.flush()
+    try:
+        saved = os.dup(1)
+        os.dup2(2, 1)
+    except OSError:  # No fd 1 (pythonw), or it cannot be duplicated
+        saved = None
+    try:
+        with redirect_stdout(sys.stderr):
+            yield
+    finally:
+        if saved is not None:
+            os.dup2(saved, 1)
+            os.close(saved)
+
+
 def main(argv: list[str] | None = None, desktop: Desktop | None = None, **run_args: Any) -> int:
     settings = settings_from(argv)
     if desktop is None:
         from click_desktop import Win32Desktop
 
         desktop = Win32Desktop()
-    result = Run(desktop, settings, **run_args).execute()
-    print(json.dumps(result, indent=2))
+    with _stdout_to_stderr():
+        result = Run(desktop, settings, **run_args).execute()
+    print(json.dumps(result, indent=2), flush=True)
     return {"ok": EXIT_OK, "aborted": EXIT_ABORTED}.get(result["status"], EXIT_REFUSED)
 
 

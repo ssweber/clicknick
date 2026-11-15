@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import subprocess
 import sys
 import time
@@ -739,6 +740,25 @@ def test_a_saved_main_that_differs_is_reported_not_aborted(tmp_path, setup, monk
     code, result = run(FakeClick(tmp_path), tmp_path / "out", csv, exe)
     assert code == cr.EXIT_OK, result["reason"]
     assert result["rungs"] == {"pasted": 1, "saved_main": 2, "same": False}
+
+
+def test_stdout_carries_only_the_result(tmp_path, setup, capfd):
+    """Opening SC_.mdb prints the ODBC driver it used; that goes to stderr."""
+    csv, exe = setup
+
+    def prepare(csv: Path, mdb: Path | None):
+        print("Successfully connected using driver: Microsoft Access Driver")
+        os.write(1, b"and a DLL writing to fd 1\n")
+        return prepare_csv_load(csv, click_v4=True, mdb_path=None)
+
+    out = tmp_path / "out"
+    argv = ["paste", str(csv), "--out", str(out), "--click-exe", str(exe), "--timeout", "5"]
+    code = cr.main(argv, desktop=FakeClick(tmp_path), prepare=prepare, stderr=io.StringIO())
+    captured = capfd.readouterr()
+    assert code == cr.EXIT_OK
+    assert json.loads(captured.out) == json.loads((out / "result.json").read_text("utf-8"))
+    assert "Successfully connected using driver" in captured.err
+    assert "and a DLL writing to fd 1" in captured.err
 
 
 def test_paste_provisions_the_runners_own_mdb(tmp_path, setup):
