@@ -197,3 +197,26 @@ extensions:
 See [Jet sidecar research](research/jet-sidecar/README.md) for validation results,
 standalone probes, and remaining platform checks. Production regression tests
 run with `make test`.
+
+## CLICK runner
+
+`devtools/click_runner.py` drives CLICK v4 on this desktop with nobody at it, so laddercodec and
+pyrung can ask CLICK what it makes of a rung. It starts its own CLICK, connects to the one PLC on
+the LAN without reading its project, pastes the CSV, runs Syntax Check, saves, and decodes what
+CLICK saved:
+
+```bat
+set UV_NO_SYNC=1
+uv run python devtools/click_runner.py paste rung.csv --out runs\one
+uv run python devtools/click_runner.py record --out runs\dialogs
+```
+
+`result.json` in the `--out` folder (also on stdout) says how the run went, and `run.log` logs
+each step. A paste whose rungs are not in the saved main program ends the run `aborted`. `record`
+dumps every window of CLICK at each step, to see a dialog the runner does not know yet. It
+refuses to start while CLICK runs or the screen is locked, never writes to the PLC (an allowlist
+of commands, in `devtools/click_desktop.py`), never deletes CLICK's temp folder, and stops at any
+window it does not expect. A CLICK error box stops it with the box's code in `click_error`
+("PTC-013" when the PLC did not answer), so the caller can decide whether to run it again. The
+file's docstring has the options, the rules and the result's fields. `tests/test_click_runner.py`
+runs it against a fake CLICK; no test starts CLICK.
