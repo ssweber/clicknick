@@ -230,10 +230,14 @@ class ConnectionSession:
         return click_temp_dir(self.click.hwnd) / "Project.ini"
 
     def _simulation_key(self) -> str:
-        """The PLC name simulator settings are remembered under."""
-        from .services.workspace_mirror import read_plc_name
+        """The PLC name simulator settings are remembered under, else the project's name."""
+        from pyclickplc.project import read_plc_name
 
-        return read_plc_name(self.project_ini) or self.click.project_name
+        try:
+            plc_name = read_plc_name(self.project_ini)
+        except (OSError, ValueError):
+            plc_name = None
+        return plc_name or self.click.project_name
 
     def ensure_simulation(
         self, scheduler: tk.Misc, *, on_retry_analysis: Callable[[], None] | None = None

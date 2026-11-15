@@ -165,3 +165,26 @@ def test_a_file_without_a_retentive_column_leaves_retentive_alone() -> None:
     plan = plan_nicknames(rows, store.visible_state, fields={"nickname", "comment"})
 
     assert [(c.field, c.new) for c in plan.changes] == [("comment", "Green button")]
+
+
+def test_a_nickname_with_an_edge_space_is_staged_and_done_without_it(
+    tmp_path: Path, store: AddressStore
+) -> None:
+    """CLICK stores a nickname or comment without a space at either end."""
+    path = tmp_path / "nicknames.csv"
+    path.write_bytes(b'Address,Nickname,Address Comment\r\nX003,"Jog ","Hold "\r\n')
+    rows = CsvDataSource(str(path)).load_all_addresses()
+    plan = plan_nicknames(rows, store.visible_state)
+    assert [(change.field, change.new) for change in plan.changes] == [
+        ("nickname", "Jog"),
+        ("comment", "Hold"),
+    ]
+
+    stage_nicknames(store, plan, "Stage nicknames")
+    row = store.visible_state[X3]
+    assert (row.nickname, row.comment) == ("Jog", "Hold")
+    assert not row.has_reportable_error
+    assert not plan_nicknames(rows, store.visible_state)
+
+    store.save_all_changes()
+    assert not plan_nicknames(rows, store.base_state)

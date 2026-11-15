@@ -9,6 +9,7 @@ engineering work.
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import tempfile
@@ -365,7 +366,9 @@ def adopt_snapshot(
 ) -> SimulatorState:
     """Set switches and analog inputs to a PLC data dump's values (the snapshot wins).
 
-    Momentary inputs keep no position, so they are left alone; forces too.
+    Momentary inputs keep no position, so they are left alone; forces too. An
+    analog value CLICK cannot show (a DF cell it writes as ``Err-Format``, read
+    as NaN) leaves that input as it was.
     """
     switches = dict(state.switches)
     for address in inputs:
@@ -378,7 +381,7 @@ def adopt_snapshot(
     analog = dict(state.analog)
     for address in analog_inputs:
         value = snapshot.get(address)
-        if isinstance(value, int | float) and not isinstance(value, bool):
+        if isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value):
             analog[address] = float(value)
     return replace(state, switches=switches, analog=analog)
 

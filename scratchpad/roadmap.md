@@ -189,23 +189,27 @@ ClickNick then deletes `_read_nickname_csv`, `read_mdb_csv`, the line formatting
 `CsvDataSource.save_changes` and `convert_mdb_csv_to_user_csv`. It keeps `_write_file`: an in-place write that
 keeps a Hidden file Hidden and names the Excel lock.
 
-Two things to watch:
+Three things to watch:
 - The move also fixes a live bug: ClickNick's reader misreads a Text initial value that CLICK exports bare as a
   comma or a quote.
 - The workspace's `nicknames.csv` is written by ClickNick and read by pyrung's tag map through
   `pyclickplc.read_csv`, so from then on one library writes and reads it.
+- Review Changes on a folder whose `nicknames.csv` has a bad Address, a wrong Data Type or extra cells: since
+  pyclickplc 0.7 pyrung refuses the file, `BundleSources.round_trip` (`services/rung_diff.py`) swallows that
+  and the diff shows no source text, while ClickNick's lenient reader still offers to stage the nicknames.
+  One reader for both ends it; until then the window could say why the diff is blank.
 
 The readers return `AddressRecord`, and ClickNick converts to `AddressRow` at its boundary. Unifying the two
 models is not part of this.
 
 The smaller inventory items went to the pyclickplc session through the planner; settle the details with it
 through Sam:
-- `validate_click_name` (PLC and DataView names)
-- `read_plc_name` and `write_plc_name` (Project.ini)
-- `iter_address_slots`
-- the names for unassigned I/O slots in `sim_hardware.py`
+- `validate_click_name`, `read_plc_name`, `write_plc_name` and `iter_address_slots`: in pyclickplc 0.7, and
+  ClickNick uses them (its own copies are gone)
+- the names for unassigned I/O slots in `sim_hardware.py` stay in ClickNick
 - `models/validation.py`: `validate_nickname_format` is a pass-through to pyclickplc and goes (no shims);
-  `validate_comment` repeats pyclickplc's length check
+  `validate_comment` now takes pyclickplc's checks and adds the duplicate block name
+- pyclickplc's `read_mdb_csv` differs from ClickNick's, and ClickNick keeps its own (Sam, 2026-11-15)
 
 ClickNick-only, any time (nothing): `detection/window_mapping.DATA_TYPES` repeats pyclickplc's type maps
 (with "TXT" for "TEXT") just to list prefixes in `widgets/nickname_combobox.py`; derive it from `BANKS`.
@@ -280,6 +284,9 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
   time you edit in CLICK's Address Editor.
 - Q6: after deleting all rungs, empty rungs are on screen. Is one of them selected for Ctrl+V, or must the step
   wording say to click the first empty rung?
+- Q7: can SC_.mdb hold a nickname or address comment with a space at either end (typed in CLICK, or from
+  CLICK's own CSV import)? ClickNick trims one on load as an unsaved edit ("Trim spaces"), so on a yes the next
+  Sync writes the trimmed value into CLICK. The recorded `tests/SC_.mdb` and `NicknameExport.csv` hold none.
 
 ### Address Editor and store
 - Fill Down / Add Block T1..TD5, then Sync.

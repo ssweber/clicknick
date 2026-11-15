@@ -548,10 +548,10 @@ def test_a_save_during_a_build_reads_as_building_until_its_own_build(
         if len(builds) == 1:
             first_running.set()
             assert release_first.wait(timeout=10)
-        on_project_generated(project, {})
+        on_project_generated(project, ({}, {}))
         if first_fails and len(builds) == 1:
             raise ValueError("graph failed")
-        return MagicMock(), MagicMock(), project, {}
+        return MagicMock(), MagicMock(), project, ({}, {})
 
     monkeypatch.setattr("clicknick.services.analysis_service._build_graph", build_graph)
     readings = []
@@ -613,10 +613,10 @@ def test_a_save_that_cannot_be_read_during_a_build_reads_as_building_until_it_fi
     running, release = threading.Event(), threading.Event()
 
     def build_graph(*_args, on_project_generated, **_kwargs):
-        on_project_generated(project, {})
+        on_project_generated(project, ({}, {}))
         running.set()
         assert release.wait(timeout=10)
-        return MagicMock(), MagicMock(), project, {}
+        return MagicMock(), MagicMock(), project, ({}, {})
 
     monkeypatch.setattr("clicknick.services.analysis_service._build_graph", build_graph)
     outcomes: list[tuple[bool, str | None]] = []
@@ -659,10 +659,10 @@ def test_a_rebuild_that_fails_before_publishing_has_nothing_to_compare(
 
     def publishes(fails: bool):
         def build_graph(*_args, on_project_generated, **_kwargs):
-            on_project_generated(project, {})
+            on_project_generated(project, ({}, {}))
             if fails:
                 raise ValueError("graph failed")
-            return MagicMock(), MagicMock(), project, {}
+            return MagicMock(), MagicMock(), project, ({}, {})
 
         return build_graph
 

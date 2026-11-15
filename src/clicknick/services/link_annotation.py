@@ -19,6 +19,7 @@ from ..data.data_source import CsvDataSource
 from .annotation_service import AnnotationService
 from .physical_response import meta_fields, meta_response, same_response
 from .sim_state import BenchLink
+from .tag_names import tag_names
 
 
 def bit_enable(address: str | None) -> bool:
@@ -109,15 +110,13 @@ def declares_link(comment: str) -> bool:
 def linked_feedbacks(csv_dir: Path) -> frozenset[str]:
     """The tags a workspace's program declares links on, from its ``nicknames.csv``.
 
-    The workspace's tag names come from the same snapshot. Empty when the file
-    is missing or cannot be read.
+    Each is named as pyrung reads the file (``tag_names``). Empty when the
+    file is missing or cannot be read.
     """
+    path = csv_dir / "nicknames.csv"
     try:
-        rows = CsvDataSource(str(csv_dir / "nicknames.csv")).load_all_addresses()
+        rows = CsvDataSource(str(path)).load_all_addresses()
+        linked = [key for key, row in rows.items() if declares_link(row.comment)]
+        return frozenset(tag_names(path, rows, linked).values()) if linked else frozenset()
     except (OSError, ValueError):
         return frozenset()
-    return frozenset(
-        row.nickname.strip() or row.display_address
-        for row in rows.values()
-        if declares_link(row.comment)
-    )

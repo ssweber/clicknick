@@ -14,13 +14,13 @@ Key behaviors:
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Generator, Mapping
+from collections.abc import Callable, Generator, Iterable, Mapping
 from contextlib import contextmanager
 from dataclasses import replace
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from pyclickplc.addresses import get_addr_key
+from pyclickplc.addresses import get_addr_key, iter_address_slots
 from pyclickplc.banks import (
     DEFAULT_RETENTIVE,
     INTERLEAVED_PAIRS,
@@ -31,8 +31,12 @@ from pyclickplc.blocks import compute_all_block_ranges, find_paired_tag_index, p
 from pyclickplc.validation import SYSTEM_NICKNAME_TYPES, validate_initial_value
 
 from ..models.address_row import AddressRow, initial_values_differ
-from ..models.address_slots import iter_address_slots
-from ..models.validation import validate_comment, validate_nickname
+from ..models.validation import (
+    TRIMMED_FIELDS,
+    trim_entry,
+    validate_comment,
+    validate_nickname,
+)
 from ..services.block_service import BlockService, compute_block_colors, same_block_tag
 from ..services.nickname_index_service import NicknameIndexService
 from .data_source import DataSource
@@ -84,6 +88,24 @@ def _flag_loaded_error(row: AddressRow) -> AddressRow:
     if row.loaded_with_error == flagged:
         return row
     return replace(row, loaded_with_error=flagged)
+
+
+# The undo description of the edit that trims loaded nicknames and comments
+TRIM_DESCRIPTION = "Trim spaces"
+
+
+def _is_trimmed_loaded_nickname(nickname: str, base_row: AddressRow) -> bool:
+    """True when *nickname* is *base_row*'s flagged nickname as the trim on load stores it.
+
+    ``_IO1_Module_Error `` loaded and shown as ``_IO1_Module_Error``: the name
+    CLICK holds, without the space CLICK's editor would strip.
+    """
+    return (
+        base_row.loaded_with_error
+        and nickname != ""
+        and nickname != base_row.nickname
+        and nickname == trim_entry("nickname", base_row.nickname)
+    )
 
 
 def _database_row(row: AddressRow, db_row: AddressRow) -> AddressRow:
@@ -164,6 +186,8 @@ class AddressStore:
 
         # Current edit session (for nested check)
         self._current_session: EditSession | None = None
+        # Loaded rows whose trim waits for the open edit session to end (_stage_trims)
+        self._pending_trims: set[int] = set()
 
         # Block colors (separate from AddressRow to avoid row recreation)
         self.block_colors: dict[int, str] = {}  # addr_key -> color_name
@@ -229,12 +253,21 @@ class AddressStore:
                 # loaded from CLICK or repaired by the user.
                 system_bank = row.memory_type
 
-        nickname_valid, nickname_error = validate_nickname(
-            row.nickname,
-            addr_key,
-            self.is_duplicate_nickname,
-            system_bank=system_bank,
-        )
+        if base_row is not None and _is_trimmed_loaded_nickname(row.nickname, base_row):
+            # A name CLICK loaded that breaks our rules is exempt as loaded
+            # (loaded_with_error). Shown trimmed, it is no longer what was loaded:
+            # only its format stays exempt, and it is checked for duplicates.
+            if self.is_duplicate_nickname(row.nickname, addr_key):
+                nickname_valid, nickname_error = False, "Duplicate"
+            else:
+                nickname_valid, nickname_error = True, ""
+        else:
+            nickname_valid, nickname_error = validate_nickname(
+                row.nickname,
+                addr_key,
+                self.is_duplicate_nickname,
+                system_bank=system_bank,
+            )
 
         # Validate comment (includes block name uniqueness check)
         comment_valid, comment_error = validate_comment(
@@ -516,6 +549,49 @@ class AddressStore:
 
         if changed:
             self._derive(changed)
+            self._stage_trims(changed)
+
+    def _stage_trims(self, keys: Iterable[int]) -> None:
+        """Stage the trim of each loaded nickname or comment with a space at either end.
+
+        CLICK stores neither with an edge space, so a value read with one
+        (from a CSV, or a database another tool wrote) becomes an unsaved edit
+        holding the trimmed value: one undo step, "Trim spaces", that Sync
+        writes. Undo puts the spaces back, and validation flags them again.
+
+        Only base rows in *keys* are looked at: callers pass the rows just
+        loaded, the rows a read of the data source changed, or every row after
+        a Discard, so a trim the user undid is staged again only when the data
+        source changes that row. A field the user already edits is left alone.
+        A nickname flagged ``loaded_with_error`` is trimmed too. Once trimmed
+        it keeps only the exemption of its format, and is checked for
+        duplicates as any other nickname (``_validate_row``). No SC or SD name
+        in pyclickplc's table has an edge space, so a documented one is never
+        changed; an X ``_IO`` name is generated by CLICK and is checked by no
+        table. No undo step is pushed when no row needs a trim. While an edit
+        session is open (sessions do not nest) the rows wait in
+        ``_pending_trims``, staged when that session ends or by the next call.
+        """
+        keys = set(keys) | self._pending_trims
+        self._pending_trims = set()
+        trims: list[tuple[int, str, str]] = []
+        for key in keys:
+            base = self.base_state.get(key)
+            if base is None:
+                continue
+            override = self.user_overrides.get(key, {})
+            for field in TRIMMED_FIELDS:
+                value = getattr(base, field)
+                if field not in override and value != trim_entry(field, value):
+                    trims.append((key, field, trim_entry(field, value)))
+        if not trims:
+            return
+        if self._current_session is not None:
+            self._pending_trims = {key for key, _field, _value in trims}
+            return
+        with self.edit_session(TRIM_DESCRIPTION) as session:
+            for key, field, value in trims:
+                session.set_field(key, field, value)
 
     def _on_database_update(self) -> bool:
         """Handle external database changes."""
@@ -549,6 +625,7 @@ class AddressStore:
         self._validate_all_rows()
 
         self._initialized = True
+        self._stage_trims(self.base_state)
 
         # Create file monitor
         self._file_monitor = FileMonitor(
@@ -654,8 +731,11 @@ class AddressStore:
     def _freeze_session(self, session: EditSession) -> set[int]:
         """Freeze session builders' values into user_overrides.
 
-        Values the base row already holds are kept here and dropped by _derive
-        (see _rebase_override), the one place dirty is decided.
+        A nickname or comment is frozen as CLICK stores it, without a space at
+        either end (trim_entry): this is the one place every edit, cascades
+        included, passes through. Values the base row already holds are kept
+        here and dropped by _derive (see _rebase_override), the one place dirty
+        is decided.
 
         Returns:
             Set of affected addr_keys
@@ -663,7 +743,9 @@ class AddressStore:
         affected = set()
 
         for addr_key, builder in session.pending.items():
-            changes = builder.changes()
+            changes = {
+                field: trim_entry(field, value) for field, value in builder.changes().items()
+            }
             if not changes or addr_key not in self.base_state:
                 continue
             # On top of any existing override, so fields set in an earlier
@@ -753,6 +835,8 @@ class AddressStore:
         self._current_session = None
         if session.has_pending_changes():
             self._commit_session(session, description)
+        if self._pending_trims:
+            self._stage_trims(())
 
     # --- Undo/Redo ---
 
@@ -1048,6 +1132,8 @@ class AddressStore:
         self.redo_stack.clear()
 
         self._derive(affected_keys)
+        # Back to the rows as loaded, so their trims are staged again as on load.
+        self._stage_trims(self.base_state)
 
     # --- Statistics ---
 

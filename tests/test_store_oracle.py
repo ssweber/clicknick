@@ -23,6 +23,7 @@ from pyclickplc.blocks import parse_block_tag
 
 from clicknick.data.address_store import AddressStore
 from clicknick.models.address_row import AddressRow, initial_values_differ
+from clicknick.models.validation import trim_entry
 from clicknick.services.block_service import (
     compute_block_colors,
     remove_block_tag,
@@ -43,6 +44,8 @@ VALIDATION_FIELDS = (
 )
 
 # Small pools so duplicates (including case-only ones), block tags and pair tags collide often.
+# Values with a space at either end are stored trimmed when set, and trimmed by a staged edit
+# when CLICK's database holds them.
 KEYS = (
     [get_addr_key("C", n) for n in range(1, 9)]
     + [get_addr_key("DS", n) for n in (1, 2)]
@@ -50,10 +53,23 @@ KEYS = (
     + [get_addr_key(mem, n) for mem in ("CT", "CTD") for n in (1, 2)]
     + [get_addr_key(mem, n) for mem in ("X", "SC", "SD") for n in (1, 2)]
 )
-NICKNAMES = ["", "Alpha", "alpha", "Beta", "Gamma", "Pump_1", "log", "_IO1_Module_Error"]
+NICKNAMES = [
+    "",
+    "Alpha",
+    "alpha",
+    "Alpha ",
+    "Beta",
+    " Beta",
+    "Gamma",
+    "Pump_1",
+    "log",
+    "_IO1_Module_Error",
+]
 COMMENTS = [
     "",
     "note",
+    " note",
+    "<Blk> ",
     "<Blk>",
     "</Blk>",
     "<Blk />",
@@ -62,6 +78,7 @@ COMMENTS = [
     "<Tm> delay",
     "</Tm>",
     "preset <Tm_D>",
+    "preset <Tm_D> ",
     "</Tm_D>",
     "<Tm bg='Blue'>",
     "<Cnt_D /> count",
@@ -184,10 +201,11 @@ def _assert_cascade_rules(
     caller_set: dict[tuple[int, str], object],
     step: str,
 ) -> None:
-    """Rows the caller set hold what was set; other rows change only as cascades may."""
+    """Rows the caller set hold what was set, as stored (trim_entry); other rows change
+    only as cascades may."""
     for (key, name), value in caller_set.items():
         assert not _differs(
-            replace(before[key], **{name: value}), store.visible_state[key], name
+            replace(before[key], **{name: trim_entry(name, value)}), store.visible_state[key], name
         ), (
             step,
             key,
@@ -214,8 +232,11 @@ def _assert_cascade_rules(
             assert new.retentive == old.retentive, (step, key, "retentive cascaded")
         if (key, "comment") not in caller_set and new.comment != old.comment:
             assert tag_changed, (step, key, "comment changed by a free-text edit")
-            # A cascade adds, renames or removes the tag; the rest stays as it was.
-            assert remove_block_tag(new.comment) == remove_block_tag(old.comment), (
+            # A cascade adds, renames or removes the tag; the rest stays as it was,
+            # but for a space it leaves at either end.
+            assert remove_block_tag(new.comment).strip(" ") == remove_block_tag(old.comment).strip(
+                " "
+            ), (
                 step,
                 key,
                 old.comment,
@@ -410,9 +431,12 @@ def test_incremental_state_matches_full_rebuild(seed: int) -> None:
                 _assert_matches_rebuild(store, source, " -> ".join(history))
             key, name, value = _random_click_change(rng, store, source, beside_edits=True)
             user_has_field = name in store.user_overrides.get(key, {})
-            _save(store)
+            wrote = _save(store)
             if not user_has_field:
-                assert getattr(source.rows[key], name) == value, (key, name, "overwritten")
+                # A Sync that writes reads the database first, which stages the trim of
+                # a value with an edge space, and writes that too.
+                written = trim_entry(name, value) if wrote else value
+                assert getattr(source.rows[key], name) == written, (key, name, "overwritten")
             store._on_database_update()  # the next poll
             step = f"CLICK writes {key}.{name}={value!r} unpolled, then save"
         else:

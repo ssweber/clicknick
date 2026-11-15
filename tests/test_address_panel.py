@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import ttk
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -198,3 +199,21 @@ def test_analysis_filters_use_the_current_analysis(tk_root, store) -> None:
         assert panel._resolve_analysis_prefix("input", None) == {2}
     finally:
         frame.destroy()
+
+
+@pytest.mark.parametrize(
+    ("col", "field", "typed"),
+    [(COL_NICKNAME, "nickname", "Pump "), (COL_COMMENT, "comment", " Pump")],
+)
+def test_a_cell_typed_with_an_edge_space_shows_the_value_stored(panel, store, col, field, typed):
+    """CLICK keeps no edge space: typing "Pump " over "Pump" changes nothing, and the cell says so."""
+    _edit(store, "DS", 1, **{field: "Pump"})
+    row = _row_index(panel, "DS", 1)
+    frames = len(store.undo_stack)
+
+    panel.sheet.set_cell_data(row, col, typed)
+    panel._on_sheet_modified(SimpleNamespace(cells={"table": {(row, col): "Pump"}}))
+
+    assert panel.sheet.get_cell_data(row, col) == "Pump"
+    assert getattr(store.visible_state[get_addr_key("DS", 1)], field) == "Pump"
+    assert len(store.undo_stack) == frames

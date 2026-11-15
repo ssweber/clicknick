@@ -190,7 +190,9 @@ def _cmd_set(ctx: DispatchContext, identifier: str, field_name: str, raw_value: 
     with ctx.store.edit_session(f"AI: set {identifier} {field_name}") as session:
         session.set_field(addr_key, field_name, value)
 
-    return f"OK: {identifier} {field_name} = {value!r} (staged change)"
+    # As stored: a nickname or comment loses a space at either end, as in CLICK.
+    stored = getattr(ctx.store.get_visible_row(addr_key), field_name)
+    return f"OK: {identifier} {field_name} = {stored!r} (staged change)"
 
 
 def _iter_bank_addresses(memory_type: str, start: int | None):

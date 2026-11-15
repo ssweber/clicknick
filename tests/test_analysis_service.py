@@ -11,11 +11,11 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from pyclickplc.addresses import get_addr_key
+from pyclickplc.addresses import get_addr_key, iter_address_slots, parse_address
+from pyclickplc.banks import DataType
 from pyrung.click import SystemNicknameRepair, SystemNicknameRepairRequired
 
 from clicknick.models.address_row import AddressRow
-from clicknick.models.address_slots import iter_address_slots
 from clicknick.services.analysis_service import (
     AnalysisResult,
     AnalysisService,
@@ -24,6 +24,7 @@ from clicknick.services.analysis_service import (
     _clean_generated,
     _publish_generated_project,
     _regenerate_persisted_project,
+    _write_nicknames_csv,
 )
 from clicknick.services.project_workspace import (
     backup_plc_source,
@@ -36,31 +37,82 @@ from clicknick.services.project_workspace import (
 class TestBuildTagAddrKeyMap:
     """The tag map comes from the same nickname snapshot as the generated code."""
 
-    def test_maps_nicknames(self):
+    def test_maps_nicknames(self, tmp_path):
         y1, y2 = get_addr_key("Y", 1), get_addr_key("Y", 2)
         rows = {
             y1: AddressRow(memory_type="Y", address=1, nickname="MotorOut"),
             y2: AddressRow(memory_type="Y", address=2, nickname="PumpRun"),
         }
-        tag_to_key, key_to_tag = _build_tag_addr_key_map(rows)
+        tag_to_key, key_to_tag = _build_tag_addr_key_map(_write_nicknames_csv(tmp_path, rows), rows)
         assert tag_to_key["MotorOut"] == y1
         assert tag_to_key["PumpRun"] == y2
         assert key_to_tag[y1] == "MotorOut"
 
     def test_unnamed_addresses_fall_back_to_display_address(self):
-        tag_to_key, key_to_tag = _build_tag_addr_key_map({})
+        tag_to_key, key_to_tag = _build_tag_addr_key_map(None, {})
         x1 = get_addr_key("X", 1)
         assert tag_to_key["X001"] == x1
         assert key_to_tag[x1] == "X001"
 
-    def test_whitespace_nickname_treated_as_empty(self):
-        x1 = get_addr_key("X", 1)
-        rows = {x1: AddressRow(memory_type="X", address=1, nickname="  ")}
-        tag_to_key, key_to_tag = _build_tag_addr_key_map(rows)
-        assert key_to_tag[x1] == "X001"
+    def test_names_are_the_tags_pyrung_reads_from_the_snapshot(self, tmp_path):
+        """Whatever the installed pyrung does with spaces, the map names a tag as it does."""
+        from pyrung.click.tag_map import TagMap
+
+        rows = {
+            get_addr_key("C", 1): AddressRow(memory_type="C", address=1, nickname="Pump "),
+            get_addr_key("C", 2): AddressRow(memory_type="C", address=2, nickname=" Fan"),
+            get_addr_key("C", 3): AddressRow(memory_type="C", address=3, nickname="Motor"),
+            get_addr_key("C", 4): AddressRow(memory_type="C", address=4, nickname="  "),
+        }
+        nickname_csv = _write_nicknames_csv(tmp_path, rows)
+        pyrung_names = {
+            get_addr_key(*parse_address(entry.hardware.name)): entry.logical.name
+            for entry in TagMap.from_nickname_file(nickname_csv).tags()
+        }
+
+        _tag_to_key, key_to_tag = _build_tag_addr_key_map(nickname_csv, rows)
+
+        # An address pyrung gives no tag is named by its address, as the code names it.
+        assert {key: key_to_tag[key] for key in rows} == {
+            key: pyrung_names.get(key, row.display_address) for key, row in rows.items()
+        }
+
+    def test_clicks_system_points_keep_their_nicknames(self, tmp_path):
+        sc1, sd9 = get_addr_key("SC", 1), get_addr_key("SD", 9)
+        rows = {
+            sc1: AddressRow(memory_type="SC", address=1, nickname="_Always_ON"),
+            sd9: AddressRow(
+                memory_type="SD", address=9, nickname="_Scan_Counter", data_type=DataType.INT
+            ),
+        }
+
+        _tag_to_key, key_to_tag = _build_tag_addr_key_map(
+            _write_nicknames_csv(tmp_path, rows), rows
+        )
+
+        assert (key_to_tag[sc1], key_to_tag[sd9]) == ("_Always_ON", "_Scan_Counter")
+        assert key_to_tag[get_addr_key("SC", 2)] == "SC2"
+
+    def test_an_unnamed_slot_of_a_block_has_the_name_the_program_gives_it(self, tmp_path):
+        """pyrung names a ``:block`` range's slots after the block; the map follows it."""
+        rows = {
+            get_addr_key("C", 1): AddressRow("C", 1, nickname="Fill_A", comment="<Fill:block>"),
+            get_addr_key("C", 4): AddressRow("C", 4, comment="</Fill:block>"),
+            get_addr_key("DS", 5): AddressRow(
+                "DS", 5, comment="<Empty:block />", data_type=DataType.INT
+            ),
+        }
+
+        tag_to_key, key_to_tag = _build_tag_addr_key_map(_write_nicknames_csv(tmp_path, rows), rows)
+
+        names = [key_to_tag[get_addr_key("C", n)] for n in range(1, 6)]
+        assert names == ["Fill_A", "Fill2", "Fill3", "Fill4", "C5"]
+        assert key_to_tag[get_addr_key("DS", 5)] == "Empty1"
+        assert tag_to_key["Fill3"] == get_addr_key("C", 3)
+        assert "C3" not in tag_to_key
 
     def test_covers_every_address_slot(self):
-        tag_to_key, key_to_tag = _build_tag_addr_key_map({})
+        tag_to_key, key_to_tag = _build_tag_addr_key_map(None, {})
         assert len(key_to_tag) == sum(1 for _ in iter_address_slots())
         assert len(tag_to_key) == len(key_to_tag)
 
@@ -292,7 +344,7 @@ class TestAnalysisStatus:
         svc = AnalysisService()
         monkeypatch.setattr(
             "clicknick.services.analysis_service._build_graph",
-            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, ({}, {})),
         )
         svc.build(tmp_path, None)
         assert svc.status is AnalysisStatus.READY
@@ -308,7 +360,7 @@ class TestAnalysisStatus:
         def _graph(*_args, **_kwargs):
             if next(outcomes):
                 raise ValueError("bad rung")
-            return MagicMock(), MagicMock(), tmp_path, {}
+            return MagicMock(), MagicMock(), tmp_path, ({}, {})
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _graph)
         first = svc.mark_building()
@@ -340,7 +392,7 @@ class TestAnalysisStatus:
             during.append(svc.status)
             if fails:
                 raise ValueError("bad rung")
-            return MagicMock(), MagicMock(), tmp_path, {}
+            return MagicMock(), MagicMock(), tmp_path, ({}, {})
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _graph)
         serves = svc.mark_building()
@@ -361,7 +413,7 @@ class TestAnalysisStatus:
         svc = AnalysisService()
         monkeypatch.setattr(
             "clicknick.services.analysis_service._build_graph",
-            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, ({}, {})),
         )
         first = svc.mark_building()
         second = svc.mark_building()
@@ -377,7 +429,7 @@ class TestAnalysisStatus:
         svc = AnalysisService()
         monkeypatch.setattr(
             "clicknick.services.analysis_service._build_graph",
-            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, ({}, {})),
         )
         first = svc.mark_building()
         svc.mark_failed("No saved ladder files.")
@@ -394,7 +446,7 @@ class TestAnalysisStatus:
         svc = AnalysisService()
         monkeypatch.setattr(
             "clicknick.services.analysis_service._build_graph",
-            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, ({}, {})),
         )
         svc.build(tmp_path, None)
         assert svc.is_available
@@ -421,7 +473,7 @@ class TestAnalysisStatus:
 
         def _build_then_switch(*_args, **_kwargs):
             svc.invalidate()
-            return MagicMock(), MagicMock(), tmp_path / "old-workspace", {}
+            return MagicMock(), MagicMock(), tmp_path / "old-workspace", ({}, {})
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", _build_then_switch)
 
@@ -524,7 +576,7 @@ class TestBuildValidation:
 
         def build_then_switch(*_args, on_project_generated, **_kwargs):
             svc.invalidate()
-            on_project_generated(tmp_path, {})
+            on_project_generated(tmp_path, ({}, {}))
             raise ValueError("old project failed")
 
         monkeypatch.setattr("clicknick.services.analysis_service._build_graph", build_then_switch)
@@ -542,13 +594,10 @@ class TestBuildValidation:
         """Nicknames swapped in CLICK: the workspace on disk already uses the new names."""
         ds1, ds2 = get_addr_key("DS", 1), get_addr_key("DS", 2)
 
-        def rows(first: str, second: str) -> dict[int, AddressRow]:
-            return {
-                ds1: AddressRow(memory_type="DS", address=1, nickname=first),
-                ds2: AddressRow(memory_type="DS", address=2, nickname=second),
-            }
+        def rows(first: str, second: str) -> tuple[dict[str, int], dict[int, str]]:
+            return {first: ds1, second: ds2}, {ds1: first, ds2: second}
 
-        def build_graph(names: dict[int, AddressRow], fails: bool):
+        def build_graph(names: tuple[dict[str, int], dict[int, str]], fails: bool):
             def build(*_args, on_project_generated, **_kwargs):
                 on_project_generated(tmp_path, names)
                 if fails:
@@ -584,7 +633,7 @@ class TestBuildValidation:
         svc = AnalysisService()
         monkeypatch.setattr(
             "clicknick.services.analysis_service._build_graph",
-            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, ({}, {})),
         )
         svc.build(tmp_path, None, persist_dir=tmp_path)
 
@@ -613,7 +662,7 @@ class TestGeneration:
         svc = AnalysisService()
         monkeypatch.setattr(
             "clicknick.services.analysis_service._build_graph",
-            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, {}),
+            lambda *_a, **_k: (MagicMock(), MagicMock(), tmp_path, ({}, {})),
         )
         svc.build(tmp_path, None)
         assert svc.generation == 1

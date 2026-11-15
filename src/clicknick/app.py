@@ -118,14 +118,21 @@ class ClickNickApp:
         return self._workspace_source_dir() or self._configured_workspace_dir()
 
     def _current_plc_name(self) -> str | None:
-        """Return CLICK's configured PLC name from its active temp workspace."""
+        """Return CLICK's configured PLC name from its active temp workspace.
+
+        None when the project has no name or its Project.ini cannot be read.
+        """
         click = getattr(self, "_click", None)
         if click is None:
             return None
-        from .services.workspace_mirror import read_plc_name
+        from pyclickplc.project import read_plc_name
+
         from .utils.click_temp import click_temp_dir
 
-        return read_plc_name(click_temp_dir(click.hwnd) / "Project.ini")
+        try:
+            return read_plc_name(click_temp_dir(click.hwnd) / "Project.ini")
+        except (OSError, ValueError):
+            return None
 
     @staticmethod
     def _format_workspace_time(value) -> str:
@@ -989,8 +996,9 @@ class ClickNickApp:
         if plc_name:
             return plc_name
 
-        from .models.name_validation import validate_click_name
-        from .services.workspace_mirror import write_plc_name
+        from pyclickplc.project import write_plc_name
+        from pyclickplc.validation import validate_click_name
+
         from .utils.click_temp import click_temp_dir
 
         if self._session is None or self._click is None:

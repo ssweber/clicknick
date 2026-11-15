@@ -1,7 +1,21 @@
 from collections.abc import Callable, Mapping
 
-from pyclickplc.validation import COMMENT_MAX_LENGTH
+from pyclickplc.validation import validate_comment as _pyclickplc_validate_comment
 from pyclickplc.validation import validate_nickname as _pyclickplc_validate_nickname
+
+# The fields CLICK stores without a space at either end: its editor strips them.
+TRIMMED_FIELDS = ("nickname", "comment")
+
+
+def trim_entry(field: str, value: str | bool) -> str | bool:
+    """*value* as CLICK stores it in *field*: a nickname or comment loses its edge spaces.
+
+    ``"Pump "`` is stored as ``"Pump"``. Every other field, and a value that
+    is not text, is returned as it is.
+    """
+    if field in TRIMMED_FIELDS and isinstance(value, str):
+        return value.strip(" ")
+    return value
 
 
 def validate_nickname_format(nickname: str, *, system_bank: str | None = None) -> tuple[bool, str]:
@@ -23,7 +37,7 @@ def validate_comment(
     is_block_name_duplicate: Callable[[str, int], bool] | None = None,
     current_addr_key: int = 0,
 ) -> tuple[bool, str]:
-    """Validate comment length and block name uniqueness.
+    """Validate a comment's format (length, no space at either end) and block name uniqueness.
 
     Args:
         comment: The comment to validate
@@ -35,11 +49,9 @@ def validate_comment(
     Returns:
         Tuple of (is_valid, error_message) - error_message is "" if valid
     """
-    if comment == "":
-        return True, ""  # Empty is valid
-
-    if len(comment) > COMMENT_MAX_LENGTH:
-        return False, f"Too long ({len(comment)}/128)"
+    is_valid, error = _pyclickplc_validate_comment(comment)
+    if not is_valid or comment == "":
+        return is_valid, error
 
     # Check for duplicate block name if checker provided
     if is_block_name_duplicate is not None:

@@ -3,13 +3,7 @@
 import tkinter as tk
 from tkinter import ttk
 
-from ..models.name_validation import (
-    CLICK_NAME_PATTERN,
-    MAX_CLICK_NAME_LENGTH,
-    validate_click_name,
-)
-
-MAX_NAME_LENGTH = MAX_CLICK_NAME_LENGTH
+from pyclickplc.validation import CLICK_NAME_MAX_LENGTH, CLICK_NAME_PATTERN, validate_click_name
 
 
 class NewDataviewDialog(tk.Toplevel):
@@ -17,7 +11,7 @@ class NewDataviewDialog(tk.Toplevel):
 
     def _update_char_count(self, count: int) -> None:
         """Update the character count label."""
-        self.char_label.configure(text=f"{count}/{MAX_NAME_LENGTH}")
+        self.char_label.configure(text=f"{count}/{CLICK_NAME_MAX_LENGTH}")
 
     def _validate_name(self, new_value: str) -> bool:
         """Validate the entered name.
@@ -34,7 +28,7 @@ class NewDataviewDialog(tk.Toplevel):
             return True
 
         # Check length
-        if len(new_value) > MAX_NAME_LENGTH:
+        if len(new_value) > CLICK_NAME_MAX_LENGTH:
             return False
 
         # Check for special characters
@@ -88,7 +82,7 @@ class NewDataviewDialog(tk.Toplevel):
         self.name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # Character count label
-        self.char_label = ttk.Label(entry_frame, text=f"0/{MAX_NAME_LENGTH}", width=6)
+        self.char_label = ttk.Label(entry_frame, text=f"0/{CLICK_NAME_MAX_LENGTH}", width=6)
         self.char_label.pack(side=tk.RIGHT, padx=(5, 0))
 
         # Info label

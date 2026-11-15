@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from clicknick.app import ClickNickApp
-from clicknick.connection_session import ClickConnection
+from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.services.analysis_service import _publish_generated_project
 from clicknick.services.project_workspace import (
     backup_plc_source,
@@ -25,14 +25,12 @@ from clicknick.services.workspace_mirror import (
     get_workspace_directory_info,
     load_project_workspace_config,
     preferred_project_config,
-    read_plc_name,
     remember_project_sidecar,
     save_project_workspace_config,
     sidecar_path_for,
     sync_workspace_to_mirror,
     validate_mirror_destination,
     workspace_path_for_selection,
-    write_plc_name,
 )
 
 
@@ -79,40 +77,79 @@ def test_sidecar_filename_must_match_stored_plc_name(tmp_path: Path) -> None:
         load_project_workspace_config(sidecar)
 
 
-def test_read_and_append_plc_name_preserves_crlf(tmp_path: Path) -> None:
-    project_ini = tmp_path / "Project.ini"
-    project_ini.write_bytes(b"[Other]\r\nvalue=1\r\n")
+# Project.ini as CLICK writes it: CLICK 3 keeps the PLC name in [PLCName], CLICK 4 in
+# [Sec20] Key1; both write the line, empty when the PLC has no name.
+_PROJECT_INI_NAMES = [
+    pytest.param(b"[PLCName]\r\nPLCName=Line 1\r\n[Next]\r\nValue=1\r\n", "Line 1", id="click3"),
+    pytest.param(
+        b"[Sec21]\r\nKey1=1\r\n[Sec20]\r\nKey1=AutoDayTankFill\r\n[Sec22]\r\n",
+        "AutoDayTankFill",
+        id="click4",
+    ),
+    pytest.param(b"[Sec21]\r\nKey1=1\r\n[Sec20]\r\nKey1=\r\n", None, id="click4-unnamed"),
+    # CLICK 4 shows the [Sec20] name over a [PLCName] another tool added
+    pytest.param(
+        b"[PLCName]\r\nPLCName=Old\r\n[Sec21]\r\nKey1=1\r\n[Sec20]\r\nKey1=New\r\n",
+        "New",
+        id="click4-stray-plcname",
+    ),
+    pytest.param(b"PLCName=Line 1\r\n", None, id="no-section-header"),
+    pytest.param(b"[PLCName]\r\nPLCName=\xff\xfe\r\n", None, id="not-utf8"),
+    pytest.param(None, None, id="missing"),
+]
 
-    write_plc_name(project_ini, "IMHERE")
 
-    assert read_plc_name(project_ini) == "IMHERE"
-    assert project_ini.read_bytes() == (b"[Other]\r\nvalue=1\r\n[PLCName]\r\nPLCName=IMHERE\r\n")
+def _click_temp(monkeypatch, tmp_path: Path, project_ini: bytes | None) -> None:
+    if project_ini is not None:
+        (tmp_path / "Project.ini").write_bytes(project_ini)
+    monkeypatch.setattr(
+        "clicknick.utils.click_temp.click_temp_dir", MagicMock(return_value=tmp_path)
+    )
 
 
-def test_write_plc_name_replaces_existing_value_without_touching_neighbors(
-    tmp_path: Path,
+@pytest.mark.parametrize(("project_ini", "expected"), _PROJECT_INI_NAMES)
+def test_current_plc_name_reads_click_3_and_4_project_ini(
+    monkeypatch, tmp_path: Path, project_ini: bytes | None, expected: str | None
 ) -> None:
-    project_ini = tmp_path / "Project.ini"
-    project_ini.write_bytes(b"[PLCName]\r\nOther=keep\r\nPLCName=Old\r\n[Next]\r\nValue=1\r\n")
+    _click_temp(monkeypatch, tmp_path, project_ini)
+    app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
+    app._click = ClickConnection("1", 123, "Example.ckp")
 
-    write_plc_name(project_ini, "New Name")
+    assert app._current_plc_name() == expected
 
-    assert project_ini.read_bytes() == (
-        b"[PLCName]\r\nOther=keep\r\nPLCName=New Name\r\n[Next]\r\nValue=1\r\n"
+
+@pytest.mark.parametrize(("project_ini", "expected"), _PROJECT_INI_NAMES)
+def test_simulation_key_is_the_plc_name_else_the_project_name(
+    monkeypatch, tmp_path: Path, project_ini: bytes | None, expected: str | None
+) -> None:
+    _click_temp(monkeypatch, tmp_path, project_ini)
+    session = ConnectionSession(ClickConnection("1", 123, "Example.ckp"))
+
+    assert session._simulation_key() == (expected or "Example")
+
+
+def test_workspace_setup_writes_the_plc_name_where_click_4_reads_it(
+    monkeypatch, tmp_path: Path
+) -> None:
+    project_ini = b"[Sec21]\r\nKey1=1\r\n[Sec20]\r\nKey1=\r\n[Sec22]\r\n"
+    _click_temp(monkeypatch, tmp_path, project_ini)
+    monkeypatch.setattr("clicknick.app.simpledialog.askstring", MagicMock(return_value="Line 1"))
+    monkeypatch.setattr("clicknick.app.messagebox.showinfo", MagicMock())
+    app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
+    app.root = MagicMock()
+    app._session = object()
+    app._click = ClickConnection("1", 123, "Example.ckp")
+    app._mirror_setup_window = None
+    app._update_status = MagicMock()
+    app.plc_name_var = MagicMock()
+
+    assert app._ensure_plc_name_for_workspace() == "Line 1"
+    assert (tmp_path / "Project.ini").read_bytes() == (
+        b"[Sec21]\r\nKey1=1\r\n[Sec20]\r\nKey1=Line 1\r\n[Sec22]\r\n"
     )
-
-
-def test_plc_name_uses_click_4_placeholder_names(tmp_path: Path) -> None:
-    project_ini = tmp_path / "Project.ini"
-    project_ini.write_bytes(b"[Sec21]\r\nKey1=1\r\n[Sec20]\r\nKey1=AutoDayTankFill\r\n[Sec22]\r\n")
-
-    assert read_plc_name(project_ini) == "AutoDayTankFill"
-    write_plc_name(project_ini, "Tank Fill")
-
-    assert read_plc_name(project_ini) == "Tank Fill"
-    assert project_ini.read_bytes() == (
-        b"[Sec21]\r\nKey1=1\r\n[Sec20]\r\nKey1=Tank Fill\r\n[Sec22]\r\n"
-    )
+    assert app._current_plc_name() == "Line 1"
 
 
 def test_workspace_selection_uses_plc_name(tmp_path: Path) -> None:
@@ -651,7 +688,7 @@ def test_workspace_setup_prompts_for_and_writes_a_missing_plc_name(monkeypatch) 
     monkeypatch.setattr("clicknick.app.simpledialog.askstring", ask_name)
     monkeypatch.setattr("clicknick.app.messagebox.showerror", MagicMock())
     monkeypatch.setattr("clicknick.app.messagebox.showinfo", MagicMock())
-    monkeypatch.setattr("clicknick.services.workspace_mirror.write_plc_name", write_name)
+    monkeypatch.setattr("pyclickplc.project.write_plc_name", write_name)
     monkeypatch.setattr(
         "clicknick.utils.click_temp.click_temp_dir", MagicMock(return_value=Path("CLICK-temp"))
     )
