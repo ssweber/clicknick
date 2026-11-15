@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from pyclickplc.addresses import format_address_display, get_addr_key, iter_address_slots
+from pyclickplc.addresses import get_addr_key, iter_address_slots
 from pyrung.click import SystemNicknameRepair, SystemNicknameRepairRequired
 from pyrung.click.tag_map import OldCommentFormError
 
@@ -134,27 +134,25 @@ def read_analog_inputs(csv_dir: Path) -> frozenset[str]:
     return frozenset(inputs)
 
 
+_TagMaps = tuple[dict[str, int], dict[int, str]]
+
+
 def _build_tag_addr_key_map(
+    nickname_csv: Path | None,
     nickname_rows: Mapping[int, AddressRow],
-) -> tuple[dict[str, int], dict[int, str]]:
+) -> _TagMaps:
     """Build bidirectional tag_name <-> addr_key maps over every address.
 
-    pyrung names tags by the nicknames the code was generated from, so the map
-    takes the same snapshot. Addresses with no nickname are named by their
-    display address (e.g. "X001").
+    The names are those pyrung reads from *nickname_csv*, the snapshot's
+    nicknames.csv the code was generated from (``tag_names``), so they match
+    the code whatever pyrung is installed. Addresses with no nickname are named
+    by their display address (e.g. "X001").
     """
-    tag_to_key: dict[str, int] = {}
-    key_to_tag: dict[int, str] = {}
+    from .tag_names import tag_names
 
-    for memory_type, address in iter_address_slots():
-        addr_key = get_addr_key(memory_type, address)
-        row = nickname_rows.get(addr_key)
-        tag = (row.nickname if row is not None else "") or format_address_display(
-            memory_type, address
-        )
-        tag_to_key[tag] = addr_key
-        key_to_tag[addr_key] = tag
-
+    keys = (get_addr_key(memory_type, address) for memory_type, address in iter_address_slots())
+    key_to_tag = tag_names(nickname_csv, nickname_rows, keys)
+    tag_to_key = {tag: addr_key for addr_key, tag in key_to_tag.items()}
     return tag_to_key, key_to_tag
 
 
@@ -349,16 +347,17 @@ def _build_graph(
     persist_dir: Path | None = None,
     *,
     workspace_kind: WorkspaceKind = "temporary",
-    on_project_generated: Callable[[Path, Mapping[int, AddressRow]], None] | None = None,
-) -> tuple[ProgramGraph, Program, Path | None, dict[int, AddressRow]]:
+    on_project_generated: Callable[[Path, _TagMaps], None] | None = None,
+) -> tuple[ProgramGraph, Program, Path | None, _TagMaps]:
     """Run the full pipeline: Scr*.tmp -> CSV -> pyrung code -> exec -> graph.
 
     When *persist_dir* is provided, also writes the full pyrung project
     (src/plc/) to disk for consumption by DAP and
     rung apply commands.
 
-    Returns the graph, program, persisted project folder, and the nickname
-    snapshot the code was generated from (empty without a database).
+    Returns the graph, program, persisted project folder, and the tag maps
+    of the nickname snapshot the code was generated from (every address by
+    its display address without a database).
     """
     from pyrung.click import ladder_to_pyrung
     from pyrung.core.analysis import build_program_graph
@@ -378,6 +377,7 @@ def _build_graph(
             nickname_csv = _write_nicknames_csv(csv_dir, nickname_rows)
 
         code = ladder_to_pyrung(csv_dir, nickname_csv=nickname_csv, analog_inputs=analog_inputs)
+        tag_maps = _build_tag_addr_key_map(nickname_csv, nickname_rows or {})
 
     # Generated source is useful for inspection and repair even when executing
     # it cannot construct a Program. Publish it independently of analysis.
@@ -391,7 +391,7 @@ def _build_graph(
             workspace_kind=workspace_kind,
         )
         if on_project_generated is not None:
-            on_project_generated(project_dir, nickname_rows or {})
+            on_project_generated(project_dir, tag_maps)
 
     namespace: dict[str, object] = {}
     exec(compile(code, "<analysis>", "exec"), namespace)  # noqa: S102
@@ -404,7 +404,7 @@ def _build_graph(
         raise TypeError(msg)
 
     graph = build_program_graph(program)
-    return graph, program, project_dir, nickname_rows or {}
+    return graph, program, project_dir, tag_maps
 
 
 class AnalysisService:
@@ -668,11 +668,7 @@ class AnalysisService:
             self._system_nickname_repairs = ()
             self._needs_comment_upgrade = False
 
-        tag_maps: tuple[dict[str, int], dict[int, str]] | None = None
-
-        def _project_generated(project_dir: Path, nickname_rows: Mapping[int, AddressRow]) -> None:
-            nonlocal tag_maps
-            tag_maps = _build_tag_addr_key_map(nickname_rows)
+        def _project_generated(project_dir: Path, tag_maps: _TagMaps) -> None:
             with self._lock:
                 if self._epoch == epoch:
                     self._project_dir = project_dir
@@ -680,14 +676,13 @@ class AnalysisService:
                     self._project_is_current = True
 
         try:
-            graph, program, project_dir, nickname_rows = _build_graph(
+            graph, program, project_dir, (tag_to_key, key_to_tag) = _build_graph(
                 scr_folder,
                 db_path,
                 persist_dir,
                 workspace_kind=workspace_kind,
                 on_project_generated=_project_generated,
             )
-            tag_to_key, key_to_tag = tag_maps or _build_tag_addr_key_map(nickname_rows)
         except Exception as exc:
             with self._lock:
                 if self._epoch == epoch and serves >= self._builds_asked:

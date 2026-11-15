@@ -189,11 +189,15 @@ ClickNick then deletes `_read_nickname_csv`, `read_mdb_csv`, the line formatting
 `CsvDataSource.save_changes` and `convert_mdb_csv_to_user_csv`. It keeps `_write_file`: an in-place write that
 keeps a Hidden file Hidden and names the Excel lock.
 
-Two things to watch:
+Three things to watch:
 - The move also fixes a live bug: ClickNick's reader misreads a Text initial value that CLICK exports bare as a
   comma or a quote.
 - The workspace's `nicknames.csv` is written by ClickNick and read by pyrung's tag map through
   `pyclickplc.read_csv`, so from then on one library writes and reads it.
+- Review Changes on a folder whose `nicknames.csv` has a bad Address, a wrong Data Type or extra cells: since
+  pyclickplc 0.7 pyrung refuses the file, `BundleSources.round_trip` (`services/rung_diff.py`) swallows that
+  and the diff shows no source text, while ClickNick's lenient reader still offers to stage the nicknames.
+  One reader for both ends it; until then the window could say why the diff is blank.
 
 The readers return `AddressRecord`, and ClickNick converts to `AddressRow` at its boundary. Unifying the two
 models is not part of this.
@@ -281,9 +285,8 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
 - Q6: after deleting all rungs, empty rungs are on screen. Is one of them selected for Ctrl+V, or must the step
   wording say to click the first empty rung?
 - Q7: can SC_.mdb hold a nickname or address comment with a space at either end (typed in CLICK, or from
-  CLICK's own CSV import)? With pyclickplc 0.7, ClickNick flags such a value as an error, and Sync refuses while any row has one,
-  so a project that holds one cannot Sync until the space is removed. The recorded `tests/SC_.mdb` and
-  `NicknameExport.csv` hold none.
+  CLICK's own CSV import)? ClickNick trims one on load as an unsaved edit ("Trim spaces"), so on a yes the next
+  Sync writes the trimmed value into CLICK. The recorded `tests/SC_.mdb` and `NicknameExport.csv` hold none.
 
 ### Address Editor and store
 - Fill Down / Add Block T1..TD5, then Sync.

@@ -14,6 +14,9 @@ from pyclickplc.addresses import get_addr_key
 from clicknick.data.address_store import TRIM_DESCRIPTION, AddressStore
 from clicknick.data.data_source import CsvDataSource
 from clicknick.models.address_row import AddressRow
+from clicknick.services import ImportService
+from clicknick.services.block_service import remove_block_tag
+from clicknick.widgets.import_csv_dialog import detect_blocks_in_csv
 
 EDGE = "Cannot start or end with a space"
 C1, C2, C3 = (get_addr_key("C", n) for n in (1, 2, 3))
@@ -229,17 +232,57 @@ class TestTrimOnEntry:
         assert not store.has_unsaved_changes()
         assert store.undo_stack == []
 
-    def test_a_cascade_that_leaves_a_space_is_trimmed(self):
-        # Removing the block from T1 removes its tag on TD1 too; TD1's double
-        # space before the text would leave it starting with a space.
+    @pytest.mark.parametrize("comment", ["<Tm_D />  preset", "preset  <Tm_D />"])
+    def test_a_pair_cascade_that_leaves_a_space_is_trimmed(self, comment):
+        # Removing the block from T1 removes its tag on TD1 too; the second of
+        # two spaces beside the tag would be left at an end of TD1's comment.
         store, _source = _store(
-            {
-                T1: AddressRow("T", 1, comment="<Tm />"),
-                TD1: AddressRow("TD", 1, comment="<Tm_D />  preset"),
-            }
+            {T1: AddressRow("T", 1, comment="<Tm />"), TD1: AddressRow("TD", 1, comment=comment)}
         )
         with store.edit_session("Remove block") as session:
             session.set_field(T1, "comment", "")
 
         assert store.visible_state[TD1].comment == "preset"
+        assert not store.has_errors()
+
+    @pytest.mark.parametrize("comment", ["<Motor>  Main pump", "Main pump  <Motor>"])
+    def test_removing_a_close_tag_trims_the_open_row_it_cascades_to(self, comment):
+        store, _source = _store(
+            {C1: AddressRow("C", 1, comment=comment), C3: AddressRow("C", 3, comment="</Motor>")}
+        )
+        with store.edit_session("Edit") as session:
+            session.set_field(C3, "comment", "")
+
+        assert store.visible_state[C1].comment == "Main pump"
+        assert not store.has_errors()
+
+    @pytest.mark.parametrize("comment", ["<Motor>  Main pump", "Main pump  <Motor>"])
+    def test_remove_block_trims_what_the_tag_leaves(self, comment):
+        store, _source = _store(
+            {C1: AddressRow("C", 1, comment=comment), C3: AddressRow("C", 3, comment="</Motor>")}
+        )
+        # As the Address Editor's Remove Block does
+        with store.edit_session("Remove block tag") as session:
+            session.set_field(C1, "comment", remove_block_tag(comment))
+
+        assert store.visible_state[C1].comment == "Main pump"
+        assert store.visible_state[C3].comment == ""
+        assert not store.has_errors()
+
+    def test_an_import_in_block_tag_mode_trims_the_comment_it_composes(self):
+        store, _source = _store(
+            {
+                C1: AddressRow("C", 1, comment="<Old> Motor note"),
+                C3: AddressRow("C", 3, comment="</Old>"),
+            }
+        )
+        csv_rows = [AddressRow("C", 1, comment="<New>"), AddressRow("C", 3, comment="</New>")]
+        blocks = detect_blocks_in_csv(csv_rows)
+        options = {id(block): {"comment": "Block Tag"} for block in blocks}
+
+        with store.edit_session("Import") as session:
+            ImportService.merge_blocks(store, session, blocks, options)
+
+        assert store.visible_state[C1].comment == "Motor note <New>"
+        assert store.visible_state[C3].comment == "</New>"
         assert not store.has_errors()

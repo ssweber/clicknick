@@ -116,8 +116,16 @@ def test_the_workspace_snapshot_names_the_feedbacks_its_program_links(tmp_path):
     assert linked_feedbacks(tmp_path / "missing") == frozenset()
 
 
-def test_linked_feedbacks_name_a_tag_as_pyrung_reads_it_spaces_included(tmp_path):
-    rows = [AddressRow("X", 1, nickname="Start ", comment="[link=Cmd, timed=100ms] Start PB")]
-    CsvDataSource(str(tmp_path / "nicknames.csv")).save_changes(rows)
+@pytest.mark.parametrize("nickname", ["Start ", " Start", "  "])
+def test_linked_feedbacks_name_a_tag_as_pyrung_reads_it(tmp_path, nickname):
+    """Whatever the installed pyrung does with spaces, a feedback is named as it does."""
+    from pyrung.click.tag_map import TagMap
 
-    assert linked_feedbacks(tmp_path) == {"Start "}
+    rows = [AddressRow("X", 1, nickname=nickname, comment="[link=Cmd, timed=100ms] Start PB")]
+    CsvDataSource(str(tmp_path / "nicknames.csv")).save_changes(rows)
+    pyrung_names = [
+        entry.logical.name for entry in TagMap.from_nickname_file(tmp_path / "nicknames.csv").tags()
+    ]
+
+    # An address pyrung gives no tag is named by its address, as the code names it.
+    assert linked_feedbacks(tmp_path) == set(pyrung_names or ["X001"])

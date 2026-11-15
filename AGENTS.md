@@ -97,9 +97,10 @@ The store keeps three layers:
 1. **View** opens `AddressStore.edit_session(description)`
 2. **Service** accumulates changes via `session.set_field(addr_key, field, value)`; the session keeps a
    `MutableRowBuilder` per row. Many changes make one undo frame (fill-down 500 rows = 1 undo)
-3. **On clean exit:** applies cascades → freezes builders into overrides → if the overrides changed, pushes the
-   undo frame (the overrides before) and clears redo → `_derive()` → notifies. A session that changes nothing
-   is not an undo step
+3. **On clean exit:** applies cascades → freezes builders into overrides (a nickname or comment without a space
+   at either end, as CLICK keeps it: `trim_entry`) → if the overrides changed, pushes the undo frame (the
+   overrides before) and clears redo → `_derive()` → notifies. A session that changes nothing is not an undo
+   step
 4. **On an exception:** nothing is committed (all-or-nothing); a failure inside the commit restores the inputs
 5. **All Views** receive changed `addr_keys` and refresh only those rows
 
@@ -166,6 +167,10 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   the fields the user did not change
 - `loaded_with_error` (CLICK's own X/SC/SD names exempt from our nickname rules) is set on every base row by one
   helper, `_flag_loaded_error`, on load, reload and Sync alike
+- A loaded nickname or comment with a space at either end is trimmed by one edit session, "Trim spaces"
+  (`_stage_trims`), over the rows a load or a reading of the data source (file monitor, Sync's pre-read)
+  changed; Sync writes it, and an undone trim comes back only when the data source changes that row. A field the
+  user edits and an exempt nickname (`loaded_with_error`) are left as they are
 
 ### Undo/Redo
 - Tracks the overlay layer (user intent) only; at most `MAX_UNDO_DEPTH` (50) frames
@@ -198,7 +203,9 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   build runs leaves it BUILDING; that failure shows once the build serving every request finishes, unless a
   later request replaced it
 - The generated code, persisted project and tag map all come from one nickname snapshot read from CLICK's
-  database, so tag names always match the code. ClickNick edits reach analysis on the next build after Sync.
+  database, and the tag names are those pyrung's own reader gives that snapshot's `nicknames.csv`
+  (`services/tag_names.py`), so they match the code whatever pyrung does with spaces. ClickNick edits reach
+  analysis on the next build after Sync.
   `clicknick-cli` finds tags by the workspace's names (`project_tag_to_addr_key`)
 - `csv/analog_inputs.json` records the analog inputs a workspace was generated with; `tag apply` regenerates
   its baseline `tags.py` with them, never from CLICK's Project.ini at the time it runs
