@@ -147,16 +147,15 @@ class Desktop(ABC):
         """BM_GETCHECK, or None if it does not answer."""
 
     @abstractmethod
-    def list_view_counts(self, hwnd: int) -> tuple[int, int] | None:
-        """A list view's (LVM_GETITEMCOUNT, LVM_GETSELECTEDCOUNT), or None if it does not answer."""
+    def list_view_items(self, hwnd: int) -> int | None:
+        """A list view's LVM_GETITEMCOUNT, or None if it does not answer."""
 
     @abstractmethod
-    def status_bar(self, hwnd: int) -> tuple[str, list[str]] | None:
-        """The pane texts of the status bar *hwnd*, and how they were read; None if no way works.
+    def status_bar(self, hwnd: int) -> list[str] | None:
+        """The pane texts of the common-control status bar *hwnd* (SB_GETTEXT), or None.
 
-        Tries SB_GETTEXT, WM_GETTEXT, then MSAA (the names of the bar's accessible
-        children), and returns the first that gives any text: ``(method, panes)``. It only
-        reads, though SB_GETTEXT needs a buffer it allocates in the bar's process and frees.
+        None when the bar does not answer. Raises OSError when the buffer SB_GETTEXT needs
+        in the bar's process cannot be used. It only reads; the buffer is freed again.
         """
 
     @abstractmethod
@@ -173,7 +172,10 @@ class Desktop(ABC):
 
     @abstractmethod
     def screenshot(self, hwnd: int, path: Path) -> bool:
-        """Save *hwnd* as a PNG at *path*; whether it could."""
+        """Save the screen where *hwnd* is as a PNG at *path*; whether it could.
+
+        It is the screen, not the window: whatever lies over CLICK there is in the PNG.
+        """
 
     @abstractmethod
     def set_clipboard(self, payload: bytes, owner: int) -> None:
@@ -197,7 +199,6 @@ WM_COMMAND = 0x0111
 BM_GETCHECK = 0x00F0
 BM_CLICK = 0x00F5
 LVM_GETITEMCOUNT = 0x1004
-LVM_GETSELECTEDCOUNT = 0x1032
 SB_GETPARTS = 0x0406
 SB_GETTEXTLENGTHW = 0x040C
 SB_GETTEXTW = 0x040D
@@ -215,9 +216,6 @@ MEM_RELEASE = 0x8000
 PAGE_READWRITE = 0x04
 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
 JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
-OBJID_CLIENT = -4
-DISPID_ACC_CHILDCOUNT = -5001
-DISPID_ACC_NAME = -5003
 _MAX_PANES = 32
 SRCCOPY = 0x00CC0020
 CAPTUREBLT = 0x40000000
@@ -317,6 +315,8 @@ def _kernel32():
     ]
     kernel32.ReadProcessMemory.restype = wintypes.BOOL
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.IsWow64Process.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
+    kernel32.IsWow64Process.restype = wintypes.BOOL
     kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
     kernel32.CreateJobObjectW.restype = wintypes.HANDLE
     kernel32.SetInformationJobObject.argtypes = [
@@ -375,48 +375,6 @@ def kill_on_close(process: int) -> int:
         kernel32.CloseHandle(job)
         raise error
     return job
-
-
-class _Guid(ctypes.Structure):
-    _fields_ = [
-        ("Data1", wintypes.DWORD),
-        ("Data2", wintypes.WORD),
-        ("Data3", wintypes.WORD),
-        ("Data4", ctypes.c_ubyte * 8),
-    ]
-
-
-def _accessible_names(hwnd: int) -> list[str] | None:
-    """The names of *hwnd*'s accessible children (its own name when it has none), by MSAA."""
-    import pythoncom
-
-    pythoncom.CoInitialize()
-    oleacc = ctypes.WinDLL("oleacc")
-    oleacc.AccessibleObjectFromWindow.argtypes = [
-        wintypes.HWND,
-        wintypes.DWORD,
-        ctypes.POINTER(_Guid),
-        ctypes.POINTER(ctypes.c_void_p),
-    ]
-    oleacc.AccessibleObjectFromWindow.restype = ctypes.HRESULT
-    iid = _Guid(0x00020400, 0, 0, (ctypes.c_ubyte * 8)(0xC0, 0, 0, 0, 0, 0, 0, 0x46))  # IDispatch
-    pointer = ctypes.c_void_p()
-    oleacc.AccessibleObjectFromWindow(
-        hwnd, OBJID_CLIENT & 0xFFFFFFFF, ctypes.byref(iid), ctypes.byref(pointer)
-    )
-    if not pointer.value:
-        return None
-    accessible = pythoncom.ObjectFromAddress(pointer.value, pythoncom.IID_IDispatch)
-    # ObjectFromAddress took its own reference: release the one AccessibleObjectFromWindow gave
-    vtable = ctypes.cast(pointer, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
-    ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(vtable[2])(pointer)
-
-    def get(dispid: int, *args: object) -> object:
-        return accessible.Invoke(dispid, 0, pythoncom.DISPATCH_PROPERTYGET, True, *args)
-
-    count = int(get(DISPID_ACC_CHILDCOUNT) or 0)
-    children = range(1, min(count, _MAX_PANES) + 1) if count else (0,)
-    return [str(get(DISPID_ACC_NAME, child) or "") for child in children]
 
 
 class _BitmapInfoHeader(ctypes.Structure):
@@ -655,34 +613,19 @@ class Win32Desktop(Desktop):
     def button_checked(self, hwnd: int) -> int | None:
         return self._send(hwnd, BM_GETCHECK)
 
-    def list_view_counts(self, hwnd: int) -> tuple[int, int] | None:
-        items = self._send(hwnd, LVM_GETITEMCOUNT)
-        selected = self._send(hwnd, LVM_GETSELECTEDCOUNT)
-        if items is None or selected is None:
-            return None
-        return items, selected
+    def list_view_items(self, hwnd: int) -> int | None:
+        return self._send(hwnd, LVM_GETITEMCOUNT)
 
-    def status_bar(self, hwnd: int) -> tuple[str, list[str]] | None:
-        readers = (
-            ("SB_GETTEXT", self._status_panes),
-            ("WM_GETTEXT", lambda bar: [text] if (text := self.read_text(bar)) else None),
-            ("MSAA", _accessible_names),
-        )
-        for method, read in readers:
-            try:
-                panes = read(hwnd)
-            except Exception:  # A way that does not work here; try the next
-                panes = None
-            if panes and any(pane.strip() for pane in panes):
-                return method, panes
-        return None
-
-    def _status_panes(self, hwnd: int) -> list[str] | None:
+    def status_bar(self, hwnd: int) -> list[str] | None:
         """SB_GETTEXT for each pane, through a buffer in the bar's process."""
+        import win32gui
+        import win32process
+
+        if win32gui.GetClassName(hwnd) != "msctls_statusbar32":
+            return None  # SB_* means nothing known to any other class
         parts = self._send(hwnd, SB_GETPARTS)
         if not parts:
-            return None  # Not a common-control status bar
-        import win32process
+            return None
 
         pid = win32process.GetWindowThreadProcessId(hwnd)[1]
         kernel32 = _kernel32()
@@ -698,6 +641,14 @@ class Win32Desktop(Desktop):
         try:
             if not remote:
                 raise ctypes.WinError(ctypes.get_last_error())
+            wow64 = wintypes.BOOL()
+            if not kernel32.IsWow64Process(process, ctypes.byref(wow64)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            if wow64.value and remote > 0xFFFFFFFF:
+                # A 32-bit CLICK would get the address cut to 32 bits and write elsewhere
+                raise OSError(
+                    f"the buffer for SB_GETTEXT lies at {remote:#x}, out of reach of a 32-bit CLICK"
+                )
             panes: list[str] = []
             for index in range(min(parts, _MAX_PANES)):
                 length = self._send(hwnd, SB_GETTEXTLENGTHW, index)

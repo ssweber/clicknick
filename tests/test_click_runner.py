@@ -49,7 +49,7 @@ class FakeControl:
     rect: tuple[int, int, int, int] = (0, 0, 10, 10)
     value: str = ""  # An edit's text, which only WM_GETTEXT reads
     checked: int = 0
-    counts: tuple[int, int] = (0, 0)
+    items: int = 0
     on_press: Callable[[], None] | None = None
 
 
@@ -71,9 +71,10 @@ class FakeClick(cd.Desktop):
     effect never happens; *hang_on* one after which CLICK stops answering for *hang_for*
     seconds (Windows then titles its main window "... (Not Responding)"). *interrupt*
     names a Desktop method that raises KeyboardInterrupt once; *fail* one that always
-    raises OSError. *late_row* lists a second PLC that many seconds after the first is
-    selected. *status_bar* is how the status bar reads (``Desktop.status_bar``), None
-    when no way works.
+    raises OSError. *late_row* lists a second PLC that many seconds after the first.
+    *status_bar* is whether the status bar reads, *plc_pane* whether it names the PLC
+    once connected. *leftover* names Scr*.tmp files already in the temp folder, as an
+    older CLICK with the same hwnd would leave them.
     """
 
     def __init__(
@@ -85,8 +86,6 @@ class FakeClick(cd.Desktop):
         prefilled_user: str = "admin",
         password: str = "123click",
         plc_rows: int = 1,
-        plc_selected: int = 1,
-        select_lag: int = 4,
         late_row: float | None = None,
         same_lan: bool = True,
         tooltip: bool = False,
@@ -100,7 +99,9 @@ class FakeClick(cd.Desktop):
         lag: int = 2,
         hang_on: str | None = None,
         hang_for: float = 0.0,
-        status_bar: str | None = "MSAA",
+        status_bar: bool = True,
+        plc_pane: bool = True,
+        leftover: tuple[str, ...] = (),
         desktop_name: str | None = "Default",
         running: tuple[int, ...] = (),
         open_windows: tuple[int, ...] = (),
@@ -113,8 +114,8 @@ class FakeClick(cd.Desktop):
             "prefilled_user": prefilled_user,
             "password": password,
             "plc_rows": plc_rows,
-            "plc_selected": plc_selected,
-            "select_lag": select_lag,
+            "plc_pane": plc_pane,
+            "leftover": leftover,
             "late_row": late_row,
             "same_lan": same_lan,
             "tooltip": tooltip,
@@ -128,7 +129,7 @@ class FakeClick(cd.Desktop):
         self.hang_on, self.hang_for = hang_on, hang_for
         self.hung_until = 0.0
         self.sent_while_hung: list[str] = []
-        self.status_method = status_bar
+        self.status_readable = status_bar
         self.cursor_rung, self.steps = 1, 0
         self.late_row_at: float | None = None
         self.desktop_name = desktop_name
@@ -223,12 +224,14 @@ class FakeClick(cd.Desktop):
         floating = self._control(main, "Afx:002E0000:8:00010003:00100063:00000000", "Output", 158)
         self._control(main, "Edit", "", 1005, parent=floating.hwnd, visible=False)
         self._control(main, "Afx:StatusBar:2e0000:8:10003:10", "", 59393)
-        self._control(main, "msctls_statusbar32", "", 59393, rect=(0, 1, 0, 1))
+        self._control(main, "msctls_statusbar32", "", 59393)
         main.on_close = self._close_main
         temp = self.temp_dir(main.hwnd)
         temp.mkdir()
         (temp / "SC_.mdb").write_bytes(b"mdb")
         (temp / "Project.ini").write_text("[Project]\n", encoding="utf-8")
+        for name in self.options["leftover"]:
+            (temp / name).write_bytes(b"old")
         if self.options["tooltip"]:
             self._window("tooltips_class32", "", main.hwnd)
             self._window("tooltips_class32", "Paste", 0)
@@ -302,17 +305,12 @@ class FakeClick(cd.Desktop):
         )
         self._control(dialog, "Button", "Cancel", 2)
 
-        # As the live run of 2026-11-15 saw: the scan adds the rows, and selects one a
-        # few polls later
-        def selected() -> None:
-            plcs.counts = (self.options["plc_rows"], self.options["plc_selected"])
+        # The list is owner-drawn: CLICK paints its own highlight and reports no
+        # selection (live run 2, 2026-11-15)
+        def scanned() -> None:
+            plcs.items = self.options["plc_rows"]
             if self.options["late_row"] is not None:
                 self.late_row_at = time.monotonic() + self.options["late_row"]
-
-        def scanned() -> None:
-            plcs.counts = (self.options["plc_rows"], 0)
-            if self.options["plc_selected"]:
-                self.queue.append((self.tick + self.options["select_lag"], selected))
 
         self._later("scan", scanned)
 
@@ -553,29 +551,44 @@ class FakeClick(cd.Desktop):
     def button_checked(self, hwnd: int) -> int | None:
         return self._find(hwnd).checked if self._message("BM_GETCHECK") else None
 
-    def list_view_counts(self, hwnd: int) -> tuple[int, int] | None:
+    def list_view_items(self, hwnd: int) -> int | None:
         if not self._message("LVM_GETITEMCOUNT"):
             return None
         control = self._find(hwnd)
         if self.late_row_at is not None and time.monotonic() >= self.late_row_at:
-            control.counts = (control.counts[0] + 1, control.counts[1])
+            control.items += 1
             self.late_row_at = None
-        return control.counts
+        return control.items
 
-    def status_bar(self, hwnd: int) -> tuple[str, list[str]] | None:
+    def status_bar(self, hwnd: int) -> list[str] | None:
         control = self._find(hwnd)
-        if not control.cls.startswith("Afx:StatusBar") or self.status_method is None:
-            return None  # The common control of no size holds nothing
-        if not self._message("status bar"):
+        assert control.cls == "msctls_statusbar32", f"SB_GETTEXT sent to {control.cls}"
+        if not self.status_readable or not self._message("SB_GETTEXT"):
             return None
-        panes = [
-            "RUN" if self.connected else "",
+        # As live run 2 read it offline. Where "RUN" and the PLC go once connected is a
+        # guess: the probe's screenshot showed them in this bar
+        connected = self.connected and self.options["plc_pane"]
+        return [
+            "",
+            "Bit",
+            "Integer",
+            "Integer(2 words)",
+            "Floating point",
+            "Hex",
+            "Text",
+            "Ascii",
+            "-----",
             f"{self.steps:04d}/8000",
-            "C2-03CPU",
+            "C2-03CPU" if self.connected else "No select CPU",
             f"{self.cursor_rung}:1:A",
-            "192.168.1.241(Conformance)" if self.connected else "",
+            "RUN" if connected else "",
+            "192.168.1.241(Conformance)" if connected else "",
+            "",
+            "",
+            "",
+            "NUM",
+            "",
         ]
-        return self.status_method, panes
 
     def press(self, hwnd: int) -> None:
         self._message("BM_CLICK")
@@ -728,6 +741,8 @@ def test_paste_end_to_end(tmp_path, setup, capsys):
     assert result["syntax_check"]["warnings"] == 0
     assert result["syntax_check"]["text"].endswith("1 error(s), 0 warning(s)\r\n")
     assert result["rungs"] == {"pasted": 1, "saved_main": 1, "same": True}
+    assert result["plc"] == "192.168.1.241(Conformance)"
+    assert "scr_before_paste" not in result
     assert Path(result["files"]["ckp"]) == out / "rung.ckp"
     assert (out / "rung.ckp").read_bytes() == b"ckp"
     assert sorted(p.name for p in (out / "click").iterdir()) == ["Project.ini", "Scr1.tmp"]
@@ -766,7 +781,7 @@ def test_a_paste_that_did_not_land_aborts(tmp_path, setup, monkeypatch, empty_ma
         "clicknick.ladder.program.decode_program",
         lambda data: Program("Main Program", 1, empty_main),
     )
-    fake = FakeClick(tmp_path, stall="paste", status_bar=None)
+    fake = FakeClick(tmp_path, stall="paste", status_bar=False)
     out = tmp_path / "out"
     code, result = run(fake, out, csv, exe)
     assert code == cr.EXIT_ABORTED
@@ -1046,28 +1061,12 @@ def test_a_timeout_aborts_and_disconnects(tmp_path, setup):
 
 def test_two_plcs_abort(tmp_path, setup):
     csv, exe = setup
-    fake = FakeClick(tmp_path, plc_rows=2, plc_selected=1)
+    fake = FakeClick(tmp_path, plc_rows=2)
     out = tmp_path / "out"
     code, result = run(fake, out, csv, exe)
-    # Two rows that stay listed: no waiting for a selection
-    assert_aborted(fake, out, code, result, "the Connect dialog lists 2 PLC(s), ")
-    assert result["reason"].endswith("selected; expected exactly 1")
+    assert_aborted(fake, out, code, result, "the Connect dialog lists 2 PLC(s); expected exactly 1")
     assert "timed out" not in result["reason"]
     assert "Connect" not in fake.pressed
-
-
-@pytest.mark.parametrize("select_lag", [1, 4])
-def test_a_plc_selected_after_it_is_listed_connects(tmp_path, setup, select_lag):
-    """The live run of 2026-11-15: the row came first, unselected, and was selected later.
-
-    With a lag of 4 polls, (1 row, 0 selected) reads the same on two polls in a row.
-    """
-    csv, exe = setup
-    fake = FakeClick(tmp_path, select_lag=select_lag)
-    out = tmp_path / "out"
-    code, result = run(fake, out, csv, exe)
-    assert code == cr.EXIT_OK, result["reason"]
-    assert "PLC list: 1 row, selected" in (out / "run.log").read_text(encoding="utf-8")
 
 
 def test_a_second_plc_listed_late_aborts(tmp_path, setup, monkeypatch):
@@ -1077,9 +1076,7 @@ def test_a_second_plc_listed_late_aborts(tmp_path, setup, monkeypatch):
     fake = FakeClick(tmp_path, late_row=0.2)
     out = tmp_path / "out"
     code, result = run(fake, out, csv, exe)
-    assert_aborted(
-        fake, out, code, result, "the Connect dialog lists 2 PLC(s), 1 selected; expected exactly 1"
-    )
+    assert_aborted(fake, out, code, result, "the Connect dialog lists 2 PLC(s); expected exactly 1")
     assert "Connect" not in fake.pressed
 
 
@@ -1102,7 +1099,7 @@ def test_a_plc_listed_while_dumping_is_seen_before_connect(tmp_path, setup):
         out,
         code,
         result,
-        "the Connect dialog lists 2 PLC(s), 1 selected as Connect is about to be pressed",
+        "the Connect dialog lists 2 PLC(s) as Connect is about to be pressed; expected 1",
     )
     assert "Connect" not in fake.pressed
 
@@ -1116,21 +1113,6 @@ def test_a_connect_dialog_not_scanning_the_lan_aborts(tmp_path, setup):
     assert "Connect" not in fake.pressed
 
 
-def test_a_plc_never_selected_aborts_with_the_counts(tmp_path, setup):
-    csv, exe = setup
-    fake = FakeClick(tmp_path, plc_selected=0)
-    out = tmp_path / "out"
-    code, result = run(fake, out, csv, exe, timeout=0.3)
-    assert_aborted(
-        fake,
-        out,
-        code,
-        result,
-        "the Connect dialog lists 1 PLC(s), 0 selected; timed out after 0.3 s",
-    )
-    assert "Connect" not in fake.pressed
-
-
 def test_no_plc_times_out(tmp_path, setup):
     csv, exe = setup
     fake = FakeClick(tmp_path, stall="scan")
@@ -1141,9 +1123,37 @@ def test_no_plc_times_out(tmp_path, setup):
         out,
         code,
         result,
-        "the Connect dialog lists 0 PLC(s), 0 selected; timed out after 0.3 s "
-        "waiting for one PLC in the list, selected",
+        "the Connect dialog lists 0 PLC(s); timed out after 0.3 s waiting for one PLC in the list",
     )
+
+
+def test_a_status_bar_naming_no_plc_aborts(tmp_path, setup):
+    csv, exe = setup
+    fake = FakeClick(tmp_path, plc_pane=False)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe, timeout=0.3)
+    assert_aborted(fake, out, code, result, "the status bar names no PLC (")
+    assert "No select CPU" not in result["reason"] and "C2-03CPU" in result["reason"]
+    assert result["step"] == "dont_read" and result["plc"] is None
+
+
+@pytest.mark.parametrize(("plc", "ok"), [("Conformance", True), ("Other", False)])
+def test_plc_names_the_plc_to_connect_to(tmp_path, setup, plc, ok):
+    csv, exe = setup
+    fake = FakeClick(tmp_path)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe, "--plc", plc)
+    if ok:
+        assert code == cr.EXIT_OK, result["reason"]
+        assert result["plc"] == "192.168.1.241(Conformance)"
+    else:
+        assert_aborted(
+            fake,
+            out,
+            code,
+            result,
+            "connected to 192.168.1.241(Conformance), not to the PLC named 'Other'",
+        )
 
 
 def test_a_missing_startup_button_aborts(tmp_path, setup):
@@ -1304,10 +1314,8 @@ def test_a_slow_paste_is_waited_out_without_a_message(tmp_path, setup):
     log = (out / "run.log").read_text(encoding="utf-8")
     assert "paste done: CLICK answers on 3 polls in a row, and its status bar shows rung 2" in log
     before, after = result["status_bar"]["before_paste"], result["status_bar"]["pasted"]
-    assert before["method"] == after["method"] == "MSAA"
-    assert before["control"].startswith("Afx:StatusBar")
-    assert "1:1:A" in before["panes"] and "2:1:A" in after["panes"]
-    assert "0000/8000" in before["panes"] and "0003/8000" in after["panes"]
+    assert "1:1:A" in before and "2:1:A" in after
+    assert "0000/8000" in before and "0003/8000" in after
 
 
 def test_a_paste_the_status_bar_does_not_show_aborts(tmp_path, setup):
@@ -1325,7 +1333,7 @@ def test_a_paste_the_status_bar_does_not_show_aborts(tmp_path, setup):
 
 def test_a_paste_with_no_status_bar_to_read_ends_when_click_answers(tmp_path, setup):
     csv, exe = setup
-    fake = FakeClick(tmp_path, status_bar=None)
+    fake = FakeClick(tmp_path, status_bar=False)
     out = tmp_path / "out"
     code, result = run(fake, out, csv, exe)
     assert code == cr.EXIT_OK, result["reason"]
@@ -1336,8 +1344,10 @@ def test_a_paste_with_no_status_bar_to_read_ends_when_click_answers(tmp_path, se
         "disconnected": None,
     }
     log = (out / "run.log").read_text(encoding="utf-8")
-    assert "status bar: no way of reading it worked" in log
+    assert "status bar: cannot be read" in log
+    assert "the connection is unconfirmed: the status bar cannot be read" in log
     assert "(no status bar to check it with)" in log
+    assert result["plc"] is None
 
 
 def test_a_hung_click_is_dumped_without_a_message_and_ended(tmp_path, setup, monkeypatch):
@@ -1362,6 +1372,45 @@ def test_a_hung_click_is_dumped_without_a_message_and_ended(tmp_path, setup, mon
     assert "Disconnect" not in fake.commands
 
 
+def test_a_status_bar_out_of_reach_leaves_the_connection_unconfirmed(tmp_path, setup):
+    """Win32Desktop.status_bar refuses a buffer a 32-bit CLICK cannot reach: logged once."""
+    csv, exe = setup
+    fake = FakeClick(tmp_path)
+
+    def out_of_reach(hwnd: int) -> list[str] | None:
+        raise OSError("the buffer for SB_GETTEXT lies at 0x100000000")
+
+    fake.status_bar = out_of_reach
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert code == cr.EXIT_OK, result["reason"]
+    log = (out / "run.log").read_text(encoding="utf-8")
+    assert log.count("status bar: the buffer for SB_GETTEXT lies at 0x100000000") == 1
+    assert "the connection is unconfirmed" in log and result["plc"] is None
+
+
+def test_a_stale_scr_file_aborts(tmp_path, setup):
+    """CLICK's temp folder is never deleted, so a CLICK with an older one's hwnd finds its
+    Scr*.tmp: one the save does not rewrite would be decoded with the project."""
+    csv, exe = setup
+    fake = FakeClick(tmp_path, leftover=("Scr2.tmp",))
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert_aborted(fake, out, code, result, "Scr2.tmp in CLICK's temp folder predates the paste")
+    assert result["step"] == "save" and result["scr_before_paste"] == ["Scr2.tmp"]
+    assert not (out / "click").exists()
+
+
+def test_a_scr_file_the_save_rewrites_is_noted(tmp_path, setup):
+    csv, exe = setup
+    fake = FakeClick(tmp_path, leftover=("Scr1.tmp",))
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["scr_before_paste"] == ["Scr1.tmp"]
+    assert (out / "click" / "Scr1.tmp").read_bytes() == fake.pasted
+
+
 def test_a_long_wait_logs_the_status_bar(tmp_path, setup, monkeypatch):
     csv, exe = setup
     monkeypatch.setattr(cr, "STATUS_EVERY", 0.05)
@@ -1370,7 +1419,8 @@ def test_a_long_wait_logs_the_status_bar(tmp_path, setup, monkeypatch):
     code, result = run(fake, out, csv, exe, timeout=5, paste_timeout=0.4)
     assert_aborted(fake, out, code, result, "timed out after 0.4 s waiting for the Syntax Check")
     log = (out / "run.log").read_text(encoding="utf-8")
-    assert log.count("status bar (Afx:StatusBar:2e0000:8:10003:10, MSAA): RUN | 0003/8000") >= 3
+    assert log.count("status bar:  | Bit | Integer | Integer(2 words) |") >= 3
+    assert "| 0003/8000 | C2-03CPU | 2:1:A | RUN | 192.168.1.241(Conformance) |" in log
 
 
 @pytest.mark.parametrize(

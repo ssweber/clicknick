@@ -10,15 +10,17 @@ then pastes CSV into the main program, runs Syntax Check, saves the project as
 disconnects, closes CLICK and decodes ``DIR/click/`` into ``DIR/csv/``. ``record`` connects
 the same way and dumps every window of CLICK (JSON and PNG) at each step into
 ``DIR/record/``, then disconnects and ends CLICK (the project was never saved, so it is
-terminated rather than closed); ``paste --record`` dumps the same way.
+terminated rather than closed); ``paste --record`` dumps the same way. A PNG is the
+screen where the window is, so whatever lies over CLICK there is in it.
 
 ``DIR`` must not exist or be empty. The run ends with ``DIR/result.json``, however it ends,
 and prints it on stdout (nothing else goes there); each step is logged to ``DIR/run.log``
 and stderr. Exit code 0 when the status is ``ok``, 1 when ``aborted``, 2 when ``refused``
 (nothing was started). result.json holds the status, the step reached and the reason, the
 Syntax Check's text with its error and warning counts, the rungs pasted and saved
-(``same`` when the saved main program starts with the CSV's rungs), each status bar
-reading and how it was read, the files written, and how long each step took.
+(``same`` when the saved main program starts with the CSV's rungs), the PLC the status
+bar named once connected (``plc``), the status bar's panes at each step, the files
+written, and how long each step took.
 
 Rules (scratchpad/roadmap.md, item 4):
 
@@ -29,7 +31,11 @@ Rules (scratchpad/roadmap.md, item 4):
 - It never writes to the PLC: every WM_COMMAND goes through ``Desktop.command`` and its
   allowlist (click_desktop.py).
 - It connects only when the Connect dialog scans the same LAN and its PLC list has read
-  one PLC, selected, for ``PLC_SETTLE`` seconds; two or more stop the run.
+  one PLC for ``PLC_SETTLE`` seconds; two or more stop the run. Once connected, the status
+  bar must name a PLC (``plc`` in result.json; ``--plc NAME`` requires that one), when it
+  can be read.
+- A Scr*.tmp in CLICK's temp folder before the paste (``scr_before_paste``) that the save
+  does not rewrite stops the run: it would be decoded with the project.
 - Each step waits for a condition. Waiting for a dialog gives up after ``--timeout``
   seconds (default 60). CLICK freezes while it pastes, so the paste, Syntax Check, save
   and close may take up to ``--paste-timeout`` (default 300). The paste is done when
@@ -90,7 +96,7 @@ RESPONSIVE_POLLS = 3
 STATUS_EVERY = 10.0
 STATUS_BAR_ID = 59393  # AFX_IDW_STATUS_BAR
 # The Connect dialog's PLC list is taken once it reads the same for this many seconds:
-# the LAN scan adds rows one at a time, and selects one a moment after it is listed
+# the LAN scan adds its rows one at a time
 PLC_SETTLE = 2.0
 
 EXIT_OK = 0
@@ -101,6 +107,8 @@ _MAIN_TITLE = re.compile(r"^CLICK Programming Software \(Version4\.\d+\) - ")
 _NOT_RESPONDING = " (Not Responding)"
 _CURSOR = re.compile(r"\b(\d+):(\d+):([A-Z]+)\b")
 _STEPS = re.compile(r"\b(\d+)/(\d+)\b")
+# The status bar's pane naming the PLC connected to, "192.168.1.241(Conformance)"
+_PLC_PANE = re.compile(r"^\d+\.\d+\.\d+\.\d+\(.+\)$")
 # Windows that may come and go over CLICK's at any step (a toolbar's tip)
 TOOLTIP_CLASS = "tooltips_class32"
 
@@ -203,10 +211,13 @@ def _require(control: Control | None, what: str) -> Control:
 
 @dataclass(frozen=True)
 class StatusBar:
-    """What the main window's status bar read, and how."""
+    """The panes of the main window's status bar.
 
-    control: str  # The bar's class
-    method: str  # SB_GETTEXT, WM_GETTEXT or MSAA (Desktop.status_bar)
+    Live run 2 (2026-11-15) read, offline: "", "Bit", "Integer", "Integer(2 words)",
+    "Floating point", "Hex", "Text", "Ascii", "-----", "0000/8000" (program steps),
+    "No select CPU", "1:1:A" (cursor), five empty panes, "NUM", "".
+    """
+
     panes: tuple[str, ...]
 
     @property
@@ -220,6 +231,17 @@ class StatusBar:
         """The program steps used ("0004/8000" is 4)."""
         match = _STEPS.search("  ".join(self.panes))
         return int(match.group(1)) if match else None
+
+    @property
+    def plc(self) -> str | None:
+        """The pane naming the PLC connected to ("192.168.1.241(Conformance)"), if any."""
+        return next((p.strip() for p in self.panes if _PLC_PANE.match(p.strip())), None)
+
+    @property
+    def plc_name(self) -> str | None:
+        """The PLC's name in the ``plc`` pane ("Conformance")."""
+        plc = self.plc
+        return plc[plc.index("(") + 1 : -1] if plc else None
 
     def shows_paste(self, before: StatusBar, rungs: int) -> bool:
         """Whether this reading, against *before* the paste, shows *rungs* rungs pasted.
@@ -253,6 +275,7 @@ class Settings:
     user_type: str = DEFAULT_USER_TYPE
     timeout: float = DEFAULT_TIMEOUT
     paste_timeout: float = DEFAULT_PASTE_TIMEOUT
+    plc: str | None = None  # The PLC's name the status bar must show once connected
     poll: float = POLL_INTERVAL
     record: bool = False
 
@@ -296,6 +319,9 @@ class Run:
         # Windows open before the main frame, and those of them still open
         self._tolerated: set[int] = set()
         self._tooltips: set[int] = set()
+        self._status_errors: set[str] = set()
+        # CLICK's Scr*.tmp files before the paste (a new project has none)
+        self._scr_before: tuple[tuple[str, int, int], ...] = ()
         self.starting: list[Window] = []
         self.result: dict[str, Any] = {
             "command": settings.command,
@@ -309,6 +335,7 @@ class Run:
             "timings": {},
             "syntax_check": None,
             "rungs": None,
+            "plc": None,
             "status_bar": {},
             "files": {},
             "click": {"exe": settings.exe, "pid": None, "main_hwnd": None, "closed": None},
@@ -334,7 +361,8 @@ class Run:
     def dump(self, folder: Path, label: str) -> None:
         """Write every window of CLICK as JSON (with its controls) and PNG into *folder*.
 
-        The files are listed in the result under the folder's name.
+        The PNG is the screen where the window is, windows over it included. The files
+        are listed in the result under the folder's name.
         """
         assert self.pid is not None
         folder.mkdir(parents=True, exist_ok=True)
@@ -471,34 +499,36 @@ class Run:
         self.log(f"command {name} ({command_id})")
 
     def read_status_bar(self) -> StatusBar | None:
-        """The main window's status bar, read the first way that works; None if none does.
+        """The main window's status bar, by SB_GETTEXT; None if it cannot be read.
 
-        CLICK's main window has two children with the status bar's id: the MFC bar it
-        shows (``Afx:StatusBar...``) and a common control of no size. The shown one is
-        tried first. Call it only while CLICK answers: reading sends it messages.
+        CLICK's main window has two children with the status bar's id: an MFC bar
+        (``Afx:StatusBar...``) and a common control. Live run 2 (2026-11-15) read the
+        common control by SB_GETTEXT; the MFC bar is sent nothing. Call it only while
+        CLICK answers: reading sends it messages.
         """
         assert self.main is not None
-        bars = [
-            c
-            for c in self.desktop.controls(self.main)
-            if c.parent == self.main and c.id == STATUS_BAR_ID
-        ]
-        bars.sort(key=lambda c: not c.cls.startswith("Afx:StatusBar"))
-        for bar in bars:
-            read = self.desktop.status_bar(bar.hwnd)
-            if read is not None:
-                return StatusBar(bar.cls, read[0], tuple(read[1]))
+        for bar in self.desktop.controls(self.main):
+            if (bar.parent, bar.id, bar.cls) != (self.main, STATUS_BAR_ID, "msctls_statusbar32"):
+                continue
+            try:
+                panes = self.desktop.status_bar(bar.hwnd)
+            except OSError as exc:
+                if str(exc) not in self._status_errors:
+                    self._status_errors.add(str(exc))
+                    self.log(f"status bar: {exc}")
+                return None
+            return None if panes is None else StatusBar(tuple(panes))
         return None
 
     def status_bar(self, label: str | None) -> StatusBar | None:
         """Read and log the status bar, and keep it in the result under *label* if given."""
         status = self.read_status_bar()
         if status is None:
-            self.log("status bar: no way of reading it worked")
+            self.log("status bar: cannot be read")
         else:
-            self.log(f"status bar ({status.control}, {status.method}): {' | '.join(status.panes)}")
+            self.log(f"status bar: {' | '.join(status.panes)}")
         if label is not None:
-            self.result["status_bar"][label] = None if status is None else asdict(status)
+            self.result["status_bar"][label] = None if status is None else list(status.panes)
         return status
 
     # -- the steps ------------------------------------------------------------
@@ -593,36 +623,37 @@ class Run:
                 ),
                 "the PLC list",
             )
-            last: list[tuple[int, int] | None] = [None]
+            last: list[int | None] = [None]
             since = [time.monotonic()]
 
-            def lists(counts: tuple[int, int] | None) -> str:
-                if counts is None:
+            def lists(items: int | None) -> str:
+                if items is None:
                     return "the Connect dialog's PLC list does not answer"
-                return f"the Connect dialog lists {counts[0]} PLC(s), {counts[1]} selected"
+                return f"the Connect dialog lists {items} PLC(s)"
 
-            def listed(_: dict[str, Window]) -> tuple[int, int] | None:
-                # Take the list once it has read the same for PLC_SETTLE seconds: one row,
-                # selected, with Connect enabled. Two rows or more stop the run.
-                counts = self.desktop.list_view_counts(plc_list.hwnd)
-                if counts != last[0]:
-                    last[0], since[0] = counts, time.monotonic()
-                    return None
-                if counts is None or time.monotonic() - since[0] < PLC_SETTLE:
-                    return None
-                if counts[0] >= 2:
-                    raise Aborted(f"{lists(counts)}; expected exactly 1")
+            def listed(_: dict[str, Window]) -> bool:
+                # One row, unchanged for PLC_SETTLE seconds, with Connect enabled; two or
+                # more stop the run. The list is owner-drawn: CLICK paints its own highlight
+                # and connects to its current row, and the list reports no selection (live
+                # run 2), so the runner selects nothing.
+                items = self.desktop.list_view_items(plc_list.hwnd)
+                if items != last[0]:
+                    last[0], since[0] = items, time.monotonic()
+                    return False
+                if items is None or time.monotonic() - since[0] < PLC_SETTLE:
+                    return False
+                if items >= 2:
+                    raise Aborted(f"{lists(items)}; expected exactly 1")
                 button = _child(self.controls(connect), cls="Button", id=1, text="Connect")
-                ready = counts == (1, 1) and button is not None and button.enabled
-                return counts if ready else None
+                return items == 1 and button is not None and button.enabled
 
             self.wait(
-                "one PLC in the list, selected",
+                "one PLC in the list",
                 [STARTUP, CONNECT],
                 listed,
                 on_timeout=lambda: lists(last[0]),
             )
-            self.log(f"PLC list: 1 row, selected, for {PLC_SETTLE:g} s")
+            self.log(f"PLC list: 1 row for {PLC_SETTLE:g} s")
             self.record("connect_dialog")
             controls = self.controls(connect)
             same_lan = _require(
@@ -640,11 +671,9 @@ class Run:
             button = _require(
                 _child(controls, cls="Button", id=1, text="Connect"), "the Connect button"
             )
-            counts = self.desktop.list_view_counts(plc_list.hwnd)
-            if counts != (1, 1):
-                raise Aborted(
-                    f"{lists(counts)} as Connect is about to be pressed; expected 1, selected"
-                )
+            items = self.desktop.list_view_items(plc_list.hwnd)
+            if items != 1:
+                raise Aborted(f"{lists(items)} as Connect is about to be pressed; expected 1")
             self.press(connect, button)
             found = self.wait(
                 "Login or the read-project question",
@@ -682,8 +711,45 @@ class Run:
             self.press(prompt, ok)
             self.connected = True
             self.wait("the main window, connected", [STARTUP, CONNECT, READ_PROMPT], self.only_main)
-            self.status_bar("connected")
+            self.confirm_connected()
             self.record("connected")
+
+    def confirm_connected(self) -> None:
+        """Wait for the status bar to name the PLC (the one ``--plc`` names, if given).
+
+        A bar that reads but names no PLC stops the run once the wait times out; a bar
+        that cannot be read leaves the connection unconfirmed, and the run goes on.
+        """
+        last: list[StatusBar | None] = [None]
+
+        def named(found: dict[str, Window]) -> StatusBar | str | None:
+            if not self.only_main(found):
+                return None
+            status = self.read_status_bar()
+            if status is None:
+                return "unreadable"
+            last[0] = status
+            if status.plc and self.s.plc is not None and status.plc_name != self.s.plc:
+                raise Aborted(f"connected to {status.plc}, not to the PLC named {self.s.plc!r}")
+            return status if status.plc else None
+
+        def shows() -> str:
+            panes = " | ".join(last[0].panes) if last[0] is not None else "nothing read"
+            return f"the status bar names no PLC ({panes})"
+
+        status = self.wait(
+            "the status bar to name the PLC connected to",
+            [STARTUP, CONNECT, READ_PROMPT],
+            named,
+            on_timeout=shows,
+        )
+        if isinstance(status, str):
+            self.status_bar("connected")
+            self.log("the connection is unconfirmed: the status bar cannot be read")
+            return
+        self.result["status_bar"]["connected"] = list(status.panes)
+        self.result["plc"] = status.plc
+        self.log(f"connected to {status.plc} (status bar: {' | '.join(status.panes)})")
 
     def login(self, login: Window) -> None:
         self.record("login")
@@ -733,6 +799,11 @@ class Run:
                 f"{prepared.addresses_inserted} address(es) added to SC_.mdb"
             )
             self.result["rungs"] = {"pasted": prepared.rung_count, "saved_main": None, "same": None}
+            self._scr_before = _scr_state(mdb.parent)
+            if self._scr_before:
+                names = [name for name, _, _ in self._scr_before]
+                self.result["scr_before_paste"] = names
+                self.log(f"CLICK's temp folder holds {', '.join(names)} before the first save")
             before = self.status_bar("before_paste")
             self.desktop.set_clipboard(prepared.payload, self.main)
             self.command(PASTE)
@@ -847,6 +918,7 @@ class Run:
         ckp = (self.s.out / f"{self.s.csv.stem}.ckp").resolve()
         temp = self.desktop.temp_dir(self.main)
         with self.step("save"):
+            unsaved = _scr_state(temp)
             self.command(SAVE_PROJECT_AS)
             dialog = self.wait("Save As", [SAVE_AS], lambda f: f.get(SAVE_AS.name))
             self.record("save_as")
@@ -868,18 +940,24 @@ class Run:
 
             def saved(found: dict[str, Window]) -> bool:
                 # Saved once the title names the file, it exists, and CLICK's Scr*.tmp
-                # files are the same on two polls in a row
+                # files differ from before Save As and are the same on two polls in a row
                 main = found.get(MAIN)
                 if main is None or _project_file(main.title) != ckp.name or not ckp.is_file():
                     return False
                 if not self.only_main(found):
                     return False
                 state = _scr_state(temp)
-                done = bool(state) and state == last[0]
+                done = bool(state) and state != unsaved and state == last[0]
                 last[0] = state
                 return done
 
             self.wait(f"the save to {ckp.name}", [SAVE_AS], saved, timeout=self.s.paste_timeout)
+            stale = sorted(set(self._scr_before) & set(_scr_state(temp)))
+            if stale:
+                raise Aborted(
+                    f"{', '.join(name for name, _, _ in stale)} in CLICK's temp folder "
+                    "predates the paste and the save left it as it was (from another run?)"
+                )
             self.log(f"saved {ckp}")
             self.result["files"]["ckp"] = ckp
             self.record("saved")
@@ -932,6 +1010,7 @@ class Run:
             )
             self.result["click"]["closed"] = True
             self.log("CLICK exited")
+            self.note_temp()
 
     def decode_saved(self) -> None:
         with self.step("decode"):
@@ -1014,8 +1093,13 @@ class Run:
         gone = not self.desktop.alive(self.pid)
         self.result["click"]["closed"] = gone
         self.log("CLICK is gone" if gone else "CLICK is STILL RUNNING")
-        if gone and self.main is not None:
-            # CLICK looks after its own temp folder: the runner never deletes one
+        if gone:
+            self.note_temp()
+
+    def note_temp(self) -> None:
+        """Log whether CLICK's temp folder is there; CLICK looks after it, the runner never
+        deletes one."""
+        if self.main is not None:
             temp = self.desktop.temp_dir(self.main)
             self.log(f"{temp} {'is still there' if temp.exists() else 'is gone'}")
 
@@ -1100,10 +1184,13 @@ class Run:
             self.log(f"the cleanup was cut short: {exc!r}")
 
     def end_click_surely(self) -> None:
-        """``end_click``, tried again if it is cut short; what still fails is logged.
+        """``end_click`` unless CLICK is already known gone; tried again if it is cut short.
 
-        The job CLICK runs in (``Desktop.launch``) ends it when the runner's process ends.
+        What still fails is logged. The job CLICK runs in (``Desktop.launch``) ends it when
+        the runner's process ends.
         """
+        if self.result["click"]["closed"] is True:
+            return
         for _ in range(2):
             try:
                 self.end_click()
@@ -1191,6 +1278,12 @@ def _parser() -> argparse.ArgumentParser:
         help="the most seconds CLICK may stay busy pasting, checking, saving or closing "
         f"(default {DEFAULT_PASTE_TIMEOUT:g})",
     )
+    common.add_argument(
+        "--plc",
+        default=None,
+        metavar="NAME",
+        help="the name of the PLC the status bar must show once connected (default: any)",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     paste = commands.add_parser(
         "paste", parents=[common], help="paste one ladder CSV into the main program and save"
@@ -1215,6 +1308,7 @@ def settings_from(argv: list[str] | None, environ: dict[str, str] | None = None)
         user_type=args.user_type or env.get("CLICK_RUNNER_USER_TYPE") or DEFAULT_USER_TYPE,
         timeout=args.timeout,
         paste_timeout=args.paste_timeout,
+        plc=args.plc,
         poll=POLL_INTERVAL,
         record=getattr(args, "record", False),
     )
