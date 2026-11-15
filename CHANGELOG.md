@@ -8,6 +8,12 @@
      Review and condense before release — entries accumulate during development and
      should be edited into shape before moving from Unreleased to a version heading. -->
 
+## v0.24.1 - 2026-11-15
+
+### Fixed
+
+- The Simulator's link dialog opens again on Python 3.11 and 3.12, where it failed with a TypeError.
+
 ## v0.24.0 - 2026-11-14
 
 ### Added
