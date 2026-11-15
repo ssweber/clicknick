@@ -3,13 +3,12 @@
 
 name: CI
 
+# Pull requests only: a PR must be up to date to merge, so the merged tree is the
+# one its PR tested, and a run after the merge would repeat it.
 on:
-  push:
-    # Use ["main", "master"] for CI only on the default branch.
-    # Use ["**"] for CI on all branches.
-    branches: ["main", "master"]
   pull_request:
-    branches: ["main", "master"]
+    branches: ["main"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -64,3 +63,13 @@ jobs:
 
       - name: Run tests
         run: uv run pytest --quiet --tb=short
+
+  # The one required check (same name in every repo): passes only when every test
+  # job passed. always() matters: a skipped required check counts as passing.
+  # A new test job goes into `needs` and into the test.
+  ci:
+    if: always()
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.build.result }}" = "success"
