@@ -21,37 +21,16 @@ bash_wrap = ['\bpytest\b', '\bmake\b(?!\s+docs-serve\b)']
 powershell_refuse = ['\bpytest\b']
 default_timeout = 600
 
-# bob-reviewer: every shell segment must match reviewer_allow; redirects only to /dev/null or
-# the write roots; no heredocs, no $(...), no PowerShell; Write/Edit only under the write roots.
+# bob-reviewer and bob-investigator are read-only: the hook refuses the builder's and the
+# orchestrator's jobs (writing the work, committing, pushing, changing the environment), and
+# code outside the bounded runner (the plugin's README: The hook). Their redirects, Write/Edit
+# calls and rm/mv/cp/mkdir/touch/tee reach only these roots (and /dev/null, /dev/stdout,
+# /dev/stderr).
 reviewer_write_roots = ["$TEMP", "$TMP", "/tmp"]
-# `[uv run] python <script>.py`: allowed only when the script is under a write root, and only
-# bounded: `python -I <plugin>/scripts/run.py --timeout N [--name X] [--cwd D] -- <command>`.
-reviewer_script = '^(timeout\s+\S+\s+)?(uv\s+run\s+(--\S+\s+)*)?python[0-9.]*(\s+-\S+)*\s+(?P<script>\S+\.py)\b'
+# The reviewer runs a probe script under a write root only as `python -I
+# <plugin>/scripts/run.py --timeout N [--name X] [--cwd D] -- [uv run --no-sync] python
+# <script>.py`, with N up to this.
 reviewer_max_timeout = 1800
-# Allowed for the reviewer only inside that bounded run (e.g. `^node\s+--test\b`).
-reviewer_bounded = []
-# bob-investigator: the reviewer's rules, no scripts, no bounded runs, and none of these.
-readonly_refuse = [
-    '^(timeout\s+\S+\s+)?(uv\s+run\s+(--\S+\s+)*)?(python[0-9.]*\s+(-I\s+)?-m\s+)?(pytest|unittest)\b',
-    '^make\b',
-]
-reviewer_allow = [
-    '^cd(\s|$)',
-    '^git\s+(-C\s+\S+\s+)?(diff|log|show|status|blame|grep|rev-parse|rev-list|merge-base|ls-files|ls-tree|cat-file|describe|shortlog|range-diff|for-each-ref|name-rev|whatchanged)\b',
-    '^git\s+(-C\s+\S+\s+)?branch(\s+(-a|-r|-v|-vv|--list|--contains|--merged|--no-merged|--show-current)\b.*)?$',
-    '^git\s+(-C\s+\S+\s+)?worktree\s+list\b',
-    '^(rg|grep|egrep|ls|cat|head|tail|wc|sort|uniq|cut|tr|diff|cmp|pwd|echo|printf|which|file|stat|du|tree|basename|dirname|realpath|true|false|test|\[|date|env|nl|column|jq|xxd|od)(\s|$)',
-    '^sed\s+-n(\s|$)',
-    '^awk\s+[^>]*$',
-    '^find\s(?!.*\s-(delete|exec|execdir|ok|okdir|fprint|fprintf|fls)\b)',
-    '^(timeout\s+\S+\s+)?(uv\s+run\s+(--\S+\s+)*)?(python[0-9.]*\s+(-I\s+)?-m\s+)?pytest\b',
-    '^(timeout\s+\S+\s+)?(uv\s+run\s+(--\S+\s+)*)?python[0-9.]*\s+--version\b',
-    # ruff and ty, read-only forms: no fixing, no in-place format, no --config (it can set
-    # `fix = true`), no output file.
-    '^(uv\s+run\s+(--\S+\s+)*)?ruff\s+check\b(?!.*(\s--(fix|unsafe-fixes|fix-only|add-noqa|watch|config|output-file)\b|\s-[wo]\b))',
-    '^(uv\s+run\s+(--\S+\s+)*)?ruff\s+format\b(?=.*\s--(check|diff)\b)(?!.*\s--config\b)',
-    '^(uv\s+run\s+(--\S+\s+)*)?ty\s+check\b',
-]
 # With a [queue] section (queue.toml): every non-light stage is heavy, plus these. Heavy
 # commands are refused for subagents; the main session runs them through `mergeq.py run
 # --heavy` or the queue. heavy_exempt takes a main-session command back out.
