@@ -151,6 +151,17 @@ def test_snapshot_wins_for_maintained_inputs_and_analog_values():
     assert adopted.forces == state.forces
 
 
+def test_an_analog_value_click_cannot_show_keeps_the_input_as_it_was():
+    state = SimulatorState(analog={"DF1": 4.0})
+    adopted = adopt_snapshot(
+        state,
+        {"DF1": float("nan"), "DF2": float("nan"), "DF3": 1.5},
+        inputs=[],
+        analog_inputs=["DF1", "DF2", "DF3"],
+    )
+    assert adopted.analog == {"DF1": 4.0, "DF3": 1.5}
+
+
 def test_malformed_links_are_skipped(tmp_path):
     path = tmp_path / "state.toml"
     path.write_text(

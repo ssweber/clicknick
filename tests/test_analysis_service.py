@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from pyclickplc.addresses import get_addr_key, iter_address_slots
+from pyclickplc.addresses import get_addr_key, iter_address_slots, parse_address
 from pyrung.click import SystemNicknameRepair, SystemNicknameRepairRequired
 
 from clicknick.models.address_row import AddressRow
@@ -52,11 +52,27 @@ class TestBuildTagAddrKeyMap:
         assert tag_to_key["X001"] == x1
         assert key_to_tag[x1] == "X001"
 
-    def test_whitespace_nickname_treated_as_empty(self):
-        x1 = get_addr_key("X", 1)
-        rows = {x1: AddressRow(memory_type="X", address=1, nickname="  ")}
-        tag_to_key, key_to_tag = _build_tag_addr_key_map(rows)
-        assert key_to_tag[x1] == "X001"
+    def test_names_match_the_tags_pyrung_reads_from_the_snapshot(self, tmp_path):
+        """pyrung reads the snapshot's nicknames.csv as written, spaces included."""
+        from pyrung.click.tag_map import TagMap
+
+        from clicknick.services.analysis_service import _write_nicknames_csv
+
+        rows = {
+            get_addr_key("C", 1): AddressRow(memory_type="C", address=1, nickname="Pump "),
+            get_addr_key("C", 2): AddressRow(memory_type="C", address=2, nickname=" Fan"),
+            get_addr_key("C", 3): AddressRow(memory_type="C", address=3, nickname="Motor"),
+        }
+        tag_map = TagMap.from_nickname_file(_write_nicknames_csv(tmp_path, rows))
+        pyrung_names = {
+            get_addr_key(*parse_address(entry.hardware.name)): entry.logical.name
+            for entry in tag_map.tags()
+        }
+
+        _tag_to_key, key_to_tag = _build_tag_addr_key_map(rows)
+
+        assert pyrung_names == {key: key_to_tag[key] for key in rows}
+        assert pyrung_names[get_addr_key("C", 1)] == "Pump "
 
     def test_covers_every_address_slot(self):
         tag_to_key, key_to_tag = _build_tag_addr_key_map({})

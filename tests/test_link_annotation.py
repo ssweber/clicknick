@@ -114,3 +114,10 @@ def test_the_workspace_snapshot_names_the_feedbacks_its_program_links(tmp_path):
 
     assert linked_feedbacks(tmp_path) == {"Start", "X003"}
     assert linked_feedbacks(tmp_path / "missing") == frozenset()
+
+
+def test_linked_feedbacks_name_a_tag_as_pyrung_reads_it_spaces_included(tmp_path):
+    rows = [AddressRow("X", 1, nickname="Start ", comment="[link=Cmd, timed=100ms] Start PB")]
+    CsvDataSource(str(tmp_path / "nicknames.csv")).save_changes(rows)
+
+    assert linked_feedbacks(tmp_path) == {"Start "}

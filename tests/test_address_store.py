@@ -1380,3 +1380,52 @@ class TestUndoBookkeeping:
         assert store.get_undo_description() == "Rename X1"
         store.undo()
         assert store.get_redo_description() == "Rename X1"
+
+
+class TestEdgeSpaces:
+    """A nickname or comment with a space at either end is an error, never trimmed.
+
+    CLICK strips the space, so ``Pump `` and ``Pump`` would be one nickname.
+    """
+
+    EDGE = "Cannot start or end with a space"
+
+    @pytest.mark.parametrize(
+        ("field", "value"), [("nickname", "Pump "), ("nickname", " Pump"), ("comment", "Note ")]
+    )
+    def test_an_edit_shows_the_error_and_sync_refuses_it(self, field, value):
+        c1 = get_addr_key("C", 1)
+        store, source = _live_store({})
+        with store.edit_session("Edit") as session:
+            session.set_field(c1, field, value)
+
+        row = store.visible_state[c1]
+        assert getattr(row, field) == value
+        assert getattr(row, f"{field}_error") == self.EDGE
+        assert row.has_reportable_error
+        with pytest.raises(RuntimeError, match="validation errors"):
+            store.save_all_changes()
+        assert source.saved == []
+
+    def test_a_loaded_user_nickname_is_an_error_like_any_other(self):
+        ds1 = get_addr_key("DS", 1)
+        store, _source = _live_store(
+            {ds1: AddressRow(memory_type="DS", address=1, nickname="Speed ", comment=" Setpoint")}
+        )
+
+        row = store.visible_state[ds1]
+        assert not row.loaded_with_error
+        assert (row.nickname, row.nickname_error) == ("Speed ", self.EDGE)
+        assert (row.comment, row.comment_error) == (" Setpoint", self.EDGE)
+        assert row.has_reportable_error
+
+    def test_a_loaded_system_nickname_is_exempt_as_click_wrote_it(self):
+        sc1 = get_addr_key("SC", 1)
+        store, _source = _live_store(
+            {sc1: AddressRow(memory_type="SC", address=1, nickname="_Always_ON ")}
+        )
+
+        row = store.visible_state[sc1]
+        assert row.loaded_with_error
+        assert not row.has_reportable_error
+        assert not store.has_errors()

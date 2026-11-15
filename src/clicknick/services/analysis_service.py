@@ -149,7 +149,7 @@ def _build_tag_addr_key_map(
     for memory_type, address in iter_address_slots():
         addr_key = get_addr_key(memory_type, address)
         row = nickname_rows.get(addr_key)
-        tag = (row.nickname.strip() if row is not None else "") or format_address_display(
+        tag = (row.nickname if row is not None else "") or format_address_display(
             memory_type, address
         )
         tag_to_key[tag] = addr_key

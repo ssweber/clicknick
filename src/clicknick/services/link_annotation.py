@@ -117,7 +117,7 @@ def linked_feedbacks(csv_dir: Path) -> frozenset[str]:
     except (OSError, ValueError):
         return frozenset()
     return frozenset(
-        row.nickname.strip() or row.display_address
+        row.nickname or row.display_address
         for row in rows.values()
         if declares_link(row.comment)
     )

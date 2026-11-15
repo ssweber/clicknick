@@ -165,3 +165,21 @@ def test_a_file_without_a_retentive_column_leaves_retentive_alone() -> None:
     plan = plan_nicknames(rows, store.visible_state, fields={"nickname", "comment"})
 
     assert [(c.field, c.new) for c in plan.changes] == [("comment", "Green button")]
+
+
+def test_a_nickname_with_an_edge_space_is_staged_as_written_and_shown_as_an_error(
+    tmp_path: Path, store: AddressStore
+) -> None:
+    path = tmp_path / "nicknames.csv"
+    path.write_text(
+        'Address,Nickname,Address Comment\r\nX003,"Jog ","Hold "\r\n', encoding="utf-8"
+    )
+    plan = plan_nicknames(CsvDataSource(str(path)).load_all_addresses(), store.visible_state)
+
+    stage_nicknames(store, plan, "Stage nicknames")
+
+    row = store.visible_state[X3]
+    assert (row.nickname, row.comment) == ("Jog ", "Hold ")
+    assert row.nickname_error == row.comment_error == "Cannot start or end with a space"
+    with pytest.raises(RuntimeError, match="validation errors"):
+        store.save_all_changes()
