@@ -98,9 +98,9 @@ if the desktop cannot work.
 3. To paste a test: select the first rung number, send paste, wait until the rungs appear.
 4. Press "Syntax Check", then save the project. That gives the Scr*.tmp files, and from them the CSVs.
 
-**Unknowns:**
-- A locked screen: synthetic input and the clipboard do not reach a locked desktop. While the runner works,
-  the session must stay unlocked, or the runner has to detect the lock and refuse to start. Ask Sam which.
+**Known and unknown:**
+- The screen stays unlocked while Sam is away (Sam, 2026-11-15). The runner still checks, and refuses to start
+  on a locked desktop: synthetic input and the clipboard do not reach one.
 - The first save of `NewProject{n}` opens a Save As dialog that needs a path typed in.
 
 **Sandbox fallback:**
