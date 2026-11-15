@@ -216,5 +216,7 @@ each step. A paste whose rungs are not in the saved main program ends the run `a
 dumps every window of CLICK at each step, to see a dialog the runner does not know yet. It
 refuses to start while CLICK runs or the screen is locked, never writes to the PLC (an allowlist
 of commands, in `devtools/click_desktop.py`), never deletes CLICK's temp folder, and stops at any
-window it does not expect. The file's docstring has the options, the rules and the result's
-fields. `tests/test_click_runner.py` runs it against a fake CLICK; no test starts CLICK.
+window it does not expect. A CLICK error box stops it with the box's code in `click_error`
+("PTC-013" when the PLC did not answer), so the caller can decide whether to run it again. The
+file's docstring has the options, the rules and the result's fields. `tests/test_click_runner.py`
+runs it against a fake CLICK; no test starts CLICK.

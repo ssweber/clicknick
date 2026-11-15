@@ -131,6 +131,10 @@ class Desktop(ABC):
         """The visible top-level windows of *pid*."""
 
     @abstractmethod
+    def exists(self, hwnd: int) -> bool:
+        """Whether *hwnd* is still a window (IsWindow); it sends no message."""
+
+    @abstractmethod
     def controls(self, hwnd: int) -> list[Control]:
         """Every child window of *hwnd*, at any depth."""
 
@@ -567,6 +571,11 @@ class Win32Desktop(Desktop):
 
         win32gui.EnumWindows(callback, None)
         return found
+
+    def exists(self, hwnd: int) -> bool:
+        import win32gui
+
+        return bool(win32gui.IsWindow(hwnd))
 
     def controls(self, hwnd: int) -> list[Control]:
         import win32gui

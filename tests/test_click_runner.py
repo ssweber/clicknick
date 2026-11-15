@@ -74,7 +74,9 @@ class FakeClick(cd.Desktop):
     raises OSError. *late_row* lists a second PLC that many seconds after the first.
     *status_bar* is whether the status bar reads, *plc_pane* whether it names the PLC
     once connected. *leftover* names Scr*.tmp files already in the temp folder, as an
-    older CLICK with the same hwnd would leave them.
+    older CLICK with the same hwnd would leave them. *error_on* names an event after which
+    CLICK shows an error box (PTC-013, as live run 3 met it), owned by the Connect dialog
+    after "connect" (which then shows no Login) and by the main window otherwise.
     """
 
     def __init__(
@@ -93,6 +95,7 @@ class FakeClick(cd.Desktop):
         dont_read_takes: bool = True,
         splash: bool = False,
         surprise: str | None = None,
+        error_on: str | None = None,
         stall: str | None = None,
         interrupt: str | None = None,
         fail: str | None = None,
@@ -124,6 +127,9 @@ class FakeClick(cd.Desktop):
             "splash": splash,
         }
         self.surprise, self.stall = surprise, stall
+        self.error_on = error_on
+        self.error_answered = False
+        self.went_offline = False
         self.interrupt, self.fail = interrupt, fail
         self.lag = lag
         self.hang_on, self.hang_for = hang_on, hang_for
@@ -187,8 +193,23 @@ class FakeClick(cd.Desktop):
             if event == self.surprise:
                 assert self.main is not None
                 self._window("#32770", "Set a Project Password", self.main.hwnd)
+            if event == self.error_on:
+                self._show_error(event)
 
         self.queue.append((self.tick + self.lag, run))
+
+    def _show_error(self, event: str) -> None:
+        """CLICK's error box as live run 3 dumped it (live3/abort/04-abort-288099950.json)."""
+        assert self.main is not None
+        owner = self.connect_dialog if event == "connect" else self.main
+        box = self._window("#32770", "CLICK Programming Software", owner.hwnd)
+
+        def answered() -> None:
+            self.error_answered = True
+
+        self._control(box, "Button", "OK", 2, on_press=answered)
+        self._control(box, "Static", "", 20)
+        self._control(box, "Static", "PTC-013\nTimeout on attempting to connect to PLC.", 65535)
 
     def _check(self, method: str) -> None:
         if method == self.interrupt:
@@ -316,6 +337,8 @@ class FakeClick(cd.Desktop):
 
     def _after_connect(self) -> None:
         self.connect_dialog.enabled = False
+        if self.error_on == "connect":
+            return  # The PLC did not answer: CLICK shows its error box instead
         if self.options["login"]:
             self._show_login()
         else:
@@ -395,6 +418,7 @@ class FakeClick(cd.Desktop):
             self._drop(prompt)
             main.enabled = True
             self.connected = False
+            self.went_offline = True
 
         self._control(
             prompt, "Button", "&Yes", 6, on_press=lambda: self._later("disconnect_yes", yes)
@@ -407,6 +431,12 @@ class FakeClick(cd.Desktop):
             if not self.saved:
                 self._window("#32770", "CLICK Programming Software", self.main.hwnd)
                 return
+            # CLICK unloads the project first: its main window is titled bare (live run 4)
+            self.main.title = "CLICK Programming Software (Version4.00)"
+            self._later("exit", exit)
+
+        def exit() -> None:
+            assert self.main is not None
             self.wins.clear()
             self.is_running = False
             self.exited_cleanly = True
@@ -430,10 +460,10 @@ class FakeClick(cd.Desktop):
         if command_id == cd.PASTE:
 
             def paste() -> None:
-                # RUNG_CSV's one rung: the cursor moves down a rung, and it uses steps
+                # RUNG_CSV's one rung: the cursor moves down a rung; the steps stay as they
+                # were (live run 4)
                 self.pasted = self.clipboard
                 self.cursor_rung += 1
-                self.steps += 3
 
             self._later("paste", paste)
         elif command_id == cd.SYNTAX_CHECK:
@@ -514,6 +544,11 @@ class FakeClick(cd.Desktop):
                     return control
         raise AssertionError(f"no control {hwnd}")
 
+    def exists(self, hwnd: int) -> bool:
+        return hwnd in self.wins or any(
+            c.hwnd == hwnd for w in self.wins.values() for c in w.controls
+        )
+
     def controls(self, hwnd: int) -> list[cd.Control]:
         window = self.wins.get(hwnd)
         if window is None:
@@ -565,9 +600,9 @@ class FakeClick(cd.Desktop):
         assert control.cls == "msctls_statusbar32", f"SB_GETTEXT sent to {control.cls}"
         if not self.status_readable or not self._message("SB_GETTEXT"):
             return None
-        # As live run 2 read it offline. Where "RUN" and the PLC go once connected is a
-        # guess: the probe's screenshot showed them in this bar
-        connected = self.connected and self.options["plc_pane"]
+        # As live runs 2 (offline) and 4 (connected, then disconnected) read it
+        mode = "RUN" if self.connected else "Offline" if self.went_offline else "-----"
+        named = self.connected and self.options["plc_pane"]
         return [
             "",
             "Bit",
@@ -577,13 +612,13 @@ class FakeClick(cd.Desktop):
             "Hex",
             "Text",
             "Ascii",
-            "-----",
+            mode,
             f"{self.steps:04d}/8000",
             "C2-03CPU" if self.connected else "No select CPU",
             f"{self.cursor_rung}:1:A",
-            "RUN" if connected else "",
-            "192.168.1.241(Conformance)" if connected else "",
             "",
+            "",
+            "192.168.1.241(Conformance)" if named else "",
             "",
             "",
             "NUM",
@@ -607,6 +642,8 @@ class FakeClick(cd.Desktop):
         return not self.hung()  # SMTO_ABORTIFHUNG gives up at once on a hung window
 
     def screenshot(self, hwnd: int, path: Path) -> bool:
+        if not self.exists(hwnd):
+            raise OSError(1400, "GetWindowRect", "Invalid window handle.")
         if self.hung():
             self.sent_while_hung.append("screenshot")  # It would show Windows' ghost
         path.write_bytes(b"\x89PNG fake")
@@ -783,7 +820,7 @@ def test_a_paste_that_did_not_land_aborts(tmp_path, setup, monkeypatch, empty_ma
     )
     fake = FakeClick(tmp_path, stall="paste", status_bar=False)
     out = tmp_path / "out"
-    code, result = run(fake, out, csv, exe)
+    code, result = run(fake, out, csv, exe, timeout=0.3)
     assert code == cr.EXIT_ABORTED
     assert result["status"] == "aborted" and result["step"] == "decode"
     assert result["reason"].startswith("the paste did not land: the saved main program has")
@@ -1048,6 +1085,79 @@ def test_an_unexpected_dialog_after_saving_is_not_answered(tmp_path, setup):
     )
 
 
+@pytest.mark.parametrize(
+    ("event", "step"),
+    [
+        ("connect", "connect"),
+        ("paste", "paste"),
+        ("save", "save"),
+        ("disconnect", "disconnect"),
+        ("disconnect_yes", "disconnect"),
+    ],
+)
+def test_a_click_error_box_aborts_with_its_code(tmp_path, setup, event, step):
+    """Live run 3: PTC-013 during connect. Nothing is pressed in it and nothing is retried."""
+    csv, exe = setup
+    fake = FakeClick(tmp_path, error_on=event)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert_aborted(
+        fake, out, code, result, "CLICK error PTC-013: Timeout on attempting to connect to PLC."
+    )
+    assert result["reason"] == "CLICK error PTC-013: Timeout on attempting to connect to PLC."
+    assert result["click_error"] == "PTC-013" and result["step"] == step
+    assert not fake.error_answered
+    assert fake.commands.count("Disconnect") <= 1  # Only the step's own
+    if event == "connect":
+        assert "login" not in fake.events and result["plc"] is None
+
+
+def test_click_error_reads_only_a_code_then_a_message():
+    window = cd.Window(1, "#32770", "CLICK Programming Software", 2, True, (0, 0, 1, 1))
+
+    def static(text: str) -> cd.Control:
+        return cd.Control(3, 1, "Static", text, 65535, True, True, (0, 0, 1, 1))
+
+    error = cr.click_error(window, [static("PTC-013\r\nTimeout on\nattempting it.")])
+    assert error == ("PTC-013", "Timeout on attempting it.")
+    assert cr.click_error(window, [static("Disconnect from PLC?")]) is None
+    assert cr.click_error(window, [static("PTC-013")]) is None
+    other = cd.Window(1, "TfrmStartup", "Startup", 2, True, (0, 0, 1, 1))
+    assert cr.click_error(other, [static("PTC-013\nTimeout")]) is None
+
+
+def test_a_window_that_closes_while_dumped_is_left_out_quietly(tmp_path, setup):
+    """As the main window did while CLICK closed in live run 4: its screenshot found no
+    window; that is no error worth a line."""
+    csv, exe = setup
+    fake = FakeClick(tmp_path, surprise="save")
+    original = fake.idle
+
+    def idle(hwnd: int, timeout: float) -> bool:
+        window = fake.wins.get(hwnd)
+        if window is not None and window.title == "Set a Project Password":
+            fake._drop(window)  # It closes between the listing and its screenshot
+        return original(hwnd, timeout)
+
+    fake.idle = idle
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert_aborted(fake, out, code, result, "'Set a Project Password'")
+    assert "no screenshot" not in (out / "run.log").read_text(encoding="utf-8")
+
+
+def test_closing_click_retitles_its_main_window_first(tmp_path, setup):
+    """Live run 4: after WM_CLOSE the main window is titled "CLICK Programming Software
+    (Version4.00)" until it goes; the close waits that out and the decode runs."""
+    csv, exe = setup
+    fake = FakeClick(tmp_path)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.events[-2:] == ["close", "exit"] and fake.exited_cleanly
+    assert "decode" in result["timings"]
+
+
 def test_a_timeout_aborts_and_disconnects(tmp_path, setup):
     csv, exe = setup
     fake = FakeClick(tmp_path, stall="syntax_check")
@@ -1154,6 +1264,42 @@ def test_plc_names_the_plc_to_connect_to(tmp_path, setup, plc, ok):
             result,
             "connected to 192.168.1.241(Conformance), not to the PLC named 'Other'",
         )
+
+
+def test_plc_with_a_status_bar_that_cannot_be_read_aborts(tmp_path, setup):
+    """--plc asks for a check the status bar cannot give: the run stops."""
+    csv, exe = setup
+    fake = FakeClick(tmp_path, status_bar=False)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe, "--plc", "Conformance", timeout=0.3)
+    assert_aborted(
+        fake,
+        out,
+        code,
+        result,
+        "the status bar cannot be read to confirm the PLC named 'Conformance'; timed out",
+    )
+    assert result["step"] == "dont_read" and result["plc"] is None
+
+
+def test_a_status_bar_unreadable_at_first_confirms_once_it_reads(tmp_path, setup):
+    """The bar is read over the whole wait, not judged on its first reading."""
+    csv, exe = setup
+    fake = FakeClick(tmp_path)
+    original, misses = fake.status_bar, [5]
+
+    def slow(hwnd: int) -> list[str] | None:
+        if fake.connected and misses[0]:
+            misses[0] -= 1
+            return None
+        return original(hwnd)
+
+    fake.status_bar = slow
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe, "--plc", "Conformance")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert misses == [0] and result["plc"] == "192.168.1.241(Conformance)"
+    assert "unconfirmed" not in (out / "run.log").read_text(encoding="utf-8")
 
 
 def test_a_missing_startup_button_aborts(tmp_path, setup):
@@ -1315,7 +1461,7 @@ def test_a_slow_paste_is_waited_out_without_a_message(tmp_path, setup):
     assert "paste done: CLICK answers on 3 polls in a row, and its status bar shows rung 2" in log
     before, after = result["status_bar"]["before_paste"], result["status_bar"]["pasted"]
     assert "1:1:A" in before and "2:1:A" in after
-    assert "0000/8000" in before and "0003/8000" in after
+    assert "0000/8000" in before and "0000/8000" in after
 
 
 def test_a_paste_the_status_bar_does_not_show_aborts(tmp_path, setup):
@@ -1335,8 +1481,9 @@ def test_a_paste_with_no_status_bar_to_read_ends_when_click_answers(tmp_path, se
     csv, exe = setup
     fake = FakeClick(tmp_path, status_bar=False)
     out = tmp_path / "out"
-    code, result = run(fake, out, csv, exe)
+    code, result = run(fake, out, csv, exe, timeout=0.3)
     assert code == cr.EXIT_OK, result["reason"]
+    assert result["timings"]["dont_read"] >= 0.3  # Read until the wait timed out
     assert result["status_bar"] == {
         "connected": None,
         "before_paste": None,
@@ -1382,7 +1529,7 @@ def test_a_status_bar_out_of_reach_leaves_the_connection_unconfirmed(tmp_path, s
 
     fake.status_bar = out_of_reach
     out = tmp_path / "out"
-    code, result = run(fake, out, csv, exe)
+    code, result = run(fake, out, csv, exe, timeout=0.3)
     assert code == cr.EXIT_OK, result["reason"]
     log = (out / "run.log").read_text(encoding="utf-8")
     assert log.count("status bar: the buffer for SB_GETTEXT lies at 0x100000000") == 1
@@ -1420,7 +1567,17 @@ def test_a_long_wait_logs_the_status_bar(tmp_path, setup, monkeypatch):
     assert_aborted(fake, out, code, result, "timed out after 0.4 s waiting for the Syntax Check")
     log = (out / "run.log").read_text(encoding="utf-8")
     assert log.count("status bar:  | Bit | Integer | Integer(2 words) |") >= 3
-    assert "| 0003/8000 | C2-03CPU | 2:1:A | RUN | 192.168.1.241(Conformance) |" in log
+    assert "| RUN | 0000/8000 | C2-03CPU | 2:1:A |  |  | 192.168.1.241(Conformance) |" in log
+
+
+def test_a_paste_shows_by_the_cursor_or_the_steps():
+    def bar(rung: int, steps: int) -> cr.StatusBar:
+        return cr.StatusBar(("RUN", f"{steps:04d}/8000", "C2-03CPU", f"{rung}:1:A"))
+
+    assert bar(2, 0).shows_paste(bar(1, 0), 1)  # Live run 4: the steps stay
+    assert bar(1, 4).shows_paste(bar(1, 0), 1)
+    assert not bar(1, 0).shows_paste(bar(1, 0), 1)
+    assert not bar(2, 0).shows_paste(bar(1, 0), 2)
 
 
 @pytest.mark.parametrize(

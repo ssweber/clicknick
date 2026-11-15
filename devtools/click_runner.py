@@ -19,8 +19,9 @@ and stderr. Exit code 0 when the status is ``ok``, 1 when ``aborted``, 2 when ``
 (nothing was started). result.json holds the status, the step reached and the reason, the
 Syntax Check's text with its error and warning counts, the rungs pasted and saved
 (``same`` when the saved main program starts with the CSV's rungs), the PLC the status
-bar named once connected (``plc``), the status bar's panes at each step, the files
-written, and how long each step took.
+bar named once connected (``plc``), the status bar's panes at each step, the code of a
+CLICK error box that stopped the run (``click_error``), the files written, and how long
+each step took.
 
 Rules (scratchpad/roadmap.md, item 4):
 
@@ -32,8 +33,9 @@ Rules (scratchpad/roadmap.md, item 4):
   allowlist (click_desktop.py).
 - It connects only when the Connect dialog scans the same LAN and its PLC list has read
   one PLC for ``PLC_SETTLE`` seconds; two or more stop the run. Once connected, the status
-  bar must name a PLC (``plc`` in result.json; ``--plc NAME`` requires that one), when it
-  can be read.
+  bar must name a PLC (``plc`` in result.json; ``--plc NAME`` requires that one) within
+  ``--timeout``. A bar that cannot be read in that time leaves the connection unconfirmed,
+  unless ``--plc`` is given: then the run stops.
 - A Scr*.tmp in CLICK's temp folder before the paste (``scr_before_paste``) that the save
   does not rewrite stops the run: it would be decoded with the project.
 - Each step waits for a condition. Waiting for a dialog gives up after ``--timeout``
@@ -42,6 +44,9 @@ Rules (scratchpad/roadmap.md, item 4):
   CLICK answers again and, if its status bar can be read, shows the rungs pasted; the
   saved main program holding them is the final check. Nothing is sent to a CLICK that
   does not answer, and a wait logs the status bar every ``STATUS_EVERY`` seconds.
+- A CLICK error box (a dialog whose text is a code on a line of its own, then a message:
+  "PTC-013", "Timeout on attempting to connect to PLC.") stops the run at any step, with
+  the code in ``click_error`` so a caller can decide to run again. Nothing is pressed in it.
 - Any top-level window of CLICK that the step does not expect (a tooltip aside) stops the
   run: every window is dumped into ``DIR/abort/`` (a window that does not answer without
   its edit text or a PNG), CLICK is disconnected if it answers with no dialog open, then
@@ -107,6 +112,8 @@ _MAIN_TITLE = re.compile(r"^CLICK Programming Software \(Version4\.\d+\) - ")
 _NOT_RESPONDING = " (Not Responding)"
 _CURSOR = re.compile(r"\b(\d+):(\d+):([A-Z]+)\b")
 _STEPS = re.compile(r"\b(\d+)/(\d+)\b")
+# The text of a CLICK error box: a code, then the message ("PTC-013\nTimeout on ...")
+_CLICK_ERROR = re.compile(r"^([A-Z]{2,}-\d{2,})\s*[\r\n]+\s*(\S.*)$", re.DOTALL)
 # The status bar's pane naming the PLC connected to, "192.168.1.241(Conformance)"
 _PLC_PANE = re.compile(r"^\d+\.\d+\.\d+\.\d+\(.+\)$")
 # Windows that may come and go over CLICK's at any step (a toolbar's tip)
@@ -119,6 +126,10 @@ class Refused(Exception):
 
 class Aborted(Exception):
     """The run stops here; cleanup ends CLICK."""
+
+
+class _Unconfirmed(Exception):
+    """The status bar could not be read over the whole wait to confirm the connection."""
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +205,22 @@ def classify(
     return found, rest
 
 
+def click_error(window: Window, controls: list[Control]) -> tuple[str, str] | None:
+    """The (code, message) of *window* if it is a CLICK error box, else None.
+
+    Live run 3 (2026-11-15) met one during connect: a ``#32770`` titled "CLICK Programming
+    Software", an OK button (id 2) and a Static reading "PTC-013" and, on the next line,
+    "Timeout on attempting to connect to PLC.".
+    """
+    if window.cls != "#32770":
+        return None
+    for control in controls:
+        match = _CLICK_ERROR.match(control.text) if control.cls == "Static" else None
+        if match:
+            return match.group(1), " ".join(match.group(2).split())
+    return None
+
+
 def _child(
     controls: list[Control], *, cls: str, id: int, text: str | None = None
 ) -> Control | None:
@@ -215,7 +242,9 @@ class StatusBar:
 
     Live run 2 (2026-11-15) read, offline: "", "Bit", "Integer", "Integer(2 words)",
     "Floating point", "Hex", "Text", "Ascii", "-----", "0000/8000" (program steps),
-    "No select CPU", "1:1:A" (cursor), five empty panes, "NUM", "".
+    "No select CPU", "1:1:A" (cursor), five empty panes, "NUM", "". Live run 4, connected:
+    "RUN" in place of "-----", "C2-03CPU", and "192.168.1.241(Conformance)" three panes
+    after the cursor; disconnected again: "Offline" and "No select CPU".
     """
 
     panes: tuple[str, ...]
@@ -246,8 +275,9 @@ class StatusBar:
     def shows_paste(self, before: StatusBar, rungs: int) -> bool:
         """Whether this reading, against *before* the paste, shows *rungs* rungs pasted.
 
-        The cursor moves down by the rungs pasted, and a paste of anything but empty rungs
-        uses program steps.
+        The cursor moves down by the rungs pasted, or the program steps rise. Live run 4
+        (2026-11-15) saw the steps stay at 0000/8000 after a paste of a rung with a contact
+        and a coil, so the cursor is what shows a paste; a rise of the steps is taken too.
         """
         if before.rung is not None and self.rung == before.rung + rungs:
             return True
@@ -336,6 +366,7 @@ class Run:
             "syntax_check": None,
             "rungs": None,
             "plc": None,
+            "click_error": None,
             "status_bar": {},
             "files": {},
             "click": {"exe": settings.exe, "pid": None, "main_hwnd": None, "closed": None},
@@ -370,6 +401,9 @@ class Run:
         written: list[Path] = self.result["files"].setdefault(folder.name, [])
         count = len(written)
         for window in self.desktop.windows(self.pid):
+            # A window that closed since it was listed (CLICK closing) is left out
+            if not self.desktop.exists(window.hwnd):
+                continue
             # Listing sends CLICK no message, and neither does the screenshot, but a window
             # that does not answer is drawn as Windows' ghost: no edit text and no PNG then
             answers = self.desktop.idle(window.hwnd, IDLE_TIMEOUT)
@@ -391,7 +425,8 @@ class Run:
                 if self.desktop.screenshot(window.hwnd, base.with_suffix(".png")):
                     written.append(base.with_suffix(".png"))
             except Exception as exc:  # A screenshot is a nice-to-have
-                self.log(f"no screenshot of {window.hwnd}: {exc}")
+                if self.desktop.exists(window.hwnd):
+                    self.log(f"no screenshot of {window.hwnd}: {exc}")
         self.log(f"dumped {len(written) - count} file(s) as {label} into {folder}")
 
     def record(self, label: str) -> None:
@@ -407,6 +442,7 @@ class Run:
         until: Callable[[dict[str, Window]], T | None],
         *,
         exits: bool = False,
+        unloading: bool = False,
         on_timeout: Callable[[], str] | None = None,
         timeout: float | None = None,
     ) -> T:
@@ -415,7 +451,9 @@ class Run:
         Any window that is neither the main frame nor one of *expected* aborts the run,
         except one that was open before the main frame first appeared (CLICK starting up,
         a splash screen), until the launch step ends. CLICK exiting aborts too, unless
-        *exits* (then the wait ends when it has). It gives up after *timeout* seconds
+        *exits* (then the wait ends when it has). With *unloading*, the main window is
+        expected whatever its title: CLICK titles it bare while it closes. A CLICK error
+        box aborts at once (``check_error_boxes``). It gives up after *timeout* seconds
         (default ``Settings.timeout``), with a reason that starts with *on_timeout*'s text
         when it is given. Every ``STATUS_EVERY`` seconds it logs the status bar, or that
         CLICK does not answer.
@@ -429,7 +467,15 @@ class Run:
                 if exits:
                     return True  # pyright: ignore[reportReturnType]
                 raise Aborted(f"CLICK exited while waiting for {what}")
-            found, unexpected = classify(self.desktop.windows(self.pid), expected)
+            windows = self.desktop.windows(self.pid)
+            self.check_error_boxes(windows)
+            found, unexpected = classify(windows, expected)
+            if unloading and MAIN not in found:
+                for window in unexpected:
+                    if window.hwnd == self.main:
+                        found[MAIN] = window
+                        unexpected.remove(window)
+                        break
             unexpected = self._without_tooltips(unexpected)
             if self.main is None and MAIN not in found:
                 for window in unexpected:
@@ -462,6 +508,21 @@ class Run:
                 else:
                     self.log(f"CLICK does not answer; still waiting for {what}")
             time.sleep(self.s.poll)
+
+    def check_error_boxes(self, windows: list[Window]) -> None:
+        """Abort on a CLICK error box among *windows*, with its code in ``click_error``.
+
+        Nothing is pressed in it; the cleanup that follows leaves it open (a dialog is open,
+        so it does not disconnect) and ends CLICK.
+        """
+        for window in windows:
+            if window.cls != "#32770":
+                continue
+            error = click_error(window, self.desktop.controls(window.hwnd))
+            if error is not None:
+                code, message = error
+                self.result["click_error"] = code
+                raise Aborted(f"CLICK error {code}: {message}")
 
     def _without_tooltips(self, windows: list[Window]) -> list[Window]:
         """*windows* but tooltips, each logged the first time it is seen."""
@@ -717,33 +778,38 @@ class Run:
     def confirm_connected(self) -> None:
         """Wait for the status bar to name the PLC (the one ``--plc`` names, if given).
 
-        A bar that reads but names no PLC stops the run once the wait times out; a bar
-        that cannot be read leaves the connection unconfirmed, and the run goes on.
+        The bar is read until the wait times out. Then a bar that read but named no PLC
+        stops the run; one that never read leaves the connection unconfirmed and the run
+        goes on, unless ``--plc`` is given, which a bar that cannot be read cannot confirm.
         """
         last: list[StatusBar | None] = [None]
 
-        def named(found: dict[str, Window]) -> StatusBar | str | None:
+        def named(found: dict[str, Window]) -> StatusBar | None:
             if not self.only_main(found):
                 return None
             status = self.read_status_bar()
             if status is None:
-                return "unreadable"
+                return None
             last[0] = status
             if status.plc and self.s.plc is not None and status.plc_name != self.s.plc:
                 raise Aborted(f"connected to {status.plc}, not to the PLC named {self.s.plc!r}")
             return status if status.plc else None
 
         def shows() -> str:
-            panes = " | ".join(last[0].panes) if last[0] is not None else "nothing read"
-            return f"the status bar names no PLC ({panes})"
+            if last[0] is not None:
+                return f"the status bar names no PLC ({' | '.join(last[0].panes)})"
+            if self.s.plc is None:
+                raise _Unconfirmed
+            return f"the status bar cannot be read to confirm the PLC named {self.s.plc!r}"
 
-        status = self.wait(
-            "the status bar to name the PLC connected to",
-            [STARTUP, CONNECT, READ_PROMPT],
-            named,
-            on_timeout=shows,
-        )
-        if isinstance(status, str):
+        try:
+            status = self.wait(
+                "the status bar to name the PLC connected to",
+                [STARTUP, CONNECT, READ_PROMPT],
+                named,
+                on_timeout=shows,
+            )
+        except _Unconfirmed:
             self.status_bar("connected")
             self.log("the connection is unconfirmed: the status bar cannot be read")
             return
@@ -1005,8 +1071,14 @@ class Run:
         assert self.main is not None and self.pid is not None
         with self.step("close"):
             self.desktop.close(self.main)
+            # CLICK unloads the project first: the main window is titled bare, then goes
             self.wait(
-                "CLICK to exit", [], lambda f: False, exits=True, timeout=self.s.paste_timeout
+                "CLICK to exit",
+                [],
+                lambda f: False,
+                exits=True,
+                unloading=True,
+                timeout=self.s.paste_timeout,
             )
             self.result["click"]["closed"] = True
             self.log("CLICK exited")
