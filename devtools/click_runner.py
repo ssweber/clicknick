@@ -12,21 +12,35 @@ the same way and dumps every window of CLICK (JSON and PNG) at each step into
 ``DIR/record/``, then disconnects and ends CLICK (the project was never saved, so it is
 terminated rather than closed); ``paste --record`` dumps the same way.
 
-``DIR`` must not exist or be empty. The run ends with ``DIR/result.json``, printed on stdout
-too (nothing else goes there), and logs each step to ``DIR/run.log`` and stderr. Exit code 0 when the status is
-``ok``, 1 when ``aborted``, 2 when ``refused`` (nothing was started).
+``DIR`` must not exist or be empty. The run ends with ``DIR/result.json``, however it ends,
+and prints it on stdout (nothing else goes there); each step is logged to ``DIR/run.log``
+and stderr. Exit code 0 when the status is ``ok``, 1 when ``aborted``, 2 when ``refused``
+(nothing was started). result.json holds the status, the step reached and the reason, the
+Syntax Check's text with its error and warning counts, the rungs pasted and saved
+(``same`` when the saved main program starts with the CSV's rungs), each status bar
+reading and how it was read, the files written, and how long each step took.
 
 Rules (scratchpad/roadmap.md, item 4):
 
 - It refuses to start while any CLICK.exe runs or any CLICK window is open, or while the
   input desktop is not ``Default`` (a locked screen). It touches only the CLICK it started:
-  its windows are found by pid, its files in ``click_temp_dir`` of its main window.
+  its windows are found by pid, its files in ``click_temp_dir`` of its main window. It
+  never deletes a temp folder: CLICK looks after its own.
 - It never writes to the PLC: every WM_COMMAND goes through ``Desktop.command`` and its
   allowlist (click_desktop.py).
-- Each step waits for a condition with a timeout. Any top-level window of CLICK that the
-  step does not expect (a tooltip aside) stops the run: every window is dumped into ``DIR/abort/``, CLICK is
-  disconnected if it can be and then ended without saving. Every way out (a timeout, an
-  error, Ctrl+C) goes through that cleanup.
+- It connects only when the Connect dialog scans the same LAN and its PLC list has read
+  one PLC, selected, for ``PLC_SETTLE`` seconds; two or more stop the run.
+- Each step waits for a condition. Waiting for a dialog gives up after ``--timeout``
+  seconds (default 60). CLICK freezes while it pastes, so the paste, Syntax Check, save
+  and close may take up to ``--paste-timeout`` (default 300). The paste is done when
+  CLICK answers again and, if its status bar can be read, shows the rungs pasted; the
+  saved main program holding them is the final check. Nothing is sent to a CLICK that
+  does not answer, and a wait logs the status bar every ``STATUS_EVERY`` seconds.
+- Any top-level window of CLICK that the step does not expect (a tooltip aside) stops the
+  run: every window is dumped into ``DIR/abort/`` (a window that does not answer without
+  its edit text or a PNG), CLICK is disconnected if it answers with no dialog open, then
+  ended without saving. A timeout, an error or Ctrl+C ends the same way. CLICK runs in a
+  job that ends it when the runner's process ends, however that ends.
 
 Login: CLICK fills in User Type itself (``admin``); the runner fills it in only when it is
 empty, from ``--user-type`` or ``CLICK_RUNNER_USER_TYPE`` (default ``admin``). The password
