@@ -68,11 +68,12 @@ class FakeClick(cd.Desktop):
     """CLICK v4 as the probe saw it, with switches for what can go wrong.
 
     *surprise* names an event after which an unknown dialog appears; *stall* one whose
-    effect never happens; *interrupt* a Desktop method that raises KeyboardInterrupt;
-    *late_row* lists a second PLC that many seconds after the first is selected.
-    *hang_on* one after which CLICK stops answering for *hang_for* seconds (Windows then
-    titles its main window "... (Not Responding)"). *status_bar* is how its status bar
-    reads (``Desktop.status_bar``), None when no way works.
+    effect never happens; *hang_on* one after which CLICK stops answering for *hang_for*
+    seconds (Windows then titles its main window "... (Not Responding)"). *interrupt*
+    names a Desktop method that raises KeyboardInterrupt once; *fail* one that always
+    raises OSError. *late_row* lists a second PLC that many seconds after the first is
+    selected. *status_bar* is how the status bar reads (``Desktop.status_bar``), None
+    when no way works.
     """
 
     def __init__(
@@ -190,6 +191,7 @@ class FakeClick(cd.Desktop):
 
     def _check(self, method: str) -> None:
         if method == self.interrupt:
+            self.interrupt = None  # One Ctrl+C
             raise KeyboardInterrupt
         if method == self.fail:
             raise OSError(f"{method} failed")
@@ -244,7 +246,7 @@ class FakeClick(cd.Desktop):
     def _show_startup(self) -> None:
         assert self.main is not None
         startup = self._window("TfrmStartup", "Startup", self.main.hwnd)
-        group = self._control(startup, "TGroupBox", "Select an Operation", 1)
+        group = self._control(startup, "TGroupBox", "Select an Operation", 0)
         # Listed middle, right, left, as CLICK's children are
         lefts = {"middle": 891, "right": 1035, "left": 747}
         for name in list(lefts)[: self.options["startup_buttons"]]:
@@ -261,7 +263,10 @@ class FakeClick(cd.Desktop):
                 rect=(lefts[name], 466, lefts[name] + 135, 601),
                 on_press=action,
             )
-        self._control(startup, "TButton", "Close", 2)
+        self._control(startup, "TButton", "Close", 0)
+        self._control(startup, "TButton", "Help", 0)
+        for control in startup.controls:
+            control.id = control.hwnd  # A Delphi control's id is its hwnd
 
     def _select_cpu(self) -> None:
         assert self.main is not None
@@ -454,6 +459,7 @@ class FakeClick(cd.Desktop):
             self._later("disconnect", self._show_disconnect)
 
     def click_processes(self) -> list[int]:
+        self._check("click_processes")
         return list(self.running)
 
     def click_windows(self) -> list[int]:
@@ -475,6 +481,7 @@ class FakeClick(cd.Desktop):
 
     def terminate(self, pid: int) -> None:
         assert pid == self.pid
+        self._check("terminate")
         self.is_running = False
         self.terminated = True
         self.hung_until = 0.0
@@ -858,6 +865,26 @@ def test_empty_user_type_is_filled_in(tmp_path, setup, monkeypatch):
     assert fake.typed[20142] == "secret"
 
 
+def test_a_user_type_that_does_not_take_aborts(tmp_path, setup):
+    """The brief's test list had an empty User Type abort; Sam ruled later that the runner
+    fills it in. What aborts is a User Type that does not take the text set."""
+    csv, exe = setup
+    fake = FakeClick(tmp_path, prefilled_user="")
+    real = fake.set_text
+
+    def set_text(hwnd: int, text: str) -> bool:
+        if fake._find(hwnd).id == 20141:
+            return True  # Answered, but the edit keeps its text
+        return real(hwnd, text)
+
+    fake.set_text = set_text
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert_aborted(fake, out, code, result, "User Type did not take the text set")
+    assert result["step"] == "login"
+    assert 20142 not in fake.typed and "OK" not in fake.pressed[2:]
+
+
 def test_empty_user_type_defaults_to_admin(tmp_path, setup):
     csv, exe = setup
     fake = FakeClick(tmp_path, prefilled_user="")
@@ -1164,7 +1191,7 @@ def test_an_error_ends_click(tmp_path, setup):
 
 
 def test_ctrl_c_while_dumping_still_ends_click(tmp_path, setup):
-    """Even when the cleanup itself is interrupted, CLICK is ended."""
+    """Even when the cleanup itself is interrupted, CLICK is ended and the result written."""
     csv, exe = setup
     fake = FakeClick(tmp_path, stall="syntax_check")
     original = fake.screenshot
@@ -1175,9 +1202,71 @@ def test_ctrl_c_while_dumping_still_ends_click(tmp_path, setup):
         return original(hwnd, path)
 
     fake.screenshot = interrupted
-    with pytest.raises(KeyboardInterrupt):
-        run(fake, tmp_path / "out", csv, exe, timeout=0.2)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe, timeout=0.2)
+    assert code == cr.EXIT_ABORTED
+    assert "timed out after 0.2 s" in result["reason"]
+    assert fake.terminated and not fake.is_running and result["click"]["closed"] is True
+    assert "the cleanup was cut short: KeyboardInterrupt()" in (out / "run.log").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_ctrl_c_while_ending_click_still_ends_it(tmp_path, setup):
+    csv, exe = setup
+    fake = FakeClick(tmp_path, stall="syntax_check", interrupt="terminate")
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe, timeout=0.2)
+    assert code == cr.EXIT_ABORTED and result["status"] == "aborted"
+    assert fake.terminated and not fake.is_running and result["click"]["closed"] is True
+    assert "the cleanup was cut short: KeyboardInterrupt()" in (out / "run.log").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_ending_click_is_tried_again_when_cut_short(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, interrupt="terminate")
+    stderr = io.StringIO()
+    runner = cr.Run(
+        fake, cr.Settings("record", tmp_path / "out", exe=exe, poll=0.001), stderr=stderr
+    )
+    runner.pid = fake.launch(exe)
+    runner.end_click_surely()
     assert fake.terminated and not fake.is_running
+    assert runner.result["click"]["closed"] is True
+    assert "ending CLICK failed: KeyboardInterrupt()" in stderr.getvalue()
+
+
+def test_click_that_cannot_be_ended_is_reported(tmp_path, setup):
+    """record ends CLICK rather than closing it: a terminate that fails is in the result."""
+    _, exe = setup
+    fake = FakeClick(tmp_path, fail="terminate")
+    out = tmp_path / "out"
+    code, result = run(fake, out, None, exe, timeout=0.2)
+    assert code == cr.EXIT_ABORTED and result["status"] == "aborted"
+    assert result["reason"] == "OSError: terminate failed"
+    assert result["click"]["closed"] is not True
+    assert fake.is_running
+
+
+@pytest.mark.parametrize(
+    ("switches", "reason"),
+    [
+        ({"interrupt": "click_processes"}, "interrupted (Ctrl+C) before CLICK was started"),
+        (
+            {"fail": "click_processes"},
+            "the checks before starting CLICK failed: OSError: click_processes failed",
+        ),
+    ],
+)
+def test_the_checks_failing_still_write_the_result(tmp_path, setup, capsys, switches, reason):
+    csv, exe = setup
+    fake = FakeClick(tmp_path, **switches)
+    code, result = run(fake, tmp_path / "out", csv, exe, capsys=capsys)
+    assert code == cr.EXIT_REFUSED
+    assert result["status"] == "refused" and result["reason"] == reason
+    assert fake.pid is None
 
 
 def test_click_exiting_by_itself_aborts(tmp_path, setup):

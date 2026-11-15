@@ -1016,12 +1016,20 @@ class Run:
         self.log_path = out / "run.log"
         self.result["files"]["run_log"] = self.log_path
         self.log(f"{self.s.command} into {out}")
+        # Every way out below writes result.json; nothing is started until the checks pass
+        refused: str | None = None
         try:
             with self.step("refuse"):
                 self.refuse_checks()
         except Refused as exc:
-            self.log(f"REFUSED: {exc}")
-            self.result.update(status="refused", reason=str(exc))
+            refused = str(exc)
+        except KeyboardInterrupt:
+            refused = "interrupted (Ctrl+C) before CLICK was started"
+        except Exception as exc:
+            refused = f"the checks before starting CLICK failed: {type(exc).__name__}: {exc}"
+        if refused is not None:
+            self.log(f"REFUSED: {refused}")
+            self.result.update(status="refused", reason=refused)
             return self.finish()
 
         try:
@@ -1043,16 +1051,15 @@ class Run:
                     if not self.result["click"]["closed"]:
                         raise Aborted("CLICK did not end")
             except Aborted as exc:
-                self.result.update(status="aborted", reason=str(exc))
-                self.abort(str(exc))
+                self.stop(str(exc))
             except KeyboardInterrupt:
-                self.result.update(status="aborted", reason="interrupted (Ctrl+C)")
-                self.abort("interrupted (Ctrl+C)")
+                self.stop("interrupted (Ctrl+C)")
             except Exception as exc:
-                self.result.update(status="aborted", reason=f"{type(exc).__name__}: {exc}")
-                self.abort(f"{type(exc).__name__}: {exc}")
+                self.stop(f"{type(exc).__name__}: {exc}")
         finally:
-            self.end_click()  # Whatever happened, no CLICK of the runner's outlives it
+            self.end_click_surely()  # Whatever happened, no CLICK of the runner's outlives it
+        if self.result["status"] is None and self.result["click"]["closed"] is not True:
+            self.result.update(status="aborted", reason="CLICK did not end")
 
         if self.result["status"] is None and self.s.command == "paste":
             try:
@@ -1060,12 +1067,35 @@ class Run:
             except Aborted as exc:
                 self.result.update(status="aborted", reason=str(exc))
                 self.log(f"ABORT: {exc}")
+            except KeyboardInterrupt:
+                self.result.update(status="aborted", reason="interrupted (Ctrl+C) while decoding")
+                self.log("ABORT: interrupted (Ctrl+C) while decoding")
             except Exception as exc:
                 self.result.update(status="aborted", reason=f"decoding failed: {exc}")
                 self.log(f"ABORT: decoding failed: {exc}")
         if self.result["status"] is None:
             self.result["status"] = "ok"
         return self.finish()
+
+    def stop(self, reason: str) -> None:
+        """Abort the run for *reason*; a cleanup cut short (Ctrl+C again) is logged."""
+        self.result.update(status="aborted", reason=reason)
+        try:
+            self.abort(reason)
+        except BaseException as exc:
+            self.log(f"the cleanup was cut short: {exc!r}")
+
+    def end_click_surely(self) -> None:
+        """``end_click``, tried again if it is cut short; what still fails is logged.
+
+        The job CLICK runs in (``Desktop.launch``) ends it when the runner's process ends.
+        """
+        for _ in range(2):
+            try:
+                self.end_click()
+                return
+            except BaseException as exc:
+                self.log(f"ending CLICK failed: {exc!r}")
 
     def disconnect_step(self) -> None:
         with self.step("disconnect"):
