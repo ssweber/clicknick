@@ -172,6 +172,8 @@ class AddressStore:
 
         # Current edit session (for nested check)
         self._current_session: EditSession | None = None
+        # Loaded rows whose trim waits for the open edit session to end (_stage_trims)
+        self._pending_trims: set[int] = set()
 
         # Block colors (separate from AddressRow to avoid row recreation)
         self.block_colors: dict[int, str] = {}  # addr_key -> color_name
@@ -535,13 +537,17 @@ class AddressStore:
         writes. Undo puts the spaces back, and validation flags them again.
 
         Only base rows in *keys* are looked at: callers pass the rows just
-        loaded or the rows a read of the data source changed, so a trim the
-        user undid is staged again only when the data source changes that row.
-        A field the user already edits is left alone, and so is a nickname
-        exempt as one CLICK wrote (``loaded_with_error``). Nothing is staged,
-        and no undo step pushed, when no row needs a trim, or while an edit
-        session is open (sessions do not nest).
+        loaded, the rows a read of the data source changed, or every row after
+        a Discard, so a trim the user undid is staged again only when the data
+        source changes that row. A field the user already edits is left alone.
+        A nickname flagged ``loaded_with_error`` is trimmed too: none of
+        CLICK's own system names has an edge space, so a trim never touches
+        one. No undo step is pushed when no row needs a trim. While an edit
+        session is open (sessions do not nest) the rows wait in
+        ``_pending_trims``, staged when that session ends or by the next call.
         """
+        keys = set(keys) | self._pending_trims
+        self._pending_trims = set()
         trims: list[tuple[int, str, str]] = []
         for key in keys:
             base = self.base_state.get(key)
@@ -550,12 +556,12 @@ class AddressStore:
             override = self.user_overrides.get(key, {})
             for field in TRIMMED_FIELDS:
                 value = getattr(base, field)
-                if field in override or value == trim_entry(field, value):
-                    continue
-                if field == "nickname" and base.loaded_with_error:
-                    continue
-                trims.append((key, field, trim_entry(field, value)))
-        if not trims or self._current_session is not None:
+                if field not in override and value != trim_entry(field, value):
+                    trims.append((key, field, trim_entry(field, value)))
+        if not trims:
+            return
+        if self._current_session is not None:
+            self._pending_trims = {key for key, _field, _value in trims}
             return
         with self.edit_session(TRIM_DESCRIPTION) as session:
             for key, field, value in trims:
@@ -803,6 +809,8 @@ class AddressStore:
         self._current_session = None
         if session.has_pending_changes():
             self._commit_session(session, description)
+        if self._pending_trims:
+            self._stage_trims(())
 
     # --- Undo/Redo ---
 
@@ -1098,6 +1106,8 @@ class AddressStore:
         self.redo_stack.clear()
 
         self._derive(affected_keys)
+        # Back to the rows as loaded, so their trims are staged again as on load.
+        self._stage_trims(self.base_state)
 
     # --- Statistics ---
 

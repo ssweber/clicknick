@@ -93,6 +93,24 @@ class TestBuildTagAddrKeyMap:
         assert (key_to_tag[sc1], key_to_tag[sd9]) == ("_Always_ON", "_Scan_Counter")
         assert key_to_tag[get_addr_key("SC", 2)] == "SC2"
 
+    def test_an_unnamed_slot_of_a_block_has_the_name_the_program_gives_it(self, tmp_path):
+        """pyrung names a ``:block`` range's slots after the block; the map follows it."""
+        rows = {
+            get_addr_key("C", 1): AddressRow("C", 1, nickname="Fill_A", comment="<Fill:block>"),
+            get_addr_key("C", 4): AddressRow("C", 4, comment="</Fill:block>"),
+            get_addr_key("DS", 5): AddressRow(
+                "DS", 5, comment="<Empty:block />", data_type=DataType.INT
+            ),
+        }
+
+        tag_to_key, key_to_tag = _build_tag_addr_key_map(_write_nicknames_csv(tmp_path, rows), rows)
+
+        names = [key_to_tag[get_addr_key("C", n)] for n in range(1, 6)]
+        assert names == ["Fill_A", "Fill2", "Fill3", "Fill4", "C5"]
+        assert key_to_tag[get_addr_key("DS", 5)] == "Empty1"
+        assert tag_to_key["Fill3"] == get_addr_key("C", 3)
+        assert "C3" not in tag_to_key
+
     def test_covers_every_address_slot(self):
         tag_to_key, key_to_tag = _build_tag_addr_key_map(None, {})
         assert len(key_to_tag) == sum(1 for _ in iter_address_slots())

@@ -14,6 +14,7 @@ from pyclickplc.banks import DATA_TYPE_HINTS, NON_EDITABLE_TYPES, DataType
 from tksheet import num2alpha
 
 from ...models.address_row import AddressRow
+from ...models.validation import trim_entry
 from ...services.analysis_service import AnalysisService
 from ...services.annotation_service import AnnotationService
 from ...services.physical_response import FeedbackType
@@ -267,6 +268,15 @@ class AddressPanel(ttk.Frame):
         # Restore selection after filter change
         self._restore_selection()
 
+    def _show_stored(self, data_idx: int, col: int, typed: str, stored: str) -> None:
+        """Put the stored value back in a cell whose text the store keeps as it was.
+
+        Typing ``"Pump "`` over ``"Pump"`` changes nothing in the store, which
+        then notifies no one, so the cell is set here to what the row holds.
+        """
+        if typed != stored:
+            self.sheet.set_cell_data(data_idx, col, stored)
+
     def _on_sheet_modified(self, event) -> None:
         """Handle sheet modification events (called AFTER changes are applied).
 
@@ -305,8 +315,9 @@ class AddressPanel(ttk.Frame):
                 if col == self.COL_NICKNAME:
                     new_nickname = new_value if new_value else ""
 
-                    # Skip if no change
-                    if new_nickname == address_row.nickname:
+                    # Skip if no change once stored (without a space at either end)
+                    if trim_entry("nickname", new_nickname) == address_row.nickname:
+                        self._show_stored(data_idx, col, new_nickname, address_row.nickname)
                         continue
 
                     # Use session to set the field
@@ -315,8 +326,9 @@ class AddressPanel(ttk.Frame):
                 elif col == self.COL_COMMENT:
                     new_comment = new_value if new_value else ""
 
-                    # Skip if no change
-                    if new_comment == address_row.comment:
+                    # Skip if no change once stored (without a space at either end)
+                    if trim_entry("comment", new_comment) == address_row.comment:
+                        self._show_stored(data_idx, col, new_comment, address_row.comment)
                         continue
 
                     # Use session to set the field

@@ -169,8 +169,9 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   helper, `_flag_loaded_error`, on load, reload and Sync alike
 - A loaded nickname or comment with a space at either end is trimmed by one edit session, "Trim spaces"
   (`_stage_trims`), over the rows a load or a reading of the data source (file monitor, Sync's pre-read)
-  changed; Sync writes it, and an undone trim comes back only when the data source changes that row. A field the
-  user edits and an exempt nickname (`loaded_with_error`) are left as they are
+  changed, and over every row after a Discard; Sync writes it, and an undone trim comes back only when the data
+  source changes that row. A field the user edits is left as it is; `loaded_with_error` does not matter (no
+  CLICK system name has an edge space). Rows read while a session is open wait until it ends (`_pending_trims`)
 
 ### Undo/Redo
 - Tracks the overlay layer (user intent) only; at most `MAX_UNDO_DEPTH` (50) frames

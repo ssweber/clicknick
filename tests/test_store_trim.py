@@ -9,7 +9,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pyclickplc import AUTOMATIONDIRECT_SYSTEM_NICKNAMES
 from pyclickplc.addresses import get_addr_key
+from pyclickplc.banks import DataType
 
 from clicknick.data.address_store import TRIM_DESCRIPTION, AddressStore
 from clicknick.data.data_source import CsvDataSource
@@ -22,6 +24,8 @@ EDGE = "Cannot start or end with a space"
 C1, C2, C3 = (get_addr_key("C", n) for n in (1, 2, 3))
 DS1 = get_addr_key("DS", 1)
 SC1 = get_addr_key("SC", 1)
+SD1 = get_addr_key("SD", 1)
+X1, X2 = get_addr_key("X", 1), get_addr_key("X", 2)
 T1, TD1 = get_addr_key("T", 1), get_addr_key("TD", 1)
 
 
@@ -165,14 +169,47 @@ class TestTrimOnLoad:
         assert source.rows[C2].nickname == "Blower"
         assert store.undo_stack == []
 
-    def test_clicks_system_names_are_not_trimmed(self):
-        store, _source = _store({SC1: AddressRow("SC", 1, nickname="_Always_ON ", comment="On ")})
+    def test_no_system_name_of_clicks_has_an_edge_space(self):
+        """So trimming every loaded nickname never touches one of CLICK's own names."""
+        names = [
+            name
+            for guidance in AUTOMATIONDIRECT_SYSTEM_NICKNAMES.values()
+            for name in (guidance.nickname, *guidance.repair_from)
+        ]
 
-        row = store.visible_state[SC1]
-        assert row.loaded_with_error
-        assert row.nickname == "_Always_ON "
-        assert row.comment == "On"
-        assert not store.has_errors()
+        assert names
+        assert [name for name in names if name != name.strip(" ")] == []
+
+    def test_a_system_name_of_clicks_is_left_as_it_is(self):
+        store, _source = _store({SC1: AddressRow("SC", 1, nickname="_Always_ON", comment="On ")})
+
+        assert store.visible_state[SC1].nickname == "_Always_ON"
+        assert store.visible_state[SC1].comment == "On"
+        assert store.user_overrides[SC1] == {"comment": "On"}
+
+    def test_x_and_sd_nicknames_flagged_as_loaded_are_trimmed_too(self):
+        store, source = _store(
+            {
+                X1: AddressRow("X", 1, nickname="Stop "),
+                X2: AddressRow("X", 2, nickname=" Start PB"),
+                SD1: AddressRow("SD", 1, nickname="My_Code ", data_type=DataType.INT),
+            }
+        )
+
+        assert store.base_state[X1].loaded_with_error
+        assert [store.visible_state[key].nickname for key in (X1, X2, SD1)] == [
+            "Stop",
+            "Start PB",
+            "My_Code",
+        ]
+        assert [frame.description for frame in store.undo_stack] == [TRIM_DESCRIPTION]
+
+        assert store.save_all_changes() == {X1, X2, SD1}
+        assert [source.rows[key].nickname for key in (X1, X2, SD1)] == [
+            "Stop",
+            "Start PB",
+            "My_Code",
+        ]
 
     def test_a_trim_that_makes_two_nicknames_the_same_shows_the_duplicate(self):
         store, _source = _store(
@@ -197,6 +234,45 @@ class TestTrimOnLoad:
 
         store.save_all_changes()
         assert b'DS1,INT,"Speed",0,Yes,"Setpoint"' in path.read_bytes()
+
+    def test_a_trim_read_while_a_session_is_open_is_staged_when_it_ends(self):
+        store, source = _store({C2: AddressRow("C", 2, nickname="Fan")})
+        source.rows[C1] = AddressRow("C", 1, nickname="Pump ")
+
+        with store.edit_session("Rename") as session:
+            session.set_field(C2, "nickname", "Blower")
+            assert store._on_database_update()
+            assert store.visible_state[C1].nickname == "Pump "
+
+        assert store.visible_state[C1].nickname == "Pump"
+        assert [frame.description for frame in store.undo_stack] == ["Rename", TRIM_DESCRIPTION]
+
+    def test_a_trim_whose_session_raised_is_staged_by_the_next_reading(self):
+        store, source = _store({C2: AddressRow("C", 2, nickname="Fan")})
+        source.rows[C1] = AddressRow("C", 1, nickname="Pump ")
+
+        with pytest.raises(RuntimeError), store.edit_session("Rename"):
+            assert store._on_database_update()
+            raise RuntimeError("edit failed")
+        assert store.visible_state[C1].nickname == "Pump "
+
+        source.rows[C3] = AddressRow("C", 3, nickname="Motor")
+        assert store._on_database_update()
+
+        assert store.visible_state[C1].nickname == "Pump"
+        assert [frame.description for frame in store.undo_stack] == [TRIM_DESCRIPTION]
+
+    def test_discard_goes_back_to_the_rows_as_loaded_trims_included(self):
+        store, _source = _store(_pump())
+        with store.edit_session("Rename") as session:
+            session.set_field(C2, "nickname", "Blower")
+
+        store.discard_all_changes()
+
+        assert store.visible_state[C2].nickname == "Fan"
+        assert store.visible_state[C1].nickname == "Pump"
+        assert store.get_dirty_keys() == {C1}
+        assert [frame.description for frame in store.undo_stack] == [TRIM_DESCRIPTION]
 
     def test_a_load_without_edge_spaces_has_nothing_to_undo(self):
         store, _source = _store({C2: AddressRow("C", 2, nickname="Fan", comment="Blower")})
