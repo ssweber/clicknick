@@ -532,6 +532,8 @@ class BundleSources:
     # Program name (casefolded) -> rung number -> the source lines it came from.
     # Empty when each rung's ``# Rn`` marker already carries its number.
     rung_lines: Mapping[str, Mapping[int, Sequence[int]]] = field(default_factory=dict)
+    # Why pyrung could not convert the bundle, such as a nicknames.csv it refuses
+    error: str = ""
 
     def text(self, name: str) -> str:
         return self.texts.get(name.casefold(), "")
@@ -543,7 +545,9 @@ class BundleSources:
     def round_trip(cls, csv_dir: Path) -> BundleSources:
         """Generate source for a CSV bundle by converting it with pyrung.
 
-        Empty when pyrung cannot convert the bundle: showing it is all that is lost.
+        Without text when pyrung cannot convert the bundle (showing it is all
+        that is lost); ``error`` then says why, such as the line of a
+        nicknames.csv that pyrung refuses.
         """
         from pyrung.click import ladder_to_pyrung_project
 
@@ -552,8 +556,8 @@ class BundleSources:
             files = ladder_to_pyrung_project(
                 csv_dir, nickname_csv=nickname_csv if nickname_csv.exists() else None, index=True
             )
-        except Exception:
-            return cls()
+        except Exception as exc:
+            return cls(error=str(exc) or type(exc).__name__)
         texts: dict[str, str] = {}
         for relative, source in files.items():
             name = _program_name(Path(relative), source)

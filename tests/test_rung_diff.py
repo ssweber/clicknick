@@ -6,8 +6,10 @@ import json
 import typing
 from pathlib import Path
 
+import pytest
 from laddercodec import Coil, Contact, Rung, write_csv
 
+from clicknick.data.data_source import CsvDataSource
 from clicknick.ladder.program import (
     STAND_IN_COMMENT,
     LegacyEncoding,
@@ -1000,5 +1002,22 @@ def test_round_trip_generates_numbered_source_for_a_bundle(tmp_path: Path) -> No
     )
 
 
-def test_round_trip_of_something_pyrung_cannot_convert_is_empty(tmp_path: Path) -> None:
-    assert BundleSources.round_trip(tmp_path / "missing") == BundleSources()
+def test_round_trip_of_something_pyrung_cannot_convert_has_no_text(tmp_path: Path) -> None:
+    sources = BundleSources.round_trip(tmp_path / "missing")
+
+    assert sources.texts == {}
+    assert sources.error
+
+
+def test_round_trip_says_which_line_of_nicknames_csv_pyrung_refuses(tmp_path: Path) -> None:
+    """ClickNick's own reader refuses the same file, so staging and the diff agree."""
+    bundle = _bundle(tmp_path / "csv", {"main.csv": _rungs("Y001")}, index=True)
+    nicknames = bundle / "nicknames.csv"
+    nicknames.write_bytes(b'Address,Data Type,Nickname\r\nY001,INT,"Lamp"\r\n')
+
+    sources = BundleSources.round_trip(bundle)
+
+    assert sources.texts == {}
+    assert "nicknames.csv line 2: Data Type 'INT' is not the type of Y001 (BIT)" in sources.error
+    with pytest.raises(ValueError, match=r"^nicknames\.csv line 2: Data Type 'INT'"):
+        CsvDataSource(str(nicknames)).load_all_addresses()
