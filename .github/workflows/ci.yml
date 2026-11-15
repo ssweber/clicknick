@@ -64,3 +64,13 @@ jobs:
 
       - name: Run tests
         run: uv run pytest --quiet --tb=short
+
+  # The one required check (same name in every repo): passes only when every test
+  # job passed. always() matters: a skipped required check counts as passing.
+  # A new test job goes into `needs` and into the test.
+  ci:
+    if: always()
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.build.result }}" = "success"
