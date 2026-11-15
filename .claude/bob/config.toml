@@ -55,6 +55,7 @@ reviewer_allow = [
 # With a [queue] section (queue.toml): every non-light stage is heavy, plus these. Heavy
 # commands are refused for subagents; the main session runs them through `mergeq.py run
 # --heavy` or the queue. heavy_exempt takes a main-session command back out.
+# ClickNick has no queue, so these are not read: profile.md's rule keeps agents off a bare `make`.
 heavy_extra = []
 heavy_exempt = []
 

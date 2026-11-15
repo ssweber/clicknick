@@ -3,6 +3,10 @@
 Repo-specific rules for the bob plugin's skill. The plugin's rules for every repo come first;
 this file adds ClickNick's.
 
+The plugin is installed once per clone: `claude plugin install bob@bob --scope project` (and once
+per machine, `claude plugin marketplace add ssweber/bob`). Until it is, no hook guards the repo:
+check `/plugins` before dispatching builders.
+
 ## Paths and branches
 
 - Main checkout `C:/Users/Sam/Documents/GitHub/clicknick`. No merge queue: every branch goes
@@ -27,6 +31,10 @@ this file adds ClickNick's.
   local checkouts.
 - A branch that needs an unreleased sibling is tested locally and merges only after that
   sibling's release; its pull request says so and stays open until then.
+- Never a bare `make`: it runs `make install`, whose `uv sync` drops the local checkouts. Run
+  `make lint UV_NO_SYNC=1` and `timeout 900 make test UV_NO_SYNC=1` (the hook wraps `make` in a
+  600 s timeout unless a leading `timeout N` says otherwise; the suite can pass that under
+  load). With no queue, nothing but this rule refuses a bare `make`.
 - `make` commands, not bare `uv run pytest` for the suite; targeted pytest is fine. No `cd`
   before commands in the main checkout. No multi-line content inlined in shell commands
   (heredocs, `python -c`): write a file with Write, then run it.
@@ -35,9 +43,10 @@ this file adds ClickNick's.
 
 ## Local gate
 
-`make lint UV_NO_SYNC=1` and `make test UV_NO_SYNC=1` in the worktree, both green on the last
-commit with a clean worktree. The full suite is about 2 minutes, serial. Where a branch touches
-the docs, also `make docs-check` (it re-syncs the environment, so run it last).
+`make lint UV_NO_SYNC=1` and `timeout 900 make test UV_NO_SYNC=1` in the worktree, both green on
+the last commit with a clean worktree. The full suite is about 2 minutes, serial. Where a branch
+touches the docs, also `timeout 900 make docs-check` (it re-syncs the environment, so run it
+last).
 
 ## Correctness contract (put in every builder and reviewer brief)
 
