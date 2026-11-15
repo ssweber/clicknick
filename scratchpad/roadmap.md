@@ -22,7 +22,7 @@ How to use it:
 1. Housekeeping (nothing)
 2. ssort out, tests into CI (nothing)
 3. mergeq: the queue goes, the guard stays (nothing)
-4. CLICK sandbox runner spike (CLICK, Sam), and the user checks it or a mock can automate (nothing)
+4. CLICK runner spike, on the desktop CLICK while Sam is away (CLICK, Sam), and the user checks it or a mock can automate (nothing)
 5. ConnectionSession owns the window and project (nothing)
 6. Split ClickNickApp (nothing)
 7. Onto pyclickplc's readers (waits on pyclickplc)
@@ -73,45 +73,46 @@ CI is the gate. `devtools/mergeq` does three jobs, and only the first goes:
   gated by CI, and Sam squash-merges. Rewrite the skill, `profile.md` and the mergeq README to say so, and
   keep `test_hook.py` passing.
 
-## 4. CLICK sandbox runner spike (CLICK, Sam)
+## 4. CLICK runner spike (CLICK, Sam)
 
-Plan 4. A runner in `devtools/` that drives CLICK unattended inside Windows Sandbox, so work that needs
-CLICK no longer needs Sam. laddercodec and pyrung call it as a command. It leans on the clipboard
-(`ladder/clipboard.py` already reads and writes CLICK's format) and ClickNick's window code, not on pixel
-positions. It does not replace readings from a real PLC.
+Plan 4. A runner in `devtools/` that drives CLICK unattended, so work that needs CLICK no longer needs Sam.
+laddercodec and pyrung call it as a command. It leans on the clipboard (`ladder/clipboard.py` already reads
+and writes CLICK's format) and ClickNick's window code, not on pixel positions. It does not replace readings
+from a real PLC.
 
-What exists: two probe files written 2026-11-13 in `%TEMP%\clicksandbox`, never run.
-`click-probe.wsb` maps the installer folder read-only and an output folder, with networking off.
-`bootstrap.cmd` records the InstallShield answers (`/r`, `setup.iss`) on the first run and installs silently
-(`/s`) after that. Move both into `devtools/`, with paths as arguments.
+**Where it runs (Sam, 2026-11-15, replacing the plan's Sandbox-first rule):** on the CLICK installed on Sam's
+desktop, while he is away, as long as it is deterministic. Windows Sandbox is the fallback, and is needed only
+if the desktop cannot work.
 
-First milestone: CLICK installs and launches unattended in the Sandbox; a known laddercodec fixture is pasted,
-copied back and matches byte for byte; the project saves.
+**Rules that make it deterministic and keep Sam's work safe:**
+- It refuses to start while any CLICK window is open, and touches only the CLICK it started.
+- Each step waits for a window or a file to appear, with a timeout, never for a fixed time. Any unexpected
+  dialog stops the run, leaving a screenshot and a log, and closes the runner's CLICK without saving.
+- It never writes to the PLC. It connects only so that the new project takes that PLC's hardware.
 
-How CLICK v4 is driven (from Sam, 2026-11-15; he okayed driving a CLICK the runner started):
-
+**How CLICK v4 is driven (from Sam):**
 1. Start CLICK v4. When it prompts, connect to the only CLICK PLC on Sam's network: the conformance runner.
+   Connecting is what makes the project match that PLC's hardware.
 2. When it asks whether to read the project from the PLC, answer No. The open project is then
-   `NewProject{n}` with an empty main program, so no fixture project is needed.
+   `NewProject{n}` with an empty main program, so a probe that needs only main is quick to run.
 3. To paste a test: select the first rung number, send paste, wait until the rungs appear.
 4. Press "Syntax Check", then save the project. That gives the Scr*.tmp files, and from them the CSVs.
 
-The runner never writes to the PLC; it only connects because CLICK asks at start.
-
-Needs from Sam: enable Windows Sandbox and reboot (not enabled today: there is no `WindowsSandbox.exe`), then
-run the installer by hand once inside it to record its answers.
-
-Unknowns:
-- Networking: `click-probe.wsb` turns networking off, and step 1 needs the PLC. With it on, the Sandbox sits
-  behind NAT, so CLICK's search for PLCs on the network may not reach the LAN. Try connecting to the PLC's IP
-  directly; if CLICK must find it by search, ask Sam whether the runner may start without a PLC.
+**Unknowns:**
+- A locked screen: synthetic input and the clipboard do not reach a locked desktop. While the runner works,
+  the session must stay unlocked, or the runner has to detect the lock and refuse to start. Ask Sam which.
 - The first save of `NewProject{n}` opens a Save As dialog that needs a path typed in.
-- Whether input reaches the Sandbox's CLICK while the Sandbox window is minimized or covered (if not, "the
-  machine stays usable" means only with that window left open on screen).
-- The install time on every launch, since the Sandbox is wiped each time; only one Sandbox runs at a time.
 
-The desktop is the fallback, only if the Sandbox fails: in a time slot Sam picks, and only on a CLICK the
-runner started.
+**Sandbox fallback:**
+- Two probe files were written 2026-11-13 in `%TEMP%\clicksandbox` and never run. `click-probe.wsb` maps the
+  installer folder read-only and an output folder, with networking off. `bootstrap.cmd` records the
+  InstallShield answers (`/r`, `setup.iss`) on the first run and installs silently (`/s`) after that. Move both
+  into `devtools/`, with paths as arguments, if the fallback is needed.
+- Needs from Sam then: enable Windows Sandbox and reboot, and run the installer by hand once inside it.
+- Inside the Sandbox, CLICK may not find the PLC: the Sandbox's network sits behind NAT. Sam's idea is to keep a
+  copy of the conformance PLC's hardware setup instead. CLICK takes hardware from the project it opens, so the
+  likelier form is a blank `.ckp` saved for that PLC and opened by the runner. A Project.ini copied into
+  CLICK's temp folder is not known to be read back.
 
 Early jobs once it works: what CLICK writes, and in what order, on Open, New and Save As (user check Q2 below);
 what CLICK turns constants such as `005`, `+5` and `0ffh` into (for laddercodec); the three small checks in the
@@ -263,7 +264,7 @@ Plan 1, step 4. pyrung, ClickNick and the VS Code extension release together.
 
 Moved from the sweep arc's `USER-CHECKS.md` on 2026-11-15. None blocks a release: before a tag, Sam gets a short
 smoke test, and what the rest find goes into bugfix releases. Items marked (4b) a mock can automate; (runner)
-waits on item 4. A check that is walked or automated is deleted here.
+waits on the CLICK runner (item 4). A check that is walked or automated is deleted here.
 
 ### Questions only CLICK can answer
 - Q2 (runner): does CLICK rewrite SC_.mdb on File > Open and Save As, and before or after the window title
