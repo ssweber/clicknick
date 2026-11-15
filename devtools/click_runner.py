@@ -64,13 +64,26 @@ DEFAULT_EXE = Path(r"C:\Program Files (x86)\AutomationDirect\CLICK Ver4.00\CLICK
 DEFAULT_PASSWORD = "123click"
 DEFAULT_USER_TYPE = "admin"
 DEFAULT_TIMEOUT = 60.0
+# The ceiling for the steps CLICK may be busy in (paste, Syntax Check, save, close): CLICK
+# freezes until a paste is done
+DEFAULT_PASTE_TIMEOUT = 300.0
 POLL_INTERVAL = 0.1
+# How long one check waits for CLICK to answer (WM_NULL); a busy CLICK is no error
+IDLE_TIMEOUT = 2.0
+# After a paste, CLICK answers on this many polls in a row before the paste is done
+RESPONSIVE_POLLS = 3
+# How often a wait logs the status bar (or that CLICK does not answer)
+STATUS_EVERY = 10.0
+STATUS_BAR_ID = 59393  # AFX_IDW_STATUS_BAR
 
 EXIT_OK = 0
 EXIT_ABORTED = 1
 EXIT_REFUSED = 2
 
 _MAIN_TITLE = re.compile(r"^CLICK Programming Software \(Version4\.\d+\) - ")
+_NOT_RESPONDING = " (Not Responding)"
+_CURSOR = re.compile(r"\b(\d+):(\d+):([A-Z]+)\b")
+_STEPS = re.compile(r"\b(\d+)/(\d+)\b")
 _SYNTAX_RESULT = re.compile(r"(\d+) error\(s\), (\d+) warning\(s\)\s*$")
 
 
@@ -170,6 +183,37 @@ def _require(control: Control | None, what: str) -> Control:
     return control
 
 
+@dataclass(frozen=True)
+class StatusBar:
+    """What the main window's status bar read, and how."""
+
+    control: str  # The bar's class
+    method: str  # SB_GETTEXT, WM_GETTEXT or MSAA (Desktop.status_bar)
+    panes: tuple[str, ...]
+
+    @property
+    def rung(self) -> int | None:
+        """The cursor pane's rung ("2:1:A" is rung 2)."""
+        match = _CURSOR.search("  ".join(self.panes))
+        return int(match.group(1)) if match else None
+
+    @property
+    def steps(self) -> int | None:
+        """The program steps used ("0004/8000" is 4)."""
+        match = _STEPS.search("  ".join(self.panes))
+        return int(match.group(1)) if match else None
+
+    def shows_paste(self, before: StatusBar, rungs: int) -> bool:
+        """Whether this reading, against *before* the paste, shows *rungs* rungs pasted.
+
+        The cursor moves down by the rungs pasted, and a paste of anything but empty rungs
+        uses program steps.
+        """
+        if before.rung is not None and self.rung == before.rung + rungs:
+            return True
+        return before.steps is not None and self.steps is not None and self.steps > before.steps
+
+
 def _json_default(value: object) -> object:
     if isinstance(value, Path):
         return str(value)
@@ -190,6 +234,7 @@ class Settings:
     password: str = DEFAULT_PASSWORD
     user_type: str = DEFAULT_USER_TYPE
     timeout: float = DEFAULT_TIMEOUT
+    paste_timeout: float = DEFAULT_PASTE_TIMEOUT
     poll: float = POLL_INTERVAL
     record: bool = False
 
@@ -245,6 +290,7 @@ class Run:
             "timings": {},
             "syntax_check": None,
             "rungs": None,
+            "status_bar": {},
             "files": {},
             "click": {"exe": settings.exe, "pid": None, "main_hwnd": None, "closed": None},
         }
@@ -277,16 +323,23 @@ class Run:
         written: list[Path] = self.result["files"].setdefault(folder.name, [])
         count = len(written)
         for window in self.desktop.windows(self.pid):
+            # Listing sends CLICK no message, and neither does the screenshot, but a window
+            # that does not answer is drawn as Windows' ghost: no edit text and no PNG then
+            answers = self.desktop.idle(window.hwnd, IDLE_TIMEOUT)
+            if not answers:
+                self.log(f"{window.hwnd} does not answer: its dump has no edit text and no PNG")
             controls = []
             for control in self.desktop.controls(window.hwnd):
                 row = asdict(control)
-                if control.cls == "Edit":
+                if control.cls == "Edit" and answers:
                     row["edit_text"] = self.desktop.read_text(control.hwnd)
                 controls.append(row)
             base = folder / f"{self._dump_count:02d}-{label}-{window.hwnd}"
             info = {**asdict(window), "controls": controls}
             base.with_suffix(".json").write_text(json.dumps(info, indent=1), encoding="utf-8")
             written.append(base.with_suffix(".json"))
+            if not answers:
+                continue
             try:
                 if self.desktop.screenshot(window.hwnd, base.with_suffix(".png")):
                     written.append(base.with_suffix(".png"))
@@ -308,17 +361,22 @@ class Run:
         *,
         exits: bool = False,
         on_timeout: Callable[[], str] | None = None,
+        timeout: float | None = None,
     ) -> T:
         """Poll CLICK's windows until *until* returns something other than None or False.
 
         Any window that is neither the main frame nor one of *expected* aborts the run,
         except one that was open before the main frame first appeared (CLICK starting up,
         a splash screen), until the launch step ends. CLICK exiting aborts too, unless
-        *exits* (then the wait ends when it has). A timeout's reason starts with
-        *on_timeout*'s text when it is given.
+        *exits* (then the wait ends when it has). It gives up after *timeout* seconds
+        (default ``Settings.timeout``), with a reason that starts with *on_timeout*'s text
+        when it is given. Every ``STATUS_EVERY`` seconds it logs the status bar, or that
+        CLICK does not answer.
         """
         assert self.pid is not None
-        deadline = time.monotonic() + self.s.timeout
+        limit = self.s.timeout if timeout is None else timeout
+        deadline = time.monotonic() + limit
+        next_status = time.monotonic() + STATUS_EVERY
         while True:
             if not self.desktop.alive(self.pid):
                 if exits:
@@ -345,9 +403,16 @@ class Run:
             value = until(found)
             if value is not None and value is not False:
                 return value
-            if time.monotonic() > deadline:
-                reason = f"timed out after {self.s.timeout:g} s waiting for {what}"
+            now = time.monotonic()
+            if now > deadline:
+                reason = f"timed out after {limit:g} s waiting for {what}"
                 raise Aborted(f"{on_timeout()}; {reason}" if on_timeout else reason)
+            if now >= next_status and self.main is not None:
+                next_status = now + STATUS_EVERY
+                if self.desktop.idle(self.main, IDLE_TIMEOUT):
+                    self.status_bar(None)
+                else:
+                    self.log(f"CLICK does not answer; still waiting for {what}")
             time.sleep(self.s.poll)
 
     def only_main(self, found: dict[str, Window]) -> bool:
@@ -357,7 +422,7 @@ class Run:
             main is not None
             and len(found) == 1
             and main.enabled
-            and self.desktop.idle(main.hwnd, self.s.timeout)
+            and self.desktop.idle(main.hwnd, IDLE_TIMEOUT)
         )
 
     def controls(self, window: Window) -> list[Control]:
@@ -377,13 +442,36 @@ class Run:
         name = self.desktop.command(self.main, command_id)
         self.log(f"command {name} ({command_id})")
 
-    def status_bar(self) -> None:
-        """Log the status bar's WM_GETTEXT, to learn what it holds."""
+    def read_status_bar(self) -> StatusBar | None:
+        """The main window's status bar, read the first way that works; None if none does.
+
+        CLICK's main window has two children with the status bar's id: the MFC bar it
+        shows (``Afx:StatusBar...``) and a common control of no size. The shown one is
+        tried first. Call it only while CLICK answers: reading sends it messages.
+        """
         assert self.main is not None
-        for control in self.desktop.controls(self.main):
-            if control.cls.startswith("Afx:StatusBar"):
-                self.log(f"status bar: {self.desktop.read_text(control.hwnd)!r}")
-                return
+        bars = [
+            c
+            for c in self.desktop.controls(self.main)
+            if c.parent == self.main and c.id == STATUS_BAR_ID
+        ]
+        bars.sort(key=lambda c: not c.cls.startswith("Afx:StatusBar"))
+        for bar in bars:
+            read = self.desktop.status_bar(bar.hwnd)
+            if read is not None:
+                return StatusBar(bar.cls, read[0], tuple(read[1]))
+        return None
+
+    def status_bar(self, label: str | None) -> StatusBar | None:
+        """Read and log the status bar, and keep it in the result under *label* if given."""
+        status = self.read_status_bar()
+        if status is None:
+            self.log("status bar: no way of reading it worked")
+        else:
+            self.log(f"status bar ({status.control}, {status.method}): {' | '.join(status.panes)}")
+        if label is not None:
+            self.result["status_bar"][label] = None if status is None else asdict(status)
+        return status
 
     # -- the steps ------------------------------------------------------------
 
@@ -545,7 +633,7 @@ class Run:
             self.press(prompt, ok)
             self.connected = True
             self.wait("the main window, connected", [STARTUP, CONNECT, READ_PROMPT], self.only_main)
-            self.status_bar()
+            self.status_bar("connected")
             self.record("connected")
 
     def login(self, login: Window) -> None:
@@ -596,15 +684,63 @@ class Run:
                 f"{prepared.addresses_inserted} address(es) added to SC_.mdb"
             )
             self.result["rungs"] = {"pasted": prepared.rung_count, "saved_main": None, "same": None}
+            before = self.status_bar("before_paste")
             self.desktop.set_clipboard(prepared.payload, self.main)
             self.command(PASTE)
-            # A paste shows nothing when it is done, and WM_NULL can be answered before
-            # CLICK takes the posted paste. Posted commands run in order, so the Syntax
-            # Check and Save As posted next run after it; the decoded save checks that it
-            # landed (check_landed).
-            self.wait("the main window after the paste", [], self.only_main)
-            self.status_bar()
+            how = self.wait(
+                "CLICK to finish the paste",
+                [],
+                self._pasted(before, prepared.rung_count),
+                timeout=self.s.paste_timeout,
+            )
+            self.log(f"paste done: {how}")
+            self.status_bar("pasted")
             self.record("pasted")
+
+    def _pasted(
+        self, before: StatusBar | None, rungs: int
+    ) -> Callable[[dict[str, Window]], str | None]:
+        """The paste's done condition, for ``wait``.
+
+        CLICK freezes while it pastes and shows nothing when it is done. Done is CLICK
+        answering again, with the main window alone and enabled, on ``RESPONSIVE_POLLS``
+        polls in a row; then, when the status bar showed a cursor or a step count before
+        the paste, the status bar showing the rungs pasted (``StatusBar.shows_paste``).
+        CLICK answering for ``Settings.timeout`` seconds without that aborts the run.
+        The decoded save is the final check (``check_landed``).
+        """
+        answered = [0]
+        since: list[float | None] = [None]
+
+        def done(found: dict[str, Window]) -> str | None:
+            if not self.only_main(found):
+                answered[0], since[0] = 0, None
+                return None
+            answered[0] += 1
+            if answered[0] < RESPONSIVE_POLLS:
+                return None
+            polls = f"CLICK answers on {RESPONSIVE_POLLS} polls in a row"
+            if before is None or (before.rung is None and before.steps is None):
+                return f"{polls} (no status bar to check it with)"
+            now = self.read_status_bar()
+            if now is None:
+                return f"{polls} (the status bar no longer reads)"
+            if now.shows_paste(before, rungs):
+                return (
+                    f"{polls}, and its status bar shows rung {now.rung}, {now.steps} step(s) "
+                    f"(before: rung {before.rung}, {before.steps} step(s))"
+                )
+            if since[0] is None:
+                since[0] = time.monotonic()
+            elif time.monotonic() - since[0] > self.s.timeout:
+                raise Aborted(
+                    f"CLICK answers again, but after {self.s.timeout:g} s its status bar does "
+                    f"not show the {rungs} rung(s) pasted: {' | '.join(now.panes)} "
+                    f"(before: {' | '.join(before.panes)})"
+                )
+            return None
+
+        return done
 
     def syntax_check(self) -> None:
         assert self.main is not None
@@ -633,7 +769,9 @@ class Run:
                     return None
                 return _SYNTAX_RESULT.search(text)
 
-            match = self.wait("the Syntax Check result in Output", [], finished)
+            match = self.wait(
+                "the Syntax Check result in Output", [], finished, timeout=self.s.paste_timeout
+            )
             text = self.desktop.read_text(output.hwnd) or ""
             self.result["syntax_check"] = {
                 "text": text,
@@ -671,7 +809,7 @@ class Run:
                 # Saved once the title names the file, it exists, and CLICK's Scr*.tmp
                 # files are the same on two polls in a row
                 main = found.get(MAIN)
-                if main is None or f" - {ckp.name} - " not in main.title or not ckp.is_file():
+                if main is None or _project_file(main.title) != ckp.name or not ckp.is_file():
                     return False
                 if not self.only_main(found):
                     return False
@@ -680,7 +818,7 @@ class Run:
                 last[0] = state
                 return done
 
-            self.wait(f"the save to {ckp.name}", [SAVE_AS], saved)
+            self.wait(f"the save to {ckp.name}", [SAVE_AS], saved, timeout=self.s.paste_timeout)
             self.log(f"saved {ckp}")
             self.result["files"]["ckp"] = ckp
             self.record("saved")
@@ -720,7 +858,7 @@ class Run:
         self.press(prompt, yes)
         self.wait("the main window, disconnected", [DISCONNECT_PROMPT], self.only_main)
         self.connected = False
-        self.status_bar()
+        self.status_bar(label)
         if label:
             self.record(label)
 
@@ -728,7 +866,9 @@ class Run:
         assert self.main is not None and self.pid is not None
         with self.step("close"):
             self.desktop.close(self.main)
-            self.wait("CLICK to exit", [], lambda f: False, exits=True)
+            self.wait(
+                "CLICK to exit", [], lambda f: False, exits=True, timeout=self.s.paste_timeout
+            )
             self.result["click"]["closed"] = True
             self.log("CLICK exited")
 
@@ -785,7 +925,9 @@ class Run:
         if self.connected and self.main is not None and self.desktop.alive(self.pid):
             try:
                 found, unexpected = classify(self.desktop.windows(self.pid), [])
-                if unexpected or not self.only_main(found):
+                if not self.desktop.idle(self.main, IDLE_TIMEOUT):
+                    self.log("not disconnecting: CLICK does not answer")
+                elif unexpected or not self.only_main(found):
                     self.log("not disconnecting: a dialog is open")
                 else:
                     self.disconnect(label=None)
@@ -892,6 +1034,21 @@ class Run:
         return json.loads(text)
 
 
+def _project_file(title: str) -> str | None:
+    """The project file a main window's title names ("NewProject4.ckp"), or None.
+
+    The title is ``CLICK Programming Software (Version4.00) - <file>.ckp``, then
+    `` - [<program>]`` while a program is open, and `` (Not Responding)`` while CLICK
+    does not answer.
+    """
+    title = title.removesuffix(_NOT_RESPONDING)
+    prefix = _MAIN_TITLE.match(title)
+    if prefix is None:
+        return None
+    match = re.match(r"(.+?\.ckp)(?: - .*)?$", title[prefix.end() :], re.IGNORECASE)
+    return match.group(1) if match else None
+
+
 def _scr_state(folder: Path) -> tuple[tuple[str, int, int], ...]:
     from clicknick.utils.click_temp import scr_files
 
@@ -933,7 +1090,14 @@ def _parser() -> argparse.ArgumentParser:
         "--timeout",
         type=float,
         default=DEFAULT_TIMEOUT,
-        help=f"seconds each step may take (default {DEFAULT_TIMEOUT:g})",
+        help=f"seconds each step may wait for a dialog (default {DEFAULT_TIMEOUT:g})",
+    )
+    common.add_argument(
+        "--paste-timeout",
+        type=float,
+        default=DEFAULT_PASTE_TIMEOUT,
+        help="the most seconds CLICK may stay busy pasting, checking, saving or closing "
+        f"(default {DEFAULT_PASTE_TIMEOUT:g})",
     )
     commands = parser.add_subparsers(dest="command", required=True)
     paste = commands.add_parser(
@@ -958,6 +1122,7 @@ def settings_from(argv: list[str] | None, environ: dict[str, str] | None = None)
         password=args.password or env.get("CLICK_RUNNER_PASSWORD") or DEFAULT_PASSWORD,
         user_type=args.user_type or env.get("CLICK_RUNNER_USER_TYPE") or DEFAULT_USER_TYPE,
         timeout=args.timeout,
+        paste_timeout=args.paste_timeout,
         poll=POLL_INTERVAL,
         record=getattr(args, "record", False),
     )

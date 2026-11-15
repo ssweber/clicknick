@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import json
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -65,7 +66,10 @@ class FakeClick(cd.Desktop):
     """CLICK v4 as the probe saw it, with switches for what can go wrong.
 
     *surprise* names an event after which an unknown dialog appears; *stall* one whose
-    effect never happens; *interrupt* a Desktop method that raises KeyboardInterrupt.
+    effect never happens; *interrupt* a Desktop method that raises KeyboardInterrupt;
+    *hang_on* one after which CLICK stops answering for *hang_for* seconds (Windows then
+    titles its main window "... (Not Responding)"). *status_bar* is how its status bar
+    reads (``Desktop.status_bar``), None when no way works.
     """
 
     def __init__(
@@ -87,6 +91,9 @@ class FakeClick(cd.Desktop):
         interrupt: str | None = None,
         fail: str | None = None,
         lag: int = 2,
+        hang_on: str | None = None,
+        hang_for: float = 0.0,
+        status_bar: str | None = "MSAA",
         desktop_name: str | None = "Default",
         running: tuple[int, ...] = (),
         open_windows: tuple[int, ...] = (),
@@ -108,6 +115,11 @@ class FakeClick(cd.Desktop):
         self.surprise, self.stall = surprise, stall
         self.interrupt, self.fail = interrupt, fail
         self.lag = lag
+        self.hang_on, self.hang_for = hang_on, hang_for
+        self.hung_until = 0.0
+        self.sent_while_hung: list[str] = []
+        self.status_method = status_bar
+        self.cursor_rung, self.steps = 1, 0
         self.desktop_name = desktop_name
         self.running, self.open_windows = running, open_windows
         self.pid: int | None = None
@@ -158,6 +170,8 @@ class FakeClick(cd.Desktop):
                 return
             action()
             self.events.append(event)
+            if event == self.hang_on:
+                self.hung_until = time.monotonic() + self.hang_for
             if event == self.surprise:
                 assert self.main is not None
                 self._window("#32770", "Set a Project Password", self.main.hwnd)
@@ -197,6 +211,7 @@ class FakeClick(cd.Desktop):
         floating = self._control(main, "Afx:002E0000:8:00010003:00100063:00000000", "Output", 158)
         self._control(main, "Edit", "", 1005, parent=floating.hwnd, visible=False)
         self._control(main, "Afx:StatusBar:2e0000:8:10003:10", "", 59393)
+        self._control(main, "msctls_statusbar32", "", 59393, rect=(0, 1, 0, 1))
         main.on_close = self._close_main
         temp = self.temp_dir(main.hwnd)
         temp.mkdir()
@@ -373,13 +388,21 @@ class FakeClick(cd.Desktop):
 
     def _post_command(self, hwnd: int, command_id: int) -> None:
         self._check("command")
+        self._message("WM_COMMAND")
         assert self.main is not None and hwnd == self.main.hwnd
         name = cd.ALLOWED_COMMANDS[command_id]
         self.commands.append(name)
         output = self.output
         assert output is not None
         if command_id == cd.PASTE:
-            self._later("paste", lambda: setattr(self, "pasted", self.clipboard))
+
+            def paste() -> None:
+                # RUNG_CSV's one rung: the cursor moves down a rung, and it uses steps
+                self.pasted = self.clipboard
+                self.cursor_rung += 1
+                self.steps += 3
+
+            self._later("paste", paste)
         elif command_id == cd.SYNTAX_CHECK:
 
             def checked() -> None:
@@ -416,18 +439,28 @@ class FakeClick(cd.Desktop):
         assert pid == self.pid
         self.is_running = False
         self.terminated = True
+        self.hung_until = 0.0
         self.wins.clear()
 
     def windows(self, pid: int) -> list[cd.Window]:
         assert pid == self.pid
         self._check("windows")
-        self.tick += 1
-        due = [item for item in self.queue if item[0] <= self.tick]
-        self.queue = [item for item in self.queue if item[0] > self.tick]
-        for _, action in due:
-            action()
+        hung = self.hung()
+        if not hung:  # A hung CLICK takes no posted message
+            self.tick += 1
+            due = [item for item in self.queue if item[0] <= self.tick]
+            self.queue = [item for item in self.queue if item[0] > self.tick]
+            for _, action in due:
+                action()
         return [
-            cd.Window(w.hwnd, w.cls, w.title, w.owner, w.enabled, (0, 0, 100, 100))
+            cd.Window(
+                w.hwnd,
+                w.cls,
+                w.title + (" (Not Responding)" if hung and w is self.main else ""),
+                w.owner,
+                w.enabled,
+                (0, 0, 100, 100),
+            )
             for w in self.wins.values()
         ]
 
@@ -447,36 +480,71 @@ class FakeClick(cd.Desktop):
             for c in window.controls
         ]
 
+    def hung(self) -> bool:
+        return time.monotonic() < self.hung_until
+
+    def _message(self, what: str) -> bool:
+        """Whether a message is answered; one sent or posted while CLICK hangs is noted."""
+        if self.hung():
+            self.sent_while_hung.append(what)
+            return False
+        return True
+
     def read_text(self, hwnd: int) -> str | None:
+        if not self._message("WM_GETTEXT"):
+            return None
         control = self._find(hwnd)
+        if control.id == 20142:
+            return ""  # ES_PASSWORD: another process reads nothing
         return control.value if control.cls == "Edit" else control.text
 
     def set_text(self, hwnd: int, text: str) -> bool:
+        if not self._message("WM_SETTEXT"):
+            return False
         self._find(hwnd).value = text
         self.typed[self._find(hwnd).id] = text
         return True
 
     def button_checked(self, hwnd: int) -> int | None:
-        return self._find(hwnd).checked
+        return self._find(hwnd).checked if self._message("BM_GETCHECK") else None
 
     def list_view_counts(self, hwnd: int) -> tuple[int, int] | None:
-        return self._find(hwnd).counts
+        return self._find(hwnd).counts if self._message("LVM_GETITEMCOUNT") else None
+
+    def status_bar(self, hwnd: int) -> tuple[str, list[str]] | None:
+        control = self._find(hwnd)
+        if not control.cls.startswith("Afx:StatusBar") or self.status_method is None:
+            return None  # The common control of no size holds nothing
+        if not self._message("status bar"):
+            return None
+        panes = [
+            "RUN" if self.connected else "",
+            f"{self.steps:04d}/8000",
+            "C2-03CPU",
+            f"{self.cursor_rung}:1:A",
+            "192.168.1.241(Conformance)" if self.connected else "",
+        ]
+        return self.status_method, panes
 
     def press(self, hwnd: int) -> None:
+        self._message("BM_CLICK")
         control = self._find(hwnd)
         self.pressed.append(control.text or f"{control.cls}@{control.rect[0]}")
         if control.on_press is not None:
             control.on_press()
 
     def close(self, hwnd: int) -> None:
+        self._message("WM_CLOSE")
         window = self.wins[hwnd]
         if window.on_close is not None:
             window.on_close()
 
     def idle(self, hwnd: int, timeout: float) -> bool:
-        return True
+        return not self.hung()  # SMTO_ABORTIFHUNG gives up at once on a hung window
 
     def screenshot(self, hwnd: int, path: Path) -> bool:
+        if self.hung():
+            self.sent_while_hung.append("screenshot")  # It would show Windows' ghost
         path.write_bytes(b"\x89PNG fake")
         return True
 
@@ -529,10 +597,13 @@ def run(
     exe: Path,
     *args: str,
     timeout: float = 5,
+    paste_timeout: float | None = None,
     capsys: pytest.CaptureFixture[str] | None = None,
 ) -> tuple[int, dict]:
+    """Run the CLI on *fake*; the paste timeout is *timeout* unless given."""
     argv = ["paste", str(csv)] if csv is not None else ["record"]
-    argv += ["--out", str(out), "--click-exe", str(exe), "--timeout", str(timeout), *args]
+    argv += ["--out", str(out), "--click-exe", str(exe), "--timeout", str(timeout)]
+    argv += ["--paste-timeout", str(timeout if paste_timeout is None else paste_timeout), *args]
     code = cr.main(argv, desktop=fake, prepare=Prepare(), stderr=io.StringIO())
     result_file = out / "result.json"
     result = json.loads(result_file.read_text(encoding="utf-8")) if result_file.exists() else {}
@@ -637,13 +708,13 @@ def test_paste_end_to_end(tmp_path, setup, capsys):
 
 @pytest.mark.parametrize("empty_main", [[], [empty_rung("")]])
 def test_a_paste_that_did_not_land_aborts(tmp_path, setup, monkeypatch, empty_main):
-    """CLICK shows nothing when a paste is done; the decoded save is the check."""
+    """With no status bar to read, the decoded save is the only check of a paste."""
     csv, exe = setup
     monkeypatch.setattr(
         "clicknick.ladder.program.decode_program",
         lambda data: Program("Main Program", 1, empty_main),
     )
-    fake = FakeClick(tmp_path, stall="paste")
+    fake = FakeClick(tmp_path, stall="paste", status_bar=None)
     out = tmp_path / "out"
     code, result = run(fake, out, csv, exe)
     assert code == cr.EXIT_ABORTED
@@ -673,7 +744,9 @@ def test_paste_provisions_the_runners_own_mdb(tmp_path, setup):
     csv, exe = setup
     fake = FakeClick(tmp_path)
     prepare = Prepare()
-    settings = cr.Settings("paste", tmp_path / "out", csv, exe, timeout=5, poll=0.001)
+    settings = cr.Settings(
+        "paste", tmp_path / "out", csv, exe, timeout=5, paste_timeout=5, poll=0.001
+    )
     result = cr.Run(fake, settings, prepare=prepare, stderr=io.StringIO()).execute()
     assert result["status"] == "ok", result["reason"]
     assert prepare.mdbs == [None, fake.temp_dir(fake.main.hwnd) / "SC_.mdb"]
@@ -827,9 +900,7 @@ def test_an_empty_out_folder_is_fine(tmp_path, setup):
         ("connect", "connect"),
         ("login", "login"),
         ("dont_read", "dont_read"),
-        # A paste shows nothing when it is done; the Syntax Check posted after it runs after
-        # it, so a dialog the paste opens stops the run there at the latest
-        ("paste", "syntax_check"),
+        ("paste", "paste"),
         ("syntax_check", "syntax_check"),
         ("save", "save"),
         ("disconnect_yes", "disconnect"),
@@ -1006,6 +1077,113 @@ def test_click_exiting_by_itself_aborts(tmp_path, setup):
     assert code == cr.EXIT_ABORTED
     assert "CLICK exited while waiting" in result["reason"]
     assert result["click"]["closed"] is True
+
+
+# ---------------------------------------------------------------------------
+# A busy CLICK: the paste, a hang, the status bar
+# ---------------------------------------------------------------------------
+
+
+def test_a_slow_paste_is_waited_out_without_a_message(tmp_path, setup):
+    """CLICK freezes while it pastes, longer than any dialog may take; nothing is sent then."""
+    csv, exe = setup
+    fake = FakeClick(tmp_path, hang_on="paste", hang_for=0.6)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe, timeout=0.2, paste_timeout=10)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.sent_while_hung == []
+    assert result["timings"]["paste"] >= 0.6
+    log = (out / "run.log").read_text(encoding="utf-8")
+    assert "paste done: CLICK answers on 3 polls in a row, and its status bar shows rung 2" in log
+    before, after = result["status_bar"]["before_paste"], result["status_bar"]["pasted"]
+    assert before["method"] == after["method"] == "MSAA"
+    assert before["control"].startswith("Afx:StatusBar")
+    assert "1:1:A" in before["panes"] and "2:1:A" in after["panes"]
+    assert "0000/8000" in before["panes"] and "0003/8000" in after["panes"]
+
+
+def test_a_paste_the_status_bar_does_not_show_aborts(tmp_path, setup):
+    csv, exe = setup
+    fake = FakeClick(tmp_path, stall="paste")
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe, timeout=0.3, paste_timeout=10)
+    assert_aborted(
+        fake, out, code, result, "CLICK answers again, but after 0.3 s its status bar does not"
+    )
+    assert result["step"] == "paste"
+    assert "1:1:A" in result["reason"]
+    assert "Syntax Check" not in fake.commands
+
+
+def test_a_paste_with_no_status_bar_to_read_ends_when_click_answers(tmp_path, setup):
+    csv, exe = setup
+    fake = FakeClick(tmp_path, status_bar=None)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["status_bar"] == {
+        "connected": None,
+        "before_paste": None,
+        "pasted": None,
+        "disconnected": None,
+    }
+    log = (out / "run.log").read_text(encoding="utf-8")
+    assert "status bar: no way of reading it worked" in log
+    assert "(no status bar to check it with)" in log
+
+
+def test_a_hung_click_is_dumped_without_a_message_and_ended(tmp_path, setup, monkeypatch):
+    """CLICK stops answering for good: the dump sends it nothing and takes no screenshot
+    (Windows would show its ghost), the cleanup does not disconnect, and CLICK is ended."""
+    csv, exe = setup
+    monkeypatch.setattr(cr, "STATUS_EVERY", 0.05)
+    fake = FakeClick(tmp_path, hang_on="syntax_check", hang_for=60)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe, timeout=0.3)
+    assert code == cr.EXIT_ABORTED
+    assert "timed out after 0.3 s waiting for the Syntax Check" in result["reason"]
+    assert fake.sent_while_hung == []
+    assert fake.terminated and not fake.is_running and result["click"]["closed"] is True
+    dumps = [json.loads(p.read_text(encoding="utf-8")) for p in (out / "abort").glob("*.json")]
+    assert dumps and not list((out / "abort").glob("*.png"))
+    assert all("edit_text" not in c for d in dumps for c in d["controls"])
+    log = (out / "run.log").read_text(encoding="utf-8")
+    assert "does not answer: its dump has no edit text and no PNG" in log
+    assert "not disconnecting: CLICK does not answer" in log
+    assert "CLICK does not answer; still waiting for the Syntax Check result" in log
+    assert "Disconnect" not in fake.commands
+
+
+def test_a_long_wait_logs_the_status_bar(tmp_path, setup, monkeypatch):
+    csv, exe = setup
+    monkeypatch.setattr(cr, "STATUS_EVERY", 0.05)
+    fake = FakeClick(tmp_path, stall="syntax_check")
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe, timeout=5, paste_timeout=0.4)
+    assert_aborted(fake, out, code, result, "timed out after 0.4 s waiting for the Syntax Check")
+    log = (out / "run.log").read_text(encoding="utf-8")
+    assert log.count("status bar (Afx:StatusBar:2e0000:8:10003:10, MSAA): RUN | 0003/8000") >= 3
+
+
+@pytest.mark.parametrize(
+    ("title", "file"),
+    [
+        (
+            "CLICK Programming Software (Version4.00) - NewProject4.ckp - [Main Program]",
+            "NewProject4.ckp",
+        ),
+        ("CLICK Programming Software (Version4.00) - NewProject7.ckp", "NewProject7.ckp"),
+        ("CLICK Programming Software (Version4.00) - rung.ckp - [Main Program]", "rung.ckp"),
+        (
+            "CLICK Programming Software (Version4.00) - a - b.ckp - [Main Program] (Not Responding)",
+            "a - b.ckp",
+        ),
+        ("CLICK Programming Software (Version4.00) - rung.ckp (Not Responding)", "rung.ckp"),
+        ("CLICK Programming Software", None),
+    ],
+)
+def test_the_project_file_in_the_main_title(title, file):
+    assert cr._project_file(title) == file
 
 
 # ---------------------------------------------------------------------------

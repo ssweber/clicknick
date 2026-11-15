@@ -151,6 +151,15 @@ class Desktop(ABC):
         """A list view's (LVM_GETITEMCOUNT, LVM_GETSELECTEDCOUNT), or None if it does not answer."""
 
     @abstractmethod
+    def status_bar(self, hwnd: int) -> tuple[str, list[str]] | None:
+        """The pane texts of the status bar *hwnd*, and how they were read; None if no way works.
+
+        Tries SB_GETTEXT, WM_GETTEXT, then MSAA (the names of the bar's accessible
+        children), and returns the first that gives any text: ``(method, panes)``. It only
+        reads, though SB_GETTEXT needs a buffer it allocates in the bar's process and frees.
+        """
+
+    @abstractmethod
     def press(self, hwnd: int) -> None:
         """Post BM_CLICK to the button *hwnd*."""
 
@@ -189,11 +198,27 @@ BM_GETCHECK = 0x00F0
 BM_CLICK = 0x00F5
 LVM_GETITEMCOUNT = 0x1004
 LVM_GETSELECTEDCOUNT = 0x1032
+SB_GETPARTS = 0x0406
+SB_GETTEXTLENGTHW = 0x040C
+SB_GETTEXTW = 0x040D
 SMTO_ABORTIFHUNG = 0x0002
 GW_OWNER = 4
 DESKTOP_READOBJECTS = 0x0001
 UOI_NAME = 2
 TH32CS_SNAPPROCESS = 0x00000002
+PROCESS_VM_OPERATION = 0x0008
+PROCESS_VM_READ = 0x0010
+PROCESS_VM_WRITE = 0x0020
+MEM_COMMIT = 0x1000
+MEM_RESERVE = 0x2000
+MEM_RELEASE = 0x8000
+PAGE_READWRITE = 0x04
+OBJID_CLIENT = -4
+DISPID_ACC_CHILDCOUNT = -5001
+DISPID_ACC_NAME = -5003
+_MAX_PANES = 32
+SRCCOPY = 0x00CC0020
+CAPTUREBLT = 0x40000000
 _MESSAGE_TIMEOUT_MS = 5000
 _ULONG_PTR = ctypes.c_size_t
 
@@ -237,19 +262,17 @@ def _user32():
         ctypes.POINTER(wintypes.DWORD),
     ]
     user32.CloseDesktop.argtypes = [wintypes.HANDLE]
-    user32.PrintWindow.argtypes = [wintypes.HWND, wintypes.HDC, wintypes.UINT]
     return user32
 
 
 def _png(width: int, height: int, bgra: bytes) -> bytes:
-    """A PNG of top-down BGRA pixels."""
-    raw = bytearray()
-    stride = width * 4
-    for y in range(height):
-        raw.append(0)
-        row = bgra[y * stride : (y + 1) * stride]
-        for x in range(0, len(row), 4):
-            raw += bytes((row[x + 2], row[x + 1], row[x]))
+    """A PNG of top-down 32-bit BGRA pixels."""
+    rgb = bytearray(width * height * 3)
+    rgb[0::3] = bgra[2::4]
+    rgb[1::3] = bgra[1::4]
+    rgb[2::3] = bgra[0::4]
+    stride = width * 3
+    raw = b"".join(b"\x00" + rgb[y * stride : (y + 1) * stride] for y in range(height))
 
     def chunk(kind: bytes, data: bytes) -> bytes:
         return (
@@ -262,6 +285,158 @@ def _png(width: int, height: int, bgra: bytes) -> bytes:
         + chunk(b"IDAT", zlib.compress(bytes(raw), 6))
         + chunk(b"IEND", b"")
     )
+
+
+def _kernel32():
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.VirtualAllocEx.argtypes = [
+        wintypes.HANDLE,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    ]
+    kernel32.VirtualAllocEx.restype = ctypes.c_void_p
+    kernel32.VirtualFreeEx.argtypes = [
+        wintypes.HANDLE,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        wintypes.DWORD,
+    ]
+    kernel32.VirtualFreeEx.restype = wintypes.BOOL
+    kernel32.ReadProcessMemory.argtypes = [
+        wintypes.HANDLE,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.POINTER(ctypes.c_size_t),
+    ]
+    kernel32.ReadProcessMemory.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    return kernel32
+
+
+class _Guid(ctypes.Structure):
+    _fields_ = [
+        ("Data1", wintypes.DWORD),
+        ("Data2", wintypes.WORD),
+        ("Data3", wintypes.WORD),
+        ("Data4", ctypes.c_ubyte * 8),
+    ]
+
+
+def _accessible_names(hwnd: int) -> list[str] | None:
+    """The names of *hwnd*'s accessible children (its own name when it has none), by MSAA."""
+    import pythoncom
+
+    pythoncom.CoInitialize()
+    oleacc = ctypes.WinDLL("oleacc")
+    oleacc.AccessibleObjectFromWindow.argtypes = [
+        wintypes.HWND,
+        wintypes.DWORD,
+        ctypes.POINTER(_Guid),
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    oleacc.AccessibleObjectFromWindow.restype = ctypes.HRESULT
+    iid = _Guid(0x00020400, 0, 0, (ctypes.c_ubyte * 8)(0xC0, 0, 0, 0, 0, 0, 0, 0x46))  # IDispatch
+    pointer = ctypes.c_void_p()
+    oleacc.AccessibleObjectFromWindow(
+        hwnd, OBJID_CLIENT & 0xFFFFFFFF, ctypes.byref(iid), ctypes.byref(pointer)
+    )
+    if not pointer.value:
+        return None
+    accessible = pythoncom.ObjectFromAddress(pointer.value, pythoncom.IID_IDispatch)
+    # ObjectFromAddress took its own reference: release the one AccessibleObjectFromWindow gave
+    vtable = ctypes.cast(pointer, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+    ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(vtable[2])(pointer)
+
+    def get(dispid: int, *args: object) -> object:
+        return accessible.Invoke(dispid, 0, pythoncom.DISPATCH_PROPERTYGET, True, *args)
+
+    count = int(get(DISPID_ACC_CHILDCOUNT) or 0)
+    children = range(1, min(count, _MAX_PANES) + 1) if count else (0,)
+    return [str(get(DISPID_ACC_NAME, child) or "") for child in children]
+
+
+class _BitmapInfoHeader(ctypes.Structure):
+    _fields_ = [
+        ("biSize", wintypes.DWORD),
+        ("biWidth", ctypes.c_long),
+        ("biHeight", ctypes.c_long),
+        ("biPlanes", wintypes.WORD),
+        ("biBitCount", wintypes.WORD),
+        ("biCompression", wintypes.DWORD),
+        ("biSizeImage", wintypes.DWORD),
+        ("biXPelsPerMeter", ctypes.c_long),
+        ("biYPelsPerMeter", ctypes.c_long),
+        ("biClrUsed", wintypes.DWORD),
+        ("biClrImportant", wintypes.DWORD),
+    ]
+
+
+def capture_screen(left: int, top: int, width: int, height: int) -> bytes:
+    """The screen's pixels in a rectangle, as top-down 32-bit BGRA whatever the display's depth."""
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
+    user32.GetDC.argtypes = [wintypes.HWND]
+    user32.GetDC.restype = wintypes.HDC
+    user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+    gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+    gdi32.CreateCompatibleDC.restype = wintypes.HDC
+    gdi32.CreateDIBSection.argtypes = [
+        wintypes.HDC,
+        ctypes.c_void_p,
+        wintypes.UINT,
+        ctypes.POINTER(ctypes.c_void_p),
+        wintypes.HANDLE,
+        wintypes.DWORD,
+    ]
+    gdi32.CreateDIBSection.restype = wintypes.HBITMAP
+    gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
+    gdi32.SelectObject.restype = wintypes.HGDIOBJ
+    gdi32.BitBlt.argtypes = [
+        wintypes.HDC,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        wintypes.HDC,
+        ctypes.c_int,
+        ctypes.c_int,
+        wintypes.DWORD,
+    ]
+    gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+    gdi32.DeleteDC.argtypes = [wintypes.HDC]
+
+    header = _BitmapInfoHeader()
+    header.biSize = ctypes.sizeof(_BitmapInfoHeader)
+    header.biWidth = width
+    header.biHeight = -height  # Top-down
+    header.biPlanes = 1
+    header.biBitCount = 32  # A 32-bit DIB section, so a 16-bit display (RDP) reads the same
+    bits = ctypes.c_void_p()
+    screen = user32.GetDC(None)
+    if not screen:
+        raise ctypes.WinError(ctypes.get_last_error())
+    memory = gdi32.CreateCompatibleDC(screen)
+    bitmap = gdi32.CreateDIBSection(screen, ctypes.byref(header), 0, ctypes.byref(bits), None, 0)
+    try:
+        if not memory or not bitmap or not bits.value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        previous = gdi32.SelectObject(memory, bitmap)
+        copied = gdi32.BitBlt(memory, 0, 0, width, height, screen, left, top, SRCCOPY | CAPTUREBLT)
+        gdi32.SelectObject(memory, previous)
+        if not copied:
+            raise ctypes.WinError(ctypes.get_last_error())
+        return ctypes.string_at(bits.value, width * height * 4)
+    finally:
+        if bitmap:
+            gdi32.DeleteObject(bitmap)
+        if memory:
+            gdi32.DeleteDC(memory)
+        user32.ReleaseDC(None, screen)
 
 
 class Win32Desktop(Desktop):
@@ -420,6 +595,65 @@ class Win32Desktop(Desktop):
             return None
         return items, selected
 
+    def status_bar(self, hwnd: int) -> tuple[str, list[str]] | None:
+        readers = (
+            ("SB_GETTEXT", self._status_panes),
+            ("WM_GETTEXT", lambda bar: [text] if (text := self.read_text(bar)) else None),
+            ("MSAA", _accessible_names),
+        )
+        for method, read in readers:
+            try:
+                panes = read(hwnd)
+            except Exception:  # A way that does not work here; try the next
+                panes = None
+            if panes and any(pane.strip() for pane in panes):
+                return method, panes
+        return None
+
+    def _status_panes(self, hwnd: int) -> list[str] | None:
+        """SB_GETTEXT for each pane, through a buffer in the bar's process."""
+        parts = self._send(hwnd, SB_GETPARTS)
+        if not parts:
+            return None  # Not a common-control status bar
+        import win32process
+
+        pid = win32process.GetWindowThreadProcessId(hwnd)[1]
+        kernel32 = _kernel32()
+        process = kernel32.OpenProcess(
+            PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE, False, pid
+        )
+        if not process:
+            raise ctypes.WinError(ctypes.get_last_error())
+        size = 1024 * 2
+        remote = kernel32.VirtualAllocEx(
+            process, None, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE
+        )
+        try:
+            if not remote:
+                raise ctypes.WinError(ctypes.get_last_error())
+            panes: list[str] = []
+            for index in range(min(parts, _MAX_PANES)):
+                length = self._send(hwnd, SB_GETTEXTLENGTHW, index)
+                if length is None:
+                    return None
+                if length & 0xFFFF >= size // 2:
+                    panes.append("")
+                    continue
+                if self._send(hwnd, SB_GETTEXTW, index, remote) is None:
+                    return None
+                buffer = ctypes.create_unicode_buffer(size // 2)
+                read = ctypes.c_size_t()
+                if not kernel32.ReadProcessMemory(
+                    process, remote, buffer, size, ctypes.byref(read)
+                ):
+                    raise ctypes.WinError(ctypes.get_last_error())
+                panes.append(buffer.value)
+            return panes
+        finally:
+            if remote:
+                kernel32.VirtualFreeEx(process, remote, 0, MEM_RELEASE)
+            kernel32.CloseHandle(process)
+
     def press(self, hwnd: int) -> None:
         self._post(hwnd, BM_CLICK)
 
@@ -441,28 +675,17 @@ class Win32Desktop(Desktop):
         )
 
     def screenshot(self, hwnd: int, path: Path) -> bool:
+        """Copy *hwnd*'s rectangle from the screen, as it shows (windows on top included).
+
+        It sends CLICK no message (PrintWindow would, and waits on a hung CLICK forever).
+        """
         import win32gui
-        import win32ui
 
         left, top, right, bottom = win32gui.GetWindowRect(hwnd)
         width, height = right - left, bottom - top
         if width <= 0 or height <= 0:
             return False
-        window_dc = win32gui.GetWindowDC(hwnd)
-        source = win32ui.CreateDCFromHandle(window_dc)
-        memory = source.CreateCompatibleDC()
-        bitmap = win32ui.CreateBitmap()
-        try:
-            bitmap.CreateCompatibleBitmap(source, width, height)
-            memory.SelectObject(bitmap)
-            self._user32.PrintWindow(hwnd, memory.GetSafeHdc(), 2)  # PW_RENDERFULLCONTENT
-            bits = bitmap.GetBitmapBits(True)
-        finally:
-            memory.DeleteDC()
-            source.DeleteDC()
-            win32gui.ReleaseDC(hwnd, window_dc)
-            win32gui.DeleteObject(bitmap.GetHandle())
-        path.write_bytes(_png(width, height, bits))
+        path.write_bytes(_png(width, height, capture_screen(left, top, width, height)))
         return True
 
     def set_clipboard(self, payload: bytes, owner: int) -> None:
