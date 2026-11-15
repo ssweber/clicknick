@@ -48,13 +48,14 @@ def gh(args: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 def release_tags(repo: str) -> list[str]:
-    result = gh(
-        ["release", "list", "--repo", repo, "--limit", "200", "--json", "tagName,isDraft"]
-    )
+    fields = "tagName,isDraft,isPrerelease"
+    result = gh(["release", "list", "--repo", repo, "--limit", "200", "--json", fields])
     if result.returncode != 0:
         print(f"WARN: gh release list failed: {result.stderr.strip()}")
         return []
-    return [r["tagName"] for r in json.loads(result.stdout) if not r.get("isDraft")]
+    # A pre-release is not on the site, so its report is neither listed nor "latest".
+    releases = json.loads(result.stdout)
+    return [r["tagName"] for r in releases if not (r.get("isDraft") or r.get("isPrerelease"))]
 
 
 def download(repo: str, tag: str, dest: Path) -> None:
