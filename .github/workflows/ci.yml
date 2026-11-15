@@ -3,13 +3,12 @@
 
 name: CI
 
+# Pull requests only: a PR must be up to date to merge, so the merged tree is the
+# one its PR tested, and a run after the merge would repeat it.
 on:
-  push:
-    # Use ["main", "master"] for CI only on the default branch.
-    # Use ["**"] for CI on all branches.
-    branches: ["main", "master"]
   pull_request:
-    branches: ["main", "master"]
+    branches: ["main"]
+  workflow_dispatch:
 
 permissions:
   contents: read
