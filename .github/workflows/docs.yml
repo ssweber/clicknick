@@ -1,11 +1,18 @@
 name: Docs
 
+# The public site describes the latest release, not main. Pull requests build it
+# (no deploy). A deploy is a workflow_dispatch on main: publish.yml starts one with
+# the release's tag once the trust report is attached; by hand, `ref` defaults to
+# the latest release.
 on:
-  push:
-    branches: ["main"]
   pull_request:
     branches: ["main"]
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or commit to build (default: the latest release)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -20,8 +27,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Choose the release to build
+        id: source
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.ref }}
+        run: |
+          if [ -z "$REF" ]; then
+            REF=$(gh release view --repo "${{ github.repository }}" --json tagName --jq .tagName)
+          fi
+          echo "Building $REF"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.source.outputs.ref }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -38,7 +60,8 @@ jobs:
 
       - name: Cache-bust extra assets
         run: |
-          sed -i -E "s#^(\s*- (stylesheets|javascripts)/[^?[:space:]]+)\$#\1?v=${GITHUB_SHA::8}#" mkdocs.yml
+          sha=$(git rev-parse --short=8 HEAD)
+          sed -i -E "s#^(\s*- (stylesheets|javascripts)/[^?[:space:]]+)\$#\1?v=${sha}#" mkdocs.yml
           grep -E '\?v=' mkdocs.yml
 
       # Per-release trust reports and SBOMs are release assets; mirror them

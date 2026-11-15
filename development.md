@@ -87,7 +87,8 @@ The version comes from the git tag, so there is no version number to edit.
 6. Run `make trust-report`. A red check here fails the release later.
 7. Open a pull request into `main`; once CI passes, squash-merge it.
 8. Publish a GitHub release tagged `vX.Y.Z`. `.github/workflows/publish.yml` builds on Windows,
-   publishes to PyPI, attaches the trust report and SBOM to the release, and refreshes the docs.
+   publishes to PyPI, attaches the trust report and SBOM to the release, and deploys the docs
+   from the release's tag. The public site changes only here: merges to `main` don't deploy it.
 
 ## Basic Developer Workflows
 

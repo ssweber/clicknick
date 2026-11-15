@@ -75,7 +75,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
 
       # Per-release reports. The docs workflow mirrors these to
-      # pyrung.com/clicknick/security/ on its next run.
+      # pyrung.com/clicknick/security/ when the job below deploys the release's docs.
       - name: Attach trust report to the GitHub release
         if: github.event_name == 'release'
         env:
@@ -83,15 +83,16 @@ jobs:
         run: gh release upload "${{ github.event.release.tag_name }}" trust/* --repo "${{ github.repository }}" --clobber
 
   docs:
-    name: Refresh release reports on docs site
+    name: Deploy the release's docs
     if: github.event_name == 'release'
     needs: publish
     runs-on: ubuntu-latest
     permissions:
       actions: write
     steps:
-      - name: Refresh docs after report upload
+      - name: Deploy docs from the release tag
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: gh workflow run docs.yml --ref main
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh workflow run docs.yml --ref main -f ref="$TAG"
