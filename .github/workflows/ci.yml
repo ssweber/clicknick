@@ -57,7 +57,10 @@ jobs:
         run: uv sync --locked --all-extras --dev
 
       - name: Report locked tool versions
-        run: uv run python -c "import importlib.metadata as md; print('ruff', md.version('ruff')); print('ssort', md.version('ssort'))"
+        run: uv run python -c "import importlib.metadata as md; print('ruff', md.version('ruff'))"
 
       - name: Run linting
         run: uv run python devtools/lint.py --check
+
+      - name: Run tests
+        run: uv run pytest --quiet --tb=short

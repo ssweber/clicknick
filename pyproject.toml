@@ -62,7 +62,6 @@ dev = [
     "markdown==3.10.3",  # Render the security page in release trust reports.
     "pytest>=8.3.5",
     "ruff>=0.16.0",
-    "ssort==0.16.0",
 ]
 docs = [
     "zensical==0.0.57",
@@ -188,9 +187,6 @@ reportUnreachable = false
 # reportUnnecessaryIsInstance = false
 # reportUnknownVariableType = false
 # reportUnknownArgumentType = false
-
-[tool.ssort]
-exclude = ["src/clicknick/ladder/**", "src/clicknick/csv/**"]
 
 [tool.pytest.ini_options]
 python_files = ["*.py"]

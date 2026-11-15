@@ -15,10 +15,17 @@ def _source(tmp_path, text: str = "rung = 1\n"):
     return main
 
 
+_saves = iter(range(1, 1_000_000))
+
+
 def _later(path) -> None:
-    """Move *path*'s modification time on, as a save a moment later would."""
+    """Move *path*'s modification time on, as a save a moment later would.
+
+    Each call lands later than the one before: two writes can share one clock
+    tick on Windows, and two saves stamped alike would read as one.
+    """
     info = path.stat()
-    os.utime(path, ns=(info.st_atime_ns, info.st_mtime_ns + 2_000_000_000))
+    os.utime(path, ns=(info.st_atime_ns, info.st_mtime_ns + next(_saves) * 2_000_000_000))
 
 
 def test_an_edit_counts_until_it_is_undone(tmp_path):

@@ -2182,12 +2182,20 @@ def _plc_source(ready) -> Path:
     return main
 
 
+_saves = iter(range(1, 1_000_000))
+
+
 def _edit(path: Path, text: str) -> None:
+    """Write *text* as an editor save would, each later than the one before.
+
+    Two writes can share one clock tick on Windows, and two saves stamped
+    alike would read as one.
+    """
     import os
 
     path.write_text(text, encoding="utf-8")
     info = path.stat()
-    os.utime(path, ns=(info.st_atime_ns, info.st_mtime_ns + 2_000_000_000))
+    os.utime(path, ns=(info.st_atime_ns, info.st_mtime_ns + next(_saves) * 2_000_000_000))
 
 
 def test_an_edit_to_the_workspace_source_is_offered_until_written(ready):
