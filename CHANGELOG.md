@@ -13,6 +13,13 @@
 ### Changed
 
 - ClickNick now requires Python 3.13 or 3.14 (pywin32 has no 3.15 build yet); `uv tool install clicknick` fetches one if needed.
+- A nickname or address comment that starts or ends with a space is now shown as an error, and Sync refuses it until you remove the space: CLICK strips it, so `Pump ` and `Pump` would be one nickname.
+- An address with a stray `u` (`DS1u`) or a digit that is not 0-9 is no longer read as `DS1`; it is refused, as CLICK refuses it.
+
+### Fixed
+
+- The Simulator loads a PLC data file with a DF value CLICK shows as `Err-Format`; that analog input keeps the value it had.
+- In a CLICK 4 project whose Project.ini also has an old `[PLCName]` section, ClickNick reads the PLC name CLICK 4 shows.
 
 ## v0.24.1 - 2026-11-15
 

@@ -107,3 +107,14 @@ def test_commands_find_tags_when_only_the_workspace_was_built():
     server = LiveServer(FakeRoot(), _edited_store, lambda: None, get_analysis=lambda: analysis)
 
     assert dispatch(server._build_context(), "get Tank_Level").startswith("Tank_Level (staged):")
+
+
+@pytest.mark.parametrize("address", ["DS1u", "DS\u0661", "XD1u"])
+def test_an_address_click_refuses_is_not_an_address(address):
+    """A stray ``u`` or a non-ASCII digit is refused as CLICK refuses it, not read as DS1."""
+    server = LiveServer(FakeRoot(), _edited_store, lambda: None)
+
+    assert dispatch(server._build_context(), "get DS1").startswith("DS1 (staged):")
+    assert dispatch(server._build_context(), "get XD0u").startswith("XD0u:")
+    with pytest.raises(ValueError):
+        dispatch(server._build_context(), f"get {address}")

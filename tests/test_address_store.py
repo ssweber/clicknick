@@ -1419,6 +1419,18 @@ class TestEdgeSpaces:
         assert (row.comment, row.comment_error) == (" Setpoint", self.EDGE)
         assert row.has_reportable_error
 
+    def test_a_csv_row_loads_as_written_and_shows_the_error(self, tmp_path):
+        from clicknick.data.data_source import CsvDataSource
+
+        path = tmp_path / "Nicknames.csv"
+        path.write_bytes(b'Address,Nickname,Address Comment\r\nDS1,"Speed ","Setpoint"\r\n')
+        store = AddressStore(CsvDataSource(str(path)))
+        store.load_initial_data()
+
+        row = store.visible_state[get_addr_key("DS", 1)]
+        assert (row.nickname, row.nickname_error) == ("Speed ", self.EDGE)
+        assert store.has_errors()
+
     def test_a_loaded_system_nickname_is_exempt_as_click_wrote_it(self):
         sc1 = get_addr_key("SC", 1)
         store, _source = _live_store(

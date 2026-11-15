@@ -171,9 +171,7 @@ def test_a_nickname_with_an_edge_space_is_staged_as_written_and_shown_as_an_erro
     tmp_path: Path, store: AddressStore
 ) -> None:
     path = tmp_path / "nicknames.csv"
-    path.write_text(
-        'Address,Nickname,Address Comment\r\nX003,"Jog ","Hold "\r\n', encoding="utf-8"
-    )
+    path.write_bytes(b'Address,Nickname,Address Comment\r\nX003,"Jog ","Hold "\r\n')
     plan = plan_nicknames(CsvDataSource(str(path)).load_all_addresses(), store.visible_state)
 
     stage_nicknames(store, plan, "Stage nicknames")

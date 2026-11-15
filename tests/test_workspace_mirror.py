@@ -86,7 +86,13 @@ _PROJECT_INI_NAMES = [
         "AutoDayTankFill",
         id="click4",
     ),
-    pytest.param(b"[Sec20]\r\nKey1=\r\n", None, id="click4-unnamed"),
+    pytest.param(b"[Sec21]\r\nKey1=1\r\n[Sec20]\r\nKey1=\r\n", None, id="click4-unnamed"),
+    # CLICK 4 shows the [Sec20] name over a [PLCName] another tool added
+    pytest.param(
+        b"[PLCName]\r\nPLCName=Old\r\n[Sec21]\r\nKey1=1\r\n[Sec20]\r\nKey1=New\r\n",
+        "New",
+        id="click4-stray-plcname",
+    ),
     pytest.param(b"PLCName=Line 1\r\n", None, id="no-section-header"),
     pytest.param(b"[PLCName]\r\nPLCName=\xff\xfe\r\n", None, id="not-utf8"),
     pytest.param(None, None, id="missing"),
