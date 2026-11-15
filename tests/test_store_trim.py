@@ -195,20 +195,56 @@ class TestTrimOnLoad:
             ("X", 4, "Bad-Name "),  # breaks the user rules, exempt as loaded like any X name
         ],
     )
-    def test_a_name_exempt_as_loaded_stays_exempt_once_trimmed(
+    def test_a_name_exempt_as_loaded_keeps_its_format_exemption_once_trimmed(
         self, memory_type, address, nickname
     ):
         key = get_addr_key(memory_type, address)
         store, source = _store({key: AddressRow(memory_type, address, nickname=nickname)})
 
+        assert store.base_state[key].loaded_with_error
         row = store.visible_state[key]
         assert row.nickname == nickname.strip(" ")
-        assert row.loaded_with_error
+        assert not row.loaded_with_error  # no longer the name as loaded
+        assert row.nickname_valid
         assert not row.has_reportable_error
         assert [frame.description for frame in store.undo_stack] == [TRIM_DESCRIPTION]
 
         assert store.save_all_changes() == {key}
         assert source.rows[key].nickname == nickname.strip(" ")
+
+    @pytest.mark.parametrize(
+        ("memory_type", "first", "second"),
+        [("X", "Stop ", " Stop"), ("SC", "log ", "log")],
+    )
+    def test_a_trimmed_name_exempt_as_loaded_is_checked_for_duplicates(
+        self, memory_type, first, second
+    ):
+        one, two = get_addr_key(memory_type, 1), get_addr_key(memory_type, 2)
+        store, source = _store(
+            {
+                one: AddressRow(memory_type, 1, nickname=first),
+                two: AddressRow(memory_type, 2, nickname=second),
+            }
+        )
+
+        assert store.visible_state[one].nickname_error == "Duplicate"
+        assert store.visible_state[one].has_reportable_error
+        assert store.has_errors()
+        with pytest.raises(RuntimeError, match="validation errors"):
+            store.save_all_changes()
+        assert source.rows[one].nickname == first
+
+    def test_names_shown_as_loaded_are_exempt_duplicates_included(self):
+        """As before the trim: CLICK's data may repeat a system name it wrote."""
+        one, two = get_addr_key("SC", 1), get_addr_key("SC", 2)
+        store, _source = _store(
+            {one: AddressRow("SC", 1, nickname="log"), two: AddressRow("SC", 2, nickname="LOG")}
+        )
+
+        assert store.visible_state[one].loaded_with_error
+        assert store.visible_state[two].loaded_with_error
+        assert not store.has_errors()
+        assert store.undo_stack == []
 
     def test_a_name_typed_over_a_loaded_one_is_not_exempt(self):
         key = get_addr_key("X", 3)
