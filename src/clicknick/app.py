@@ -2466,6 +2466,13 @@ class ClickNickApp:
             self.root.after_cancel(self._status_after_id)
             self._status_after_id = None
 
+    def _close_session(self) -> None:
+        """End the connection session: the one teardown of everything it owns."""
+        session = self._session
+        if session is not None:
+            session.close()
+            self._session = None
+
     def _hide_overlay(self) -> None:
         if self.overlay is not None:
             self.overlay.withdraw()
@@ -2477,9 +2484,7 @@ class ClickNickApp:
         self._cancel_monitoring_status()
         self._hide_overlay()
 
-        if self._session is not None:
-            self._session.close()
-            self._session = None
+        self._close_session()
         # Database data belongs to the closed project; CSV data stays usable.
         if self.using_database:
             self._close_data(prompt_save=False)
@@ -2732,9 +2737,7 @@ class ClickNickApp:
                 f"The Click project was changed. {' and '.join(closing)} will now close.",
             )
 
-        if self._session is not None:
-            self._session.close()
-            self._session = None
+        self._close_session()
         if closes_data:
             self._close_data(prompt_save=False)
 
@@ -2891,9 +2894,7 @@ class ClickNickApp:
         if not self._close_data(prompt_save=True):
             self._select_connected_instance()
             return
-        if self._session is not None:
-            self._session.close()
-            self._session = None
+        self._close_session()
 
         self._hide_overlay()
         if user_picked:
@@ -2972,9 +2973,7 @@ class ClickNickApp:
         if self.overlay is not None:
             self.overlay.destroy()
             self.overlay = None
-        if self._session is not None:
-            self._session.close()
-            self._session = None
+        self._close_session()
         live_server = getattr(self, "_live_server", None)
         if live_server is not None:
             live_server.stop()

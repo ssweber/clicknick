@@ -334,6 +334,7 @@ def test_none_connects_through_existing_csv_flow(monkeypatch):
         load_csv=Mock(),
     )
     view._close_data = lambda **kw: app_module.ClickNickApp._close_data(view, **kw)
+    view._close_session = lambda: app_module.ClickNickApp._close_session(view)
     view._connect_csv_fallback = lambda *args: app_module.ClickNickApp._connect_csv_fallback(
         view, *args
     )
@@ -479,6 +480,7 @@ def test_switch_closes_old_session_before_loading_new_database(monkeypatch):
         _load_instance_database=lambda *_args: events.append("load"),
     )
     view._close_data = lambda **kw: app_module.ClickNickApp._close_data(view, **kw)
+    view._close_session = lambda: app_module.ClickNickApp._close_session(view)
     app_module.ClickNickApp.connect_to_instance(view, 1, "CLICK", "project.ckp", 2)
     assert events == ["close data", "close session", "load"]
     assert view._session is None
