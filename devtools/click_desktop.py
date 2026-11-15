@@ -116,7 +116,7 @@ class Desktop(ABC):
 
     @abstractmethod
     def launch(self, exe: Path) -> int:
-        """Start *exe* in its own folder; its pid."""
+        """Start *exe* in its own folder; its pid. It ends when the runner's process does."""
 
     @abstractmethod
     def alive(self, pid: int) -> bool:
@@ -213,6 +213,8 @@ MEM_COMMIT = 0x1000
 MEM_RESERVE = 0x2000
 MEM_RELEASE = 0x8000
 PAGE_READWRITE = 0x04
+JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 OBJID_CLIENT = -4
 DISPID_ACC_CHILDCOUNT = -5001
 DISPID_ACC_NAME = -5003
@@ -315,7 +317,64 @@ def _kernel32():
     ]
     kernel32.ReadProcessMemory.restype = wintypes.BOOL
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.SetInformationJobObject.argtypes = [
+        wintypes.HANDLE,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+    ]
+    kernel32.SetInformationJobObject.restype = wintypes.BOOL
+    kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
     return kernel32
+
+
+class _BasicLimitInformation(ctypes.Structure):
+    _fields_ = [
+        ("PerProcessUserTimeLimit", ctypes.c_int64),
+        ("PerJobUserTimeLimit", ctypes.c_int64),
+        ("LimitFlags", wintypes.DWORD),
+        ("MinimumWorkingSetSize", ctypes.c_size_t),
+        ("MaximumWorkingSetSize", ctypes.c_size_t),
+        ("ActiveProcessLimit", wintypes.DWORD),
+        ("Affinity", ctypes.c_size_t),
+        ("PriorityClass", wintypes.DWORD),
+        ("SchedulingClass", wintypes.DWORD),
+    ]
+
+
+class _ExtendedLimitInformation(ctypes.Structure):
+    _fields_ = [
+        ("BasicLimitInformation", _BasicLimitInformation),
+        ("IoInfo", ctypes.c_uint64 * 6),
+        ("ProcessMemoryLimit", ctypes.c_size_t),
+        ("JobMemoryLimit", ctypes.c_size_t),
+        ("PeakProcessMemoryUsed", ctypes.c_size_t),
+        ("PeakJobMemoryUsed", ctypes.c_size_t),
+    ]
+
+
+def kill_on_close(process: int) -> int:
+    """Put the process handle *process* in a new job that kills it when the job closes.
+
+    Returns the job's handle. Windows closes it when this process ends, however it ends
+    (killed, Ctrl+Break, its console closed), and the process in the job dies with it.
+    """
+    kernel32 = _kernel32()
+    job = kernel32.CreateJobObjectW(None, None)
+    if not job:
+        raise ctypes.WinError(ctypes.get_last_error())
+    info = _ExtendedLimitInformation()
+    info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    if not kernel32.SetInformationJobObject(
+        job, JOB_OBJECT_EXTENDED_LIMIT_INFORMATION, ctypes.byref(info), ctypes.sizeof(info)
+    ) or not kernel32.AssignProcessToJobObject(job, process):
+        error = ctypes.WinError(ctypes.get_last_error())
+        kernel32.CloseHandle(job)
+        raise error
+    return job
 
 
 class _Guid(ctypes.Structure):
@@ -445,6 +504,7 @@ class Win32Desktop(Desktop):
     def __init__(self) -> None:
         self._user32 = _user32()
         self._processes: dict[int, subprocess.Popen[bytes]] = {}
+        self._jobs: dict[int, int] = {}  # Kept open for as long as the runner runs
 
     def _send(self, hwnd: int, msg: int, wparam: int = 0, lparam: object = 0) -> int | None:
         result = _ULONG_PTR()
@@ -507,6 +567,13 @@ class Win32Desktop(Desktop):
 
     def launch(self, exe: Path) -> int:
         process = subprocess.Popen([str(exe)], cwd=str(exe.parent))
+        try:
+            handle = int(process._handle)  # pyright: ignore[reportAttributeAccessIssue]
+            self._jobs[process.pid] = kill_on_close(handle)
+        except BaseException:
+            process.kill()  # A CLICK that could outlive the runner does not run at all
+            process.wait()
+            raise
         self._processes[process.pid] = process
         return process.pid
 

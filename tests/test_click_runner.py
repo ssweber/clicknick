@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -1227,6 +1228,58 @@ def test_the_allowlist_is_the_five_commands():
         32850: "Disconnect",
     }
     assert 32853 not in cd.ALLOWED_COMMANDS and 32854 not in cd.ALLOWED_COMMANDS
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="job objects are Windows'")
+def test_a_process_in_the_job_dies_when_the_job_closes():
+    """What keeps CLICK from outliving a runner that is killed: Windows closes the job's
+    handle when the runner's process ends, however it ends."""
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        job = cd.kill_on_close(int(child._handle))  # pyright: ignore[reportAttributeAccessIssue]
+        assert child.poll() is None
+        began = time.monotonic()
+        cd._kernel32().CloseHandle(job)
+        child.wait(timeout=10)  # Not the minute it sleeps
+        assert time.monotonic() - began < 10
+    finally:
+        child.kill()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Win32Desktop is Windows'")
+@pytest.mark.parametrize("fails", [False, True])
+def test_launch_puts_click_in_the_job(tmp_path, monkeypatch, fails):
+    class Process:
+        pid = 31
+        _handle = 77
+        killed = waited = False
+
+        def kill(self) -> None:
+            self.killed = True
+
+        def wait(self) -> int:
+            self.waited = True
+            return 1
+
+    process = Process()
+    jobs: list[int] = []
+
+    def kill_on_close(handle: int) -> int:
+        if fails:
+            raise OSError("no job")
+        jobs.append(handle)
+        return 5
+
+    monkeypatch.setattr(cd.subprocess, "Popen", lambda *a, **k: process)
+    monkeypatch.setattr(cd, "kill_on_close", kill_on_close)
+    desktop = cd.Win32Desktop()
+    if fails:
+        with pytest.raises(OSError, match="no job"):
+            desktop.launch(tmp_path / "CLICK.exe")
+        assert process.killed and process.waited
+    else:
+        assert desktop.launch(tmp_path / "CLICK.exe") == 31
+        assert jobs == [77] and not process.killed
 
 
 def test_wm_command_is_posted_in_one_place():
