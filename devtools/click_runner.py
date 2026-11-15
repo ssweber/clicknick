@@ -307,13 +307,15 @@ class Run:
         until: Callable[[dict[str, Window]], T | None],
         *,
         exits: bool = False,
+        on_timeout: Callable[[], str] | None = None,
     ) -> T:
         """Poll CLICK's windows until *until* returns something other than None or False.
 
         Any window that is neither the main frame nor one of *expected* aborts the run,
         except one that was open before the main frame first appeared (CLICK starting up,
         a splash screen), until the launch step ends. CLICK exiting aborts too, unless
-        *exits* (then the wait ends when it has).
+        *exits* (then the wait ends when it has). A timeout's reason starts with
+        *on_timeout*'s text when it is given.
         """
         assert self.pid is not None
         deadline = time.monotonic() + self.s.timeout
@@ -344,7 +346,8 @@ class Run:
             if value is not None and value is not False:
                 return value
             if time.monotonic() > deadline:
-                raise Aborted(f"timed out after {self.s.timeout:g} s waiting for {what}")
+                reason = f"timed out after {self.s.timeout:g} s waiting for {what}"
+                raise Aborted(f"{on_timeout()}; {reason}" if on_timeout else reason)
             time.sleep(self.s.poll)
 
     def only_main(self, found: dict[str, Window]) -> bool:
@@ -476,21 +479,30 @@ class Run:
             )
             last: list[tuple[int, int] | None] = [None]
 
+            def lists(counts: tuple[int, int] | None) -> str:
+                if counts is None:
+                    return "the Connect dialog's PLC list does not answer"
+                return f"the Connect dialog lists {counts[0]} PLC(s), {counts[1]} selected"
+
             def listed(_: dict[str, Window]) -> tuple[int, int] | None:
-                # The LAN scan fills the list: take it once two polls in a row agree
+                # The LAN scan adds the row and selects it a moment later: take the list
+                # once two polls in a row read one row, selected, with Connect enabled
                 counts = self.desktop.list_view_counts(plc_list.hwnd)
                 button = _child(self.controls(connect), cls="Button", id=1, text="Connect")
-                ready = counts is not None and counts[0] >= 1 and button and button.enabled
-                settled = counts if ready and counts == last[0] else None
+                stable = counts is not None and counts == last[0]
                 last[0] = counts
-                return settled
+                if stable and counts is not None and counts[0] >= 2:
+                    raise Aborted(f"{lists(counts)}; expected exactly 1")
+                ready = stable and counts == (1, 1) and button is not None and button.enabled
+                return counts if ready else None
 
-            items, selected = self.wait("a PLC in the list", [STARTUP, CONNECT], listed)
-            self.log(f"PLC list: {items} row(s), {selected} selected")
-            if items != 1:
-                raise Aborted(f"the Connect dialog lists {items} PLCs, expected exactly 1")
-            if selected != 1:
-                raise Aborted("the one PLC in the Connect dialog is not selected")
+            self.wait(
+                "one PLC in the list, selected",
+                [STARTUP, CONNECT],
+                listed,
+                on_timeout=lambda: lists(last[0]),
+            )
+            self.log("PLC list: 1 row, selected")
             self.record("connect_dialog")
             button = _require(
                 _child(self.controls(connect), cls="Button", id=1, text="Connect"),
@@ -754,7 +766,10 @@ class Run:
         self.end_click()
 
     def end_click(self) -> None:
-        """Terminate CLICK if it still runs and wait until it is gone."""
+        """Terminate CLICK if it still runs and wait until it is gone.
+
+        Its temp folder is left alone (CLICK looks after it); the log says whether it is there.
+        """
         if self.pid is None:
             return
         if self.desktop.alive(self.pid):
@@ -767,11 +782,9 @@ class Run:
         self.result["click"]["closed"] = gone
         self.log("CLICK is gone" if gone else "CLICK is STILL RUNNING")
         if gone and self.main is not None:
-            # CLICK deletes its temp folder when it closes, not when it is ended
+            # CLICK looks after its own temp folder: the runner never deletes one
             temp = self.desktop.temp_dir(self.main)
-            if temp.exists():
-                shutil.rmtree(temp, ignore_errors=True)
-                self.log(f"removed {temp}")
+            self.log(f"{temp} {'is still there' if temp.exists() else 'is gone'}")
 
     # -- the whole run -----------------------------------------------------------
 

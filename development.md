@@ -234,7 +234,9 @@ The rules it keeps:
 
 - It refuses to start while any CLICK.exe runs or any CLICK window is open, and on a locked
   screen (the input desktop is not `Default`). It finds windows only by the pid of the CLICK it
-  started, and files only in that CLICK's temp folder.
+  started, and reads files only in that CLICK's temp folder. It never deletes a temp folder:
+  CLICK looks after its own. `run.log` says whether the folder was still there once CLICK was
+  gone (CLICK removes it when it closes, not when the runner ends it).
 - It never writes to the PLC. Every `WM_COMMAND` goes through `Desktop.command`, which allows
   only Paste, Syntax Check, Save, Save As and Disconnect (`devtools/click_desktop.py`).
 - Each step waits for a window, a control's text or a file, with a timeout. A window it does not

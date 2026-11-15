@@ -78,6 +78,7 @@ class FakeClick(cd.Desktop):
         password: str = "123click",
         plc_rows: int = 1,
         plc_selected: int = 1,
+        select_lag: int = 4,
         startup_buttons: int = 3,
         dont_read_takes: bool = True,
         splash: bool = False,
@@ -99,6 +100,7 @@ class FakeClick(cd.Desktop):
             "password": password,
             "plc_rows": plc_rows,
             "plc_selected": plc_selected,
+            "select_lag": select_lag,
             "startup_buttons": startup_buttons,
             "dont_read_takes": dont_read_takes,
             "splash": splash,
@@ -252,8 +254,15 @@ class FakeClick(cd.Desktop):
         )
         self._control(dialog, "Button", "Cancel", 2)
 
-        def scanned() -> None:
+        # As the live run of 2026-11-15 saw: the scan adds the rows, and selects one a
+        # few polls later
+        def selected() -> None:
             plcs.counts = (self.options["plc_rows"], self.options["plc_selected"])
+
+        def scanned() -> None:
+            plcs.counts = (self.options["plc_rows"], 0)
+            if self.options["plc_selected"]:
+                self.queue.append((self.tick + self.options["select_lag"], selected))
 
         self._later("scan", scanned)
 
@@ -551,7 +560,16 @@ def assert_aborted(fake: FakeClick, out: Path, code: int, result: dict, reason: 
     assert not fake.read_from_plc
     assert "Read Project from PLC" not in fake.commands
     assert "Write Project into PLC" not in fake.commands
-    assert not fake.temp_root.joinpath(f"CLICK ({fake.main.hwnd:08X})").exists()
+    assert_temp_left_to_click(fake, out, still_there=True)
+
+
+def assert_temp_left_to_click(fake: FakeClick, out: Path, *, still_there: bool) -> None:
+    """The runner never deletes CLICK's temp folder; it logs whether CLICK left it."""
+    assert fake.main is not None
+    temp = fake.temp_dir(fake.main.hwnd)
+    assert temp.exists() == still_there
+    state = "is still there" if still_there else "is gone"
+    assert f"{temp} {state}" in (out / "run.log").read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -613,7 +631,8 @@ def test_paste_end_to_end(tmp_path, setup, capsys):
     assert "User Type: 'admin' (prefilled by CLICK)" in log
     assert "123click" not in log
     assert not (out / "record").exists() and not (out / "abort").exists()
-    assert not fake.temp_root.joinpath(f"CLICK ({fake.main.hwnd:08X})").exists()
+    # CLICK closed cleanly and removed its own temp folder
+    assert_temp_left_to_click(fake, out, still_there=False)
 
 
 def test_paste_provisions_the_runners_own_mdb(tmp_path, setup):
@@ -691,7 +710,8 @@ def test_record_dumps_each_step_and_ends_click(tmp_path, setup, capsys):
     user = next(c for c in login["controls"] if c["id"] == 20141)
     assert user["text"] == "" and user["edit_text"] == "admin"
     assert list((out / "record").glob("*-login-*.png"))
-    assert not fake.temp_root.joinpath(f"CLICK ({fake.main.hwnd:08X})").exists()
+    # Ended rather than closed: CLICK's temp folder stays, for CLICK to deal with
+    assert_temp_left_to_click(fake, out, still_there=True)
 
 
 def test_paste_record_dumps_too(tmp_path, setup):
@@ -823,16 +843,41 @@ def test_two_plcs_abort(tmp_path, setup):
     fake = FakeClick(tmp_path, plc_rows=2, plc_selected=1)
     out = tmp_path / "out"
     code, result = run(fake, out, csv, exe)
-    assert_aborted(fake, out, code, result, "lists 2 PLCs, expected exactly 1")
+    # Two rows read the same on two polls: no waiting for a selection
+    assert_aborted(
+        fake, out, code, result, "the Connect dialog lists 2 PLC(s), 0 selected; expected exactly 1"
+    )
+    assert "timed out" not in result["reason"]
     assert "Connect" not in fake.pressed
 
 
-def test_an_unselected_plc_aborts(tmp_path, setup):
+@pytest.mark.parametrize("select_lag", [1, 4])
+def test_a_plc_selected_after_it_is_listed_connects(tmp_path, setup, select_lag):
+    """The live run of 2026-11-15: the row came first, unselected, and was selected later.
+
+    With a lag of 4 polls, (1 row, 0 selected) reads the same on two polls in a row.
+    """
+    csv, exe = setup
+    fake = FakeClick(tmp_path, select_lag=select_lag)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert "PLC list: 1 row, selected" in (out / "run.log").read_text(encoding="utf-8")
+
+
+def test_a_plc_never_selected_aborts_with_the_counts(tmp_path, setup):
     csv, exe = setup
     fake = FakeClick(tmp_path, plc_selected=0)
     out = tmp_path / "out"
-    code, result = run(fake, out, csv, exe)
-    assert_aborted(fake, out, code, result, "is not selected")
+    code, result = run(fake, out, csv, exe, timeout=0.3)
+    assert_aborted(
+        fake,
+        out,
+        code,
+        result,
+        "the Connect dialog lists 1 PLC(s), 0 selected; timed out after 0.3 s",
+    )
+    assert "Connect" not in fake.pressed
 
 
 def test_no_plc_times_out(tmp_path, setup):
@@ -840,7 +885,14 @@ def test_no_plc_times_out(tmp_path, setup):
     fake = FakeClick(tmp_path, stall="scan")
     out = tmp_path / "out"
     code, result = run(fake, out, csv, exe, timeout=0.3)
-    assert_aborted(fake, out, code, result, "waiting for a PLC in the list")
+    assert_aborted(
+        fake,
+        out,
+        code,
+        result,
+        "the Connect dialog lists 0 PLC(s), 0 selected; timed out after 0.3 s "
+        "waiting for one PLC in the list, selected",
+    )
 
 
 def test_a_missing_startup_button_aborts(tmp_path, setup):
