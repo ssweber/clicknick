@@ -200,12 +200,12 @@ models is not part of this.
 
 The smaller inventory items went to the pyclickplc session through the planner; settle the details with it
 through Sam:
-- `validate_click_name` (PLC and DataView names)
-- `read_plc_name` and `write_plc_name` (Project.ini)
-- `iter_address_slots`
-- the names for unassigned I/O slots in `sim_hardware.py`
+- `validate_click_name`, `read_plc_name`, `write_plc_name` and `iter_address_slots`: in pyclickplc 0.7, and
+  ClickNick uses them (its own copies are gone)
+- the names for unassigned I/O slots in `sim_hardware.py` stay in ClickNick
 - `models/validation.py`: `validate_nickname_format` is a pass-through to pyclickplc and goes (no shims);
-  `validate_comment` repeats pyclickplc's length check
+  `validate_comment` now takes pyclickplc's checks and adds the duplicate block name
+- pyclickplc's `read_mdb_csv` differs from ClickNick's, and ClickNick keeps its own (Sam, 2026-11-15)
 
 ClickNick-only, any time (nothing): `detection/window_mapping.DATA_TYPES` repeats pyclickplc's type maps
 (with "TXT" for "TEXT") just to list prefixes in `widgets/nickname_combobox.py`; derive it from `BANKS`.
@@ -280,6 +280,10 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
   time you edit in CLICK's Address Editor.
 - Q6: after deleting all rungs, empty rungs are on screen. Is one of them selected for Ctrl+V, or must the step
   wording say to click the first empty rung?
+- Q7: can SC_.mdb hold a nickname or address comment with a space at either end (typed in CLICK, or from
+  CLICK's own CSV import)? With pyclickplc 0.7, ClickNick flags such a value as an error, and Sync refuses while any row has one,
+  so a project that holds one cannot Sync until the space is removed. The recorded `tests/SC_.mdb` and
+  `NicknameExport.csv` hold none.
 
 ### Address Editor and store
 - Fill Down / Add Block T1..TD5, then Sync.
