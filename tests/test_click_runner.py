@@ -69,6 +69,7 @@ class FakeClick(cd.Desktop):
 
     *surprise* names an event after which an unknown dialog appears; *stall* one whose
     effect never happens; *interrupt* a Desktop method that raises KeyboardInterrupt;
+    *late_row* lists a second PLC that many seconds after the first is selected.
     *hang_on* one after which CLICK stops answering for *hang_for* seconds (Windows then
     titles its main window "... (Not Responding)"). *status_bar* is how its status bar
     reads (``Desktop.status_bar``), None when no way works.
@@ -85,6 +86,8 @@ class FakeClick(cd.Desktop):
         plc_rows: int = 1,
         plc_selected: int = 1,
         select_lag: int = 4,
+        late_row: float | None = None,
+        same_lan: bool = True,
         startup_buttons: int = 3,
         dont_read_takes: bool = True,
         splash: bool = False,
@@ -110,6 +113,8 @@ class FakeClick(cd.Desktop):
             "plc_rows": plc_rows,
             "plc_selected": plc_selected,
             "select_lag": select_lag,
+            "late_row": late_row,
+            "same_lan": same_lan,
             "startup_buttons": startup_buttons,
             "dont_read_takes": dont_read_takes,
             "splash": splash,
@@ -122,6 +127,7 @@ class FakeClick(cd.Desktop):
         self.sent_while_hung: list[str] = []
         self.status_method = status_bar
         self.cursor_rung, self.steps = 1, 0
+        self.late_row_at: float | None = None
         self.desktop_name = desktop_name
         self.running, self.open_windows = running, open_windows
         self.pid: int | None = None
@@ -260,6 +266,21 @@ class FakeClick(cd.Desktop):
         startup.enabled = False
         dialog = self._window("#32770", "Connect to CLICK PLC", startup.hwnd)
         self.connect_dialog = dialog
+        same_lan = self.options["same_lan"]
+        self._control(
+            dialog,
+            "Button",
+            "In the same LAN (Scan all CLICK PLCs in the LAN automatically.)",
+            20059,
+            checked=int(same_lan),
+        )
+        self._control(
+            dialog,
+            "Button",
+            "Outside this LAN (You need to allocate IP address and port number manually.)",
+            20060,
+            checked=int(not same_lan),
+        )
         plcs = self._control(dialog, "SysListView32", "List1", 20061)
         self._control(dialog, "Button", "Refresh", 20027)
         self._control(
@@ -275,6 +296,8 @@ class FakeClick(cd.Desktop):
         # few polls later
         def selected() -> None:
             plcs.counts = (self.options["plc_rows"], self.options["plc_selected"])
+            if self.options["late_row"] is not None:
+                self.late_row_at = time.monotonic() + self.options["late_row"]
 
         def scanned() -> None:
             plcs.counts = (self.options["plc_rows"], 0)
@@ -511,7 +534,13 @@ class FakeClick(cd.Desktop):
         return self._find(hwnd).checked if self._message("BM_GETCHECK") else None
 
     def list_view_counts(self, hwnd: int) -> tuple[int, int] | None:
-        return self._find(hwnd).counts if self._message("LVM_GETITEMCOUNT") else None
+        if not self._message("LVM_GETITEMCOUNT"):
+            return None
+        control = self._find(hwnd)
+        if self.late_row_at is not None and time.monotonic() >= self.late_row_at:
+            control.counts = (control.counts[0] + 1, control.counts[1])
+            self.late_row_at = None
+        return control.counts
 
     def status_bar(self, hwnd: int) -> tuple[str, list[str]] | None:
         control = self._find(hwnd)
@@ -619,6 +648,7 @@ def run(
 @pytest.fixture(autouse=True)
 def fast_poll(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(cr, "POLL_INTERVAL", 0.001)
+    monkeypatch.setattr(cr, "PLC_SETTLE", 0.02)
 
 
 def assert_aborted(fake: FakeClick, out: Path, code: int, result: dict, reason: str) -> None:
@@ -969,10 +999,9 @@ def test_two_plcs_abort(tmp_path, setup):
     fake = FakeClick(tmp_path, plc_rows=2, plc_selected=1)
     out = tmp_path / "out"
     code, result = run(fake, out, csv, exe)
-    # Two rows read the same on two polls: no waiting for a selection
-    assert_aborted(
-        fake, out, code, result, "the Connect dialog lists 2 PLC(s), 0 selected; expected exactly 1"
-    )
+    # Two rows that stay listed: no waiting for a selection
+    assert_aborted(fake, out, code, result, "the Connect dialog lists 2 PLC(s), ")
+    assert result["reason"].endswith("selected; expected exactly 1")
     assert "timed out" not in result["reason"]
     assert "Connect" not in fake.pressed
 
@@ -989,6 +1018,52 @@ def test_a_plc_selected_after_it_is_listed_connects(tmp_path, setup, select_lag)
     code, result = run(fake, out, csv, exe)
     assert code == cr.EXIT_OK, result["reason"]
     assert "PLC list: 1 row, selected" in (out / "run.log").read_text(encoding="utf-8")
+
+
+def test_a_second_plc_listed_late_aborts(tmp_path, setup, monkeypatch):
+    """The scan lists the PLCs one at a time: the list must stay the same for PLC_SETTLE."""
+    csv, exe = setup
+    monkeypatch.setattr(cr, "PLC_SETTLE", 0.5)
+    fake = FakeClick(tmp_path, late_row=0.2)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert_aborted(
+        fake, out, code, result, "the Connect dialog lists 2 PLC(s), 1 selected; expected exactly 1"
+    )
+    assert "Connect" not in fake.pressed
+
+
+def test_a_plc_listed_while_dumping_is_seen_before_connect(tmp_path, setup):
+    """The PLC list is read again right before Connect is pressed."""
+    csv, exe = setup
+    fake = FakeClick(tmp_path)
+    original = fake.screenshot
+
+    def screenshot(hwnd: int, path: Path) -> bool:
+        if "-connect_dialog-" in path.name:
+            fake.late_row_at = 0.0
+        return original(hwnd, path)
+
+    fake.screenshot = screenshot
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe, "--record")
+    assert_aborted(
+        fake,
+        out,
+        code,
+        result,
+        "the Connect dialog lists 2 PLC(s), 1 selected as Connect is about to be pressed",
+    )
+    assert "Connect" not in fake.pressed
+
+
+def test_a_connect_dialog_not_scanning_the_lan_aborts(tmp_path, setup):
+    csv, exe = setup
+    fake = FakeClick(tmp_path, same_lan=False)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert_aborted(fake, out, code, result, "the Connect dialog does not scan the same LAN")
+    assert "Connect" not in fake.pressed
 
 
 def test_a_plc_never_selected_aborts_with_the_counts(tmp_path, setup):

@@ -75,6 +75,9 @@ RESPONSIVE_POLLS = 3
 # How often a wait logs the status bar (or that CLICK does not answer)
 STATUS_EVERY = 10.0
 STATUS_BAR_ID = 59393  # AFX_IDW_STATUS_BAR
+# The Connect dialog's PLC list is taken once it reads the same for this many seconds:
+# the LAN scan adds rows one at a time, and selects one a moment after it is listed
+PLC_SETTLE = 2.0
 
 EXIT_OK = 0
 EXIT_ABORTED = 1
@@ -566,6 +569,7 @@ class Run:
                 "the PLC list",
             )
             last: list[tuple[int, int] | None] = [None]
+            since = [time.monotonic()]
 
             def lists(counts: tuple[int, int] | None) -> str:
                 if counts is None:
@@ -573,15 +577,18 @@ class Run:
                 return f"the Connect dialog lists {counts[0]} PLC(s), {counts[1]} selected"
 
             def listed(_: dict[str, Window]) -> tuple[int, int] | None:
-                # The LAN scan adds the row and selects it a moment later: take the list
-                # once two polls in a row read one row, selected, with Connect enabled
+                # Take the list once it has read the same for PLC_SETTLE seconds: one row,
+                # selected, with Connect enabled. Two rows or more stop the run.
                 counts = self.desktop.list_view_counts(plc_list.hwnd)
-                button = _child(self.controls(connect), cls="Button", id=1, text="Connect")
-                stable = counts is not None and counts == last[0]
-                last[0] = counts
-                if stable and counts is not None and counts[0] >= 2:
+                if counts != last[0]:
+                    last[0], since[0] = counts, time.monotonic()
+                    return None
+                if counts is None or time.monotonic() - since[0] < PLC_SETTLE:
+                    return None
+                if counts[0] >= 2:
                     raise Aborted(f"{lists(counts)}; expected exactly 1")
-                ready = stable and counts == (1, 1) and button is not None and button.enabled
+                button = _child(self.controls(connect), cls="Button", id=1, text="Connect")
+                ready = counts == (1, 1) and button is not None and button.enabled
                 return counts if ready else None
 
             self.wait(
@@ -590,12 +597,29 @@ class Run:
                 listed,
                 on_timeout=lambda: lists(last[0]),
             )
-            self.log("PLC list: 1 row, selected")
+            self.log(f"PLC list: 1 row, selected, for {PLC_SETTLE:g} s")
             self.record("connect_dialog")
-            button = _require(
-                _child(self.controls(connect), cls="Button", id=1, text="Connect"),
-                "the Connect button",
+            controls = self.controls(connect)
+            same_lan = _require(
+                _child(controls, cls="Button", id=20059), "'In the same LAN' (20059)"
             )
+            if not (
+                same_lan.text.startswith("In the same LAN")
+                and same_lan.visible
+                and self.desktop.button_checked(same_lan.hwnd) == 1
+            ):
+                raise Aborted(
+                    f"the Connect dialog does not scan the same LAN: {same_lan.text!r} "
+                    f"(visible {same_lan.visible}) is not checked"
+                )
+            button = _require(
+                _child(controls, cls="Button", id=1, text="Connect"), "the Connect button"
+            )
+            counts = self.desktop.list_view_counts(plc_list.hwnd)
+            if counts != (1, 1):
+                raise Aborted(
+                    f"{lists(counts)} as Connect is about to be pressed; expected 1, selected"
+                )
             self.press(connect, button)
             found = self.wait(
                 "Login or the read-project question",
