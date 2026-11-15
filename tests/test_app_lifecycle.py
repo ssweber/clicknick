@@ -725,14 +725,16 @@ def test_picking_a_window_turns_monitoring_on(monkeypatch):
 
 def test_a_csv_load_failure_shows_the_reason(monkeypatch):
     def source(_path):
-        raise ValueError("names.csv has no Nickname column")
+        raise ValueError("names.csv is missing required column(s): Nickname")
 
     monkeypatch.setattr("clicknick.data.data_source.CsvDataSource", source)
     app, prompts = _app(monkeypatch)
 
     assert app.load_csv("C:/tmp/names.csv") is False
 
-    assert prompts == [("showerror", "CSV Load Failed", "names.csv has no Nickname column")]
+    assert prompts == [
+        ("showerror", "CSV Load Failed", "names.csv is missing required column(s): Nickname")
+    ]
 
 
 # -- app#2 / N3: the notice names what closes -------------------------------------------------
