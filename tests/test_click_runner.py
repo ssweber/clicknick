@@ -18,6 +18,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import pytest
 from laddercodec import read_csv
@@ -66,6 +67,12 @@ class FakeWindow:
     on_close: Callable[[], None] | None = None
 
 
+# Two of the rows CLICK's Address Picker writes into SC_.mdb on OK (live run e6), and two of
+# the words its editor refuses, whatever their case (live run f3)
+SYSTEM_ROWS = {"SD19": {"Nickname": "_RTC_Year(4 digits)"}, "SD26": {"Nickname": "_RTC_Second"}}
+RESERVED = {"MAX", "LOG"}
+
+
 class FakeClick(cd.Desktop):
     """CLICK v4 as the probe saw it, with switches for what can go wrong.
 
@@ -102,6 +109,14 @@ class FakeClick(cd.Desktop):
     *import_as* names the mode CLICK imports in, whatever is checked; *import_box* ``"question"`` shows a Yes/No box in place of the answer,
     ``"twice"`` the same answer again once the first is closed. ``imported`` lists each
     import's mode and file.
+
+    PLC > Read Data from PLC opens its form, Save dialog and progress window as live probes d1
+    to d7 dumped them (2026-11-16); *writes_data* off makes the reading write no file, as live
+    run d8 met once. Program > Address Picker opens a grid as live probes e1 to f3 dumped it:
+    two Right keys and F2 open the editor on the current row's Nickname cell, the Find box
+    moves to an address's row, Enter takes the editor's name unless it is a reserved word
+    (``RESERVED``), and OK writes the names taken into SC_.mdb with CLICK's system rows
+    (``SYSTEM_ROWS``); closing it writes nothing.
     """
 
     def __init__(
@@ -145,6 +160,7 @@ class FakeClick(cd.Desktop):
         mode_takes: bool = True,
         import_box: str | None = None,
         import_as: str | None = None,
+        writes_data: bool = True,
     ) -> None:
         self.temp_root = tmp_path / "temp"
         self.temp_root.mkdir()
@@ -213,6 +229,8 @@ class FakeClick(cd.Desktop):
         self.import_box = import_box
         self.import_as = import_as
         self.imported: list[tuple[str, str]] = []
+        self.writes_data = writes_data
+        self.editor_keys: Callable[[int], None] = lambda vk: None
         self.ckps: dict[Path, dict[str, bytes]] = {}  # Each saved project's files
         self.opened: list[Path] = []
 
@@ -502,6 +520,118 @@ class FakeClick(cd.Desktop):
         self._control(dialog, "Button", "&Open", 1, on_press=lambda: self._later("open", read_file))
         self._control(dialog, "Button", "Cancel", 2)
 
+    def _show_read_data(self) -> None:
+        assert self.main is not None
+        main = self.main
+        main.enabled = False
+        form = self._window("TfrmReadWriteDataMemory", "Read Data from PLC", main.hwnd)
+        group = self._control(form, "TGroupBox", "Select Read Memory Type", 0)
+        banks = ("TXT", "CTD", "TD", "DF", "DH", "DD", "DS", "CT", "T", "C", "Y", "X")
+        boxes = [
+            self._control(
+                form, "TCheckBox", bank, 0, parent=group.hwnd, checked=int(bank in "DS DD DH DF")
+            )
+            for bank in banks
+        ]
+
+        def every() -> None:
+            for box in boxes:
+                box.checked = 1
+
+        def save() -> None:
+            form.enabled = False
+            dialog = self._window("#32770", "Save", form.hwnd)
+            box_ex = self._control(dialog, "ComboBoxEx32", "", 1148)
+            box = self._control(dialog, "ComboBox", "", 1148, parent=box_ex.hwnd)
+            name = self._control(dialog, "Edit", "", 1148, parent=box.hwnd)
+
+            def read() -> None:
+                self._drop(dialog)
+                status = self._window(
+                    "TfrmReadWriteDataMemoryStatus", "Data Memory Reading..", form.hwnd
+                )
+
+                def done() -> None:
+                    if self.writes_data:
+                        read = [b.text.encode() for b in reversed(boxes) if b.checked]
+                        Path(name.value).write_bytes(
+                            b"".join(b"<%s=START>\r\n</%s=END>\r\n" % (b, b) for b in read)
+                        )
+                    self._drop(status)
+                    form.enabled = True
+
+                self._later("reading", done)
+
+            self._control(dialog, "Button", "&Save", 1, on_press=lambda: self._later("save", read))
+            self._control(dialog, "Button", "Cancel", 2)
+
+        def close() -> None:
+            self._drop(form)
+            main.enabled = True
+
+        for text, action in (("Read", save), ("Close", close), ("Help", None), ("All", every)):
+            self._control(
+                form,
+                "TButton",
+                text,
+                0,
+                parent=group.hwnd if text == "All" else 0,
+                on_press=None if action is None else lambda a=action: self._later("press", a),
+            )
+        for control in form.controls:
+            control.id = control.hwnd  # A Delphi form's controls have no ids of their own
+
+    def _show_picker(self) -> None:
+        assert self.main is not None
+        main = self.main
+        main.enabled = False
+        picker = self._window("TfrmTagDB", "Address Picker : Edit Mode", main.hwnd)
+        mdb = self.temp_dir(main.hwnd) / "SC_.mdb"
+        at: dict[str, Any] = {"row": "X001", "column": 0}
+        taken: dict[str, str] = {}
+        editor: list[FakeControl] = []
+        grid = self._control(picker, "TStringGrid", "", 0)
+
+        def key(vk: int) -> None:
+            if vk == 0x27:
+                at["column"] += 1
+            elif vk == 0x71 and at["column"] == 2 and not editor:
+                editor.append(self._control(picker, "TEdit", "", 0, parent=grid.hwnd))
+
+        def enter(vk: int) -> None:
+            if vk != 0x0D or not editor:
+                return
+            if editor[0].value.upper() not in RESERVED:
+                taken[at["row"]] = editor[0].value
+            editor[0].visible = False
+            editor.clear()
+
+        grid.on_key = key
+        self.editor_keys = enter
+        box = self._control(picker, "TComboBox", "", 0)
+        find = self._control(picker, "Edit", "", 0, parent=box.hwnd)
+
+        def found() -> None:
+            at.update(row=find.value, column=0)
+
+        def close() -> None:
+            self._drop(picker)
+            main.enabled = True
+
+        def ok() -> None:
+            rows = {address: dict(row) for address, row in SYSTEM_ROWS.items()}
+            rows.update({address: {"Nickname": name} for address, name in taken.items()})
+            mdb.write_text(json.dumps(rows), encoding="utf-8")
+            close()
+
+        picker.on_close = lambda: self._later("picker_close", close)
+        for text, action in (("Find", found), ("OK", ok), ("Cancel", close)):
+            self._control(
+                picker, "TButton", text, 0, on_press=lambda a=action: self._later("press", a)
+            )
+        for control in picker.controls:
+            control.id = control.hwnd
+
     def _show_disconnect(self) -> None:
         assert self.main is not None
         main = self.main
@@ -784,6 +914,10 @@ class FakeClick(cd.Desktop):
             self._later("import_open", self._show_open)
         elif command_id == cd.OPEN_PROJECT:
             self._later("open_project", self._show_open_project)
+        elif command_id == cd.READ_DATA_FROM_PLC:
+            self._later("read_data", self._show_read_data)
+        elif command_id == cd.ADDRESS_PICKER:
+            self._later("picker", self._show_picker)
         elif command_id == cd.DELETE:
 
             def delete() -> None:
@@ -883,7 +1017,8 @@ class FakeClick(cd.Desktop):
         control = self._find(hwnd)
         if control.id == 20142:
             return ""  # ES_PASSWORD: another process reads nothing
-        return control.value if control.cls in ("Edit", "RichEdit20W", "TMemo") else control.text
+        edits = ("Edit", "TEdit", "RichEdit20W", "TMemo")
+        return control.value if control.cls in edits else control.text
 
     def set_text(self, hwnd: int, text: str) -> bool:
         if not self._message("WM_SETTEXT"):
@@ -960,6 +1095,8 @@ class FakeClick(cd.Desktop):
         control = self._find(hwnd)
         if control.on_key is not None:
             control.on_key(vk)
+        elif control.cls == "TEdit":
+            self.editor_keys(vk)
         return True
 
     def send_chars(self, hwnd: int, text: str) -> bool:
@@ -2833,6 +2970,121 @@ def test_reopen_refuses_lines_that_are_not_ascii(tmp_path, setup):
 
 
 # ---------------------------------------------------------------------------
+# read-data: the PLC's data values into a file
+# ---------------------------------------------------------------------------
+
+
+def run_command(
+    fake: FakeClick, tmp_path: Path, exe: Path, command: str, *args: str, **run_args: Any
+) -> tuple[int, dict]:
+    out = tmp_path / "out"
+    argv = [command, "--out", str(out), "--click-exe", str(exe)]
+    argv += ["--timeout", "5", "--paste-timeout", "5", *args]
+    code = cr.main(argv, desktop=fake, prepare=Prepare(), stderr=io.StringIO(), **run_args)
+    result_file = out / "result.json"
+    return code, json.loads(result_file.read_text(encoding="utf-8")) if result_file.exists() else {}
+
+
+def test_read_data_saves_every_memory_type(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_command(fake, tmp_path, exe, "read-data")
+    assert code == cr.EXIT_OK, result["reason"]
+    dump = (tmp_path / "out" / "plcdata.csv").resolve()
+    assert result["files"]["plc_data"] == str(dump)
+    # All checked every memory type before Read, not only the four checked as it opened
+    banks = ("X", "Y", "C", "T", "CT", "DS", "DD", "DH", "DF", "TD", "CTD", "TXT")
+    assert dump.read_bytes().decode("ascii") == "".join(
+        f"<{b}=START>\r\n</{b}=END>\r\n" for b in banks
+    )
+    assert result["reading_seen"] is True
+    assert fake.commands == ["Read Data from PLC", "Disconnect"]
+    at = fake.pressed.index("All")
+    assert fake.pressed[at : at + 4] == ["All", "Read", "&Save", "Close"]
+    assert not fake.connected and fake.terminated
+
+
+def test_read_data_that_writes_no_file_aborts_once_the_reading_ends(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, writes_data=False)
+    code, result = run_command(fake, tmp_path, exe, "read-data")
+    assert code == cr.EXIT_ABORTED
+    assert result["reason"] == "CLICK read the PLC's data but wrote no plcdata.csv"
+    assert result["step"] == "read_data"
+    assert fake.terminated
+
+
+# ---------------------------------------------------------------------------
+# picker: CLICK's Address Picker and what it writes into SC_.mdb
+# ---------------------------------------------------------------------------
+
+
+class PickerRows(Rows):
+    """Rows, reading a new project's SC_.mdb (``b"mdb"`` in the fake) as no rows."""
+
+    def __call__(self, mdb: Path) -> dict[str, dict]:
+        if mdb.read_bytes() == b"mdb":
+            self.read.append(mdb)
+            return {}
+        return super().__call__(mdb)
+
+
+def name_keys(address: str, name: str) -> list[str]:
+    return [f"--key=find:{address}", "--key=RIGHT", "--key=RIGHT", "--key=F2"] + [
+        f"--key=chars:{name}",
+        "--key=RETURN",
+    ]
+
+
+def test_picker_ok_writes_the_names_taken_and_the_system_rows(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    rows = PickerRows()
+    keys = [*name_keys("X001", "Test"), *name_keys("DS1", "Max")]
+    code, result = run_command(fake, tmp_path, exe, "picker", *keys, "--ok", read_rows=rows)
+    assert code == cr.EXIT_OK, result["reason"]
+    out = tmp_path / "out" / "mdb"
+    assert rows.read == [out / "before.mdb", out / "after.mdb"]
+    copies = result["mdb_copies"]
+    assert copies["before"]["rows"] == {}
+    # The reserved word was typed but not taken
+    assert copies["after"]["rows"] == {**SYSTEM_ROWS, "X001": {"Nickname": "Test"}}
+    assert fake.commands == ["Address Picker", "Disconnect"]
+    typed = [k for k in result["keys"] if k["key"].startswith("chars:")]
+    assert [(k["editor"], k["editor_shown"]) for k in typed] == [("Test", True), ("Max", True)]
+    enters = [k for k in result["keys"] if k["key"] == "RETURN"]
+    assert [k["editor_shown"] for k in enters] == [False, False]
+    # Each key went to the grid, or to the editor once it showed
+    assert [cls for cls, _ in fake.keys] == ["TStringGrid"] * 3 + ["TEdit"] * 2 + [
+        "TStringGrid"
+    ] * 3 + ["TEdit"] * 2
+    timings = list(result["timings"])
+    assert timings[-6:] == ["before", "picker", "after", "disconnect", "close", "read"]
+
+
+def test_picker_closed_without_ok_writes_nothing(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    rows = PickerRows()
+    code, result = run_command(
+        fake, tmp_path, exe, "picker", *name_keys("X001", "Test"), read_rows=rows
+    )
+    assert code == cr.EXIT_OK, result["reason"]
+    copies = result["mdb_copies"]
+    assert copies["before"]["rows"] == copies["after"]["rows"] == {}
+    assert "picker_close" in fake.events
+
+
+def test_picker_refuses_a_key_it_does_not_know(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_command(fake, tmp_path, exe, "picker", "--key", "F9")
+    assert code == cr.EXIT_REFUSED
+    assert result["reason"] == "--key 'F9' is not a key the runner knows"
+    assert fake.pid is None
+
+
+# ---------------------------------------------------------------------------
 # The command allowlist
 # ---------------------------------------------------------------------------
 
@@ -2865,7 +3117,7 @@ def test_commands_outside_the_allowlist_are_refused(
         target.command(1, command_id)
 
 
-def test_the_allowlist_is_the_twelve_commands():
+def test_the_allowlist_is_the_thirteen_commands():
     assert cd.ALLOWED_COMMANDS == {
         0xE125: "Paste",
         32777: "Delete",
@@ -2876,6 +3128,7 @@ def test_the_allowlist_is_the_twelve_commands():
         32850: "Disconnect",
         32900: "Import Nickname",
         32851: "Read Data from PLC",
+        32834: "Address Picker",
         50010: "Out...",
         50030: "Math...",
         50040: "Copy...",

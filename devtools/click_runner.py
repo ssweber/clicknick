@@ -4,6 +4,9 @@
     uv run python devtools/click_runner.py record --out DIR
     uv run python devtools/click_runner.py try CASES.json --out DIR [--keep] [--record]
     uv run python devtools/click_runner.py import CSV --out DIR [--each-row] [--record]
+    uv run python devtools/click_runner.py reopen --out DIR [--ini-add LINES] [--record]
+    uv run python devtools/click_runner.py read-data --out DIR [--record]
+    uv run python devtools/click_runner.py picker --out DIR [--key KEY ...] [--ok] [--record]
 
 The runner starts its own CLICK, connects to the one PLC on the LAN (so the new project
 takes that PLC's hardware) and answers "Don't read" to reading the PLC's project. ``paste``
@@ -55,6 +58,30 @@ CLICK's SC_.mdb unchanged for ``IMPORT_SETTLE``, and copies SC_.mdb into ``DIR/m
 Once CLICK has ended (disconnected and ended, as ``try`` ends it), each copy is read through
 Access ODBC, so a NULL stays None and a text keeps every character. result.json holds one
 entry per import under ``imports`` (``Run.import_one``), after an abort too.
+
+``reopen`` asks what CLICK does with a project's Project.ini. It disconnects, saves the new
+project as ``DIR/first.ckp``, adds ``--ini-add``'s ASCII lines to the end of the Project.ini
+in CLICK's temp folder (the runner's own CLICK's), saves as ``DIR/second.ckp``, opens
+``second.ckp`` by File > Open Project (32772; CLICK shows "Project Reading" meanwhile) and
+saves it as ``DIR/third.ckp``. At each point (``first``, ``second``, ``opened``, ``third``)
+CLICK's files are copied into ``DIR/<point>/click/``, and result.json keeps the main
+window's title, the status bar and Project.ini's text under ``points``.
+
+``read-data`` saves the PLC's data values through PLC > Read Data from PLC (32851): it
+presses All, waits for every memory type checked, presses Read, gives CLICK's Save dialog
+``DIR/plcdata.csv`` and waits for CLICK's reading window to go and the file to keep its
+size on two polls (``files.plc_data``; ``reading_seen`` says the reading window showed). A
+reading that ends with no file stops the run (live run d8 met one). It reads; it never
+writes into the PLC.
+
+``picker`` opens Program > Address Picker (32834), CLICK's address editor, between two
+copies of SC_.mdb (``DIR/mdb/before.mdb`` and ``after.mdb``, each taken once SC_.mdb is
+unchanged for ``IMPORT_SETTLE``; ``mdb_copies``). Each ``--key`` is sent (not posted) to
+the grid or, once it shows, to CLICK's in-place editor: a key by name (WM_KEYDOWN and
+WM_KEYUP), ``chars:TEXT`` (WM_CHAR), ``text:TEXT`` (WM_SETTEXT) or ``find:TEXT`` (the Find
+box's text, then Find). After each key result.json keeps the editor's text, whether it
+shows and the hints CLICK shows under it (``keys``). ``--ok`` closes the picker by OK,
+otherwise WM_CLOSE closes it. The copies are read through Access ODBC once CLICK has ended.
 
 Every Syntax Check (``paste``'s too) empties Output first, so a result that reads as the one
 before is still seen. CLICK ignores a Syntax Check posted soon after the last one's result
@@ -857,7 +884,7 @@ class Run:
         if settings.command == "read-data":
             self.result.update(reading_seen=False)
         if settings.command == "picker":
-            self.result.update(mdb_copies={})
+            self.result.update(mdb_copies={}, keys=[])
 
     # -- logging, timing, dumps ---------------------------------------------
 
@@ -899,7 +926,7 @@ class Run:
             controls = []
             for control in self.desktop.controls(window.hwnd):
                 row = asdict(control)
-                if control.cls == "Edit" and answers:
+                if control.cls in ("Edit", "TEdit") and answers:
                     row["edit_text"] = self.desktop.read_text(control.hwnd)
                 controls.append(row)
             base = folder / f"{self._dump_count:02d}-{label}-{window.hwnd}"
@@ -1126,7 +1153,7 @@ class Run:
         if self.s.ini_add is not None and not self.s.ini_add.isascii():
             raise Refused(f"--ini-add is not ASCII: {self.s.ini_add!r}")
         for token in self.s.keys:
-            if not token.startswith(("chars:", "text:")) and token not in _VIRTUAL_KEYS:
+            if not token.startswith(("chars:", "text:", "find:")) and token not in _VIRTUAL_KEYS:
                 raise Refused(f"--key {token!r} is not a key the runner knows")
 
     def launch(self) -> None:
@@ -1971,7 +1998,7 @@ class Run:
     # -- read-data: the PLC's data values into a file -------------------------
 
     def read_data(self) -> None:
-        """PLC > Read Data from PLC: dump the dialog it opens, then Cancel it (probe)."""
+        """PLC > Read Data from PLC: every memory type into ``DIR/plcdata.csv``, then Close."""
         with self.step("read_data"):
             self.wait("the main window alone", [], self.only_main)
             self.command(READ_DATA_FROM_PLC)
@@ -2055,10 +2082,21 @@ class Run:
             for number, token in enumerate(self.s.keys, 1):
                 # The grid's in-place editor, once it shows, is a control the picker did not
                 # have when it opened
-                new = [c for c in self.controls(window) if c.hwnd not in at_open and c.visible]
+                now = self.controls(window)
+                new = [c for c in now if c.hwnd not in at_open and c.visible and c.cls == "TEdit"]
                 target = new[-1] if new else grid
                 self.log(f"key {token!r} to {target.cls} {target.hwnd}")
-                if token.startswith("chars:"):
+                if token.startswith("find:"):
+                    # The Find box (an Edit in a TComboBox) and its Find button
+                    boxes = {c.hwnd for c in now if c.cls == "TComboBox"}
+                    edit = _require(
+                        next((c for c in now if c.cls == "Edit" and c.parent in boxes), None),
+                        "the Find box",
+                    )
+                    button = _require(_labelled(now, "TButton", "Find"), "Find")
+                    answered = self.desktop.set_text(edit.hwnd, token[len("find:") :])
+                    self.press(window, button)
+                elif token.startswith("chars:"):
                     answered = self.desktop.send_chars(target.hwnd, token[len("chars:") :])
                 elif token.startswith("text:"):
                     answered = self.desktop.set_text(target.hwnd, token[len("text:") :])
@@ -2067,6 +2105,7 @@ class Run:
                 if not answered:
                     raise Aborted(f"CLICK did not answer the key {token!r}")
                 self.wait(f"the key {token!r}", [PICKER], lambda f: PICKER.name in f)
+                self.after_key(window, token, at_open)
                 self.dump(self.s.out / "record", f"key{number:02d}")
             if self.s.ok:
                 ok = _require(_labelled(self.controls(window), "TButton", "OK"), "OK")
@@ -2076,6 +2115,26 @@ class Run:
             self.wait("the Address Picker to close", [PICKER], self.only_main)
         with self.step("after"):
             self.copy_mdb(mdb, "after")
+
+    def after_key(self, window: Window, token: str, at_open: set[int]) -> None:
+        """Keep what the Address Picker shows after *token* under ``keys``: its editor's
+        text and whether it shows, and the hints it shows (CLICK's hint under the editor)."""
+        now = self.controls(window)
+        editors = [c for c in now if c.hwnd not in at_open and c.cls == "TEdit"]
+        editor = editors[-1] if editors else None
+        hints = [
+            " ".join(c.text.split())
+            for c in now
+            if c.hwnd not in at_open and c.cls == "TStaticText" and c.visible and c.text
+        ]
+        entry = {
+            "key": token,
+            "editor": None if editor is None else self.desktop.read_text(editor.hwnd),
+            "editor_shown": None if editor is None else editor.visible,
+            "hints": hints,
+        }
+        self.result["keys"].append(entry)
+        self.log(f"  editor {entry['editor']!r} (shown {entry['editor_shown']}), hints {hints!r}")
 
     def copy_mdb(self, mdb: Path, label: str) -> None:
         """Wait for the main window alone and *mdb* unchanged for ``IMPORT_SETTLE``, then copy
@@ -2716,7 +2775,8 @@ def _parser() -> argparse.ArgumentParser:
         dest="keys",
         metavar="KEY",
         help=f"a key to send to the grid (or its editor): {', '.join(_VIRTUAL_KEYS)}, "
-        "chars:TEXT (WM_CHAR) or text:TEXT (WM_SETTEXT); repeat for more",
+        "chars:TEXT (WM_CHAR), text:TEXT (WM_SETTEXT) or find:TEXT (the Find box, then "
+        "Find); repeat for more",
     )
     pickers.add_argument("--ok", action="store_true", help="close the Address Picker by OK")
     reopens = commands.add_parser(
