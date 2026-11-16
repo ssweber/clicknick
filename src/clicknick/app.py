@@ -105,6 +105,12 @@ class ClickNickApp:
         session = self._session
         return session.pairing if session is not None else WorkspacePairing()
 
+    def _setup_parent(self):
+        """Workspace setup's window while it is open (its dialogs' parent), else the main one."""
+        session = self._session
+        window = session.setup_window if session is not None else None
+        return window or self.root
+
     def _project_session(self) -> ConnectionSession | None:
         """The session once ClickNick has read CLICK's database for it, else None.
 
@@ -332,7 +338,6 @@ class ClickNickApp:
         self._odbc_warning_shown = False
         self._workspace_refresh_after_id = None
         self._project_info_window = None
-        self._mirror_setup_window = None
 
     def _setup_styles(self):
         """Configure ttk styles for the application."""
@@ -1015,7 +1020,7 @@ class ClickNickApp:
             self._update_status("Connect to a CLICK project first", "error")
             return None
 
-        parent = getattr(self, "_mirror_setup_window", None) or self.root
+        parent = self._setup_parent()
         while True:
             value = simpledialog.askstring(
                 "Name PLC",
@@ -1050,8 +1055,11 @@ class ClickNickApp:
 
     def _set_pending_workspace_config(self, config) -> None:
         """Show one candidate configuration in the setup form."""
-        self._pending_workspace_config = config
-        matches = self._pairing.matches
+        session = self._session
+        if session is None:
+            return
+        session.pending_workspace = config
+        matches = session.pairing.matches
         if all(known.sidecar_path != config.sidecar_path for known in matches):
             matches.append(config)
         if config.sidecar_path.is_file():
@@ -1072,8 +1080,8 @@ class ClickNickApp:
         plc_name = self._ensure_plc_name_for_workspace()
         if plc_name is None:
             return
-        parent = getattr(self, "_mirror_setup_window", None) or self.root
-        pending = self._pending_workspace_config
+        parent = self._setup_parent()
+        pending = self._session.pending_workspace if self._session else None
         selected = filedialog.askdirectory(
             title=f"Find an existing workspace for {plc_name}",
             initialdir=pending.workspace_path.parent if pending is not None else None,
@@ -1107,8 +1115,8 @@ class ClickNickApp:
         plc_name = self._ensure_plc_name_for_workspace()
         if plc_name is None:
             return
-        parent = getattr(self, "_mirror_setup_window", None) or self.root
-        pending = self._pending_workspace_config
+        parent = self._setup_parent()
+        pending = self._session.pending_workspace if self._session else None
         initial_dir = pending.workspace_path.parent if pending is not None else None
         selected = filedialog.askdirectory(
             title=f"Choose workspace home for {plc_name}",
@@ -1165,12 +1173,12 @@ class ClickNickApp:
 
     def _apply_workspace_mirror_setup(self) -> None:
         """Make the selected durable directory the active project workspace."""
-        dialog_parent = getattr(self, "_mirror_setup_window", None) or self.root
+        dialog_parent = self._setup_parent()
         session = self._project_session()
         if session is None:
             self._update_status("Connect to a CLICK project first", "error")
             return
-        config = self._pending_workspace_config
+        config = session.pending_workspace
         if config is None:
             messagebox.showinfo(
                 "Workspace",
@@ -1284,10 +1292,8 @@ class ClickNickApp:
         ).pack(anchor=tk.W, fill=tk.X)
 
     def _close_mirror_setup_window(self) -> None:
-        window = self._mirror_setup_window
-        self._mirror_setup_window = None
-        if window is not None:
-            window.destroy()
+        if self._session is not None:
+            self._session.close_setup_window()
 
     def _create_mirror_setup_contents(self, parent) -> None:
         """Create task-oriented controls for using or creating a workspace."""
@@ -1370,20 +1376,28 @@ class ClickNickApp:
         buttons.pack(fill=tk.X)
 
     def _open_mirror_setup_window(self) -> None:
-        """Show workspace details before offering setup or reconfiguration."""
-        if self._mirror_setup_window is not None:
+        """Show workspace details before offering setup or reconfiguration.
+
+        The window is the connected session's: it closes with the session.
+        """
+        session = self._session
+        if session is not None and session.setup_window is not None:
             try:
-                self._mirror_setup_window.lift()
-                self._mirror_setup_window.focus_force()
+                session.setup_window.lift()
+                session.setup_window.focus_force()
                 return
             except tk.TclError:
-                self._mirror_setup_window = None
+                session.setup_window = None
 
         if self._ensure_plc_name_for_workspace() is None:
             return
+        # A PLC name comes from the connected window's Project.ini
+        session = self._session
+        if session is None:
+            return
 
-        config = self._pairing.config
-        self._pending_workspace_config = config
+        config = session.pairing.config
+        session.pending_workspace = config
         self.mirror_project_selection_var.set(str(config.workspace_path) if config else "")
         self.mirror_location_selection_var.set("")
         self.workspace_setup_action_var.set("Use Workspace" if config else "Create Workspace")
@@ -1395,7 +1409,7 @@ class ClickNickApp:
         contents = ttk.Frame(window, padding=12)
         self._create_mirror_setup_contents(contents)
         contents.pack(fill=tk.BOTH, expand=True)
-        self._mirror_setup_window = window
+        session.setup_window = window
         self._request_ui_refresh()
 
     def _populate_workspace_options_menu(self, menu: tk.Menu) -> None:
@@ -2171,9 +2185,6 @@ class ClickNickApp:
         # Pending idle refresh of the title and Workspace details (_request_ui_refresh)
         self._ui_refresh_id = None
 
-        # The workspace chosen in Workspace setup and not applied yet
-        self._pending_workspace_config = None
-
         self.filter_strategies = {
             "none": NoneFilter(),
             "prefix": PrefixFilter(),
@@ -2298,12 +2309,15 @@ class ClickNickApp:
         """True when the loaded data is CLICK's project database (derived, never stored)."""
         return self._data is not None and self._data.store.is_database
 
-    def _open_data(self, store: AddressStore) -> bool:
+    def _open_data(
+        self, store: AddressStore, *, still_wanted: Callable[[], bool] | None = None
+    ) -> bool:
         """Make *store* the current data, closing the previous data first.
 
         The previous data's windows are closed after offering to save unsaved
         edits. Returns False (and leaves the previous data in place) if the
-        user cancels.
+        user cancels. Also False, with *store* not opened, when *still_wanted*
+        says after that prompt that it is no longer wanted.
         """
         from .data_session import DataSession
 
@@ -2311,6 +2325,8 @@ class ClickNickApp:
             if not self._data.close(self.root, prompt_save=True):
                 return False
             self._data = None
+        if still_wanted is not None and not still_wanted():
+            return False
         store.start_file_monitoring(self.root)
         self._data = DataSession(store)
         self.nickname_manager.set_store(store)
@@ -2426,8 +2442,6 @@ class ClickNickApp:
         if session is not None:
             session.close()
             self._session = None
-        # Workspace setup's choice was for the closed session's PLC
-        self._pending_workspace_config = None
 
     def _handle_window_closed(self):
         """Handle when connected window is no longer available."""
@@ -2508,9 +2522,6 @@ class ClickNickApp:
         """
         from .connection_session import ConnectionSession
 
-        # Workspace setup shows the closed session's PLC
-        if getattr(self, "_mirror_setup_window", None) is not None:
-            self._close_mirror_setup_window()
         session = ConnectionSession(
             click,
             has_database=has_database,
@@ -2518,7 +2529,6 @@ class ClickNickApp:
             on_build_finished=self._on_build_finished,
         )
         session.load_workspace_pairing()
-        self._pending_workspace_config = None
         self._session = session
 
     def _load_instance_database(self, session: ConnectionSession) -> None:
@@ -2565,8 +2575,10 @@ class ClickNickApp:
                     self._connect_csv_fallback(click.filename, click.hwnd)
                 return
 
-            if not self._open_data(store):
-                self._update_status("Database load cancelled", "status")
+            # The save prompt runs Tk's loop: the session may close meanwhile
+            if not self._open_data(store, still_wanted=lambda: session.loads(token)):
+                if session.loads(token):
+                    self._update_status("Database load cancelled", "status")
                 return
             session.has_database = True
             self.load_from_database()
@@ -2756,9 +2768,13 @@ class ClickNickApp:
         current_title = self.detector.get_window_title(click.hwnd)
         new_filename = self._parse_filename_from_title(current_title)
         if new_filename and new_filename != click.filename:
-            self._handle_project_change(current_title, new_filename)
-            # The new project's session watches from here, starting now
-            self._watch_connection()
+            try:
+                self._handle_project_change(current_title, new_filename)
+            finally:
+                # The new project's session watches from here, starting now, even
+                # when following the project failed part way (the old session's
+                # watch ended when it closed)
+                self._watch_connection()
             return
 
         if self.monitoring and self._data is not None:

@@ -31,8 +31,9 @@ _BUILD_GATE = threading.Lock()
 
 # Why a session builds nothing before ClickNick read CLICK's database (has_database)
 NO_DATABASE = (
-    "ClickNick has not read this project's database. It reads CLICK's program "
-    "through the database (Access ODBC or Jet)."
+    "ClickNick has not read this project's database (SC_.mdb, through Access ODBC "
+    "or Jet). A build reads CLICK's program from its Scr*.tmp files and the "
+    "nicknames from that database."
 )
 
 
@@ -92,7 +93,8 @@ class ConnectionSession:
     Resources managed (in teardown order):
     1. The database load in flight
     2. The connection watch (every 100 ms) and the autocomplete popup
-    3. Simulator window (with its console)
+    3. Workspace setup window (with its unapplied choice) and Simulator window
+       (with its console)
     4. SimulationSession (pyrung DAP subprocess, its Modbus server and client)
     5. ScrWatcher (file polling)
     6. AnalysisService (stale graph)
@@ -123,6 +125,10 @@ class ConnectionSession:
 
         # The autocomplete popup over CLICK's instruction dialog, once one showed
         self.overlay: Any | None = None
+        # The Workspace setup window, while it is open, and the workspace chosen
+        # in it and not applied yet
+        self.setup_window: Any | None = None
+        self.pending_workspace: ProjectWorkspaceConfig | None = None
         self.analysis: AnalysisService | None = None
         self.scr_watcher: ScrWatcher | None = None
         self.simulator: Any | None = None
@@ -190,10 +196,21 @@ class ConnectionSession:
         self._watch_id = None
 
     def hide_overlay(self) -> None:
-        """Withdraw the autocomplete popup; the next popup is a new one."""
-        if self.overlay is not None:
-            self.overlay.withdraw()
-            self.overlay = None
+        """Withdraw and destroy the autocomplete popup; the next popup is a new one."""
+        overlay, self.overlay = self.overlay, None
+        if overlay is not None:
+            overlay.withdraw()
+            overlay.destroy()
+
+    def close_setup_window(self) -> None:
+        """Close the Workspace setup window, dropping the choice not applied yet."""
+        window, self.setup_window = self.setup_window, None
+        self.pending_workspace = None
+        if window is not None:
+            try:
+                window.destroy()
+            except Exception:
+                pass
 
     # -- Workspace pairing -------------------------------------------------
 
@@ -357,6 +374,7 @@ class ConnectionSession:
     # -- Private helpers ---------------------------------------------------
 
     def _close_windows(self) -> None:
+        self.close_setup_window()
         window = self.simulator
         if window is not None:
             try:

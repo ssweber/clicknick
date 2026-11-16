@@ -524,7 +524,6 @@ def test_without_its_database_a_session_asks_to_connect_first(monkeypatch, actio
     said before a session was made on connect."""
     app, _prompts = _app(monkeypatch)
     app._live_server = MagicMock()
-    app._mirror_setup_window = None
     app._current_plc_name = MagicMock(return_value=None)
 
     getattr(app, action)()
@@ -591,8 +590,64 @@ def test_the_popup_goes_with_the_window_it_was_shown_over(monkeypatch):
     tick()
 
     overlay.withdraw.assert_called_once_with()
+    overlay.destroy.assert_called_once_with()
     assert session.overlay is None and app._session is None
     assert app.root.pending(100) == 0
+
+
+def test_workspace_setup_closes_with_the_click_window(monkeypatch):
+    app, _prompts = _app(monkeypatch)
+    app.refresh_click_instances = MagicMock()
+    session = app._session
+    setup = MagicMock()
+    session.setup_window = setup
+    session.pending_workspace = object()
+
+    app._watch_connection()
+    app.detector.check_window_exists = lambda _pid: False
+    (tick,) = app.root.take(100)
+    tick()
+
+    assert app._session is None
+    setup.destroy.assert_called_once_with()
+    assert session.setup_window is None and session.pending_workspace is None
+
+
+def test_the_new_project_is_watched_even_when_following_it_fails(monkeypatch):
+    app, _prompts = _app(monkeypatch)
+    _open(app, FakeStore(is_database=True))
+    app.detector.get_window_title = lambda _hwnd: "CLICK Programming Software - Next.ckp"
+
+    def unreadable(**_kwargs):
+        raise OSError("DataView folder unreadable")
+
+    app._reopen_dataview_editor = unreadable
+
+    with pytest.raises(OSError):
+        app._watch_connection()
+
+    assert app._click == ClickConnection("111", 222, "Next.ckp")
+    assert app.root.pending(100) == 1
+
+
+def test_a_database_load_whose_session_closed_during_the_save_prompt_is_dropped(monkeypatch):
+    app, _prompts = _app(monkeypatch)
+    old = FakeStore(is_database=False)
+    _open(app, old)
+    session = app._session
+    token = session.begin_load()
+    new = FakeStore(is_database=True)
+
+    def close_during_prompt(_root, *, prompt_save):
+        session.close()  # CLICK's window closed while the prompt was up
+        return True
+
+    app._data.close = close_during_prompt
+
+    assert not app._open_data(new, still_wanted=lambda: session.loads(token))
+    new.start_file_monitoring.assert_not_called()
+    assert app._data is None
+    app.nickname_manager.set_store.assert_not_called()
 
 
 def test_popup_detection_runs_only_while_monitoring(monkeypatch):

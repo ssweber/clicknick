@@ -141,7 +141,6 @@ def test_workspace_setup_writes_the_plc_name_where_click_4_reads_it(
     app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
     app._session = ConnectionSession(ClickConnection("1", 123, "Example.ckp"), has_database=True)
-    app._mirror_setup_window = None
     app._update_status = MagicMock()
     app.plc_name_var = MagicMock()
 
@@ -280,11 +279,13 @@ def _choose_existing_workspace(
     app = ClickNickApp.__new__(ClickNickApp)
     app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
-    app._session = MagicMock(pairing=WorkspacePairing())
+    app._session = MagicMock(
+        pairing=WorkspacePairing(),
+        setup_window=None,
+        pending_workspace=ProjectWorkspaceConfig("Line1", mirror),
+    )
     if analysis is not None:
         app._session.analysis = analysis
-    app._pending_workspace_config = ProjectWorkspaceConfig("Line1", mirror)
-    app._mirror_setup_window = None
     app._ensure_plc_name_for_workspace = ensure_plc_name or MagicMock(return_value="Line1")
     app._workspace_source_dir = MagicMock(return_value=source)
     app._update_status = MagicMock()
@@ -575,9 +576,7 @@ def test_session_requires_a_choice_for_unpreferred_duplicate_matches(
     assert "Multiple workspaces" in session.pairing.error
 
 
-def test_a_new_session_closes_workspace_setup_and_pairs_its_own_plc(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_a_new_session_pairs_its_own_plc(monkeypatch, tmp_path: Path) -> None:
     config = _config(tmp_path, "Machine")
     config.workspace_path.mkdir(parents=True)
     monkeypatch.setattr(
@@ -588,15 +587,9 @@ def test_a_new_session_closes_workspace_setup_and_pairs_its_own_plc(
     app = ClickNickApp.__new__(ClickNickApp)
     app._request_ui_refresh = MagicMock()
     app._session = None
-    setup = MagicMock()
-    app._mirror_setup_window = setup
-    app._pending_workspace_config = _config(tmp_path / "other", "Machine")
 
     app._open_connection_session(ClickConnection("1", 2, "Machine-20260829.ckp"))
 
-    setup.destroy.assert_called_once_with()
-    assert app._mirror_setup_window is None
-    assert app._pending_workspace_config is None
     assert app._session.pairing.config == config
     assert app._configured_workspace_dir() == config.workspace_path
 
@@ -616,9 +609,9 @@ def test_setup_creates_plc_named_workspace_and_remembers_preference(
 
     app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
-    app._session = MagicMock(pairing=WorkspacePairing())
-    app._pending_workspace_config = config
-    app._mirror_setup_window = None
+    app._session = MagicMock(
+        pairing=WorkspacePairing(), setup_window=None, pending_workspace=config
+    )
     app._ensure_plc_name_for_workspace = MagicMock(return_value="IMHERE")
     app._workspace_source_dir = MagicMock(return_value=None)
     app._update_status = MagicMock()
@@ -646,9 +639,7 @@ def test_choose_new_home_previews_plc_named_paths(monkeypatch, tmp_path: Path) -
 
     app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
-    app._mirror_setup_window = None
-    app._pending_workspace_config = None
-    app._session = None
+    app._session = ConnectionSession(ClickConnection("1", 2, "LaserBall.ckp"))
     app._ensure_plc_name_for_workspace = MagicMock(return_value="LaserBall")
     app.mirror_project_selection_var = MagicMock()
     app.mirror_location_selection_var = MagicMock()
@@ -656,7 +647,7 @@ def test_choose_new_home_previews_plc_named_paths(monkeypatch, tmp_path: Path) -
 
     app._select_mirror_location()
 
-    assert app._pending_workspace_config == _config(home, "LaserBall")
+    assert app._session.pending_workspace == _config(home, "LaserBall")
     app.mirror_project_selection_var.set.assert_called_once_with("")
     app.mirror_location_selection_var.set.assert_called_once_with(str(home / "LaserBall Workspace"))
     app.workspace_setup_action_var.set.assert_called_once_with("Create Workspace")
@@ -676,9 +667,7 @@ def test_find_existing_workspace_selects_a_folder_not_a_config_file(
 
     app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
-    app._mirror_setup_window = None
-    app._pending_workspace_config = None
-    app._session = None
+    app._session = ConnectionSession(ClickConnection("1", 2, "LaserBall.ckp"))
     app._ensure_plc_name_for_workspace = MagicMock(return_value="LaserBall")
     app.mirror_project_selection_var = MagicMock()
     app.mirror_location_selection_var = MagicMock()
@@ -686,7 +675,7 @@ def test_find_existing_workspace_selects_a_folder_not_a_config_file(
 
     app._select_existing_workspace_config()
 
-    assert app._pending_workspace_config == config
+    assert app._session.pending_workspace == config
     app.mirror_project_selection_var.set.assert_called_once_with(str(config.workspace_path))
     app.mirror_location_selection_var.set.assert_called_once_with("")
     app.workspace_setup_action_var.set.assert_called_once_with("Use Workspace")
@@ -708,7 +697,6 @@ def test_workspace_setup_prompts_for_and_writes_a_missing_plc_name(monkeypatch) 
     app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
     app._session = ConnectionSession(ClickConnection("1", 123, "Example.ckp"), has_database=True)
-    app._mirror_setup_window = None
     app._current_plc_name = MagicMock(return_value=None)
     app._update_status = MagicMock()
     app.plc_name_var = MagicMock()

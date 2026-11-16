@@ -23,7 +23,7 @@ How to use it:
 2. ssort out, tests into CI (nothing)
 3. The bob plugin (done)
 4. CLICK runner (built: `devtools/click_runner.py`; next its early jobs), and the user checks it or a mock can automate (nothing)
-5. ConnectionSession owns the window and project (Sam: the Workspace setup window)
+5. ConnectionSession owns the window and project (done)
 6. Split ClickNickApp (nothing)
 7. Onto pyclickplc's readers (done)
 8. Onto pyrung's named imports (waits on pyrung's deletions release)
@@ -146,16 +146,12 @@ What a script cannot judge is the wording: collect each notice into one page for
 Not without CLICK: the overlay, project change and Save As, Review Changes paste steps, and Sync racing a
 CLICK save.
 
-## 5. ConnectionSession owns the window and project (Sam: the Workspace setup window)
+## 5. ConnectionSession owns the window and project (done)
 
-Built on `bob/connection-session`: the session opens on connect, holds the window, the load token, the
-workspace pairing, the connection watch and the popup, and `_close_session` is the one teardown. Left on the
-app:
-
-- The Workspace setup window and its unapplied choice (`_pending_workspace_config`). Moving the window into
-  the session would close it when CLICK's window closes; today it stays open, and its **Use Workspace** says to
-  connect first. Sam decides whether it should close.
-- The project-info window: it holds nothing of the connection and opens with nothing connected.
+The session opens on connect, before the database loads, and holds the window, the load token, the workspace
+pairing, the connection watch, the popup and the Workspace setup window; `_close_session` is the one teardown.
+The Workspace setup window now closes when CLICK's window closes (Sam, 2026-11-15). The project-info window
+stays on the app: it holds nothing of the connection and opens with nothing connected.
 
 ## 6. Split ClickNickApp (nothing)
 

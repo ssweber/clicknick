@@ -97,9 +97,34 @@ def test_the_watch_runs_until_the_session_closes() -> None:
 
     assert scheduler.scheduled == {}
     overlay.withdraw.assert_called_once_with()
+    overlay.destroy.assert_called_once_with()
     assert session.overlay is None
     session.watch(scheduler, tick)
     assert tick.call_count == 2
+
+
+def test_hiding_the_popup_destroys_it() -> None:
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    overlay = MagicMock()
+    session.overlay = overlay
+
+    session.hide_overlay()
+
+    overlay.withdraw.assert_called_once_with()
+    overlay.destroy.assert_called_once_with()
+    assert session.overlay is None
+
+
+def test_closing_the_session_closes_workspace_setup() -> None:
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    window = MagicMock()
+    session.setup_window = window
+    session.pending_workspace = object()
+
+    session.close()
+
+    window.destroy.assert_called_once_with()
+    assert session.setup_window is None and session.pending_workspace is None
 
 
 def test_a_tick_that_closes_the_session_is_its_last() -> None:

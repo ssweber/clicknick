@@ -395,7 +395,7 @@ def test_unloadable_odbc_loads_off_ui_thread_and_handles_result(jet_database, mo
         load_from_database=Mock(),
         _start_analysis_build=Mock(),
     )
-    view._open_data = lambda store: app_module.ClickNickApp._open_data(view, store)
+    view._open_data = lambda store, **kw: app_module.ClickNickApp._open_data(view, store, **kw)
     view._get_store = lambda: app_module.ClickNickApp._get_store(view)
     monkeypatch.setattr(data_source, "find_click_database", lambda *_args: str(path))
     monkeypatch.setattr(
