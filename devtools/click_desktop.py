@@ -53,6 +53,9 @@ WRITE_PROJECT_INTO_PLC = 32854
 OUT_DIALOG = 50010
 MATH_DIALOG = 50030
 COPY_DIALOG = 50040
+# "Receive..." pushes 50060 (and "Send..." 50061) the same way; live probes r1 and r2
+# (2026-11-16) opened the Receive dialog by it (Inst_RD.dll's template, titled "Receive")
+RECEIVE_DIALOG = 50060
 
 ALLOWED_COMMANDS = {
     PASTE: "Paste",
@@ -69,6 +72,7 @@ ALLOWED_COMMANDS = {
     OUT_DIALOG: "Out...",
     MATH_DIALOG: "Math...",
     COPY_DIALOG: "Copy...",
+    RECEIVE_DIALOG: "Receive...",
 }
 
 _NEVER = {
@@ -190,6 +194,16 @@ class Desktop(ABC):
         """A list view's LVM_GETITEMCOUNT, or None if it does not answer."""
 
     @abstractmethod
+    def combo_box(self, hwnd: int) -> tuple[list[str], int] | None:
+        """A ComboBox's items (CB_GETLBTEXT) and the index selected (CB_GETCURSEL, -1 for
+        none), or None if it does not answer. It only reads."""
+
+    @abstractmethod
+    def edit_limit(self, hwnd: int) -> int | None:
+        """An edit's EM_GETLIMITTEXT, the most characters typing can put in it, or None if
+        it does not answer. WM_SETTEXT is not held to it."""
+
+    @abstractmethod
     def status_bar(self, hwnd: int) -> list[str] | None:
         """The pane texts of the common-control status bar *hwnd* (SB_GETTEXT), or None.
 
@@ -264,6 +278,12 @@ WM_KEYUP = 0x0101
 WM_CHAR = 0x0102
 WM_COMMAND = 0x0111
 BM_GETCHECK = 0x00F0
+EM_GETLIMITTEXT = 0x00D5
+CB_GETCOUNT = 0x0146
+CB_GETCURSEL = 0x0147
+CB_GETLBTEXT = 0x0148
+CB_GETLBTEXTLEN = 0x0149
+CB_ERR = 0xFFFFFFFF
 BM_CLICK = 0x00F5
 LVM_GETITEMCOUNT = 0x1004
 SB_GETPARTS = 0x0406
@@ -688,6 +708,27 @@ class Win32Desktop(Desktop):
 
     def list_view_items(self, hwnd: int) -> int | None:
         return self._send(hwnd, LVM_GETITEMCOUNT)
+
+    def combo_box(self, hwnd: int) -> tuple[list[str], int] | None:
+        count = self._send(hwnd, CB_GETCOUNT)
+        if count is None or count & CB_ERR == CB_ERR:
+            return None
+        items: list[str] = []
+        for index in range(count):
+            length = self._send(hwnd, CB_GETLBTEXTLEN, index)
+            if length is None or length & CB_ERR == CB_ERR:
+                return None
+            buffer = ctypes.create_unicode_buffer(length + 1)
+            if self._send(hwnd, CB_GETLBTEXT, index, ctypes.addressof(buffer)) is None:
+                return None
+            items.append(buffer.value)
+        selected = self._send(hwnd, CB_GETCURSEL)
+        if selected is None:
+            return None
+        return items, -1 if selected & CB_ERR == CB_ERR else selected
+
+    def edit_limit(self, hwnd: int) -> int | None:
+        return self._send(hwnd, EM_GETLIMITTEXT)
 
     def status_bar(self, hwnd: int) -> list[str] | None:
         """SB_GETTEXT for each pane, through a buffer in the bar's process."""

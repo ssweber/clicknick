@@ -52,6 +52,9 @@ class FakeControl:
     value: str = ""  # An edit's text, which only WM_GETTEXT reads
     checked: int = 0
     items: int = 0
+    options: list[str] = field(default_factory=list)  # A ComboBox's items
+    selected: int = -1  # The ComboBox item selected
+    limit: int = 30000  # An edit's EM_GETLIMITTEXT
     on_press: Callable[[], None] | None = None
     on_key: Callable[[int], None] | None = None
     on_send: Callable[[], None] | None = None  # A sent BM_CLICK, handled before it returns
@@ -72,6 +75,29 @@ class FakeWindow:
 # the words its editor refuses, whatever their case (live run f3)
 SYSTEM_ROWS = {"SD19": {"Nickname": "_RTC_Year(4 digits)"}, "SD26": {"Nickname": "_RTC_Second"}}
 RESERVED = {"MAX", "LOG"}
+# The Receive dialog's lists as live probes r1 and r2 dumped them: their items, and the one
+# selected as it opens
+RECEIVE_LISTS = {
+    5000: (["CPU Port1", "CPU Port2", "CPU Port3", "WLAN Port"], 1),
+    5001: (
+        [
+            "01 - Read Coil Status",
+            "02 - Read Input Status",
+            "03 - Read Holding Registers",
+            "04 - Read Input Registers",
+        ],
+        0,
+    ),
+    5002: (["Modbus 984 Addressing", "Modbus Hex Addressing", "CLICK Addressing"], 0),
+    5003: (["ON", "OFF"], 1),
+}
+# EM_GETLIMITTEXT of the Receive fields live probe r1 read below the default
+RECEIVE_LIMITS = {5014: 6, 5017: 4, 5020: 16, 5023: 16, 5026: 16, 5029: 16}
+# The Receive fields that open filled (live probe r1): Slave ID and Number of Bits
+RECEIVE_FILLED = {5014: "1", 5017: "1"}
+# Word Swap (5003) is open only for the register Function Codes (live probe r2: disabled
+# under 01 - Read Coil Status)
+WORD_SWAP_OPEN_FOR = {2, 3}
 
 
 class FakeClick(cd.Desktop):
@@ -169,6 +195,9 @@ class FakeClick(cd.Desktop):
         open_gap: int = 0,
         save_clears: bool = False,
         system_config_notice: bool = False,
+        ansi_fields: bool = False,
+        lists_follow_keys: bool = True,
+        list_resets_on_fill: bool = False,
     ) -> None:
         self.temp_root = tmp_path / "temp"
         self.temp_root.mkdir()
@@ -242,6 +271,11 @@ class FakeClick(cd.Desktop):
         self.save_clears = save_clears
         self.system_config_notice = system_config_notice
         self.system_config_shown = False
+        self.ansi_fields = ansi_fields
+        self.lists_follow_keys = lists_follow_keys
+        # A Receive whose Function Code goes back to 01 when a field is set
+        self.list_resets_on_fill = list_resets_on_fill
+        self.receive_lists: dict[str, FakeControl] = {}
         self.last_folder = tmp_path / "last folder"
         self.editor_keys: Callable[[int], None] = lambda vk: None
         self.ckps: dict[Path, dict[str, bytes]] = {}  # Each saved project's files
@@ -778,8 +812,44 @@ class FakeClick(cd.Desktop):
             name: self._control(dialog, "RichEdit20W" if name == "formula" else "Edit", "", id)
             for name, id in spec.fields.items()
         }
+        for name, edit in edits.items():
+            if title == "Receive":
+                edit.limit = RECEIVE_LIMITS.get(spec.fields[name], 30000)
+                edit.value = RECEIVE_FILLED.get(spec.fields[name], "")
         for id, state in {**spec.opens_with, **self.opens_with}.items():
             self._control(dialog, "Button", f"button {id}", id, checked=state)
+        lists = {}
+        for name, list_id in spec.lists.items():
+            items, selected = RECEIVE_LISTS[list_id]
+            lists[name] = self._control(
+                dialog, "ComboBox", "", list_id, options=list(items), selected=selected
+            )
+
+        def key(combo: FakeControl, vk: int) -> None:
+            # A drop-down list moves its selection by Home, Up and Down, and tells the
+            # dialog at once (CBN_SELCHANGE, sent)
+            if not self.lists_follow_keys:
+                return
+            last = len(combo.options) - 1
+            if vk == 0x24:
+                combo.selected = 0
+            elif vk == 0x28:
+                combo.selected = min(combo.selected + 1, last)
+            elif vk == 0x26:
+                combo.selected = max(combo.selected - 1, 0)
+
+        def follow(combo: FakeControl, vk: int) -> None:
+            key(combo, vk)
+            if combo is lists.get("function"):
+                lists["word_swap"].enabled = combo.selected in WORD_SWAP_OPEN_FOR
+
+        for combo in lists.values():
+            combo.on_key = lambda vk, c=combo: follow(c, vk)
+        if title == "Receive":
+            lists["word_swap"].enabled = lists["function"].selected in WORD_SWAP_OPEN_FOR
+            # Never to be pressed: it edits the project's port setup
+            self._control(dialog, "Button", "COM Port Setup", 5013)
+        self.receive_lists = lists
 
         def pick(name: str) -> None:
             for other, radio in radios.items():
@@ -804,6 +874,7 @@ class FakeClick(cd.Desktop):
         def ok() -> None:
             mode = next((n for n, r in radios.items() if r.checked), None)
             values = {name: edit.value for name, edit in edits.items() if edit.value}
+            values.update({name: c.options[c.selected] for name, c in lists.items()})
             self.entered.append((title, mode, values))
             answer = self.judge(title, mode, values)
             if answer is None:
@@ -1020,7 +1091,12 @@ class FakeClick(cd.Desktop):
 
             self._later("delete", delete)
         else:
-            title = {cd.MATH_DIALOG: "Math", cd.COPY_DIALOG: "Copy", cd.OUT_DIALOG: "Out"}
+            title = {
+                cd.MATH_DIALOG: "Math",
+                cd.COPY_DIALOG: "Copy",
+                cd.OUT_DIALOG: "Out",
+                cd.RECEIVE_DIALOG: "Receive",
+            }
             self._later("dialog", lambda: self._show_instruction(title[command_id]))
 
     def click_processes(self) -> list[int]:
@@ -1117,8 +1193,12 @@ class FakeClick(cd.Desktop):
     def set_text(self, hwnd: int, text: str) -> bool:
         if not self._message("WM_SETTEXT"):
             return False
+        if self.ansi_fields:  # An ANSI dialog keeps what its code page has, "?" for the rest
+            text = text.encode("cp1252", "replace").decode("cp1252")
         self._find(hwnd).value = text
         self.typed[self._find(hwnd).id] = text
+        if self.list_resets_on_fill and "function" in self.receive_lists:
+            self.receive_lists["function"].selected = 0
         if text == self.box_on_fill:
             dialog = next(w for w in self.wins.values() if any(c.hwnd == hwnd for c in w.controls))
             box = self._window("#32770", "CLICK Programming Software", dialog.hwnd)
@@ -1129,6 +1209,18 @@ class FakeClick(cd.Desktop):
 
     def button_checked(self, hwnd: int) -> int | None:
         return self._find(hwnd).checked if self._message("BM_GETCHECK") else None
+
+    def combo_box(self, hwnd: int) -> tuple[list[str], int] | None:
+        if not self._message("CB_GETCOUNT"):
+            return None
+        control = self._find(hwnd)
+        assert control.cls == "ComboBox", f"CB_GETCOUNT sent to {control.cls}"
+        return list(control.options), control.selected
+
+    def edit_limit(self, hwnd: int) -> int | None:
+        if not self._message("EM_GETLIMITTEXT"):
+            return None
+        return self._find(hwnd).limit
 
     def list_view_items(self, hwnd: int) -> int | None:
         if not self._message("LVM_GETITEMCOUNT"):
@@ -1256,6 +1348,12 @@ def judge_like_click(title: str, mode: str | None, values: dict[str, str]) -> ob
         return ("OBJ-004", "The entered address cannot be used in this instruction.")
     if title == "Copy" and values.get("destination", "").startswith("YD"):  # Live try4, B1
         return ("OBJ-004", "The entered address cannot be used in this instruction.")
+    if (
+        title == "Receive"
+        and values["function"].startswith("03")
+        and not values.get("slave_address", "").startswith("4")
+    ):  # Live run rx1: a Function Code 03 with a slave address for 01
+        return ("OBJ-010", "The entered value is outside the range. Range: <400001> to <465535>")
     return None
 
 
@@ -2302,6 +2400,20 @@ TRY_CASES = [
     },
     {"row": "B8", "case": "X001", "instruction": "out", "fields": {"address": "X001"}},
 ]
+# A Receive as it opens (CPU Port2, MODBUS, Function Code 01) into C1
+RECEIVE = {
+    "row": "B7",
+    "case": "receive coils into C1",
+    "instruction": "receive",
+    "fields": {
+        "slave_address": "1",
+        "master_address": "C1",
+        "receiving": "C100",
+        "success": "C101",
+        "error": "C102",
+        "exception": "DS100",
+    },
+}
 
 
 class Nicknames:
@@ -2323,11 +2435,12 @@ def run_try(
     *args: str,
     timeout: float = 5,
     nicknames: Nicknames | None = None,
+    out: Path | None = None,
     **run_args: object,
 ) -> tuple[int, dict]:
     file = tmp_path / "cases.json"
     file.write_text(json.dumps(cases), encoding="utf-8")
-    out = tmp_path / "out"
+    out = out or tmp_path / "out"
     argv = ["try", str(file), "--out", str(out), "--click-exe", str(exe)]
     argv += ["--timeout", str(timeout), "--paste-timeout", str(timeout), *args]
     code = cr.main(
@@ -2686,10 +2799,14 @@ def test_a_delete_that_leaves_the_instruction_aborts(tmp_path, setup):
     out = tmp_path / "out"
     code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES})
     assert_aborted(fake, out, code, result, "Delete did not leave the main program empty")
-    assert [c["outcome"] for c in result["cases"]] == ["accepted"]
+    # CLICK accepted the case, but the run stopped after: the stop keeps the answer, and a
+    # resume tries the case again
+    (entry,) = result["cases"]
+    assert entry["outcome"] is None and entry["stops"][-1]["outcome"] == "accepted"
+    assert entry["syntax_check"]["lines"] == []
 
 
-def test_a_field_closed_in_the_mode_aborts(tmp_path, setup):
+def test_a_field_closed_in_the_mode_is_not_taken(tmp_path, setup):
     _, exe = setup
     case = {
         "row": "x",
@@ -2699,11 +2816,17 @@ def test_a_field_closed_in_the_mode_aborts(tmp_path, setup):
         "fields": {"source": "DS1", "source_end": "DS2", "destination": "DS3"},
     }
     fake = FakeClick(tmp_path)
-    code, result = run_try(fake, tmp_path, exe, {"cases": [case]})
-    assert_aborted(
-        fake, tmp_path / "out", code, result, "source_end field (5009) is not open for entry"
-    )
-    assert "OK" not in fake.pressed[5:]
+    code, result = run_try(fake, tmp_path, exe, {"cases": [case, TRY_CASES[0]]})
+    assert code == cr.EXIT_OK, result["reason"]
+    first, second = result["cases"]
+    assert first["outcome"] == "not_taken" and first["code"] is None
+    assert first["message"] == "closed for entry in single mode: source_end"
+    assert first["read_back"] == {"source": "DS1", "destination": "DS3"}
+    assert first["syntax_check"] is None
+    # OK is never pressed: Cancel closes the dialog, and the next case is tried
+    assert fake.entered == [("Math", "decimal", {"result": "DS1", "formula": "DS2 + 1"})]
+    assert "Cancel" in fake.pressed and second["outcome"] == "accepted"
+    assert fake.commands[:3] == ["Syntax Check", "Copy...", "Math..."]
 
 
 @pytest.mark.parametrize(
@@ -2726,6 +2849,16 @@ def test_a_field_closed_in_the_mode_aborts(tmp_path, setup):
         ({"cases": [{**TRY_CASES[0], "fields": {}}]}, "'fields' must name at least one field"),
         ({"cases": [{**TRY_CASES[0], "extra": 1}]}, "unknown keys: extra"),
         ({"cases": TRY_CASES, "nicknames": ["SD99999"]}, "cannot read the cases"),
+        (
+            {"cases": [TRY_CASES[0], {**TRY_CASES[1], "case": TRY_CASES[0]["case"]}]},
+            "case 2 (A9 DS1 = DS2 + 1): case 1 has the same 'case', its id",
+        ),
+        ({"cases": [{**TRY_CASES[0], "choices": {"port": "x"}}]}, "Math has no list port"),
+        ({"cases": [{**RECEIVE, "choices": {"port": ""}}]}, "'choices' must name lists"),
+        (
+            {"cases": [{**RECEIVE, "choices": {"protocol": "x"}}]},
+            "Receive has no list protocol (its lists: port, function, addressing, word_swap)",
+        ),
     ],
 )
 def test_try_refuses_a_bad_cases_file(tmp_path, setup, cases, reason):
@@ -2744,6 +2877,540 @@ def test_the_cases_file_loads():
     assert {"A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10"} <= rows
     assert {"B1", "B2", "B3", "B4", "B5", "B6", "B8"} <= rows
     assert {"SD21", "SD22", "SD24", "SD25", "SD26"} <= set(nicknames)
+
+
+# ---------------------------------------------------------------------------
+# try: long runs, written as they go and resumed
+# ---------------------------------------------------------------------------
+
+
+def read_log(out: Path) -> list[dict]:
+    """``DIR/cases.jsonl``'s lines."""
+    lines = (out / cr.CASES_LOG).read_text(encoding="utf-8").splitlines()
+    return [json.loads(line) for line in lines]
+
+
+def last_lines(out: Path) -> dict[str, dict]:
+    """The last line for each case id, as a resume reads them."""
+    return {line["id"]: line for line in read_log(out)}
+
+
+def try_again(
+    tmp_path: Path, exe: Path, name: str, cases: object, *args: str, **fake_args: object
+) -> tuple[FakeClick, int, dict]:
+    """``run_try`` into ``tmp_path/<name>`` with a CLICK of its own. A kept save's Scr*.tmp is
+    read by ``Stored``, as the fake writes text there (and the installed laddercodec may have
+    no stored-tag walk)."""
+    (tmp_path / name).mkdir()
+    fake = FakeClick(tmp_path / name, **fake_args)  # pyright: ignore[reportArgumentType]
+    out = tmp_path / name / "out"
+    code, result = run_try(fake, tmp_path, exe, cases, *args, out=out, read_stored=Stored())
+    return fake, code, result
+
+
+def test_try_writes_each_case_as_it_is_answered(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES})
+    assert code == cr.EXIT_OK, result["reason"]
+    out = tmp_path / "out"
+    # One line per case, in the order tried, each its entry in result.json
+    assert read_log(out) == result["cases"]
+    assert [c["index"] for c in result["cases"]] == [1, 2, 3, 4, 5, 6]
+    assert [c["id"] for c in result["cases"]] == [c["case"] for c in TRY_CASES]
+    assert result["files"]["cases"] == str(out / cr.CASES_LOG)
+    assert (result["left"], result["carried"], result["stopped_at"]) == (0, 0, None)
+    assert all(c["out"] == str(out) and c["stops"] == [] for c in result["cases"])
+    # Each field's limit for typing, and its text as read back before OK
+    assert result["cases"][0]["limits"] == {"result": 30000, "formula": 30000}
+    assert result["cases"][0]["read_back"] == TRY_CASES[0]["fields"]
+
+
+def test_an_abort_marks_the_case_it_stopped_at(tmp_path, setup):
+    _, exe = setup
+    # Copy opens with One Shot on: the 4th case stops the run before OK
+    fake = FakeClick(tmp_path, opens_with={5024: 1})
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES})
+    assert_aborted(fake, tmp_path / "out", code, result, "button 5024 (5024) is checked")
+    assert result["stopped_at"] == {"index": 4, "id": TRY_CASES[3]["case"]}
+    assert result["left"] == 3
+    lines = read_log(tmp_path / "out")
+    assert [line["outcome"] for line in lines] == ["accepted", "refused", "accepted", None]
+    assert lines[-1]["stops"] == [{"out": str(tmp_path / "out"), "reason": result["reason"]}]
+    assert lines == result["cases"]
+
+
+def test_resume_carries_the_answers_and_tries_the_rest(tmp_path, setup):
+    _, exe = setup
+    cases = {"cases": TRY_CASES}
+    _, code, first = try_again(tmp_path, exe, "a", cases, opens_with={5024: 1})
+    assert code == cr.EXIT_ABORTED
+    prev = tmp_path / "a" / "out"
+    fake, code, result = try_again(tmp_path, exe, "b", cases, "--resume", str(prev))
+    assert code == cr.EXIT_OK, result["reason"]
+    out = tmp_path / "b" / "out"
+    # The case that stopped the first run is tried again, with that stop kept
+    assert fake.commands[1:2] == ["Copy..."] and fake.commands.count("Math...") == 0
+    assert result["resumed_from"] == str(prev) and result["carried"] == 3
+    assert [c["index"] for c in result["cases"]] == [1, 2, 3, 4, 5, 6]
+    assert [c["out"] for c in result["cases"]] == [str(prev)] * 3 + [str(out)] * 3
+    assert result["cases"][:3] == first["cases"][:3]
+    assert result["cases"][3]["stops"] == first["cases"][3]["stops"]
+    assert result["cases"][3]["outcome"] == "accepted" and result["left"] == 0
+    # This run's log holds every case: the carried ones first, then the one tried again with
+    # its stops (so a run killed during it keeps them), then each case as it was answered
+    log = read_log(out)
+    assert [line["index"] for line in log] == [1, 2, 3, 4, 4, 5, 6]
+    assert log[3]["outcome"] is None and log[3]["stops"] == first["cases"][3]["stops"]
+    assert list(last_lines(out).values()) == result["cases"]
+
+
+def test_stop_after_then_resume_loses_and_repeats_nothing(tmp_path, setup):
+    _, exe = setup
+    cases = {"cases": TRY_CASES}
+    whole, code, once = try_again(tmp_path, exe, "whole", cases)
+    assert code == cr.EXIT_OK
+    first, code, part = try_again(tmp_path, exe, "a", cases, "--stop-after", "2")
+    assert code == cr.EXIT_OK, part["reason"]
+    assert (part["stopped_after"], part["left"], part["stop_after"]) == (2, 4, 2)
+    assert len(part["cases"]) == 2 and not first.connected and first.terminated
+    second, code, rest = try_again(
+        tmp_path, exe, "b", cases, "--resume", str(tmp_path / "a" / "out"), "--stop-after", "3"
+    )
+    assert code == cr.EXIT_OK and rest["left"] == 1 and rest["stopped_after"] == 3
+    third, code, done = try_again(
+        tmp_path, exe, "c", cases, "--resume", str(tmp_path / "b" / "out")
+    )
+    assert code == cr.EXIT_OK and done["left"] == 0 and done["stopped_after"] is None
+    # Each case tried in exactly one run, and answered as in one run of them all
+    assert len(first.entered) + len(second.entered) + len(third.entered) == len(TRY_CASES)
+    assert first.entered + second.entered + third.entered == whole.entered
+
+    def answers(result: dict) -> list[tuple]:
+        return [(c["index"], c["id"], c["outcome"], c["code"]) for c in result["cases"]]
+
+    assert answers(done) == answers(once)
+
+
+def test_a_case_that_stopped_two_runs_is_not_tried_again(tmp_path, setup):
+    _, exe = setup
+    cases = {"cases": TRY_CASES}
+    try_again(tmp_path, exe, "a", cases, opens_with={5024: 1})
+    _, code, second = try_again(
+        tmp_path, exe, "b", cases, "--resume", str(tmp_path / "a" / "out"), opens_with={5024: 1}
+    )
+    assert code == cr.EXIT_ABORTED and second["stopped_at"]["index"] == 4
+    assert len(second["cases"][3]["stops"]) == 2
+    fake, code, third = try_again(
+        tmp_path, exe, "c", cases, "--resume", str(tmp_path / "b" / "out")
+    )
+    assert code == cr.EXIT_OK, third["reason"]
+    # Case 4 is carried with no answer and its two stops; the next Copy case is tried
+    assert third["cases"][3]["outcome"] is None and len(third["cases"][3]["stops"]) == 2
+    assert third["carried"] == 4 and third["left"] == 1
+    assert [entry[0] for entry in fake.entered] == ["Copy", "Out"]
+
+
+def test_a_last_line_cut_short_is_left_out(tmp_path, setup):
+    _, exe = setup
+    cases = {"cases": TRY_CASES}
+    try_again(tmp_path, exe, "a", cases, "--stop-after", "3")
+    log = tmp_path / "a" / "out" / cr.CASES_LOG
+    text = log.read_text(encoding="utf-8")
+    log.write_text(text[: text.rindex("\n", 0, len(text) - 1) + 20], encoding="utf-8")
+    fake, code, result = try_again(tmp_path, exe, "b", cases, "--resume", str(log.parent))
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["carried"] == 2 and len(fake.entered) == 4
+    assert "line 3 is cut short: left out" in (tmp_path / "b" / "out" / "run.log").read_text(
+        encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
+        ("missing", "cannot read"),
+        ("unknown", "case 'gone' is not in"),
+        ("asks", "asks otherwise there than in"),
+        ("garbled", "line 1 is not JSON"),
+        ("own", "--resume names the run's own folder"),
+    ],
+)
+def test_resume_refuses_answers_that_do_not_fit(tmp_path, setup, change, reason):
+    _, exe = setup
+    cases = {"cases": TRY_CASES}
+    try_again(tmp_path, exe, "a", cases, "--stop-after", "2")
+    prev = tmp_path / "a" / "out"
+    log = prev / cr.CASES_LOG
+    lines = read_log(prev)
+    if change == "missing":
+        log.unlink()
+    elif change == "unknown":
+        lines[0]["id"] = "gone"
+    elif change == "asks":
+        lines[1]["fields"] = {"result": "SD2", "formula": "DS1 + 1"}
+    if change in ("unknown", "asks"):
+        log.write_text("".join(json.dumps(line) + "\n" for line in lines), encoding="utf-8")
+    if change == "garbled":
+        log.write_text("{\n" + log.read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "b").mkdir()
+    fake = FakeClick(tmp_path / "b")
+    out = tmp_path / "b" / "out"
+    if change == "own":
+        prev = out
+    code, result = run_try(fake, tmp_path, exe, cases, "--resume", str(prev), out=out)
+    assert code == cr.EXIT_REFUSED
+    assert reason in result["reason"] and fake.pid is None
+
+
+def test_resume_with_keep_decodes_what_the_stopped_run_left(tmp_path, setup):
+    _, exe = setup
+    cases = {"cases": TRY_CASES}
+    try_again(tmp_path, exe, "a", cases, "--keep", "--stop-after", "1")
+    prev = tmp_path / "a" / "out"
+    # As if the first run's process had ended before it decoded its copies
+    lines = read_log(prev)
+    log = prev / cr.CASES_LOG
+    log.write_text(json.dumps(lines[0]) + "\n", encoding="utf-8")
+    assert lines[0]["kept"]["csv"] is None and lines[-1]["kept"]["csv"]
+    stored = Stored()
+    (tmp_path / "b").mkdir()
+    fake = FakeClick(tmp_path / "b")
+    out = tmp_path / "b" / "out"
+    code, result = run_try(
+        fake, tmp_path, exe, cases, "--keep", "--resume", str(prev), out=out, read_stored=stored
+    )
+    assert code == cr.EXIT_OK, result["reason"]
+    carried, *rest = (c["kept"] for c in result["cases"] if c["kept"])
+    assert carried["ckp"] == str(prev / "saves" / "case01.ckp")
+    assert carried["csv"] == [str(out / "saves" / "case01" / "csv" / "main.csv")]
+    assert [Path(k["ckp"]).name for k in rest] == ["case03.ckp", "case04.ckp"]
+    assert [p.parent.parent for p in stored.read] == [
+        prev / "saves" / "case01",
+        out / "saves" / "case03",
+        out / "saves" / "case04",
+    ]
+    # The decoded entries are written again; the last line for each is what a resume reads
+    assert last_lines(out)["DS1 = DS2 + 1"]["kept"]["csv"] == carried["csv"]
+    assert all(c["kept"]["main"] for c in last_lines(out).values() if c["kept"])
+
+
+def test_resume_reads_the_last_line_for_a_case(tmp_path, setup):
+    _, exe = setup
+    cases = {"cases": TRY_CASES}
+    try_again(tmp_path, exe, "a", cases, "--keep", "--stop-after", "1")
+    lines = read_log(tmp_path / "a" / "out")
+    assert [line["id"] for line in lines] == ["DS1 = DS2 + 1"] * 2
+    assert lines[0]["kept"]["csv"] is None and lines[1]["kept"]["csv"] is not None
+
+
+# ---------------------------------------------------------------------------
+# try: what the dialog does not take, and its lists
+# ---------------------------------------------------------------------------
+
+
+def test_a_field_that_reads_back_otherwise_is_not_taken(tmp_path, setup):
+    _, exe = setup
+    case = {
+        "row": "risky",
+        "case": "single ٣ -> DS1",
+        "instruction": "copy",
+        "mode": "single",
+        "fields": {"source": "٣", "destination": "DS1"},
+    }
+    fake = FakeClick(tmp_path, ansi_fields=True)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [case, TRY_CASES[0]]})
+    assert code == cr.EXIT_OK, result["reason"]
+    entry = result["cases"][0]
+    assert entry["outcome"] == "not_taken"
+    assert entry["message"] == "reads back otherwise: source"
+    assert entry["read_back"] == {"source": "?", "destination": "DS1"}
+    assert [e[0] for e in fake.entered] == ["Math"]  # OK was pressed only for the next case
+
+
+def test_receive_picks_its_lists_by_keys(tmp_path, setup):
+    _, exe = setup
+    registers = {
+        **RECEIVE,
+        "case": "receive registers into DD1",
+        "choices": {"function": "03 - Read Holding Registers"},
+        "fields": {**RECEIVE["fields"], "slave_address": "400001", "master_address": "DD1"},
+    }
+    # Live run rx1: Function Code 03 with a slave address for 01 is refused
+    slave_for_01 = {**registers, "case": "registers from slave 1", "fields": RECEIVE["fields"]}
+    back = {**RECEIVE, "case": "back to coils", "choices": {"function": "01 - Read Coil Status"}}
+    fake = FakeClick(tmp_path)
+    cases = [RECEIVE, registers, slave_for_01, back]
+    code, result = run_try(fake, tmp_path, exe, {"cases": cases})
+    assert code == cr.EXIT_OK, result["reason"]
+    assert [(c["outcome"], c["code"]) for c in result["cases"]] == [
+        ("accepted", None),
+        ("accepted", None),
+        ("refused", "OBJ-010"),
+        ("accepted", None),
+    ]
+    assert fake.commands.count("Receive...") == 4
+    # What CLICK was given: each list as picked, the fields as typed
+    assert [values["function"] for _, _, values in fake.entered] == [
+        "01 - Read Coil Status",
+        "03 - Read Holding Registers",
+        "03 - Read Holding Registers",
+        "01 - Read Coil Status",
+    ]
+    assert fake.entered[0][2]["port"] == "CPU Port2"
+    assert fake.entered[0][2]["master_address"] == "C1"
+    # Down twice from 01 to 03, each to the list alone; 01 is picked already
+    assert [k for k in fake.keys if k[0] == "ComboBox"] == [("ComboBox", 0x28)] * 4
+    assert result["cases"][1]["choices"] == {"function": "03 - Read Holding Registers"}
+    assert result["cases"][0]["limits"]["receiving"] == 16
+    # Every field as OK found it: Slave ID and Number of Bits as the dialog filled them
+    assert result["cases"][0]["read_back"] == {**RECEIVE["fields"], "slave_id": "1", "count": "1"}
+    assert "COM Port Setup" not in fake.pressed
+
+
+def test_receive_picks_by_up_and_by_home(tmp_path, setup, monkeypatch):
+    _, exe = setup
+    registers = {"function": "03 - Read Holding Registers"}
+    fields = {**RECEIVE["fields"], "slave_address": "400001", "master_address": "DS1"}
+    # Word Swap shows OFF; ON is the item above it
+    up = {**RECEIVE, "choices": {**registers, "word_swap": "ON"}, "fields": fields}
+    fake, code, result = try_again(tmp_path, exe, "up", {"cases": [up]})
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["cases"][0]["outcome"] == "accepted"
+    assert fake.entered[0][2]["word_swap"] == "ON"
+    assert [k for k in fake.keys if k[0] == "ComboBox"] == [("ComboBox", 0x28)] * 2 + [
+        ("ComboBox", 0x26)
+    ]
+    # A list that shows no item gets Home first, then Down
+    monkeypatch.setitem(RECEIVE_LISTS, 5003, (["ON", "OFF"], -1))
+    home = {**up, "case": "home", "choices": {**registers, "word_swap": "OFF"}}
+    fake, code, result = try_again(tmp_path, exe, "home", {"cases": [home]})
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.entered[0][2]["word_swap"] == "OFF"
+    assert [k[1] for k in fake.keys if k[0] == "ComboBox"] == [0x28, 0x28, 0x24, 0x28]
+    assert "COM Port Setup" not in fake.pressed
+
+
+def test_a_list_closed_for_entry_is_not_taken(tmp_path, setup):
+    _, exe = setup
+    # Word Swap is disabled under Function Code 01 (live probe r2)
+    case = {**RECEIVE, "choices": {"word_swap": "ON"}}
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [case, TRY_CASES[0]]})
+    assert code == cr.EXIT_OK, result["reason"]
+    first, second = result["cases"]
+    assert (first["outcome"], first["message"]) == ("not_taken", "closed for entry: word_swap")
+    assert [k for k in fake.keys if k[0] == "ComboBox"] == []
+    assert [e[0] for e in fake.entered] == ["Math"] and second["outcome"] == "accepted"
+
+
+def test_a_list_that_changes_while_the_fields_are_filled_is_not_taken(tmp_path, setup):
+    _, exe = setup
+    case = {**RECEIVE, "choices": {"function": "03 - Read Holding Registers"}}
+    fake = FakeClick(tmp_path, list_resets_on_fill=True)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [case]})
+    assert code == cr.EXIT_OK, result["reason"]
+    (entry,) = result["cases"]
+    assert (entry["outcome"], entry["message"]) == ("not_taken", "reads back otherwise: function")
+    assert fake.entered == []
+
+
+class StallsInTheFill(FakeClick):
+    """A CLICK that stops answering once the first field of an instruction dialog is set:
+    the dialog's WM_SETTEXT goes unanswered (*on* "set") or its WM_GETTEXT does (*on*
+    "read"), or the first one raises KeyboardInterrupt (*on* "interrupt")."""
+
+    def __init__(self, *args, on: str, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.on = on
+        self.stalled = False
+
+    def _in_instruction(self, hwnd: int) -> bool:
+        titles = {spec.title for spec in cr.INSTRUCTIONS.values()}
+        return any(
+            w.title in titles and any(c.hwnd == hwnd for c in w.controls)
+            for w in self.wins.values()
+        )
+
+    def set_text(self, hwnd: int, text: str) -> bool:
+        if not self._in_instruction(hwnd):
+            return super().set_text(hwnd, text)
+        if self.on == "interrupt" and not self.stalled:
+            self.stalled = True
+            raise KeyboardInterrupt
+        if self.stalled and self.on == "set":
+            return False
+        answered = super().set_text(hwnd, text)
+        self.stalled = True
+        return answered
+
+    def read_text(self, hwnd: int) -> str | None:
+        if self.stalled and self.on == "read" and self._in_instruction(hwnd):
+            return None
+        return super().read_text(hwnd)
+
+
+@pytest.mark.parametrize(
+    ("on", "reason"),
+    [
+        ("set", "CLICK did not answer setting Copy's source_end field"),
+        ("read", "CLICK did not answer reading Copy's source field"),
+    ],
+)
+def test_a_stalled_click_stops_the_run_and_is_tried_again(tmp_path, setup, on, reason):
+    _, exe = setup
+    cases = {"cases": [TRY_CASES[3], TRY_CASES[0]]}
+    (tmp_path / "a").mkdir()
+    fake = StallsInTheFill(tmp_path / "a", on=on)
+    out = tmp_path / "a" / "out"
+    code, result = run_try(fake, tmp_path, exe, cases, out=out)
+    assert_aborted(fake, out, code, result, reason)
+    (entry,) = result["cases"]
+    assert entry["outcome"] is None and entry["stops"][0]["reason"] == result["reason"]
+    assert fake.entered == []
+    # A resume tries it again, and the case after it
+    fake, code, again = try_again(tmp_path, exe, "b", cases, "--resume", str(out))
+    assert code == cr.EXIT_OK, again["reason"]
+    assert again["carried"] == 0 and again["left"] == 0
+    assert [e[0] for e in fake.entered] == ["Copy", "Math"]
+
+
+def test_a_case_not_taken_is_answered_only_once_cancel_closed_it(tmp_path, setup):
+    _, exe = setup
+    case = {**RECEIVE, "choices": {"word_swap": "ON"}}
+    fake = FakeClick(tmp_path, stall="cancel")
+    code, result = run_try(fake, tmp_path, exe, {"cases": [case]}, timeout=0.5)
+    assert_aborted(fake, tmp_path / "out", code, result, "the Receive dialog to close")
+    (entry,) = result["cases"]
+    assert entry["outcome"] is None and len(entry["stops"]) == 1
+
+
+def test_resume_with_keep_tries_an_accepted_case_without_its_save_again(tmp_path, setup):
+    _, exe = setup
+    cases = {"cases": TRY_CASES[:2]}
+    try_again(tmp_path, exe, "a", cases)
+    prev = tmp_path / "a" / "out"
+    assert read_log(prev)[0]["outcome"] == "accepted" and read_log(prev)[0]["kept"] is None
+    (tmp_path / "b").mkdir()
+    fake = FakeClick(tmp_path / "b")
+    args = ("--keep", "--resume", str(prev))
+    out = tmp_path / "b" / "out"
+    code, result = run_try(fake, tmp_path, exe, cases, *args, out=out, read_stored=Stored())
+    assert code == cr.EXIT_OK, result["reason"]
+    # The refused case is carried; the accepted one is tried again for its save
+    assert result["carried"] == 1 and [e[0] for e in fake.entered] == ["Math"]
+    assert result["cases"][0]["kept"]["ckp"].endswith("case01.ckp")
+
+
+def test_resume_with_keep_decodes_each_case_into_a_folder_of_its_own(tmp_path, setup):
+    _, exe = setup
+    a, b = TRY_CASES[0], TRY_CASES[2]  # Both accepted
+    (tmp_path / "a").mkdir()
+    prev = tmp_path / "a" / "out"
+    fake = FakeClick(tmp_path / "a")
+    code, _ = run_try(fake, tmp_path, exe, {"cases": [a]}, "--keep", out=prev, read_stored=Stored())
+    assert code == cr.EXIT_OK
+    log = prev / cr.CASES_LOG
+    log.write_text(log.read_text(encoding="utf-8").splitlines()[0] + "\n", encoding="utf-8")
+    # The new file puts another accepted case first: the carried one is now case 2
+    (tmp_path / "b").mkdir()
+    fake = FakeClick(tmp_path / "b")
+    out = tmp_path / "b" / "out"
+    code, result = run_try(
+        fake,
+        tmp_path,
+        exe,
+        {"cases": [b, a]},
+        "--keep",
+        "--resume",
+        str(prev),
+        out=out,
+        read_stored=Stored(),
+    )
+    assert code == cr.EXIT_OK, result["reason"]
+    first, second = (c["kept"]["csv"] for c in result["cases"])
+    assert first == [str(out / "saves" / "case01" / "csv" / "main.csv")]
+    assert second == [str(out / "saves" / "case02" / "csv" / "main.csv")]
+    assert result["cases"][1]["kept"]["ckp"] == str(prev / "saves" / "case01.ckp")
+
+
+def test_a_resumed_run_that_stops_before_its_cases_keeps_their_lines(tmp_path, setup):
+    _, exe = setup
+    cases = {"cases": TRY_CASES}
+    try_again(tmp_path, exe, "a", cases, opens_with={5024: 1})
+    prev = tmp_path / "a" / "out"
+    fake, code, result = try_again(
+        tmp_path, exe, "b", cases, "--resume", str(prev), error_on="connect"
+    )
+    assert code == cr.EXIT_ABORTED and result["step"] == "connect"
+    # The carried answers and the stopped case's stops are in this run's log already
+    lines = last_lines(tmp_path / "b" / "out")
+    assert [line["index"] for line in lines.values()] == [1, 2, 3, 4]
+    assert len(lines[TRY_CASES[3]["case"]]["stops"]) == 1
+    fake, code, done = try_again(tmp_path, exe, "c", cases, "--resume", str(tmp_path / "b" / "out"))
+    assert code == cr.EXIT_OK and done["carried"] == 3 and done["left"] == 0
+    assert len(done["cases"][3]["stops"]) == 1
+
+
+def test_a_ctrl_c_is_not_counted_as_a_stop(tmp_path, setup):
+    _, exe = setup
+    cases = {"cases": TRY_CASES}
+    try_again(tmp_path, exe, "a", cases, "--stop-after", "3")
+    # Two runs that each end on a Ctrl+C in case 4
+    for prev, name in (("a", "b"), ("b", "c")):
+        (tmp_path / name).mkdir()
+        fake = StallsInTheFill(tmp_path / name, on="interrupt")
+        args = ("--resume", str(tmp_path / prev / "out"))
+        code, result = run_try(fake, tmp_path, exe, cases, *args, out=tmp_path / name / "out")
+        assert code == cr.EXIT_ABORTED and result["stopped_at"]["index"] == 4
+    fake, code, result = try_again(
+        tmp_path, exe, "d", cases, "--resume", str(tmp_path / "c" / "out")
+    )
+    assert code == cr.EXIT_OK, result["reason"]
+    # Two Ctrl+C are not MAX_STOPS stops: the case is tried again
+    stops = result["cases"][3]["stops"]
+    assert result["carried"] == 3 and result["cases"][3]["outcome"] == "accepted"
+    assert [stop.get("interrupted") for stop in stops] == [True, True]
+
+
+def test_receive_without_the_item_asked_for_is_not_taken(tmp_path, setup):
+    _, exe = setup
+    case = {**RECEIVE, "choices": {"function": "05 - Write Single Coil"}}
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [case]})
+    assert code == cr.EXIT_OK, result["reason"]
+    (entry,) = result["cases"]
+    assert entry["outcome"] == "not_taken" and fake.entered == []
+    assert entry["message"].startswith("function: the list has no item '05 - Write Single Coil'")
+
+
+def test_a_list_that_does_not_follow_the_keys_stops_the_run(tmp_path, setup):
+    _, exe = setup
+    case = {**RECEIVE, "choices": {"function": "02 - Read Input Status"}}
+    fake = FakeClick(tmp_path, lists_follow_keys=False)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [case]}, timeout=0.5)
+    assert_aborted(fake, tmp_path / "out", code, result, "to show '02 - Read Input Status'")
+    assert fake.entered == []
+
+
+@pytest.mark.parametrize(
+    ("lists", "reason"),
+    [
+        (
+            {5000: (["CPU Port1", "CPU Port2"], 0)},
+            "list 5000 shows 'CPU Port1' as the dialog opens",
+        ),
+        ({5001: (["01 - Read Coil Status"], -1)}, "list 5001 shows None as the dialog opens"),
+    ],
+)
+def test_receive_that_opens_otherwise_stops_the_run(tmp_path, setup, monkeypatch, lists, reason):
+    _, exe = setup
+    for list_id, shown in lists.items():
+        monkeypatch.setitem(RECEIVE_LISTS, list_id, shown)
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [RECEIVE]})
+    assert_aborted(fake, tmp_path / "out", code, result, reason)
+    assert fake.entered == []
 
 
 # ---------------------------------------------------------------------------
@@ -3366,7 +4033,7 @@ def test_commands_outside_the_allowlist_are_refused(
         target.command(1, command_id)
 
 
-def test_the_allowlist_is_the_fourteen_commands():
+def test_the_allowlist_is_the_fifteen_commands():
     assert cd.ALLOWED_COMMANDS == {
         0xE125: "Paste",
         32777: "Delete",
@@ -3382,6 +4049,7 @@ def test_the_allowlist_is_the_fourteen_commands():
         50010: "Out...",
         50030: "Math...",
         50040: "Copy...",
+        50060: "Receive...",
     }
     # Nothing that reads a project from the PLC or writes anything into it
     assert not {32852, 32853, 32854} & set(cd.ALLOWED_COMMANDS)

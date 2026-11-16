@@ -2,7 +2,8 @@
 
     uv run python devtools/click_runner.py paste CSV --out DIR [--record]
     uv run python devtools/click_runner.py record --out DIR
-    uv run python devtools/click_runner.py try CASES.json --out DIR [--keep] [--record]
+    uv run python devtools/click_runner.py try CASES.json --out DIR [--keep] [--resume PREV_DIR]
+        [--stop-after N] [--record]
     uv run python devtools/click_runner.py import CSV --out DIR [--each-row] [--record]
     uv run python devtools/click_runner.py reopen --out DIR [--ini-add LINES] [--record]
     uv run python devtools/click_runner.py read-data --out DIR [--record]
@@ -24,18 +25,40 @@ nicknames of the addresses CASES.json lists under ``nicknames`` from the copy (a
 project's SC_.mdb holds few: live run try3 found SC202, SC203 and SD13 only). It runs Syntax
 Check on the empty main program (``baseline_syntax_check``), which must name rung 1 for the
 missing END (C0201). Then, for each case, it opens the instruction's dialog from the
-ribbon's command at the ladder's cursor and checks the buttons the case takes as given (One
-Shot off, Out's type Out/Toggle). It picks the mode (a mode button already checked is left
-alone: Math empties its fields on any type click), fills the fields by WM_SETTEXT, reads
-them back, waits for the dialog alone and presses OK. CLICK shows an error box owned by the
-dialog (``refused``, with the box's code and message; the box's OK and the dialog's Cancel
-then close both) or closes the dialog. A closed dialog gets a Syntax Check of its own (the
-lines naming a code the empty program's check does not): it is ``accepted`` only when that
-check names rung 2 for the missing END, as an instruction in rung 1 makes it, and ``other``
-otherwise, which stops the run. Edit > Delete then removes the instruction, and the next
-Syntax Check must read as the empty program's did. All cases run in one CLICK, which is
-then disconnected and ended, as ``record`` ends it. result.json holds one entry per case
-under ``cases``, in the order tried, and an abort keeps the entries done before it.
+ribbon's command at the ladder's cursor and checks the buttons and lists the case takes as
+given (One Shot off, Out's type Out/Toggle, Receive's CPU Port2 and Function Code 01). It
+picks the mode (a mode button already checked is left alone: Math empties its fields on any
+type click) and each list's item the case ``choices`` (Up and Down keys sent to the list
+alone), fills the fields by WM_SETTEXT, reads them and every list back (for Receive, every
+open field, the ones the case leaves as the dialog filled them included), waits for the
+dialog alone and presses OK. A field or list closed for entry (hidden or disabled), a field
+or list that reads back otherwise, or a list without the item asked for, makes the case
+``not_taken`` once the dialog's Cancel has closed it; OK is not pressed. A field CLICK does
+not answer (set or read) stops the run, as CLICK may have stalled. After OK, CLICK shows an
+error box owned by the dialog (``refused``, with the box's code and message; the box's OK
+and the dialog's Cancel then close both) or closes the dialog. A closed dialog gets a Syntax
+Check of its own (the lines naming a code the empty program's check does not): it is
+``accepted`` only when that check names rung 2 for the missing END, as an instruction in
+rung 1 makes it, and ``other`` otherwise, which stops the run. Edit > Delete then removes
+the instruction, and the next Syntax Check must read as the empty program's did. All cases
+run in one CLICK, which is then disconnected and ended, as ``record`` ends it. result.json
+holds one entry per case under ``cases``, in the file's order, and an abort keeps the
+entries done before it.
+
+A case's id is its ``case``, unique in its file. Each case's entry is appended to
+``DIR/cases.jsonl`` as one line as soon as it is known, so a run that stops keeps every
+answer before the stop; a case that stops the run gets a line too, with the stop under
+``stops``, and is the result's ``stopped_at``. ``--resume PREV_DIR`` carries the entries of
+PREV_DIR's ``cases.jsonl`` (the last line for each case; they must ask what this file's case
+of that id asks) into this run's ``cases`` and ``cases.jsonl`` before CLICK starts, and
+tries only the cases they leave, in a CLICK of its own: a case with an outcome is not tried
+again, nor one that stopped ``MAX_STOPS`` runs (a Ctrl+C is not counted); one that stopped
+fewer is tried again, and its line with its stops is written too. An answer the run stopped
+after (Delete or the save failed) is kept under the stop, not as the outcome, and with
+``--keep`` an accepted case without its save counts as unanswered. ``--stop-after N`` ends
+the run cleanly once it has tried N cases (``stopped_after``). ``left`` counts the cases
+with no outcome. An unexpected window still stops the run; nothing starts a CLICK again by
+itself.
 
 ``try --keep`` also saves the project before each Delete, so what CLICK stores for an
 accepted instruction can be read: File > Save As ``DIR/saves/caseNN.ckp`` (NN the case's
@@ -43,7 +66,9 @@ number), then CLICK's Scr*.tmp files and Project.ini are copied into
 ``DIR/saves/caseNN/click/``. Once CLICK has ended (after an abort too), each copy is
 decoded into ``DIR/saves/caseNN/csv/``, and the tags each instruction holds are read as
 stored. Each save renames the project, so a Syntax Check is compared with the empty
-program's without the project's name.
+program's without the project's name. Each decoded case's line is written again with what
+was read. A resumed run decodes the carried copies its run left undecoded (that run's
+process ended first) into its own ``DIR/saves/caseNN/csv/``.
 
 ``import`` imports a nickname CSV through CLICK's own File > Import > Nickname (32900) and
 reads what CLICK stored. With ``--each-row`` it then imports each row on its own, in a file
@@ -164,7 +189,7 @@ import sys
 import time
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager, redirect_stdout
-from dataclasses import KW_ONLY, asdict, dataclass
+from dataclasses import KW_ONLY, asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -180,6 +205,7 @@ from click_desktop import (
     OUT_DIALOG,
     PASTE,
     READ_DATA_FROM_PLC,
+    RECEIVE_DIALOG,
     SAVE_PROJECT_AS,
     SYNTAX_CHECK,
     SYSTEM_CONFIGURATION,
@@ -219,6 +245,12 @@ IMPORT_SETTLE = 1.0
 # How long a file dialog's File name edit must read the path set before it is pressed
 # (``Run.fill_path``)
 FILL_SETTLE = 1.0
+# ``try`` writes each case's entry here as soon as it is known, one JSON line each
+CASES_LOG = "cases.jsonl"
+# A case that stopped this many runs before CLICK answered it is not tried again by --resume
+MAX_STOPS = 2
+# What ``choose`` returns for a list not open for entry
+_CLOSED = "closed"
 
 EXIT_OK = 0
 EXIT_ABORTED = 1
@@ -343,6 +375,9 @@ class Instruction:
     live probe of 2026-11-15 found them in the open dialogs. A mode is a radio button.
     *opens_with* is the state (BM_GETCHECK) of the buttons the cases take as given, as the
     dialog showed them when it opened in live probe 2; ``try`` checks them before filling.
+    A list is a drop-down list (a ComboBox) a case may pick an item in; *opens_listing* is
+    the item each list shows as the dialog opens, which ``try`` checks too. With
+    *reads_every_field*, a case's answer has every open field's text as OK found it.
     """
 
     command: int
@@ -350,6 +385,11 @@ class Instruction:
     fields: dict[str, int]  # A field's name -> its edit's control id
     modes: dict[str, int]  # A mode's name -> its radio button's id
     opens_with: dict[int, int]  # A button's id -> its state (1 checked, 0 not)
+    lists: dict[str, int] = field(default_factory=dict)  # A list's name -> its ComboBox's id
+    opens_listing: dict[int, str] = field(default_factory=dict)  # A ComboBox's id -> its item
+    # Whether ``read_back`` (and ``limits``) holds every field open as OK is pressed, the
+    # ones a case leaves as the dialog filled them included
+    reads_every_field: bool = False
 
 
 INSTRUCTIONS = {
@@ -381,18 +421,64 @@ INSTRUCTIONS = {
         {},
         {5009: 1, 5006: 0, 5007: 0, 5008: 0},
     ),
+    # Receive, as live probes r1 and r2 (2026-11-16) dumped it from Inst_RD.dll's template:
+    # it opens on CPU Port2, whose protocol the conformance PLC's project sets to MODBUS (a
+    # serial master: Slave ID, then the Modbus fields), Function Code 01, Modbus 984
+    # Addressing; Slave ID reads 1 and Number of Bits 1. CPU Port1 shows the Modbus TCP
+    # fields (an IP address control the runner does not fill). Its COM Port Setup is never
+    # pressed: it edits the project's port setup. Number of Bits is "Number of Master
+    # Addresses" for Function Code 03 and 04. Its Slave ID and Number of Bits open filled
+    # (``reads_every_field``), so what a case leaves there is in its answer
+    "receive": Instruction(
+        RECEIVE_DIALOG,
+        "Receive",
+        {
+            "slave_id": 5014,
+            "slave_address": 5015,
+            "master_address": 5016,
+            "count": 5017,
+            "receiving": 5020,
+            "success": 5023,
+            "error": 5026,
+            "exception": 5029,
+        },
+        {},
+        {},
+        lists={"port": 5000, "function": 5001, "addressing": 5002, "word_swap": 5003},
+        opens_listing={
+            5000: "CPU Port2",
+            5001: "01 - Read Coil Status",
+            5002: "Modbus 984 Addressing",
+        },
+        reads_every_field=True,
+    ),
 }
 
 
 @dataclass(frozen=True)
 class Case:
-    """One instruction to try: the rule table's row, what is tried, and what is entered."""
+    """One instruction to try: the rule table's row, what is tried, and what is entered.
+
+    *name* is the case's id: unique in its file, and what a resumed run matches answers by.
+    """
 
     row: str  # The rule table's row ("A9")
     name: str  # What this case tries ("SD1")
     instruction: str  # A key of INSTRUCTIONS
     mode: str | None
     fields: dict[str, str]
+    choices: dict[str, str] = field(default_factory=dict)  # A list's name -> the item picked
+
+    def asks(self) -> dict[str, Any]:
+        """What the case asks, as its entry in ``cases`` names it."""
+        return {
+            "row": self.row,
+            "case": self.name,
+            "instruction": INSTRUCTIONS[self.instruction].title,
+            "mode": self.mode,
+            "fields": self.fields,
+            "choices": self.choices,
+        }
 
 
 def load_cases(path: Path) -> tuple[list[Case], list[str]]:
@@ -400,7 +486,9 @@ def load_cases(path: Path) -> tuple[list[Case], list[str]]:
 
     The file is ``{"cases": [{"row", "case", "instruction", "mode", "fields"}, ...],
     "nicknames": ["SD21", ...]}``. ``mode`` is required where the dialog has modes and
-    refused where it has none; ``fields`` names the dialog's fields, each with its text.
+    refused where it has none; ``fields`` names the dialog's fields, each with its text; an
+    optional ``choices`` names the dialog's lists, each with the item to pick. ``case`` is
+    the case's id and must be unique in the file.
     """
     from pyclickplc.addresses import parse_address
 
@@ -408,17 +496,21 @@ def load_cases(path: Path) -> tuple[list[Case], list[str]]:
     if not isinstance(data, dict) or not isinstance(data.get("cases"), list):
         raise ValueError("expected an object with a list under 'cases'")
     cases: list[Case] = []
+    numbers: dict[str, int] = {}
     for number, entry in enumerate(data["cases"], 1):
         where = f"case {number}"
         if not isinstance(entry, dict):
             raise ValueError(f"{where} is not an object")
-        unknown = set(entry) - {"row", "case", "instruction", "mode", "fields"}
+        unknown = set(entry) - {"row", "case", "instruction", "mode", "fields", "choices"}
         if unknown:
             raise ValueError(f"{where} has unknown keys: {', '.join(sorted(unknown))}")
         row, name = entry.get("row"), entry.get("case")
         if not isinstance(row, str) or not row or not isinstance(name, str) or not name:
             raise ValueError(f"{where} needs a 'row' and a 'case'")
         where = f"case {number} ({row} {name})"
+        if name in numbers:
+            raise ValueError(f"{where}: case {numbers[name]} has the same 'case', its id")
+        numbers[name] = number
         instruction = INSTRUCTIONS.get(entry.get("instruction"))  # pyright: ignore[reportArgumentType]
         if instruction is None:
             raise ValueError(f"{where}: 'instruction' is not one of {', '.join(INSTRUCTIONS)}")
@@ -440,7 +532,18 @@ def load_cases(path: Path) -> tuple[list[Case], list[str]]:
                 f"{where}: {instruction.title} has no field {', '.join(sorted(unknown))} "
                 f"(its fields: {', '.join(instruction.fields)})"
             )
-        cases.append(Case(row, name, entry["instruction"], mode, dict(fields)))
+        choices = entry.get("choices", {})
+        if not isinstance(choices, dict) or not all(
+            isinstance(v, str) and v for v in choices.values()
+        ):
+            raise ValueError(f"{where}: 'choices' must name lists, each with an item")
+        unknown = set(choices) - set(instruction.lists)
+        if unknown:
+            raise ValueError(
+                f"{where}: {instruction.title} has no list {', '.join(sorted(unknown))}"
+                + (f" (its lists: {', '.join(instruction.lists)})" if instruction.lists else "")
+            )
+        cases.append(Case(row, name, entry["instruction"], mode, dict(fields), dict(choices)))
     nicknames = data.get("nicknames", [])
     if not isinstance(nicknames, list) or not all(isinstance(a, str) for a in nicknames):
         raise ValueError("'nicknames' must be a list of addresses")
@@ -698,6 +801,8 @@ class Settings:
     each_row: bool = False  # import: each row on its own too
     cases: Path | None = None  # try's CASES.json
     keep: bool = False  # try: save each accepted case's project and decode it
+    resume: Path | None = None  # try: the run whose answers to carry (its DIR)
+    stop_after: int | None = None  # try: stop cleanly once this many cases were tried
     ini_add: str | None = None  # reopen: lines added to the end of the project's Project.ini
     keys: tuple[str, ...] = ()  # picker: keys sent to the Address Picker's grid (probe)
     ok: bool = False  # picker: close the Address Picker by OK (else by WM_CLOSE)
@@ -862,6 +967,11 @@ class Run:
         self.read_stored = read_stored
         self.cases: list[Case] = []
         self.nickname_addresses: list[str] = []
+        # try --resume: the entries carried by case id, and the stops and last entries of the
+        # cases tried again
+        self.carried: dict[str, dict[str, Any]] = {}
+        self.earlier_stops: dict[str, list[dict[str, Any]]] = {}
+        self.retried: dict[str, dict[str, Any]] = {}
         # import's CSV: its header and each row with the line it starts on
         self.header = b""
         self.rows: list[tuple[int, bytes]] = []
@@ -902,6 +1012,12 @@ class Run:
             self.result.update(
                 cases_file=settings.cases,
                 keep=settings.keep,
+                resumed_from=settings.resume,
+                carried=0,
+                stop_after=settings.stop_after,
+                stopped_after=None,
+                stopped_at=None,
+                left=None,
                 nicknames=None,
                 baseline_syntax_check=None,
                 cases=[],
@@ -1177,6 +1293,10 @@ class Run:
                 raise Refused(f"cannot read the cases in {self.s.cases}: {exc}") from exc
             if not self.cases:
                 raise Refused(f"{self.s.cases} lists no cases")
+            if self.s.resume is not None:
+                if self.s.resume.resolve() == self.s.out.resolve():
+                    raise Refused("--resume names the run's own folder")
+                self.load_resume()
             if self.s.keep and self.read_stored is _read_stored and not _reads_stored_tags():
                 raise Refused(
                     "try --keep needs laddercodec newer than 0.4.0 (_walk_until_framing_error)"
@@ -1579,7 +1699,14 @@ class Run:
     # -- try: CLICK's instruction dialogs -------------------------------------
 
     def try_cases(self) -> None:
-        """Read the nicknames asked for, check the empty main program, then try each case."""
+        """Read the nicknames asked for, check the empty main program, then try each case.
+
+        The entries carried from ``--resume``'s run are in ``DIR/cases.jsonl`` already
+        (``execute`` writes them before CLICK starts). Then each case not carried is tried
+        in the file's order, and its line is written once its answer is known or it stopped
+        the run (``try_case``). With ``--stop-after N`` the run
+        ends cleanly before its (N+1)th case.
+        """
         if self.nickname_addresses:
             with self.step("nicknames"):
                 self.copy_nicknames()
@@ -1593,8 +1720,100 @@ class Run:
                     f"END (C0201), so a placed instruction cannot be told: {baseline['text']!r}"
                 )
         with self.step("try"):
+            tried = 0
             for number, case in enumerate(self.cases, 1):
+                if case.name in self.carried:
+                    continue
+                if self.s.stop_after is not None and tried >= self.s.stop_after:
+                    self.log(f"stopping after {tried} case(s), as --stop-after asks")
+                    self.result["stopped_after"] = tried
+                    break
+                tried += 1
                 self.try_case(number, case, baseline)
+
+    def load_resume(self) -> None:
+        """Read the entries of ``--resume``'s run from its ``cases.jsonl``; Refused if they do
+        not fit the cases file.
+
+        The last line for a case is its entry. Each must name a case of the file by its id
+        and ask what that case asks. An entry with an outcome is carried, and so is one whose
+        case stopped ``MAX_STOPS`` runs (a Ctrl+C is not counted): neither is tried again.
+        With ``keep``, an accepted entry without its save (``kept``) has no outcome here. Any
+        other (a case that stopped a run before CLICK answered it) is tried again, its
+        ``stops`` kept. A last line cut short (the run's process ended while writing it) is
+        left out.
+        """
+        assert self.s.resume is not None
+        path = self.s.resume / CASES_LOG
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError as exc:
+            raise Refused(f"cannot read {path} to resume from: {exc}") from exc
+        by_id = {case.name: (number, case) for number, case in enumerate(self.cases, 1)}
+        last: dict[str, dict[str, Any]] = {}
+        for line_number, line in enumerate(lines, 1):
+            if not line.strip():
+                continue
+            try:
+                entry = json.loads(line)
+            except ValueError as exc:
+                if line_number == len(lines):
+                    self.log(f"{path} line {line_number} is cut short: left out")
+                    continue
+                raise Refused(f"{path} line {line_number} is not JSON: {exc}") from exc
+            case_id = entry.get("id") if isinstance(entry, dict) else None
+            if case_id not in by_id:
+                raise Refused(
+                    f"{path} line {line_number}: case {case_id!r} is not in {self.s.cases}"
+                )
+            asks = by_id[case_id][1].asks()
+            if {key: entry.get(key) for key in asks} != asks:
+                raise Refused(
+                    f"{path} line {line_number}: case {case_id!r} asks otherwise there than in "
+                    f"{self.s.cases}"
+                )
+            last[case_id] = entry
+        for case_id, entry in last.items():
+            entry["index"] = by_id[case_id][0]
+            stops = list(entry.get("stops", []))
+            counted = [stop for stop in stops if not stop.get("interrupted")]
+            answered = entry.get("outcome") is not None
+            if answered and self.s.keep and entry["outcome"] == "accepted":
+                answered = entry.get("kept") is not None
+            if answered or len(counted) >= MAX_STOPS:
+                self.carried[case_id] = entry
+            else:
+                self.earlier_stops[case_id] = stops
+                self.retried[case_id] = entry
+        self.log(
+            f"resuming from {self.s.resume}: {len(self.carried)} case(s) carried, "
+            f"{len(self.earlier_stops)} to try again"
+        )
+
+    def write_carried(self) -> None:
+        """Put the carried entries into the result and ``DIR/cases.jsonl``, in the file's order,
+        and the entries to try again into ``cases.jsonl`` with their stops, so a run that
+        ends before it tries them still keeps their stops. A case tried writes its own line
+        after them. The file is made even when there is nothing to write, so that a run
+        stopped before its first case can be resumed."""
+        path = self.s.out / CASES_LOG
+        path.touch()
+        self.result["files"]["cases"] = path
+        for entry in sorted(self.carried.values(), key=lambda e: e["index"]):
+            self.result["cases"].append(entry)
+            self.write_case(entry)
+        for entry in sorted(self.retried.values(), key=lambda e: e["index"]):
+            self.write_case({**entry, "outcome": None})
+        self.result["carried"] = len(self.carried)
+
+    def write_case(self, entry: dict[str, Any]) -> None:
+        """Append *entry* to ``DIR/cases.jsonl`` as one line, and flush it to disk."""
+        path = self.s.out / CASES_LOG
+        self.result["files"]["cases"] = path
+        with path.open("a", encoding="utf-8") as file:
+            file.write(json.dumps(entry, default=_json_default) + "\n")
+            file.flush()
+            os.fsync(file.fileno())
 
     def copy_nicknames(self) -> None:
         """Copy the new project's SC_.mdb into DIR and read the nicknames asked for from the copy.
@@ -1614,39 +1833,79 @@ class Run:
             self.log(f"{address}: {'no row' if name is None else repr(name)}")
 
     def try_case(self, number: int, case: Case, baseline: dict[str, Any]) -> None:
-        """Open *case*'s dialog, fill it, press OK and record CLICK's answer.
+        """Try *case* (``ask``) and write its entry to ``DIR/cases.jsonl`` however that ends.
 
-        The case's entry in ``cases``: its row, name, instruction, mode and fields, then
-        ``outcome`` (``accepted``, ``refused`` or ``other``), the box's ``code`` and
-        ``message`` (an accepted case has them only if CLICK closed the dialog along with
-        a box), ``syntax_check`` once the dialog closed (its text, counts, and the ``lines``
-        naming a code the empty program's check does not), ``kept`` (with ``keep``, an
-        accepted case's save: see ``keep_case``; otherwise None) and ``seconds``.
+        The case's entry in ``cases``: ``index`` (its number in the file) and ``id`` (its
+        ``case``), what it asks (row, case, instruction, mode, fields, choices), then
+        ``outcome`` (``accepted``, ``refused``, ``not_taken`` or ``other``), the box's
+        ``code`` and ``message`` (an accepted case has them only if CLICK closed the dialog
+        along with a box; a ``not_taken`` case's message says what the dialog did not take),
+        ``limits`` (each field's EM_GETLIMITTEXT), ``read_back`` (each field's text as read
+        back before OK; with ``reads_every_field``, every open field's), ``syntax_check``
+        once the dialog closed (its text, counts, and the ``lines`` naming a code the empty
+        program's check does not), ``kept`` (with ``keep``, an accepted case's save: see
+        ``keep_case``; otherwise None), ``seconds``, ``out`` (the run it was tried in) and
+        ``stops``: each run it stopped (its ``out`` and ``reason``; ``interrupted`` for
+        Ctrl+C; ``outcome``, the answer it had when it stopped, which is then not its
+        ``outcome``). A case that stops the run is the result's ``stopped_at``.
+        """
+        entry: dict[str, Any] = {
+            "index": number,
+            "id": case.name,
+            **case.asks(),
+            "outcome": None,
+            "code": None,
+            "message": None,
+            "limits": None,
+            "read_back": None,
+            "syntax_check": None,
+            "kept": None,
+            "seconds": None,
+            "out": self.s.out,
+            "stops": list(self.earlier_stops.get(case.name, [])),
+        }
+        self.result["cases"].append(entry)
+        began = time.monotonic()
+        try:
+            self.ask(number, case, entry, baseline)
+        except BaseException as exc:
+            interrupted = isinstance(exc, KeyboardInterrupt)
+            if interrupted:
+                reason = "interrupted (Ctrl+C)"
+            elif isinstance(exc, Aborted):
+                reason = str(exc)
+            else:
+                reason = f"{type(exc).__name__}: {exc}"
+            stop: dict[str, Any] = {"out": self.s.out, "reason": reason}
+            if interrupted:
+                stop["interrupted"] = True
+            # An answer the run stopped after (Delete or a save failed) is not the case's:
+            # the stop keeps it and the case is tried again. ``other`` is the stop itself
+            if entry["outcome"] not in (None, "other"):
+                stop["outcome"] = entry["outcome"]
+                entry["outcome"] = None
+            entry["stops"].append(stop)
+            self.result["stopped_at"] = {"index": number, "id": case.name}
+            raise
+        finally:
+            entry["seconds"] = round(time.monotonic() - began, 3)
+            self.write_case(entry)
 
-        A closed dialog is ``accepted`` only when its Syntax Check names rung 2 for the
-        missing END, as an instruction in rung 1 makes it; otherwise the case is ``other``
-        and the run stops.
+    def ask(self, number: int, case: Case, entry: dict[str, Any], baseline: dict[str, Any]) -> None:
+        """Open *case*'s dialog, fill it, press OK and record CLICK's answer in *entry*.
+
+        A field or list closed for entry, a field or list that reads back other than asked,
+        or a list without the item asked for makes the case ``not_taken`` once the dialog's
+        Cancel has closed it; OK is not pressed. A field CLICK does not answer stops the run
+        (``Aborted``). A closed dialog is ``accepted`` only when its Syntax Check
+        names rung 2 for the missing END, as an instruction in rung 1 makes it; otherwise
+        the case is ``other`` and the run stops.
         """
         instruction = INSTRUCTIONS[case.instruction]
         title = instruction.title
         what = f"case {number} ({case.row} {case.name})"
         label = f"case{number:02d}"
-        entry: dict[str, Any] = {
-            "row": case.row,
-            "case": case.name,
-            "instruction": title,
-            "mode": case.mode,
-            "fields": case.fields,
-            "outcome": None,
-            "code": None,
-            "message": None,
-            "syntax_check": None,
-            "kept": None,
-            "seconds": None,
-        }
-        self.result["cases"].append(entry)
-        began = time.monotonic()
-        self.log(f"{what}: {title} {case.mode or ''} {case.fields}")
+        self.log(f"{what}: {title} {case.mode or ''} {case.choices or ''} {case.fields}")
         dialog_expect = Expect(DIALOG, "#32770", title, MAIN)
         box_expect = Expect(ANSWER_BOX, "#32770", "CLICK Programming Software", DIALOG)
         expected = [dialog_expect, box_expect]
@@ -1668,6 +1927,13 @@ class Run:
                     f"{what}: {title}'s {button.text or 'button'} ({button_id}) is "
                     f"{'not ' if state else ''}checked as the dialog opens"
                 )
+        for list_id, item in instruction.opens_listing.items():
+            shown = self.list_item(dialog, list_id)
+            if shown != item:
+                raise Aborted(
+                    f"{what}: {title}'s list {list_id} shows {shown!r} as the dialog opens, "
+                    f"not {item!r}"
+                )
         if case.mode is not None:
             radio = _require(
                 _child(self.controls(dialog), cls="Button", id=instruction.modes[case.mode]),
@@ -1685,25 +1951,57 @@ class Run:
                 # Its click is handled in full once the dialog's thread answers again
                 if not self.desktop.idle(dialog.hwnd, self.s.timeout):
                     raise Aborted(f"{what}: the {title} dialog stopped answering")
+        for name, item in case.choices.items():
+            missing = self.choose(what, dialog, dialog_expect, instruction.lists[name], item)
+            if missing is not None:
+                if missing == _CLOSED:
+                    mode = f" in {case.mode} mode" if case.mode else ""
+                    message = f"closed for entry{mode}: {name}"
+                else:
+                    message = f"{name}: {missing}"
+                self.not_taken(what, dialog, dialog_expect, entry, message)
+                return
         controls = self.controls(dialog)
-        for field, text in case.fields.items():
-            field_id = instruction.fields[field]
-            control = _require(
+        fields = {}
+        names = instruction.fields if instruction.reads_every_field else case.fields
+        for name in names:
+            field_id = instruction.fields[name]
+            fields[name] = _require(
                 next((c for c in controls if c.id == field_id and c.cls in _FIELD_CLASSES), None),
-                f"{title}'s {field} field ({field_id})",
+                f"{title}'s {name} field ({field_id})",
             )
-            if not (control.visible and control.enabled):
-                raise Aborted(
-                    f"{what}: {title}'s {field} field ({field_id}) is not open for entry"
-                    f"{f' in {case.mode} mode' if case.mode else ''}"
-                )
-            self.desktop.set_text(control.hwnd, text)
-            if self.desktop.read_text(control.hwnd) != text:
-                raise Aborted(f"{what}: {title}'s {field} field did not take {text!r}")
-        for field, text in case.fields.items():
-            control = next(c for c in controls if c.id == instruction.fields[field])
-            if self.desktop.read_text(control.hwnd) != text:
-                raise Aborted(f"{what}: {title}'s {field} field lost {text!r} before OK")
+        entry["limits"] = {name: self.desktop.edit_limit(c.hwnd) for name, c in fields.items()}
+        closed = [
+            name
+            for name, c in fields.items()
+            if name in case.fields and not (c.visible and c.enabled)
+        ]
+        typed: dict[str, str] = {}
+        for name, text in case.fields.items():
+            if name not in closed:
+                if not self.desktop.set_text(fields[name].hwnd, text):
+                    raise Aborted(f"{what}: CLICK did not answer setting {title}'s {name} field")
+                typed[name] = self.read_field(what, title, name, fields[name])
+        # Read again, as OK will find them: the fields (with ``reads_every_field``, each open
+        # one), then every list
+        read = [
+            name
+            for name, c in fields.items()
+            if name in typed or (name not in case.fields and c.visible and c.enabled)
+        ]
+        entry["read_back"] = {
+            name: self.read_field(what, title, name, fields[name]) for name in read
+        }
+        off = [
+            name
+            for name, text in typed.items()
+            if text != case.fields[name] or entry["read_back"][name] != case.fields[name]
+        ]
+        shown = {name: instruction.opens_listing.get(i) for name, i in instruction.lists.items()}
+        shown.update(case.choices)
+        for name, item in shown.items():
+            if item is not None and self.list_item(dialog, instruction.lists[name]) != item:
+                off.append(name)
         # A box CLICK showed while the fields were filled aborts here, rather than being
         # taken for OK's answer
         self.wait(
@@ -1712,6 +2010,16 @@ class Run:
             lambda f: len(f) == 2 and DIALOG in f and f[DIALOG].enabled,
         )
         self.record(f"{label}_filled")
+        if closed or off:
+            told = []
+            if closed:
+                mode = f" in {case.mode} mode" if case.mode else ""
+                told.append(f"closed for entry{mode}: {', '.join(closed)}")
+            if off:
+                told.append(f"reads back otherwise: {', '.join(off)}")
+            self.log(f"{what}: read back {entry['read_back']!r}")
+            self.not_taken(what, dialog, dialog_expect, entry, "; ".join(told))
+            return
         ok = _require(_child(controls, cls="Button", id=1, text="OK"), f"{title}'s OK (1)")
         self.press(dialog, ok)
 
@@ -1728,7 +2036,91 @@ class Run:
             entry["outcome"] = "refused"
         else:
             self.placed(what, label, entry, baseline)
-        entry["seconds"] = round(time.monotonic() - began, 3)
+
+    def read_field(self, what: str, title: str, name: str, control: Control) -> str:
+        """The text of *title*'s field *name*; Aborted if CLICK does not answer (a stalled
+        CLICK is no answer of the dialog's)."""
+        text = self.desktop.read_text(control.hwnd)
+        if text is None:
+            raise Aborted(f"{what}: CLICK did not answer reading {title}'s {name} field")
+        return text
+
+    def not_taken(
+        self, what: str, dialog: Window, expect: Expect, entry: dict[str, Any], message: str
+    ) -> None:
+        """Close *dialog* by its Cancel, then make the case ``not_taken`` with *message*: an
+        answer is set only once nothing after it can stop the run."""
+        self.cancel(dialog, expect)
+        entry.update(outcome="not_taken", message=message)
+        self.log(f"{what}: not taken: {message}")
+
+    def list_item(self, dialog: Window, list_id: int) -> str | None:
+        """The item the ComboBox *list_id* of *dialog* shows; None for none."""
+        combo = _require(
+            _child(self.controls(dialog), cls="ComboBox", id=list_id),
+            f"{dialog.title}'s list {list_id}",
+        )
+        read = self.desktop.combo_box(combo.hwnd)
+        if read is None:
+            raise Aborted(f"{dialog.title}'s list {list_id} does not answer")
+        items, selected = read
+        return items[selected] if 0 <= selected < len(items) else None
+
+    def choose(
+        self, what: str, dialog: Window, expect: Expect, list_id: int, item: str
+    ) -> str | None:
+        """Pick *item* in the drop-down list *list_id*, as Up and Down keys pick it; None once
+        picked, or why it cannot be: ``_CLOSED`` for a list not open for entry (hidden or
+        disabled), else that the list has no such item.
+
+        Each key is sent to the list alone (WM_KEYDOWN, WM_KEYUP), as ``picker`` sends its
+        keys, and moves the selection one item; the list tells the dialog itself, as when a
+        user picks. A list showing no item gets Home first.
+        """
+        combo = _require(
+            _child(self.controls(dialog), cls="ComboBox", id=list_id),
+            f"{dialog.title}'s list {list_id}",
+        )
+        if not (combo.visible and combo.enabled):
+            return _CLOSED
+        read = self.desktop.combo_box(combo.hwnd)
+        if read is None:
+            raise Aborted(f"{dialog.title}'s list {list_id} does not answer")
+        items, selected = read
+        if item not in items:
+            return f"the list has no item {item!r} (its items: {items!r})"
+        target = items.index(item)
+        keys = []
+        if selected < 0:
+            keys.append(_VIRTUAL_KEYS["HOME"])
+            selected = 0
+        step = _VIRTUAL_KEYS["DOWN" if target > selected else "UP"]
+        keys += [step] * abs(target - selected)
+        for vk in keys:
+            if not self.desktop.send_key(combo.hwnd, vk):
+                raise Aborted(f"{what}: {dialog.title}'s list {list_id} did not answer a key")
+        self.wait(
+            f"{dialog.title}'s list {list_id} to show {item!r}",
+            [expect],
+            lambda f: (
+                len(f) == 2
+                and DIALOG in f
+                and f[DIALOG].enabled
+                and self.list_item(dialog, list_id) == item
+                and self.desktop.idle(dialog.hwnd, IDLE_TIMEOUT)
+            ),
+        )
+        self.log(f"{what}: {dialog.title}'s list {list_id} shows {item!r}")
+        return None
+
+    def cancel(self, dialog: Window, expect: Expect) -> None:
+        """Close the instruction *dialog* by its Cancel and wait for the main window alone."""
+        cancel = _require(
+            _child(self.controls(dialog), cls="Button", id=2, text="Cancel"),
+            f"{dialog.title}'s Cancel (2)",
+        )
+        self.press(dialog, cancel)
+        self.wait(f"the {dialog.title} dialog to close", [expect], self.only_main)
 
     def placed(
         self, what: str, label: str, entry: dict[str, Any], baseline: dict[str, Any]
@@ -2507,8 +2899,10 @@ class Run:
     def decode_kept(self) -> None:
         """Decode each kept case's copy of CLICK's files and read the tags stored in it.
 
-        Every copy is read, after an abort too; one that cannot be read keeps why in its
-        ``error``, and any such copy fails the step once all are read.
+        Every copy not read yet is read, after an abort too, and the case's line written
+        again with what was read; one that cannot be read keeps why in its ``error``, and
+        any such copy fails the step once all are read. A carried case's copy, kept in the
+        run it was tried in, is decoded into this run's ``DIR/saves/``.
         """
         from clicknick.utils.click_temp import scr_files
 
@@ -2516,12 +2910,14 @@ class Run:
             failed = []
             for entry in self.result["cases"]:
                 kept = entry["kept"]
-                if kept is None:
+                if kept is None or kept["csv"] is not None or kept["error"] is not None:
                     continue
-                folder = Path(kept["ckp"]).with_suffix("")
-                click = folder / "click"
+                # The case's number in this file names its folder: a carried case's save,
+                # numbered in the run it was tried in, cannot meet another case's
+                label = f"case{entry['index']:02d}"
+                click = Path(kept["ckp"]).with_suffix("") / "click"
                 try:
-                    saved = self.decode(click, folder / "csv")
+                    saved = self.decode(click, self.s.out / "saves" / label / "csv")
                     kept["csv"] = [saved.main_csv, *saved.subroutine_csvs]
                     lines = saved.main_csv.read_text(encoding="utf-8").splitlines()
                     kept["main"] = lines[1:]
@@ -2529,10 +2925,12 @@ class Run:
                     kept["stored"] = {p.name: self.read_stored(p) for p in scr_files(click)}
                 except Exception as exc:
                     kept["error"] = f"{type(exc).__name__}: {exc}"
-                    failed.append(folder.name)
-                    self.log(f"{folder.name}: could not be read: {kept['error']}")
+                    failed.append(label)
+                    self.log(f"{label}: could not be read: {kept['error']}")
+                    self.write_case(entry)
                     continue
-                self.log(f"{folder.name}: main.csv {kept['main']!r}")
+                self.log(f"{label}: main.csv {kept['main']!r}")
+                self.write_case(entry)
             if failed:
                 raise RuntimeError(f"the copies of {', '.join(failed)} could not be read")
 
@@ -2649,6 +3047,8 @@ class Run:
             self.log(f"REFUSED: {refused}")
             self.result.update(status="refused", reason=refused)
             return self.finish()
+        if self.s.command == "try":
+            self.write_carried()
 
         try:
             try:
@@ -2769,6 +3169,10 @@ class Run:
 
     def finish(self, *, write: bool = True) -> dict[str, Any]:
         self.result["elapsed"] = round(time.monotonic() - self.started, 3)
+        if self.s.command == "try" and self.cases:
+            self.result["cases"].sort(key=lambda entry: entry["index"])
+            answered = sum(entry["outcome"] is not None for entry in self.result["cases"])
+            self.result["left"] = len(self.cases) - answered
         if write:
             self.result["files"]["result"] = self.s.out / "result.json"
         text = json.dumps(self.result, indent=2, default=_json_default)
@@ -2809,6 +3213,13 @@ def _scr_state(folder: Path) -> tuple[tuple[str, int, int], ...]:
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
+
+def _positive(text: str) -> int:
+    value = int(text)
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"{text} is not a number of cases above 0")
+    return value
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -2866,6 +3277,20 @@ def _parser() -> argparse.ArgumentParser:
         "--keep",
         action="store_true",
         help="save each accepted case's project into DIR/saves/ and decode it once CLICK ends",
+    )
+    tries.add_argument(
+        "--resume",
+        type=Path,
+        default=None,
+        metavar="PREV_DIR",
+        help="carry the answers of the run in PREV_DIR and try only the cases it left",
+    )
+    tries.add_argument(
+        "--stop-after",
+        type=_positive,
+        default=None,
+        metavar="N",
+        help="stop cleanly once N cases were tried in this run",
     )
     tries.add_argument("--record", action="store_true", help="also dump every window at each step")
     imports = commands.add_parser(
@@ -2931,6 +3356,8 @@ def settings_from(argv: list[str] | None, environ: dict[str, str] | None = None)
         each_row=getattr(args, "each_row", False),
         cases=args.cases.resolve() if args.command == "try" else None,
         keep=getattr(args, "keep", False),
+        resume=args.resume.resolve() if getattr(args, "resume", None) else None,
+        stop_after=getattr(args, "stop_after", None),
         ini_add=getattr(args, "ini_add", None),
         keys=tuple(getattr(args, "keys", ())),
         ok=getattr(args, "ok", False),
