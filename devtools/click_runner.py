@@ -71,17 +71,22 @@ window's title, the status bar and Project.ini's text under ``points``.
 presses All, waits for every memory type checked, presses Read, gives CLICK's Save dialog
 ``DIR/plcdata.csv`` and waits for CLICK's reading window to go and the file to keep its
 size on two polls (``files.plc_data``; ``reading_seen`` says the reading window showed). A
-reading that ends with no file stops the run (live run d8 met one). It reads; it never
-writes into the PLC.
+reading whose window has shown and gone, with the form back and no file for
+``IMPORT_SETTLE``, stops the run; one that never shows the window waits out
+``--paste-timeout``. It reads; it never writes into the PLC.
 
 ``picker`` opens Program > Address Picker (32834), CLICK's address editor, between two
 copies of SC_.mdb (``DIR/mdb/before.mdb`` and ``after.mdb``, each taken once SC_.mdb is
 unchanged for ``IMPORT_SETTLE``; ``mdb_copies``). Each ``--key`` is sent (not posted) to
 the grid or, once it shows, to CLICK's in-place editor: a key by name (WM_KEYDOWN and
 WM_KEYUP), ``chars:TEXT`` (WM_CHAR), ``text:TEXT`` (WM_SETTEXT) or ``find:TEXT`` (the Find
-box's text, then Find). After each key result.json keeps the editor's text, whether it
-shows and the hints CLICK shows under it (``keys``). ``--ok`` closes the picker by OK,
+box's text, then Find, its BM_CLICK sent too). Each has been handled when it returns, so the
+next key goes to the row it left. A key CLICK does not answer within 5 s, as one that opens
+a box over the picker would, stops the run (the abort dump shows the box), and so does a
+window over the picker after a key. After each key result.json keeps the editor's text,
+whether it shows and the hints CLICK shows under it (``keys``). ``--ok`` closes the picker by OK,
 otherwise WM_CLOSE closes it. The copies are read through Access ODBC once CLICK has ended.
+``read-data`` and ``picker`` dump CLICK's windows into ``DIR/record/`` only with ``--record``.
 
 Every Syntax Check (``paste``'s too) empties Output first, so a result that reads as the one
 before is still seen. CLICK ignores a Syntax Check posted soon after the last one's result
@@ -1075,6 +1080,15 @@ class Run:
         self.log(f"press {button.text or button.cls}, id {button.id}, in {window.title!r}")
         self.desktop.press(button.hwnd)
 
+    def send_press(self, window: Window, button: Control) -> bool:
+        """``press``, with BM_CLICK sent: handled when it returns True (``Desktop.send_press``)."""
+        if button.cls not in ("Button", "TButton") or button.hwnd not in {
+            c.hwnd for c in self.controls(window)
+        }:
+            raise Aborted(f"{button.cls} {button.hwnd} is not a button of {_describe(window)}")
+        self.log(f"press {button.text or button.cls} (sent), id {button.id}, in {window.title!r}")
+        return self.desktop.send_press(button.hwnd)
+
     def command(self, command_id: int) -> None:
         assert self.main is not None
         name = self.desktop.command(self.main, command_id)
@@ -2025,7 +2039,7 @@ class Run:
                 return bool(boxes) and all(self.desktop.button_checked(c.hwnd) == 1 for c in boxes)
 
             self.wait("every memory type checked", [READ_DATA], all_checked)
-            self.dump(self.s.out / "record", "read_data")
+            self.record("read_data")
             self.press(dialog, read)
             save = self.wait("Save", [READ_DATA, SAVE_DATA], lambda f: f.get(SAVE_DATA.name))
             self.record("save_data")
@@ -2036,9 +2050,9 @@ class Run:
             self.fill_path(name, dump, [READ_DATA, SAVE_DATA])
             self.press(save, button)
             last: list[int | None] = [None]
-            # Polls in a row with the reading over and no file (live run d8 met one: CLICK
-            # showed nothing and wrote nothing)
-            idle = [0]
+            # When the reading window had gone, with the form back and no file (a reading that
+            # wrote its file elsewhere, as live run d8's did before ``fill_path``)
+            idle: list[float | None] = [None]
 
             def written(found: dict[str, Window]) -> bool:
                 form = found.get(READ_DATA.name)
@@ -2047,12 +2061,14 @@ class Run:
                     self.log("CLICK is reading the PLC's data")
                 busy = SAVE_DATA.name in found or READING_DATA.name in found
                 if busy or form is None or not form.enabled:
-                    idle[0] = 0
+                    idle[0] = None
                     return False
                 size = dump.stat().st_size if dump.is_file() else None
                 if size is None and self.result["reading_seen"]:
-                    idle[0] += 1
-                    if idle[0] >= 2:
+                    now = time.monotonic()
+                    if idle[0] is None:
+                        idle[0] = now
+                    elif now - idle[0] >= IMPORT_SETTLE:
                         self.record("no_file")
                         raise Aborted(f"CLICK read the PLC's data but wrote no {dump.name}")
                 done = size is not None and size == last[0]
@@ -2083,7 +2099,7 @@ class Run:
         with self.step("picker"):
             self.command(ADDRESS_PICKER)
             window = self.wait("the Address Picker", [PICKER], lambda f: f.get(PICKER.name))
-            self.dump(self.s.out / "record", "picker")
+            self.record("picker")
             controls = self.controls(window)
             grids = [c for c in controls if c.cls == "TStringGrid"]
             if len(grids) != 1:
@@ -2105,7 +2121,7 @@ class Run:
                     )
                     button = _require(_labelled(now, "TButton", "Find"), "Find")
                     answered = self.desktop.set_text(edit.hwnd, token[len("find:") :])
-                    self.press(window, button)
+                    answered = answered and self.send_press(window, button)
                 elif token.startswith("chars:"):
                     answered = self.desktop.send_chars(target.hwnd, token[len("chars:") :])
                 elif token.startswith("text:"):
@@ -2114,9 +2130,14 @@ class Run:
                     answered = self.desktop.send_key(target.hwnd, _VIRTUAL_KEYS[token])
                 if not answered:
                     raise Aborted(f"CLICK did not answer the key {token!r}")
-                self.wait(f"the key {token!r}", [PICKER], lambda f: PICKER.name in f)
+                # Handled already (sent): no window may have come over the picker
+                self.wait(
+                    f"the Address Picker after the key {token!r}",
+                    [PICKER],
+                    lambda f: (shown := f.get(PICKER.name)) is not None and shown.enabled,
+                )
                 self.after_key(window, token, at_open)
-                self.dump(self.s.out / "record", f"key{number:02d}")
+                self.record(f"key{number:02d}")
             if self.s.ok:
                 ok = _require(_labelled(self.controls(window), "TButton", "OK"), "OK")
                 self.press(window, ok)

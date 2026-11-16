@@ -197,17 +197,28 @@ class Desktop(ABC):
         """Post BM_CLICK to the button *hwnd*."""
 
     @abstractmethod
+    def send_press(self, hwnd: int) -> bool:
+        """Send BM_CLICK to the button *hwnd*; whether it was answered within 5 s.
+
+        Sent, not posted, so the click has been handled when this returns True. False when
+        it was not answered in time, as when the click opens a modal box: the box is then
+        still open.
+        """
+
+    @abstractmethod
     def close(self, hwnd: int) -> None:
         """Post WM_CLOSE to *hwnd*."""
 
     @abstractmethod
     def send_key(self, hwnd: int, vk: int) -> bool:
         """Send WM_KEYDOWN then WM_KEYUP for the virtual key *vk* to *hwnd*; whether both
-        were answered.
+        were answered, each within 5 s.
 
         A message to that one window, as WM_SETTEXT is: no global input, so nothing reaches
-        another window, whatever has the focus. Sent, not posted, so it has been handled
-        when this returns.
+        another window, whatever has the focus. Sent, not posted, so the key has been handled
+        when this returns True. False when a message was not answered in time, as when the
+        key opens a modal box (the box is then still open); no WM_KEYUP follows a WM_KEYDOWN
+        that was not answered.
         """
 
     @abstractmethod
@@ -731,14 +742,17 @@ class Win32Desktop(Desktop):
     def press(self, hwnd: int) -> None:
         self._post(hwnd, BM_CLICK)
 
+    def send_press(self, hwnd: int) -> bool:
+        return self._send(hwnd, BM_CLICK) is not None
+
     def close(self, hwnd: int) -> None:
         self._post(hwnd, WM_CLOSE)
 
     def send_key(self, hwnd: int, vk: int) -> bool:
         scan = self._user32.MapVirtualKeyW(vk, 0) & 0xFF  # MAPVK_VK_TO_VSC
-        down = self._send(hwnd, WM_KEYDOWN, vk, 1 | scan << 16)
-        up = self._send(hwnd, WM_KEYUP, vk, 1 | scan << 16 | 1 << 30 | 1 << 31)
-        return down is not None and up is not None
+        if self._send(hwnd, WM_KEYDOWN, vk, 1 | scan << 16) is None:
+            return False
+        return self._send(hwnd, WM_KEYUP, vk, 1 | scan << 16 | 1 << 30 | 1 << 31) is not None
 
     def send_chars(self, hwnd: int, text: str) -> bool:
         return all(self._send(hwnd, WM_CHAR, ord(char), 1) is not None for char in text)

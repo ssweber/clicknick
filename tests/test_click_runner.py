@@ -54,6 +54,7 @@ class FakeControl:
     items: int = 0
     on_press: Callable[[], None] | None = None
     on_key: Callable[[int], None] | None = None
+    on_send: Callable[[], None] | None = None  # A sent BM_CLICK, handled before it returns
 
 
 @dataclass
@@ -111,12 +112,16 @@ class FakeClick(cd.Desktop):
     import's mode and file.
 
     PLC > Read Data from PLC opens its form, Save dialog and progress window as live probes d1
-    to d7 dumped them (2026-11-16); *writes_data* off makes the reading write no file, as live
-    run d8 met once. Program > Address Picker opens a grid as live probes e1 to f3 dumped it:
-    two Right keys and F2 open the editor on the current row's Nickname cell, the Find box
-    moves to an address's row, Enter takes the editor's name unless it is a reserved word
-    (``RESERVED``), and OK writes the names taken into SC_.mdb with CLICK's system rows
-    (``SYSTEM_ROWS``); closing it writes nothing.
+    to d7 dumped them (2026-11-16); *writes_data* off makes the reading write no file.
+    *save_clears* makes the Save dialog empty its File name edit a few polls after it shows, as
+    live run d2/live-r1e found it; a reading with the edit empty writes ``plcdata.csv`` into
+    the folder it last saved in (``last_folder``), as live run d8 did. Program > Address Picker
+    opens a grid as live probes e1 to f3 dumped it: two Right keys and F2 open the editor on
+    the current row's Nickname cell, the Find box moves to an address's row, Enter takes the
+    editor's name unless it is a reserved word (``RESERVED``), and OK writes the names taken
+    into SC_.mdb with CLICK's system rows (``SYSTEM_ROWS``). Closing it without OK writes
+    nothing here; live runs e3 and e4 closed it so with nothing typed, and none closed it so
+    after typing.
     """
 
     def __init__(
@@ -162,6 +167,7 @@ class FakeClick(cd.Desktop):
         import_as: str | None = None,
         writes_data: bool = True,
         open_gap: int = 0,
+        save_clears: bool = False,
     ) -> None:
         self.temp_root = tmp_path / "temp"
         self.temp_root.mkdir()
@@ -232,6 +238,8 @@ class FakeClick(cd.Desktop):
         self.imported: list[tuple[str, str]] = []
         self.writes_data = writes_data
         self.open_gap = open_gap
+        self.save_clears = save_clears
+        self.last_folder = tmp_path / "last folder"
         self.editor_keys: Callable[[int], None] = lambda vk: None
         self.ckps: dict[Path, dict[str, bytes]] = {}  # Each saved project's files
         self.opened: list[Path] = []
@@ -563,6 +571,13 @@ class FakeClick(cd.Desktop):
             box_ex = self._control(dialog, "ComboBoxEx32", "", 1148)
             box = self._control(dialog, "ComboBox", "", 1148, parent=box_ex.hwnd)
             name = self._control(dialog, "Edit", "", 1148, parent=box.hwnd)
+            if self.save_clears:
+
+                def clear() -> None:
+                    if dialog.hwnd in self.wins:
+                        name.value = ""
+
+                self._later("save_clears", clear, polls=self.lag + 3)
 
             def read() -> None:
                 self._drop(dialog)
@@ -573,7 +588,9 @@ class FakeClick(cd.Desktop):
                 def done() -> None:
                     if self.writes_data:
                         read = [b.text.encode() for b in reversed(boxes) if b.checked]
-                        Path(name.value).write_bytes(
+                        path = Path(name.value) if name.value else self.last_folder / "plcdata.csv"
+                        path.parent.mkdir(exist_ok=True)
+                        path.write_bytes(
                             b"".join(b"<%s=START>\r\n</%s=END>\r\n" % (b, b) for b in read)
                         )
                     self._drop(status)
@@ -646,7 +663,12 @@ class FakeClick(cd.Desktop):
         picker.on_close = lambda: self._later("picker_close", close)
         for text, action in (("Find", found), ("OK", ok), ("Cancel", close)):
             self._control(
-                picker, "TButton", text, 0, on_press=lambda a=action: self._later("press", a)
+                picker,
+                "TButton",
+                text,
+                0,
+                on_press=lambda a=action: self._later("press", a),
+                on_send=action,
             )
         for control in picker.controls:
             control.id = control.hwnd
@@ -1100,6 +1122,16 @@ class FakeClick(cd.Desktop):
         self.pressed.append(control.text or f"{control.cls}@{control.rect[0]}")
         if control.on_press is not None:
             control.on_press()
+
+    def send_press(self, hwnd: int) -> bool:
+        if not self._message("BM_CLICK"):
+            return False
+        control = self._find(hwnd)
+        self.pressed.append(control.text or f"{control.cls}@{control.rect[0]}")
+        action = control.on_send or control.on_press
+        if action is not None:
+            action()
+        return True
 
     def close(self, hwnd: int) -> None:
         self._message("WM_CLOSE")
@@ -3072,6 +3104,18 @@ def test_read_data_saves_every_memory_type(tmp_path, setup):
     assert not fake.connected and fake.terminated
 
 
+def test_read_data_sets_the_path_again_when_the_save_dialog_empties_it(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, save_clears=True)
+    code, result = run_command(fake, tmp_path, exe, "read-data")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert (tmp_path / "out" / "plcdata.csv").is_file()
+    assert not fake.last_folder.exists()
+    log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
+    assert "the File name edit reads ''; setting the path again" in log
+    assert not (tmp_path / "out" / "record").exists()
+
+
 def test_read_data_that_writes_no_file_aborts_once_the_reading_ends(tmp_path, setup):
     _, exe = setup
     fake = FakeClick(tmp_path, writes_data=False)
@@ -3130,17 +3174,40 @@ def test_picker_ok_writes_the_names_taken_and_the_system_rows(tmp_path, setup):
     assert timings[-6:] == ["before", "picker", "after", "disconnect", "close", "read"]
 
 
-def test_picker_closed_without_ok_writes_nothing(tmp_path, setup):
+def test_picker_closed_with_nothing_typed_writes_nothing(tmp_path, setup):
+    # As live runs e3 and e4 closed it (F2 on X001; Right, Right, F2), by WM_CLOSE
     _, exe = setup
     fake = FakeClick(tmp_path)
     rows = PickerRows()
     code, result = run_command(
-        fake, tmp_path, exe, "picker", *name_keys("X001", "Test"), read_rows=rows
+        fake, tmp_path, exe, "picker", "--key", "find:X001", "--key", "F2", read_rows=rows
     )
     assert code == cr.EXIT_OK, result["reason"]
     copies = result["mdb_copies"]
     assert copies["before"]["rows"] == copies["after"]["rows"] == {}
     assert "picker_close" in fake.events
+
+
+def test_a_picker_key_that_opens_a_box_stops_the_run(tmp_path, setup):
+    # A sent key that opens a modal box is not answered while the box shows
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    real = fake.send_key
+
+    def send_key(hwnd: int, vk: int) -> bool:
+        if vk != 0x0D:
+            return real(hwnd, vk)
+        picker = next(w for w in fake.wins.values() if w.cls == "TfrmTagDB")
+        box = fake._window("#32770", "CLICK Programming Software", picker.hwnd)
+        fake._control(box, "Button", "OK", 2)
+        picker.enabled = False
+        return False
+
+    fake.send_key = send_key
+    code, result = run_command(fake, tmp_path, exe, "picker", *name_keys("X001", "Test"))
+    assert_aborted(fake, tmp_path / "out", code, result, "CLICK did not answer the key 'RETURN'")
+    assert result["step"] == "picker"
+    assert "OK" not in fake.pressed[fake.pressed.index("Find") :]
 
 
 def test_picker_refuses_a_key_it_does_not_know(tmp_path, setup):
