@@ -18,6 +18,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import pytest
 from laddercodec import read_csv
@@ -52,6 +53,8 @@ class FakeControl:
     checked: int = 0
     items: int = 0
     on_press: Callable[[], None] | None = None
+    on_key: Callable[[int], None] | None = None
+    on_send: Callable[[], None] | None = None  # A sent BM_CLICK, handled before it returns
 
 
 @dataclass
@@ -63,6 +66,12 @@ class FakeWindow:
     enabled: bool = True
     controls: list[FakeControl] = field(default_factory=list)
     on_close: Callable[[], None] | None = None
+
+
+# Two of the rows CLICK's Address Picker writes into SC_.mdb on OK (live run e6), and two of
+# the words its editor refuses, whatever their case (live run f3)
+SYSTEM_ROWS = {"SD19": {"Nickname": "_RTC_Year(4 digits)"}, "SD26": {"Nickname": "_RTC_Second"}}
+RESERVED = {"MAX", "LOG"}
 
 
 class FakeClick(cd.Desktop):
@@ -101,6 +110,18 @@ class FakeClick(cd.Desktop):
     *import_as* names the mode CLICK imports in, whatever is checked; *import_box* ``"question"`` shows a Yes/No box in place of the answer,
     ``"twice"`` the same answer again once the first is closed. ``imported`` lists each
     import's mode and file.
+
+    PLC > Read Data from PLC opens its form, Save dialog and progress window as live probes d1
+    to d7 dumped them (2026-11-16); *writes_data* off makes the reading write no file.
+    *save_clears* makes the Save dialog empty its File name edit a few polls after it shows, as
+    live run d2/live-r1e found it; a reading with the edit empty writes ``plcdata.csv`` into
+    the folder it last saved in (``last_folder``), as live run d8 did. Program > Address Picker
+    opens a grid as live probes e1 to f3 dumped it: two Right keys and F2 open the editor on
+    the current row's Nickname cell, the Find box moves to an address's row, Enter takes the
+    editor's name unless it is a reserved word (``RESERVED``), and OK writes the names taken
+    into SC_.mdb with CLICK's system rows (``SYSTEM_ROWS``). Closing it without OK writes
+    nothing here; live runs e3 and e4 closed it so with nothing typed, and none closed it so
+    after typing.
     """
 
     def __init__(
@@ -144,6 +165,10 @@ class FakeClick(cd.Desktop):
         mode_takes: bool = True,
         import_box: str | None = None,
         import_as: str | None = None,
+        writes_data: bool = True,
+        open_gap: int = 0,
+        save_clears: bool = False,
+        system_config_notice: bool = False,
     ) -> None:
         self.temp_root = tmp_path / "temp"
         self.temp_root.mkdir()
@@ -186,6 +211,7 @@ class FakeClick(cd.Desktop):
         self.pasted: bytes | None = None
         self.clipboard: bytes | None = None
         self.commands: list[str] = []
+        self.keys: list[tuple[str, int | str]] = []
         self.pressed: list[str] = []
         self.typed: dict[int, str] = {}
         self.events: list[str] = []
@@ -211,6 +237,15 @@ class FakeClick(cd.Desktop):
         self.import_box = import_box
         self.import_as = import_as
         self.imported: list[tuple[str, str]] = []
+        self.writes_data = writes_data
+        self.open_gap = open_gap
+        self.save_clears = save_clears
+        self.system_config_notice = system_config_notice
+        self.system_config_shown = False
+        self.last_folder = tmp_path / "last folder"
+        self.editor_keys: Callable[[int], None] = lambda vk: None
+        self.ckps: dict[Path, dict[str, bytes]] = {}  # Each saved project's files
+        self.opened: list[Path] = []
 
     # -- building windows ---------------------------------------------------
 
@@ -232,8 +267,8 @@ class FakeClick(cd.Desktop):
         if window is not None:
             self.wins.pop(window.hwnd, None)
 
-    def _later(self, event: str, action: Callable[[], None]) -> None:
-        """Run *action* a few polls from now, as a posted message is."""
+    def _later(self, event: str, action: Callable[[], None], polls: int | None = None) -> None:
+        """Run *action* a few polls from now (*polls*, else ``lag``), as a posted message is."""
 
         def run() -> None:
             if event == self.stall:
@@ -248,7 +283,7 @@ class FakeClick(cd.Desktop):
             if event == self.error_on:
                 self._show_error(event)
 
-        self.queue.append((self.tick + self.lag, run))
+        self.queue.append((self.tick + (self.lag if polls is None else polls), run))
 
     def _show_error(self, event: str) -> None:
         """CLICK's error box as live run 3 dumped it (live3/abort/04-abort-288099950.json)."""
@@ -302,7 +337,7 @@ class FakeClick(cd.Desktop):
         temp = self.temp_dir(main.hwnd)
         temp.mkdir()
         (temp / "SC_.mdb").write_bytes(b"mdb")
-        (temp / "Project.ini").write_text("[Project]\n", encoding="utf-8")
+        (temp / "Project.ini").write_bytes(b"[Project]\r\n")
         for name in self.options["leftover"]:
             (temp / name).write_bytes(b"old")
         if self.options["tooltip"]:
@@ -450,7 +485,13 @@ class FakeClick(cd.Desktop):
         def save() -> None:
             path = Path(name.value)
             path.write_bytes(b"ckp")
-            (self.temp_dir(main.hwnd) / "Scr1.tmp").write_bytes(self.pasted or b"empty")
+            # The main program: what was pasted, or the instruction try placed in rung 1
+            placed = f"placed {self.placed} ({path.name})".encode() if self.placed else None
+            scr = self.pasted or placed or b"empty"
+            temp = self.temp_dir(main.hwnd)
+            (temp / "Scr1.tmp").write_bytes(scr)
+            # The project file holds the temp folder's files as they are
+            self.ckps[path] = {p.name: p.read_bytes() for p in temp.iterdir()}
             main.title = f"CLICK Programming Software (Version4.00) - {path.name} - [Main Program]"
             self._drop(dialog)
             main.enabled = True
@@ -458,6 +499,230 @@ class FakeClick(cd.Desktop):
 
         self._control(dialog, "Button", "&Save", 1, on_press=lambda: self._later("save", save))
         self._control(dialog, "Button", "Cancel", 2)
+
+    def _show_open_project(self) -> None:
+        """File > Open Project's Open dialog; opening puts the project's files in the temp folder.
+
+        With *open_gap*, Open closes the dialog at once and leaves the main window alone, still
+        titled as before, for *open_gap* polls before the open begins.
+        """
+        assert self.main is not None
+        main = self.main
+        main.enabled = False
+        dialog = self._window("#32770", "Open", main.hwnd)
+        box_ex = self._control(dialog, "ComboBoxEx32", "", 1148)
+        box = self._control(dialog, "ComboBox", "", 1148, parent=box_ex.hwnd)
+        name = self._control(dialog, "Edit", "", 1148, parent=box.hwnd)
+
+        def read_file() -> None:
+            # CLICK titles the main window bare and shows Project Reading while it reads
+            self._drop(dialog)
+            main.title = "CLICK Programming Software (Version4.00)"
+            reading = self._window("#32770", "Project Reading", main.hwnd)
+            self._later("read", lambda: open_file(reading))
+
+        def open_file(reading: FakeWindow) -> None:
+            path = Path(name.value)
+            temp = self.temp_dir(main.hwnd)
+            for old in temp.iterdir():
+                if old.name != "SC_.mdb":
+                    old.unlink()
+            for file, data in self.ckps[path].items():
+                (temp / file).write_bytes(data)
+            self.opened.append(path)
+            main.title = f"CLICK Programming Software (Version4.00) - {path.name} - [Main Program]"
+            self._drop(reading)
+            main.enabled = True
+
+        def press_open() -> None:
+            if not self.open_gap:
+                self._later("open", read_file)
+                return
+            self._drop(dialog)
+            main.enabled = True
+
+            def begin() -> None:
+                main.enabled = False
+                read_file()
+
+            self._later("open_begins", begin, polls=self.open_gap)
+
+        self._control(dialog, "Button", "&Open", 1, on_press=press_open)
+        self._control(dialog, "Button", "Cancel", 2)
+
+    def _show_read_data(self) -> None:
+        assert self.main is not None
+        main = self.main
+        main.enabled = False
+        form = self._window("TfrmReadWriteDataMemory", "Read Data from PLC", main.hwnd)
+        group = self._control(form, "TGroupBox", "Select Read Memory Type", 0)
+        banks = ("TXT", "CTD", "TD", "DF", "DH", "DD", "DS", "CT", "T", "C", "Y", "X")
+        boxes = [
+            self._control(
+                form, "TCheckBox", bank, 0, parent=group.hwnd, checked=int(bank in "DS DD DH DF")
+            )
+            for bank in banks
+        ]
+
+        def every() -> None:
+            for box in boxes:
+                box.checked = 1
+
+        def save() -> None:
+            form.enabled = False
+            dialog = self._window("#32770", "Save", form.hwnd)
+            box_ex = self._control(dialog, "ComboBoxEx32", "", 1148)
+            box = self._control(dialog, "ComboBox", "", 1148, parent=box_ex.hwnd)
+            name = self._control(dialog, "Edit", "", 1148, parent=box.hwnd)
+            if self.save_clears:
+
+                def clear() -> None:
+                    if dialog.hwnd in self.wins:
+                        name.value = ""
+
+                self._later("save_clears", clear, polls=self.lag + 3)
+
+            def read() -> None:
+                self._drop(dialog)
+                status = self._window(
+                    "TfrmReadWriteDataMemoryStatus", "Data Memory Reading..", form.hwnd
+                )
+
+                def done() -> None:
+                    if self.writes_data:
+                        read = [b.text.encode() for b in reversed(boxes) if b.checked]
+                        path = Path(name.value) if name.value else self.last_folder / "plcdata.csv"
+                        path.parent.mkdir(exist_ok=True)
+                        path.write_bytes(
+                            b"".join(b"<%s=START>\r\n</%s=END>\r\n" % (b, b) for b in read)
+                        )
+                    self._drop(status)
+                    form.enabled = True
+
+                self._later("reading", done)
+
+            self._control(dialog, "Button", "&Save", 1, on_press=lambda: self._later("save", read))
+            self._control(dialog, "Button", "Cancel", 2)
+
+        def close() -> None:
+            self._drop(form)
+            main.enabled = True
+
+        for text, action in (("Read", save), ("Close", close), ("Help", None), ("All", every)):
+            self._control(
+                form,
+                "TButton",
+                text,
+                0,
+                parent=group.hwnd if text == "All" else 0,
+                on_press=None if action is None else lambda a=action: self._later("press", a),
+            )
+        for control in form.controls:
+            control.id = control.hwnd  # A Delphi form's controls have no ids of their own
+
+    def _show_system_config(self) -> None:
+        """System Configuration as live probe C2 dumped it: its PLC Name shows the first
+        [Sec20] section's first Key1 in the temp folder's Project.ini (``plc_name_in``). Live
+        run c2/live-r1 showed the name added at ``second``, before any open; whether the save
+        or System Configuration read it, that run does not tell. With *system_config_notice*,
+        a notice with one OK comes over the first one, as at the probe's first, made while
+        connected (live-r1's first, made disconnected, had none). OK is never to be pressed.
+        """
+        assert self.main is not None
+        main = self.main
+        main.enabled = False
+        form = self._window("TfrmSystemConfig", "System Configuration", main.hwnd)
+        ini = self.temp_dir(main.hwnd) / "Project.ini"
+        name = plc_name_in(ini.read_bytes() if ini.is_file() else b"")
+        self._control(form, "TEdit", "", 0, value=name)
+        self._control(form, "TCheckBox", "Start-up I/O Config Check", 0)
+
+        def ok() -> None:
+            raise AssertionError("System Configuration's OK was pressed")
+
+        def cancel() -> None:
+            self._drop(form)
+            main.enabled = True
+
+        for text, action in (("View I/O MODBUS Addresses", None), ("OK", ok), ("Cancel", cancel)):
+            self._control(
+                form,
+                "TButton",
+                text,
+                0,
+                on_press=None if action is None else lambda a=action: self._later("press", a),
+            )
+        if self.system_config_notice and not self.system_config_shown:
+            self.system_config_shown = True
+            form.enabled = False
+            notice = self._window(
+                "TfrmInformationSystemConfigDlg", "System Configuration", form.hwnd
+            )
+            self._control(notice, "TButton", "OK", 0, on_press=ok)
+
+            def close() -> None:
+                self._drop(notice)
+                form.enabled = True
+
+            notice.on_close = lambda: self._later("notice_close", close)
+        for control in form.controls:
+            control.id = control.hwnd
+
+    def _show_picker(self) -> None:
+        assert self.main is not None
+        main = self.main
+        main.enabled = False
+        picker = self._window("TfrmTagDB", "Address Picker : Edit Mode", main.hwnd)
+        mdb = self.temp_dir(main.hwnd) / "SC_.mdb"
+        at: dict[str, Any] = {"row": "X001", "column": 0}
+        taken: dict[str, str] = {}
+        editor: list[FakeControl] = []
+        grid = self._control(picker, "TStringGrid", "", 0)
+
+        def key(vk: int) -> None:
+            if vk == 0x27:
+                at["column"] += 1
+            elif vk == 0x71 and at["column"] == 2 and not editor:
+                editor.append(self._control(picker, "TEdit", "", 0, parent=grid.hwnd))
+
+        def enter(vk: int) -> None:
+            if vk != 0x0D or not editor:
+                return
+            if editor[0].value.upper() not in RESERVED:
+                taken[at["row"]] = editor[0].value
+            editor[0].visible = False
+            editor.clear()
+
+        grid.on_key = key
+        self.editor_keys = enter
+        box = self._control(picker, "TComboBox", "", 0)
+        find = self._control(picker, "Edit", "", 0, parent=box.hwnd)
+
+        def found() -> None:
+            at.update(row=find.value, column=0)
+
+        def close() -> None:
+            self._drop(picker)
+            main.enabled = True
+
+        def ok() -> None:
+            rows = {address: dict(row) for address, row in SYSTEM_ROWS.items()}
+            rows.update({address: {"Nickname": name} for address, name in taken.items()})
+            mdb.write_text(json.dumps(rows), encoding="utf-8")
+            close()
+
+        picker.on_close = lambda: self._later("picker_close", close)
+        for text, action in (("Find", found), ("OK", ok), ("Cancel", close)):
+            self._control(
+                picker,
+                "TButton",
+                text,
+                0,
+                on_press=lambda a=action: self._later("press", a),
+                on_send=action,
+            )
+        for control in picker.controls:
+            control.id = control.hwnd
 
     def _show_disconnect(self) -> None:
         assert self.main is not None
@@ -718,14 +983,17 @@ class FakeClick(cd.Desktop):
                 self._later("syntax_check", checked)
 
             def checked() -> None:
-                # As live probe 2 read it: an instruction on rung 1 moves the END error on
+                # As live probe 2 read it: an instruction on rung 1 moves the END error on.
+                # The total names the project as the title does (a save renames it)
                 rung = 1 if self.placed is None else 2
                 extra = self.syntax_lines.get(self.placed or "")
+                assert self.main is not None
+                project = Path(cr._project_file(self.main.title) or "").stem
                 output.value += (
                     f"Main Program : Rung {rung} : error C0201: No unconditional END "
                     "instruction in the Main Program.\r\n"
                     + (f"{extra}\r\n" if extra else "")
-                    + "\r\nNewProject4 - 1 error(s), 0 warning(s)\r\n"
+                    + f"\r\n{project} - 1 error(s), 0 warning(s)\r\n"
                 )
                 self.checked_tick = self.tick
 
@@ -736,6 +1004,14 @@ class FakeClick(cd.Desktop):
             self._later("disconnect", self._show_disconnect)
         elif command_id == cd.IMPORT_NICKNAME:
             self._later("import_open", self._show_open)
+        elif command_id == cd.OPEN_PROJECT:
+            self._later("open_project", self._show_open_project)
+        elif command_id == cd.READ_DATA_FROM_PLC:
+            self._later("read_data", self._show_read_data)
+        elif command_id == cd.ADDRESS_PICKER:
+            self._later("picker", self._show_picker)
+        elif command_id == cd.SYSTEM_CONFIGURATION:
+            self._later("system_config", self._show_system_config)
         elif command_id == cd.DELETE:
 
             def delete() -> None:
@@ -835,7 +1111,8 @@ class FakeClick(cd.Desktop):
         control = self._find(hwnd)
         if control.id == 20142:
             return ""  # ES_PASSWORD: another process reads nothing
-        return control.value if control.cls in ("Edit", "RichEdit20W", "TMemo") else control.text
+        edits = ("Edit", "TEdit", "RichEdit20W", "TMemo")
+        return control.value if control.cls in edits else control.text
 
     def set_text(self, hwnd: int, text: str) -> bool:
         if not self._message("WM_SETTEXT"):
@@ -899,11 +1176,40 @@ class FakeClick(cd.Desktop):
         if control.on_press is not None:
             control.on_press()
 
+    def send_press(self, hwnd: int) -> bool:
+        if not self._message("BM_CLICK"):
+            return False
+        control = self._find(hwnd)
+        self.pressed.append(control.text or f"{control.cls}@{control.rect[0]}")
+        action = control.on_send or control.on_press
+        if action is not None:
+            action()
+        return True
+
     def close(self, hwnd: int) -> None:
         self._message("WM_CLOSE")
         window = self.wins[hwnd]
         if window.on_close is not None:
             window.on_close()
+
+    def send_key(self, hwnd: int, vk: int) -> bool:
+        if not self._message("WM_KEYDOWN"):
+            return False
+        self.keys.append((self._find(hwnd).cls, vk))
+        control = self._find(hwnd)
+        if control.on_key is not None:
+            control.on_key(vk)
+        elif control.cls == "TEdit":
+            self.editor_keys(vk)
+        return True
+
+    def send_chars(self, hwnd: int, text: str) -> bool:
+        if not self._message("WM_CHAR"):
+            return False
+        self.keys.append((self._find(hwnd).cls, text))
+        control = self._find(hwnd)
+        control.value += text
+        return True
 
     def idle(self, hwnd: int, timeout: float) -> bool:
         return not self.hung()  # SMTO_ABORTIFHUNG gives up at once on a hung window
@@ -923,6 +1229,20 @@ class FakeClick(cd.Desktop):
 
     def temp_dir(self, hwnd: int) -> Path:
         return self.temp_root / f"CLICK ({hwnd:08X})"
+
+
+def plc_name_in(ini: bytes) -> str:
+    """The PLC Name CLICK shows for a Project.ini, as live probe C2 found: the first Key1 of
+    the first [Sec20] section, both in any case (runs p3 to p12); no [Sec20], none (p11)."""
+    section = None
+    for line in ini.decode("latin-1").splitlines():
+        if line.startswith("[") and line.endswith("]"):
+            if section == "sec20":
+                break
+            section = line[1:-1].lower()
+        elif section == "sec20" and line.lower().startswith("key1="):
+            return line[len("key1=") :]
+    return ""
 
 
 def judge_like_click(title: str, mode: str | None, values: dict[str, str]) -> object:
@@ -1042,6 +1362,7 @@ def fast_poll(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(cr, "POLL_INTERVAL", 0.001)
     monkeypatch.setattr(cr, "PLC_SETTLE", 0.02)
     monkeypatch.setattr(cr, "IMPORT_SETTLE", 0.1)
+    monkeypatch.setattr(cr, "FILL_SETTLE", 0.02)
 
 
 def assert_aborted(fake: FakeClick, out: Path, code: int, result: dict, reason: str) -> None:
@@ -2002,6 +2323,7 @@ def run_try(
     *args: str,
     timeout: float = 5,
     nicknames: Nicknames | None = None,
+    **run_args: object,
 ) -> tuple[int, dict]:
     file = tmp_path / "cases.json"
     file.write_text(json.dumps(cases), encoding="utf-8")
@@ -2014,6 +2336,7 @@ def run_try(
         prepare=Prepare(),
         read_nicknames=nicknames or Nicknames(),
         stderr=io.StringIO(),
+        **run_args,
     )
     result_file = out / "result.json"
     return code, json.loads(result_file.read_text(encoding="utf-8")) if result_file.exists() else {}
@@ -2120,6 +2443,135 @@ def test_try_record_dumps_each_case(tmp_path, setup):
     assert result["nicknames"] is None and "nicknames" not in result["timings"]
     labels = {p.name.split("-")[1] for p in (tmp_path / "out" / "record").glob("*.json")}
     assert {"baseline", "case01_filled", "case01_answer", "case02_answer"} <= labels
+
+
+class Stored:
+    """read_stored for the fake's Scr*.tmp, which holds text; raises for the files named."""
+
+    def __init__(self, *, fails: tuple[str, ...] = ()) -> None:
+        self.read: list[Path] = []
+        self.fails = fails
+
+    def __call__(self, scr: Path) -> dict[str, object]:
+        self.read.append(scr)
+        if scr.parent.parent.name in self.fails:
+            raise ValueError("Not an SC-SCR file")
+        return {"text": scr.read_text(encoding="utf-8")}
+
+
+def test_try_keep_saves_each_accepted_case(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    stored = Stored()
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES}, "--keep", read_stored=stored)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["keep"] is True
+    saves = tmp_path / "out" / "saves"
+    kept = {c["row"] + c["case"]: c["kept"] for c in result["cases"]}
+    accepted = [c for c in result["cases"] if c["outcome"] == "accepted"]
+    assert [Path(c["kept"]["ckp"]).name for c in accepted] == [
+        "case01.ckp",
+        "case03.ckp",
+        "case04.ckp",
+    ]
+    assert all(c["kept"] is None for c in result["cases"] if c["outcome"] != "accepted")
+    assert len(kept) == len(TRY_CASES)
+    # Each save is the project with that case's instruction in rung 1, copied as it was then
+    for case, title in zip(accepted, ["Math", "Math", "Copy"], strict=True):
+        folder = Path(case["kept"]["ckp"]).with_suffix("")
+        assert folder.parent == saves and Path(case["kept"]["ckp"]).read_bytes() == b"ckp"
+        assert sorted(p.name for p in (folder / "click").iterdir()) == ["Project.ini", "Scr1.tmp"]
+        text = f"placed {title} ({folder.name}.ckp)"
+        assert case["kept"]["stored"] == {"Scr1.tmp": {"text": text}}
+        assert case["kept"]["csv"] == [str(folder / "csv" / "main.csv")]
+        assert case["kept"]["main"] and "X001" in case["kept"]["main"][0]
+        assert case["kept"]["legacy"] == [] and case["kept"]["error"] is None
+    # Saved before each Delete; each later check names the project as last saved
+    first = ["Syntax Check", "Math...", "Syntax Check", "Save Project As", "Delete"]
+    assert fake.commands[:5] == first
+    assert fake.commands.count("Save Project As") == 3
+    assert accepted[1]["syntax_check"]["project"] == "case01"
+    assert result["baseline_syntax_check"]["project"] == "NewProject4"
+    # Decoded once CLICK had ended, which the runner ended rather than closed
+    assert fake.terminated and not fake.exited_cleanly
+    assert list(result["timings"])[-4:] == ["try", "disconnect", "close", "decode"]
+    assert [p.parent.parent.name for p in stored.read] == ["case01", "case03", "case04"]
+
+
+@pytest.mark.skipif(not cr._reads_stored_tags(), reason="laddercodec 0.4.0 has no stored-tag walk")
+def test_read_stored_reads_the_tags_click_stored():
+    # Scr1.tmp of live run b/live-b2's case05 (copy 005 to DS1), as CLICK saved it
+    scr = Path(__file__).parent / "fixtures" / "click_runner" / "copy_5_ds1_Scr1.tmp"
+    assert cr._read_stored(scr) == {
+        "program": "Main Program",
+        "prog_idx": 1,
+        "rungs": [
+            [
+                {
+                    "row": 0,
+                    "column": 31,
+                    "class": "Copy",
+                    "type": 10017,
+                    "tags": {"0x6074": "5", "0x6076": "DS1", "0x1201": "", "0x0000": ""},
+                    "indexed": {},
+                }
+            ],
+            [],
+        ],
+        "error": None,
+    }
+
+
+def test_try_keep_refuses_a_laddercodec_without_the_walk(tmp_path, setup, monkeypatch):
+    _, exe = setup
+    monkeypatch.setattr(cr, "_reads_stored_tags", lambda: False)
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES}, "--keep")
+    assert code == cr.EXIT_REFUSED
+    assert result["reason"] == (
+        "try --keep needs laddercodec newer than 0.4.0 (_walk_until_framing_error)"
+    )
+    assert fake.pid is None
+
+
+def test_try_without_keep_saves_nothing(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES[:1]}, read_stored=Stored())
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["keep"] is False and result["cases"][0]["kept"] is None
+    assert not fake.saved and not (tmp_path / "out" / "saves").exists()
+    assert "decode" not in result["timings"]
+
+
+def test_a_kept_case_that_cannot_be_read_fails_once_all_are_read(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_try(
+        fake, tmp_path, exe, {"cases": TRY_CASES}, "--keep", read_stored=Stored(fails=("case03",))
+    )
+    assert code == cr.EXIT_ABORTED
+    assert result["status"] == "aborted" and result["step"] == "decode"
+    assert result["reason"] == (
+        "decoding the kept cases failed: RuntimeError: the copies of case03 could not be read"
+    )
+    by_name = {Path(c["kept"]["ckp"]).stem: c["kept"] for c in result["cases"] if c["kept"]}
+    assert by_name["case03"]["error"] == "ValueError: Not an SC-SCR file"
+    assert by_name["case04"]["error"] is None and by_name["case04"]["stored"]
+
+
+def test_the_cases_kept_before_an_abort_are_decoded(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, delete_works=False)
+    out = tmp_path / "out"
+    code, result = run_try(
+        fake, tmp_path, exe, {"cases": TRY_CASES}, "--keep", read_stored=Stored()
+    )
+    assert_aborted(fake, out, code, result, "Delete did not leave the main program empty")
+    assert result["step"] == "try"
+    (case,) = result["cases"]
+    assert case["kept"]["stored"] == {"Scr1.tmp": {"text": "placed Math (case01.ckp)"}}
+    assert case["kept"]["error"] is None
 
 
 def test_a_box_that_closes_the_dialog_is_an_acceptance(tmp_path, setup):
@@ -2613,6 +3065,275 @@ def test_rows_by_address_keeps_each_row_as_stored():
 
 
 # ---------------------------------------------------------------------------
+# reopen: Project.ini over save and open
+# ---------------------------------------------------------------------------
+
+
+def run_reopen(fake: FakeClick, tmp_path: Path, exe: Path, *args: str) -> tuple[int, dict]:
+    out = tmp_path / "out"
+    argv = ["reopen", "--out", str(out), "--click-exe", str(exe)]
+    argv += ["--timeout", "5", "--paste-timeout", "5", *args]
+    code = cr.main(argv, desktop=fake, prepare=Prepare(), stderr=io.StringIO())
+    result_file = out / "result.json"
+    return code, json.loads(result_file.read_text(encoding="utf-8")) if result_file.exists() else {}
+
+
+def test_reopen_copies_each_point(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    # Another CLICK's temp folder, which the runner reads and writes nothing in
+    other = fake.temp_root / "CLICK (00ABCDEF)"
+    other.mkdir()
+    theirs = {"Project.ini": b"[Project]\r\nmine\r\n", "Scr1.tmp": b"mine", "SC_.mdb": b"mine"}
+    for name, data in theirs.items():
+        (other / name).write_bytes(data)
+    code, result = run_reopen(fake, tmp_path, exe, "--ini-add", r"[sec20]\nkey1=Probe")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert {p.name: p.read_bytes() for p in other.iterdir()} == theirs
+    out = tmp_path / "out"
+    copied = [p for p in out.rglob("*") if p.is_file()]
+    assert copied and all(b"mine" not in p.read_bytes() for p in copied)
+    looks = "System Configuration"
+    assert fake.commands == [
+        "Disconnect",
+        *("Save Project As", looks) * 2,
+        *("Open Project", looks),
+        *("Save Project As", looks),
+    ]
+    assert fake.opened == [(out / "second.ckp").resolve()]
+    points = result["points"]
+    assert list(points) == ["first", "second", "opened", "third"]
+    # Live run c2/live-r1 showed the name from second on, the case of section and key aside
+    assert [points[p]["plc_name"] for p in points] == ["", "Probe", "Probe", "Probe"]
+    assert fake.pressed.count("Cancel") == 4
+    assert points["first"]["project_ini"] == "[Project]\r\n"
+    added = "[sec20]\r\nkey1=Probe\r\n"
+    assert result["ini_added"] == added
+    for point in ("second", "opened", "third"):
+        assert points[point]["project_ini"] == "[Project]\r\n" + added
+        assert (
+            out / point / "click" / "Project.ini"
+        ).read_bytes() == b"[Project]\r\n" + added.encode()
+    assert points["opened"]["title"].endswith("- second.ckp - [Main Program]")
+    assert points["third"]["title"].endswith("- third.ckp - [Main Program]")
+    assert points["third"]["status_bar"][8] == "Offline"
+    assert not fake.connected and fake.terminated
+    assert list(result["timings"])[-6:] == [
+        "first_save",
+        "ini",
+        "second_save",
+        "open",
+        "third_save",
+        "close",
+    ]
+
+
+def test_reopen_waits_for_the_open_to_begin(tmp_path, setup):
+    # Open closes the dialog and leaves second.ckp's title, as Save As left it, before the
+    # open begins: the title and the Scr*.tmp files alone would pass on the old files
+    _, exe = setup
+    fake = FakeClick(tmp_path, open_gap=8)
+    code, result = run_reopen(fake, tmp_path, exe)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.opened == [(tmp_path / "out" / "second.ckp").resolve()]
+    assert fake.commands[-2:] == ["Save Project As", "System Configuration"]
+    assert result["points"]["third"]["title"].endswith("- third.ckp - [Main Program]")
+
+
+@pytest.mark.parametrize(
+    ("lines", "name"),
+    [
+        # What System Configuration showed in live probe C2 (c2/live-p3 to live-p12)
+        ("[Sec20]\nKey1=UpperCase", "UpperCase"),
+        ("[sec20]\nkey1=LowerCase", "LowerCase"),
+        ("[SEC20]\nKEY1=AllCaps", "AllCaps"),
+        ("[Sec20]\nkey1=MixedKey", "MixedKey"),
+        ("[sec20]\nKey1=MixedSection", "MixedSection"),
+        ("[Sec20]\nKey1=Upper\n[sec20]\nkey1=Lower", "Upper"),
+        ("[sec20]\nkey1=Lower\n[Sec20]\nKey1=Upper", "Lower"),
+        ("[Sec20]\nKey1=FirstKey\nKEY1=SecondKey", "FirstKey"),
+        ("[PLCName]\nPLCName=Legacy", ""),
+        ("[PLCName]\nPLCName=Legacy\n[Sec20]\nKey1=Placeholder", "Placeholder"),
+    ],
+)
+def test_reopen_reads_the_plc_name_system_configuration_shows(tmp_path, setup, lines, name):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_reopen(fake, tmp_path, exe, "--ini-add", lines)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["points"]["opened"]["plc_name"] == name
+    assert result["points"]["third"]["plc_name"] == name
+
+
+def test_reopen_closes_system_configurations_notice_without_ok(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, system_config_notice=True)
+    code, result = run_reopen(fake, tmp_path, exe, "--ini-add", r"[Sec20]\nKey1=Probe")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.events.count("notice_close") == 1
+    assert "OK" not in fake.pressed[fake.pressed.index("&Yes") + 1 :]
+    assert result["points"]["third"]["plc_name"] == "Probe"
+
+
+def test_reopen_refuses_lines_that_are_not_ascii(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_reopen(fake, tmp_path, exe, "--ini-add", "[Sec20]\\nKey1=caf\xe9")
+    assert code == cr.EXIT_REFUSED and "--ini-add is not ASCII" in result["reason"]
+    assert fake.pid is None
+
+
+# ---------------------------------------------------------------------------
+# read-data: the PLC's data values into a file
+# ---------------------------------------------------------------------------
+
+
+def run_command(
+    fake: FakeClick, tmp_path: Path, exe: Path, command: str, *args: str, **run_args: Any
+) -> tuple[int, dict]:
+    out = tmp_path / "out"
+    argv = [command, "--out", str(out), "--click-exe", str(exe)]
+    argv += ["--timeout", "5", "--paste-timeout", "5", *args]
+    code = cr.main(argv, desktop=fake, prepare=Prepare(), stderr=io.StringIO(), **run_args)
+    result_file = out / "result.json"
+    return code, json.loads(result_file.read_text(encoding="utf-8")) if result_file.exists() else {}
+
+
+def test_read_data_saves_every_memory_type(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_command(fake, tmp_path, exe, "read-data")
+    assert code == cr.EXIT_OK, result["reason"]
+    dump = (tmp_path / "out" / "plcdata.csv").resolve()
+    assert result["files"]["plc_data"] == str(dump)
+    # All checked every memory type before Read, not only the four checked as it opened
+    banks = ("X", "Y", "C", "T", "CT", "DS", "DD", "DH", "DF", "TD", "CTD", "TXT")
+    assert dump.read_bytes().decode("ascii") == "".join(
+        f"<{b}=START>\r\n</{b}=END>\r\n" for b in banks
+    )
+    assert result["reading_seen"] is True
+    assert fake.commands == ["Read Data from PLC", "Disconnect"]
+    at = fake.pressed.index("All")
+    assert fake.pressed[at : at + 4] == ["All", "Read", "&Save", "Close"]
+    assert not fake.connected and fake.terminated
+
+
+def test_read_data_sets_the_path_again_when_the_save_dialog_empties_it(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, save_clears=True)
+    code, result = run_command(fake, tmp_path, exe, "read-data")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert (tmp_path / "out" / "plcdata.csv").is_file()
+    assert not fake.last_folder.exists()
+    log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
+    assert "the File name edit reads ''; setting the path again" in log
+    assert not (tmp_path / "out" / "record").exists()
+
+
+def test_read_data_that_writes_no_file_aborts_once_the_reading_ends(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, writes_data=False)
+    code, result = run_command(fake, tmp_path, exe, "read-data")
+    assert code == cr.EXIT_ABORTED
+    assert result["reason"] == "CLICK read the PLC's data but wrote no plcdata.csv"
+    assert result["step"] == "read_data"
+    assert fake.terminated
+
+
+# ---------------------------------------------------------------------------
+# picker: CLICK's Address Picker and what it writes into SC_.mdb
+# ---------------------------------------------------------------------------
+
+
+class PickerRows(Rows):
+    """Rows, reading a new project's SC_.mdb (``b"mdb"`` in the fake) as no rows."""
+
+    def __call__(self, mdb: Path) -> dict[str, dict]:
+        if mdb.read_bytes() == b"mdb":
+            self.read.append(mdb)
+            return {}
+        return super().__call__(mdb)
+
+
+def name_keys(address: str, name: str) -> list[str]:
+    return [f"--key=find:{address}", "--key=RIGHT", "--key=RIGHT", "--key=F2"] + [
+        f"--key=chars:{name}",
+        "--key=RETURN",
+    ]
+
+
+def test_picker_ok_writes_the_names_taken_and_the_system_rows(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    rows = PickerRows()
+    keys = [*name_keys("X001", "Test"), *name_keys("DS1", "Max")]
+    code, result = run_command(fake, tmp_path, exe, "picker", *keys, "--ok", read_rows=rows)
+    assert code == cr.EXIT_OK, result["reason"]
+    out = tmp_path / "out" / "mdb"
+    assert rows.read == [out / "before.mdb", out / "after.mdb"]
+    copies = result["mdb_copies"]
+    assert copies["before"]["rows"] == {}
+    # The reserved word was typed but not taken
+    assert copies["after"]["rows"] == {**SYSTEM_ROWS, "X001": {"Nickname": "Test"}}
+    assert fake.commands == ["Address Picker", "Disconnect"]
+    typed = [k for k in result["keys"] if k["key"].startswith("chars:")]
+    assert [(k["editor"], k["editor_shown"]) for k in typed] == [("Test", True), ("Max", True)]
+    enters = [k for k in result["keys"] if k["key"] == "RETURN"]
+    assert [k["editor_shown"] for k in enters] == [False, False]
+    # Each key went to the grid, or to the editor once it showed
+    assert [cls for cls, _ in fake.keys] == ["TStringGrid"] * 3 + ["TEdit"] * 2 + [
+        "TStringGrid"
+    ] * 3 + ["TEdit"] * 2
+    timings = list(result["timings"])
+    assert timings[-6:] == ["before", "picker", "after", "disconnect", "close", "read"]
+
+
+def test_picker_closed_with_nothing_typed_writes_nothing(tmp_path, setup):
+    # As live runs e3 and e4 closed it (F2 on X001; Right, Right, F2), by WM_CLOSE
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    rows = PickerRows()
+    code, result = run_command(
+        fake, tmp_path, exe, "picker", "--key", "find:X001", "--key", "F2", read_rows=rows
+    )
+    assert code == cr.EXIT_OK, result["reason"]
+    copies = result["mdb_copies"]
+    assert copies["before"]["rows"] == copies["after"]["rows"] == {}
+    assert "picker_close" in fake.events
+
+
+def test_a_picker_key_that_opens_a_box_stops_the_run(tmp_path, setup):
+    # A sent key that opens a modal box is not answered while the box shows
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    real = fake.send_key
+
+    def send_key(hwnd: int, vk: int) -> bool:
+        if vk != 0x0D:
+            return real(hwnd, vk)
+        picker = next(w for w in fake.wins.values() if w.cls == "TfrmTagDB")
+        box = fake._window("#32770", "CLICK Programming Software", picker.hwnd)
+        fake._control(box, "Button", "OK", 2)
+        picker.enabled = False
+        return False
+
+    fake.send_key = send_key
+    code, result = run_command(fake, tmp_path, exe, "picker", *name_keys("X001", "Test"))
+    assert_aborted(fake, tmp_path / "out", code, result, "CLICK did not answer the key 'RETURN'")
+    assert result["step"] == "picker"
+    assert "OK" not in fake.pressed[fake.pressed.index("Find") :]
+
+
+def test_picker_refuses_a_key_it_does_not_know(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_command(fake, tmp_path, exe, "picker", "--key", "F9")
+    assert code == cr.EXIT_REFUSED
+    assert result["reason"] == "--key 'F9' is not a key the runner knows"
+    assert fake.pid is None
+
+
+# ---------------------------------------------------------------------------
 # The command allowlist
 # ---------------------------------------------------------------------------
 
@@ -2624,6 +3345,7 @@ def test_rows_by_address_keeps_each_row_as_stored():
         (cd.WRITE_PROJECT_INTO_PLC, "Write Project into PLC"),
         (32853, "Read Project from PLC"),
         (32854, "Write Project into PLC"),
+        (32852, "Write Data into PLC"),
         (12345, "not on the runner's allowlist"),
     ],
 )
@@ -2644,20 +3366,25 @@ def test_commands_outside_the_allowlist_are_refused(
         target.command(1, command_id)
 
 
-def test_the_allowlist_is_the_ten_commands():
+def test_the_allowlist_is_the_fourteen_commands():
     assert cd.ALLOWED_COMMANDS == {
         0xE125: "Paste",
         32777: "Delete",
         32846: "Syntax Check",
+        32772: "Open Project",
         32898: "Save Project",
         32899: "Save Project As",
         32850: "Disconnect",
         32900: "Import Nickname",
+        32851: "Read Data from PLC",
+        32834: "Address Picker",
+        32827: "System Configuration",
         50010: "Out...",
         50030: "Math...",
         50040: "Copy...",
     }
-    assert 32853 not in cd.ALLOWED_COMMANDS and 32854 not in cd.ALLOWED_COMMANDS
+    # Nothing that reads a project from the PLC or writes anything into it
+    assert not {32852, 32853, 32854} & set(cd.ALLOWED_COMMANDS)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="job objects are Windows'")

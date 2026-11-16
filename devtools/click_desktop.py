@@ -5,8 +5,9 @@ The runner drives CLICK only through ``Desktop``, so its logic is tested against
 Win32 calls with no decisions of its own.
 
 Every ``WM_COMMAND`` goes through ``Desktop.command``, which refuses any command outside
-``ALLOWED_COMMANDS``. Read Project and Write Project are not in it, so the runner cannot
-read from or write to the PLC.
+``ALLOWED_COMMANDS``. Read Project, Write Project and Write Data are not in it, so the
+runner cannot read a project from the PLC or write anything into it; Read Data from PLC,
+which only reads the PLC's data values, is.
 """
 
 from __future__ import annotations
@@ -24,12 +25,25 @@ from pathlib import Path
 PASTE = 0xE125  # MFC's ID_EDIT_PASTE
 DELETE = 32777  # Edit > Delete: the instruction under the ladder's cursor
 SYNTAX_CHECK = 32846
+OPEN_PROJECT = 32772  # File > Open Project ("Open Project" in the string table, 2026-11-16)
 SAVE_PROJECT = 32898
 SAVE_PROJECT_AS = 32899
 DISCONNECT = 32850
 # File > Import > Nickname ("Import to Address Picker" in the string table). It opens an Open
 # dialog with three import modes and writes the rows into SC_.mdb (live probe of 2026-11-15)
 IMPORT_NICKNAME = 32900
+# Program > Address Picker (Ctrl+T; "Address Picker" in the string table): CLICK's editor of
+# nicknames and address comments (probe of 2026-11-16)
+ADDRESS_PICKER = 32834
+# System Configuration ("System Configuration" in the string table): the PLC's modules and the
+# project's PLC Name, which it shows from Project.ini's [Sec20] Key1. Its OK saves setup into
+# the project and is never pressed; Cancel closes it (live probe C2, 2026-11-16)
+SYSTEM_CONFIGURATION = 32827
+# PLC > Read Data from PLC: it reads the PLC's data values and saves them to a file. Write
+# Data into PLC, beside it, writes a file's values into the PLC and is never sent (string
+# table, probe of 2026-11-16)
+READ_DATA_FROM_PLC = 32851
+WRITE_DATA_INTO_PLC = 32852
 READ_PROJECT_FROM_PLC = 32853
 WRITE_PROJECT_INTO_PLC = 32854
 # The ribbon's Instruction tab, which opens an instruction's dialog at the ladder's cursor.
@@ -44,16 +58,21 @@ ALLOWED_COMMANDS = {
     PASTE: "Paste",
     DELETE: "Delete",
     SYNTAX_CHECK: "Syntax Check",
+    OPEN_PROJECT: "Open Project",
     SAVE_PROJECT: "Save Project",
     SAVE_PROJECT_AS: "Save Project As",
     DISCONNECT: "Disconnect",
     IMPORT_NICKNAME: "Import Nickname",
+    READ_DATA_FROM_PLC: "Read Data from PLC",
+    ADDRESS_PICKER: "Address Picker",
+    SYSTEM_CONFIGURATION: "System Configuration",
     OUT_DIALOG: "Out...",
     MATH_DIALOG: "Math...",
     COPY_DIALOG: "Copy...",
 }
 
 _NEVER = {
+    WRITE_DATA_INTO_PLC: "Write Data into PLC",
     READ_PROJECT_FROM_PLC: "Read Project from PLC",
     WRITE_PROJECT_INTO_PLC: "Write Project into PLC",
 }
@@ -183,8 +202,33 @@ class Desktop(ABC):
         """Post BM_CLICK to the button *hwnd*."""
 
     @abstractmethod
+    def send_press(self, hwnd: int) -> bool:
+        """Send BM_CLICK to the button *hwnd*; whether it was answered within 5 s.
+
+        Sent, not posted, so the click has been handled when this returns True. False when
+        it was not answered in time, as when the click opens a modal box: the box is then
+        still open.
+        """
+
+    @abstractmethod
     def close(self, hwnd: int) -> None:
         """Post WM_CLOSE to *hwnd*."""
+
+    @abstractmethod
+    def send_key(self, hwnd: int, vk: int) -> bool:
+        """Send WM_KEYDOWN then WM_KEYUP for the virtual key *vk* to *hwnd*; whether both
+        were answered, each within 5 s.
+
+        A message to that one window, as WM_SETTEXT is: no global input, so nothing reaches
+        another window, whatever has the focus. Sent, not posted, so the key has been handled
+        when this returns True. False when a message was not answered in time, as when the
+        key opens a modal box (the box is then still open); no WM_KEYUP follows a WM_KEYDOWN
+        that was not answered.
+        """
+
+    @abstractmethod
+    def send_chars(self, hwnd: int, text: str) -> bool:
+        """Send a WM_CHAR to *hwnd* for each character of *text*; whether all were answered."""
 
     @abstractmethod
     def idle(self, hwnd: int, timeout: float) -> bool:
@@ -215,6 +259,9 @@ WM_SETTEXT = 0x000C
 WM_GETTEXT = 0x000D
 WM_GETTEXTLENGTH = 0x000E
 WM_CLOSE = 0x0010
+WM_KEYDOWN = 0x0100
+WM_KEYUP = 0x0101
+WM_CHAR = 0x0102
 WM_COMMAND = 0x0111
 BM_GETCHECK = 0x00F0
 BM_CLICK = 0x00F5
@@ -700,8 +747,20 @@ class Win32Desktop(Desktop):
     def press(self, hwnd: int) -> None:
         self._post(hwnd, BM_CLICK)
 
+    def send_press(self, hwnd: int) -> bool:
+        return self._send(hwnd, BM_CLICK) is not None
+
     def close(self, hwnd: int) -> None:
         self._post(hwnd, WM_CLOSE)
+
+    def send_key(self, hwnd: int, vk: int) -> bool:
+        scan = self._user32.MapVirtualKeyW(vk, 0) & 0xFF  # MAPVK_VK_TO_VSC
+        if self._send(hwnd, WM_KEYDOWN, vk, 1 | scan << 16) is None:
+            return False
+        return self._send(hwnd, WM_KEYUP, vk, 1 | scan << 16 | 1 << 30 | 1 << 31) is not None
+
+    def send_chars(self, hwnd: int, text: str) -> bool:
+        return all(self._send(hwnd, WM_CHAR, ord(char), 1) is not None for char in text)
 
     def idle(self, hwnd: int, timeout: float) -> bool:
         result = _ULONG_PTR()

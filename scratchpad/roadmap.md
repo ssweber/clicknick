@@ -22,7 +22,7 @@ How to use it:
 1. Housekeeping (nothing)
 2. ssort out, tests into CI (nothing)
 3. The bob plugin (done)
-4. CLICK runner (built: `devtools/click_runner.py`; next its early jobs), and the user checks it or a mock can automate (nothing)
+4. CLICK runner (built: `devtools/click_runner.py`; early jobs run 2026-11-16, open questions left), and the user checks it or a mock can automate (nothing)
 5. ConnectionSession owns the window and project (done)
 6. Split ClickNickApp (done)
 7. Onto pyclickplc's readers (done)
@@ -87,6 +87,42 @@ posted commands only, no keystrokes or pixels, and no command that reads the pro
 one into it can be sent. The PLC login is `admin` (prefilled) / `123click`, deliberately not secret. Next: the
 early jobs below, and subroutines (pasting into one needs its dialogs recorded first, `record`).
 
+**Status (2026-11-16):** the early jobs ran live (results and run dirs in the BOB job folder
+`jobs/runner-jobs/`, RESULTS-A.md to RESULTS-F.md). New modes: `try --keep` (save and decode each accepted
+case), `reopen` (save, edit the runner's own Project.ini, save, open, save), `read-data` (PLC > Read Data from
+PLC, 32851, into `DIR/plcdata.csv`) and `picker` (Program > Address Picker, 32834, with keys sent to its grid
+and editor by SendMessage, SC_.mdb copied before and after). Open Project (32772) and System Configuration
+(32827; `reopen` reads its PLC Name at each point and closes it by Cancel) are on the allowlist too; Write
+Data into PLC (32852) is on its never list. Sam approved Read Data from PLC, editing the runner's own Project.ini,
+the one Address Picker edit (X001 `Test`, then OK) and writing pyclickplc's test data values into the
+conformance PLC by pyclickplc's Modbus client (TXT961..TXT993, DF251..DF258, read first and written back; the
+runner itself writes nothing into the PLC), and opening System Configuration without OK. What the jobs answered:
+- Constants (B): CLICK stores a Math real and a Copy source in its own printed form (`1.50` as `1.5`, `1e3` as
+  `1000.0`, `0ffh` as `0FFh`), and a hex Math takes a constant without `h` as hex; laddercodec keeps the typed
+  text or refuses those. Rule table row A6: the 15 SC points tried between laddercodec's writable ones are
+  refused (OBJ-003), SC50 and SC162 accepted.
+- Project.ini (C): CLICK carries added sections byte for byte, in either case, through Save As and Open. System
+  Configuration's PLC Name shows `[Sec20] Key1=` with section and key in each case tried (`[sec20]`, `[SEC20]`,
+  `key1`, `KEY1` and mixes); of two such sections or keys, the first in the file; `[PLCName] PLCName=` alone shows
+  nothing (pyclickplc reads it when there is no `[Sec20]`).
+- Read Data (D): CLICK writes a space, 0x01, 0x7F and 0xFF in TXT as `$20`, `$1`, `$7F`, `$FF`, as pyclickplc
+  does, but the other printable punctuation tried plain (pyclickplc refuses it) and a comma raw, which splits
+  the row. DF 1.8e30 and 1.5e30 print with other digits than pyclickplc's. D2 pinned the switch from 20 to 19
+  digits near 1e30 between the neighbouring floats `0x7154FFFF` and `0x71550000`, and found it is no one limit
+  on the first 20 digits (1.0548e35 keeps 20, 1.0546e25 keeps 19). Run d8's file went into the Save dialog's
+  last folder: the dialog had emptied the path set in it, which the runner now sets again until it holds. A
+  connect after an aborted connected run timed out (PTC-013) each time.
+- System nicknames (E): a new project's SC_.mdb holds 3 rows until the Address Picker is closed by OK; OK
+  writes 135 SC and 222 SD rows (SD19 to SD26 included), with or without an edit. Closing it by its window's
+  close with nothing typed left SC_.mdb unchanged (e3, e4). Cancel, and a close after typing, were not tried.
+- Reserved words (F): the Address Picker and the import refuse all 12 words tried (`MAX`, `Max`, `max`, `MIN`,
+  `ABS`, `abs`, `RAND`, `MDN`, `AVG`, `LOG`, `Log`, `log`) and `A,B`, and take `MAXIMUM` and `Max_Speed`.
+
+Left: the rule behind CLICK's DF digits (D2 says where it switches near 1e30, not why), Cancel in the Address
+Picker, and job G (one Write Data into PLC of pyclickplc's TXT-only file, by a script outside the repo): its
+dialogs are probed (the file sets the memory types; Cancel in its Open dialog closes the form), the write did
+not run.
+
 **Where it runs (Sam, 2026-11-15, replacing the plan's Sandbox-first rule):** on the CLICK installed on Sam's
 desktop, while he is away, as long as it is deterministic. Windows Sandbox is the fallback, and is needed only
 if the desktop cannot work.
@@ -126,8 +162,8 @@ Early jobs once it works: what CLICK writes, and in what order, on Open, New and
 what CLICK turns constants such as `005`, `+5` and `0ffh` into (for laddercodec); the three small checks in the
 plan's "Only Sam can do these" (leading zeros and spaces in an address, a bare space as a Text initial value,
 whether CLICK strips spaces from nicknames and comments). The two answers that bear on pyclickplc's reader go
-to Sam. 4d answers the spaces in an address, the bare space and the edge spaces for CLICK's CSV import only;
-leading zeros, and a value typed in CLICK, are still open.
+to Sam. 4d answers the spaces in an address, the bare space, the edge spaces and leading zeros for CLICK's CSV
+import only; a value typed in CLICK is still open (Q7). Open, New and Save As (Q2) were not run.
 
 ### 4b. User checks a mock can automate today (nothing; wording goes to Sam)
 
@@ -157,9 +193,14 @@ A10, B1 to B6 and B8 of pyrung's and laddercodec's rule table, with controls tha
 apart (for example, X001..X016 packs into DH but not into DS). A run of 66 cases takes about 4.5 minutes:
 CLICK ignores a Syntax Check posted soon after the last one, and nothing it shows says when it would take one,
 so most checks are posted again after 2 s. Left: the Receive dialog (B7), section D, and the rows only Sam can
-answer. E1 is not in a new project's SC_.mdb; CLICK's `PLCType.ini` names SD21 `_RTC_Month`.
+answer. Section C is not wanted (Sam, 2026-11-16: "those all seem correct"). E1: a new project's SC_.mdb holds
+SD19 to SD26 (`_RTC_Month` on SD21) only once the Address Picker has been closed by OK (job E, item 4).
 
-### 4d. Importing a nickname CSV into CLICK (done; Read Data and Project.ini left, Sam's call)
+`try --keep` saves the project after each accepted case and decodes the save, so what CLICK stores for a
+constant can be read (job B, item 4: Math in decimal and hex, Copy into DS, DH, DF and TXT). Row A6's gaps were
+run as plain `try` cases.
+
+### 4d. Importing a nickname CSV into CLICK (done)
 
 `click_runner.py import CSV --out DIR [--each-row]` imports a nickname CSV through CLICK's File > Import >
 Nickname (32900), with the mode Delete Existing, so that what CLICK stores comes from that file alone. It keeps
@@ -182,10 +223,16 @@ CLICK's answer ("Completed!", or the Import Error List's text), copies SC_.mdb a
   edge space or tab is refused (`" 5 "`, `"<tab>5"`, `" 1.5"`).
 - A bare space before or after an address is dropped; a quoted address with an edge space is refused.
 
-Left (Sam's call): a Read Data dump of TXT and DF from the PLC (it writes nothing to the PLC, but reads data
-from it), and the case of Project.ini's section names. The open check "(4b) CSV TXT quoting import" is
-answered by these runs and deleted; that pyclickplc's writer writes a Text value of a tab, or with an edge
-space, bare, which CLICK's import stores trimmed, goes to pyclickplc
+Runs of 2026-11-16 (job A): INT refuses `1_000`, `1e3` and `.5`; FLOAT refuses `1_000` and takes `1e3` (stored
+`1000`) and `.5` (stored `0.5`); `+5` is stored `5`; HEX refuses `0x1F` and stores `1F` as `001F`. A number
+with U+00A0 at an edge is refused, and so is `٥`. `５` and a U+3000 edge are taken (as `5` and a space) only
+from UTF-8 with a BOM. `DS030`, `DS0030` and `X0001`, bare or quoted, import under the plain address. The
+import refuses the reserved words tried (CLICK's `[NGWORD]`) in each letter case tried, as the Address Picker does
+(job F, item 4).
+
+The Read Data dump and Project.ini's section case, left here before, ran as jobs D and C (item 4). The open
+check "(4b) CSV TXT quoting import" is answered by these runs and deleted; that pyclickplc's writer writes a
+Text value of a tab, or with an edge space, bare, which CLICK's import stores trimmed, goes to pyclickplc
 (`test_a_txt_value_with_a_tab_or_edge_space_is_written_bare`).
 
 ## 5. ConnectionSession owns the window and project (done)
@@ -300,7 +347,8 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
   changes? (How soon kept edits are checked against the new project's database.) Sam: SC_.mdb changes every
   time you edit in CLICK's Address Editor.
 - Q6: after deleting all rungs, empty rungs are on screen. Is one of them selected for Ctrl+V, or must the step
-  wording say to click the first empty rung?
+  wording say to click the first empty rung? Sam (2026-11-16): "there are always empty rungs". Not to be
+  automated.
 - Q7: can SC_.mdb hold a nickname or address comment with a space at either end, typed in CLICK? (CLICK's own
   CSV import put none there, 4d.) ClickNick trims one on load as an unsaved edit ("Trim spaces"), so on a yes
   the next Sync writes the trimmed value into CLICK. The recorded `tests/SC_.mdb` and `NicknameExport.csv` hold

@@ -2,8 +2,11 @@
 
     uv run python devtools/click_runner.py paste CSV --out DIR [--record]
     uv run python devtools/click_runner.py record --out DIR
-    uv run python devtools/click_runner.py try CASES.json --out DIR [--record]
+    uv run python devtools/click_runner.py try CASES.json --out DIR [--keep] [--record]
     uv run python devtools/click_runner.py import CSV --out DIR [--each-row] [--record]
+    uv run python devtools/click_runner.py reopen --out DIR [--ini-add LINES] [--record]
+    uv run python devtools/click_runner.py read-data --out DIR [--record]
+    uv run python devtools/click_runner.py picker --out DIR [--key KEY ...] [--ok] [--record]
 
 The runner starts its own CLICK, connects to the one PLC on the LAN (so the new project
 takes that PLC's hardware) and answers "Don't read" to reading the PLC's project. ``paste``
@@ -34,6 +37,14 @@ Syntax Check must read as the empty program's did. All cases run in one CLICK, w
 then disconnected and ended, as ``record`` ends it. result.json holds one entry per case
 under ``cases``, in the order tried, and an abort keeps the entries done before it.
 
+``try --keep`` also saves the project before each Delete, so what CLICK stores for an
+accepted instruction can be read: File > Save As ``DIR/saves/caseNN.ckp`` (NN the case's
+number), then CLICK's Scr*.tmp files and Project.ini are copied into
+``DIR/saves/caseNN/click/``. Once CLICK has ended (after an abort too), each copy is
+decoded into ``DIR/saves/caseNN/csv/``, and the tags each instruction holds are read as
+stored. Each save renames the project, so a Syntax Check is compared with the empty
+program's without the project's name.
+
 ``import`` imports a nickname CSV through CLICK's own File > Import > Nickname (32900) and
 reads what CLICK stored. With ``--each-row`` it then imports each row on its own, in a file
 of the CSV's header and that row, byte for byte (``DIR/rows/``; a row is one line, as CLICK
@@ -47,6 +58,38 @@ CLICK's SC_.mdb unchanged for ``IMPORT_SETTLE``, and copies SC_.mdb into ``DIR/m
 Once CLICK has ended (disconnected and ended, as ``try`` ends it), each copy is read through
 Access ODBC, so a NULL stays None and a text keeps every character. result.json holds one
 entry per import under ``imports`` (``Run.import_one``), after an abort too.
+
+``reopen`` asks what CLICK does with a project's Project.ini. It disconnects, saves the new
+project as ``DIR/first.ckp``, adds ``--ini-add``'s ASCII lines to the end of the Project.ini
+in CLICK's temp folder (the runner's own CLICK's), saves as ``DIR/second.ckp``, opens
+``second.ckp`` by File > Open Project (32772; CLICK shows "Project Reading" meanwhile) and
+saves it as ``DIR/third.ckp``. At each point (``first``, ``second``, ``opened``, ``third``)
+CLICK's files are copied into ``DIR/<point>/click/``, and result.json keeps the main
+window's title, the status bar, Project.ini's text and the PLC Name that System
+Configuration (32827) shows (``plc_name``) under ``points``. System Configuration is closed
+by Cancel, never by OK (OK saves setup into the project); the notice it shows over itself the
+first time is closed by WM_CLOSE.
+
+``read-data`` saves the PLC's data values through PLC > Read Data from PLC (32851): it
+presses All, waits for every memory type checked, presses Read, gives CLICK's Save dialog
+``DIR/plcdata.csv`` and waits for CLICK's reading window to go and the file to keep its
+size on two polls (``files.plc_data``; ``reading_seen`` says the reading window showed). A
+reading whose window has shown and gone, with the form back and no file for
+``IMPORT_SETTLE``, stops the run; one that never shows the window waits out
+``--paste-timeout``. It reads; it never writes into the PLC.
+
+``picker`` opens Program > Address Picker (32834), CLICK's address editor, between two
+copies of SC_.mdb (``DIR/mdb/before.mdb`` and ``after.mdb``, each taken once SC_.mdb is
+unchanged for ``IMPORT_SETTLE``; ``mdb_copies``). Each ``--key`` is sent (not posted) to
+the grid or, once it shows, to CLICK's in-place editor: a key by name (WM_KEYDOWN and
+WM_KEYUP), ``chars:TEXT`` (WM_CHAR), ``text:TEXT`` (WM_SETTEXT) or ``find:TEXT`` (the Find
+box's text, then Find, its BM_CLICK sent too). Each has been handled when it returns, so the
+next key goes to the row it left. A key CLICK does not answer within 5 s, as one that opens
+a box over the picker would, stops the run (the abort dump shows the box), and so does a
+window over the picker after a key. After each key result.json keeps the editor's text,
+whether it shows and the hints CLICK shows under it (``keys``). ``--ok`` closes the picker by OK,
+otherwise WM_CLOSE closes it. The copies are read through Access ODBC once CLICK has ended.
+``read-data`` and ``picker`` dump CLICK's windows into ``DIR/record/`` only with ``--record``.
 
 Every Syntax Check (``paste``'s too) empties Output first, so a result that reads as the one
 before is still seen. CLICK ignores a Syntax Check posted soon after the last one's result
@@ -112,6 +155,7 @@ no password shows no Login dialog.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import re
@@ -126,15 +170,19 @@ from pathlib import Path
 from typing import Any
 
 from click_desktop import (
+    ADDRESS_PICKER,
     COPY_DIALOG,
     DELETE,
     DISCONNECT,
     IMPORT_NICKNAME,
     MATH_DIALOG,
+    OPEN_PROJECT,
     OUT_DIALOG,
     PASTE,
+    READ_DATA_FROM_PLC,
     SAVE_PROJECT_AS,
     SYNTAX_CHECK,
+    SYSTEM_CONFIGURATION,
     Control,
     Desktop,
     Window,
@@ -168,6 +216,9 @@ PLC_SETTLE = 2.0
 # this many seconds. The live runs saw SC_.mdb written before the answer showed; the hold
 # catches a write that comes later
 IMPORT_SETTLE = 1.0
+# How long a file dialog's File name edit must read the path set before it is pressed
+# (``Run.fill_path``)
+FILL_SETTLE = 1.0
 
 EXIT_OK = 0
 EXIT_ABORTED = 1
@@ -246,6 +297,32 @@ IMPORT_STARTING = Expect("import_starting", "TfrmProgress", "frmProgress", MAIN)
 IMPORT_PROGRESS = Expect("import_progress", "TfrmProgress", f"Import - {IMPORT_MODE}", MAIN)
 IMPORT_DONE = Expect("import_done", "#32770", "Import Database", MAIN)
 IMPORT_ERRORS = Expect("import_errors", "TfrmErrorList", "Import Error List", MAIN)
+# File > Open Project: while CLICK reads the project it shows this progress box (live run
+# c1, 2026-11-16: a progress bar, "Reading ..." and a hidden button) and titles the main
+# window bare
+PROJECT_READING = Expect("project_reading", "#32770", "Project Reading", MAIN)
+# PLC > Read Data from PLC, as live probe d1 (2026-11-16) dumped it: a Delphi form with a
+# check box per memory type (DS, DD, DH and DF checked as it opens), All, Read, Close, Help
+READ_DATA = Expect("read_data", "TfrmReadWriteDataMemory", "Read Data from PLC", MAIN)
+# Its Read opens a Save dialog owned by the form (live probe d3), then a progress window
+# (two bars and Cancel) while it reads (live probe d5)
+SAVE_DATA = Expect("save_data", "#32770", "Save", "read_data")
+READING_DATA = Expect(
+    "reading_data", "TfrmReadWriteDataMemoryStatus", "Data Memory Reading..", "read_data"
+)
+# Program > Address Picker, as live probe e1 (2026-11-16) dumped it: a Delphi form with a
+# TStringGrid of every address (Address, Data Type, Nickname, Used, Initial Value, Retentive,
+# Address Comment), the memory types as tabs, filters, OK, Cancel and Help
+PICKER = Expect("picker", "TfrmTagDB", "Address Picker : Edit Mode", MAIN)
+# System Configuration, and the notice it shows over itself the first time it opens in a
+# CLICK (one OK button; live probe C2)
+SYSTEM_CONFIG = Expect("system_config", "TfrmSystemConfig", "System Configuration", MAIN)
+SYSTEM_CONFIG_NOTICE = Expect(
+    "system_config_notice",
+    "TfrmInformationSystemConfigDlg",
+    "System Configuration",
+    "system_config",
+)
 # The instruction dialog ``try`` has open, and the error box it may own after OK
 DIALOG = "dialog"
 ANSWER_BOX = "answer_box"
@@ -444,6 +521,13 @@ def _end_rung(text: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def _unnamed(check: dict[str, Any]) -> str:
+    """A Syntax Check's text with its project's name (``check_syntax``'s ``project``) put
+    as ``<project>``, so checks of projects saved under other names compare."""
+    name = re.escape(check["project"])
+    return re.sub(rf"(?<!\w){name}(?!\w)", "<project>", check["text"])
+
+
 def _is_main(window: Window) -> bool:
     return (
         window.owner == 0
@@ -457,16 +541,18 @@ def _describe(window: Window) -> str:
 
 
 def classify(
-    windows: list[Window], expected: list[Expect]
+    windows: list[Window], expected: list[Expect], *, main: int | None = None
 ) -> tuple[dict[str, Window], list[Window]]:
     """Match *windows* to the main frame and *expected*: (name -> window, windows matching none).
 
     Each expectation matches at most one window, and only one owned by the window its
     ``owner`` names, so a second Login, or a Login owned by the wrong dialog, is unexpected.
+    With *main*, the window of that hwnd is the main frame whatever its title (CLICK titles
+    it bare while it closes or reads a project).
     """
     found: dict[str, Window] = {}
     rest = list(windows)
-    mains = [w for w in rest if _is_main(w)]
+    mains = [w for w in rest if _is_main(w)] or [w for w in rest if w.hwnd == main]
     if mains:
         found[MAIN] = mains[0]
         rest.remove(mains[0])
@@ -513,6 +599,28 @@ def _child(
         if control.cls == cls and control.id == id and (text is None or control.text == text):
             return control
     return None
+
+
+# The keys ``picker --key`` takes by name
+_VIRTUAL_KEYS = {
+    "RETURN": 0x0D,
+    "ESCAPE": 0x1B,
+    "TAB": 0x09,
+    "END": 0x23,
+    "HOME": 0x24,
+    "LEFT": 0x25,
+    "UP": 0x26,
+    "RIGHT": 0x27,
+    "DOWN": 0x28,
+    "F2": 0x71,
+}
+
+
+def _labelled(controls: list[Control], cls: str, text: str) -> Control | None:
+    """The one *cls* control reading *text*; None if there is none or more than one (a
+    Delphi form's controls have no ids of their own: each reads its hwnd)."""
+    found = [c for c in controls if c.cls == cls and c.text == text]
+    return found[0] if len(found) == 1 else None
 
 
 def _require(control: Control | None, what: str) -> Control:
@@ -582,13 +690,17 @@ def _json_default(value: object) -> object:
 
 @dataclass
 class Settings:
-    command: str  # "paste", "record", "try" or "import"
+    command: str  # "paste", "record", "try", "import", "read-data", "reopen" or "picker"
     out: Path
     # The rest by name only: a field added among them cannot shift a caller's arguments
     _: KW_ONLY
     csv: Path | None = None  # paste's ladder CSV, import's nickname CSV
     each_row: bool = False  # import: each row on its own too
     cases: Path | None = None  # try's CASES.json
+    keep: bool = False  # try: save each accepted case's project and decode it
+    ini_add: str | None = None  # reopen: lines added to the end of the project's Project.ini
+    keys: tuple[str, ...] = ()  # picker: keys sent to the Address Picker's grid (probe)
+    ok: bool = False  # picker: close the Address Picker by OK (else by WM_CLOSE)
     exe: Path = DEFAULT_EXE
     password: str = DEFAULT_PASSWORD
     user_type: str = DEFAULT_USER_TYPE
@@ -682,6 +794,50 @@ def _read_rows(mdb: Path) -> dict[str, dict[str, Any]]:
     return _rows_by_address(rows)
 
 
+def _reads_stored_tags() -> bool:
+    """Whether this laddercodec has the private walk ``_read_stored`` reads (laddercodec
+    0.4.0 has none; it came after, in ac7d910)."""
+    module = importlib.import_module("laddercodec.decode_program")
+    return all(hasattr(module, name) for name in ("_parse_header", "_walk_until_framing_error"))
+
+
+def _read_stored(scr: Path) -> dict[str, Any]:
+    """The instructions in the Scr*.tmp at *scr* with the tags CLICK stored for them.
+
+    Each rung is a list of its instructions: ``row`` (from 0), ``column``, ``class``,
+    ``type``, every scalar tag (``tags``, by its id in hex; a flag reads ``""``) and the
+    indexed tags that are not empty (``indexed``). ``error`` is laddercodec's framing error,
+    or None. This reads laddercodec's own walk of the file (private: no public reader keeps
+    the tags as stored), so a laddercodec that changes it fails here, not in the run.
+    """
+    from laddercodec.decode_program import _parse_header, _walk_until_framing_error
+
+    data = scr.read_bytes()
+    header = _parse_header(data)
+    records, error = _walk_until_framing_error(data, header)
+    rungs = []
+    for record in records:
+        rung = []
+        for row, column, name, type_code, tags, _, numbers, texts, _ in record.instructions:
+            indexed: dict[str, dict[str, object]] = {}
+            for tag, entries in [*numbers.items(), *texts.items()]:
+                filled = {str(index): value for index, value in entries.items() if value}
+                if filled:
+                    indexed[f"0x{tag:04X}"] = filled
+            rung.append(
+                {
+                    "row": row,
+                    "column": column,
+                    "class": name,
+                    "type": type_code,
+                    "tags": {f"0x{tag:04X}": value for tag, value in tags.items()},
+                    "indexed": indexed,
+                }
+            )
+        rungs.append(rung)
+    return {"program": header.name, "prog_idx": header.prog_idx, "rungs": rungs, "error": error}
+
+
 class Run:
     """One run of the runner against one CLICK it starts."""
 
@@ -694,6 +850,7 @@ class Run:
         decode: Callable[[Path, Path], Any] = _decode,
         read_nicknames: Callable[[Path, list[str]], dict[str, str | None]] = _read_nicknames,
         read_rows: Callable[[Path], dict[str, dict[str, Any]]] = _read_rows,
+        read_stored: Callable[[Path], dict[str, Any]] = _read_stored,
         stderr: Any = None,
     ) -> None:
         self.desktop = desktop
@@ -702,6 +859,7 @@ class Run:
         self.decode = decode
         self.read_nicknames = read_nicknames
         self.read_rows = read_rows
+        self.read_stored = read_stored
         self.cases: list[Case] = []
         self.nickname_addresses: list[str] = []
         # import's CSV: its header and each row with the line it starts on
@@ -742,10 +900,20 @@ class Run:
         }
         if settings.command == "try":
             self.result.update(
-                cases_file=settings.cases, nicknames=None, baseline_syntax_check=None, cases=[]
+                cases_file=settings.cases,
+                keep=settings.keep,
+                nicknames=None,
+                baseline_syntax_check=None,
+                cases=[],
             )
         if settings.command == "import":
             self.result.update(import_mode=IMPORT_MODE, each_row=settings.each_row, imports=[])
+        if settings.command == "reopen":
+            self.result.update(ini_add=settings.ini_add, points={})
+        if settings.command == "read-data":
+            self.result.update(reading_seen=False)
+        if settings.command == "picker":
+            self.result.update(mdb_copies={}, keys=[])
 
     # -- logging, timing, dumps ---------------------------------------------
 
@@ -787,7 +955,7 @@ class Run:
             controls = []
             for control in self.desktop.controls(window.hwnd):
                 row = asdict(control)
-                if control.cls == "Edit" and answers:
+                if control.cls in ("Edit", "TEdit") and answers:
                     row["edit_text"] = self.desktop.read_text(control.hwnd)
                 controls.append(row)
             base = folder / f"{self._dump_count:02d}-{label}-{window.hwnd}"
@@ -828,12 +996,12 @@ class Run:
         except one that was open before the main frame first appeared (CLICK starting up,
         a splash screen), until the launch step ends. CLICK exiting aborts too, unless
         *exits* (then the wait ends when it has). With *unloading*, the main window is
-        expected whatever its title: CLICK titles it bare while it closes. A CLICK error
-        box aborts at once (``check_error_boxes``), except one owned by the window
-        *answering* names (an instruction dialog whose OK was pressed). It gives up after
-        *timeout* seconds (default ``Settings.timeout``), with a reason that starts with
-        *on_timeout*'s text when it is given. Every ``STATUS_EVERY`` seconds it logs the
-        status bar, or that CLICK does not answer.
+        expected whatever its title: CLICK titles it bare while it closes or reads a
+        project. A CLICK error box aborts at once (``check_error_boxes``), except one owned
+        by the window *answering* names (an instruction dialog whose OK was pressed). It
+        gives up after *timeout* seconds (default ``Settings.timeout``), with a reason that
+        starts with *on_timeout*'s text when it is given. Every ``STATUS_EVERY`` seconds it
+        logs the status bar, or that CLICK does not answer.
         """
         assert self.pid is not None
         limit = self.s.timeout if timeout is None else timeout
@@ -848,13 +1016,7 @@ class Run:
             self.check_error_boxes(
                 [w for w in windows if answering is None or w.owner != answering]
             )
-            found, unexpected = classify(windows, expected)
-            if unloading and MAIN not in found:
-                for window in unexpected:
-                    if window.hwnd == self.main:
-                        found[MAIN] = window
-                        unexpected.remove(window)
-                        break
+            found, unexpected = classify(windows, expected, main=self.main if unloading else None)
             unexpected = self._without_tooltips(unexpected)
             if self.main is None and MAIN not in found:
                 for window in unexpected:
@@ -931,6 +1093,15 @@ class Run:
         self.log(f"press {button.text or button.cls}, id {button.id}, in {window.title!r}")
         self.desktop.press(button.hwnd)
 
+    def send_press(self, window: Window, button: Control) -> bool:
+        """``press``, with BM_CLICK sent: handled when it returns True (``Desktop.send_press``)."""
+        if button.cls not in ("Button", "TButton") or button.hwnd not in {
+            c.hwnd for c in self.controls(window)
+        }:
+            raise Aborted(f"{button.cls} {button.hwnd} is not a button of {_describe(window)}")
+        self.log(f"press {button.text or button.cls} (sent), id {button.id}, in {window.title!r}")
+        return self.desktop.send_press(button.hwnd)
+
     def command(self, command_id: int) -> None:
         assert self.main is not None
         name = self.desktop.command(self.main, command_id)
@@ -1006,6 +1177,10 @@ class Run:
                 raise Refused(f"cannot read the cases in {self.s.cases}: {exc}") from exc
             if not self.cases:
                 raise Refused(f"{self.s.cases} lists no cases")
+            if self.s.keep and self.read_stored is _read_stored and not _reads_stored_tags():
+                raise Refused(
+                    "try --keep needs laddercodec newer than 0.4.0 (_walk_until_framing_error)"
+                )
         if self.s.command == "import":
             assert self.s.csv is not None
             if not self.s.csv.is_file():
@@ -1016,6 +1191,11 @@ class Run:
                 raise Refused(f"cannot read {self.s.csv}: {exc}") from exc
             if self.s.each_row and not self.rows:
                 raise Refused(f"{self.s.csv} has no rows after its header to import one by one")
+        if self.s.ini_add is not None and not self.s.ini_add.isascii():
+            raise Refused(f"--ini-add is not ASCII: {self.s.ini_add!r}")
+        for token in self.s.keys:
+            if not token.startswith(("chars:", "text:", "find:")) and token not in _VIRTUAL_KEYS:
+                raise Refused(f"--key {token!r} is not a key the runner knows")
 
     def launch(self) -> None:
         with self.step("launch"):
@@ -1333,7 +1513,8 @@ class Run:
             self.record("syntax_checked")
 
     def check_syntax(self) -> dict[str, Any]:
-        """Run Syntax Check and wait for its result in Output: its text and counts.
+        """Run Syntax Check and wait for its result in Output: its text, its counts, and the
+        project it names (``project``, the stem of the file the main window's title names).
 
         Output is emptied first (WM_SETTEXT), so a check that reads as the one before is
         still seen to finish; live probe 1 (2026-11-15) waited out a second check whose
@@ -1388,7 +1569,12 @@ class Run:
             timeout=self.s.paste_timeout,
         )
         self.log(f"Syntax Check: {match.group(0).strip()}")
-        return {"text": text, "errors": int(match.group(1)), "warnings": int(match.group(2))}
+        return {
+            "text": text,
+            "errors": int(match.group(1)),
+            "warnings": int(match.group(2)),
+            "project": Path(project).stem,
+        }
 
     # -- try: CLICK's instruction dialogs -------------------------------------
 
@@ -1434,7 +1620,8 @@ class Run:
         ``outcome`` (``accepted``, ``refused`` or ``other``), the box's ``code`` and
         ``message`` (an accepted case has them only if CLICK closed the dialog along with
         a box), ``syntax_check`` once the dialog closed (its text, counts, and the ``lines``
-        naming a code the empty program's check does not) and ``seconds``.
+        naming a code the empty program's check does not), ``kept`` (with ``keep``, an
+        accepted case's save: see ``keep_case``; otherwise None) and ``seconds``.
 
         A closed dialog is ``accepted`` only when its Syntax Check names rung 2 for the
         missing END, as an instruction in rung 1 makes it; otherwise the case is ``other``
@@ -1454,6 +1641,7 @@ class Run:
             "code": None,
             "message": None,
             "syntax_check": None,
+            "kept": None,
             "seconds": None,
         }
         self.result["cases"].append(entry)
@@ -1539,16 +1727,19 @@ class Run:
         ):
             entry["outcome"] = "refused"
         else:
-            self.placed(what, entry, baseline)
+            self.placed(what, label, entry, baseline)
         entry["seconds"] = round(time.monotonic() - began, 3)
 
-    def placed(self, what: str, entry: dict[str, Any], baseline: dict[str, Any]) -> None:
+    def placed(
+        self, what: str, label: str, entry: dict[str, Any], baseline: dict[str, Any]
+    ) -> None:
         """Check that the closed dialog left its instruction in rung 1, then delete it.
 
         A Syntax Check that does not name rung 2 for the missing END makes the case
-        ``other`` and stops the run: CLICK closed the dialog and placed nothing. Edit >
-        Delete then removes the instruction, and the next check must read as the empty
-        program's did.
+        ``other`` and stops the run: CLICK closed the dialog and placed nothing. With
+        ``keep``, the project is then saved (``keep_case``). Edit > Delete then removes the
+        instruction, and the next check must read as the empty program's did, but for the
+        project's name (a save renames it).
         """
         check = self.check_syntax()
         known = {m.group(1) for m in _SYNTAX_CODE.finditer(baseline["text"])}
@@ -1569,16 +1760,46 @@ class Run:
             )
         entry["outcome"] = "accepted"
         self.log(f"{what}: accepted")
+        if self.s.keep:
+            self.keep_case(label, entry)
         # Nothing outside the ladder view shows that Delete landed: the status bar, the title
         # and the main window's controls stay as they were (live probe 3). The check is the proof
         self.command(DELETE)
         self.wait(f"Delete after {what}", [], self.only_main)
         cleared = self.check_syntax()
-        if cleared["text"] != baseline["text"]:
+        if _unnamed(cleared) != _unnamed(baseline):
             raise Aborted(
                 f"after {what}, Delete did not leave the main program empty: its Syntax "
                 f"Check reads {cleared['text']!r}, the empty program's {baseline['text']!r}"
             )
+
+    def keep_case(self, label: str, entry: dict[str, Any]) -> None:
+        """Save the project with the case's instruction in it as ``DIR/saves/<label>.ckp``.
+
+        CLICK's Scr*.tmp files and Project.ini are copied into ``DIR/saves/<label>/click/``
+        as ``paste`` copies them; the copy is decoded once CLICK has ended
+        (``decode_kept``). The case's ``kept``: ``ckp`` and ``click`` (the files copied), then
+        from the decoding ``csv`` (the files written into ``DIR/saves/<label>/csv/``),
+        ``main`` (main.csv's lines after its header), ``legacy`` (the rungs laddercodec
+        lists as held in a legacy encoding or unreadable), ``stored`` (each Scr*.tmp's
+        instructions with their tags as stored: ``_read_stored``) and ``error`` (why the
+        copy could not be read, or None).
+        """
+        assert self.main is not None
+        saves = self.s.out / "saves"
+        saves.mkdir(exist_ok=True)
+        temp = self.desktop.temp_dir(self.main)
+        ckp = (saves / f"{label}.ckp").resolve()
+        self.save_as(ckp, temp, prefix=f"{label}_")
+        entry["kept"] = {
+            "ckp": ckp,
+            "click": self.copy_temp(temp, saves / label / "click"),
+            "csv": None,
+            "main": None,
+            "legacy": None,
+            "stored": None,
+            "error": None,
+        }
 
     def answer_box(
         self,
@@ -1711,18 +1932,9 @@ class Run:
                 [OPEN],
                 lambda f: self.desktop.button_checked(mode.hwnd) == 1,
             )
-        boxes = {c.hwnd for c in controls if c.cls == "ComboBox" and c.id == 1148}
-        file_name = _require(
-            next(
-                (c for c in controls if c.cls == "Edit" and c.id == 1148 and c.parent in boxes),
-                None,
-            ),
-            "the File name edit (1148)",
-        )
+        file_name = self._file_name_edit(controls)
         button = _require(_child(controls, cls="Button", id=1, text="&Open"), "Open (1)")
-        self.desktop.set_text(file_name.hwnd, str(csv))
-        if self.desktop.read_text(file_name.hwnd) != str(csv):
-            raise Aborted("the File name edit did not take the path")
+        self.fill_path(file_name, csv, [OPEN])
         self.wait(
             f"the Open dialog alone, {IMPORT_MODE!r} checked",
             [OPEN],
@@ -1822,63 +2034,420 @@ class Run:
                     values = ", ".join(f"{column}={value!r}" for column, value in row.items())
                     self.log(f"  {address}: {values}")
 
+    # -- read-data: the PLC's data values into a file -------------------------
+
+    def read_data(self) -> None:
+        """PLC > Read Data from PLC: every memory type into ``DIR/plcdata.csv``, then Close."""
+        with self.step("read_data"):
+            self.wait("the main window alone", [], self.only_main)
+            self.command(READ_DATA_FROM_PLC)
+            dialog = self.wait("Read Data from PLC", [READ_DATA], lambda f: f.get(READ_DATA.name))
+            controls = self.controls(dialog)
+            every = _require(_labelled(controls, "TButton", "All"), "All")
+            read = _require(_labelled(controls, "TButton", "Read"), "Read")
+            self.press(dialog, every)
+            boxes = [c for c in controls if c.cls == "TCheckBox"]
+
+            def all_checked(found: dict[str, Window]) -> bool:
+                return bool(boxes) and all(self.desktop.button_checked(c.hwnd) == 1 for c in boxes)
+
+            self.wait("every memory type checked", [READ_DATA], all_checked)
+            self.record("read_data")
+            self.press(dialog, read)
+            save = self.wait("Save", [READ_DATA, SAVE_DATA], lambda f: f.get(SAVE_DATA.name))
+            self.record("save_data")
+            dump = (self.s.out / "plcdata.csv").resolve()
+            controls = self.controls(save)
+            name = self._file_name_edit(controls)
+            button = _require(_child(controls, cls="Button", id=1, text="&Save"), "Save (1)")
+            self.fill_path(name, dump, [READ_DATA, SAVE_DATA])
+            self.press(save, button)
+            last: list[int | None] = [None]
+            # When the reading window had gone, with the form back and no file (a reading that
+            # wrote its file elsewhere, as live run d8's did before ``fill_path``)
+            idle: list[float | None] = [None]
+
+            def written(found: dict[str, Window]) -> bool:
+                form = found.get(READ_DATA.name)
+                if READING_DATA.name in found and not self.result["reading_seen"]:
+                    self.result["reading_seen"] = True
+                    self.log("CLICK is reading the PLC's data")
+                busy = SAVE_DATA.name in found or READING_DATA.name in found
+                if busy or form is None or not form.enabled:
+                    idle[0] = None
+                    return False
+                size = dump.stat().st_size if dump.is_file() else None
+                if size is None and self.result["reading_seen"]:
+                    now = time.monotonic()
+                    if idle[0] is None:
+                        idle[0] = now
+                    elif now - idle[0] >= IMPORT_SETTLE:
+                        self.record("no_file")
+                        raise Aborted(f"CLICK read the PLC's data but wrote no {dump.name}")
+                done = size is not None and size == last[0]
+                last[0] = size
+                return done
+
+            self.wait(
+                f"{dump.name} to be written",
+                [READ_DATA, SAVE_DATA, READING_DATA],
+                written,
+                timeout=self.s.paste_timeout,
+            )
+            self.result["files"]["plc_data"] = dump
+            self.log(f"read the PLC's data into {dump} ({dump.stat().st_size} bytes)")
+            self.record("read")
+            close = _require(_labelled(self.controls(dialog), "TButton", "Close"), "Close")
+            self.press(dialog, close)
+            self.wait("Read Data from PLC to close", [READ_DATA], self.only_main)
+
+    # -- picker: CLICK's Address Picker and what it writes into SC_.mdb ----------
+
+    def picker(self) -> None:
+        """Copy SC_.mdb, open Program > Address Picker, dump it, close it, copy SC_.mdb again."""
+        assert self.main is not None
+        mdb = self.desktop.temp_dir(self.main) / "SC_.mdb"
+        with self.step("before"):
+            self.copy_mdb(mdb, "before")
+        with self.step("picker"):
+            self.command(ADDRESS_PICKER)
+            window = self.wait("the Address Picker", [PICKER], lambda f: f.get(PICKER.name))
+            self.record("picker")
+            controls = self.controls(window)
+            grids = [c for c in controls if c.cls == "TStringGrid"]
+            if len(grids) != 1:
+                raise Aborted(f"the Address Picker has {len(grids)} grid(s), not one")
+            grid, at_open = grids[0], {c.hwnd for c in controls}
+            for number, token in enumerate(self.s.keys, 1):
+                # The grid's in-place editor, once it shows, is a control the picker did not
+                # have when it opened
+                now = self.controls(window)
+                new = [c for c in now if c.hwnd not in at_open and c.visible and c.cls == "TEdit"]
+                target = new[-1] if new else grid
+                self.log(f"key {token!r} to {target.cls} {target.hwnd}")
+                if token.startswith("find:"):
+                    # The Find box (an Edit in a TComboBox) and its Find button
+                    boxes = {c.hwnd for c in now if c.cls == "TComboBox"}
+                    edit = _require(
+                        next((c for c in now if c.cls == "Edit" and c.parent in boxes), None),
+                        "the Find box",
+                    )
+                    button = _require(_labelled(now, "TButton", "Find"), "Find")
+                    answered = self.desktop.set_text(edit.hwnd, token[len("find:") :])
+                    answered = answered and self.send_press(window, button)
+                elif token.startswith("chars:"):
+                    answered = self.desktop.send_chars(target.hwnd, token[len("chars:") :])
+                elif token.startswith("text:"):
+                    answered = self.desktop.set_text(target.hwnd, token[len("text:") :])
+                else:
+                    answered = self.desktop.send_key(target.hwnd, _VIRTUAL_KEYS[token])
+                if not answered:
+                    raise Aborted(f"CLICK did not answer the key {token!r}")
+                # Handled already (sent): no window may have come over the picker
+                self.wait(
+                    f"the Address Picker after the key {token!r}",
+                    [PICKER],
+                    lambda f: (shown := f.get(PICKER.name)) is not None and shown.enabled,
+                )
+                self.after_key(window, token, at_open)
+                self.record(f"key{number:02d}")
+            if self.s.ok:
+                ok = _require(_labelled(self.controls(window), "TButton", "OK"), "OK")
+                self.press(window, ok)
+            else:
+                self.desktop.close(window.hwnd)
+            self.wait("the Address Picker to close", [PICKER], self.only_main)
+        with self.step("after"):
+            self.copy_mdb(mdb, "after")
+
+    def after_key(self, window: Window, token: str, at_open: set[int]) -> None:
+        """Keep what the Address Picker shows after *token* under ``keys``: its editor's
+        text and whether it shows, and the hints it shows (CLICK's hint under the editor)."""
+        now = self.controls(window)
+        editors = [c for c in now if c.hwnd not in at_open and c.cls == "TEdit"]
+        editor = editors[-1] if editors else None
+        hints = [
+            " ".join(c.text.split())
+            for c in now
+            if c.hwnd not in at_open and c.cls == "TStaticText" and c.visible and c.text
+        ]
+        entry = {
+            "key": token,
+            "editor": None if editor is None else self.desktop.read_text(editor.hwnd),
+            "editor_shown": None if editor is None else editor.visible,
+            "hints": hints,
+        }
+        self.result["keys"].append(entry)
+        self.log(f"  editor {entry['editor']!r} (shown {entry['editor_shown']}), hints {hints!r}")
+
+    def copy_mdb(self, mdb: Path, label: str) -> None:
+        """Wait for the main window alone and *mdb* unchanged for ``IMPORT_SETTLE``, then copy
+        it to ``DIR/mdb/<label>.mdb`` (``mdb_copies``)."""
+        held: list[Any] = [None, 0.0]
+
+        def settled(found: dict[str, Window]) -> bool:
+            if not self.only_main(found):
+                held[0] = None
+                return False
+            state, now = _file_state(mdb), time.monotonic()
+            if state is None or state != held[0]:
+                held[:] = [state, now]
+                return False
+            return now - held[1] >= IMPORT_SETTLE
+
+        self.wait(f"SC_.mdb to settle ({label})", [], settled)
+        folder = self.s.out / "mdb"
+        folder.mkdir(exist_ok=True)
+        copy = Path(shutil.copy2(mdb, folder / f"{label}.mdb"))
+        self.result["mdb_copies"][label] = {"mdb": copy, "rows": None}
+        self.log(f"copied SC_.mdb as {label}")
+
+    def read_mdb_copies(self) -> None:
+        """Read the rows of each copy of SC_.mdb (CLICK's file is not opened)."""
+        with self.step("read"):
+            for label, entry in self.result["mdb_copies"].items():
+                entry["rows"] = self.read_rows(Path(entry["mdb"]))
+                self.log(f"{label}: {len(entry['rows'])} row(s): {', '.join(entry['rows'])}")
+
+    # -- reopen: what CLICK does with its Project.ini over save and open ---------
+
+    def reopen(self) -> None:
+        """Save, edit Project.ini, save again, open that save, and save once more.
+
+        CLICK is disconnected first, so opening a project compares it with no PLC. Each
+        point (``first``, ``second``, ``opened``, ``third``) copies CLICK's files into
+        ``DIR/<point>/click/`` (``copy_point``). Between ``first`` and ``second``,
+        ``ini_add`` is added to the end of the Project.ini in CLICK's temp folder (the
+        runner's own CLICK's; ``edit_ini``). After each copy, ``plc_name`` is what System
+        Configuration shows (``read_plc_name``).
+        """
+        assert self.main is not None
+        temp = self.desktop.temp_dir(self.main)
+        with self.step("disconnect"):
+            self.disconnect()
+        for point in ("first", "second"):
+            if point == "second" and self.s.ini_add is not None:
+                with self.step("ini"):
+                    self.edit_ini(temp / "Project.ini")
+            with self.step(f"{point}_save"):
+                self.save_as((self.s.out / f"{point}.ckp").resolve(), temp, prefix=f"{point}_")
+                self.copy_point(point, temp)
+                self.read_plc_name(point)
+        with self.step("open"):
+            self.open_project((self.s.out / "second.ckp").resolve(), temp)
+            self.copy_point("opened", temp)
+            self.read_plc_name("opened")
+        with self.step("third_save"):
+            self.save_as((self.s.out / "third.ckp").resolve(), temp, prefix="third_")
+            self.copy_point("third", temp)
+            self.read_plc_name("third")
+
+    def read_plc_name(self, point: str) -> None:
+        """Open System Configuration, keep the PLC Name it shows as *point*'s ``plc_name``,
+        and close it by Cancel.
+
+        The PLC Name is the form's one TEdit. The notice that comes over the form the first
+        time is closed by WM_CLOSE, as its title bar's close does; OK is pressed on neither.
+        """
+        self.wait("the main window alone", [], self.only_main)
+        self.command(SYSTEM_CONFIGURATION)
+        closed: set[int] = set()
+
+        def shown(found: dict[str, Window]) -> Window | None:
+            notice = found.get(SYSTEM_CONFIG_NOTICE.name)
+            if notice is not None:
+                if notice.hwnd not in closed:
+                    closed.add(notice.hwnd)
+                    self.log("close System Configuration's notice")
+                    self.desktop.close(notice.hwnd)
+                return None
+            form = found.get(SYSTEM_CONFIG.name)
+            return form if form is not None and form.enabled else None
+
+        form = self.wait("System Configuration", [SYSTEM_CONFIG, SYSTEM_CONFIG_NOTICE], shown)
+        self.record(f"{point}_system_config")
+        controls = self.controls(form)
+        edits = [c for c in controls if c.cls == "TEdit"]
+        if len(edits) != 1:
+            raise Aborted(f"System Configuration has {len(edits)} TEdit(s), not one")
+        name = self.desktop.read_text(edits[0].hwnd)
+        if name is None:
+            raise Aborted("System Configuration's PLC Name did not answer")
+        self.result["points"][point]["plc_name"] = name
+        self.log(f"{point}: System Configuration shows the PLC Name {name!r}")
+        cancel = _require(_labelled(controls, "TButton", "Cancel"), "Cancel")
+        self.press(form, cancel)
+        self.wait("System Configuration to close", [SYSTEM_CONFIG], self.only_main)
+
+    def edit_ini(self, ini: Path) -> None:
+        """Add ``ini_add``'s lines (separated by ``\\n`` or line breaks) to the end of *ini*,
+        each ended CRLF as CLICK ends them."""
+        assert self.s.ini_add is not None
+        before = ini.read_bytes()
+        lines = self.s.ini_add.replace("\\n", "\n").replace("\r\n", "\n").split("\n")
+        added = "".join(f"{line}\r\n" for line in lines if line).encode("ascii")
+        joint = b"" if not before or before.endswith(b"\n") else b"\r\n"
+        ini.write_bytes(before + joint + added)
+        self.result["ini_added"] = (joint + added).decode("ascii")
+        self.log(f"added {added!r} to {ini}")
+
+    def copy_point(self, point: str, temp: Path) -> None:
+        """Copy CLICK's files into ``DIR/<point>/click/`` and keep the point's title, status
+        bar and Project.ini (as text, Latin-1 so every byte is kept) under ``points``."""
+        main = classify(self.desktop.windows(self.pid), [])[0].get(MAIN)
+        bar = self.read_status_bar()
+        copied = self.copy_temp(temp, self.s.out / point / "click")
+        ini = next((p for p in copied if p.name == "Project.ini"), None)
+        self.result["points"][point] = {
+            "title": main.title if main is not None else None,
+            "status_bar": bar.panes if bar is not None else None,
+            "files": copied,
+            "project_ini": ini.read_bytes().decode("latin-1") if ini is not None else None,
+        }
+
+    def open_project(self, ckp: Path, temp: Path) -> None:
+        """File > Open Project *ckp*, and wait until the open has begun, its title names it
+        and CLICK's Scr*.tmp files are the same on two polls in a row.
+
+        The open has begun once Project Reading or the bare title has shown, or the Scr*.tmp
+        files differ from those before the command. The title can name *ckp* already (reopen
+        opens the project it saved last), so the title alone proves nothing.
+        """
+        self.wait("the main window alone", [], self.only_main)
+        before = _scr_state(temp)
+        self.command(OPEN_PROJECT)
+        dialog = self.wait("Open", [OPEN], lambda f: f.get(OPEN.name))
+        self.record("open")
+        controls = self.controls(dialog)
+        name = self._file_name_edit(controls)
+        button = _require(_child(controls, cls="Button", id=1, text="&Open"), "Open (1)")
+        self.fill_path(name, ckp, [OPEN])
+        self.press(dialog, button)
+        last: list[object] = [None]
+        begun = [False]
+
+        def opened(found: dict[str, Window]) -> bool:
+            main = found.get(MAIN)
+            state = _scr_state(temp)
+            if (
+                PROJECT_READING.name in found
+                or (main is not None and _project_file(main.title) is None)
+                or (state and state != before)
+            ):
+                begun[0] = True
+            if not begun[0]:
+                return False
+            if main is None or _project_file(main.title) != ckp.name or not self.only_main(found):
+                return False
+            done = bool(state) and state == last[0]
+            last[0] = state
+            return done
+
+        self.wait(
+            f"{ckp.name} to open",
+            [OPEN, PROJECT_READING],
+            opened,
+            unloading=True,
+            timeout=self.s.paste_timeout,
+        )
+        self.log(f"opened {ckp}")
+        self.record("opened")
+
+    def fill_path(self, edit: Control, path: Path, expected: list[Expect]) -> None:
+        """Set a file dialog's File name *edit* to *path*, and wait until it has read *path*
+        for ``FILL_SETTLE`` seconds, setting it again whenever it reads something else.
+
+        A dialog still opening can empty the edit after the path is set: CLICK's Read Data
+        Save dialog, filled as soon as it showed, then saved plcdata.csv into the folder it
+        last saved in (live run d8, 2026-11-16, wrote it there; the D2 runs r1 and r1c met
+        that file as "plcdata.csv already exists", and in r1e the edit read '' once set).
+        Filled after a ``--record`` dump, it kept the path (d7, d10 to d13).
+        """
+        text = str(path)
+        held: list[float | None] = [None]
+
+        def holds(found: dict[str, Window]) -> bool:
+            now = self.desktop.read_text(edit.hwnd)
+            if now != text:
+                if held[0] is not None:
+                    self.log(f"the File name edit reads {now!r}; setting the path again")
+                held[0] = None
+                self.desktop.set_text(edit.hwnd, text)
+                return False
+            if held[0] is None:
+                held[0] = time.monotonic()
+            return time.monotonic() - held[0] >= FILL_SETTLE
+
+        self.desktop.set_text(edit.hwnd, text)
+        self.wait("the File name edit to keep the path", expected, holds)
+
+    def _file_name_edit(self, controls: list[Control]) -> Control:
+        """A file dialog's File name edit: the Edit 1148 inside the ComboBox 1148."""
+        boxes = {c.hwnd for c in controls if c.cls == "ComboBox" and c.id == 1148}
+        return _require(
+            next(
+                (c for c in controls if c.cls == "Edit" and c.id == 1148 and c.parent in boxes),
+                None,
+            ),
+            "the File name edit (1148)",
+        )
+
     def save(self) -> Path:
         assert self.main is not None and self.s.csv is not None
         ckp = (self.s.out / f"{self.s.csv.stem}.ckp").resolve()
         temp = self.desktop.temp_dir(self.main)
         with self.step("save"):
-            unsaved = _scr_state(temp)
-            self.command(SAVE_PROJECT_AS)
-            dialog = self.wait("Save As", [SAVE_AS], lambda f: f.get(SAVE_AS.name))
-            self.record("save_as")
-            controls = self.controls(dialog)
-            boxes = {c.hwnd for c in controls if c.cls == "ComboBox" and c.id == 1148}
-            name = _require(
-                next(
-                    (c for c in controls if c.cls == "Edit" and c.id == 1148 and c.parent in boxes),
-                    None,
-                ),
-                "the File name edit (1148)",
-            )
-            button = _require(_child(controls, cls="Button", id=1, text="&Save"), "Save (1)")
-            self.desktop.set_text(name.hwnd, str(ckp))
-            if self.desktop.read_text(name.hwnd) != str(ckp):
-                raise Aborted("the File name edit did not take the path")
-            self.press(dialog, button)
-            last: list[object] = [None]
-
-            def saved(found: dict[str, Window]) -> bool:
-                # Saved once the title names the file, it exists, and CLICK's Scr*.tmp
-                # files differ from before Save As and are the same on two polls in a row
-                main = found.get(MAIN)
-                if main is None or _project_file(main.title) != ckp.name or not ckp.is_file():
-                    return False
-                if not self.only_main(found):
-                    return False
-                state = _scr_state(temp)
-                done = bool(state) and state != unsaved and state == last[0]
-                last[0] = state
-                return done
-
-            self.wait(f"the save to {ckp.name}", [SAVE_AS], saved, timeout=self.s.paste_timeout)
+            self.save_as(ckp, temp)
             stale = sorted(set(self._scr_before) & set(_scr_state(temp)))
             if stale:
                 raise Aborted(
                     f"{', '.join(name for name, _, _ in stale)} in CLICK's temp folder "
                     "predates the paste and the save left it as it was (from another run?)"
                 )
-            self.log(f"saved {ckp}")
             self.result["files"]["ckp"] = ckp
-            self.record("saved")
         with self.step("copy"):
-            self.copy_temp(temp)
+            self.result["files"]["click"] = self.copy_temp(temp, self.s.out / "click")
         return ckp
 
-    def copy_temp(self, temp: Path) -> None:
+    def save_as(self, ckp: Path, temp: Path, *, prefix: str = "") -> None:
+        """File > Save As to *ckp*, a file that does not exist, and wait until CLICK saved.
+
+        CLICK has saved once its title names the file, the file exists, and its Scr*.tmp
+        files in *temp* differ from before Save As and are the same on two polls in a row.
+        The dumps of ``--record`` are labelled *prefix* then ``save_as`` and ``saved``.
+        """
+        unsaved = _scr_state(temp)
+        self.command(SAVE_PROJECT_AS)
+        dialog = self.wait("Save As", [SAVE_AS], lambda f: f.get(SAVE_AS.name))
+        self.record(f"{prefix}save_as")
+        controls = self.controls(dialog)
+        name = self._file_name_edit(controls)
+        button = _require(_child(controls, cls="Button", id=1, text="&Save"), "Save (1)")
+        self.fill_path(name, ckp, [SAVE_AS])
+        self.press(dialog, button)
+        last: list[object] = [None]
+
+        def saved(found: dict[str, Window]) -> bool:
+            main = found.get(MAIN)
+            if main is None or _project_file(main.title) != ckp.name or not ckp.is_file():
+                return False
+            if not self.only_main(found):
+                return False
+            state = _scr_state(temp)
+            done = bool(state) and state != unsaved and state == last[0]
+            last[0] = state
+            return done
+
+        self.wait(f"the save to {ckp.name}", [SAVE_AS], saved, timeout=self.s.paste_timeout)
+        self.log(f"saved {ckp}")
+        self.record(f"{prefix}saved")
+
+    def copy_temp(self, temp: Path, click_dir: Path) -> list[Path]:
+        """Copy CLICK's Scr*.tmp files and Project.ini from *temp* into *click_dir*, a new
+        folder; the files copied. No Scr*.tmp stops the run."""
         from clicknick.utils.click_temp import scr_files
 
-        click_dir = self.s.out / "click"
-        click_dir.mkdir()
+        click_dir.mkdir(parents=True)
         copied: list[Path] = []
         for path in [*scr_files(temp), temp / "Project.ini"]:
             if path.is_file():
@@ -1888,7 +2457,7 @@ class Run:
         if not any(p.name != "Project.ini" for p in copied):
             raise Aborted(f"no Scr*.tmp in {temp}")
         self.log(f"copied {', '.join(p.name for p in copied)} into {click_dir}")
-        self.result["files"]["click"] = copied
+        return copied
 
     def disconnect(self, *, label: str | None = "disconnected") -> None:
         self.command(DISCONNECT)
@@ -1934,6 +2503,38 @@ class Run:
             self.result["files"]["csv"] = files
             self.log(f"decoded {', '.join(p.name for p in files)}")
             self.check_landed(saved.main_csv)
+
+    def decode_kept(self) -> None:
+        """Decode each kept case's copy of CLICK's files and read the tags stored in it.
+
+        Every copy is read, after an abort too; one that cannot be read keeps why in its
+        ``error``, and any such copy fails the step once all are read.
+        """
+        from clicknick.utils.click_temp import scr_files
+
+        with self.step("decode"):
+            failed = []
+            for entry in self.result["cases"]:
+                kept = entry["kept"]
+                if kept is None:
+                    continue
+                folder = Path(kept["ckp"]).with_suffix("")
+                click = folder / "click"
+                try:
+                    saved = self.decode(click, folder / "csv")
+                    kept["csv"] = [saved.main_csv, *saved.subroutine_csvs]
+                    lines = saved.main_csv.read_text(encoding="utf-8").splitlines()
+                    kept["main"] = lines[1:]
+                    kept["legacy"] = [asdict(e) for e in saved.legacy_encodings]
+                    kept["stored"] = {p.name: self.read_stored(p) for p in scr_files(click)}
+                except Exception as exc:
+                    kept["error"] = f"{type(exc).__name__}: {exc}"
+                    failed.append(folder.name)
+                    self.log(f"{folder.name}: could not be read: {kept['error']}")
+                    continue
+                self.log(f"{folder.name}: main.csv {kept['main']!r}")
+            if failed:
+                raise RuntimeError(f"the copies of {', '.join(failed)} could not be read")
 
     def check_landed(self, main_csv: Path) -> None:
         """Abort unless the saved main program holds the rungs pasted.
@@ -2061,12 +2662,20 @@ class Run:
                     self.try_cases()
                 elif self.s.command == "import":
                     self.import_csvs()
-                self.disconnect_step()
+                elif self.s.command == "read-data":
+                    self.read_data()
+                elif self.s.command == "reopen":
+                    self.reopen()
+                elif self.s.command == "picker":
+                    self.picker()
+                if self.connected:
+                    self.disconnect_step()
                 if self.s.command == "paste":
                     self.close()
                 else:
-                    # The new project was never saved: end CLICK rather than meet a
-                    # save prompt nobody has recorded yet (try leaves it changed, too)
+                    # The new project was never saved, or (try --keep) changed by a
+                    # Delete since: end CLICK rather than meet a save prompt nobody has
+                    # recorded yet (try leaves it changed, too)
                     with self.step("close"):
                         self.end_click()
                     if not self.result["click"]["closed"]:
@@ -2096,26 +2705,32 @@ class Run:
             except Exception as exc:
                 self.result.update(status="aborted", reason=f"decoding failed: {exc}")
                 self.log(f"ABORT: decoding failed: {exc}")
-        if self.s.command == "import" and self.result["click"]["closed"] is True:
-            self.read_after_click()
+        if self.result["click"]["closed"] is True:
+            if self.s.command == "import":
+                self.read_after_click(self.read_imports, "reading the copies of SC_.mdb")
+            elif self.s.command == "picker":
+                self.read_after_click(self.read_mdb_copies, "reading the copies of SC_.mdb")
+            elif self.s.command == "try" and self.s.keep:
+                self.read_after_click(self.decode_kept, "decoding the kept cases")
         if self.result["status"] is None:
             self.result["status"] = "ok"
         return self.finish()
 
-    def read_after_click(self) -> None:
-        """Read the copies of SC_.mdb once CLICK has ended, after an abort too.
+    def read_after_click(self, read: Callable[[], None], what: str) -> None:
+        """*read* the copies made while CLICK ran, once it has ended, after an abort too.
 
-        The imports done before an abort keep their rows; the step the abort names stays
-        the result's step. A read that fails stops a run that had not stopped.
+        The imports or cases done before an abort keep what was read of them; the step the
+        abort names stays the result's step. A read that fails (*what* says which) stops a
+        run that had not stopped.
         """
         stopped_at = self.result["step"] if self.result["status"] is not None else None
         try:
-            self.read_imports()
+            read()
             return
         except KeyboardInterrupt:
-            reason = "interrupted (Ctrl+C) while reading the copies of SC_.mdb"
+            reason = f"interrupted (Ctrl+C) while {what}"
         except Exception as exc:
-            reason = f"reading the copies of SC_.mdb failed: {type(exc).__name__}: {exc}"
+            reason = f"{what} failed: {type(exc).__name__}: {exc}"
         finally:
             if stopped_at is not None:
                 self.result["step"] = stopped_at
@@ -2247,6 +2862,11 @@ def _parser() -> argparse.ArgumentParser:
         "try", parents=[common], help="ask CLICK's instruction dialogs whether they accept cases"
     )
     tries.add_argument("cases", type=Path, help="the cases (JSON; see load_cases)")
+    tries.add_argument(
+        "--keep",
+        action="store_true",
+        help="save each accepted case's project into DIR/saves/ and decode it once CLICK ends",
+    )
     tries.add_argument("--record", action="store_true", help="also dump every window at each step")
     imports = commands.add_parser(
         "import",
@@ -2262,6 +2882,42 @@ def _parser() -> argparse.ArgumentParser:
     imports.add_argument(
         "--record", action="store_true", help="also dump every window at each step"
     )
+    reads = commands.add_parser(
+        "read-data", parents=[common], help="read the PLC's data values into a file"
+    )
+    reads.add_argument("--record", action="store_true", help="also dump every window at each step")
+    pickers = commands.add_parser(
+        "picker", parents=[common], help="open CLICK's Address Picker and copy SC_.mdb around it"
+    )
+    pickers.add_argument(
+        "--record", action="store_true", help="also dump every window at each step"
+    )
+    pickers.add_argument(
+        "--key",
+        action="append",
+        default=[],
+        dest="keys",
+        metavar="KEY",
+        help=f"a key to send to the grid (or its editor): {', '.join(_VIRTUAL_KEYS)}, "
+        "chars:TEXT (WM_CHAR), text:TEXT (WM_SETTEXT) or find:TEXT (the Find box, then "
+        "Find); repeat for more",
+    )
+    pickers.add_argument("--ok", action="store_true", help="close the Address Picker by OK")
+    reopens = commands.add_parser(
+        "reopen",
+        parents=[common],
+        help="save, edit Project.ini, save, open that save and save again, copying each point",
+    )
+    reopens.add_argument(
+        "--ini-add",
+        default=None,
+        metavar="LINES",
+        help="ASCII lines to add to the end of the project's Project.ini before the second "
+        r"save, separated by \n (a backslash, then n) or by line breaks",
+    )
+    reopens.add_argument(
+        "--record", action="store_true", help="also dump every window at each step"
+    )
     return parser
 
 
@@ -2274,6 +2930,10 @@ def settings_from(argv: list[str] | None, environ: dict[str, str] | None = None)
         csv=args.csv.resolve() if args.command in ("paste", "import") else None,
         each_row=getattr(args, "each_row", False),
         cases=args.cases.resolve() if args.command == "try" else None,
+        keep=getattr(args, "keep", False),
+        ini_add=getattr(args, "ini_add", None),
+        keys=tuple(getattr(args, "keys", ())),
+        ok=getattr(args, "ok", False),
         exe=args.click_exe,
         password=args.password or env.get("CLICK_RUNNER_PASSWORD") or DEFAULT_PASSWORD,
         user_type=args.user_type or env.get("CLICK_RUNNER_USER_TYPE") or DEFAULT_USER_TYPE,
