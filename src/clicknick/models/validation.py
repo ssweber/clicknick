@@ -18,20 +18,6 @@ def trim_entry(field: str, value: str | bool) -> str | bool:
     return value
 
 
-def validate_nickname_format(nickname: str, *, system_bank: str | None = None) -> tuple[bool, str]:
-    """Validate nickname format (length, characters, etc.) without uniqueness check.
-
-    Args:
-        nickname: The nickname to validate
-        system_bank: Optional system bank hint (e.g. "SC", "SD", "X") for
-            pyclickplc's bank-specific system rules.
-
-    Returns:
-        Tuple of (is_valid, error_message) - error_message is "" if valid
-    """
-    return _pyclickplc_validate_nickname(nickname, system_bank=system_bank)
-
-
 def validate_comment(
     comment: str,
     is_block_name_duplicate: Callable[[str, int], bool] | None = None,
@@ -103,7 +89,7 @@ def validate_nickname(
         Tuple of (is_valid, error_message) - error_message is "" if valid
     """
     # Check format first
-    is_valid, error = validate_nickname_format(nickname, system_bank=system_bank)
+    is_valid, error = _pyclickplc_validate_nickname(nickname, system_bank=system_bank)
     if not is_valid:
         return is_valid, error
 

@@ -3,7 +3,8 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 
-from ..detection.window_mapping import DATA_TYPES
+from pyclickplc.banks import BANKS
+
 from .prefix_autocomplete import PrefixAutocomplete
 
 _DECIMAL_LITERAL = re.compile(r"^[+-]?\d+\.\d*$")
@@ -112,7 +113,7 @@ def is_possible_address_or_literal(search_text: str, strict: bool = False) -> bo
     if search_text.startswith("'"):
         return True
 
-    for prefix in DATA_TYPES.keys():
+    for prefix in BANKS:
         prefix = prefix.lower()
         prefix_len = len(prefix)
         search_len = len(search_text)

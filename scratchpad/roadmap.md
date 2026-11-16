@@ -25,12 +25,12 @@ How to use it:
 4. CLICK runner (built: `devtools/click_runner.py`; next its early jobs), and the user checks it or a mock can automate (nothing)
 5. ConnectionSession owns the window and project (nothing)
 6. Split ClickNickApp (nothing)
-7. Onto pyclickplc's readers (waits on pyclickplc)
+7. Onto pyclickplc's readers (done)
 8. Onto pyrung's named imports (waits on pyrung's deletions release)
 9. The undecoded marker (waits on laddercodec, pyrung)
 10. Recording, ClickNick side (waits on pyrung's recording core and one door)
 
-Items 5 and 6 come before 10, because recording adds more per-project state. Items 7 to 9 fit in whenever
+Items 5 and 6 come before 10, because recording adds more per-project state. Items 8 and 9 fit in whenever
 their sibling release is out.
 
 ## 1. Housekeeping (nothing)
@@ -175,44 +175,31 @@ Not in scope: `DataSession` and the Review Changes windows keep their own lifeti
 989-1404, 2130-2135 and 2343-2376) and the connection lifecycle leave the app class. Widget building stays.
 After item 5, most of the connection lifecycle already sits in the session.
 
-## 7. Onto pyclickplc's readers (waits on pyclickplc)
+## 7. Onto pyclickplc's readers (done)
 
-Plan 2. pyclickplc takes in:
+Plan 2. ClickNick reads and writes nickname CSVs with pyclickplc's `read_csv` and `format_csv`
+(`CsvDataSource`), so one library writes the workspace's `nicknames.csv` and reads it for pyrung. It keeps
+`_write_file` (the in-place write that keeps a Hidden file Hidden and names the Excel lock) and converts
+`AddressRecord` to `AddressRow` at its boundary; unifying the two models is not part of this.
 
-- the nickname CSV reader, with the behaviour already ruled: raise on a bad row with its line number; keep
-  nickname and comment as written; accept true and 1 for Retentive; no failure on a repeated nickname; report
-  the columns present
-- a function that formats the CSV text
-- the reader for CLICK's `Address.csv` (MDB layout)
+What it changed:
+- A Text initial value that CLICK exports bare as a comma or a double quote now loads; a save writes it, and a
+  space, quoted, so it reads back as written.
+- A file with a bad Address, a wrong Data Type or extra cells is refused by ClickNick as by pyrung, naming the
+  line: in Review Changes the nicknames row says so. Whenever pyrung cannot convert the folder, the diff says why
+  (`BundleSources.error`). A nickname used twice still loads in ClickNick (the store flags it) though pyrung
+  refuses the file.
+- `validate_nickname_format` and `detection/window_mapping.DATA_TYPES` are gone: `validate_nickname` calls
+  pyclickplc's, and the combobox takes its prefixes from `BANKS`.
+- `validate_click_name`, `read_plc_name`, `write_plc_name` and `iter_address_slots` come from pyclickplc 0.7.
 
-ClickNick then deletes `_read_nickname_csv`, `read_mdb_csv`, the line formatting in
-`CsvDataSource.save_changes` and `convert_mdb_csv_to_user_csv`. It keeps `_write_file`: an in-place write that
-keeps a Hidden file Hidden and names the Excel lock.
+What stays in ClickNick (Sam, 2026-11-15): its own `read_mdb_csv` for CLICK's `Address.csv`, which pyclickplc's
+reads differently, and `convert_mdb_csv_to_user_csv`, which now writes through `format_csv`. The names for
+unassigned I/O slots in `sim_hardware.py` stay too. The Text quoting import is an open user check (4b).
 
-Three things to watch:
-- The move also fixes a live bug: ClickNick's reader misreads a Text initial value that CLICK exports bare as a
-  comma or a quote.
-- The workspace's `nicknames.csv` is written by ClickNick and read by pyrung's tag map through
-  `pyclickplc.read_csv`, so from then on one library writes and reads it.
-- Review Changes on a folder whose `nicknames.csv` has a bad Address, a wrong Data Type or extra cells: since
-  pyclickplc 0.7 pyrung refuses the file, `BundleSources.round_trip` (`services/rung_diff.py`) swallows that
-  and the diff shows no source text, while ClickNick's lenient reader still offers to stage the nicknames.
-  One reader for both ends it; until then the window could say why the diff is blank.
-
-The readers return `AddressRecord`, and ClickNick converts to `AddressRow` at its boundary. Unifying the two
-models is not part of this.
-
-The smaller inventory items went to the pyclickplc session through the planner; settle the details with it
-through Sam:
-- `validate_click_name`, `read_plc_name`, `write_plc_name` and `iter_address_slots`: in pyclickplc 0.7, and
-  ClickNick uses them (its own copies are gone)
-- the names for unassigned I/O slots in `sim_hardware.py` stay in ClickNick
-- `models/validation.py`: `validate_nickname_format` is a pass-through to pyclickplc and goes (no shims);
-  `validate_comment` now takes pyclickplc's checks and adds the duplicate block name
-- pyclickplc's `read_mdb_csv` differs from ClickNick's, and ClickNick keeps its own (Sam, 2026-11-15)
-
-ClickNick-only, any time (nothing): `detection/window_mapping.DATA_TYPES` repeats pyclickplc's type maps
-(with "TXT" for "TEXT") just to list prefixes in `widgets/nickname_combobox.py`; derive it from `BANKS`.
+Left over (nothing): ClickNick's `read_mdb_csv` reads a blank DataType as BIT, not the bank's type as the
+database path does (`mdb_operations`); nothing shows CLICK writes one, but if it did, Save As CSV would write a
+file ClickNick then refuses.
 
 ## 8. Onto pyrung's named imports (waits on pyrung's deletions release)
 
@@ -297,7 +284,8 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
 - Edit two nicknames, let CLICK save one first, Sync -> "Synced 1 changes", main window "1 tags synced".
 - Edit a nickname, save the same in CLICK, Sync -> "CLICK already had these changes; nothing to write."
 - (4b) CSV Save reports the number of rows edited.
-- (4b) CSV TXT quoting import.
+- (4b) CSV TXT quoting import: a quoted comma, double quote and space, and a Text value of a tab, which
+  pyclickplc's writer writes bare (`test_a_txt_value_with_a_tab_or_edge_space_is_written_bare`).
 
 ### Tag Browser, Dataview, Overlay
 - x1 / XD0u from the Tag Browser.

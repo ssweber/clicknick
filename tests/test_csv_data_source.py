@@ -15,6 +15,8 @@ from clicknick.data.data_source import CsvDataSource
 from clicknick.models.address_row import AddressRow
 
 CLICK_EXPORT = Path(__file__).parent / "NicknameExport.csv"
+# CLICK's export of Text initial values that are a letter, comma, quote, space and none
+CLICK_TXT_EXPORT = Path(__file__).parent / "NicknameExportTxtSpecials.csv"
 HEADER = "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment"
 
 
@@ -49,6 +51,36 @@ class TestClickExport:
         assert CsvDataSource(str(out)).save_changes(list(rows.values())) == len(rows)
 
         expected = CLICK_EXPORT.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+        assert out.read_bytes() == expected
+
+    def test_clicks_bare_comma_and_quote_text_values_load(self):
+        """CLICK exports a Text initial value bare, even a comma or a double quote."""
+        rows = CsvDataSource(str(CLICK_TXT_EXPORT)).load_all_addresses()
+
+        txt = [rows[get_addr_key("TXT", number)] for number in range(1, 6)]
+        assert [(r.nickname, r.initial_value, r.retentive, r.comment) for r in txt] == [
+            ("Msg_Plain", "A", True, ""),
+            ("Msg_Comma", ",", False, ""),
+            ("Msg_Quote", '"', True, ""),
+            ("Msg_Space", " ", True, ""),
+            ("Msg_Empty", "", True, ""),
+        ]
+        assert len(rows) == len(CLICK_TXT_EXPORT.read_bytes().splitlines()) - 1
+
+    def test_saving_clicks_text_values_writes_them_as_click_imports_them(self, tmp_path):
+        """Only the comma, quote and space change: CLICK imports them only quoted."""
+        rows = CsvDataSource(str(CLICK_TXT_EXPORT)).load_all_addresses()
+        out = tmp_path / "out.csv"
+
+        CsvDataSource(str(out)).save_changes(list(rows.values()))
+
+        expected = (
+            CLICK_TXT_EXPORT.read_bytes()
+            .replace(b'TXT2,TEXT,"Msg_Comma",,,No,""', b'TXT2,TEXT,"Msg_Comma",",",No,""')
+            .replace(b'TXT3,TEXT,"Msg_Quote",",Yes,""', b'TXT3,TEXT,"Msg_Quote","""",Yes,""')
+            .replace(b'TXT4,TEXT,"Msg_Space", ,Yes,""', b'TXT4,TEXT,"Msg_Space"," ",Yes,""')
+        )
+        assert expected != CLICK_TXT_EXPORT.read_bytes()
         assert out.read_bytes() == expected
 
 
@@ -116,6 +148,22 @@ class TestEncodingAndColumns:
         with pytest.raises(ValueError, match=r"names.csv line 3: Address 'X017'"):
             CsvDataSource(str(path)).load_all_addresses()
 
+    @pytest.mark.parametrize(
+        ("row", "error"),
+        [
+            ('X002,INT,"Stop",0,No,""', r"line 3: Data Type 'INT' is not the type of X002 \(BIT\)"),
+            ('TXT1,TXT,"Msg",A,No,""', r"line 3: Data Type 'TXT' is not a CLICK data type"),
+            ('X002,BIT,"Stop",0,No,"",extra', r"line 3: more cells than the header"),
+        ],
+        ids=["wrong type", "TXT", "extra cell"],
+    )
+    def test_a_row_pyrung_would_refuse_fails_the_load(self, tmp_path, row, error):
+        """pyrung reads nicknames.csv with the same reader, so both refuse the same files."""
+        path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n{row}\n')
+
+        with pytest.raises(ValueError, match=rf"^names\.csv {error}"):
+            CsvDataSource(str(path)).load_all_addresses()
+
     def test_blank_rows_are_skipped(self, tmp_path):
         path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n,,,,,\n\n')
 
@@ -129,7 +177,7 @@ class TestEncodingAndColumns:
 
         assert rows[get_addr_key("C", 1)].comment == "Main motor"
         assert source.fields == {"comment"}
-        with pytest.raises(ValueError, match="no Nickname column"):
+        with pytest.raises(ValueError, match="missing required column.*Nickname"):
             CsvDataSource(str(path)).load_all_addresses()
 
     @pytest.mark.parametrize(
@@ -293,11 +341,12 @@ class TestCsvModeStore:
 
 class TestFieldValues:
     @pytest.mark.parametrize(
-        ("value", "written"), [(" ", '" "'), (" a", '" a"'), ("A", "A"), ('"', '""""')]
+        ("value", "written"), [(" ", '" "'), (",", '","'), ("A", "A"), ('"', '""""')]
     )
-    def test_a_txt_initial_value_is_quoted_when_a_reader_could_change_it(
+    def test_a_txt_initial_value_is_quoted_when_clicks_import_would_change_it(
         self, tmp_path, value, written
     ):
+        """CLICK imports a bare space as empty, and a bare comma or quote splits the row."""
         path = tmp_path / "txt.csv"
         CsvDataSource(str(path)).save_changes(
             [AddressRow("TXT", 5, nickname="Sep", data_type=6, initial_value=value)]
@@ -307,7 +356,22 @@ class TestFieldValues:
             f'TXT5,TEXT,"Sep",{written},No,""'
         )
 
-    @pytest.mark.parametrize("value", ['"', ",", " ", " a", 'a"b,c'])
+    @pytest.mark.parametrize("value", ["\t", " a", "a "])
+    def test_a_txt_value_with_a_tab_or_edge_space_is_written_bare(self, tmp_path, value):
+        """pyclickplc's writer quotes only a lone space; ClickNick quoted these before it.
+
+        Pinned so a change in pyclickplc shows here. Whether CLICK imports a bare
+        tab is an open user check; the other two are not one Text character.
+        """
+        path = tmp_path / "txt.csv"
+        CsvDataSource(str(path)).save_changes(
+            [AddressRow("TXT", 5, nickname="Sep", data_type=6, initial_value=value)]
+        )
+
+        line = path.read_bytes().decode("utf-8").split("\r\n")[1]
+        assert line == f'TXT5,TEXT,"Sep",{value},No,""'
+
+    @pytest.mark.parametrize("value", ['"', ",", " ", " a", "\t", 'a"b,c'])
     def test_a_txt_initial_value_round_trips(self, tmp_path, value):
         path = tmp_path / "txt.csv"
         rows = [

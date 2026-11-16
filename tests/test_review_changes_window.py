@@ -1066,6 +1066,23 @@ def test_pane_explains_rows_with_nothing_to_show(monkeypatch) -> None:
     assert _shown("main.csv") == "Connect to CLICK to see which programs changed"
 
 
+_PYRUNG_REFUSES = "nicknames.csv line 2: Data Type 'INT' is not the type of Y001 (BIT)"
+
+
+def test_pane_says_why_pyrung_could_not_convert_the_folder(monkeypatch) -> None:
+    window = _on_main(monkeypatch, compare_rungs(_coils("Y001"), _coils("Y009")))
+    window._after_sources = BundleSources(error=_PYRUNG_REFUSES)
+    window._view_name = "main.csv"
+
+    note, diff = window._describe_view()
+
+    assert note == (
+        "pyrung could not convert the rungs from bundle, so they are listed by their "
+        f"instructions: {_PYRUNG_REFUSES}"
+    )
+    assert diff.lines
+
+
 def _only_in_click_window(monkeypatch, *, saved_after: bool = False):
     """main.csv and the subroutines differ; CLICK also has subroutines/old.csv.
 
@@ -1086,6 +1103,19 @@ def _only_in_click_window(monkeypatch, *, saved_after: bool = False):
 
 
 OLD = len(NAMES)  # The row of subroutines/old.csv, after the folder's own
+
+
+def test_a_program_only_in_click_is_not_blamed_on_the_folder_pyrung_refused(monkeypatch) -> None:
+    """It has no rungs in the folder, so pyrung's failure there says nothing about it."""
+    window = _only_in_click_window(monkeypatch)
+    window._before_sources = BundleSources({"subroutines/old.csv": "old source\n"})
+    window._after_sources = BundleSources(error=_PYRUNG_REFUSES)
+    window._view_name = "subroutines/old.csv"
+
+    note, diff = window._describe_view()
+
+    assert note == ""
+    assert diff.lines
 
 
 def test_clicking_a_program_only_in_click_makes_its_deletion_the_step(monkeypatch) -> None:
@@ -2124,6 +2154,22 @@ def test_discarding_staged_nicknames_asks_to_stage_them_again(tmp_path: Path) ->
     assert _action(window) == "Stage nicknames"
     assert "Sync before pasting" in _status(window)
     assert _label(window) == "1 new, 1 renamed"
+
+
+def test_a_nicknames_csv_pyrung_refuses_is_not_staged_and_the_diff_says_why(
+    tmp_path: Path,
+) -> None:
+    """pyrung and the nicknames row read the file with the same reader."""
+    window = _nicknames_window(tmp_path, _project_store())
+    (window._folder / "nicknames.csv").write_bytes(
+        b'Address,Data Type,Nickname\r\nY001,INT,"Lamp"\r\n'
+    )
+
+    window._start()
+
+    window._view_name = "nicknames.csv"
+    assert window._describe_view()[0] == f"nicknames.csv could not be read: {_PYRUNG_REFUSES}"
+    assert _PYRUNG_REFUSES in window._proposed_sources().error
 
 
 def test_nicknames_csv_without_a_column_leaves_that_field_alone(tmp_path: Path) -> None:

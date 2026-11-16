@@ -7,52 +7,56 @@ from pyclickplc.validation import validate_initial_value
 from clicknick.models.validation import (
     nickname_duplicate_checker,
     validate_nickname,
-    validate_nickname_format,
 )
 
 
+def _format_only(nickname: str) -> tuple[bool, str]:
+    """The format rules alone, through validate_nickname with no duplicates."""
+    return validate_nickname(nickname, 0, lambda _nickname, _addr_key: False)
+
+
 class TestValidateNicknameFormat:
-    """Tests for validate_nickname_format()."""
+    """The format rules validate_nickname takes from pyclickplc."""
 
     def test_empty_is_valid(self):
         """Empty nickname is valid (means unassigned)."""
-        is_valid, error = validate_nickname_format("")
+        is_valid, error = _format_only("")
         assert is_valid is True
         assert error == ""
 
     def test_valid_simple(self):
         """Simple alphanumeric nickname."""
-        is_valid, error = validate_nickname_format("Motor1")
+        is_valid, error = _format_only("Motor1")
         assert is_valid is True
         assert error == ""
 
     def test_valid_with_underscore(self):
         """Underscore in middle is allowed."""
-        is_valid, error = validate_nickname_format("Supply_Pump_Status")
+        is_valid, error = _format_only("Supply_Pump_Status")
         assert is_valid is True
         assert error == ""
 
     def test_valid_with_space(self):
         """Space is allowed in nicknames."""
-        is_valid, error = validate_nickname_format("Motor Status")
+        is_valid, error = _format_only("Motor Status")
         assert is_valid is True
         assert error == ""
 
     def test_valid_max_length(self):
         """Exactly 24 characters is valid."""
-        is_valid, error = validate_nickname_format("A" * 24)
+        is_valid, error = _format_only("A" * 24)
         assert is_valid is True
         assert error == ""
 
     def test_too_long(self):
         """More than 24 characters is invalid."""
-        is_valid, error = validate_nickname_format("A" * 25)
+        is_valid, error = _format_only("A" * 25)
         assert is_valid is False
         assert "25/24" in error
 
     def test_starts_with_underscore(self):
         """Cannot start with underscore."""
-        is_valid, error = validate_nickname_format("_Motor")
+        is_valid, error = _format_only("_Motor")
         assert is_valid is False
         assert "Cannot start with _" in error
 
@@ -62,13 +66,13 @@ class TestValidateNicknameFormat:
     )
     def test_forbidden_chars(self, char):
         """Various forbidden characters."""
-        is_valid, error = validate_nickname_format(f"Motor{char}Status")
+        is_valid, error = _format_only(f"Motor{char}Status")
         assert is_valid is False
         assert "Invalid" in error
 
     def test_multiple_forbidden_shows_first_few(self):
         """Multiple forbidden chars shows first few in error."""
-        is_valid, error = validate_nickname_format("a%b#c$d")
+        is_valid, error = _format_only("a%b#c$d")
         assert is_valid is False
         assert "Invalid" in error
         # Should show some of the invalid chars

@@ -16,6 +16,7 @@
 - A nickname or address comment is kept without a space at either end, as CLICK keeps it: one typed, pasted or imported loses the space, and one loaded with it is trimmed as an unsaved edit, **Trim spaces**, that Sync writes and Undo takes back (the space then shows as an error, and Sync refuses it).
 - A project or CSV that holds such a space therefore opens with the **Trim spaces** edit unsaved, so closing ClickNick asks whether to save it and another project in the same CLICK window asks whether to keep it; **Discard** stages it again.
 - An address with a stray `u` (`DS1u`) or a digit that is not 0-9 is no longer read as `DS1`; it is refused, as CLICK refuses it.
+- A nickname CSV whose Data Type is not CLICK's type for the address (or is `TXT`), or whose row has more cells than the header has columns, no longer loads, and the message names the line: pyrung refuses the same file.
 
 ### Fixed
 
@@ -23,6 +24,8 @@
 - The Simulator loads a text value of a space from a PLC data file as a space (it loaded `$20`).
 - `clicknick-cli` and the Simulator know an address with no nickname inside a `:block` range by the name the program gives it, such as `Fill3` (`clicknick-cli` still takes its address too).
 - In a CLICK 4 project whose Project.ini also has an old `[PLCName]` section, ClickNick reads the PLC name CLICK 4 shows, and uses that name's workspace and Simulator settings.
+- A nickname CSV that CLICK exported with a Text initial value of a comma or a double quote loads as CLICK wrote it (the value was lost, or the rows after it were misread), and a save writes such a value quoted, so it reads back as written.
+- Review Changes on a folder whose nicknames.csv has a bad Address, a wrong Data Type or extra cells says which line on the nicknames row instead of offering to stage the nicknames, and whenever pyrung cannot convert the folder the diff says why instead of showing the rungs without their source.
 
 ## v0.24.1 - 2026-11-15
 
