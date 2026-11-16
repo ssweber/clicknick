@@ -153,7 +153,7 @@ ribbon's commands (50030, 50040, 50010), fills them, presses OK and records whet
 (its `OBJ-...` box) or accepts it. An accepted case counts only when Syntax Check shows the instruction in
 rung 1 (the missing END moves from rung 1 to rung 2); it is then deleted again. The cases cover rows A1 to
 A10, B1 to B6 and B8 of pyrung's and laddercodec's rule table, with controls that tell a refusal's reason
-apart (for example, X packs into DH but not into DS, DD or DF). A run of 66 cases takes about 4.5 minutes:
+apart (for example, X001..X016 packs into DH but not into DS). A run of 66 cases takes about 4.5 minutes:
 CLICK ignores a Syntax Check posted soon after the last one, and nothing it shows says when it would take one,
 so most checks are posted again after 2 s. Left: the Receive dialog (B7), section D, and the rows only Sam can
 answer. E1 is not in a new project's SC_.mdb; CLICK's `PLCType.ini` names SD21 `_RTC_Month`.
