@@ -267,9 +267,25 @@ two-address blocks tried). Only Copy destinations and the decimal Math result we
 accepts every SD in those fields today. The picker's Find box did not move its grid in Pickup Mode; Page Down
 and Page Up keys sent to the grid did. Left: the other grids (about 4 s a case), and the next instructions in
 laddercodec's order (Compare contact, Timer, Counter, Search, Shift, For, Drum), whose ribbon ids are known
-but not allowlisted. Left too: ClickNick's `RECEIVE_LOCAL` (`detection/window_mapping.py`), the banks
-autocomplete offers for a Receive's Starting Master Address, lists X, T, CT, SC, TD and SD, which CLICK
-refused there in the cases tried, and lacks DD, DH, DF, TXT and YD, which it accepted (for FC 03).
+but not allowlisted.
+
+Autocomplete's field map (BOB job `autocomplete-fields`, 2026-11-16): the same picker, opened from each field's
+"..." button by a probe in the job folder, and 28 `try` cases that agreed with it, now set the banks of CLICK
+v4's Receive, Send, Out, Set and Reset in `detection/window_mapping.py`. A v4 dialog's edits are numbered over
+every Edit window in it, hidden ones and the four inside the IP address control included, so Receive's and
+Send's Starting Master Address is `Edit9`, their flags `Edit15` to `Edit17` and Exception Response `Edit18`;
+the map had `Edit5` (the IP address's last part) and `Edit11` to `Edit14` (hidden ASCII fields). Their Starting
+Master Address follows the Function Code list (`ComboBox2`, read when the popup shows): Receive FC 01 and 02
+take Y and C, 03 and 04 DS, DD, DH, DF, YD and TXT; Send FC 05 and 15 take X, Y, C, T, CT and SC, 06 DS, DH, XD,
+YD, TD, SD and TXT, 16 DS, DD, DH, DF, TD, CTD, SD and TXT (laddercodec's masks). Out's Delay Setting edits
+(`Edit3` to `Edit6`, open for Debounce, Flasher and Timed) take DS for a time and TD for a timer number, the
+same for each output type. Out, Set and Reset take Y, C and SC (X, T and CT refused in Out, OBJ-004); Set and
+Reset have no delay fields. Only v4 is installed here, so the v2/v3 forms are unchecked: frmOut, frmSet and
+frmCoilReset take Y, C and SC too, inferred from v4 and laddercodec's `OUT_BANKS` (one list for every
+version), and frmRD and frmSD keep their field numbers and take every function code's banks. Not mapped: the
+ASCII fields of Receive and Send (no ASCII port on the conformance PLC's project). Follow-up: Copy's
+destinations use `ANY`, which offers banks the picker greys there (runner-grids pk6): X, T, CT, SC and XD for
+a single Copy's destination, and YD too for a Block's.
 
 ### 4d. Importing a nickname CSV into CLICK (done)
 
@@ -427,6 +443,10 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
   CSV import put none there, 4d.) ClickNick trims one on load as an unsaved edit ("Trim spaces"), so on a yes
   the next Sync writes the trimmed value into CLICK. The recorded `tests/SC_.mdb` and `NicknameExport.csv` hold
   none.
+- Q8 (CLICK v2/v3 only): autocomplete's map for the v2/v3 dialogs is inferred from v4. In an Out, Set or Reset,
+  does CLICK refuse X, T and CT (ClickNick no longer offers them)? In a Receive or Send, do the master address
+  (Receive's `Edit20`, Send's `Edit16`), the flags and the exception field get the popup? ClickNick offers
+  every function code's banks there.
 
 ### Address Editor and store
 - Fill Down / Add Block T1..TD5, then Sync.

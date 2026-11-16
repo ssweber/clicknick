@@ -22,6 +22,8 @@
 
 ### Fixed
 
+- In CLICK 4's Receive and Send, autocomplete pops up in the Starting Master Address, status flags and Exception Response (on a Modbus TCP port it popped up in the IP address instead), and the master address offers only the memory types the Function Code shown takes (in CLICK 2 and 3, those any Function Code takes).
+- Autocomplete offers DS and TD nicknames in Out's Delay Setting, and no longer offers X, T or CT in Out, Set and Reset, which CLICK refuses there.
 - The Simulator starts from a PLC data file with a DF value CLICK shows as `Err-Format`; an analog input on that DF keeps the value it had.
 - The Simulator loads a text value of a space from a PLC data file as a space (it loaded `$20`).
 - `clicknick-cli` and the Simulator know an address with no nickname inside a `:block` range by the name the program gives it, such as `Fill3` (`clicknick-cli` still takes its address too).
