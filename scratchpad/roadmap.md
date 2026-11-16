@@ -118,8 +118,10 @@ runner itself writes nothing into the PLC), and opening System Configuration wit
 - Reserved words (F): the Address Picker and the import refuse all 12 words tried (`MAX`, `Max`, `max`, `MIN`,
   `ABS`, `abs`, `RAND`, `MDN`, `AVG`, `LOG`, `Log`, `log`) and `A,B`, and take `MAXIMUM` and `Max_Speed`.
 
-Left: the rule behind CLICK's DF digits (D2 says where it switches near 1e30, not why), and Cancel in the
-Address Picker.
+Left: the rule behind CLICK's DF digits (D2 says where it switches near 1e30, not why), Cancel in the Address
+Picker, and job G (one Write Data into PLC of pyclickplc's TXT-only file, by a script outside the repo): its
+dialogs are probed (the file sets the memory types; Cancel in its Open dialog closes the form), the write did
+not run.
 
 **Where it runs (Sam, 2026-11-15, replacing the plan's Sandbox-first rule):** on the CLICK installed on Sam's
 desktop, while he is away, as long as it is deterministic. Windows Sandbox is the fallback, and is needed only
