@@ -18,19 +18,26 @@ A PNG is the screen where the window is, so whatever lies over CLICK there is in
 Once connected, it copies the new project's SC_.mdb to ``DIR/SC_.mdb`` and reads the
 nicknames of the addresses CASES.json lists under ``nicknames`` from the copy (a new
 project's SC_.mdb holds few: live run try3 found SC202, SC203 and SD13 only). It runs Syntax
-Check on the empty main program (``baseline_syntax_check``), then, for each case: opens the
-instruction's dialog from the ribbon's command at the ladder's cursor, picks its mode (a
-mode button already checked is left alone: Math empties its fields on any type click), fills
-its fields by WM_SETTEXT, reads them back and presses OK. CLICK either closes the dialog
-(``accepted``) or shows an error box owned by it (``refused``, with the box's code and
-message); the box's OK and the dialog's Cancel then close both. An accepted case gets a
-Syntax Check of its own (the lines naming a code the empty program's check does not), then
-Edit > Delete removes the instruction, and the next Syntax Check must read as the empty
-program's did. A Syntax Check whose Output stays empty while CLICK is idle is posted again
-(``SYNTAX_REPOST_AFTER``): in live run try3 CLICK ran 1 of the 30 posted just after a
-Delete. All cases run in one CLICK, which is then disconnected and ended, as ``record`` ends
-it. result.json holds one entry per case under ``cases``, in the order tried, and an abort
-keeps the entries done before it.
+Check on the empty main program (``baseline_syntax_check``), which must name rung 1 for the
+missing END (C0201). Then, for each case, it opens the instruction's dialog from the
+ribbon's command at the ladder's cursor and checks the buttons the case takes as given (One
+Shot off, Out's type Out/Toggle). It picks the mode (a mode button already checked is left
+alone: Math empties its fields on any type click), fills the fields by WM_SETTEXT, reads
+them back, waits for the dialog alone and presses OK. CLICK shows an error box owned by the
+dialog (``refused``, with the box's code and message; the box's OK and the dialog's Cancel
+then close both) or closes the dialog. A closed dialog gets a Syntax Check of its own (the
+lines naming a code the empty program's check does not): it is ``accepted`` only when that
+check names rung 2 for the missing END, as an instruction in rung 1 makes it, and ``other``
+otherwise, which stops the run. Edit > Delete then removes the instruction, and the next
+Syntax Check must read as the empty program's did. All cases run in one CLICK, which is
+then disconnected and ended, as ``record`` ends it. result.json holds one entry per case
+under ``cases``, in the order tried, and an abort keeps the entries done before it.
+
+Every Syntax Check (``paste``'s too) empties Output first, so a result that reads as the one
+before is still seen. CLICK ignores a Syntax Check posted soon after the last one's result
+showed (live probe 3), and nothing it shows says when it would take one: a check whose
+Output stays empty while CLICK answers is posted again after ``SYNTAX_REPOST_AFTER``
+seconds, up to ``SYNTAX_POSTS`` posts in all.
 
 ``DIR`` must not exist or be empty. The run ends with ``DIR/result.json``, however it ends,
 and prints it on stdout (nothing else goes there); each step is logged to ``DIR/run.log``
@@ -130,10 +137,10 @@ RESPONSIVE_POLLS = 3
 # How often a wait logs the status bar (or that CLICK does not answer)
 STATUS_EVERY = 10.0
 # Seconds Output may stay empty, CLICK idle, before Syntax Check is posted again, and the most
-# posts. CLICK writes the check's header at once; live run try1 (2026-11-15) met a Syntax
-# Check posted just after Delete that CLICK never ran (MFC drops a posted command that is
-# disabled when it arrives, which is the likely cause).
-SYNTAX_REPOST_AFTER = 5.0
+# posts. CLICK ignores a Syntax Check posted soon after the last one's result showed (live
+# probe 3: 4 of 4 posted 0 to 0.5 s after it; 5 of 5 posted 1.5 s or more after it ran), and
+# shows nothing that says when it would take one
+SYNTAX_REPOST_AFTER = 2.0
 SYNTAX_POSTS = 3
 STATUS_BAR_ID = 59393  # AFX_IDW_STATUS_BAR
 # The Connect dialog's PLC list is taken once it reads the same for this many seconds:
@@ -152,6 +159,9 @@ _STEPS = re.compile(r"\b(\d+)/(\d+)\b")
 _CLICK_ERROR = re.compile(r"^([A-Z]{2,}-\d{2,})\s*[\r\n]+\s*(\S.*)$", re.DOTALL)
 # A Syntax Check line's code: "Main Program : Rung 2 : error C0201: No unconditional END ..."
 _SYNTAX_CODE = re.compile(r"\b(?:error|warning) ([A-Z]\d{4}):")
+# The rung CLICK names for the missing END: rung 1 in an empty main program, rung 2 once an
+# instruction sits in rung 1 (live probes 2 and 3)
+_END_RUNG = re.compile(r"\bRung (\d+) : error C0201:")
 # The status bar's pane naming the PLC connected to, "192.168.1.241(Conformance)"
 _PLC_PANE = re.compile(r"^\d+\.\d+\.\d+\.\d+\(.+\)$")
 # Windows that may come and go over CLICK's at any step (a toolbar's tip)
@@ -221,32 +231,46 @@ class Instruction:
 
     The control ids are those of the dialog's template in CLICK's Inst_<name>.dll, as the
     live probe of 2026-11-15 found them in the open dialogs. A mode is a radio button.
+    *opens_with* is the state (BM_GETCHECK) of the buttons the cases take as given, as the
+    dialog showed them when it opened in live probe 2; ``try`` checks them before filling.
     """
 
     command: int
     title: str
     fields: dict[str, int]  # A field's name -> its edit's control id
     modes: dict[str, int]  # A mode's name -> its radio button's id
+    opens_with: dict[int, int]  # A button's id -> its state (1 checked, 0 not)
 
 
 INSTRUCTIONS = {
-    # Result is an Edit, the formula a RichEdit20W. Picking Hex empties both
+    # Result is an Edit, the formula a RichEdit20W. Picking Hex empties both. The formula
+    # shows addresses (Address 2007, not Nickname 2008); One Shot (2005) is off
     "math": Instruction(
         MATH_DIALOG,
         "Math",
         {"result": 2001, "formula": 2006},
         {"decimal": 2003, "hex": 2004},
+        {2005: 0, 2007: 1},
     ),
     # "to" fields are the end of a range: Block and Pack take a source range, Unpack a
-    # destination range; Block shows the destination's end, which CLICK works out itself
+    # destination range; Block shows the destination's end, which CLICK works out itself.
+    # Fill (5002) is left out: no probe has picked it. One Shot (5024) is off
     "copy": Instruction(
         COPY_DIALOG,
         "Copy",
         {"source": 5006, "source_end": 5009, "destination": 5014, "destination_end": 5017},
-        {"single": 5000, "block": 5001, "fill": 5002, "pack": 5003, "unpack": 5004},
+        {"single": 5000, "block": 5001, "pack": 5003, "unpack": 5004},
+        {5024: 0},
     ),
-    # Out/Toggle, the dialog's first output type, is picked when it opens
-    "out": Instruction(OUT_DIALOG, "Out", {"address": 5002, "address_end": 5003}, {}),
+    # The output type Out/Toggle (5009) is picked; Immediate (5006), One Shot (5007) and
+    # Toggle Output (5008) are off
+    "out": Instruction(
+        OUT_DIALOG,
+        "Out",
+        {"address": 5002, "address_end": 5003},
+        {},
+        {5009: 1, 5006: 0, 5007: 0, 5008: 0},
+    ),
 }
 
 
@@ -313,6 +337,12 @@ def load_cases(path: Path) -> tuple[list[Case], list[str]]:
     for address in nicknames:
         parse_address(address)  # ValueError names the address
     return cases, nicknames
+
+
+def _end_rung(text: str) -> int | None:
+    """The rung a Syntax Check's text names for the missing END (C0201), if one."""
+    match = _END_RUNG.search(text)
+    return int(match.group(1)) if match else None
 
 
 def _is_main(window: Window) -> bool:
@@ -1197,6 +1227,11 @@ class Run:
             baseline = self.check_syntax()
             self.result["baseline_syntax_check"] = baseline
             self.record("baseline")
+            if _end_rung(baseline["text"]) != 1:
+                raise Aborted(
+                    "the empty main program's Syntax Check does not name rung 1 for its missing "
+                    f"END (C0201), so a placed instruction cannot be told: {baseline['text']!r}"
+                )
         with self.step("try"):
             for number, case in enumerate(self.cases, 1):
                 self.try_case(number, case, baseline)
@@ -1224,8 +1259,12 @@ class Run:
         The case's entry in ``cases``: its row, name, instruction, mode and fields, then
         ``outcome`` (``accepted``, ``refused`` or ``other``), the box's ``code`` and
         ``message`` (an accepted case has them only if CLICK closed the dialog along with
-        a box), ``syntax_check`` for an accepted case (its text, counts, and the ``lines``
+        a box), ``syntax_check`` once the dialog closed (its text, counts, and the ``lines``
         naming a code the empty program's check does not) and ``seconds``.
+
+        A closed dialog is ``accepted`` only when its Syntax Check names rung 2 for the
+        missing END, as an instruction in rung 1 makes it; otherwise the case is ``other``
+        and the run stops.
         """
         instruction = INSTRUCTIONS[case.instruction]
         title = instruction.title
@@ -1257,6 +1296,16 @@ class Run:
             [dialog_expect],
             lambda f: f[DIALOG] if DIALOG in f and f[DIALOG].enabled else None,
         )
+        controls = self.controls(dialog)
+        for button_id, state in instruction.opens_with.items():
+            button = _require(
+                _child(controls, cls="Button", id=button_id), f"{title}'s button {button_id}"
+            )
+            if self.desktop.button_checked(button.hwnd) != state:
+                raise Aborted(
+                    f"{what}: {title}'s {button.text or 'button'} ({button_id}) is "
+                    f"{'not ' if state else ''}checked as the dialog opens"
+                )
         if case.mode is not None:
             radio = _require(
                 _child(self.controls(dialog), cls="Button", id=instruction.modes[case.mode]),
@@ -1293,6 +1342,13 @@ class Run:
             control = next(c for c in controls if c.id == instruction.fields[field])
             if self.desktop.read_text(control.hwnd) != text:
                 raise Aborted(f"{what}: {title}'s {field} field lost {text!r} before OK")
+        # A box CLICK showed while the fields were filled aborts here, rather than being
+        # taken for OK's answer
+        self.wait(
+            f"the filled {title} dialog alone",
+            [dialog_expect],
+            lambda f: len(f) == 2 and DIALOG in f and f[DIALOG].enabled,
+        )
         self.record(f"{label}_filled")
         ok = _require(_child(controls, cls="Button", id=1, text="OK"), f"{title}'s OK (1)")
         self.press(dialog, ok)
@@ -1304,31 +1360,51 @@ class Run:
 
         answer = self.wait(f"CLICK's answer to {what}", expected, answered, answering=dialog.hwnd)
         self.record(f"{label}_answer")
-        if isinstance(answer, Window):
-            self.answer_box(what, entry, dialog, answer, expected)
+        if isinstance(answer, Window) and not self.answer_box(
+            what, entry, dialog, answer, expected
+        ):
+            entry["outcome"] = "refused"
         else:
-            entry["outcome"] = "accepted"
-        if entry["outcome"] == "accepted":
-            self.log(f"{what}: accepted")
-            check = self.check_syntax()
-            known = {m.group(1) for m in _SYNTAX_CODE.finditer(baseline["text"])}
-            entry["syntax_check"] = {
-                **check,
-                "lines": [
-                    line.strip()
-                    for line in check["text"].splitlines()
-                    if (m := _SYNTAX_CODE.search(line)) and m.group(1) not in known
-                ],
-            }
-            self.command(DELETE)
-            self.wait(f"Delete after {what}", [], self.only_main)
-            cleared = self.check_syntax()
-            if cleared["text"] != baseline["text"]:
-                raise Aborted(
-                    f"after {what}, Delete did not leave the main program empty: its Syntax "
-                    f"Check reads {cleared['text']!r}, the empty program's {baseline['text']!r}"
-                )
+            self.placed(what, entry, baseline)
         entry["seconds"] = round(time.monotonic() - began, 3)
+
+    def placed(self, what: str, entry: dict[str, Any], baseline: dict[str, Any]) -> None:
+        """Check that the closed dialog left its instruction in rung 1, then delete it.
+
+        A Syntax Check that does not name rung 2 for the missing END makes the case
+        ``other`` and stops the run: CLICK closed the dialog and placed nothing. Edit >
+        Delete then removes the instruction, and the next check must read as the empty
+        program's did.
+        """
+        check = self.check_syntax()
+        known = {m.group(1) for m in _SYNTAX_CODE.finditer(baseline["text"])}
+        entry["syntax_check"] = {
+            **check,
+            "lines": [
+                line.strip()
+                for line in check["text"].splitlines()
+                if (m := _SYNTAX_CODE.search(line)) and m.group(1) not in known
+            ],
+        }
+        rung = _end_rung(check["text"])
+        if rung != 2:
+            entry["outcome"] = "other"
+            raise Aborted(
+                f"{what}: CLICK closed the dialog, but its Syntax Check names rung {rung} for "
+                "the missing END, not rung 2: no instruction was placed in rung 1"
+            )
+        entry["outcome"] = "accepted"
+        self.log(f"{what}: accepted")
+        # Nothing outside the ladder view shows that Delete landed: the status bar, the title
+        # and the main window's controls stay as they were (live probe 3). The check is the proof
+        self.command(DELETE)
+        self.wait(f"Delete after {what}", [], self.only_main)
+        cleared = self.check_syntax()
+        if cleared["text"] != baseline["text"]:
+            raise Aborted(
+                f"after {what}, Delete did not leave the main program empty: its Syntax "
+                f"Check reads {cleared['text']!r}, the empty program's {baseline['text']!r}"
+            )
 
     def answer_box(
         self,
@@ -1337,11 +1413,12 @@ class Run:
         dialog: Window,
         box: Window,
         expected: list[Expect],
-    ) -> None:
-        """Take CLICK's error box after OK as the case's answer, close it, Cancel the dialog.
+    ) -> bool:
+        """Take CLICK's error box after OK as the case's answer and close it.
 
-        A box that is not one CLICK error with one OK is a question: the case is ``other``
-        and the run stops. A dialog CLICK closed along with its box was accepted.
+        Returns whether CLICK closed the dialog along with the box; if not, the dialog's
+        Cancel closes it. A box that is not one CLICK error with one OK is a question: the
+        case is ``other`` and the run stops.
         """
         controls = self.controls(box)
         error = click_error(box, controls)
@@ -1363,15 +1440,14 @@ class Run:
             answering=dialog.hwnd,
         )
         if DIALOG not in after:
-            entry["outcome"] = "accepted"
-            return
-        entry["outcome"] = "refused"
+            return True
         cancel = _require(
             _child(self.controls(after[DIALOG]), cls="Button", id=2, text="Cancel"),
             f"{dialog.title}'s Cancel (2)",
         )
         self.press(after[DIALOG], cancel)
         self.wait(f"the {dialog.title} dialog to close", expected[:1], self.only_main)
+        return False
 
     def save(self) -> Path:
         assert self.main is not None and self.s.csv is not None

@@ -83,8 +83,12 @@ class FakeClick(cd.Desktop):
     an error box, ``("warn", code, message)`` shows the box and then places the
     instruction, ``"question"`` shows a Yes/No box with no code. The placed instruction
     stays until Delete, unless *delete_works* is off; Syntax Check lists *syntax_lines*'
-    line for it, keyed by the dialog's title. *drop_check_after_delete* ignores the first
-    Syntax Check after each Delete, as live run try1 met it.
+    line for it, keyed by the dialog's title. Each dialog opens with the button states
+    ``INSTRUCTIONS`` names, or *opens_with*'s. With *places* off, a closed dialog leaves
+    nothing in rung 1. *box_on_fill* is a text that, set into a dialog's field, makes CLICK
+    show an error box owned by the dialog at once. *quick_checks* ignores a Syntax Check
+    posted within that many polls of the last check's result, as live probe 3 found
+    CLICK ignoring one posted soon after (event ``check_ignored``).
     """
 
     def __init__(
@@ -119,7 +123,10 @@ class FakeClick(cd.Desktop):
         judge: Callable[[str, str | None, dict[str, str]], object] | None = None,
         delete_works: bool = True,
         syntax_lines: dict[str, str] | None = None,
-        drop_check_after_delete: bool = False,
+        opens_with: dict[int, int] | None = None,
+        places: bool = True,
+        box_on_fill: str | None = None,
+        quick_checks: int = 0,
     ) -> None:
         self.temp_root = tmp_path / "temp"
         self.temp_root.mkdir()
@@ -174,8 +181,11 @@ class FakeClick(cd.Desktop):
         self.judge = judge or judge_like_click
         self.delete_works = delete_works
         self.syntax_lines = syntax_lines or {}
-        self.drop_check_after_delete = drop_check_after_delete
-        self.dropping = False
+        self.opens_with = opens_with or {}
+        self.places = places
+        self.box_on_fill = box_on_fill
+        self.quick_checks = quick_checks
+        self.checked_tick: int | None = None  # The poll the last check's result showed on
         self.placed: str | None = None  # The title of the instruction in rung 1
         self.entered: list[tuple[str, str | None, dict[str, str]]] = []
 
@@ -480,6 +490,8 @@ class FakeClick(cd.Desktop):
             name: self._control(dialog, "RichEdit20W" if name == "formula" else "Edit", "", id)
             for name, id in spec.fields.items()
         }
+        for id, state in {**spec.opens_with, **self.opens_with}.items():
+            self._control(dialog, "Button", f"button {id}", id, checked=state)
 
         def pick(name: str) -> None:
             for other, radio in radios.items():
@@ -532,7 +544,8 @@ class FakeClick(cd.Desktop):
                 dialog.enabled = False
 
         def place() -> None:
-            self.placed = title
+            if self.places:
+                self.placed = title
             self._drop(dialog)
             main.enabled = True
 
@@ -563,8 +576,12 @@ class FakeClick(cd.Desktop):
                 self.cursor_rung += 1
 
             self._later("paste", paste)
-        elif command_id == cd.SYNTAX_CHECK and self.dropping:
-            self.dropping = False
+        elif (
+            command_id == cd.SYNTAX_CHECK
+            and self.checked_tick is not None
+            and self.tick - self.checked_tick <= self.quick_checks
+        ):
+            self._later("check_ignored", lambda: None)
         elif command_id == cd.SYNTAX_CHECK:
 
             def checking() -> None:
@@ -583,6 +600,7 @@ class FakeClick(cd.Desktop):
                     + (f"{extra}\r\n" if extra else "")
                     + "\r\nNewProject4 - 1 error(s), 0 warning(s)\r\n"
                 )
+                self.checked_tick = self.tick
 
             self._later("syntax_checking", checking)
         elif command_id == cd.SAVE_PROJECT_AS:
@@ -594,7 +612,6 @@ class FakeClick(cd.Desktop):
             def delete() -> None:
                 if self.delete_works:
                     self.placed = None
-                self.dropping = self.drop_check_after_delete
 
             self._later("delete", delete)
         else:
@@ -696,6 +713,12 @@ class FakeClick(cd.Desktop):
             return False
         self._find(hwnd).value = text
         self.typed[self._find(hwnd).id] = text
+        if text == self.box_on_fill:
+            dialog = next(w for w in self.wins.values() if any(c.hwnd == hwnd for c in w.controls))
+            box = self._window("#32770", "CLICK Programming Software", dialog.hwnd)
+            self._control(box, "Button", "OK", 2)
+            self._control(box, "Static", "OBJ-1001\nThe Formula has an error.", 65535)
+            dialog.enabled = False
         return True
 
     def button_checked(self, hwnd: int) -> int | None:
@@ -774,12 +797,15 @@ class FakeClick(cd.Desktop):
 
 
 def judge_like_click(title: str, mode: str | None, values: dict[str, str]) -> object:
-    """What live probe 2 met: a Math result in SD, an Out on X, and empty fields refused."""
+    """What live CLICK answered: a Math result in SD1, an Out on X and a copy into YD are
+    refused (live probe 2, live run try4); so is a Math with no result."""
     if title == "Math" and not values.get("result"):
         return ("OBJ-001", "Enter the result.")
     if title == "Math" and values["result"].startswith("SD"):
         return ("OBJ-003", "The entered address is outside the range.")
     if title == "Out" and values.get("address", "").startswith("X"):
+        return ("OBJ-004", "The entered address cannot be used in this instruction.")
+    if title == "Copy" and values.get("destination", "").startswith("YD"):  # Live try4, B1
         return ("OBJ-004", "The entered address cannot be used in this instruction.")
     return None
 
@@ -1769,6 +1795,13 @@ TRY_CASES = [
         "fields": {"result": "YD0", "formula": "DH1 + DH2"},
     },
     {
+        "row": "control",
+        "case": "block DS1..DS2 to DS11",
+        "instruction": "copy",
+        "mode": "block",
+        "fields": {"source": "DS1", "source_end": "DS2", "destination": "DS11"},
+    },
+    {
         "row": "B1",
         "case": "block DS1..DS2 to YD1",
         "instruction": "copy",
@@ -1829,7 +1862,8 @@ def test_try_records_each_answer(tmp_path, setup):
         ("control", "accepted", None),
         ("A9", "refused", "OBJ-003"),
         ("A10", "accepted", None),
-        ("B1", "accepted", None),
+        ("control", "accepted", None),
+        ("B1", "refused", "OBJ-004"),
         ("B8", "refused", "OBJ-004"),
     ]
     refused = result["cases"][1]
@@ -1838,7 +1872,7 @@ def test_try_records_each_answer(tmp_path, setup):
     assert refused["fields"] == {"result": "SD1", "formula": "DS1 + 1"}
     # Each mode is picked before the fields: picking Hex empties them
     assert fake.entered[2] == ("Math", "hex", {"result": "YD0", "formula": "DH1 + DH2"})
-    assert fake.entered[3][1] == "block"
+    assert fake.entered[3][1] == "block" and fake.entered[4][1] == "block"
     # An accepted case's own lines leave out the codes the empty program's check has
     assert result["cases"][0]["syntax_check"]["lines"] == []
     copy = result["cases"][3]["syntax_check"]
@@ -1861,10 +1895,11 @@ def test_try_records_each_answer(tmp_path, setup):
         "Syntax Check",
         "Delete",
         "Syntax Check",
+        "Copy...",
         "Out...",
         "Disconnect",
     ]
-    assert fake.pressed.count("Cancel") == 2 and fake.placed is None
+    assert fake.pressed.count("Cancel") == 3 and fake.placed is None
     # The nicknames come from a copy of the new project's SC_.mdb, not from CLICK's file
     assert nicknames.calls == [(out_mdb := tmp_path / "out" / "SC_.mdb", ["SD21", "SD23"])]
     assert out_mdb.read_bytes() == b"mdb"
@@ -1880,13 +1915,30 @@ def test_try_records_each_answer(tmp_path, setup):
 def test_a_syntax_check_that_never_starts_is_posted_again(tmp_path, setup, monkeypatch):
     _, exe = setup
     monkeypatch.setattr(cr, "SYNTAX_REPOST_AFTER", 0.3)
-    fake = FakeClick(tmp_path, drop_check_after_delete=True)
+    fake = FakeClick(tmp_path, quick_checks=3)
     code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES[:3]})
     assert code == cr.EXIT_OK, result["reason"]
     assert [c["outcome"] for c in result["cases"]] == ["accepted", "refused", "accepted"]
-    assert fake.commands.count("Syntax Check") == 1 + 2 * 3
+    # The check after each Delete follows the one before at once: CLICK ignores it
+    ignored = fake.events.count("check_ignored")
+    assert ignored == 2
+    assert fake.commands.count("Syntax Check") == 1 + 2 * 2 + ignored
     log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
-    assert log.count("Output is still empty after 0.3 s: post again") == 2
+    assert log.count("Output is still empty after 0.3 s: post again") == ignored
+
+
+def test_no_syntax_check_is_posted_again_while_click_does_not_answer(tmp_path, setup, monkeypatch):
+    _, exe = setup
+    monkeypatch.setattr(cr, "SYNTAX_REPOST_AFTER", 0.2)
+    # Output stays empty for a second while CLICK does not answer: posting again then
+    # would queue checks behind a busy CLICK
+    fake = FakeClick(tmp_path, quick_checks=3, hang_on="check_ignored", hang_for=1.0)
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES[:1]})
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.events.count("check_ignored") == 1
+    assert "WM_COMMAND" not in fake.sent_while_hung
+    log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
+    assert log.count("post again") == 1
 
 
 def test_try_record_dumps_each_case(tmp_path, setup):
@@ -1915,6 +1967,70 @@ def test_a_box_that_closes_the_dialog_is_an_acceptance(tmp_path, setup):
         "Something to know.",
     )
     assert case["syntax_check"] is not None and fake.placed is None
+
+
+def test_a_dialog_closed_with_nothing_placed_stops_the_run(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, places=False)
+    out = tmp_path / "out"
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES[:2]})
+    assert_aborted(fake, out, code, result, "names rung 1 for the missing END, not rung 2")
+    (case,) = result["cases"]
+    assert case["outcome"] == "other" and "Rung 1 : error C0201" in case["syntax_check"]["text"]
+    assert "Delete" not in fake.commands
+
+
+def test_a_box_that_closes_the_dialog_with_nothing_placed_stops_the_run(tmp_path, setup):
+    _, exe = setup
+
+    def judge(title: str, mode: str | None, values: dict[str, str]) -> object:
+        return ("warn", "OBJ-099", "Refused and closed.")
+
+    fake = FakeClick(tmp_path, judge=judge, places=False)
+    out = tmp_path / "out"
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES[:1]})
+    assert_aborted(fake, out, code, result, "no instruction was placed in rung 1")
+    (case,) = result["cases"]
+    assert (case["outcome"], case["code"]) == ("other", "OBJ-099")
+
+
+def test_a_baseline_without_the_end_error_in_rung_1_stops_the_run(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    fake.placed = "Out"  # Rung 1 already holds an instruction
+    out = tmp_path / "out"
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES[:1]})
+    assert_aborted(fake, out, code, result, "does not name rung 1 for its missing END")
+    assert result["step"] == "baseline" and result["cases"] == []
+
+
+def test_a_box_shown_while_filling_stops_the_run(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, box_on_fill="DS2 + 1")
+    out = tmp_path / "out"
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES[:1]})
+    assert_aborted(fake, out, code, result, "CLICK error OBJ-1001")
+    assert fake.entered == []  # OK was never pressed
+    assert result["cases"][0]["outcome"] is None
+
+
+@pytest.mark.parametrize(
+    ("case", "opens_with", "reason"),
+    [
+        (0, {2005: 1}, "Math's button 2005 (2005) is checked as the dialog opens"),
+        (0, {2007: 0}, "Math's button 2007 (2007) is not checked as the dialog opens"),
+        (3, {5024: 1}, "Copy's button 5024 (5024) is checked as the dialog opens"),
+        (5, {5009: 0, 5010: 1}, "Out's button 5009 (5009) is not checked as the dialog opens"),
+        (5, {5008: 1}, "Out's button 5008 (5008) is checked as the dialog opens"),
+    ],
+)
+def test_a_dialog_that_opens_otherwise_stops_the_run(tmp_path, setup, case, opens_with, reason):
+    _, exe = setup
+    fake = FakeClick(tmp_path, opens_with=opens_with)
+    out = tmp_path / "out"
+    code, result = run_try(fake, tmp_path, exe, {"cases": [TRY_CASES[case]]})
+    assert_aborted(fake, out, code, result, reason)
+    assert fake.entered == []
 
 
 def test_a_question_after_ok_stops_the_run(tmp_path, setup):
@@ -1978,7 +2094,11 @@ def test_a_field_closed_in_the_mode_aborts(tmp_path, setup):
             "'instruction' is not one of math, copy, out",
         ),
         ({"cases": [{**TRY_CASES[0], "mode": None}]}, "'mode' is not one of decimal, hex"),
-        ({"cases": [{**TRY_CASES[4], "mode": "single"}]}, "Out has no modes"),
+        ({"cases": [{**TRY_CASES[5], "mode": "single"}]}, "Out has no modes"),
+        (
+            {"cases": [{**TRY_CASES[3], "mode": "fill"}]},
+            "'mode' is not one of single, block, pack, unpack",
+        ),
         ({"cases": [{**TRY_CASES[0], "fields": {"source": "DS1"}}]}, "Math has no field source"),
         ({"cases": [{**TRY_CASES[0], "fields": {}}]}, "'fields' must name at least one field"),
         ({"cases": [{**TRY_CASES[0], "extra": 1}]}, "unknown keys: extra"),
