@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from clicknick.app import ClickNickApp
+from clicknick.connection_controller import ConnectionController
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.data_session import DataSession
 
@@ -26,14 +27,14 @@ class FakeVar:
 
 
 class FakeCsvDataSource:
-    """Minimal CSV data source stand-in for app.load_csv tests."""
+    """Minimal CSV data source stand-in for load_csv tests."""
 
     def __init__(self, csv_path: str):
         self.csv_path = csv_path
 
 
 class FakeAddressStore:
-    """Minimal AddressStore stand-in for app.load_csv tests."""
+    """Minimal AddressStore stand-in for load_csv tests."""
 
     def __init__(self, data_source=None, *, is_database: bool = False, unsaved: bool = False):
         self.data_source = data_source
@@ -75,19 +76,19 @@ def _make_app_stub() -> ClickNickApp:
     app._session = _session()
     app._data = None
     app._update_status = MagicMock()
-    app._on_data_ready = MagicMock()
-    app._status_after_id = None
     app.root = MagicMock()
-    app.monitoring = False
     app.nickname_manager = SimpleNamespace(set_store=MagicMock())
     app.selected_instance_var = FakeVar("MyProject.ckp")
-    app.refresh_click_instances = MagicMock()
+    connection = app._connection = ConnectionController(app)
+    connection._on_data_ready = MagicMock()
+    connection.monitoring = False
+    connection.refresh_click_instances = MagicMock()
     return app
 
 
 def _patch_csv_loading(monkeypatch) -> None:
     monkeypatch.setattr("clicknick.data.data_source.CsvDataSource", FakeCsvDataSource)
-    monkeypatch.setattr("clicknick.app.AddressStore", FakeAddressStore)
+    monkeypatch.setattr("clicknick.connection_controller.AddressStore", FakeAddressStore)
 
 
 def test_load_csv_with_stale_connection_skips_monitoring_and_clears_connection(monkeypatch):
@@ -97,10 +98,10 @@ def test_load_csv_with_stale_connection_skips_monitoring_and_clears_connection(m
     app._session = session = _session(ClickConnection("1234", 5678, "OldProject.ckp"))
     app.detector = SimpleNamespace(check_window_exists=lambda _pid: False)
 
-    result = app.load_csv("C:/tmp/NicknameExport.csv")
+    result = app._connection.load_csv("C:/tmp/NicknameExport.csv")
 
     assert result is True
-    assert app._on_data_ready.call_count == 0
+    assert app._connection._on_data_ready.call_count == 0
     # The window is gone: its session closes with everything it runs
     session.close.assert_called_once()
     assert app._session is None
@@ -129,7 +130,7 @@ def test_load_csv_over_unsaved_edits_prompts_and_closes_old_windows(monkeypatch,
     editor = FakeEditor()
     app._data.register_editor(editor)
 
-    result = app.load_csv("C:/tmp/Other.csv")
+    result = app._connection.load_csv("C:/tmp/Other.csv")
 
     assert len(prompts) == 1
     assert result is replaced
@@ -152,7 +153,7 @@ def test_handle_window_closed_keeps_csv_data():
     session = app._session
     app.root = SimpleNamespace(after=MagicMock())
 
-    app._handle_window_closed()
+    app._connection._handle_window_closed()
 
     session.close.assert_called_once()
     assert app._session is None
@@ -161,7 +162,7 @@ def test_handle_window_closed_keeps_csv_data():
     app.nickname_manager.set_store.assert_not_called()
     assert app._click is None
     assert app.selected_instance_var.get() == ""
-    app.root.after.assert_called_once_with(2000, app.refresh_click_instances)
+    app.root.after.assert_called_once_with(2000, app._connection.refresh_click_instances)
 
 
 def test_handle_window_closed_closes_database_data():
@@ -173,7 +174,7 @@ def test_handle_window_closed_closes_database_data():
     session = app._session
     app.root = SimpleNamespace(after=MagicMock())
 
-    app._handle_window_closed()
+    app._connection._handle_window_closed()
 
     session.close.assert_called_once()
     assert app._session is None
@@ -184,32 +185,31 @@ def test_handle_window_closed_closes_database_data():
 
 
 def test_start_monitoring_twice_runs_one_loop():
-    app = _make_app_stub()
-    app._monitor_task = MagicMock()
+    connection = _make_app_stub()._connection
+    connection._monitor_task = MagicMock()
 
-    assert ClickNickApp._start_monitoring_internal(app)
-    assert ClickNickApp._start_monitoring_internal(app)
+    assert connection._start_monitoring_internal()
+    assert connection._start_monitoring_internal()
 
-    app._monitor_task.assert_called_once()
+    connection._monitor_task.assert_called_once()
 
 
 def test_project_change_loads_new_database_off_the_ui_thread(monkeypatch):
     def no_sync_store(*_args, **_kwargs):
         raise AssertionError("project change must not build a store on the Tk thread")
 
-    monkeypatch.setattr("clicknick.app.AddressStore", no_sync_store)
+    monkeypatch.setattr("clicknick.connection_controller.AddressStore", no_sync_store)
     app = _make_app_stub()
     app._data = DataSession(FakeAddressStore(is_database=True))
-    app.click_instances = []
     app.instances_combobox = {}
     # CLICK's folder is not read
     monkeypatch.setattr(ConnectionSession, "load_workspace_pairing", lambda _self: None)
-    app._load_instance_database = MagicMock()
+    app._connection._load_instance_database = MagicMock()
     app.nickname_manager.has_database_backend = lambda: True
 
-    app._handle_project_change("CLICK - Next.ckp", "Next.ckp")
+    app._connection._handle_project_change("CLICK - Next.ckp", "Next.ckp")
 
-    app._load_instance_database.assert_called_once_with(app._session)
+    app._connection._load_instance_database.assert_called_once_with(app._session)
     assert app._click == ClickConnection("111", 222, "Next.ckp")
     assert app._data is None
 

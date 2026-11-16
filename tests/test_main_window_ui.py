@@ -154,10 +154,10 @@ def test_run_finishes_initial_refresh_before_revealing_main_window() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
     app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
-    app.refresh_click_instances = MagicMock()
+    app._connection = MagicMock()
     app._show_main_window = MagicMock()
     lifecycle = MagicMock()
-    lifecycle.attach_mock(app.refresh_click_instances, "refresh")
+    lifecycle.attach_mock(app._connection.refresh_click_instances, "refresh")
     lifecycle.attach_mock(app._show_main_window, "show")
     lifecycle.attach_mock(app.root.mainloop, "mainloop")
 

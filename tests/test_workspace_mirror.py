@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from clicknick.app import ClickNickApp
+from clicknick.connection_controller import ConnectionController
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.services.analysis_service import _publish_generated_project
 from clicknick.services.project_workspace import (
@@ -595,7 +596,9 @@ def test_a_new_session_pairs_its_own_plc(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(ConnectionSession, "plc_name", lambda _self: "Machine")
     app = _app(None)
 
-    app._open_connection_session(ClickConnection("1", 2, "Machine-20260829.ckp"))
+    ConnectionController(app)._open_connection_session(
+        ClickConnection("1", 2, "Machine-20260829.ckp")
+    )
 
     assert app._session.pairing.config == config
     assert app._workspace.configured_dir() == config.workspace_path
