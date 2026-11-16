@@ -214,6 +214,10 @@ def test_opening_the_repairs_menu_refreshes_the_upgrade_entry(tk_root):
         assert app.repairs_menu.entrycget(1, "label") == "Upgrade Project"
         tk_root.tk.eval(app.repairs_menu.cget("postcommand"))
         app._refresh_upgrade_entry.assert_called_once_with()
+        # Each Open Workspace entry the Workspace keeps current is the one it added
+        assert app._workspace._open_entries
+        for menu, index in app._workspace._open_entries:
+            assert menu.entrycget(index, "label") == "Open Temporary Workspace"
     finally:
         # A menubar left on a Windows root breaks the Tk roots and menus of later modules.
         tk_root.config(menu="")

@@ -5,8 +5,9 @@
 follows a project change, notices the window closing, and shows the autocomplete
 popup while monitoring is on. The facts it changes keep their homes on the app:
 the session in ``ClickNickApp._session``, the data in ``ClickNickApp._data``
-(through ``_open_data`` and ``_close_data``). It keeps only the window list and
-the user's monitoring choice.
+(through ``_open_data`` and ``_close_data``). It keeps only the window list, the
+user's monitoring choice, the Monitoring status still due after a load
+(``_status_after_id``) and whether the ODBC warning has shown.
 """
 
 from __future__ import annotations

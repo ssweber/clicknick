@@ -3,7 +3,8 @@
 The facts live elsewhere: the connected session (``ClickNickApp._session``) holds the
 workspace pairing, the setup window and the choice not applied yet; its analysis holds
 the build. ``WorkspaceController`` reads them through the app each time, so it follows
-a project change, and keeps only the Open Workspace menu entries it updates.
+a project change, and keeps only the Open Workspace menu entries it updates and
+the setup window's list of workspaces (``_config_combobox``).
 """
 
 from __future__ import annotations
