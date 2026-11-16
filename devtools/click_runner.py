@@ -2,6 +2,7 @@
 
     uv run python devtools/click_runner.py paste CSV --out DIR [--record]
     uv run python devtools/click_runner.py record --out DIR
+    uv run python devtools/click_runner.py try CASES.json --out DIR [--record]
 
 The runner starts its own CLICK, connects to the one PLC on the LAN (so the new project
 takes that PLC's hardware) and answers "Don't read" to reading the PLC's project. ``paste``
@@ -10,8 +11,22 @@ then pastes CSV into the main program, runs Syntax Check, saves the project as
 disconnects, closes CLICK and decodes ``DIR/click/`` into ``DIR/csv/``. ``record`` connects
 the same way and dumps every window of CLICK (JSON and PNG) at each step into
 ``DIR/record/``, then disconnects and ends CLICK (the project was never saved, so it is
-terminated rather than closed); ``paste --record`` dumps the same way. A PNG is the
-screen where the window is, so whatever lies over CLICK there is in it.
+terminated rather than closed); ``paste --record`` and ``try --record`` dump the same way.
+A PNG is the screen where the window is, so whatever lies over CLICK there is in it.
+
+``try`` asks CLICK's instruction dialogs whether they accept an instruction (``CASES``).
+Once connected, it copies the new project's SC_.mdb to ``DIR/SC_.mdb`` and reads the
+nicknames of the addresses CASES.json lists under ``nicknames`` from the copy. It runs Syntax
+Check on the empty main program (``baseline_syntax_check``), then, for each case: opens the
+instruction's dialog from the ribbon's command at the ladder's cursor, picks its mode, fills
+its fields by WM_SETTEXT and presses OK. CLICK either closes the dialog (``accepted``) or
+shows an error box owned by it (``refused``, with the box's code and message); the box's
+OK and the dialog's Cancel then close both. An accepted case gets a Syntax Check of its own
+(the lines naming a code the empty program's check does not), then Edit > Delete removes the
+instruction, and the next Syntax Check must read as the empty program's did. All cases run
+in one CLICK, which is then disconnected and ended, as ``record`` ends it. result.json holds
+one entry per case under ``cases``, in the order tried, and an abort keeps the entries
+done before it.
 
 ``DIR`` must not exist or be empty. The run ends with ``DIR/result.json``, however it ends,
 and prints it on stdout (nothing else goes there); each step is logged to ``DIR/run.log``
@@ -50,7 +65,10 @@ Rules (scratchpad/roadmap.md, item 4):
   "PTC-013", "Timeout on attempting to connect to PLC.") stops the run at any step, with
   the code in ``click_error`` so a caller can decide to run again. Nothing is pressed in it.
   A box met while the cleanup disconnects after another stop is logged and kept as
-  ``cleanup_click_error``; it is not what stopped the run.
+  ``cleanup_click_error``; it is not what stopped the run. The one exception is ``try``:
+  a box owned by an instruction dialog after its OK is the case's answer. A box there with
+  no code, or with buttons other than one OK, is a question the runner does not answer:
+  the case is kept as ``other`` and the run stops.
 - Any top-level window of CLICK that the step does not expect (a tooltip aside) stops the
   run: every window is dumped into ``DIR/abort/`` (a window that does not answer without
   its edit text or a PNG), CLICK is disconnected if it answers with no dialog open, then
@@ -80,7 +98,11 @@ from pathlib import Path
 from typing import Any
 
 from click_desktop import (
+    COPY_DIALOG,
+    DELETE,
     DISCONNECT,
+    MATH_DIALOG,
+    OUT_DIALOG,
     PASTE,
     SAVE_PROJECT_AS,
     SYNTAX_CHECK,
@@ -118,6 +140,8 @@ _CURSOR = re.compile(r"\b(\d+):(\d+):([A-Z]+)\b")
 _STEPS = re.compile(r"\b(\d+)/(\d+)\b")
 # The text of a CLICK error box: a code, then the message ("PTC-013\nTimeout on ...")
 _CLICK_ERROR = re.compile(r"^([A-Z]{2,}-\d{2,})\s*[\r\n]+\s*(\S.*)$", re.DOTALL)
+# A Syntax Check line's code: "Main Program : Rung 2 : error C0201: No unconditional END ..."
+_SYNTAX_CODE = re.compile(r"\b(?:error|warning) ([A-Z]\d{4}):")
 # The status bar's pane naming the PLC connected to, "192.168.1.241(Conformance)"
 _PLC_PANE = re.compile(r"^\d+\.\d+\.\d+\.\d+\(.+\)$")
 # Windows that may come and go over CLICK's at any step (a toolbar's tip)
@@ -169,6 +193,116 @@ LOGIN = Expect("login", "#32770", "Login", "connect")
 READ_PROMPT = Expect("read_prompt", "#32770", "Connect", "connect")
 SAVE_AS = Expect("save_as", "#32770", "Save As", MAIN)
 DISCONNECT_PROMPT = Expect("disconnect_prompt", "#32770", "CLICK Programming Software", MAIN)
+# The instruction dialog ``try`` has open, and the error box it may own after OK
+DIALOG = "dialog"
+ANSWER_BOX = "answer_box"
+# The classes of an instruction dialog's fields (Math's formula is a RichEdit)
+_FIELD_CLASSES = ("Edit", "RichEdit20W")
+
+
+# ---------------------------------------------------------------------------
+# The instruction dialogs ``try`` fills, and its cases
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Instruction:
+    """An instruction dialog: the ribbon command that opens it, its title, fields and modes.
+
+    The control ids are those of the dialog's template in CLICK's Inst_<name>.dll, as the
+    live probe of 2026-11-15 found them in the open dialogs. A mode is a radio button.
+    """
+
+    command: int
+    title: str
+    fields: dict[str, int]  # A field's name -> its edit's control id
+    modes: dict[str, int]  # A mode's name -> its radio button's id
+
+
+INSTRUCTIONS = {
+    # Result is an Edit, the formula a RichEdit20W. Picking Hex empties both
+    "math": Instruction(
+        MATH_DIALOG,
+        "Math",
+        {"result": 2001, "formula": 2006},
+        {"decimal": 2003, "hex": 2004},
+    ),
+    # "to" fields are the end of a range: Block and Pack take a source range, Unpack a
+    # destination range; Block shows the destination's end, which CLICK works out itself
+    "copy": Instruction(
+        COPY_DIALOG,
+        "Copy",
+        {"source": 5006, "source_end": 5009, "destination": 5014, "destination_end": 5017},
+        {"single": 5000, "block": 5001, "fill": 5002, "pack": 5003, "unpack": 5004},
+    ),
+    # Out/Toggle, the dialog's first output type, is picked when it opens
+    "out": Instruction(OUT_DIALOG, "Out", {"address": 5002, "address_end": 5003}, {}),
+}
+
+
+@dataclass(frozen=True)
+class Case:
+    """One instruction to try: the rule table's row, what is tried, and what is entered."""
+
+    row: str  # The rule table's row ("A9")
+    name: str  # What this case tries ("SD1")
+    instruction: str  # A key of INSTRUCTIONS
+    mode: str | None
+    fields: dict[str, str]
+
+
+def load_cases(path: Path) -> tuple[list[Case], list[str]]:
+    """The cases in *path*, and the addresses whose nicknames to read; ValueError if malformed.
+
+    The file is ``{"cases": [{"row", "case", "instruction", "mode", "fields"}, ...],
+    "nicknames": ["SD21", ...]}``. ``mode`` is required where the dialog has modes and
+    refused where it has none; ``fields`` names the dialog's fields, each with its text.
+    """
+    from pyclickplc.addresses import parse_address
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or not isinstance(data.get("cases"), list):
+        raise ValueError("expected an object with a list under 'cases'")
+    cases: list[Case] = []
+    for number, entry in enumerate(data["cases"], 1):
+        where = f"case {number}"
+        if not isinstance(entry, dict):
+            raise ValueError(f"{where} is not an object")
+        unknown = set(entry) - {"row", "case", "instruction", "mode", "fields"}
+        if unknown:
+            raise ValueError(f"{where} has unknown keys: {', '.join(sorted(unknown))}")
+        row, name = entry.get("row"), entry.get("case")
+        if not isinstance(row, str) or not row or not isinstance(name, str) or not name:
+            raise ValueError(f"{where} needs a 'row' and a 'case'")
+        where = f"case {number} ({row} {name})"
+        instruction = INSTRUCTIONS.get(entry.get("instruction"))  # pyright: ignore[reportArgumentType]
+        if instruction is None:
+            raise ValueError(f"{where}: 'instruction' is not one of {', '.join(INSTRUCTIONS)}")
+        mode = entry.get("mode")
+        if instruction.modes and mode not in instruction.modes:
+            raise ValueError(f"{where}: 'mode' is not one of {', '.join(instruction.modes)}")
+        if not instruction.modes and mode is not None:
+            raise ValueError(f"{where}: {instruction.title} has no modes")
+        fields = entry.get("fields")
+        if (
+            not isinstance(fields, dict)
+            or not fields
+            or not all(isinstance(v, str) for v in fields.values())
+        ):
+            raise ValueError(f"{where}: 'fields' must name at least one field, each with text")
+        unknown = set(fields) - set(instruction.fields)
+        if unknown:
+            raise ValueError(
+                f"{where}: {instruction.title} has no field {', '.join(sorted(unknown))} "
+                f"(its fields: {', '.join(instruction.fields)})"
+            )
+        cases.append(Case(row, name, entry["instruction"], mode, dict(fields)))
+    nicknames = data.get("nicknames", [])
+    if not isinstance(nicknames, list) or not all(isinstance(a, str) for a in nicknames):
+        raise ValueError("'nicknames' must be a list of addresses")
+    for address in nicknames:
+        parse_address(address)  # ValueError names the address
+    return cases, nicknames
 
 
 def _is_main(window: Window) -> bool:
@@ -309,9 +443,10 @@ def _json_default(value: object) -> object:
 
 @dataclass
 class Settings:
-    command: str  # "paste" or "record"
+    command: str  # "paste", "record" or "try"
     out: Path
     csv: Path | None = None
+    cases: Path | None = None  # try's CASES.json
     exe: Path = DEFAULT_EXE
     password: str = DEFAULT_PASSWORD
     user_type: str = DEFAULT_USER_TYPE
@@ -335,6 +470,21 @@ def _decode(click_dir: Path, csv_dir: Path):
     return program_save(click_dir, csv_dir)
 
 
+def _read_nicknames(mdb: Path, addresses: list[str]) -> dict[str, str | None]:
+    """Each of *addresses*' nickname in the SC_.mdb at *mdb*; None where it has no row."""
+    from pyclickplc.addresses import get_addr_key, parse_address
+
+    from clicknick.utils.mdb_operations import MdbConnection, load_all_addresses
+
+    with MdbConnection(str(mdb)) as connection:
+        rows = load_all_addresses(connection)
+    found: dict[str, str | None] = {}
+    for address in addresses:
+        row = rows.get(get_addr_key(*parse_address(address)))
+        found[address] = None if row is None else row.nickname
+    return found
+
+
 class Run:
     """One run of the runner against one CLICK it starts."""
 
@@ -345,12 +495,16 @@ class Run:
         *,
         prepare: Callable[[Path, Path | None], Any] = _prepare,
         decode: Callable[[Path, Path], Any] = _decode,
+        read_nicknames: Callable[[Path, list[str]], dict[str, str | None]] = _read_nicknames,
         stderr: Any = None,
     ) -> None:
         self.desktop = desktop
         self.s = settings
         self.prepare = prepare
         self.decode = decode
+        self.read_nicknames = read_nicknames
+        self.cases: list[Case] = []
+        self.nickname_addresses: list[str] = []
         self.stderr = sys.stderr if stderr is None else stderr
         self.started = time.monotonic()
         self.pid: int | None = None
@@ -384,6 +538,10 @@ class Run:
             "files": {},
             "click": {"exe": settings.exe, "pid": None, "main_hwnd": None, "closed": None},
         }
+        if settings.command == "try":
+            self.result.update(
+                cases_file=settings.cases, nicknames=None, baseline_syntax_check=None, cases=[]
+            )
 
     # -- logging, timing, dumps ---------------------------------------------
 
@@ -458,6 +616,7 @@ class Run:
         unloading: bool = False,
         on_timeout: Callable[[], str] | None = None,
         timeout: float | None = None,
+        answering: int | None = None,
     ) -> T:
         """Poll CLICK's windows until *until* returns something other than None or False.
 
@@ -466,10 +625,11 @@ class Run:
         a splash screen), until the launch step ends. CLICK exiting aborts too, unless
         *exits* (then the wait ends when it has). With *unloading*, the main window is
         expected whatever its title: CLICK titles it bare while it closes. A CLICK error
-        box aborts at once (``check_error_boxes``). It gives up after *timeout* seconds
-        (default ``Settings.timeout``), with a reason that starts with *on_timeout*'s text
-        when it is given. Every ``STATUS_EVERY`` seconds it logs the status bar, or that
-        CLICK does not answer.
+        box aborts at once (``check_error_boxes``), except one owned by the window
+        *answering* names (an instruction dialog whose OK was pressed). It gives up after
+        *timeout* seconds (default ``Settings.timeout``), with a reason that starts with
+        *on_timeout*'s text when it is given. Every ``STATUS_EVERY`` seconds it logs the
+        status bar, or that CLICK does not answer.
         """
         assert self.pid is not None
         limit = self.s.timeout if timeout is None else timeout
@@ -481,7 +641,9 @@ class Run:
                     return True  # pyright: ignore[reportReturnType]
                 raise Aborted(f"CLICK exited while waiting for {what}")
             windows = self.desktop.windows(self.pid)
-            self.check_error_boxes(windows)
+            self.check_error_boxes(
+                [w for w in windows if answering is None or w.owner != answering]
+            )
             found, unexpected = classify(windows, expected)
             if unloading and MAIN not in found:
                 for window in unexpected:
@@ -630,6 +792,16 @@ class Run:
                 self.prepare(self.s.csv, None)
             except Exception as exc:
                 raise Refused(f"cannot encode {self.s.csv}: {exc}") from exc
+        if self.s.command == "try":
+            assert self.s.cases is not None
+            if not self.s.cases.is_file():
+                raise Refused(f"no cases file at {self.s.cases}")
+            try:
+                self.cases, self.nickname_addresses = load_cases(self.s.cases)
+            except Exception as exc:
+                raise Refused(f"cannot read the cases in {self.s.cases}: {exc}") from exc
+            if not self.cases:
+                raise Refused(f"{self.s.cases} lists no cases")
 
     def launch(self) -> None:
         with self.step("launch"):
@@ -942,55 +1114,236 @@ class Run:
         return done
 
     def syntax_check(self) -> None:
-        assert self.main is not None
         with self.step("syntax_check"):
-            controls = self.desktop.controls(self.main)
-            bars = {
-                c.hwnd
-                for c in controls
-                if c.cls.startswith("Afx:ControlBar") and c.text == "Output"
-            }
-            output = _require(
-                next(
-                    (c for c in controls if c.cls == "Edit" and c.id == 1005 and c.parent in bars),
-                    None,
-                ),
-                "the Output pane's Edit (1005)",
-            )
-            main = classify(self.desktop.windows(self.pid), [])[0].get(MAIN)
-            project = _project_file(main.title) if main is not None else None
-            if project is None:
-                raise Aborted("the main window's title names no project")
-            # The check lists what it finds, then "<project> - N error(s), M warning(s)" last
-            total = re.compile(
-                rf"^{re.escape(Path(project).stem)} - (\d+) error\(s\), (\d+) warning\(s\)\s*$",
-                re.MULTILINE,
-            )
-            before = self.desktop.read_text(output.hwnd)
-            self.command(SYNTAX_CHECK)
-
-            def finished(found: dict[str, Window]) -> tuple[str, re.Match[str]] | None:
-                if not self.only_main(found):
-                    return None
-                text = self.desktop.read_text(output.hwnd)
-                if not text or text == before:
-                    return None
-                matches = list(total.finditer(text))
-                return (text, matches[-1]) if matches else None
-
-            text, match = self.wait(
-                f"the Syntax Check result in Output ('{Path(project).stem} - ...')",
-                [],
-                finished,
-                timeout=self.s.paste_timeout,
-            )
-            self.result["syntax_check"] = {
-                "text": text,
-                "errors": int(match.group(1)),
-                "warnings": int(match.group(2)),
-            }
-            self.log(f"Syntax Check: {match.group(0).strip()}")
+            self.result["syntax_check"] = self.check_syntax()
             self.record("syntax_checked")
+
+    def check_syntax(self) -> dict[str, Any]:
+        """Run Syntax Check and wait for its result in Output: its text and counts.
+
+        Output is emptied first (WM_SETTEXT), so a check that reads as the one before is
+        still seen to finish; live probe 1 (2026-11-15) waited out a second check whose
+        text was the first's.
+        """
+        assert self.main is not None
+        controls = self.desktop.controls(self.main)
+        bars = {
+            c.hwnd for c in controls if c.cls.startswith("Afx:ControlBar") and c.text == "Output"
+        }
+        output = _require(
+            next(
+                (c for c in controls if c.cls == "Edit" and c.id == 1005 and c.parent in bars),
+                None,
+            ),
+            "the Output pane's Edit (1005)",
+        )
+        main = classify(self.desktop.windows(self.pid), [])[0].get(MAIN)
+        project = _project_file(main.title) if main is not None else None
+        if project is None:
+            raise Aborted("the main window's title names no project")
+        # The check lists what it finds, then "<project> - N error(s), M warning(s)" last
+        total = re.compile(
+            rf"^{re.escape(Path(project).stem)} - (\d+) error\(s\), (\d+) warning\(s\)\s*$",
+            re.MULTILINE,
+        )
+        self.desktop.set_text(output.hwnd, "")
+        before = self.desktop.read_text(output.hwnd)
+        self.command(SYNTAX_CHECK)
+
+        def finished(found: dict[str, Window]) -> tuple[str, re.Match[str]] | None:
+            if not self.only_main(found):
+                return None
+            text = self.desktop.read_text(output.hwnd)
+            if not text or text == before:
+                return None
+            matches = list(total.finditer(text))
+            return (text, matches[-1]) if matches else None
+
+        text, match = self.wait(
+            f"the Syntax Check result in Output ('{Path(project).stem} - ...')",
+            [],
+            finished,
+            timeout=self.s.paste_timeout,
+        )
+        self.log(f"Syntax Check: {match.group(0).strip()}")
+        return {"text": text, "errors": int(match.group(1)), "warnings": int(match.group(2))}
+
+    # -- try: CLICK's instruction dialogs -------------------------------------
+
+    def try_cases(self) -> None:
+        """Read the nicknames asked for, check the empty main program, then try each case."""
+        if self.nickname_addresses:
+            with self.step("nicknames"):
+                self.copy_nicknames()
+        with self.step("baseline"):
+            baseline = self.check_syntax()
+            self.result["baseline_syntax_check"] = baseline
+            self.record("baseline")
+        with self.step("try"):
+            for number, case in enumerate(self.cases, 1):
+                self.try_case(number, case, baseline)
+
+    def copy_nicknames(self) -> None:
+        """Copy the new project's SC_.mdb into DIR and read the nicknames asked for from the copy.
+
+        CLICK's own file is only copied; the copy is what is opened.
+        """
+        assert self.main is not None
+        mdb = self.desktop.temp_dir(self.main) / "SC_.mdb"
+        if not mdb.is_file():
+            raise Aborted(f"CLICK's SC_.mdb is not at {mdb}")
+        copy = Path(shutil.copy2(mdb, self.s.out / "SC_.mdb"))
+        self.result["files"]["mdb"] = copy
+        names = self.read_nicknames(copy, self.nickname_addresses)
+        self.result["nicknames"] = names
+        for address in self.nickname_addresses:
+            name = names.get(address)
+            self.log(f"{address}: {'no row' if name is None else repr(name)}")
+
+    def try_case(self, number: int, case: Case, baseline: dict[str, Any]) -> None:
+        """Open *case*'s dialog, fill it, press OK and record CLICK's answer.
+
+        The case's entry in ``cases``: its row, name, instruction, mode and fields, then
+        ``outcome`` (``accepted``, ``refused`` or ``other``), the box's ``code`` and
+        ``message`` (an accepted case has them only if CLICK closed the dialog along with
+        a box), ``syntax_check`` for an accepted case (its text, counts, and the ``lines``
+        naming a code the empty program's check does not) and ``seconds``.
+        """
+        instruction = INSTRUCTIONS[case.instruction]
+        title = instruction.title
+        what = f"case {number} ({case.row} {case.name})"
+        label = f"case{number:02d}"
+        entry: dict[str, Any] = {
+            "row": case.row,
+            "case": case.name,
+            "instruction": title,
+            "mode": case.mode,
+            "fields": case.fields,
+            "outcome": None,
+            "code": None,
+            "message": None,
+            "syntax_check": None,
+            "seconds": None,
+        }
+        self.result["cases"].append(entry)
+        began = time.monotonic()
+        self.log(f"{what}: {title} {case.mode or ''} {case.fields}")
+        dialog_expect = Expect(DIALOG, "#32770", title, MAIN)
+        box_expect = Expect(ANSWER_BOX, "#32770", "CLICK Programming Software", DIALOG)
+        expected = [dialog_expect, box_expect]
+
+        self.wait("the main window alone", [], self.only_main)
+        self.command(instruction.command)
+        dialog = self.wait(
+            f"the {title} dialog",
+            [dialog_expect],
+            lambda f: f[DIALOG] if DIALOG in f and f[DIALOG].enabled else None,
+        )
+        if case.mode is not None:
+            radio = _require(
+                _child(self.controls(dialog), cls="Button", id=instruction.modes[case.mode]),
+                f"{title}'s {case.mode} button ({instruction.modes[case.mode]})",
+            )
+            self.press(dialog, radio)
+            self.wait(
+                f"{title}'s {case.mode} button to be checked",
+                [dialog_expect],
+                lambda f: self.desktop.button_checked(radio.hwnd) == 1,
+            )
+        controls = self.controls(dialog)
+        for field, text in case.fields.items():
+            field_id = instruction.fields[field]
+            control = _require(
+                next((c for c in controls if c.id == field_id and c.cls in _FIELD_CLASSES), None),
+                f"{title}'s {field} field ({field_id})",
+            )
+            if not (control.visible and control.enabled):
+                raise Aborted(
+                    f"{what}: {title}'s {field} field ({field_id}) is not open for entry"
+                    f"{f' in {case.mode} mode' if case.mode else ''}"
+                )
+            self.desktop.set_text(control.hwnd, text)
+            if self.desktop.read_text(control.hwnd) != text:
+                raise Aborted(f"{what}: {title}'s {field} field did not take {text!r}")
+        self.record(f"{label}_filled")
+        ok = _require(_child(controls, cls="Button", id=1, text="OK"), f"{title}'s OK (1)")
+        self.press(dialog, ok)
+
+        def answered(found: dict[str, Window]) -> Window | bool | None:
+            if ANSWER_BOX in found:
+                return found[ANSWER_BOX]
+            return DIALOG not in found and self.only_main(found)
+
+        answer = self.wait(f"CLICK's answer to {what}", expected, answered, answering=dialog.hwnd)
+        self.record(f"{label}_answer")
+        if isinstance(answer, Window):
+            self.answer_box(what, entry, dialog, answer, expected)
+        else:
+            entry["outcome"] = "accepted"
+        if entry["outcome"] == "accepted":
+            self.log(f"{what}: accepted")
+            check = self.check_syntax()
+            known = {m.group(1) for m in _SYNTAX_CODE.finditer(baseline["text"])}
+            entry["syntax_check"] = {
+                **check,
+                "lines": [
+                    line.strip()
+                    for line in check["text"].splitlines()
+                    if (m := _SYNTAX_CODE.search(line)) and m.group(1) not in known
+                ],
+            }
+            self.command(DELETE)
+            self.wait(f"Delete after {what}", [], self.only_main)
+            cleared = self.check_syntax()
+            if cleared["text"] != baseline["text"]:
+                raise Aborted(
+                    f"after {what}, Delete did not leave the main program empty: its Syntax "
+                    f"Check reads {cleared['text']!r}, the empty program's {baseline['text']!r}"
+                )
+        entry["seconds"] = round(time.monotonic() - began, 3)
+
+    def answer_box(
+        self,
+        what: str,
+        entry: dict[str, Any],
+        dialog: Window,
+        box: Window,
+        expected: list[Expect],
+    ) -> None:
+        """Take CLICK's error box after OK as the case's answer, close it, Cancel the dialog.
+
+        A box that is not one CLICK error with one OK is a question: the case is ``other``
+        and the run stops. A dialog CLICK closed along with its box was accepted.
+        """
+        controls = self.controls(box)
+        error = click_error(box, controls)
+        buttons = [c for c in controls if c.cls == "Button"]
+        if error is None or [b.text for b in buttons] != ["OK"]:
+            texts = [c.text for c in controls if c.cls == "Static" and c.text]
+            entry.update(outcome="other", message=" | ".join(texts))
+            raise Aborted(
+                f"{what}: CLICK asked something the runner does not answer: {texts!r}, "
+                f"buttons {[b.text for b in buttons]!r}"
+            )
+        entry.update(code=error[0], message=error[1])
+        self.log(f"{what}: {error[0]} {error[1]}")
+        self.press(box, buttons[0])
+        after = self.wait(
+            "the error box to close",
+            expected,
+            lambda f: f if ANSWER_BOX not in f and (DIALOG not in f or f[DIALOG].enabled) else None,
+            answering=dialog.hwnd,
+        )
+        if DIALOG not in after:
+            entry["outcome"] = "accepted"
+            return
+        entry["outcome"] = "refused"
+        cancel = _require(
+            _child(self.controls(after[DIALOG]), cls="Button", id=2, text="Cancel"),
+            f"{dialog.title}'s Cancel (2)",
+        )
+        self.press(after[DIALOG], cancel)
+        self.wait(f"the {dialog.title} dialog to close", expected[:1], self.only_main)
 
     def save(self) -> Path:
         assert self.main is not None and self.s.csv is not None
@@ -1227,12 +1580,14 @@ class Run:
                     self.paste()
                     self.syntax_check()
                     self.save()
+                elif self.s.command == "try":
+                    self.try_cases()
                 self.disconnect_step()
                 if self.s.command == "paste":
                     self.close()
                 else:
                     # The new project was never saved: end CLICK rather than meet a
-                    # save prompt nobody has recorded yet
+                    # save prompt nobody has recorded yet (try leaves it changed, too)
                     with self.step("close"):
                         self.end_click()
                     if not self.result["click"]["closed"]:
@@ -1384,6 +1739,11 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser(
         "record", parents=[common], help="connect, dump every window at each step, close"
     )
+    tries = commands.add_parser(
+        "try", parents=[common], help="ask CLICK's instruction dialogs whether they accept cases"
+    )
+    tries.add_argument("cases", type=Path, help="the cases (JSON; see load_cases)")
+    tries.add_argument("--record", action="store_true", help="also dump every window at each step")
     return parser
 
 
@@ -1394,6 +1754,7 @@ def settings_from(argv: list[str] | None, environ: dict[str, str] | None = None)
         command=args.command,
         out=args.out.resolve(),
         csv=args.csv.resolve() if args.command == "paste" else None,
+        cases=args.cases.resolve() if args.command == "try" else None,
         exe=args.click_exe,
         password=args.password or env.get("CLICK_RUNNER_PASSWORD") or DEFAULT_PASSWORD,
         user_type=args.user_type or env.get("CLICK_RUNNER_USER_TYPE") or DEFAULT_USER_TYPE,

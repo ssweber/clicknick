@@ -22,19 +22,31 @@ from pathlib import Path
 
 # CLICK v4's command ids, from CLICK.exe's string table (probe of 2026-11-15)
 PASTE = 0xE125  # MFC's ID_EDIT_PASTE
+DELETE = 32777  # Edit > Delete: the instruction under the ladder's cursor
 SYNTAX_CHECK = 32846
 SAVE_PROJECT = 32898
 SAVE_PROJECT_AS = 32899
 DISCONNECT = 32850
 READ_PROJECT_FROM_PLC = 32853
 WRITE_PROJECT_INTO_PLC = 32854
+# The ribbon's Instruction tab, which opens an instruction's dialog at the ladder's cursor.
+# These ids are in no string table: CLICK.exe builds the ribbon in code, pushing each
+# button's id beside its label ("Math..."). The same reading gives 32850 for "Disconnect..."
+# and 32853 for "Read Project from PLC...", as the string table does (probe of 2026-11-15).
+OUT_DIALOG = 50010
+MATH_DIALOG = 50030
+COPY_DIALOG = 50040
 
 ALLOWED_COMMANDS = {
     PASTE: "Paste",
+    DELETE: "Delete",
     SYNTAX_CHECK: "Syntax Check",
     SAVE_PROJECT: "Save Project",
     SAVE_PROJECT_AS: "Save Project As",
     DISCONNECT: "Disconnect",
+    OUT_DIALOG: "Out...",
+    MATH_DIALOG: "Math...",
+    COPY_DIALOG: "Copy...",
 }
 
 _NEVER = {
