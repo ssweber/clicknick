@@ -153,8 +153,9 @@ ribbon's commands (50030, 50040, 50010), fills them, presses OK and records whet
 which error box it shows (`OBJ-...`). An accepted one is checked with Syntax Check and deleted again. The cases
 cover rows A1 to A10, B1 to B6 and B8 of pyrung's and laddercodec's rule table, with controls that tell a
 refusal's reason apart (for example, X and Y pack only into DH). A run of 59 cases takes about 5 minutes,
-mostly Syntax Checks. Left: the Receive dialog (B7), section D, and the rows only Sam can answer. E1 is not in
-a new project's SC_.mdb; CLICK's `PLCType.ini` names SD21 `_RTC_Month`.
+mostly waiting out the Syntax Check CLICK drops after each Delete (5 s each). Left: the Receive dialog (B7),
+section D, and the rows only Sam can answer. E1 is not in a new project's SC_.mdb; CLICK's `PLCType.ini`
+names SD21 `_RTC_Month`.
 
 ## 5. ConnectionSession owns the window and project (done)
 

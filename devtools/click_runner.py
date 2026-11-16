@@ -21,15 +21,16 @@ project's SC_.mdb holds few: live run try3 found SC202, SC203 and SD13 only). It
 Check on the empty main program (``baseline_syntax_check``), then, for each case: opens the
 instruction's dialog from the ribbon's command at the ladder's cursor, picks its mode (a
 mode button already checked is left alone: Math empties its fields on any type click), fills
-its fields by WM_SETTEXT, reads them back and presses OK. CLICK either closes the dialog (``accepted``) or
-shows an error box owned by it (``refused``, with the box's code and message); the box's
-OK and the dialog's Cancel then close both. An accepted case gets a Syntax Check of its own
-(the lines naming a code the empty program's check does not), then Edit > Delete removes the
-instruction, and the next Syntax Check must read as the empty program's did. A Syntax Check
-whose Output stays empty while CLICK is idle is posted again (``SYNTAX_REPOST_AFTER``): in
-live run try3 CLICK ran 1 of the 30 posted just after a Delete. All cases run in one CLICK,
-which is then disconnected and ended, as ``record`` ends it. result.json holds one entry per
-case under ``cases``, in the order tried, and an abort keeps the entries done before it.
+its fields by WM_SETTEXT, reads them back and presses OK. CLICK either closes the dialog
+(``accepted``) or shows an error box owned by it (``refused``, with the box's code and
+message); the box's OK and the dialog's Cancel then close both. An accepted case gets a
+Syntax Check of its own (the lines naming a code the empty program's check does not), then
+Edit > Delete removes the instruction, and the next Syntax Check must read as the empty
+program's did. A Syntax Check whose Output stays empty while CLICK is idle is posted again
+(``SYNTAX_REPOST_AFTER``): in live run try3 CLICK ran 1 of the 30 posted just after a
+Delete. All cases run in one CLICK, which is then disconnected and ended, as ``record`` ends
+it. result.json holds one entry per case under ``cases``, in the order tried, and an abort
+keeps the entries done before it.
 
 ``DIR`` must not exist or be empty. The run ends with ``DIR/result.json``, however it ends,
 and prints it on stdout (nothing else goes there); each step is logged to ``DIR/run.log``
