@@ -970,10 +970,9 @@ class Run:
         expected whatever its title: CLICK titles it bare while it closes or reads a
         project. A CLICK error box aborts at once (``check_error_boxes``), except one owned
         by the window *answering* names (an instruction dialog whose OK was pressed). It
-        gives up after
-        *timeout* seconds (default ``Settings.timeout``), with a reason that starts with
-        *on_timeout*'s text when it is given. Every ``STATUS_EVERY`` seconds it logs the
-        status bar, or that CLICK does not answer.
+        gives up after *timeout* seconds (default ``Settings.timeout``), with a reason that
+        starts with *on_timeout*'s text when it is given. Every ``STATUS_EVERY`` seconds it
+        logs the status bar, or that CLICK does not answer.
         """
         assert self.pid is not None
         limit = self.s.timeout if timeout is None else timeout

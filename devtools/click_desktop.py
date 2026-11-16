@@ -32,12 +32,12 @@ DISCONNECT = 32850
 # File > Import > Nickname ("Import to Address Picker" in the string table). It opens an Open
 # dialog with three import modes and writes the rows into SC_.mdb (live probe of 2026-11-15)
 IMPORT_NICKNAME = 32900
-# PLC > Read Data from PLC: it reads the PLC's data values and saves them to a file. Write
-# Data into PLC, beside it, writes a file's values into the PLC and is never sent (string
-# table, probe of 2026-11-16)
 # Program > Address Picker (Ctrl+T; "Address Picker" in the string table): CLICK's editor of
 # nicknames and address comments (probe of 2026-11-16)
 ADDRESS_PICKER = 32834
+# PLC > Read Data from PLC: it reads the PLC's data values and saves them to a file. Write
+# Data into PLC, beside it, writes a file's values into the PLC and is never sent (string
+# table, probe of 2026-11-16)
 READ_DATA_FROM_PLC = 32851
 WRITE_DATA_INTO_PLC = 32852
 READ_PROJECT_FROM_PLC = 32853
