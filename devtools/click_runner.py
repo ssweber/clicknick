@@ -16,17 +16,20 @@ A PNG is the screen where the window is, so whatever lies over CLICK there is in
 
 ``try`` asks CLICK's instruction dialogs whether they accept an instruction (``CASES``).
 Once connected, it copies the new project's SC_.mdb to ``DIR/SC_.mdb`` and reads the
-nicknames of the addresses CASES.json lists under ``nicknames`` from the copy. It runs Syntax
+nicknames of the addresses CASES.json lists under ``nicknames`` from the copy (a new
+project's SC_.mdb holds few: live run try3 found SC202, SC203 and SD13 only). It runs Syntax
 Check on the empty main program (``baseline_syntax_check``), then, for each case: opens the
-instruction's dialog from the ribbon's command at the ladder's cursor, picks its mode, fills
-its fields by WM_SETTEXT and presses OK. CLICK either closes the dialog (``accepted``) or
+instruction's dialog from the ribbon's command at the ladder's cursor, picks its mode (a
+mode button already checked is left alone: Math empties its fields on any type click), fills
+its fields by WM_SETTEXT, reads them back and presses OK. CLICK either closes the dialog (``accepted``) or
 shows an error box owned by it (``refused``, with the box's code and message); the box's
 OK and the dialog's Cancel then close both. An accepted case gets a Syntax Check of its own
 (the lines naming a code the empty program's check does not), then Edit > Delete removes the
-instruction, and the next Syntax Check must read as the empty program's did. All cases run
-in one CLICK, which is then disconnected and ended, as ``record`` ends it. result.json holds
-one entry per case under ``cases``, in the order tried, and an abort keeps the entries
-done before it.
+instruction, and the next Syntax Check must read as the empty program's did. A Syntax Check
+whose Output stays empty while CLICK is idle is posted again (``SYNTAX_REPOST_AFTER``): in
+live run try3 CLICK ran 1 of the 30 posted just after a Delete. All cases run in one CLICK,
+which is then disconnected and ended, as ``record`` ends it. result.json holds one entry per
+case under ``cases``, in the order tried, and an abort keeps the entries done before it.
 
 ``DIR`` must not exist or be empty. The run ends with ``DIR/result.json``, however it ends,
 and prints it on stdout (nothing else goes there); each step is logged to ``DIR/run.log``
@@ -127,8 +130,8 @@ RESPONSIVE_POLLS = 3
 STATUS_EVERY = 10.0
 # Seconds Output may stay empty, CLICK idle, before Syntax Check is posted again, and the most
 # posts. CLICK writes the check's header at once; live run try1 (2026-11-15) met a Syntax
-# Check posted just after Delete that CLICK never ran, as MFC drops a command that is
-# disabled when it arrives.
+# Check posted just after Delete that CLICK never ran (MFC drops a posted command that is
+# disabled when it arrives, which is the likely cause).
 SYNTAX_REPOST_AFTER = 5.0
 SYNTAX_POSTS = 3
 STATUS_BAR_ID = 59393  # AFX_IDW_STATUS_BAR

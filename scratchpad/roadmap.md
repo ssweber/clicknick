@@ -146,6 +146,16 @@ What a script cannot judge is the wording: collect each notice into one page for
 Not without CLICK: the overlay, project change and Save As, Review Changes paste steps, and Sync racing a
 CLICK save.
 
+### 4c. The editor's answers for the rule table (done for Math, Copy and Out)
+
+`click_runner.py try devtools/editor_cases.json --out DIR` opens CLICK's Math, Copy and Out dialogs from the
+ribbon's commands (50030, 50040, 50010), fills them, presses OK and records whether CLICK accepts each case or
+which error box it shows (`OBJ-...`). An accepted one is checked with Syntax Check and deleted again. The cases
+cover rows A1 to A10, B1 to B6 and B8 of pyrung's and laddercodec's rule table, with controls that tell a
+refusal's reason apart (for example, X and Y pack only into DH). A run of 58 cases takes about 5 minutes,
+mostly Syntax Checks. Left: the Receive dialog (B7), section D, and the rows only Sam can answer. E1 is not in
+a new project's SC_.mdb; CLICK's `PLCType.ini` names SD21 `_RTC_Month`.
+
 ## 5. ConnectionSession owns the window and project (done)
 
 The session opens on connect, before the database loads, and holds the window, the load token, the workspace
