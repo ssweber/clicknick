@@ -12,7 +12,7 @@ from laddercodec import Coil, Contact, Rung, read_csv
 from laddercodec.model import Program
 
 from clicknick.app import ClickNickApp
-from clicknick.connection_session import ClickConnection
+from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.data.data_source import CsvDataSource
 from clicknick.models.address_row import AddressRow
 from clicknick.services.click_snapshot import (
@@ -181,7 +181,7 @@ def _app(windows: dict[int, str] | None = None) -> ClickNickApp:
     app._request_ui_refresh = MagicMock()
     app._update_status = MagicMock()
     app.root = MagicMock()
-    app._click = SimpleNamespace(hwnd=1)
+    app._session = ConnectionSession(ClickConnection("p1", 1, "Line1.ckp"))
     app.detector = SimpleNamespace(
         get_click_instances=lambda: [
             SimpleNamespace(hwnd=hwnd, filename=filename) for hwnd, filename in windows.items()
@@ -206,7 +206,7 @@ def test_the_menu_lists_the_other_click_windows() -> None:
 
 def test_without_a_connection_the_menu_lists_every_click_window() -> None:
     app = _app()
-    app._click = None
+    app._session = None
     menu = MagicMock()
 
     app._fill_other_click_menu(menu)
@@ -305,7 +305,6 @@ def test_refreshing_the_window_list_removes_copies_of_closed_windows(
     (compare / ".CLICK (00000003)-k2j8").mkdir()  # Left by a copy cut short
     (compare / "notes.txt").write_text("mine", encoding="utf-8")
     app = _app()  # Windows 1 and 2 are open
-    app._click = ClickConnection("p1", 1, "Line1.ckp")
     app.click_instances = []
     app.instances_combobox = {}
     app.selected_instance_var = MagicMock()

@@ -315,6 +315,7 @@ def test_none_connects_through_existing_csv_flow(monkeypatch):
     from types import SimpleNamespace
 
     from clicknick import app as app_module
+    from clicknick.connection_session import ClickConnection
 
     monkeypatch.setenv("CLICKNICK_DB_BACKEND", "none")
     view = SimpleNamespace(
@@ -322,8 +323,10 @@ def test_none_connects_through_existing_csv_flow(monkeypatch):
         _session=None,
         _data=None,
         monitoring=False,
-        _clear_connection_state=Mock(),
         _load_workspace_pairing=Mock(),
+        _configured_workspace_dir=lambda: None,
+        _on_sync_status_changed=Mock(),
+        _on_build_finished=Mock(),
         _show_instances=Mock(),
         _watch_connection=Mock(),
         _hide_overlay=Mock(),
@@ -335,6 +338,9 @@ def test_none_connects_through_existing_csv_flow(monkeypatch):
     )
     view._close_data = lambda **kw: app_module.ClickNickApp._close_data(view, **kw)
     view._close_session = lambda: app_module.ClickNickApp._close_session(view)
+    view._open_connection_session = lambda click, **kw: (
+        app_module.ClickNickApp._open_connection_session(view, click, **kw)
+    )
     view._connect_csv_fallback = lambda *args: app_module.ClickNickApp._connect_csv_fallback(
         view, *args
     )
@@ -347,7 +353,9 @@ def test_none_connects_through_existing_csv_flow(monkeypatch):
     app_module.ClickNickApp.connect_to_instance(view, 1, "CLICK", "project.ckp", 2)
     dialog.assert_called_once_with(view.root, "Address.csv", "project_Address.csv")
     view.load_csv.assert_called_once_with("saved.csv")
-    assert view._session is None
+    # The session holds the window, and builds nothing without a database
+    assert view._session.click == ClickConnection(1, 2, "project.ckp")
+    assert not view._session.has_database
     probe.assert_not_called()
 
 
@@ -367,33 +375,27 @@ def test_unloadable_odbc_loads_off_ui_thread_and_handles_result(jet_database, mo
     from types import SimpleNamespace
 
     from clicknick import app as app_module
-    from clicknick import connection_session
-    from clicknick.connection_session import ClickConnection
+    from clicknick.connection_session import ClickConnection, ConnectionSession
     from clicknick.data import data_source
 
     path, _worker = jet_database
     callbacks = []
     ui_thread = threading.get_ident()
     native_threads = []
+    session = ConnectionSession(ClickConnection(1, 2, "project.ckp"))
     view = SimpleNamespace(
         root=SimpleNamespace(after=lambda _delay, callback: callbacks.append(callback)),
-        _session=None,
+        _session=session,
         _data=None,
         _update_status=Mock(),
         _show_main_window=Mock(),
         _connect_csv_fallback=Mock(),
-        _configured_workspace_dir=lambda: None,
-        _on_sync_status_changed=Mock(),
-        _on_build_finished=Mock(),
         nickname_manager=Mock(),
         load_from_database=Mock(),
         _start_analysis_build=Mock(),
     )
     view._open_data = lambda store: app_module.ClickNickApp._open_data(view, store)
     view._get_store = lambda: app_module.ClickNickApp._get_store(view)
-    view._open_connection_session = lambda click: app_module.ClickNickApp._open_connection_session(
-        view, click
-    )
     monkeypatch.setattr(data_source, "find_click_database", lambda *_args: str(path))
     monkeypatch.setattr(
         mdb_shared, "get_available_access_drivers", lambda: ["Microsoft Access Driver (*.mdb)"]
@@ -419,38 +421,36 @@ def test_unloadable_odbc_loads_off_ui_thread_and_handles_result(jet_database, mo
     monkeypatch.setattr(threading, "Thread", create_thread)
     monitoring = Mock()
     monkeypatch.setattr(app_module.AddressStore, "start_file_monitoring", monitoring)
-    session = Mock()
-    monkeypatch.setattr(connection_session, "ConnectionSession", session)
     error = Mock()
     monkeypatch.setattr(app_module.messagebox, "showerror", error)
 
     # Collect earlier tests' Tk objects here, on the Tk thread. Collected on the
     # load thread, each waits about a second for a main loop that is not running.
     gc.collect()
-    app_module.ClickNickApp._load_instance_database(view, 1, "project.ckp", 2)
-    assert view._session is None
+    app_module.ClickNickApp._load_instance_database(view, session)
+    assert not session.has_database
     threads[0].join(timeout=30)
     assert not threads[0].is_alive(), "Background database load did not finish"
     assert native_threads and all(t != ui_thread for t in native_threads)
     if outcome == "cancelled":
-        view._connection_probe_token = None
+        session.cancel_load()
     callbacks.pop(0)()
     if outcome == "success":
         store = view._data.store
         assert store.loaded_row_count == 408
-        assert session.call_args.args == (ClickConnection(1, 2, "project.ckp"),)
-        assert view._session is session.return_value
+        assert session.has_database
+        assert view._session is session
         view.nickname_manager.set_store.assert_called_once_with(store)
         monitoring.assert_called_once_with(view.root)
         view._connect_csv_fallback.assert_not_called()
         error.assert_not_called()
     elif outcome == "failure":
-        session.assert_not_called()
+        assert not session.has_database
         error.assert_called_once()
         assert "policy blocked" in error.call_args.args[1]
         view._connect_csv_fallback.assert_called_once_with("project.ckp", 2)
     else:
-        session.assert_not_called()
+        assert not session.has_database
         monitoring.assert_not_called()
         view._connect_csv_fallback.assert_not_called()
         error.assert_not_called()
@@ -460,6 +460,7 @@ def test_switch_closes_old_session_before_loading_new_database(monkeypatch):
     from types import SimpleNamespace
 
     from clicknick import app as app_module
+    from clicknick.connection_session import ClickConnection
 
     events = []
     previous = Mock()
@@ -472,18 +473,23 @@ def test_switch_closes_old_session_before_loading_new_database(monkeypatch):
         _data=data,
         monitoring=False,
         nickname_manager=Mock(),
-        _clear_connection_state=Mock(),
         _load_workspace_pairing=Mock(),
+        _configured_workspace_dir=lambda: None,
+        _on_sync_status_changed=Mock(),
+        _on_build_finished=Mock(),
         _show_instances=Mock(),
         _watch_connection=Mock(),
         _hide_overlay=Mock(),
         _load_instance_database=lambda *_args: events.append("load"),
     )
+    view._open_connection_session = lambda click, **kw: (
+        app_module.ClickNickApp._open_connection_session(view, click, **kw)
+    )
     view._close_data = lambda **kw: app_module.ClickNickApp._close_data(view, **kw)
     view._close_session = lambda: app_module.ClickNickApp._close_session(view)
     app_module.ClickNickApp.connect_to_instance(view, 1, "CLICK", "project.ckp", 2)
     assert events == ["close data", "close session", "load"]
-    assert view._session is None
+    assert view._session.click == ClickConnection(1, 2, "project.ckp")
     assert view._data is None
 
 

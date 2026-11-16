@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from clicknick.app import ClickNickApp
-from clicknick.connection_session import ClickConnection
+from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.data_session import DataSession
 
 
@@ -59,10 +59,20 @@ class FakeEditor:
         self.closed = True
 
 
+_MY_PROJECT = ClickConnection("111", 222, "MyProject.ckp")
+
+
+def _session(click: ClickConnection = _MY_PROJECT):
+    """A session on *click* whose close() is recorded."""
+    session = ConnectionSession(click)
+    session.close = MagicMock(wraps=session.close)
+    return session
+
+
 def _make_app_stub() -> ClickNickApp:
     app = ClickNickApp.__new__(ClickNickApp)
     app._request_ui_refresh = MagicMock()
-    app._session = None
+    app._session = _session()
     app._data = None
     app._update_status = MagicMock()
     app._on_data_ready = MagicMock()
@@ -73,7 +83,6 @@ def _make_app_stub() -> ClickNickApp:
     app._watch_running = False
     app.nickname_manager = SimpleNamespace(set_store=MagicMock())
     app.selected_instance_var = FakeVar("MyProject.ckp")
-    app._click = ClickConnection("111", 222, "MyProject.ckp")
     app.refresh_click_instances = MagicMock()
     return app
 
@@ -87,14 +96,16 @@ def test_load_csv_with_stale_connection_skips_monitoring_and_clears_connection(m
     _patch_csv_loading(monkeypatch)
     app = _make_app_stub()
     app.selected_instance_var = FakeVar("OldProject.ckp")
-    app._click = ClickConnection("1234", 5678, "OldProject.ckp")
+    app._session = session = _session(ClickConnection("1234", 5678, "OldProject.ckp"))
     app.detector = SimpleNamespace(check_window_exists=lambda _pid: False)
 
     result = app.load_csv("C:/tmp/NicknameExport.csv")
 
     assert result is True
     assert app._on_data_ready.call_count == 0
-    assert app._click is None
+    # The window is gone: its session closes with everything it runs
+    session.close.assert_called_once()
+    assert app._session is None
     assert app.selected_instance_var.get() == ""
     assert isinstance(app._data.store, FakeAddressStore)
     assert app.using_database is False
@@ -140,8 +151,7 @@ def test_handle_window_closed_keeps_csv_data():
     app = _make_app_stub()
     store = FakeAddressStore(is_database=False)
     app._data = DataSession(store)
-    session = SimpleNamespace(close=MagicMock())
-    app._session = session
+    session = app._session
     app.root = SimpleNamespace(after=MagicMock())
 
     app._handle_window_closed()
@@ -162,8 +172,7 @@ def test_handle_window_closed_closes_database_data():
     app._data = DataSession(store)
     editor = FakeEditor()
     app._data.register_editor(editor)
-    session = SimpleNamespace(close=MagicMock())
-    app._session = session
+    session = app._session
     app.root = SimpleNamespace(after=MagicMock())
 
     app._handle_window_closed()
@@ -196,12 +205,13 @@ def test_project_change_loads_new_database_off_the_ui_thread(monkeypatch):
     app.click_instances = []
     app.instances_combobox = {}
     app._load_workspace_pairing = MagicMock()
+    app._workspace_config = None
     app._load_instance_database = MagicMock()
     app.nickname_manager.has_database_backend = lambda: True
 
     app._handle_project_change("CLICK - Next.ckp", "Next.ckp")
 
-    app._load_instance_database.assert_called_once_with("111", "Next.ckp", 222)
+    app._load_instance_database.assert_called_once_with(app._session)
     assert app._click == ClickConnection("111", 222, "Next.ckp")
     assert app._data is None
 
@@ -210,7 +220,7 @@ def test_project_change_loads_new_database_off_the_ui_thread(monkeypatch):
 def test_only_a_database_save_counts_as_synced_to_click(is_database):
     app = _make_app_stub()
     app._data = DataSession(FakeAddressStore(is_database=is_database))
-    app._session = SimpleNamespace(record_sync=MagicMock(), analysis=None)
+    app._session.record_sync = MagicMock()
 
     app._on_editor_synced({1, 2})
 
@@ -221,10 +231,8 @@ def test_a_sync_rebuilds_a_build_that_needed_upgrade_project():
     app = _make_app_stub()
     app._data = DataSession(FakeAddressStore(is_database=True))
     app._start_analysis_build = MagicMock()
-    app._session = SimpleNamespace(
-        record_sync=MagicMock(),
-        analysis=SimpleNamespace(system_nickname_repairs=(), needs_comment_upgrade=True),
-    )
+    app._session.record_sync = MagicMock()
+    app._session.analysis = SimpleNamespace(system_nickname_repairs=(), needs_comment_upgrade=True)
 
     app._on_editor_synced({1})
 

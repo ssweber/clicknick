@@ -1,7 +1,7 @@
 """Connection session: owns the resources bound to a connected CLICK project.
 
-Created on connect, replaced on project-change, closed on disconnect. The
-address data itself lives in DataSession.
+Created on connect, before CLICK's database loads, replaced on a project change,
+closed on disconnect. The address data itself lives in DataSession.
 """
 
 from __future__ import annotations
@@ -28,6 +28,12 @@ if TYPE_CHECKING:
 # writing. Builds of every session run one at a time.
 _BUILD_GATE = threading.Lock()
 
+# Why a session builds nothing before ClickNick read CLICK's database (has_database)
+NO_DATABASE = (
+    "ClickNick has not read this project's database. It reads CLICK's program "
+    "through the database (Access ODBC or Jet)."
+)
+
 
 @dataclass(frozen=True)
 class SavedProgram:
@@ -36,7 +42,8 @@ class SavedProgram:
     A value different from the last one means a comparison may be out of date.
     """
 
-    # A different session is a different project; None when nothing is connected.
+    # A different session is a different project; None when nothing is connected
+    # or ClickNick has not read the connected project's database.
     session: ConnectionSession | None = None
     generation: int = 0
     # Saves CLICK made in this session, as the ScrWatcher saw them: the one signal
@@ -82,21 +89,32 @@ class ConnectionSession:
     """Owns the resources whose lifetime is bounded by a CLICK project connection.
 
     Resources managed (in teardown order):
-    1. Simulator window (with its console)
-    2. SimulationSession (pyrung DAP subprocess, its Modbus server and client)
-    3. ScrWatcher (file polling)
-    4. AnalysisService (stale graph)
+    1. The database load in flight
+    2. Simulator window (with its console)
+    3. SimulationSession (pyrung DAP subprocess, its Modbus server and client)
+    4. ScrWatcher (file polling)
+    5. AnalysisService (stale graph)
     """
 
     def __init__(
         self,
         click: ClickConnection,
         *,
+        has_database: bool = False,
         workspace_dir: Path | None = None,
         on_sync_status_changed: Callable[[int], None] | None = None,
         on_build_finished: Callable[[], None] | None = None,
     ) -> None:
+        # The connected window, for the session's lifetime: a project change
+        # replaces the session.
         self.click = click
+        # Whether ClickNick read CLICK's database for this project. A session
+        # opens before the database loads, and stays without one when there is
+        # no database backend or the load fails (the CSV fallback). The analysis
+        # reads SC_.mdb through ODBC or Jet, so until then nothing is built, and
+        # nothing that needs a build (the simulation, Review Changes' comparison)
+        # starts.
+        self.has_database = has_database
         self.workspace_dir = workspace_dir.resolve() if workspace_dir is not None else None
 
         self.analysis: AnalysisService | None = None
@@ -116,6 +134,23 @@ class ConnectionSession:
         self._build_running = False
         self._next_build: _BuildRequest | None = None
         self._closed = False
+        # The database load in flight (begin_load); None once it is cancelled.
+        self._load_token: object | None = None
+
+    # -- Database load -----------------------------------------------------
+
+    def begin_load(self) -> object:
+        """Note a database load starting; its result counts while ``loads(token)``."""
+        self._load_token = token = object()
+        return token
+
+    def loads(self, token: object) -> bool:
+        """Whether the load *token* names is still wanted: not cancelled, session open."""
+        return not self._closed and self._load_token is token
+
+    def cancel_load(self) -> None:
+        """Drop the database load in flight: its result will not be used."""
+        self._load_token = None
 
     @property
     def synced_pending(self) -> int:
@@ -317,6 +352,8 @@ class ConnectionSession:
         """Where the program CLICK last saved can be read as CSVs, right now."""
         from .services.analysis_service import AnalysisStatus
 
+        if not self.has_database:
+            return SavedProgram()
         reading = "Reading CLICK's program…"
         saves = self._save_count
         analysis = self.analysis
@@ -363,6 +400,10 @@ class ConnectionSession:
         on_complete: Callable[[bool, str | None], None] | None = None,
     ) -> bool:
         """Explicitly regenerate the workspace from the saved CLICK project."""
+        if not self.has_database:
+            if on_complete is not None:
+                root.after(0, lambda: on_complete(False, NO_DATABASE))
+            return False
         paths = self._analysis_paths()
         if paths is None:
             if on_complete is not None:
@@ -379,11 +420,14 @@ class ConnectionSession:
 
         A build already under way serves the request. The ScrWatcher is made
         once per session, as it counts what was synced since CLICK last saved.
+        Nothing starts before ClickNick read CLICK's database (``has_database``).
         """
         from .services.analysis_service import AnalysisStatus
         from .services.scr_watcher import ScrWatcher
         from .utils.click_temp import click_temp_dir
 
+        if not self.has_database:
+            return
         paths = None
         if self.analysis is None or self.analysis.status is not AnalysisStatus.BUILDING:
             paths = self._analysis_paths()
@@ -414,8 +458,10 @@ class ConnectionSession:
     # -- Teardown ----------------------------------------------------------
 
     def close(self) -> None:
-        """Close the simulation windows and stop simulating, watching and analysing."""
+        """Drop the database load, close the simulation windows, and stop
+        simulating, watching and analysing."""
         self._closed = True
+        self._load_token = None
         self._close_windows()
         if self.simulation is not None:
             self.simulation.close()

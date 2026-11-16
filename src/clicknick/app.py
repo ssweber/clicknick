@@ -88,12 +88,26 @@ class ClickNickApp:
 
     # Everything the window title and Workspace details are computed from;
     # changing any of these refreshes them (see _refresh_ui).
-    _click: _ShownState[ClickConnection | None] = _ShownState()
     _data: _ShownState[DataSession | None] = _ShownState()
     _session: _ShownState[ConnectionSession | None] = _ShownState()
     _workspace_config: _ShownState[ProjectWorkspaceConfig | None] = _ShownState()
     _workspace_matches: _ShownState[list[ProjectWorkspaceConfig]] = _ShownState()
     _workspace_mirror_error: _ShownState[str | None] = _ShownState()
+
+    @property
+    def _click(self) -> ClickConnection | None:
+        """The connected CLICK window, as its session holds it (None when none is)."""
+        session = self._session
+        return session.click if session is not None else None
+
+    def _project_session(self) -> ConnectionSession | None:
+        """The session once ClickNick has read CLICK's database for it, else None.
+
+        Building the workspace, simulating, Review Changes and Workspace setup
+        wait for that: until then they ask the user to connect first.
+        """
+        session = self._session
+        return session if session is not None and session.has_database else None
 
     def _get_workspace_status(self):
         """Return reusable status for the current CLICK workspace."""
@@ -547,7 +561,7 @@ class ClickNickApp:
 
     def _workspace_rung_apply(self) -> None:
         """Review workspace changes through the reviewed proposal flow."""
-        if self._session is None or self._live_server is None:
+        if self._project_session() is None or self._live_server is None:
             self._update_status("Connect to a CLICK project first", "error")
             return
 
@@ -583,7 +597,7 @@ class ClickNickApp:
 
     def _workspace_reload_from_click(self) -> None:
         """Explicitly replace active workspace source from the saved CLICK project."""
-        session = self._session
+        session = self._project_session()
         if session is None:
             self._update_status("Connect to a CLICK project first", "error")
             return
@@ -642,7 +656,7 @@ class ClickNickApp:
         and a conversion that already failed will not fix itself by opening
         a window -- say so up front rather than showing an inert one.
         """
-        session = self._session
+        session = self._project_session()
         if session is None:
             self._update_status("Connect to a Click project first", "error")
             return None
@@ -1001,7 +1015,8 @@ class ClickNickApp:
 
         from .utils.click_temp import click_temp_dir
 
-        if self._session is None or self._click is None:
+        session = self._project_session()
+        if session is None:
             self._update_status("Connect to a CLICK project first", "error")
             return None
 
@@ -1022,7 +1037,7 @@ class ClickNickApp:
                 continue
             try:
                 write_plc_name(
-                    click_temp_dir(self._click.hwnd) / "Project.ini",
+                    click_temp_dir(session.click.hwnd) / "Project.ini",
                     plc_name,
                 )
             except (OSError, ValueError) as exc:
@@ -1155,7 +1170,8 @@ class ClickNickApp:
     def _apply_workspace_mirror_setup(self) -> None:
         """Make the selected durable directory the active project workspace."""
         dialog_parent = getattr(self, "_mirror_setup_window", None) or self.root
-        if self._session is None:
+        session = self._project_session()
+        if session is None:
             self._update_status("Connect to a CLICK project first", "error")
             return
         config = self._pending_workspace_config
@@ -1241,8 +1257,8 @@ class ClickNickApp:
         self.mirror_project_selection_var.set(str(mirror_path.resolve()))
         self.mirror_location_selection_var.set("")
         self.workspace_setup_action_var.set("Use Workspace")
-        self._session.use_workspace(mirror_path)
-        self._session.record_rung_stage(0)
+        session.use_workspace(mirror_path)
+        session.record_rung_stage(0)
         self._update_status(f"Workspace configured: {mirror_path}", "connected")
         self._start_analysis_build()
 
@@ -2173,9 +2189,6 @@ class ClickNickApp:
         # Pending idle refresh of the title and Workspace details (_request_ui_refresh)
         self._ui_refresh_id = None
 
-        # Connected Click.exe instance (one immutable value; replaced, never edited)
-        self._connection_probe_token = None
-        self._click = None
         self._reset_workspace_pairing()
 
         self.filter_strategies = {
@@ -2189,8 +2202,9 @@ class ClickNickApp:
         self.nickname_manager = NicknameManager(self.settings, self.filter_strategies)
         self.detector = ClickWindowDetector(CLICK_PLC_WINDOW_MAPPING, self)
 
-        # Connection session: owns all resources scoped to a Click project
-        # (store, analysis, ScrWatcher, simulation, Simulator).
+        # Connection session: the connected CLICK window and everything scoped to
+        # its project (analysis, ScrWatcher, simulation, Simulator). Made on
+        # connect, replaced on a project change, closed when the window goes.
         self._session = None
 
         # The loaded address data (CSV or database) and the windows bound to it.
@@ -2455,12 +2469,6 @@ class ClickNickApp:
             return False
         return True
 
-    def _clear_connection_state(self) -> None:
-        """Clear the currently connected Click window metadata."""
-        self._connection_probe_token = None
-        self._click = None
-        self._reset_workspace_pairing()
-
     def _cancel_monitoring_status(self) -> None:
         if self._status_after_id is not None:
             self.root.after_cancel(self._status_after_id)
@@ -2489,7 +2497,7 @@ class ClickNickApp:
         if self.using_database:
             self._close_data(prompt_save=False)
 
-        self._clear_connection_state()
+        self._reset_workspace_pairing()
         self.selected_instance_var.set("")
 
         self.root.after(2000, self.refresh_click_instances)
@@ -2549,32 +2557,45 @@ class ClickNickApp:
             self._show_odbc_warning()
             self._odbc_warning_shown = True
 
-    def _open_connection_session(self, click: ClickConnection) -> None:
-        """Start the analysis, Scr watcher and simulation for the connected project."""
+    def _open_connection_session(
+        self, click: ClickConnection, *, has_database: bool = False
+    ) -> None:
+        """Open the session for the connected window and pair its workspace.
+
+        *has_database* when the loaded data is already this project's database
+        (kept edits after a project change); otherwise the database load sets it.
+        """
         from .connection_session import ConnectionSession
 
-        self._session = ConnectionSession(
+        self._session = session = ConnectionSession(
             click,
-            workspace_dir=self._configured_workspace_dir(),
+            has_database=has_database,
             on_sync_status_changed=self._on_sync_status_changed,
             on_build_finished=self._on_build_finished,
         )
+        self._load_workspace_pairing()
+        workspace = self._configured_workspace_dir()
+        session.workspace_dir = workspace.resolve() if workspace is not None else None
 
-    def _load_instance_database(self, pid, filename, hwnd):
-        """Select a backend and load a private store before attaching it to Tk."""
+    def _load_instance_database(self, session: ConnectionSession) -> None:
+        """Select a backend and load a private store before attaching it to Tk.
+
+        The result counts only while *session* is open and nothing cancelled
+        the load (``ConnectionSession.cancel_load``).
+        """
         import queue
         import threading
 
         from .data.data_source import MdbDataSource
 
-        token = object()
-        self._connection_probe_token = token
+        click = session.click
+        token = session.begin_load()
         results = queue.Queue()
         self._update_status("Loading database...", "status")
 
         def load():
             try:
-                data_source = MdbDataSource(click_pid=pid, click_hwnd=hwnd)
+                data_source = MdbDataSource(click_pid=click.pid, click_hwnd=click.hwnd)
                 store = AddressStore(data_source)
                 store.load_initial_data()
                 results.put((store, None))
@@ -2584,7 +2605,7 @@ class ClickNickApp:
         threading.Thread(target=load, daemon=True).start()
 
         def finish():
-            if self._connection_probe_token is not token:
+            if not session.loads(token):
                 return
             try:
                 store, error = results.get_nowait()
@@ -2596,14 +2617,14 @@ class ClickNickApp:
                 self._update_status("Database connection failed", "error")
                 self._odbc_warning_shown = True
                 messagebox.showerror("Database Connection", error, parent=self.root)
-                if self._connection_probe_token is token:
-                    self._connect_csv_fallback(filename, hwnd)
+                if session.loads(token):
+                    self._connect_csv_fallback(click.filename, click.hwnd)
                 return
 
             if not self._open_data(store):
                 self._update_status("Database load cancelled", "status")
                 return
-            self._open_connection_session(ClickConnection(pid, hwnd, filename))
+            session.has_database = True
             self.load_from_database()
             self._start_analysis_build()
 
@@ -2721,15 +2742,16 @@ class ClickNickApp:
         again on the window's DataView folder (``_reopen_dataview_editor``).
         Monitoring stays as it was.
         """
-        click = self._click
-        if click is None:
+        session = self._session
+        if session is None:
             return
+        click = session.click
         keep = self._keeps_edits_for(click.filename, new_filename)
         closes_data = self.using_database and not keep
         closing = []
         if closes_data and self._data.has_open_windows:
             closing.append("Editor windows")
-        if self._session is not None and self._session.simulator is not None:
+        if session.simulator is not None:
             closing.append("the Simulator" if closing else "The Simulator")
         if closing:
             messagebox.showinfo(
@@ -2741,20 +2763,21 @@ class ClickNickApp:
         if closes_data:
             self._close_data(prompt_save=False)
 
-        self._click = click = replace(click, filename=new_filename)
+        kept_database = keep and self.using_database
+        self._open_connection_session(
+            replace(click, filename=new_filename), has_database=kept_database
+        )
         self._show_instances(current_title)
-        self._load_workspace_pairing()
         self._reopen_dataview_editor(kept=keep)
 
-        if keep and self.using_database:
-            self._open_connection_session(click)
+        if kept_database:
             self._update_status(f"Kept unsaved changes for {new_filename}", "connected")
             self._on_data_ready()
             self._start_analysis_build()
         elif self._data is None and self.nickname_manager.has_database_backend():
-            # Same off-thread load as connecting, with a token so a result for
-            # a project that changed again is dropped.
-            self._load_instance_database(click.pid, click.filename, click.hwnd)
+            # Same off-thread load as connecting; a result for a project that
+            # changed again is dropped with its session.
+            self._load_instance_database(self._session)
         elif self.monitoring:
             self._update_status_monitoring()
 
@@ -2818,7 +2841,8 @@ class ClickNickApp:
 
     def load_csv(self, csv_path: str) -> bool:
         """Load nicknames from the CSV file at *csv_path*."""
-        self._connection_probe_token = None
+        if self._session is not None:
+            self._session.cancel_load()
         try:
             from .data.data_source import CsvDataSource
 
@@ -2837,8 +2861,9 @@ class ClickNickApp:
                 self._on_data_ready()
             else:
                 self._hide_overlay()
-                if self._click is not None:
-                    self._clear_connection_state()
+                if self._session is not None:
+                    self._close_session()
+                    self._reset_workspace_pairing()
                     self.selected_instance_var.set("")
             return True
         except Exception as e:
@@ -2887,7 +2912,8 @@ class ClickNickApp:
         """
         from .utils.mdb_shared import get_database_backend
 
-        self._connection_probe_token = None
+        if self._session is not None:
+            self._session.cancel_load()
 
         # Close the current data first: its save prompts are the only step the
         # user can cancel, so nothing irreversible happens before them.
@@ -2901,18 +2927,14 @@ class ClickNickApp:
             self.monitoring = True
             self._show_monitoring_button()
 
-        # Reset connection state
-        self._clear_connection_state()
-
-        # Store the new connection FIRST (including hwnd to avoid lookup issues)
-        self._click = ClickConnection(pid, hwnd, filename)
+        # The session holds the window from now on, before its database loads
+        self._open_connection_session(ClickConnection(pid, hwnd, filename))
         self._show_instances(title)
-        self._load_workspace_pairing()
 
         if get_database_backend() == "none":
             self._connect_csv_fallback(filename, hwnd)
         else:
-            self._load_instance_database(pid, filename, hwnd)
+            self._load_instance_database(self._session)
         self._watch_connection()
 
     def _start_monitoring_internal(self) -> bool:
@@ -2965,7 +2987,6 @@ class ClickNickApp:
         Address Editor and Dataview edits. Cancel, or a failed save, keeps it open."""
         if not self._close_data(prompt_save=True):
             return
-        self._connection_probe_token = None
         self._cancel_monitoring_status()
         if self.monitor_task_id is not None:
             self.root.after_cancel(self.monitor_task_id)
