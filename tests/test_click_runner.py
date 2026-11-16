@@ -633,10 +633,15 @@ class FakeClick(cd.Desktop):
             table = rows if mode == "Delete Existing" else {**table, **rows}
             mdb.write_text(json.dumps(table), encoding="utf-8")
 
-        progress = self._window("TfrmProgress", f"Import - {mode}", main.hwnd, enabled=False)
+        # Titled by its Delphi form's name at first, then by the mode (live run 1)
+        progress = self._window("TfrmProgress", "frmProgress", main.hwnd, enabled=False)
         self._control(progress, "TProgressBar", "", 0)
-        if self.import_writes == "answer":
-            write()
+
+        def titled() -> None:
+            progress.title = f"Import - {mode}"
+            if self.import_writes == "answer":
+                write()
+            show(self.import_box == "twice")
 
         def closed(box: FakeWindow, again: bool) -> None:
             self._drop(box)
@@ -671,7 +676,7 @@ class FakeClick(cd.Desktop):
                         "import_closed", lambda: closed(b, again)
                     )
 
-        show(self.import_box == "twice")
+        self._later("import_progress", titled)
 
     # -- Desktop ----------------------------------------------------------------
 

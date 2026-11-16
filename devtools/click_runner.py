@@ -233,10 +233,12 @@ SAVE_AS = Expect("save_as", "#32770", "Save As", MAIN)
 DISCONNECT_PROMPT = Expect("disconnect_prompt", "#32770", "CLICK Programming Software", MAIN)
 # File > Import > Nickname, as live probes 1 to 4 (2026-11-15) dumped it: an Open dialog
 # whose template adds three import modes (Delphi radio buttons, Merge (Project priority)
-# checked as it opens), a progress window titled by the mode, then one answer, both shown
-# while the progress window is still up: a box reading "Completed!" or the error list
+# checked as it opens), a progress window, then one answer shown while the progress window
+# is still up: a box reading "Completed!" or the error list. The progress window is titled
+# by its Delphi form's name at first, then by the mode (live run 1)
 IMPORT_MODE = "Delete Existing"
 OPEN = Expect("open", "#32770", "Open", MAIN)
+IMPORT_STARTING = Expect("import_starting", "TfrmProgress", "frmProgress", MAIN)
 IMPORT_PROGRESS = Expect("import_progress", "TfrmProgress", f"Import - {IMPORT_MODE}", MAIN)
 IMPORT_DONE = Expect("import_done", "#32770", "Import Database", MAIN)
 IMPORT_ERRORS = Expect("import_errors", "TfrmErrorList", "Import Error List", MAIN)
@@ -1707,7 +1709,7 @@ class Run:
         )
         self.press(dialog, button)
 
-        expected = [OPEN, IMPORT_PROGRESS, IMPORT_DONE, IMPORT_ERRORS]
+        expected = [OPEN, IMPORT_STARTING, IMPORT_PROGRESS, IMPORT_DONE, IMPORT_ERRORS]
 
         def answered(found: dict[str, Window]) -> tuple[Expect, Window] | None:
             shown = [e for e in (IMPORT_DONE, IMPORT_ERRORS) if e.name in found]
@@ -1767,7 +1769,7 @@ class Run:
 
         self.wait(
             f"the import of {csv.name} to finish",
-            [IMPORT_PROGRESS, kind],
+            [IMPORT_STARTING, IMPORT_PROGRESS, kind],
             settled,
             timeout=self.s.paste_timeout,
         )
